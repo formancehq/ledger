@@ -96,9 +96,9 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 	return account, nil
 }
 
-func (l *Ledger) FindPostings() ([]core.Posting, error) {
-	q := query.Query{}
-	q.Modify(query.Limit(10))
+func (l *Ledger) FindPostings(m ...query.QueryModifier) ([]core.Posting, error) {
+	q := query.New()
+	q.Apply(m)
 
 	res, err := l.store.FindPostings(q)
 
