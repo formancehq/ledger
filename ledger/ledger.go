@@ -73,8 +73,10 @@ func (l *Ledger) FindTransactions(m ...query.QueryModifier) ([]core.Transaction,
 	return l.store.FindTransactions(q)
 }
 
-func (l *Ledger) FindAccounts() ([]core.Account, error) {
-	return l.store.FindAccounts()
+func (l *Ledger) FindAccounts(m ...query.QueryModifier) ([]core.Account, error) {
+	q := query.New(m)
+
+	return l.store.FindAccounts(q)
 }
 
 func (l *Ledger) GetAccount(address string) (core.Account, error) {

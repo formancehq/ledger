@@ -172,7 +172,7 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 	return count, err
 }
 
-func (s *SQLiteStore) FindAccounts() ([]core.Account, error) {
+func (s *SQLiteStore) FindAccounts(q query.Query) ([]core.Account, error) {
 	results := []core.Account{}
 
 	rows, err := s.db.Query(`
@@ -184,8 +184,8 @@ func (s *SQLiteStore) FindAccounts() ([]core.Account, error) {
 		SELECT address
 		FROM addresses
 		GROUP BY address
-		LIMIT 10
-	`)
+		LIMIT $1
+	`, q.Limit)
 
 	if err != nil {
 		return results, err

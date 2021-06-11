@@ -12,7 +12,7 @@ type Store interface {
 	FindPostings(query.Query) ([]core.Posting, error)
 	AggregateBalances(string) (map[string]int64, error)
 	CountAccounts() (int64, error)
-	FindAccounts() ([]core.Account, error)
+	FindAccounts(query.Query) ([]core.Account, error)
 	Initialize() error
 	Close()
 }
