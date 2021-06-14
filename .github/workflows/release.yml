@@ -35,13 +35,13 @@ jobs:
       - name: build
         run: |
           CGO_ENABLED=1 go build -o numary
-          tar -czvf numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz numary
+          tar -czvf numary-${{ steps.get-release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz numary
 
       - name: upload release
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
-          upload_url: ${{ steps.release.outputs.upload_url }}
-          asset_path: numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
-          asset_name: numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          upload_url: ${{ steps.get-release.outputs.upload_url }}
+          asset_path: numary-${{ steps.get-release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          asset_name: numary-${{ steps.get-release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
