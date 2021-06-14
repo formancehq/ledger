@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 	"numary.io/ledger/api"
+	"numary.io/ledger/config"
 	"numary.io/ledger/ledger"
 )
 
@@ -24,6 +25,7 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
+					config.GetConfig,
 					ledger.NewLedger,
 					api.NewHttpAPI,
 				),
@@ -35,21 +37,21 @@ func Execute() {
 		},
 	})
 
-	config := &cobra.Command{
+	conf := &cobra.Command{
 		Use: "config",
 	}
 
-	config.AddCommand(&cobra.Command{
+	conf.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := DefaultConfig()
+			c := config.DefaultConfig()
 			b := c.Serialize()
 			os.WriteFile("numary.config.json", []byte(b), 0644)
 		},
 	})
 
 	root.AddCommand(server)
-	root.AddCommand(config)
+	root.AddCommand(conf)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

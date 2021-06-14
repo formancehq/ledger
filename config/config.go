@@ -1,6 +1,10 @@
-package cmd
+package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
 
 type Config struct {
 	Server struct {
@@ -31,4 +35,36 @@ func (c Config) Serialize() string {
 	b, _ := json.MarshalIndent(c, "", "  ")
 
 	return string(b)
+}
+
+func GetConfig() Config {
+	candidates := []string{
+		"/etc/numary/numary.config.json",
+	}
+
+	found := false
+	conf := DefaultConfig()
+
+	for _, c := range candidates {
+		b, err := os.ReadFile(c)
+
+		if err != nil {
+			continue
+		}
+
+		err = json.Unmarshal(b, &conf)
+
+		if err != nil {
+			fmt.Printf("error parsing config %s", c)
+			os.Exit(1)
+		}
+
+		found = true
+	}
+
+	if !found {
+		fmt.Println("fallback to default config")
+	}
+
+	return conf
 }
