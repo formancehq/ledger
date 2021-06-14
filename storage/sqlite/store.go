@@ -4,36 +4,49 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"path"
 	"sort"
 
 	_ "github.com/mattn/go-sqlite3"
+	"numary.io/ledger/config"
 	"numary.io/ledger/core"
 	"numary.io/ledger/ledger/query"
 )
 
 type SQLiteStore struct {
-	db *sql.DB
+	db       *sql.DB
+	prepared map[string]*sql.Stmt
 }
 
-func NewStore() (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite3", "file:/tmp/ledger.db?_journal=WAL")
+func NewStore(c config.Config) (*SQLiteStore, error) {
+	dbpath := fmt.Sprintf(
+		// "file:%s?_journal=WAL&_locking=EXCLUSIVE",
+		"file:%s?_journal=WAL",
+		path.Join(c.Storage.SQLiteOpts.Directory, "ledger.db"),
+	)
+
+	db, err := sql.Open("sqlite3", dbpath)
 
 	if err != nil {
 		return nil, err
 	}
 
 	return &SQLiteStore{
-		db,
+		db: db,
 	}, nil
 }
 
 func (s *SQLiteStore) Initialize() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS transactions (
-			"id" integer primary key,
+			"id" integer,
 			"timestamp" varchar,
+			"reference" varchar,
 			"hash" varchar,
-			"metadata" varchar
+			"metadata" varchar,
+
+			UNIQUE("id"),
+			UNIQUE("reference")
 		);
 
 		CREATE TABLE IF NOT EXISTS postings (
@@ -46,6 +59,10 @@ func (s *SQLiteStore) Initialize() error {
 
 			UNIQUE("id", "txid")
 		);
+
+		CREATE INDEX IF NOT EXISTS 'i0' ON "postings" ("txid");
+		CREATE INDEX IF NOT EXISTS 'i1' ON "postings" ("source");
+		CREATE INDEX IF NOT EXISTS 'i2' ON "postings" ("destination");
 	`)
 
 	return err
@@ -59,19 +76,38 @@ func (s *SQLiteStore) Close() {
 func (s *SQLiteStore) AppendTransaction(t core.Transaction) error {
 	tx, _ := s.db.Begin()
 
+	var ref *string
+
+	if t.Reference != "" {
+		ref = &t.Reference
+	}
+
+	_, err := tx.Exec(`
+		INSERT INTO "transactions"
+			("id", "reference", "timestamp")
+		VALUES
+			($1, $2, $3)
+	`, t.ID, ref, t.Timestamp)
+
+	if err != nil {
+		tx.Rollback()
+
+		return err
+	}
+
 	for i, p := range t.Postings {
-		tx.Exec(`
-			INSERT INTO "transactions"
-				("id", "timestamp")
-			VALUES
-				($1, $2)
-		`, t.ID, t.Timestamp)
-		tx.Exec(`
+		_, err := tx.Exec(`
 			INSERT INTO "postings"
 				("id", "txid", "source", "destination", "amount", "asset")
 			VALUES
 				($1, $2, $3, $4, $5, $6)
 		`, i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+		if err != nil {
+			tx.Rollback()
+
+			return err
+		}
 	}
 
 	return tx.Commit()

@@ -10,6 +10,7 @@ type Posting struct {
 type Transaction struct {
 	ID        int64     `json:"txid"`
 	Postings  []Posting `json:"postings"`
+	Reference string    `json:"reference"`
 	Timestamp string    `json:"timestamp"`
 	Hash      string    `json:"hash"`
 	Metadata  Metadata  `json:"metadata"`

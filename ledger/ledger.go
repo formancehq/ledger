@@ -2,12 +2,14 @@ package ledger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"go.uber.org/fx"
+	"numary.io/ledger/config"
 	"numary.io/ledger/core"
 	"numary.io/ledger/ledger/query"
 	"numary.io/ledger/storage"
@@ -16,11 +18,12 @@ import (
 
 type Ledger struct {
 	sync.Mutex
-	store storage.Store
+	store  storage.Store
+	config config.Config
 }
 
-func NewLedger(lc fx.Lifecycle) (*Ledger, error) {
-	store, err := sqlite.NewStore()
+func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
+	store, err := sqlite.NewStore(c)
 	store.Initialize()
 
 	if err != nil {
@@ -28,12 +31,14 @@ func NewLedger(lc fx.Lifecycle) (*Ledger, error) {
 	}
 
 	l := &Ledger{
-		store: store,
+		store:  store,
+		config: c,
 	}
 
 	lc.Append(fx.Hook{
 		OnStart: func(c context.Context) error {
 			fmt.Println("starting ledger")
+			fmt.Println(l.config)
 			return nil
 		},
 		OnStop: func(c context.Context) error {
@@ -58,6 +63,59 @@ func (l *Ledger) Commit(t core.Transaction) error {
 
 	if t.Timestamp == "" {
 		t.Timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	rf := map[string]map[string]int64{}
+
+	for _, p := range t.Postings {
+		if _, ok := rf[p.Source]; !ok {
+			rf[p.Source] = map[string]int64{}
+		}
+
+		rf[p.Source][p.Asset] += p.Amount
+
+		if _, ok := rf[p.Destination]; !ok {
+			rf[p.Destination] = map[string]int64{}
+		}
+
+		rf[p.Destination][p.Asset] -= p.Amount
+	}
+
+	for addr := range rf {
+		if addr == "world" {
+			continue
+		}
+
+		checks := map[string]int64{}
+
+		for asset := range rf[addr] {
+			if rf[addr][asset] <= 0 {
+				continue
+			}
+
+			checks[asset] = rf[addr][asset]
+		}
+
+		if len(checks) == 0 {
+			continue
+		}
+
+		balances, err := l.store.AggregateBalances(addr)
+
+		if err != nil {
+			return err
+		}
+
+		for asset := range checks {
+			balance, ok := balances[asset]
+
+			if !ok || balance < checks[asset] {
+				return errors.New(fmt.Sprintf(
+					"balance.insufficient.%s",
+					asset,
+				))
+			}
+		}
 	}
 
 	err := l.store.AppendTransaction(t)
