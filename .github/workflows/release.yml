@@ -45,3 +45,4 @@ jobs:
           upload_url: ${{ steps.get-release.outputs.upload_url }}
           asset_path: numary-${{ steps.get-release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
           asset_name: numary-${{ steps.get-release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          asset_content_type: application/gzip
