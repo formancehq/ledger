@@ -1,1 +1,1 @@
-# Numary Ledger
+# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/test.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/test.yml)
