@@ -1,0 +1,47 @@
+on:
+  release:
+    types:
+      - created
+
+name: release (linux/static)
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            cc:   gcc
+
+    env:
+      GOOS:   linux
+      GOARCH: ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.16'
+
+      - uses: actions/checkout@v2
+
+      - name: get deps
+        run: go get
+
+      - id: get-release
+        uses: bruceadams/get-release@v1.2.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: build
+        run: |
+          CGO_ENABLED=1 go build -o numary
+          tar -czvf numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz numary
+
+      - name: upload release
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          asset_name: numary-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
