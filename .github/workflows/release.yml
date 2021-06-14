@@ -1,9 +1,8 @@
+name: release
 on:
   release:
     types:
       - created
-
-name: release (linux/static)
 jobs:
   build:
     runs-on: ubuntu-20.04
