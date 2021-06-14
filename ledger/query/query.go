@@ -1,5 +1,9 @@
 package query
 
+const (
+	DEFAULT_LIMIT = 25
+)
+
 type Query struct {
 	Limit int
 }
@@ -8,7 +12,7 @@ type QueryModifier func(*Query)
 
 func New(qms ...[]QueryModifier) Query {
 	q := Query{
-		Limit: -1,
+		Limit: DEFAULT_LIMIT,
 	}
 
 	for _, m := range qms {
