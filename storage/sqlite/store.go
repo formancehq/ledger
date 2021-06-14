@@ -20,9 +20,11 @@ type SQLiteStore struct {
 
 func NewStore(c config.Config) (*SQLiteStore, error) {
 	dbpath := fmt.Sprintf(
-		// "file:%s?_journal=WAL&_locking=EXCLUSIVE",
 		"file:%s?_journal=WAL",
-		path.Join(c.Storage.SQLiteOpts.Directory, "ledger.db"),
+		path.Join(
+			c.Storage.SQLiteOpts.Directory,
+			fmt.Sprintf("%s.db", c.Storage.SQLiteOpts.DBName),
+		),
 	)
 
 	db, err := sql.Open("sqlite3", dbpath)

@@ -18,6 +18,7 @@ func with(f func(l *Ledger)) {
 			func() config.Config {
 				c := config.DefaultConfig()
 				c.Storage.SQLiteOpts.Directory = "/tmp"
+				c.Storage.SQLiteOpts.DBName = "numary-test-ledger"
 				return c
 			},
 			NewLedger,
@@ -27,7 +28,7 @@ func with(f func(l *Ledger)) {
 }
 
 func TestMain(m *testing.M) {
-	os.Remove("/tmp/ledger.db")
+	os.Remove("/tmp/numary-test-ledger.db")
 	m.Run()
 }
 
