@@ -52,3 +52,7 @@ curl -X GET \
 # Documentation
 
 _Work in progress!_
+
+# Benchmarks
+
+_Go reports in progress - current figures are linear 5k tps writes and <50ms reads_
