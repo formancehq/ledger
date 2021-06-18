@@ -52,8 +52,8 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 
 		err := l.Commit(t)
 
-		c.JSON(304, gin.H{
-			"ok": err != nil,
+		c.JSON(200, gin.H{
+			"ok": err == nil,
 		})
 	})
 

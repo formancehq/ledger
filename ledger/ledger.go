@@ -57,6 +57,7 @@ func (l *Ledger) Close() {
 
 func (l *Ledger) Commit(t core.Transaction) error {
 	l.Lock()
+	defer l.Unlock()
 
 	count, _ := l.store.CountTransactions()
 	t.ID = count
@@ -133,8 +134,6 @@ func (l *Ledger) Commit(t core.Transaction) error {
 	err := l.store.AppendTransaction(t)
 
 	l._last = &t
-
-	l.Unlock()
 
 	return err
 }
