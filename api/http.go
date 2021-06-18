@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
+	"numary.io/ledger/core"
 	"numary.io/ledger/ledger"
 	"numary.io/ledger/ledger/query"
 )
@@ -46,8 +47,13 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 	})
 
 	r.POST("/transactions", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"ok": true,
+		var t core.Transaction
+		c.ShouldBind(&t)
+
+		err := l.Commit(t)
+
+		c.JSON(304, gin.H{
+			"ok": err != nil,
 		})
 	})
 

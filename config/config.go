@@ -29,10 +29,18 @@ type Config struct {
 func DefaultConfig() Config {
 	c := Config{}
 
+	h, err := os.UserHomeDir()
+
+	if err != nil {
+		panic("cannot get home directory")
+	}
+
+	p := path.Join(h, ".numary")
+
 	c.Server.Http.BindAddress = "127.0.0.1:3068"
 	c.Storage.Driver = "sqlite"
 	c.Storage.SQLiteOpts.DBName = "ledger"
-	c.Storage.SQLiteOpts.Directory = ".numary"
+	c.Storage.SQLiteOpts.Directory = path.Join(p, "storage")
 
 	return c
 }
@@ -50,12 +58,34 @@ func GetConfig() Config {
 
 	h, err := os.UserHomeDir()
 
-	if err == nil {
-		candidates = append(
-			candidates,
-			path.Join(h, ".numary", filename),
-		)
+	if err != nil {
+		panic("cannot get home directory")
 	}
+
+	p := path.Join(h, ".numary")
+
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		err := os.Mkdir(p, 0700)
+
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	ps := path.Join(p, "storage")
+
+	if _, err := os.Stat(ps); os.IsNotExist(err) {
+		err := os.Mkdir(ps, 0700)
+
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	candidates = append(
+		candidates,
+		path.Join(h, ".numary", filename),
+	)
 
 	found := false
 	conf := DefaultConfig()
