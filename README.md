@@ -38,7 +38,7 @@ curl -X POST \
         "amount": 100
       }
     ]
-  }' http://localhost:3068/quickstart/transactions
+  }' http://localhost:3068/transactions
 
 # Get the balances of users:001
 curl -X GET \
