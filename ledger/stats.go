@@ -5,12 +5,23 @@ type Stats struct {
 	Accounts     int64 `json:"accounts"`
 }
 
-func (l *Ledger) Stats() Stats {
-	tt, _ := l.store.CountTransactions()
-	ta, _ := l.store.CountAccounts()
+func (l *Ledger) Stats() (Stats, error) {
+	var stats Stats
+
+	tt, err := l.store.CountTransactions()
+
+	if err != nil {
+		return stats, err
+	}
+
+	ta, err := l.store.CountAccounts()
+
+	if err != nil {
+		return stats, err
+	}
 
 	return Stats{
 		Transactions: int64(tt),
 		Accounts:     int64(ta),
-	}
+	}, nil
 }

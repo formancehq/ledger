@@ -45,7 +45,6 @@ func (s *SQLiteStore) Initialize() error {
 			"timestamp" varchar,
 			"reference" varchar,
 			"hash" varchar,
-			"metadata" varchar,
 
 			UNIQUE("id"),
 			UNIQUE("reference")
@@ -62,9 +61,25 @@ func (s *SQLiteStore) Initialize() error {
 			UNIQUE("id", "txid")
 		);
 
-		CREATE INDEX IF NOT EXISTS 'i0' ON "postings" ("txid");
-		CREATE INDEX IF NOT EXISTS 'i1' ON "postings" ("source");
-		CREATE INDEX IF NOT EXISTS 'i2' ON "postings" ("destination");
+		CREATE TABLE IF NOT EXISTS metadata (
+			"meta_id" integer,
+			"meta_target_type" varchar,
+			"meta_target_id" varchar,
+			"meta_key" varchar,
+			"meta_value" varchar,
+			"timestamp" varchar,
+
+			UNIQUE("id")
+		);
+
+		CREATE INDEX IF NOT EXISTS 'p_i0' ON "postings" ("txid");
+		CREATE INDEX IF NOT EXISTS 'p_i1' ON "postings" ("source");
+		CREATE INDEX IF NOT EXISTS 'p_i2' ON "postings" ("destination");
+
+		CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (
+			"meta_target_type",
+			"meta_target_id"
+		);
 	`)
 
 	return err
@@ -86,10 +101,10 @@ func (s *SQLiteStore) AppendTransaction(t core.Transaction) error {
 
 	_, err := tx.Exec(`
 		INSERT INTO "transactions"
-			("id", "reference", "timestamp")
+			("id", "reference", "timestamp", "hash")
 		VALUES
-			($1, $2, $3)
-	`, t.ID, ref, t.Timestamp)
+			($1, $2, $3, $4)
+	`, t.ID, ref, t.Timestamp, t.Hash)
 
 	if err != nil {
 		tx.Rollback()
@@ -98,12 +113,20 @@ func (s *SQLiteStore) AppendTransaction(t core.Transaction) error {
 	}
 
 	for i, p := range t.Postings {
-		_, err := tx.Exec(`
+		_, err := tx.Exec(
+			`
 			INSERT INTO "postings"
 				("id", "txid", "source", "destination", "amount", "asset")
 			VALUES
-				($1, $2, $3, $4, $5, $6)
-		`, i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+				(:id, :txid, :source, :destination, :amount, :asset)
+			`,
+			sql.Named("id", i),
+			sql.Named("txid", t.ID),
+			sql.Named("source", p.Source),
+			sql.Named("destination", p.Destination),
+			sql.Named("amount", p.Amount),
+			sql.Named("asset", p.Asset),
+		)
 
 		if err != nil {
 			tx.Rollback()
@@ -123,26 +146,33 @@ func (s *SQLiteStore) CountTransactions() (int64, error) {
 	return count, err
 }
 
-func (s *SQLiteStore) FindTransactions(q query.Query) ([]core.Transaction, error) {
+func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
+	c := query.Cursor{}
+
 	results := []core.Transaction{}
 
-	limit := int(math.Max(-1, math.Min(float64(q.Limit), 100)))
+	var sqlq string
+	var args []interface{}
 
-	rows, err := s.db.Query(`
-		WITH t AS (
-			SELECT *
-			FROM transactions t
-			LIMIT $1
-		)
-		SELECT t.id, t.timestamp, p.source, p.destination, p.amount, p.asset
-		FROM t
-		LEFT JOIN "postings" p ON p.txid = t.id
-		ORDER BY t.id DESC, p.id ASC
-	`, limit)
+	if q.HasParam("account") {
+		sqlq, args = s.queryAccountTransactions(q)
+	} else {
+		sqlq, args = s.queryTransactions(q)
+	}
+
+	limit := int(math.Max(-1, math.Min(float64(q.Limit), 100)))
+	args = append(args, sql.Named("limit", limit))
+
+	// fmt.Println(q, sqlq, args)
+
+	rows, err := s.db.Query(
+		sqlq,
+		args...,
+	)
 
 	if err != nil {
 		fmt.Println(err)
-		return results, err
+		return c, err
 	}
 
 	transactions := map[int64]core.Transaction{}
@@ -150,12 +180,14 @@ func (s *SQLiteStore) FindTransactions(q query.Query) ([]core.Transaction, error
 	for rows.Next() {
 		var txid int64
 		var ts string
+		var thash string
 
 		posting := core.Posting{}
 
 		err = rows.Scan(
 			&txid,
 			&ts,
+			&thash,
 			&posting.Source,
 			&posting.Destination,
 			&posting.Amount,
@@ -163,11 +195,11 @@ func (s *SQLiteStore) FindTransactions(q query.Query) ([]core.Transaction, error
 		)
 
 		if err != nil {
-			return results, err
+			return c, err
 		}
 
 		if err != nil {
-			return results, err
+			return c, err
 		}
 
 		if _, ok := transactions[txid]; !ok {
@@ -175,6 +207,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) ([]core.Transaction, error
 				ID:        txid,
 				Postings:  []core.Posting{},
 				Timestamp: ts,
+				Hash:      thash,
 			}
 		}
 
@@ -191,7 +224,11 @@ func (s *SQLiteStore) FindTransactions(q query.Query) ([]core.Transaction, error
 		return results[i].ID > results[j].ID
 	})
 
-	return results, nil
+	c.PageSize = q.Limit
+	c.HasMore = len(results) >= 1 && results[len(results)-1].ID > 0
+	c.Data = results
+
+	return c, nil
 }
 
 func (s *SQLiteStore) CountAccounts() (int64, error) {
@@ -210,23 +247,52 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 	return count, err
 }
 
-func (s *SQLiteStore) FindAccounts(q query.Query) ([]core.Account, error) {
+func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
+	c := query.Cursor{}
+
 	results := []core.Account{}
 
-	rows, err := s.db.Query(`
-		WITH addresses AS (
-			SELECT "source" as address FROM postings
-			UNION
-			SELECT "destination" as address FROM postings
-		)
-		SELECT address
-		FROM addresses
-		GROUP BY address
-		LIMIT $1
-	`, q.Limit)
+	var where string
+	if q.After != "" {
+		where = "WHERE address < :after"
+	}
+
+	var total int
+
+	err := s.db.QueryRow(
+		fmt.Sprintf(`
+			WITH addresses AS (
+				SELECT "source" as address FROM postings
+				UNION
+				SELECT "destination" as address FROM postings
+			)
+			SELECT count(DISTINCT address)
+			FROM addresses
+			%s
+		`, where),
+		sql.Named("after", q.After),
+	).Scan(&total)
+
+	rows, err := s.db.Query(
+		fmt.Sprintf(`
+			WITH addresses AS (
+				SELECT "source" as address FROM postings
+				UNION
+				SELECT "destination" as address FROM postings
+			)
+			SELECT address
+			FROM addresses
+			%s
+			GROUP BY address
+			ORDER BY address DESC
+			LIMIT :limit
+		`, where),
+		sql.Named("limit", q.Limit),
+		sql.Named("after", q.After),
+	)
 
 	if err != nil {
-		return results, err
+		return c, err
 	}
 
 	for rows.Next() {
@@ -235,7 +301,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) ([]core.Account, error) {
 		err := rows.Scan(&address)
 
 		if err != nil {
-			return results, err
+			return c, err
 		}
 
 		results = append(results, core.Account{
@@ -244,43 +310,12 @@ func (s *SQLiteStore) FindAccounts(q query.Query) ([]core.Account, error) {
 		})
 	}
 
-	return results, nil
-}
+	c.PageSize = q.Limit
+	c.HasMore = len(results) < total
+	c.Remaning = total
+	c.Data = results
 
-func (s *SQLiteStore) FindPostings(q query.Query) ([]core.Posting, error) {
-	res := []core.Posting{}
-
-	limit := q.Limit
-
-	rows, err := s.db.Query(`
-		SELECT
-			p.source, p.destination, p.amount, p.asset
-		FROM postings p
-		LIMIT $1
-	`, limit)
-
-	if err != nil {
-		return res, err
-	}
-
-	for rows.Next() {
-		var posting core.Posting
-
-		err := rows.Scan(
-			&posting.Source,
-			&posting.Destination,
-			&posting.Amount,
-			&posting.Asset,
-		)
-
-		if err != nil {
-			return res, err
-		}
-
-		res = append(res, posting)
-	}
-
-	return res, nil
+	return c, nil
 }
 
 func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {

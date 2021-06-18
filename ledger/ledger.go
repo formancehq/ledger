@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -20,6 +19,7 @@ type Ledger struct {
 	sync.Mutex
 	store  storage.Store
 	config config.Config
+	_last  *core.Transaction
 }
 
 func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
@@ -64,6 +64,18 @@ func (l *Ledger) Commit(t core.Transaction) error {
 	if t.Timestamp == "" {
 		t.Timestamp = time.Now().Format(time.RFC3339)
 	}
+
+	if l._last == nil {
+		last, err := l.GetLastTransaction()
+
+		if err != nil {
+			return err
+		}
+
+		l._last = &last
+	}
+
+	t.Hash = core.Hash(l._last, &t)
 
 	rf := map[string]map[string]int64{}
 
@@ -120,21 +132,49 @@ func (l *Ledger) Commit(t core.Transaction) error {
 
 	err := l.store.AppendTransaction(t)
 
+	l._last = &t
+
 	l.Unlock()
 
 	return err
 }
 
-func (l *Ledger) FindTransactions(m ...query.QueryModifier) ([]core.Transaction, error) {
-	q := query.New(m)
+func (l *Ledger) GetLastTransaction() (core.Transaction, error) {
+	var tx core.Transaction
 
-	return l.store.FindTransactions(q)
+	q := query.New()
+	q.Modify(query.Limit(1))
+
+	c, err := l.store.FindTransactions(q)
+
+	if err != nil {
+		return tx, err
+	}
+
+	txs := (c.Data).([]core.Transaction)
+
+	if len(txs) == 0 {
+		return tx, nil
+	}
+
+	tx = txs[0]
+
+	return tx, nil
 }
 
-func (l *Ledger) FindAccounts(m ...query.QueryModifier) ([]core.Account, error) {
+func (l *Ledger) FindTransactions(m ...query.QueryModifier) (query.Cursor, error) {
+	q := query.New(m)
+	c, err := l.store.FindTransactions(q)
+
+	return c, err
+}
+
+func (l *Ledger) FindAccounts(m ...query.QueryModifier) (query.Cursor, error) {
 	q := query.New(m)
 
-	return l.store.FindAccounts(q)
+	c, err := l.store.FindAccounts(q)
+
+	return c, err
 }
 
 func (l *Ledger) GetAccount(address string) (core.Account, error) {
@@ -152,17 +192,4 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 	account.Balances = balances
 
 	return account, nil
-}
-
-func (l *Ledger) FindPostings(m ...query.QueryModifier) ([]core.Posting, error) {
-	q := query.New()
-	q.Apply(m)
-
-	res, err := l.store.FindPostings(q)
-
-	if err != nil {
-		log.Println(err)
-	}
-
-	return res, err
 }

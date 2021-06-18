@@ -52,6 +52,7 @@ func Execute() {
 
 	root.AddCommand(server)
 	root.AddCommand(conf)
+	root.AddCommand(UICmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -37,7 +37,7 @@ func TestTransaction(t *testing.T) {
 
 		total := 0
 
-		for i := 0; i < 1e4; i++ {
+		for i := 0; i < 1e5; i++ {
 			if i%1e3 == 0 && i > 0 {
 				fmt.Println(i)
 			}
@@ -138,6 +138,16 @@ func TestReference(t *testing.T) {
 	})
 }
 
+func TestLast(t *testing.T) {
+	with(func(l *Ledger) {
+		_, err := l.GetLastTransaction()
+
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
 func BenchmarkLedger(b *testing.B) {
 	with(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
@@ -160,5 +170,11 @@ func BenchmarkGetAccount(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			l.GetAccount("users:013")
 		}
+	})
+}
+
+func BenchmarkFindTransactions(b *testing.B) {
+	with(func(l *Ledger) {
+
 	})
 }

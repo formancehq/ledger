@@ -8,11 +8,10 @@ import (
 type Store interface {
 	AppendTransaction(core.Transaction) error
 	CountTransactions() (int64, error)
-	FindTransactions(query.Query) ([]core.Transaction, error)
-	FindPostings(query.Query) ([]core.Posting, error)
+	FindTransactions(query.Query) (query.Cursor, error)
 	AggregateBalances(string) (map[string]int64, error)
 	CountAccounts() (int64, error)
-	FindAccounts(query.Query) ([]core.Account, error)
+	FindAccounts(query.Query) (query.Cursor, error)
 	Initialize() error
 	Close()
 }

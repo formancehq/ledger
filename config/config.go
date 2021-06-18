@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
+)
+
+const (
+	filename = "numary.config.json"
 )
 
 type Config struct {
@@ -27,6 +32,7 @@ func DefaultConfig() Config {
 	c.Server.Http.BindAddress = "127.0.0.1:3068"
 	c.Storage.Driver = "sqlite"
 	c.Storage.SQLiteOpts.DBName = "ledger"
+	c.Storage.SQLiteOpts.Directory = ".numary"
 
 	return c
 }
@@ -39,7 +45,16 @@ func (c Config) Serialize() string {
 
 func GetConfig() Config {
 	candidates := []string{
-		"/etc/numary/numary.config.json",
+		path.Join("/etc/numary", filename),
+	}
+
+	h, err := os.UserHomeDir()
+
+	if err == nil {
+		candidates = append(
+			candidates,
+			path.Join(h, ".numary", filename),
+		)
 	}
 
 	found := false
