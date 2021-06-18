@@ -14,9 +14,13 @@ Numary wants to tackle this issue with a general ledger that provides atomic mul
 
 # Getting started
 
+Numary works as a standalone binary, he latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable patg, such as to `/usr/local/bin`.
+
 ```SHELL
+
 numary server start
 
+# Issue GEMs from the world account, and fund users:001
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{
@@ -36,8 +40,13 @@ curl -X POST \
     ]
   }' http://localhost:3068/quickstart/transactions
 
+# Get the balances of users:001
 curl -X GET \
   http://localhost:3068/accounts/users:001
+
+# List transactions
+curl -X GET \
+  http://localhost:3068/transactions
 ```
 
 # Documentation
