@@ -61,6 +61,12 @@ func (s *SQLiteStore) Initialize() error {
 			UNIQUE("id", "txid")
 		);
 
+		CREATE INDEX IF NOT EXISTS 'p_c0' ON "postings" (
+			"txid" DESC,
+			"source",
+			"destination"
+		);
+
 		CREATE TABLE IF NOT EXISTS metadata (
 			"meta_id" integer,
 			"meta_target_type" varchar,
@@ -68,14 +74,10 @@ func (s *SQLiteStore) Initialize() error {
 			"meta_key" varchar,
 			"meta_value" varchar,
 			"timestamp" varchar,
-
-			UNIQUE("id")
+		
+			UNIQUE("meta_id")
 		);
-
-		CREATE INDEX IF NOT EXISTS 'p_i0' ON "postings" ("txid");
-		CREATE INDEX IF NOT EXISTS 'p_i1' ON "postings" ("source");
-		CREATE INDEX IF NOT EXISTS 'p_i2' ON "postings" ("destination");
-
+		
 		CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (
 			"meta_target_type",
 			"meta_target_id"
@@ -162,8 +164,6 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 
 	limit := int(math.Max(-1, math.Min(float64(q.Limit), 100)))
 	args = append(args, sql.Named("limit", limit))
-
-	// fmt.Println(q, sqlq, args)
 
 	rows, err := s.db.Query(
 		sqlq,

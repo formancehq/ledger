@@ -4,7 +4,7 @@ Numary is an open-source general ledger that makes building financial apps safe,
 
 Building financial software is both critical and notably hard. The [same bugs](https://medium.com/selency-tech-product/your-balance-is-0-30000000004-b6f7870bd32e) are repeated again and again, paving the highway to catastrophes.
 
-Numary wants to tackle this issue with a general ledger that provides atomic multi-postings transactions and will be programmable in [Numscript](https://github.com/numary/machine). It will shine for apps that require a lot of custom, money-touching code such as:
+Numary wants to tackle this issue with a general ledger that provides atomic multi-postings transactions, and that will be programmable in [Numscript](https://github.com/numary/machine), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-touching code such as:
 
 * E-commerce with complex payments flows, payments splitting, such as marketplaces
 * Company-issued currencies systems, e.g. Twitch Bits
@@ -42,3 +42,4 @@ curl -X GET \
 
 # Documentation
 
+_Work in progress!_

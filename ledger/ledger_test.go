@@ -18,17 +18,20 @@ func with(f func(l *Ledger)) {
 			func() config.Config {
 				c := config.DefaultConfig()
 				c.Storage.SQLiteOpts.Directory = "/tmp"
-				c.Storage.SQLiteOpts.DBName = "numary-test-ledger"
+				c.Storage.SQLiteOpts.DBName = "ledger"
 				return c
 			},
 			NewLedger,
 		),
 		fx.Invoke(f),
+		fx.Invoke(func(l *Ledger) {
+			l.Close()
+		}),
 	)
 }
 
 func TestMain(m *testing.M) {
-	os.Remove("/tmp/numary-test-ledger.db")
+	os.Remove("/tmp/ledger.db")
 	m.Run()
 }
 
@@ -37,8 +40,9 @@ func TestTransaction(t *testing.T) {
 
 		total := 0
 
-		for i := 0; i < 1e5; i++ {
-			if i%1e3 == 0 && i > 0 {
+		testsize := 1e5
+		for i := 0; i < int(testsize); i++ {
+			if i%int(testsize/10) == 0 && i > 0 {
 				fmt.Println(i)
 			}
 
@@ -175,6 +179,8 @@ func BenchmarkGetAccount(b *testing.B) {
 
 func BenchmarkFindTransactions(b *testing.B) {
 	with(func(l *Ledger) {
-
+		for i := 0; i < b.N; i++ {
+			l.FindTransactions()
+		}
 	})
 }

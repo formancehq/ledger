@@ -42,18 +42,30 @@ func (s *SQLiteStore) queryTransactions(q query.Query) (string, []interface{}) {
 }
 
 func (s *SQLiteStore) queryAccountTransactions(q query.Query) (string, []interface{}) {
-	sqlq := `
-		WITH _p AS (
+	args := []interface{}{}
+
+	var where string
+	if q.After != "" {
+		where = "AND txid < :after"
+		args = append(args, sql.Named("after", q.After))
+	}
+
+	sqlq := fmt.Sprintf(
+		`WITH _p AS (
 			SELECT txid
 			FROM postings
-			WHERE source = :account
-			OR destination = :account
+			WHERE (
+				source = :account
+				OR destination = :account
+			)
+			%s
+			GROUP BY txid
+			LIMIT :limit
 		), t AS (
 			SELECT *
 			FROM transactions t
 			INNER JOIN _p ON _p.txid = t.id
 			ORDER BY t.id DESC
-			LIMIT :limit
 		)
 		SELECT
 			t.id,
@@ -65,10 +77,10 @@ func (s *SQLiteStore) queryAccountTransactions(q query.Query) (string, []interfa
 			p.asset
 		FROM t
 		LEFT JOIN "postings" p ON p.txid = t.id
-		ORDER BY t.id DESC, p.id ASC
-	`
+		ORDER BY t.id DESC, p.id ASC`,
+		where,
+	)
 
-	args := []interface{}{}
 	args = append(args, sql.Named("account", q.Params["account"]))
 
 	return sqlq, args
