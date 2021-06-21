@@ -55,16 +55,13 @@ func (l *Ledger) Close() {
 	l.store.Close()
 }
 
-func (l *Ledger) Commit(t core.Transaction) error {
+func (l *Ledger) Commit(ts []core.Transaction) error {
 	l.Lock()
 	defer l.Unlock()
 
 	count, _ := l.store.CountTransactions()
-	t.ID = count
-
-	if t.Timestamp == "" {
-		t.Timestamp = time.Now().Format(time.RFC3339)
-	}
+	rf := map[string]map[string]int64{}
+	timestamp := time.Now().Format(time.RFC3339)
 
 	if l._last == nil {
 		last, err := l.GetLastTransaction()
@@ -76,22 +73,29 @@ func (l *Ledger) Commit(t core.Transaction) error {
 		l._last = &last
 	}
 
-	t.Hash = core.Hash(l._last, &t)
+	last := l._last
 
-	rf := map[string]map[string]int64{}
+	for i := range ts {
 
-	for _, p := range t.Postings {
-		if _, ok := rf[p.Source]; !ok {
-			rf[p.Source] = map[string]int64{}
+		ts[i].ID = count + int64(i)
+		ts[i].Timestamp = timestamp
+
+		ts[i].Hash = core.Hash(last, &ts[i])
+		last = &ts[i]
+
+		for _, p := range ts[i].Postings {
+			if _, ok := rf[p.Source]; !ok {
+				rf[p.Source] = map[string]int64{}
+			}
+
+			rf[p.Source][p.Asset] += p.Amount
+
+			if _, ok := rf[p.Destination]; !ok {
+				rf[p.Destination] = map[string]int64{}
+			}
+
+			rf[p.Destination][p.Asset] -= p.Amount
 		}
-
-		rf[p.Source][p.Asset] += p.Amount
-
-		if _, ok := rf[p.Destination]; !ok {
-			rf[p.Destination] = map[string]int64{}
-		}
-
-		rf[p.Destination][p.Asset] -= p.Amount
 	}
 
 	for addr := range rf {
@@ -131,9 +135,9 @@ func (l *Ledger) Commit(t core.Transaction) error {
 		}
 	}
 
-	err := l.store.AppendTransaction(t)
+	err := l.store.SaveTransactions(ts)
 
-	l._last = &t
+	l._last = &ts[len(ts)-1]
 
 	return err
 }

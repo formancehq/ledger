@@ -50,7 +50,7 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		var t core.Transaction
 		c.ShouldBind(&t)
 
-		err := l.Commit(t)
+		err := l.Commit([]core.Transaction{t})
 
 		c.JSON(200, gin.H{
 			"ok": err == nil,

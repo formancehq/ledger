@@ -6,7 +6,7 @@ import (
 )
 
 type Store interface {
-	AppendTransaction(core.Transaction) error
+	SaveTransactions([]core.Transaction) error
 	CountTransactions() (int64, error)
 	FindTransactions(query.Query) (query.Cursor, error)
 	AggregateBalances(string) (map[string]int64, error)

@@ -92,48 +92,50 @@ func (s *SQLiteStore) Close() {
 	fmt.Println("db closed")
 }
 
-func (s *SQLiteStore) AppendTransaction(t core.Transaction) error {
+func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 	tx, _ := s.db.Begin()
 
-	var ref *string
+	for _, t := range ts {
+		var ref *string
 
-	if t.Reference != "" {
-		ref = &t.Reference
-	}
+		if t.Reference != "" {
+			ref = &t.Reference
+		}
 
-	_, err := tx.Exec(`
+		_, err := tx.Exec(`
 		INSERT INTO "transactions"
 			("id", "reference", "timestamp", "hash")
 		VALUES
 			($1, $2, $3, $4)
 	`, t.ID, ref, t.Timestamp, t.Hash)
 
-	if err != nil {
-		tx.Rollback()
+		if err != nil {
+			tx.Rollback()
 
-		return err
-	}
+			return err
+		}
 
-	for i, p := range t.Postings {
-		_, err := tx.Exec(
-			`
+		for i, p := range t.Postings {
+			_, err := tx.Exec(
+				`
 			INSERT INTO "postings"
 				("id", "txid", "source", "destination", "amount", "asset")
 			VALUES
 				(:id, :txid, :source, :destination, :amount, :asset)
 			`,
-			sql.Named("id", i),
-			sql.Named("txid", t.ID),
-			sql.Named("source", p.Source),
-			sql.Named("destination", p.Destination),
-			sql.Named("amount", p.Amount),
-			sql.Named("asset", p.Asset),
-		)
+				sql.Named("id", i),
+				sql.Named("txid", t.ID),
+				sql.Named("source", p.Source),
+				sql.Named("destination", p.Destination),
+				sql.Named("amount", p.Amount),
+				sql.Named("asset", p.Asset),
+			)
 
-		if err != nil {
-			tx.Rollback()
+			if err != nil {
+				tx.Rollback()
 
-			return err
+				return err
+			}
 		}
 	}
 

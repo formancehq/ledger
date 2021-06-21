@@ -14,6 +14,9 @@ import (
 
 func with(f func(l *Ledger)) {
 	fx.New(
+		fx.Option(
+			fx.NopLogger,
+		),
 		fx.Provide(
 			func() config.Config {
 				c := config.DefaultConfig()
@@ -38,20 +41,17 @@ func TestMain(m *testing.M) {
 func TestTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 
+		testsize := 1e4
 		total := 0
+		batch := []core.Transaction{}
 
-		testsize := 1e5
-		for i := 0; i < int(testsize); i++ {
-			if i%int(testsize/10) == 0 && i > 0 {
-				fmt.Println(i)
-			}
-
+		for i := 1; i <= int(testsize); i++ {
 			user := fmt.Sprintf("users:%03d", 1+rand.Intn(100))
 			amount := 1 + rand.Intn(100)
 			amount = 100
 			total += amount
 
-			err := l.Commit(core.Transaction{
+			batch = append(batch, core.Transaction{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -68,10 +68,19 @@ func TestTransaction(t *testing.T) {
 				},
 			})
 
+			if i%int(1e3) != 0 {
+				continue
+			}
+
+			fmt.Println(i)
+
+			err := l.Commit(batch)
+
 			if err != nil {
-				fmt.Println(err)
 				t.Error(err)
 			}
+
+			batch = []core.Transaction{}
 		}
 
 		world, err := l.GetAccount("world")
@@ -95,13 +104,15 @@ func TestTransaction(t *testing.T) {
 
 func TestBalance(t *testing.T) {
 	with(func(l *Ledger) {
-		err := l.Commit(core.Transaction{
-			Postings: []core.Posting{
-				{
-					Source:      "empty_wallet",
-					Destination: "world",
-					Amount:      1,
-					Asset:       "COIN",
+		err := l.Commit([]core.Transaction{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "empty_wallet",
+						Destination: "world",
+						Amount:      1,
+						Asset:       "COIN",
+					},
 				},
 			},
 		})
@@ -128,13 +139,13 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		err := l.Commit(tx)
+		err := l.Commit([]core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = l.Commit(tx)
+		err = l.Commit([]core.Transaction{tx})
 
 		if err == nil {
 			t.Fail()
@@ -152,10 +163,12 @@ func TestLast(t *testing.T) {
 	})
 }
 
-func BenchmarkLedger(b *testing.B) {
+func BenchmarkTransaction1(b *testing.B) {
 	with(func(l *Ledger) {
-		for i := 0; i < b.N; i++ {
-			l.Commit(core.Transaction{
+		for n := 0; n < b.N; n++ {
+			txs := []core.Transaction{}
+
+			txs = append(txs, core.Transaction{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -165,6 +178,33 @@ func BenchmarkLedger(b *testing.B) {
 					},
 				},
 			})
+
+			l.Commit(txs)
+		}
+	})
+}
+
+func BenchmarkTransaction_20_1k(b *testing.B) {
+	with(func(l *Ledger) {
+		for n := 0; n < b.N; n++ {
+			for i := 0; i < 20; i++ {
+				txs := []core.Transaction{}
+
+				for j := 0; j < 1e3; j++ {
+					txs = append(txs, core.Transaction{
+						Postings: []core.Posting{
+							{
+								Source:      "world",
+								Destination: "benchmark",
+								Asset:       "COIN",
+								Amount:      10,
+							},
+						},
+					})
+				}
+
+				l.Commit(txs)
+			}
 		}
 	})
 }
