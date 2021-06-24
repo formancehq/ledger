@@ -1,0 +1,101 @@
+openapi: 3.0.0
+
+info:
+  title: Numary Ledger API
+  version: 1.0.0-alpha
+
+components:
+  schemas:
+    reference:
+      type: string
+    asset:
+      type: string
+    account:
+      type: object
+      properties:
+        reference:
+          $ref: "#/components/schemas/reference"
+        balances:
+          type: object
+          additionalProperties:
+            type: "integer"
+    posting:
+      type: object
+      properties:
+        source:
+          $ref: "#/components/schemas/reference"
+        destination:
+          $ref: "#/components/schemas/reference"
+        amount:
+          type: integer
+        asset:
+          $ref: "#/components/schemas/asset"
+    transaction:
+      type: object
+      properties:
+        postings:
+          type: array
+          items:
+            $ref: "#/components/schemas/posting"
+        metadata:
+          type: object
+
+paths:
+  /_info:
+    get:
+      summary: Server infos
+      responses:
+        200:
+          description: server info object
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /accounts:
+    get:
+      summary: List accounts
+      responses:
+        200:
+          description: The accounts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/account"
+
+  /accounts/{reference}:
+    get:
+      summary: Get an account by its fully-qualified reference
+      parameters:
+        - required: true
+          name: reference
+          in: path
+          schema:
+            $ref: "#/components/schemas/reference"
+      responses:
+        200:
+          description: The account object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/account"
+
+  /transactions:
+    get:
+      summary: List transactions
+      responses:
+        200:
+          description: The transactions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/transaction"
+    post:
+      summary: Commit a new transaction to the ledger
+      responses:
+        200:
+          description: Successfull commit
