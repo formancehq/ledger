@@ -314,7 +314,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 
 	c.PageSize = q.Limit
 	c.HasMore = len(results) < total
-	c.Remaning = total
+	c.Remaining = total
 	c.Data = results
 
 	return c, nil
