@@ -4,6 +4,10 @@ info:
   title: Numary Ledger API
   version: 1.0.0-alpha
 
+servers:
+  - url: http://localhost:3068
+    description: local server
+
 components:
   schemas:
     reference:
