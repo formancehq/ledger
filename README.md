@@ -14,7 +14,7 @@ Numary wants to tackle this issue with a general ledger that provides atomic mul
 
 # Getting started
 
-Numary works as a standalone binary, he latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable patg, such as to `/usr/local/bin`.
+Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`.
 
 ```SHELL
 
