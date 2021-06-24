@@ -13,4 +13,4 @@ jobs:
         with:
           readme-oas-key: ${{ secrets.README_OAS_KEY }}
           oas-file-path: './spec/http.yml'
-          # api-version: 'v1.0.0'
+          api-version: 'v1.0.0'
