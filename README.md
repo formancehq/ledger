@@ -51,8 +51,4 @@ curl -X GET \
 
 # Documentation
 
-_Work in progress!_
-
-# Benchmarks
-
-_Go reports in progress - current figures are linear 5k tps writes and <50ms reads_
+You can find the complete Numary documentation at [docs.numary.com](https://docs.numary.com)

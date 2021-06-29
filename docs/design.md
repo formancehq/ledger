@@ -1,3 +1,0 @@
-# Numary
-
-## Transaction Model
