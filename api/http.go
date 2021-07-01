@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 	"numary.io/ledger/core"
@@ -17,6 +18,8 @@ type HttpAPI struct {
 
 func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 	r := gin.Default()
+
+	r.Use(cors.Default())
 
 	r.GET("/_info", func(c *gin.Context) {
 		c.JSON(200, gin.H{
