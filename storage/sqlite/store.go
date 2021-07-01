@@ -226,9 +226,12 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		return results[i].ID > results[j].ID
 	})
 
+	count, _ := s.CountTransactions()
+
 	c.PageSize = q.Limit
 	c.HasMore = len(results) >= 1 && results[len(results)-1].ID > 0
 	c.Data = results
+	c.Total = int(count)
 
 	return c, nil
 }
@@ -259,7 +262,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		where = "WHERE address < :after"
 	}
 
-	var total int
+	var remaining int
 
 	err := s.db.QueryRow(
 		fmt.Sprintf(`
@@ -273,7 +276,11 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			%s
 		`, where),
 		sql.Named("after", q.After),
-	).Scan(&total)
+	).Scan(&remaining)
+
+	if err != nil {
+		return c, err
+	}
 
 	rows, err := s.db.Query(
 		fmt.Sprintf(`
@@ -312,9 +319,12 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		})
 	}
 
+	total, _ := s.CountAccounts()
+
 	c.PageSize = q.Limit
-	c.HasMore = len(results) < total
-	c.Remaining = total
+	c.HasMore = len(results) < remaining
+	c.Remaining = remaining - len(results)
+	c.Total = int(total)
 	c.Data = results
 
 	return c, nil
