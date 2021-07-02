@@ -159,8 +159,6 @@ github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lN
 github.com/modern-go/reflect2 v1.0.1 h1:9f412s+6RmYXLWZSEzVVgPGK7C2PphHj5RJrvfx9AWI=
 github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
-github.com/numary/machine v0.0.0-20210701144422-1e456f10406e h1:xCOwAXG3h8SVbZhizO9wPTNIY2xVHpxvEsS5f+Y6QJo=
-github.com/numary/machine v0.0.0-20210701144422-1e456f10406e/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf h1:edD04W2rv475M6PBiQ6avKdzpsE5GQZ/GRSG8y/p1Lk=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
