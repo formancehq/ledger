@@ -60,6 +60,18 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		})
 	})
 
+	r.POST("/script", func(c *gin.Context) {
+		var script core.Script
+
+		c.ShouldBind(&script)
+
+		err := l.Execute(script)
+
+		c.JSON(200, gin.H{
+			"ok": err == nil,
+		})
+	})
+
 	r.GET("/accounts", func(c *gin.Context) {
 		cursor, err := l.FindAccounts(
 			query.After(c.Query("after")),

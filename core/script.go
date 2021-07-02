@@ -1,10 +1,6 @@
 package core
 
 type Script struct {
-	Plain    string `json:"plain"`
-	AST      AST    `json:"ast"`
-	Compiled []byte `json:"bytecode"`
-}
-
-type AST struct {
+	Plain string                 `json:"plain"`
+	Vars  map[string]interface{} `json:"vars"`
 }

@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/numary/machine/script/compiler"
-	"github.com/numary/machine/vm"
 	"go.uber.org/fx"
 	"numary.io/ledger/config"
 	"numary.io/ledger/core"
@@ -78,19 +76,6 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 	last := l._last
 
 	for i := range ts {
-		if ts[i].Script != "" {
-			p, err := compiler.Compile(ts[i].Script)
-			m := vm.NewMachine(p)
-
-			if err != nil {
-				return err
-			}
-
-			if c := m.Execute(); c == vm.EXIT_FAIL {
-				return errors.New("script failed")
-			}
-		}
-
 		ts[i].ID = count + int64(i)
 		ts[i].Timestamp = timestamp
 
