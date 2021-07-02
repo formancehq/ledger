@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"numary.io/ledger/ledger/query"
+	"github.com/numary/ledger/ledger/query"
 )
 
 func (s *SQLiteStore) queryTransactions(q query.Query) (string, []interface{}) {

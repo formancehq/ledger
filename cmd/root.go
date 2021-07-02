@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/numary/ledger/api"
+	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/ledger"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
-	"numary.io/ledger/api"
-	"numary.io/ledger/config"
-	"numary.io/ledger/ledger"
 )
 
 var root = &cobra.Command{
