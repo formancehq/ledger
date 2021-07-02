@@ -6,10 +6,10 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/ledger/query"
 	"go.uber.org/fx"
-	"numary.io/ledger/core"
-	"numary.io/ledger/ledger"
-	"numary.io/ledger/ledger/query"
 )
 
 type HttpAPI struct {

@@ -8,9 +8,9 @@ import (
 	"sort"
 
 	_ "github.com/mattn/go-sqlite3"
-	"numary.io/ledger/config"
-	"numary.io/ledger/core"
-	"numary.io/ledger/ledger/query"
+	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
 )
 
 type SQLiteStore struct {

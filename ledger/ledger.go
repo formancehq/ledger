@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/storage/sqlite"
 	"go.uber.org/fx"
-	"numary.io/ledger/config"
-	"numary.io/ledger/core"
-	"numary.io/ledger/ledger/query"
-	"numary.io/ledger/storage"
-	"numary.io/ledger/storage/sqlite"
 )
 
 type Ledger struct {

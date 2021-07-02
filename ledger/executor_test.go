@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"numary.io/ledger/core"
+	"github.com/numary/ledger/core"
 )
 
 func TestTransactionInvalidScript(t *testing.T) {

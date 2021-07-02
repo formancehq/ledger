@@ -7,9 +7,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/core"
 	"go.uber.org/fx"
-	"numary.io/ledger/config"
-	"numary.io/ledger/core"
 )
 
 func with(f func(l *Ledger)) {

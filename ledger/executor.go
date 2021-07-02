@@ -3,9 +3,9 @@ package ledger
 import (
 	"errors"
 
+	"github.com/numary/ledger/core"
 	"github.com/numary/machine/script/compiler"
 	"github.com/numary/machine/vm"
-	"numary.io/ledger/core"
 )
 
 func (l *Ledger) Execute(script core.Script) error {

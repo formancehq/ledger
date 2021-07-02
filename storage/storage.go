@@ -1,8 +1,8 @@
 package storage
 
 import (
-	"numary.io/ledger/core"
-	"numary.io/ledger/ledger/query"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
 )
 
 type Store interface {
