@@ -23,6 +23,11 @@ jobs:
 
       - uses: actions/checkout@v2
 
+      - name: Configure git for private modules
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: git config --global url."https://altitude:${TOKEN}@github.com".insteadOf "https://github.com"
+
       - name: get deps
         run: go get
 

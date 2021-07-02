@@ -102,6 +102,54 @@ func TestTransaction(t *testing.T) {
 	})
 }
 
+func TestTransactionInvalidScript(t *testing.T) {
+	with(func(l *Ledger) {
+		err := l.Commit([]core.Transaction{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Asset:       "GEM",
+						Amount:      100,
+					},
+				},
+				Script: "this is not a valid script",
+			},
+		})
+
+		if err == nil {
+			t.Error(errors.New(
+				"script was invalid yet the transaction was commited",
+			))
+		}
+	})
+}
+
+func TestTransactionFail(t *testing.T) {
+	with(func(l *Ledger) {
+		err := l.Commit([]core.Transaction{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Asset:       "GEM",
+						Amount:      100,
+					},
+				},
+				Script: "fail",
+			},
+		})
+
+		if err == nil {
+			t.Error(errors.New(
+				"script failed yet the transaction was commited",
+			))
+		}
+	})
+}
+
 func TestBalance(t *testing.T) {
 	with(func(l *Ledger) {
 		err := l.Commit([]core.Transaction{

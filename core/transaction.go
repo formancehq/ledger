@@ -20,6 +20,7 @@ type Transaction struct {
 	Timestamp string    `json:"timestamp"`
 	Hash      string    `json:"hash"`
 	Metadata  Metadata  `json:"metadata"`
+	Script    string    `json:"script,omitempty"`
 }
 
 func (t *Transaction) AppendPosting(p Posting) {

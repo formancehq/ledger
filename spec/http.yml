@@ -41,6 +41,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/posting"
+        script:
+          type: string
         metadata:
           type: object
 
