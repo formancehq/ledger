@@ -1,4 +1,4 @@
-module numary.io/ledger
+module github.com/numary/ledger
 
 go 1.16
 
