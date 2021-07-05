@@ -1,4 +1,4 @@
-# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/test.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/test.yml)
+# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml)
 
 Numary is an open-source general ledger that makes building financial apps safe, fun and cheap.
 
