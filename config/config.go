@@ -23,6 +23,8 @@ type Config struct {
 			Directory string `json:"directory"`
 			DBName    string `json:"db_name"`
 		} `json:"sqlite_opts"`
+		PostgresOpts struct {
+		}
 	} `json:"storage"`
 }
 

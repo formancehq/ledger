@@ -14,7 +14,6 @@ import (
 	"numary.io/ledger/core"
 	"numary.io/ledger/ledger/query"
 	"numary.io/ledger/storage"
-	"numary.io/ledger/storage/sqlite"
 )
 
 type Ledger struct {
@@ -25,12 +24,13 @@ type Ledger struct {
 }
 
 func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
-	store, err := sqlite.NewStore(c)
-	store.Initialize()
+	store, err := storage.GetStore(c)
 
 	if err != nil {
 		return nil, err
 	}
+
+	store.Initialize()
 
 	l := &Ledger{
 		store:  store,
