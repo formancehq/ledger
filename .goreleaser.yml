@@ -6,6 +6,8 @@ builds:
       - CGO_ENABLED=1
     goos:
       - linux
+    goarch:
+      - amd64
     binary: numary
 archives:
   - replacements:
@@ -21,3 +23,6 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+dockers:
+  - image_templates: ["496288716344.dkr.ecr.eu-west-1.amazonaws.com/numary-prod-ecr:{{ .Version }}"]
+    dockerfile: Dockerfile
