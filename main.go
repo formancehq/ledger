@@ -1,7 +1,7 @@
 package main
 
 import (
-	"numary.io/ledger/cmd"
+	"github.com/numary/ledger/cmd"
 )
 
 func main() {

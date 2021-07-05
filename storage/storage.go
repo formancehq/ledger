@@ -1,12 +1,12 @@
 package storage
 
 import (
+	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/storage/postgres"
+	"github.com/numary/ledger/storage/sqlite"
 	"github.com/pkg/errors"
-	"numary.io/ledger/config"
-	"numary.io/ledger/core"
-	"numary.io/ledger/ledger/query"
-	"numary.io/ledger/storage/postgres"
-	"numary.io/ledger/storage/sqlite"
 )
 
 type Store interface {
