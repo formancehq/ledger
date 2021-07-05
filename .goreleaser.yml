@@ -1,12 +1,12 @@
 before:
   hooks:
-    - go build
+    - go build -o numary
 builds:
   - env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
-    main: ./main
+    binary: numary
 archives:
   - replacements:
       linux: Linux
