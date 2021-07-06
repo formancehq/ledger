@@ -37,13 +37,25 @@ components:
     transaction:
       type: object
       properties:
+        reference:
+          description: a unique reference (e.g. an ID in your system)
+          type: string
         postings:
           type: array
           items:
             $ref: "#/components/schemas/posting"
-        script:
+        timestamp:
+          type: string
+        hash:
           type: string
         metadata:
+          type: object
+    script:
+      type: object
+      properties:
+        plain:
+          type: string
+        vars:
           type: object
 
 paths:
@@ -102,6 +114,25 @@ paths:
                   $ref: "#/components/schemas/transaction"
     post:
       summary: Commit a new transaction to the ledger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/transaction"
+
       responses:
         200:
           description: Successfull commit
+
+  /script:
+    post:
+      summary: execute a transaction Numscript
+      responses:
+        200:
+          description: successful execution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/script"
