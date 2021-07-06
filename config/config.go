@@ -24,6 +24,7 @@ type Config struct {
 			DBName    string `json:"db_name"`
 		} `json:"sqlite_opts"`
 		PostgresOpts struct {
+			ConnString string `json:"conn_string"`
 		}
 	} `json:"storage"`
 }

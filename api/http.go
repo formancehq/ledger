@@ -48,6 +48,7 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger, c config.Config) *HttpAPI {
 		c.JSON(200, gin.H{
 			"ok":     err == nil,
 			"cursor": cursor,
+			"err":    err,
 		})
 	})
 
@@ -58,8 +59,7 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger, c config.Config) *HttpAPI {
 		err := l.Commit([]core.Transaction{t})
 
 		c.JSON(200, gin.H{
-			"ok":  err == nil,
-			"err": err.Error(),
+			"ok": err == nil,
 		})
 	})
 
@@ -68,10 +68,16 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger, c config.Config) *HttpAPI {
 			query.After(c.Query("after")),
 		)
 
-		c.JSON(200, gin.H{
+		res := gin.H{
 			"ok":     err == nil,
 			"cursor": cursor,
-		})
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
 	r.GET("/accounts/:address", func(c *gin.Context) {

@@ -20,8 +20,9 @@ func with(f func(l *Ledger)) {
 		fx.Provide(
 			func() config.Config {
 				c := config.DefaultConfig()
-				c.Storage.SQLiteOpts.Directory = "/tmp"
-				c.Storage.SQLiteOpts.DBName = "ledger"
+				c.Storage.Driver = "postgres"
+				// c.Storage.SQLiteOpts.Directory = "/tmp"
+				// c.Storage.SQLiteOpts.DBName = "ledger"
 				return c
 			},
 			NewLedger,

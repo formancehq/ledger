@@ -2,44 +2,64 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
+	"log"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/numary/ledger/config"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
 )
 
 type PGStore struct {
-	conn *pgx.Conn
+	connString string
+	conn       *pgx.Conn
 }
 
-func NewStore(c config.Config) (*PGStore, error) {
-	var store *PGStore
+func (s *PGStore) connect() error {
+	log.Println("initiating postgres connection")
 
 	conn, err := pgx.Connect(
-		context.Background(),
-		"postgresql://localhost/postgres",
+		context.TODO(),
+		s.connString,
 	)
 
 	if err != nil {
-		return store, err
+		return err
 	}
 
-	store = &PGStore{
-		conn: conn,
+	s.conn = conn
+
+	return nil
+}
+
+func (s *PGStore) Conn() *pgx.Conn {
+	if s.conn.IsClosed() {
+		err := s.connect()
+
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return s.conn
+}
+
+func NewStore(c config.Config) (*PGStore, error) {
+	store := &PGStore{
+		connString: c.Storage.PostgresOpts.ConnString,
+	}
+
+	err := store.connect()
+
+	if err != nil {
+		return store, err
 	}
 
 	return store, nil
 }
 
 func (s *PGStore) Initialize() error {
-	fmt.Println("init postgres")
-
 	statements := `
 		CREATE TABLE IF NOT EXISTS transactions (
-			"id" integer,
+			"id" bigint,
 			"timestamp" varchar,
 			"reference" varchar,
 			"hash" varchar,
@@ -49,11 +69,11 @@ func (s *PGStore) Initialize() error {
 		);
 
 		CREATE TABLE IF NOT EXISTS postings (
-			"id" integer,
-			"txid" integer,
+			"id" smallint,
+			"txid" bigint,
 			"source" varchar,
 			"destination" varchar,
-			"amount" integer,
+			"amount" bigint,
 			"asset" varchar,
 
 			UNIQUE("id", "txid")
@@ -66,7 +86,7 @@ func (s *PGStore) Initialize() error {
 		);
 
 		CREATE TABLE IF NOT EXISTS metadata (
-			"meta_id" integer,
+			"meta_id" bigint,
 			"meta_target_type" varchar,
 			"meta_target_id" varchar,
 			"meta_key" varchar,
@@ -80,9 +100,18 @@ func (s *PGStore) Initialize() error {
 			"meta_target_type",
 			"meta_target_id"
 		);
+
+		CREATE OR REPLACE VIEW addresses AS SELECT distinct address FROM (
+			SELECT distinct "source" as address FROM postings
+			UNION
+			SELECT distinct "destination" as address FROM postings
+		) agg_addr;
 	`
 
-	_, err := s.conn.Exec(context.Background(), statements)
+	_, err := s.Conn().Exec(
+		context.Background(),
+		statements,
+	)
 
 	if err != nil {
 		panic(err)
@@ -92,100 +121,5 @@ func (s *PGStore) Initialize() error {
 }
 
 func (s *PGStore) Close() {
-
-}
-
-func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
-	tx, _ := s.conn.Begin(context.Background())
-
-	for _, t := range ts {
-		var ref *string
-
-		if t.Reference != "" {
-			ref = &t.Reference
-		}
-
-		_, err := tx.Exec(context.Background(), `
-		INSERT INTO "transactions"
-			("id", "reference", "timestamp", "hash")
-		VALUES
-			($1, $2, $3, $4)
-	`, t.ID, ref, t.Timestamp, t.Hash)
-
-		if err != nil {
-			tx.Rollback(context.Background())
-
-			return err
-		}
-
-		for i, p := range t.Postings {
-			_, err := tx.Exec(context.Background(),
-				`
-			INSERT INTO "postings"
-				("id", "txid", "source", "destination", "amount", "asset")
-			VALUES
-				($1, $2, $3, $4, $5, $6)
-			`,
-				sql.Named("id", i),
-				sql.Named("txid", t.ID),
-				sql.Named("source", p.Source),
-				sql.Named("destination", p.Destination),
-				sql.Named("amount", p.Amount),
-				sql.Named("asset", p.Asset),
-			)
-
-			if err != nil {
-				tx.Rollback(context.Background())
-
-				return err
-			}
-		}
-	}
-
-	return tx.Commit(context.Background())
-}
-
-func (s *PGStore) CountTransactions() (int64, error) {
-	var count int64
-
-	err := s.conn.QueryRow(
-		context.Background(),
-		`SELECT count(*) FROM transactions`,
-	).Scan(&count)
-
-	return count, err
-}
-
-func (s *PGStore) FindTransactions(query.Query) (query.Cursor, error) {
-	c := query.Cursor{}
-	results := []core.Transaction{}
-
-	c.Data = results
-
-	return c, nil
-}
-
-func (s *PGStore) AggregateBalances(string) (map[string]int64, error) {
-	return map[string]int64{}, nil
-}
-
-func (s *PGStore) CountAccounts() (int64, error) {
-	var count int64
-
-	err := s.conn.QueryRow(
-		context.Background(),
-		`WITH addresses AS (
-			SELECT "source" as address FROM postings
-			UNION
-			SELECT "destination" as address FROM postings
-		)
-		SELECT count(distinct address)
-		FROM addresses`,
-	).Scan(&count)
-
-	return count, err
-}
-
-func (s *PGStore) FindAccounts(query.Query) (query.Cursor, error) {
-	return query.Cursor{}, nil
+	s.conn.Close(context.TODO())
 }
