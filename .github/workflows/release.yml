@@ -33,7 +33,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - name: get deps
-        run: go get
+        run: CGO_ENABLED=1 go get
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
