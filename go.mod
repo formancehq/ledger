@@ -7,6 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.7.1
 	github.com/huandu/go-sqlbuilder v1.12.1
 	github.com/jackc/pgx/v4 v4.11.0
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.7
 	github.com/numary/machine v0.0.0-20210702091459-23a82555adbf
 	github.com/pkg/errors v0.8.1
