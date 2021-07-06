@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/ledger/query"
@@ -13,10 +14,11 @@ import (
 )
 
 type HttpAPI struct {
+	addr   string
 	engine *gin.Engine
 }
 
-func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
+func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger, c config.Config) *HttpAPI {
 	r := gin.Default()
 
 	r.Use(cors.Default())
@@ -56,7 +58,8 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		err := l.Commit([]core.Transaction{t})
 
 		c.JSON(200, gin.H{
-			"ok": err == nil,
+			"ok":  err == nil,
+			"err": err.Error(),
 		})
 	})
 
@@ -82,6 +85,7 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 
 	h := &HttpAPI{
 		engine: r,
+		addr:   c.Server.Http.BindAddress,
 	}
 
 	lc.Append(fx.Hook{
@@ -96,5 +100,5 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 }
 
 func (h *HttpAPI) Start() {
-	h.engine.Run("localhost:3068")
+	h.engine.Run(h.addr)
 }
