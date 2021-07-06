@@ -20,9 +20,9 @@ func with(f func(l *Ledger)) {
 		fx.Provide(
 			func() config.Config {
 				c := config.DefaultConfig()
-				c.Storage.Driver = "postgres"
-				// c.Storage.SQLiteOpts.Directory = "/tmp"
-				// c.Storage.SQLiteOpts.DBName = "ledger"
+				c.Storage.Driver = "sqlite"
+				c.Storage.SQLiteOpts.Directory = "/tmp"
+				c.Storage.SQLiteOpts.DBName = "ledger"
 				return c
 			},
 			NewLedger,
@@ -48,8 +48,7 @@ func TestTransaction(t *testing.T) {
 
 		for i := 1; i <= int(testsize); i++ {
 			user := fmt.Sprintf("users:%03d", 1+rand.Intn(100))
-			amount := 1 + rand.Intn(100)
-			amount = 100
+			amount := 100
 			total += amount
 
 			batch = append(batch, core.Transaction{
