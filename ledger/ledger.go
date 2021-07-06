@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -126,10 +125,10 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 			balance, ok := balances[asset]
 
 			if !ok || balance < checks[asset] {
-				return errors.New(fmt.Sprintf(
+				return fmt.Errorf(
 					"balance.insufficient.%s",
 					asset,
-				))
+				)
 			}
 		}
 	}

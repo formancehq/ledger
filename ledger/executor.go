@@ -20,11 +20,13 @@ func (l *Ledger) Execute(script core.Script) error {
 		return err
 	}
 
-	if c := m.Execute(); c == vm.EXIT_FAIL {
+	if c := m.Execute(map[string]string{}); c == vm.EXIT_FAIL {
 		return errors.New("script failed")
 	}
 
-	t := core.Transaction{}
+	t := core.Transaction{
+		Postings: m.Postings,
+	}
 
 	l.Commit([]core.Transaction{t})
 

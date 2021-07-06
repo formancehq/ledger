@@ -47,8 +47,7 @@ func TestTransaction(t *testing.T) {
 
 		for i := 1; i <= int(testsize); i++ {
 			user := fmt.Sprintf("users:%03d", 1+rand.Intn(100))
-			amount := 1 + rand.Intn(100)
-			amount = 100
+			amount := 100
 			total += amount
 
 			batch = append(batch, core.Transaction{
