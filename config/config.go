@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+
+	"github.com/kelseyhightower/envconfig"
 )
 
 const (
@@ -14,17 +16,17 @@ const (
 type Config struct {
 	Server struct {
 		Http struct {
-			BindAddress string `json:"bind_address"`
+			BindAddress string `default:"127.0.0.1:3068" json:"bind_address"`
 		} `json:"http"`
 	} `json:"server"`
 	Storage struct {
-		Driver     string `json:"driver"`
+		Driver     string `default:"sqlite" json:"driver"`
 		SQLiteOpts struct {
 			Directory string `json:"directory"`
-			DBName    string `json:"db_name"`
+			DBName    string `default:"ledger" json:"db_name"`
 		} `json:"sqlite_opts"`
 		PostgresOpts struct {
-			ConnString string `json:"conn_string"`
+			ConnString string `default:"postgresql://localhost/postgres" json:"conn_string"`
 		}
 	} `json:"storage"`
 }
@@ -42,9 +44,6 @@ func DefaultConfig() Config {
 
 	p := path.Join(h, ".numary")
 
-	c.Server.Http.BindAddress = "127.0.0.1:3068"
-	c.Storage.Driver = "sqlite"
-	c.Storage.SQLiteOpts.DBName = "ledger"
 	c.Storage.SQLiteOpts.Directory = path.Join(p, "storage")
 
 	return c
@@ -115,6 +114,8 @@ func GetConfig(overrides *Overrides) Config {
 	if !found {
 		fmt.Println("fallback to default config")
 	}
+
+	envconfig.Process("numary", &conf)
 
 	if addr, ok := (*overrides)["http-bind-addr"]; ok {
 		conf.Server.Http.BindAddress = addr.(string)
