@@ -11,6 +11,10 @@ import (
 	"go.uber.org/fx"
 )
 
+var (
+	FlagBindAddr string
+)
+
 var root = &cobra.Command{
 	Use: "numary",
 }
@@ -20,11 +24,20 @@ func Execute() {
 		Use: "server",
 	}
 
-	server.AddCommand(&cobra.Command{
+	start := &cobra.Command{
 		Use: "start",
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
+					func() *config.Overrides {
+						v := config.Overrides{}
+
+						if cmd.Flag("http-bind-addr").Value.String() != "" {
+							v["http-bind-addr"] = cmd.Flag("http-bind-addr").Value.String()
+						}
+
+						return &v
+					},
 					config.GetConfig,
 					ledger.NewLedger,
 					api.NewHttpAPI,
@@ -35,7 +48,19 @@ func Execute() {
 
 			app.Run()
 		},
-	})
+	}
+
+	start.Flags().StringVarP(
+		&FlagBindAddr,
+		"http-bind-addr",
+		// no shorthand
+		"",
+		// no default
+		"",
+		"override http api bind address",
+	)
+
+	server.AddCommand(start)
 
 	conf := &cobra.Command{
 		Use: "config",

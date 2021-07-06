@@ -28,6 +28,8 @@ type Config struct {
 	} `json:"storage"`
 }
 
+type Overrides map[string]interface{}
+
 func DefaultConfig() Config {
 	c := Config{}
 
@@ -53,7 +55,7 @@ func (c Config) Serialize() string {
 	return string(b)
 }
 
-func GetConfig() Config {
+func GetConfig(overrides *Overrides) Config {
 	candidates := []string{
 		path.Join("/etc/numary", filename),
 	}
@@ -111,6 +113,10 @@ func GetConfig() Config {
 
 	if !found {
 		fmt.Println("fallback to default config")
+	}
+
+	if addr, ok := (*overrides)["http-bind-addr"]; ok {
+		conf.Server.Http.BindAddress = addr.(string)
 	}
 
 	return conf
