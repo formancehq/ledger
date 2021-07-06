@@ -11,7 +11,6 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
-	"github.com/numary/ledger/storage/sqlite"
 	"github.com/numary/machine/script/compiler"
 	"github.com/numary/machine/vm"
 	"go.uber.org/fx"
@@ -25,12 +24,13 @@ type Ledger struct {
 }
 
 func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
-	store, err := sqlite.NewStore(c)
-	store.Initialize()
+	store, err := storage.GetStore(c)
 
 	if err != nil {
 		return nil, err
 	}
+
+	store.Initialize()
 
 	l := &Ledger{
 		store:  store,
