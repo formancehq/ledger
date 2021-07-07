@@ -78,6 +78,11 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 	last := l._last
 
 	for i := range ts {
+
+		if len(ts[i].Postings) == 0 {
+			return errors.New("transaction has no postings")
+		}
+
 		if ts[i].Script != "" {
 			p, err := compiler.Compile(ts[i].Script)
 			m := vm.NewMachine(p)
