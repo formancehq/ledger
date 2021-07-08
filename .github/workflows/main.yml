@@ -20,10 +20,15 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: "eu-west-1"
+      AWS_ECS_CLUSTER: "numary-preprod-ecs"
     steps:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.16'
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
       - uses: actions/checkout@v2
       - name: Configure git for private modules
         env:
@@ -65,3 +70,9 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      - name: Deploy new version in ECS
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          pip install ecs-deploy boto3
+          python .github/deploy_ecs_service.py $AWS_ECS_CLUSTER $IMAGE_TAG
