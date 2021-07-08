@@ -1,3 +1,5 @@
 numary
 coverage.out
 /dist/
+cmd/control
+.DS_Store

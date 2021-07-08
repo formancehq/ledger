@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"embed"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -10,6 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+//go:embed control/index.html control/app.js
+var uipath embed.FS
 
 func openuri(uri string) {
 	var err error
@@ -38,15 +43,24 @@ var UICmd = &cobra.Command{
 		os.Mkdir(dir, 0700)
 		os.Chdir(dir)
 
-		os.WriteFile("index.html", []byte(`
-			<html>
-				<head></head>
-				<body>
-					<h1>coming soon</h1>
-				</body>
-			</html>
-		`), 0644)
+		// os.WriteFile("index.html", []byte(`
+		// 	<html>
+		// 		<head></head>
+		// 		<body>
+		// 			<h1>coming soon</h1>
+		// 		</body>
+		// 	</html>
+		// `), 0644)
 
-		openuri(path.Join(dir, "index.html"))
+		openuri("localhost:3078")
+
+		handler := http.FileServer(http.FS(uipath))
+
+		http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+			r.URL.Path = fmt.Sprintf("/control%s", r.URL.Path)
+			handler.ServeHTTP(rw, r)
+		})
+
+		http.ListenAndServe("localhost:3078", nil)
 	},
 }
