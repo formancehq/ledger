@@ -20,7 +20,7 @@ func (l *Ledger) Execute(script core.Script) error {
 		return err
 	}
 
-	if c := m.Execute(map[string]string{}); c == vm.EXIT_FAIL {
+	if c, err := m.ExecuteFromJSON(script.Vars); err != nil || c == vm.EXIT_FAIL {
 		return errors.New("script failed")
 	}
 
@@ -28,7 +28,6 @@ func (l *Ledger) Execute(script core.Script) error {
 		Postings: m.Postings,
 	}
 
-	l.Commit([]core.Transaction{t})
-
-	return nil
+	err = l.Commit([]core.Transaction{t})
+	return err
 }
