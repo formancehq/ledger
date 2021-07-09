@@ -41,6 +41,8 @@ jobs:
             ${{ runner.os }}-go-
       - name: get deps
         run: CGO_ENABLED=1 go get
+      - name: fetch numary control
+        run: make fetch-control
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
