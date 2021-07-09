@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
-	"path"
+	"regexp"
 	"runtime"
 
 	"github.com/spf13/cobra"
 )
 
-//go:embed control/index.html control/app.js
+//go:embed control
 var uipath embed.FS
 
 func openuri(uri string) {
@@ -38,29 +37,25 @@ func openuri(uri string) {
 var UICmd = &cobra.Command{
 	Use: "ui",
 	Run: func(cmd *cobra.Command, args []string) {
-		tmp := os.TempDir()
-		dir := path.Join(tmp, "numary-ui")
-		os.Mkdir(dir, 0700)
-		os.Chdir(dir)
-
-		// os.WriteFile("index.html", []byte(`
-		// 	<html>
-		// 		<head></head>
-		// 		<body>
-		// 			<h1>coming soon</h1>
-		// 		</body>
-		// 	</html>
-		// `), 0644)
-
-		openuri("localhost:3078")
+		addr := "localhost:3078"
 
 		handler := http.FileServer(http.FS(uipath))
+		fmt.Println(uipath)
 
 		http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-			r.URL.Path = fmt.Sprintf("/control%s", r.URL.Path)
+			isFile := regexp.MustCompile(`\.[a-z]{2,}$`)
+			path := r.URL.Path
+			if !isFile.MatchString(path) {
+				path = "/"
+			}
+			r.URL.Path = fmt.Sprintf("/control%s", path)
+
 			handler.ServeHTTP(rw, r)
 		})
 
-		http.ListenAndServe("localhost:3078", nil)
+		openuri(addr)
+		fmt.Printf("Numary control is live on http://%s\n", addr)
+
+		http.ListenAndServe(addr, nil)
 	},
 }
