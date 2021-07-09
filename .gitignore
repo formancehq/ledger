@@ -2,5 +2,5 @@ numary
 coverage.out
 /dist/
 cmd/control/*
-!cmd/control/.gitkeep
+!cmd/control/gitkeep
 .DS_Store
