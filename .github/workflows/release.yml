@@ -15,10 +15,17 @@ jobs:
     env:
       GOOS:   linux
       GOARCH: ${{ matrix.arch }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: "eu-west-1"
+      AWS_ECS_CLUSTER: "numary-prod-ecs"
     steps:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.16'
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
       - uses: actions/checkout@v2
       - name: Configure git for private modules
         env:
@@ -34,6 +41,8 @@ jobs:
             ${{ runner.os }}-go-
       - name: get deps
         run: CGO_ENABLED=1 go get
+      - name: fetch numary control
+        run: make fetch-control
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
@@ -64,3 +73,9 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      - name: Deploy new version in ECS
+        env:
+          IMAGE_TAG: ${{ steps.get_release.outputs.tag_name }}
+        run: |
+          pip install ecs-deploy boto3
+          python .github/deploy_ecs_service.py $AWS_ECS_CLUSTER $IMAGE_TAG
