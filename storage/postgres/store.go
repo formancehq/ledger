@@ -5,10 +5,11 @@ import (
 	"log"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/numary/ledger/config"
+	"github.com/spf13/viper"
 )
 
 type PGStore struct {
+	ledger     string
 	connString string
 	conn       *pgx.Conn
 }
@@ -42,9 +43,10 @@ func (s *PGStore) Conn() *pgx.Conn {
 	return s.conn
 }
 
-func NewStore(c config.Config) (*PGStore, error) {
+func NewStore(name string) (*PGStore, error) {
 	store := &PGStore{
-		connString: c.Storage.PostgresOpts.ConnString,
+		ledger:     name,
+		connString: viper.GetString("storage.postgres.conn_string"),
 	}
 
 	err := store.connect()
@@ -59,27 +61,30 @@ func NewStore(c config.Config) (*PGStore, error) {
 func (s *PGStore) Initialize() error {
 	statements := `
 		CREATE TABLE IF NOT EXISTS transactions (
-			"id" bigint,
+			"ledger"    varchar,
+			"id"        bigint,
 			"timestamp" varchar,
 			"reference" varchar,
-			"hash" varchar,
+			"hash"      varchar,
 
-			UNIQUE("id"),
-			UNIQUE("reference")
+			UNIQUE("ledger", "id"),
+			UNIQUE("ledger", "reference")
 		);
 
 		CREATE TABLE IF NOT EXISTS postings (
-			"id" smallint,
-			"txid" bigint,
-			"source" varchar,
+			"ledger"      varchar,
+			"id"          smallint,
+			"txid"        bigint,
+			"source"      varchar,
 			"destination" varchar,
-			"amount" bigint,
-			"asset" varchar,
+			"amount"      bigint,
+			"asset"       varchar,
 
 			UNIQUE("id", "txid")
 		);
 
 		CREATE INDEX IF NOT EXISTS p_c0 ON postings (
+			"ledger",
 			"txid" DESC,
 			"source",
 			"destination"
@@ -101,11 +106,11 @@ func (s *PGStore) Initialize() error {
 			"meta_target_id"
 		);
 
-		CREATE OR REPLACE VIEW addresses AS SELECT distinct address FROM (
-			SELECT distinct "source" as address FROM postings
+		CREATE OR REPLACE VIEW addresses AS SELECT ledger, address FROM (
+			SELECT ledger, source as address FROM postings GROUP BY ledger, source
 			UNION
-			SELECT distinct "destination" as address FROM postings
-		) agg_addr;
+			SELECT ledger, destination as address FROM postings GROUP BY ledger, destination
+		) addr_agg GROUP BY address, ledger;
 	`
 
 	_, err := s.Conn().Exec(

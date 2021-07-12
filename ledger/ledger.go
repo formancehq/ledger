@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
@@ -18,13 +17,13 @@ import (
 
 type Ledger struct {
 	sync.Mutex
-	store  storage.Store
-	config config.Config
-	_last  *core.Transaction
+	name  string
+	store storage.Store
+	_last *core.Transaction
 }
 
-func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
-	store, err := storage.GetStore(c)
+func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
+	store, err := storage.GetStore(name)
 
 	if err != nil {
 		return nil, err
@@ -33,14 +32,13 @@ func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
 	store.Initialize()
 
 	l := &Ledger{
-		store:  store,
-		config: c,
+		store: store,
+		name:  name,
 	}
 
 	lc.Append(fx.Hook{
 		OnStart: func(c context.Context) error {
 			fmt.Println("starting ledger")
-			fmt.Println(l.config)
 			return nil
 		},
 		OnStop: func(c context.Context) error {
