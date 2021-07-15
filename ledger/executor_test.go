@@ -47,7 +47,10 @@ func TestSend(t *testing.T) {
 	with(func(l *Ledger) {
 		defer l.Close()
 		script := core.Script{
-			Plain: "send(value=[USD/2 99], source=@world, destination=@user:001)",
+			Plain: `send [USD/2 99] (
+				source=@world
+				destination=@user:001
+			)`,
 		}
 
 		err := l.Execute(script)
@@ -81,7 +84,7 @@ func TestVariables(t *testing.T) {
 		var script core.Script
 		json.Unmarshal(
 			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend(value=[CAD/2 42], source=@world, destination=$dest)",
+				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
 				"vars": {
 					"dest": "user:042"
 				}
@@ -108,6 +111,82 @@ func TestVariables(t *testing.T) {
 				42,
 				b,
 			))
+		}
+	})
+}
+
+func TestEnoughFunds(t *testing.T) {
+	with(func(l *Ledger) {
+		defer l.Close()
+
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "user:001",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		err := l.Commit([]core.Transaction{tx})
+
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		var script core.Script
+		json.Unmarshal(
+			[]byte(`{
+				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
+			}`),
+			&script)
+
+		err = l.Execute(script)
+
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	})
+}
+
+func TestNotEnoughFunds(t *testing.T) {
+	with(func(l *Ledger) {
+		defer l.Close()
+
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "user:002",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		err := l.Commit([]core.Transaction{tx})
+
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		var script core.Script
+		json.Unmarshal(
+			[]byte(`{
+				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
+			}`),
+			&script)
+
+		err = l.Execute(script)
+
+		if err == nil {
+			t.Error("error wasn't supposed to be nil")
+			return
 		}
 	})
 }

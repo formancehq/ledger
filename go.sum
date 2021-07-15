@@ -80,6 +80,7 @@ github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c/go.mod h1:lNA+9X1NB3Z
 github.com/google/btree v1.0.0/go.mod h1:lNA+9X1NB3Zf8V7Ke586lFgjr2dZNuvo3lPJSGZ5JPQ=
 github.com/google/go-cmp v0.2.0/go.mod h1:oXzfMopK8JAjlY9xF4vHSVASa0yLyX7SntLO5aqRK0M=
 github.com/google/go-cmp v0.3.0/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
+github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
 github.com/google/martian v2.1.0+incompatible/go.mod h1:9I4somxYTbIHy5NJKHRl3wXiIaQGbYVAs8BPL6v8lEs=
 github.com/google/pprof v0.0.0-20181206194817-3ea8567a2e57/go.mod h1:zfwlbNMJ+OItoe0UupaVj+oy1omPYYDuagoSzA8v9mc=
@@ -163,6 +164,12 @@ github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDY
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
 github.com/numary/machine v0.0.0-20210708125704-a8fbb879a2e2 h1:QuDYkkJQ4y0Kya//xD27VQnFpva/i0gC4z+u9Gblmb0=
 github.com/numary/machine v0.0.0-20210708125704-a8fbb879a2e2/go.mod h1:1Cx+zM+I2r4aFhrSGa6BK45rW8mBHox85yPrjTB3wzk=
+github.com/numary/machine v0.0.0-20210715135306-8397ba18cba0 h1:bREHKcdI/0RbrOim7bdtQJZ5GGSCMMVaagdDiI3HAz4=
+github.com/numary/machine v0.0.0-20210715135306-8397ba18cba0/go.mod h1:1Cx+zM+I2r4aFhrSGa6BK45rW8mBHox85yPrjTB3wzk=
+github.com/numary/machine v0.0.0-20210715152006-2e3f4557da10 h1:04aq9AAKC5V58Hwox+RAehMx56BLWRy83hA5m7bFq0c=
+github.com/numary/machine v0.0.0-20210715152006-2e3f4557da10/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
+github.com/numary/machine v0.0.0-20210715161621-302dfd46d8db h1:TVGE+0BIHcVXNPMfsxGeD6TCyNwLXhoBJOxyr8zbXuk=
+github.com/numary/machine v0.0.0-20210715161621-302dfd46d8db/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
@@ -322,6 +329,7 @@ golang.org/x/tools v0.0.0-20191112195655-aa38f8e97acc/go.mod h1:b+2E5dAYhXwXZwtn
 golang.org/x/tools v0.0.0-20191114200427-caa0b0f7d508 h1:0FYNp0PF9kFm/ZUrvcJiQ12IUJJG7iAc6Cu01wbKrbU=
 golang.org/x/tools v0.0.0-20191114200427-caa0b0f7d508/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 google.golang.org/api v0.4.0/go.mod h1:8k5glujaEP+g9n7WNsDg8QP6cUVNI86fCNMcbazEtwE=
 google.golang.org/api v0.7.0/go.mod h1:WtwebWUNSVBH/HAw79HIFXZNqEvBhG+Ra+ax0hx3E3M=
 google.golang.org/api v0.8.0/go.mod h1:o4eAsZoiT+ibD93RtjEohWalFOjRDx6CVaqeizhEnKg=
