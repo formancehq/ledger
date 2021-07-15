@@ -3,45 +3,50 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
-	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
-	"github.com/numary/ledger/storage/sqlite"
 	"go.uber.org/fx"
 )
 
 type Ledger struct {
 	sync.Mutex
-	store  storage.Store
-	config config.Config
-	_last  *core.Transaction
+	name  string
+	store storage.Store
+	_last *core.Transaction
 }
 
-func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
-	store, err := sqlite.NewStore(c)
-	store.Initialize()
+func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
+	store, err := storage.GetStore(name)
 
 	if err != nil {
 		return nil, err
 	}
 
+	err = store.Initialize()
+
+	if err != nil {
+		err = fmt.Errorf("failed to initialize store: %w", err)
+		log.Println(err)
+		return nil, err
+	}
+
 	l := &Ledger{
-		store:  store,
-		config: c,
+		store: store,
+		name:  name,
 	}
 
 	lc.Append(fx.Hook{
 		OnStart: func(c context.Context) error {
-			fmt.Println("starting ledger")
-			fmt.Println(l.config)
+			log.Printf("starting ledger %s\n", l.name)
 			return nil
 		},
 		OnStop: func(c context.Context) error {
-			fmt.Println("closing ledger")
+			log.Printf("closing ledger %s\n", l.name)
 			l.Close()
 			return nil
 		},

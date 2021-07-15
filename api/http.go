@@ -9,27 +9,57 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
 type HttpAPI struct {
+	addr   string
 	engine *gin.Engine
 }
 
-func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
-	r := gin.Default()
+func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
+	gin.SetMode(gin.ReleaseMode)
 
+	r := gin.Default()
 	r.Use(cors.Default())
+	r.Use(gin.Recovery())
+
+	r.Use(func(c *gin.Context) {
+		name := c.Param("ledger")
+
+		if name == "" {
+			return
+		}
+
+		l, err := resolver.GetLedger(name)
+
+		if err != nil {
+			c.JSON(400, gin.H{
+				"ok":  false,
+				"err": err.Error(),
+			})
+		}
+
+		c.Set("ledger", l)
+	})
 
 	r.GET("/_info", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"server":  "numary-ledger",
 			"version": "1.0.0-alpha.1",
+			"config": gin.H{
+				"storage": gin.H{
+					"driver": viper.Get("storage.driver"),
+				},
+			},
 		})
 	})
 
-	r.GET("/stats", func(c *gin.Context) {
-		stats, err := l.Stats()
+	r.GET("/:ledger/stats", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		stats, err := l.(*ledger.Ledger).Stats()
 
 		c.JSON(200, gin.H{
 			"ok":    err == nil,
@@ -37,8 +67,10 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		})
 	})
 
-	r.GET("/transactions", func(c *gin.Context) {
-		cursor, err := l.FindTransactions(
+	r.GET("/:ledger/transactions", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		cursor, err := l.(*ledger.Ledger).FindTransactions(
 			query.After(c.Query("after")),
 			query.Account(c.Query("account")),
 		)
@@ -46,14 +78,17 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		c.JSON(200, gin.H{
 			"ok":     err == nil,
 			"cursor": cursor,
+			"err":    err,
 		})
 	})
 
-	r.POST("/transactions", func(c *gin.Context) {
+	r.POST("/:ledger/transactions", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
 		var t core.Transaction
 		c.ShouldBind(&t)
 
-		err := l.Commit([]core.Transaction{t})
+		err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 
 		c.JSON(200, gin.H{
 			"ok": err == nil,
@@ -72,28 +107,45 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 		})
 	})
 
-	r.GET("/accounts", func(c *gin.Context) {
-		cursor, err := l.FindAccounts(
+	r.GET("/:ledger/accounts", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		cursor, err := l.(*ledger.Ledger).FindAccounts(
 			query.After(c.Query("after")),
 		)
 
-		c.JSON(200, gin.H{
+		res := gin.H{
 			"ok":     err == nil,
 			"cursor": cursor,
-		})
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
-	r.GET("/accounts/:address", func(c *gin.Context) {
-		res, err := l.GetAccount(c.Param("address"))
+	r.GET("/:ledger/accounts/:address", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
 
-		c.JSON(200, gin.H{
+		acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
+
+		res := gin.H{
 			"ok":      err == nil,
-			"account": res,
-		})
+			"account": acc,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
 	h := &HttpAPI{
 		engine: r,
+		addr:   viper.GetString("server.http.bind_address"),
 	}
 
 	lc.Append(fx.Hook{
@@ -108,5 +160,5 @@ func NewHttpAPI(lc fx.Lifecycle, l *ledger.Ledger) *HttpAPI {
 }
 
 func (h *HttpAPI) Start() {
-	h.engine.Run("localhost:3068")
+	h.engine.Run(h.addr)
 }

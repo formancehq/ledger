@@ -37,11 +37,16 @@ components:
     transaction:
       type: object
       properties:
+        reference:
+          description: a unique reference (e.g. an ID in your system)
+          type: string
         postings:
           type: array
           items:
             $ref: "#/components/schemas/posting"
-        script:
+        timestamp:
+          type: string
+        hash:
           type: string
         metadata:
           type: object
@@ -78,10 +83,15 @@ paths:
                 items:
                   $ref: "#/components/schemas/account"
 
-  /accounts/{reference}:
+  /{ledger}/accounts/{reference}:
     get:
       summary: Get an account by its fully-qualified reference
       parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
         - required: true
           name: reference
           in: path
@@ -95,9 +105,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/account"
 
-  /transactions:
+  /{ledger}/transactions:
     get:
       summary: List transactions
+      parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
       responses:
         200:
           description: The transactions list
@@ -120,9 +136,15 @@ paths:
         200:
           description: Successfull commit
 
-  /script:
+  /{ledger}/script:
     post:
       summary: execute a transaction Numscript
+      parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
       responses:
         200:
           description: successful execution

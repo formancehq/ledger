@@ -2,30 +2,40 @@ package sqlite
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
-	"math"
+	"log"
 	"path"
-	"sort"
+	"strings"
 
+	"github.com/huandu/go-sqlbuilder"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
+	"github.com/spf13/viper"
 )
 
+//go:embed migration
+var migrations embed.FS
+
 type SQLiteStore struct {
-	db       *sql.DB
-	prepared map[string]*sql.Stmt
+	ledger string
+	db     *sql.DB
 }
 
-func NewStore(c config.Config) (*SQLiteStore, error) {
+func NewStore(name string) (*SQLiteStore, error) {
 	dbpath := fmt.Sprintf(
 		"file:%s?_journal=WAL",
 		path.Join(
-			c.Storage.SQLiteOpts.Directory,
-			fmt.Sprintf("%s.db", c.Storage.SQLiteOpts.DBName),
+			viper.GetString("storage.dir"),
+			fmt.Sprintf(
+				"%s_%s.db",
+				viper.GetString("storage.sqlite.db_name"),
+				name,
+			),
 		),
 	)
+
+	log.Printf("opening %s\n", dbpath)
 
 	db, err := sql.Open("sqlite3", dbpath)
 
@@ -34,62 +44,57 @@ func NewStore(c config.Config) (*SQLiteStore, error) {
 	}
 
 	return &SQLiteStore{
-		db: db,
+		ledger: name,
+		db:     db,
 	}, nil
 }
 
 func (s *SQLiteStore) Initialize() error {
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS transactions (
-			"id" integer,
-			"timestamp" varchar,
-			"reference" varchar,
-			"hash" varchar,
+	log.Println("initializing sqlite db")
 
-			UNIQUE("id"),
-			UNIQUE("reference")
-		);
+	statements := []string{}
 
-		CREATE TABLE IF NOT EXISTS postings (
-			"id" integer,
-			"txid" integer,
-			"source" varchar,
-			"destination" varchar,
-			"amount" integer,
-			"asset" varchar,
+	entries, err := migrations.ReadDir("migration")
 
-			UNIQUE("id", "txid")
-		);
+	if err != nil {
+		return err
+	}
 
-		CREATE INDEX IF NOT EXISTS 'p_c0' ON "postings" (
-			"txid" DESC,
-			"source",
-			"destination"
-		);
+	for _, m := range entries {
+		log.Printf("running migration %s\n", m.Name())
 
-		CREATE TABLE IF NOT EXISTS metadata (
-			"meta_id" integer,
-			"meta_target_type" varchar,
-			"meta_target_id" varchar,
-			"meta_key" varchar,
-			"meta_value" varchar,
-			"timestamp" varchar,
-		
-			UNIQUE("meta_id")
-		);
-		
-		CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (
-			"meta_target_type",
-			"meta_target_id"
-		);
-	`)
+		b, err := migrations.ReadFile(path.Join("migration", m.Name()))
 
-	return err
+		if err != nil {
+			return err
+		}
+
+		plain := strings.ReplaceAll(string(b), "VAR_LEDGER_NAME", s.ledger)
+
+		statements = append(
+			statements,
+			strings.Split(plain, "--statement")...,
+		)
+	}
+
+	for i, statement := range statements {
+		_, err = s.db.Exec(
+			statement,
+		)
+
+		if err != nil {
+			fmt.Println(err)
+			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *SQLiteStore) Close() {
 	s.db.Close()
-	fmt.Println("db closed")
+	log.Println("sqlite db closed")
 }
 
 func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
@@ -102,12 +107,14 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 			ref = &t.Reference
 		}
 
-		_, err := tx.Exec(`
-		INSERT INTO "transactions"
-			("id", "reference", "timestamp", "hash")
-		VALUES
-			($1, $2, $3, $4)
-	`, t.ID, ref, t.Timestamp, t.Hash)
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto("transactions")
+		ib.Cols("id", "reference", "timestamp", "hash")
+		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+		_, err := tx.Exec(sqlq, args...)
 
 		if err != nil {
 			tx.Rollback()
@@ -116,20 +123,14 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 		}
 
 		for i, p := range t.Postings {
-			_, err := tx.Exec(
-				`
-			INSERT INTO "postings"
-				("id", "txid", "source", "destination", "amount", "asset")
-			VALUES
-				(:id, :txid, :source, :destination, :amount, :asset)
-			`,
-				sql.Named("id", i),
-				sql.Named("txid", t.ID),
-				sql.Named("source", p.Source),
-				sql.Named("destination", p.Destination),
-				sql.Named("amount", p.Amount),
-				sql.Named("asset", p.Asset),
-			)
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("postings")
+			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
+			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err := tx.Exec(sqlq, args...)
 
 			if err != nil {
 				tx.Rollback()
@@ -140,239 +141,4 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 	}
 
 	return tx.Commit()
-}
-
-func (s *SQLiteStore) CountTransactions() (int64, error) {
-	var count int64
-
-	err := s.db.QueryRow(`SELECT count(*) FROM transactions`).Scan(&count)
-
-	return count, err
-}
-
-func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
-	c := query.Cursor{}
-
-	results := []core.Transaction{}
-
-	var sqlq string
-	var args []interface{}
-
-	if q.HasParam("account") {
-		sqlq, args = s.queryAccountTransactions(q)
-	} else {
-		sqlq, args = s.queryTransactions(q)
-	}
-
-	limit := int(math.Max(-1, math.Min(float64(q.Limit), 100)))
-	args = append(args, sql.Named("limit", limit))
-
-	rows, err := s.db.Query(
-		sqlq,
-		args...,
-	)
-
-	if err != nil {
-		fmt.Println(err)
-		return c, err
-	}
-
-	transactions := map[int64]core.Transaction{}
-
-	for rows.Next() {
-		var txid int64
-		var ts string
-		var thash string
-
-		posting := core.Posting{}
-
-		err = rows.Scan(
-			&txid,
-			&ts,
-			&thash,
-			&posting.Source,
-			&posting.Destination,
-			&posting.Amount,
-			&posting.Asset,
-		)
-
-		if err != nil {
-			return c, err
-		}
-
-		if err != nil {
-			return c, err
-		}
-
-		if _, ok := transactions[txid]; !ok {
-			transactions[txid] = core.Transaction{
-				ID:        txid,
-				Postings:  []core.Posting{},
-				Timestamp: ts,
-				Hash:      thash,
-			}
-		}
-
-		t := transactions[txid]
-		t.AppendPosting(posting)
-		transactions[txid] = t
-	}
-
-	for _, t := range transactions {
-		results = append(results, t)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].ID > results[j].ID
-	})
-
-	count, _ := s.CountTransactions()
-
-	c.PageSize = q.Limit
-	c.HasMore = len(results) >= 1 && results[len(results)-1].ID > 0
-	c.Data = results
-	c.Total = int(count)
-
-	return c, nil
-}
-
-func (s *SQLiteStore) CountAccounts() (int64, error) {
-	var count int64
-
-	err := s.db.QueryRow(`
-		WITH addresses AS (
-			SELECT "source" as address FROM postings
-			UNION
-			SELECT "destination" as address FROM postings
-		)
-		SELECT count(distinct address)
-		FROM addresses
-	`).Scan(&count)
-
-	return count, err
-}
-
-func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
-	c := query.Cursor{}
-
-	results := []core.Account{}
-
-	var where string
-	if q.After != "" {
-		where = "WHERE address < :after"
-	}
-
-	var remaining int
-
-	err := s.db.QueryRow(
-		fmt.Sprintf(`
-			WITH addresses AS (
-				SELECT "source" as address FROM postings
-				UNION
-				SELECT "destination" as address FROM postings
-			)
-			SELECT count(DISTINCT address)
-			FROM addresses
-			%s
-		`, where),
-		sql.Named("after", q.After),
-	).Scan(&remaining)
-
-	if err != nil {
-		return c, err
-	}
-
-	rows, err := s.db.Query(
-		fmt.Sprintf(`
-			WITH addresses AS (
-				SELECT "source" as address FROM postings
-				UNION
-				SELECT "destination" as address FROM postings
-			)
-			SELECT address
-			FROM addresses
-			%s
-			GROUP BY address
-			ORDER BY address DESC
-			LIMIT :limit
-		`, where),
-		sql.Named("limit", q.Limit),
-		sql.Named("after", q.After),
-	)
-
-	if err != nil {
-		return c, err
-	}
-
-	for rows.Next() {
-		var address string
-
-		err := rows.Scan(&address)
-
-		if err != nil {
-			return c, err
-		}
-
-		results = append(results, core.Account{
-			Address:  address,
-			Contract: "default",
-		})
-	}
-
-	total, _ := s.CountAccounts()
-
-	c.PageSize = q.Limit
-	c.HasMore = len(results) < remaining
-	c.Remaining = remaining - len(results)
-	c.Total = int(total)
-	c.Data = results
-
-	return c, nil
-}
-
-func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {
-	balances := map[string]int64{}
-
-	rows, err := s.db.Query(`
-		WITH assets AS (
-			SELECT asset, 'out', SUM(amount)
-			FROM postings
-			WHERE source = $1
-			GROUP BY asset
-			UNION
-			SELECT asset, 'in', SUM(amount)
-			FROM postings
-			WHERE destination = $1
-			GROUP BY asset
-		)
-		SELECT *
-		FROM assets
-		;
-	`, address)
-
-	if err != nil {
-		return balances, err
-	}
-
-	for rows.Next() {
-		var row = struct {
-			asset  string
-			t      string
-			amount int64
-		}{}
-
-		err := rows.Scan(&row.asset, &row.t, &row.amount)
-
-		if err != nil {
-			return balances, err
-		}
-
-		if row.t == "out" {
-			balances[row.asset] -= row.amount
-		} else {
-			balances[row.asset] += row.amount
-		}
-	}
-
-	return balances, nil
 }
