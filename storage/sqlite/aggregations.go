@@ -8,8 +8,8 @@ func (s *SQLiteStore) CountTransactions() (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("count(*)").From("transactions")
-	sb.Where(sb.Equal("ledger", s.ledger))
+	sb.Select("count(*)")
+	sb.From("transactions")
 
 	sqlq, args := sb.Build()
 
@@ -26,7 +26,6 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 	sb.
 		Select("count(*)").
 		From("addresses").
-		Where(sb.Equal("ledger", s.ledger)).
 		BuildWithFlavor(sqlbuilder.SQLite)
 
 	sqlq, args := sb.Build()

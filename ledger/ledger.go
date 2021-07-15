@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -29,7 +30,13 @@ func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
 		return nil, err
 	}
 
-	store.Initialize()
+	err = store.Initialize()
+
+	if err != nil {
+		err = fmt.Errorf("failed to initialize store: %w", err)
+		log.Println(err)
+		return nil, err
+	}
 
 	l := &Ledger{
 		store: store,
@@ -38,11 +45,11 @@ func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
 
 	lc.Append(fx.Hook{
 		OnStart: func(c context.Context) error {
-			fmt.Println("starting ledger")
+			log.Printf("starting ledger %s\n", l.name)
 			return nil
 		},
 		OnStop: func(c context.Context) error {
-			fmt.Println("closing ledger")
+			log.Printf("closing ledger %s\n", l.name)
 			l.Close()
 			return nil
 		},

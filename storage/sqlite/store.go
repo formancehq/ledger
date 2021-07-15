@@ -2,14 +2,20 @@ package sqlite
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
 	"log"
 	"path"
+	"strings"
 
+	"github.com/huandu/go-sqlbuilder"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/numary/ledger/core"
 	"github.com/spf13/viper"
 )
+
+//go:embed migration
+var migrations embed.FS
 
 type SQLiteStore struct {
 	ledger string
@@ -21,9 +27,15 @@ func NewStore(name string) (*SQLiteStore, error) {
 		"file:%s?_journal=WAL",
 		path.Join(
 			viper.GetString("storage.dir"),
-			fmt.Sprintf("%s.db", viper.GetString("storage.sqlite.db_name")),
+			fmt.Sprintf(
+				"%s_%s.db",
+				viper.GetString("storage.sqlite.db_name"),
+				name,
+			),
 		),
 	)
+
+	log.Printf("opening %s\n", dbpath)
 
 	db, err := sql.Open("sqlite3", dbpath)
 
@@ -40,66 +52,49 @@ func NewStore(name string) (*SQLiteStore, error) {
 func (s *SQLiteStore) Initialize() error {
 	log.Println("initializing sqlite db")
 
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS transactions (
-			"ledger"    varchar,
-			"id"        integer,
-			"timestamp" varchar,
-			"reference" varchar,
-			"hash"      varchar,
+	statements := []string{}
 
-			UNIQUE("ledger", "id"),
-			UNIQUE("ledger", "reference")
-		);
+	entries, err := migrations.ReadDir("migration")
 
-		CREATE TABLE IF NOT EXISTS postings (
-			"ledger"      varchar,
-			"id"          integer,
-			"txid"        integer,
-			"source"      varchar,
-			"destination" varchar,
-			"amount"      integer,
-			"asset"       varchar,
+	if err != nil {
+		return err
+	}
 
-			UNIQUE("ledger", "id", "txid")
-		);
+	for _, m := range entries {
+		log.Printf("running migration %s\n", m.Name())
 
-		CREATE INDEX IF NOT EXISTS 'p_c0' ON "postings" (
-			"ledger",
-			"txid" DESC,
-			"source",
-			"destination"
-		);
+		b, err := migrations.ReadFile(path.Join("migration", m.Name()))
 
-		CREATE TABLE IF NOT EXISTS metadata (
-			"meta_id"          integer,
-			"meta_target_type" varchar,
-			"meta_target_id"   varchar,
-			"meta_key"         varchar,
-			"meta_value"       varchar,
-			"timestamp"        varchar,
-		
-			UNIQUE("meta_id")
-		);
-		
-		CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (
-			"meta_target_type",
-			"meta_target_id"
-		);
+		if err != nil {
+			return err
+		}
 
-		CREATE VIEW IF NOT EXISTS addresses AS SELECT ledger, address FROM (
-			SELECT ledger, source as address FROM postings GROUP BY ledger, source
-			UNION
-			SELECT ledger, destination as address FROM postings GROUP BY ledger, destination
-		) GROUP BY address, ledger;
-	`)
+		plain := strings.ReplaceAll(string(b), "VAR_LEDGER_NAME", s.ledger)
 
-	return err
+		statements = append(
+			statements,
+			strings.Split(plain, "--statement")...,
+		)
+	}
+
+	for i, statement := range statements {
+		_, err = s.db.Exec(
+			statement,
+		)
+
+		if err != nil {
+			fmt.Println(err)
+			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *SQLiteStore) Close() {
 	s.db.Close()
-	fmt.Println("db closed")
+	log.Println("sqlite db closed")
 }
 
 func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
@@ -112,18 +107,14 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 			ref = &t.Reference
 		}
 
-		_, err := tx.Exec(
-			`INSERT INTO "transactions"
-				("ledger", "id", "reference", "timestamp", "hash")
-			VALUES
-				($1, $2, $3, $4, $5)
-			`,
-			s.ledger,
-			t.ID,
-			ref,
-			t.Timestamp,
-			t.Hash,
-		)
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto("transactions")
+		ib.Cols("id", "reference", "timestamp", "hash")
+		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+		_, err := tx.Exec(sqlq, args...)
 
 		if err != nil {
 			tx.Rollback()
@@ -132,21 +123,14 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 		}
 
 		for i, p := range t.Postings {
-			_, err := tx.Exec(
-				`
-			INSERT INTO "postings"
-				("ledger", "id", "txid", "source", "destination", "amount", "asset")
-			VALUES
-				(:ledger, :id, :txid, :source, :destination, :amount, :asset)
-			`,
-				sql.Named("ledger", s.ledger),
-				sql.Named("id", i),
-				sql.Named("txid", t.ID),
-				sql.Named("source", p.Source),
-				sql.Named("destination", p.Destination),
-				sql.Named("amount", p.Amount),
-				sql.Named("asset", p.Asset),
-			)
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("postings")
+			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
+			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err := tx.Exec(sqlq, args...)
 
 			if err != nil {
 				tx.Rollback()

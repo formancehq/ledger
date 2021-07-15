@@ -19,9 +19,11 @@ type HttpAPI struct {
 }
 
 func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
-	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
 
+	r := gin.Default()
 	r.Use(cors.Default())
+	r.Use(gin.Recovery())
 
 	r.Use(func(c *gin.Context) {
 		name := c.Param("ledger")
@@ -115,12 +117,18 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 	r.GET("/:ledger/accounts/:address", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
 
-		res, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
+		acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
 
-		c.JSON(200, gin.H{
+		res := gin.H{
 			"ok":      err == nil,
-			"account": res,
-		})
+			"account": acc,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
 	h := &HttpAPI{

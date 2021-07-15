@@ -13,7 +13,7 @@ func (s *PGStore) CountAccounts() (int64, error) {
 
 	sqlq, _ := sqlbuilder.
 		Select("count(*)").
-		From("addresses").
+		From(s.table("addresses")).
 		BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	err := s.Conn().QueryRow(
@@ -29,7 +29,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	results := []core.Account{}
 
 	queryRem := sqlbuilder.Select("count(*)")
-	queryRem.From("addresses")
+	queryRem.From(s.table("addresses"))
 
 	if q.After != "" {
 		queryRem.Where(queryRem.LessThan("address", q.After))
@@ -51,7 +51,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 
 	queryAcc := sqlbuilder.
 		Select("address").
-		From("addresses").
+		From(s.table("addresses")).
 		GroupBy("address").
 		OrderBy("address desc").
 		Limit(q.Limit)

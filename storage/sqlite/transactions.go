@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"fmt"
 	"math"
 	"sort"
 
@@ -18,7 +17,6 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 
 	in := sqlbuilder.NewSelectBuilder()
 	in.Select("txid").From("postings")
-	in.Where(in.Equal("ledger", s.ledger))
 	in.GroupBy("txid")
 	in.OrderBy("txid desc")
 	in.Limit(q.Limit)
@@ -45,18 +43,11 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		"p.asset",
 	)
 	sb.From(sb.As("transactions", "t"))
-	sb.Where(sb.And(
-		sb.In("t.id", in),
-		sb.Equal("p.ledger", s.ledger),
-	))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), sb.And(
-		"p.txid = t.id",
-		sb.Equal("t.ledger", s.ledger),
-	))
+	sb.In("t.id", in)
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	fmt.Println(sqlq, args)
 
 	rows, err := s.db.Query(
 		sqlq,

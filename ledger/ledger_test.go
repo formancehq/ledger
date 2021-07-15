@@ -2,19 +2,17 @@ package ledger
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"math/rand"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
-
-var driver = flag.String("storage-driver", "sqlite", "name of the storage driver to use")
 
 func with(f func(l *Ledger)) {
 	fx.New(
@@ -22,16 +20,16 @@ func with(f func(l *Ledger)) {
 			fx.NopLogger,
 		),
 		fx.Provide(
-			func(lc fx.Lifecycle) *Ledger {
-				l, _ := NewLedger("test", lc)
-				return l
+			func(lc fx.Lifecycle) (*Ledger, error) {
+				l, err := NewLedger("test", lc)
+
+				if err != nil {
+					return nil, err
+				}
+
+				return l, nil
 			},
 		),
-		fx.Invoke(func() {
-			viper.Set("storage.driver", *driver)
-			viper.Set("storage.dir", os.TempDir())
-			viper.Set("storage.sqlite.db_name", "ledger")
-		}),
 		fx.Invoke(f),
 		fx.Invoke(func(l *Ledger) {
 			l.Close()
@@ -40,7 +38,15 @@ func with(f func(l *Ledger)) {
 }
 
 func TestMain(m *testing.M) {
-	os.Remove(path.Join(os.TempDir(), "ledger.db"))
+	config.Init()
+
+	// viper.Set("storage.driver", "postgres")
+	viper.Set("storage.dir", os.TempDir())
+	viper.Set("storage.sqlite.db_name", "ledger")
+	fmt.Println(viper.AllSettings())
+
+	os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
+
 	m.Run()
 }
 
