@@ -1,10 +1,10 @@
 # Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml)
 
-Numary is an open-source general ledger that makes building financial apps safe, fun and cheap.
+Numary is a programmable financial ledger that wants to make building financial apps safe, fun and cheap.
 
 Building financial software is both critical and notably hard. The [same bugs](https://medium.com/selency-tech-product/your-balance-is-0-30000000004-b6f7870bd32e) are repeated again and again, paving the highway to catastrophes.
 
-Numary wants to tackle this issue with a general ledger that provides atomic multi-postings transactions, and that will be programmable in [Numscript](https://github.com/numary/machine), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-touching code such as:
+Numary wants to tackle this issue with a ledger that provides atomic multi-postings transactions and is programmable in [Numscript](https://github.com/numary/machine), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-touching code such as:
 
 * E-commerce with complex payments flows, payments splitting, such as marketplaces
 * Company-issued currencies systems, e.g. Twitch Bits
@@ -38,15 +38,13 @@ curl -X POST \
         "amount": 100
       }
     ]
-  }' http://localhost:3068/transactions
+  }' http://localhost:3068/quickstart/transactions
 
 # Get the balances of users:001
-curl -X GET \
-  http://localhost:3068/accounts/users:001
+curl -X GET http://localhost:3068/quickstart/accounts/users:001
 
 # List transactions
-curl -X GET \
-  http://localhost:3068/transactions
+curl -X GET http://localhost:3068/quickstart/transactions
 ```
 
 # Documentation

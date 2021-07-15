@@ -40,7 +40,6 @@ var UICmd = &cobra.Command{
 		addr := "localhost:3078"
 
 		handler := http.FileServer(http.FS(uipath))
-		fmt.Println(uipath)
 
 		http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 			isFile := regexp.MustCompile(`\.[a-z]{2,}$`)

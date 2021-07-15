@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/storage"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -29,19 +32,12 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
-					func() *config.Overrides {
-						v := config.Overrides{}
-
-						if cmd.Flag("http-bind-addr").Value.String() != "" {
-							v["http-bind-addr"] = cmd.Flag("http-bind-addr").Value.String()
-						}
-
-						return &v
-					},
-					config.GetConfig,
-					ledger.NewLedger,
+					ledger.NewResolver,
 					api.NewHttpAPI,
 				),
+				fx.Invoke(func() {
+					config.Init()
+				}),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.HttpAPI) {
 				}),
 			)
@@ -49,16 +45,6 @@ func Execute() {
 			app.Run()
 		},
 	}
-
-	start.Flags().StringVarP(
-		&FlagBindAddr,
-		"http-bind-addr",
-		// no shorthand
-		"",
-		// no default
-		"",
-		"override http api bind address",
-	)
 
 	server.AddCommand(start)
 
@@ -69,15 +55,40 @@ func Execute() {
 	conf.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := config.DefaultConfig()
-			b := c.Serialize()
-			os.WriteFile("numary.config.json", []byte(b), 0644)
+			config.Init()
+			err := viper.SafeWriteConfig()
+			if err != nil {
+				fmt.Println(err)
+			}
+		},
+	})
+
+	store := &cobra.Command{
+		Use: "storage",
+	}
+
+	store.AddCommand(&cobra.Command{
+		Use: "init",
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+			s, err := storage.GetStore("default")
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			err = s.Initialize()
+
+			if err != nil {
+				log.Fatal(err)
+			}
 		},
 	})
 
 	root.AddCommand(server)
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
+	root.AddCommand(store)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

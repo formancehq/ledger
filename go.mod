@@ -12,5 +12,6 @@ require (
 	github.com/numary/machine v0.0.0-20210702091459-23a82555adbf
 	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v1.1.3
+	github.com/spf13/viper v1.8.1
 	go.uber.org/fx v1.13.1
 )

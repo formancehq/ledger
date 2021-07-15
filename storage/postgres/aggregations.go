@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/huandu/go-sqlbuilder"
 )
@@ -13,13 +12,13 @@ func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
 	agg1 := sqlbuilder.NewSelectBuilder()
 	agg1.
 		Select("asset", "'_out'", "sum(amount)").
-		From("postings").Where(agg1.Equal("source", address)).
+		From(s.table("postings")).Where(agg1.Equal("source", address)).
 		GroupBy("asset")
 
 	agg2 := sqlbuilder.NewSelectBuilder()
 	agg2.
 		Select("asset", "'_in'", "sum(amount)").
-		From("postings").Where(agg2.Equal("destination", address)).
+		From(s.table("postings")).Where(agg2.Equal("destination", address)).
 		GroupBy("asset")
 
 	union := sqlbuilder.Union(agg1, agg2)
@@ -37,7 +36,6 @@ func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
 	)
 
 	if err != nil {
-		fmt.Println(err)
 		return balances, err
 	}
 
