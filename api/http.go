@@ -95,6 +95,25 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 		})
 	})
 
+	r.POST("/:ledger/script", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		var script core.Script
+		c.ShouldBind(&script)
+
+		err := l.(*ledger.Ledger).Execute(script)
+
+		res := gin.H{
+			"ok": err == nil,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
+	})
+
 	r.GET("/:ledger/accounts", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
 

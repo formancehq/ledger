@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -11,8 +10,6 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
-	"github.com/numary/machine/script/compiler"
-	"github.com/numary/machine/vm"
 	"go.uber.org/fx"
 )
 
@@ -83,19 +80,6 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 	last := l._last
 
 	for i := range ts {
-		if ts[i].Script != "" {
-			p, err := compiler.Compile(ts[i].Script)
-			m := vm.NewMachine(p)
-
-			if err != nil {
-				return err
-			}
-
-			if c := m.Execute(); c == vm.EXIT_FAIL {
-				return errors.New("script failed")
-			}
-		}
-
 		ts[i].ID = count + int64(i)
 		ts[i].Timestamp = timestamp
 
@@ -146,10 +130,10 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 			balance, ok := balances[asset]
 
 			if !ok || balance < checks[asset] {
-				return errors.New(fmt.Sprintf(
+				return fmt.Errorf(
 					"balance.insufficient.%s",
 					asset,
-				))
+				)
 			}
 		}
 	}
