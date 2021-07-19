@@ -47,6 +47,8 @@ jobs:
         run: CGO_ENABLED=1 go get
       - name: fetch numary control
         run: make fetch-control
+      - name: prepare goreleaser
+        run: cp .github/.goreleaser.${{matrix.GOOS}}.yml .goreleaser.yml
       - name: Run GoReleaser
         env:
           GOOS: ${{matrix.GOOS}}
@@ -54,7 +56,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: release --parallelism 2 --rm-dist --single-target
+          args: release --parallelism 2 --rm-dist
       
       - if: matrix.os == 'ubuntu-latest'
         name: Configure AWS credentials
