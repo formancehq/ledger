@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -10,7 +11,7 @@ import (
 )
 
 func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100)))
+	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
 	results := []core.Transaction{}
@@ -43,11 +44,12 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		"p.asset",
 	)
 	sb.From(sb.As("transactions", "t"))
-	sb.In("t.id", in)
+	sb.Where(sb.In("t.id", in))
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+	fmt.Println(sqlq, args)
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -99,7 +101,16 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		return results[i].ID > results[j].ID
 	})
 
+	c.PageSize = q.Limit - 1
+
+	c.HasMore = len(results) == q.Limit
+	if c.HasMore {
+		results = results[:len(results)-1]
+	}
 	c.Data = results
+
+	total, _ := s.CountTransactions()
+	c.Total = int(total)
 
 	return c, nil
 }

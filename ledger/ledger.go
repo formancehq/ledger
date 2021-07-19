@@ -197,5 +197,13 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 
 	account.Balances = balances
 
+	volumes, err := l.store.AggregateVolumes(address)
+
+	if err != nil {
+		return account, err
+	}
+
+	account.Volumes = volumes
+
 	return account, nil
 }

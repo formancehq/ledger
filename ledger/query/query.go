@@ -1,7 +1,7 @@
 package query
 
 const (
-	DEFAULT_LIMIT = 25
+	DEFAULT_LIMIT = 15
 )
 
 type Query struct {

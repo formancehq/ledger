@@ -1,34 +1,19 @@
 package sqlite
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 )
 
 func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
+	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+
 	c := query.Cursor{}
 	results := []core.Account{}
-
-	queryRem := sqlbuilder.Select("count(*)")
-	queryRem.From("addresses")
-
-	if q.After != "" {
-		queryRem.Where(queryRem.LessThan("address", q.After))
-	}
-
-	sqlRem, args := queryRem.BuildWithFlavor(sqlbuilder.SQLite)
-
-	var remaining int
-
-	err := s.db.QueryRow(
-		sqlRem,
-		args...,
-	).Scan(&remaining)
-
-	if err != nil {
-		return c, err
-	}
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
@@ -43,6 +28,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	}
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+	fmt.Println(sqlq, args)
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -68,13 +54,16 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		})
 	}
 
-	total, _ := s.CountAccounts()
+	c.PageSize = q.Limit - 1
 
-	c.PageSize = q.Limit
-	c.HasMore = len(results) < remaining
-	c.Remaining = remaining - len(results)
-	c.Total = int(total)
+	c.HasMore = len(results) == q.Limit
+	if c.HasMore {
+		results = results[:len(results)-1]
+	}
 	c.Data = results
+
+	total, _ := s.CountAccounts()
+	c.Total = int(total)
 
 	return c, nil
 }
