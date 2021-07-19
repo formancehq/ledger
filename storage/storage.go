@@ -14,6 +14,7 @@ type Store interface {
 	CountTransactions() (int64, error)
 	FindTransactions(query.Query) (query.Cursor, error)
 	AggregateBalances(string) (map[string]int64, error)
+	AggregateVolumes(string) (map[string]map[string]int64, error)
 	CountAccounts() (int64, error)
 	FindAccounts(query.Query) (query.Cursor, error)
 	Initialize() error
