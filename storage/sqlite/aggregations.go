@@ -38,6 +38,22 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
+	volumes, err := s.AggregateVolumes(address)
+
+	if err != nil {
+		return balances, err
+	}
+
+	for asset := range volumes {
+		balances[asset] = volumes[asset]["input"] - volumes[asset]["output"]
+	}
+
+	return balances, nil
+}
+
+func (s *SQLiteStore) AggregateVolumes(address string) (map[string]map[string]int64, error) {
+	volumes := map[string]map[string]int64{}
+
 	agg1 := sqlbuilder.NewSelectBuilder()
 	agg1.
 		Select("asset", "'_out'", "sum(amount)").
@@ -61,7 +77,7 @@ func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error
 	rows, err := s.db.Query(sqlq, args...)
 
 	if err != nil {
-		return balances, err
+		return volumes, err
 	}
 
 	for rows.Next() {
@@ -74,15 +90,19 @@ func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error
 		err := rows.Scan(&row.asset, &row.t, &row.amount)
 
 		if err != nil {
-			return balances, err
+			return volumes, err
+		}
+
+		if _, ok := volumes[row.asset]; !ok {
+			volumes[row.asset] = map[string]int64{}
 		}
 
 		if row.t == "_out" {
-			balances[row.asset] -= row.amount
+			volumes[row.asset]["output"] += row.amount
 		} else {
-			balances[row.asset] += row.amount
+			volumes[row.asset]["input"] += row.amount
 		}
 	}
 
-	return balances, nil
+	return volumes, nil
 }
