@@ -26,9 +26,6 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.16'
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
       - uses: actions/checkout@v2
       - name: Configure git for private modules
         env:
@@ -53,28 +50,3 @@ jobs:
           args: build --parallelism 4 --rm-dist --skip-validate --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-1
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-      - name: Build, tag, and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: numary-preprod-ecr
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-      - name: Deploy new version in ECS
-        env:
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          pip install ecs-deploy boto3
-          python .github/deploy_ecs_service.py $AWS_ECS_CLUSTER $IMAGE_TAG
