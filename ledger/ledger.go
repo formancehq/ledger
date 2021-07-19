@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
@@ -60,6 +61,8 @@ func (l *Ledger) Close() {
 }
 
 func (l *Ledger) Commit(ts []core.Transaction) error {
+	defer config.Remember(l.name)
+
 	l.Lock()
 	defer l.Unlock()
 

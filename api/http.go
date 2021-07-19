@@ -52,6 +52,7 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 				"storage": gin.H{
 					"driver": viper.Get("storage.driver"),
 				},
+				"ledgers": viper.Get("ledgers"),
 			},
 		})
 	})
