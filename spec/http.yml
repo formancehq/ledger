@@ -5,8 +5,8 @@ info:
   version: 1.0.0-alpha
 
 servers:
-  - url: http://demo.numary.cloud
-    description: public demo
+  - url: http://localhost:3068
+    description: local
 
 components:
   schemas:
