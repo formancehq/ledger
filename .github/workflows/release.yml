@@ -56,7 +56,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: release --parallelism 2 --rm-dist
+          args: release --parallelism 2 --rm-dist --skip-validate
       
       - if: matrix.os == 'ubuntu-latest'
         name: Configure AWS credentials
