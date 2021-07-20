@@ -27,12 +27,12 @@ curl -X POST \
     "postings": [
       {
         "source": "world",
-        "destination": "central-bank",
+        "destination": "central_bank",
         "asset": "GEM",
         "amount": 100
       },
       {
-        "source": "central-bank",
+        "source": "central_bank",
         "destination": "users:001",
         "asset": "GEM",
         "amount": 100
