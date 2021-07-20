@@ -6,15 +6,19 @@ permissions:
   contents: write
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [macos-latest, ubuntu-latest]
         include:
-          - arch: amd64
-            cc:   gcc
+          - os: macos-latest
+            GOOS: darwin
+          - os: ubuntu-latest
+            GOOS: linux
+            GOARCH: amd64
     env:
-      GOOS:   linux
-      GOARCH: ${{ matrix.arch }}
+      # GOOS:   ${{ matrix.GOOS }}
+      # GOARCH: ${{ matrix.GOARCH }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: "eu-west-1"
@@ -43,27 +47,34 @@ jobs:
         run: CGO_ENABLED=1 go get
       - name: fetch numary control
         run: make fetch-control
+      - name: prepare goreleaser
+        run: cp .github/.goreleaser.${{matrix.GOOS}}.yml .goreleaser.yml
       - name: Run GoReleaser
+        env:
+          GOOS: ${{matrix.GOOS}}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: release --parallelism 2 --rm-dist
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure AWS credentials
+          args: release --parallelism 2 --rm-dist --skip-validate
+      
+      - if: matrix.os == 'ubuntu-latest'
+        name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-west-1
-      - name: Login to Amazon ECR
+      - if: matrix.os == 'ubuntu-latest'
+        name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
       - id: get_release
         uses: bruceadams/get-release@v1.2.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build, tag, and push image to Amazon ECR
+      - if: matrix.os == 'ubuntu-latest'
+        name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: numary-prod-ecr
@@ -73,7 +84,8 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-      - name: Deploy new version in ECS
+      - if: matrix.os == 'ubuntu-latest'
+        name: Deploy new version in ECS
         env:
           IMAGE_TAG: ${{ steps.get_release.outputs.tag_name }}
         run: |
