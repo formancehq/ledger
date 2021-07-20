@@ -37,10 +37,10 @@ func Init() {
 }
 
 func Remember(ledger string) {
-	ledgers := viper.Get("ledgers").([]string)
+	ledgers := viper.Get("ledgers").([]interface{})
 
 	for _, v := range ledgers {
-		if ledger == v {
+		if ledger == v.(string) {
 			return
 		}
 	}
