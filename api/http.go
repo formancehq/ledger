@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	_ "embed"
+	"strings"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,14 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 	r := gin.Default()
 	r.Use(cors.Default())
 	r.Use(gin.Recovery())
+
+	if auth := viper.Get("server.http.basic_auth"); auth != nil {
+		segment := strings.Split(auth.(string), ":")
+
+		r.Use(gin.BasicAuth(gin.Accounts{
+			segment[0]: segment[1],
+		}))
+	}
 
 	r.Use(func(c *gin.Context) {
 		name := c.Param("ledger")
