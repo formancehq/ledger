@@ -20,7 +20,9 @@ Numary works as a standalone binary, the latest of which can be downloaded from 
 
 numary server start
 
-# Issue GEMs from the world account, and fund users:001
+# A first transaction using direct postings
+# ---
+# Issue GEMs from the world account, and transfer them to users:001
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{
@@ -50,3 +52,18 @@ curl -X GET http://localhost:3068/quickstart/transactions
 # Documentation
 
 You can find the complete Numary documentation at [docs.numary.com](https://docs.numary.com)
+
+# Alpha & Roadmap
+
+Please note that is currently in Alpha for a few weeks. The goal of the Alpha is to start taking early feedback from the community.
+
+During the Alpha,
+* Breaking changes can happen between releases
+* Critical bugs can be discovered
+* Documentation will be incomplete
+
+Beyond Alpha, the roadmap is:
+* Alpha: Feedback & Refining
+* Beta: Stabilizing
+* RC: API Freeze
+* 1.0.0: 🎉
