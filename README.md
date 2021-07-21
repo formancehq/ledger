@@ -53,6 +53,16 @@ curl -X GET http://localhost:3068/quickstart/transactions
 
 You can find the complete Numary documentation at [docs.numary.com](https://docs.numary.com)
 
+# Dashboard
+
+<img width="400" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/126158742-393ac0d0-1048-4b57-a7fd-7381f3da2ca8.png">
+
+A simple [dashboard](https://github.com/numary/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
+
+```SHELL
+numary ui
+```
+
 # Alpha & Roadmap
 
 Please note that is currently in Alpha for a few weeks. The goal of the Alpha is to start taking early feedback from the community.
