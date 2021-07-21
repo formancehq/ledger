@@ -22,18 +22,18 @@ numary server start
 
 # Submit a first transaction
 echo "
-send [USD/2 99] (
+send [USD/2 599] (
   source = @world
   destination = @payments:001
 )
 
-send [USD/2 99] (
+send [USD/2 599] (
   source = @payments:001
-  destination = @rides:0234:tip
+  destination = @rides:0234
 )
 
-send [USD/2 99] (
-  source = @rides:0234:tip
+send [USD/2 599] (
+  source = @rides:0234
   destination = {
     85/100 to @drivers:042
     15/100 to @platform:fees
