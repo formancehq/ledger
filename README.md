@@ -20,30 +20,31 @@ Numary works as a standalone binary, the latest of which can be downloaded from 
 
 numary server start
 
-# A first transaction using direct postings
-# ---
-# Issue GEMs from the world account, and transfer them to users:001
-curl -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "postings": [
-      {
-        "source": "world",
-        "destination": "central_bank",
-        "asset": "GEM",
-        "amount": 100
-      },
-      {
-        "source": "central_bank",
-        "destination": "users:001",
-        "asset": "GEM",
-        "amount": 100
-      }
-    ]
-  }' http://localhost:3068/quickstart/transactions
+# Submit a first transaction
+echo "
+send [USD/2 99] (
+  source = @world
+  destination = @payments:001
+)
 
-# Get the balances of users:001
-curl -X GET http://localhost:3068/quickstart/accounts/users:001
+send [USD/2 99] (
+  source = @payments:001
+  destination = @rides:0234:tip
+)
+
+send [USD/2 99] (
+  source = @rides:0234:tip
+  destination = {
+    85/100 to @drivers:042
+    15/100 to @platform:fees
+  }
+)
+" > example.num
+
+numary exec quickstart example.num
+
+# Get the balances of drivers:042
+curl -X GET http://localhost:3068/quickstart/accounts/drivers:042
 
 # List transactions
 curl -X GET http://localhost:3068/quickstart/transactions
