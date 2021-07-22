@@ -8,7 +8,9 @@ import (
 	"regexp"
 	"runtime"
 
+	"github.com/numary/ledger/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 //go:embed control
@@ -34,7 +36,9 @@ func openuri(uri string) bool {
 var UICmd = &cobra.Command{
 	Use: "ui",
 	Run: func(cmd *cobra.Command, args []string) {
-		addr := "localhost:3078"
+		config.Init()
+
+		addr := viper.GetString("ui.http.bind_address")
 
 		handler := http.FileServer(http.FS(uipath))
 
