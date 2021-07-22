@@ -3,7 +3,6 @@ package cmd
 import (
 	"embed"
 	"fmt"
-	"log"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -15,7 +14,7 @@ import (
 //go:embed control
 var uipath embed.FS
 
-func openuri(uri string) {
+func openuri(uri string) bool {
 	var err error
 
 	switch runtime.GOOS {
@@ -29,9 +28,7 @@ func openuri(uri string) {
 		err = fmt.Errorf("unsupported platform, open manually: %s", uri)
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	return err != nil
 }
 
 var UICmd = &cobra.Command{
