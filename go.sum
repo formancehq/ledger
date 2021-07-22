@@ -414,8 +414,6 @@ github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDY
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
 github.com/numary/machine v0.0.0-20210719124351-aad80bd74032 h1:/0PgX+JYoyHa776kR98XXqLGvqHWPiDTCQAYT0siY2c=
 github.com/numary/machine v0.0.0-20210719124351-aad80bd74032/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
-github.com/numary/machine v0.0.0-20210721174107-2596ca4e5b60 h1:qUYxAdLEOSbBR9l5Vse9kde3dwZgkHdwfuAfGHmriJ0=
-github.com/numary/machine v0.0.0-20210721174107-2596ca4e5b60/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
 github.com/oklog/oklog v0.3.2/go.mod h1:FCV+B7mhrz4o+ueLpx+KqkyXRGMWOYEvfiXtdGtbWGs=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
