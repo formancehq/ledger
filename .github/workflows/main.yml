@@ -17,11 +17,6 @@ jobs:
   build:
     name: 'Build'
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: "eu-west-1"
-      AWS_ECS_CLUSTER: "numary-preprod-ecs"
     steps:
       - uses: actions/setup-go@v2
         with:
@@ -43,6 +38,8 @@ jobs:
         run: CGO_ENABLED=1 go get
       - name: fetch numary control
         run: make fetch-control
+      - name: prepare goreleaser
+        run: cp .github/.goreleaser.linux.yml .goreleaser.yml
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
