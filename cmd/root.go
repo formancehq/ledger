@@ -135,7 +135,19 @@ func Execute() {
 				log.Fatal(err)
 			}
 
-			fmt.Println(res.StatusCode, string(b))
+			var result struct {
+				Err string `json:"err,omitempty"`
+				Ok  bool   `json:"ok"`
+			}
+			err = json.Unmarshal(b, &result)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if result.Ok {
+				fmt.Println("Script ran successfully 👍")
+			} else {
+				log.Fatal(result.Err)
+			}
 		},
 	}
 
