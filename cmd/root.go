@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,12 +10,14 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/storage"
+	"github.com/numary/machine/script/compiler"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -91,7 +94,7 @@ func Execute() {
 		},
 	})
 
-	script := &cobra.Command{
+	script_exec := &cobra.Command{
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -144,9 +147,41 @@ func Execute() {
 				log.Fatal(err)
 			}
 			if result.Ok {
-				fmt.Println("Script ran successfully 👍")
+				fmt.Println("Script ran successfully ✅")
 			} else {
 				log.Fatal(result.Err)
+			}
+		},
+	}
+
+	script_check := &cobra.Command{
+		Use:  "check [script]",
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+
+			b, err := ioutil.ReadFile(args[0])
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			_, err = compiler.Compile(string(b))
+			if err != nil {
+				err_str := err.Error()
+				err_str = strings.ReplaceAll(err_str, "\n", "\r\n")
+				payload, err := json.Marshal(gin.H{
+					"error": err_str,
+				})
+				if err != nil {
+					log.Fatal(err)
+				}
+				payload_b64 := base64.StdEncoding.EncodeToString([]byte(payload))
+				link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payload_b64)
+				openuri(link)
+				log.Fatal(link)
+			} else {
+				fmt.Println("Script is correct ✅")
 			}
 		},
 	}
@@ -155,7 +190,8 @@ func Execute() {
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
 	root.AddCommand(store)
-	root.AddCommand(script)
+	root.AddCommand(script_exec)
+	root.AddCommand(script_check)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
