@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api"
@@ -168,18 +166,7 @@ func Execute() {
 
 			_, err = compiler.Compile(string(b))
 			if err != nil {
-				err_str := err.Error()
-				err_str = strings.ReplaceAll(err_str, "\n", "\r\n")
-				payload, err := json.Marshal(gin.H{
-					"error": err_str,
-				})
-				if err != nil {
-					log.Fatal(err)
-				}
-				payload_b64 := base64.StdEncoding.EncodeToString([]byte(payload))
-				link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payload_b64)
-				openuri(link)
-				log.Fatal(link)
+				log.Fatal(err)
 			} else {
 				fmt.Println("Script is correct ✅")
 			}
