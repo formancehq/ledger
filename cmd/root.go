@@ -15,6 +15,7 @@ import (
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/storage"
+	"github.com/numary/machine/script/compiler"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -91,7 +92,7 @@ func Execute() {
 		},
 	})
 
-	script := &cobra.Command{
+	script_exec := &cobra.Command{
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -135,7 +136,40 @@ func Execute() {
 				log.Fatal(err)
 			}
 
-			fmt.Println(res.StatusCode, string(b))
+			var result struct {
+				Err string `json:"err,omitempty"`
+				Ok  bool   `json:"ok"`
+			}
+			err = json.Unmarshal(b, &result)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if result.Ok {
+				fmt.Println("Script ran successfully ✅")
+			} else {
+				log.Fatal(result.Err)
+			}
+		},
+	}
+
+	script_check := &cobra.Command{
+		Use:  "check [script]",
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+
+			b, err := ioutil.ReadFile(args[0])
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			_, err = compiler.Compile(string(b))
+			if err != nil {
+				log.Fatal(err)
+			} else {
+				fmt.Println("Script is correct ✅")
+			}
 		},
 	}
 
@@ -143,7 +177,8 @@ func Execute() {
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
 	root.AddCommand(store)
-	root.AddCommand(script)
+	root.AddCommand(script_exec)
+	root.AddCommand(script_check)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
