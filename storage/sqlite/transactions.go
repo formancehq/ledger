@@ -85,6 +85,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
+				Metadata:  core.Metadata{},
 			}
 		}
 
@@ -94,6 +95,11 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
+		s.InjectMeta("tx", fmt.Sprintf("%d", t.ID), func(key string, value string) {
+			fmt.Println(key, value)
+			t.Metadata[key] = value
+		})
+
 		results = append(results, t)
 	}
 
@@ -113,4 +119,75 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	c.Total = int(total)
 
 	return c, nil
+}
+
+func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
+	tx, _ := s.db.Begin()
+
+	for _, t := range ts {
+		var ref *string
+
+		if t.Reference != "" {
+			ref = &t.Reference
+		}
+
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto("transactions")
+		ib.Cols("id", "reference", "timestamp", "hash")
+		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+		_, err := tx.Exec(sqlq, args...)
+
+		if err != nil {
+			tx.Rollback()
+
+			return err
+		}
+
+		for i, p := range t.Postings {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("postings")
+			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
+			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err := tx.Exec(sqlq, args...)
+
+			if err != nil {
+				tx.Rollback()
+
+				return err
+			}
+		}
+
+		for key, value := range t.Metadata {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("metadata")
+			ib.Cols(
+				"meta_target_type",
+				"meta_target_id",
+				"meta_key",
+				"meta_value",
+			)
+			ib.Values(
+				"tx",
+				fmt.Sprintf("%d", t.ID),
+				key,
+				string(value),
+			)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err = tx.Exec(sqlq, args...)
+
+			if err != nil {
+				tx.Rollback()
+			}
+		}
+	}
+
+	return tx.Commit()
 }

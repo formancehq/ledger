@@ -1,3 +1,3 @@
 package core
 
-type Metadata map[string]interface{}
+type Metadata map[string]string

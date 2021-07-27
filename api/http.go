@@ -100,9 +100,15 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 
 		err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 
-		c.JSON(200, gin.H{
+		res := gin.H{
 			"ok": err == nil,
-		})
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
 	r.POST("/:ledger/script", func(c *gin.Context) {
