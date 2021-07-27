@@ -78,12 +78,19 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: numary-prod-ecr
+          ECR_REPOSITORY_PREPROD: numary-preprod-ecr
           IMAGE_TAG: ${{ steps.get_release.outputs.tag_name }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t ledger .
+          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY_PREPROD:$IMAGE_TAG
+          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY_PREPROD:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_PREPROD:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_PREPROD:latest
+
       - if: matrix.os == 'ubuntu-latest'
         name: Deploy new version in ECS
         env:
