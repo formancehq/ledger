@@ -53,7 +53,7 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 			return
 		}
 
-		var value interface{}
+		var value json.RawMessage
 
 		err = json.Unmarshal([]byte(meta_value), &value)
 
