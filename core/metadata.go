@@ -1,3 +1,8 @@
 package core
 
-type Metadata map[string]string
+type MetaEntry struct {
+	Type  string      `json:"type"`
+	Value interface{} `json:"value"`
+}
+
+type Metadata map[string]MetaEntry

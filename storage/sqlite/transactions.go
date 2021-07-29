@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -95,9 +96,8 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		s.InjectMeta("tx", fmt.Sprintf("%d", t.ID), func(key string, value string) {
-			fmt.Println(key, value)
-			t.Metadata[key] = value
+		s.InjectMeta("tx", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
+			t.Metadata = m
 		})
 
 		results = append(results, t)
@@ -164,19 +164,29 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 		}
 
 		for key, value := range t.Metadata {
+			b, err := json.Marshal(value.Value)
+
+			if err != nil {
+				tx.Rollback()
+
+				return err
+			}
+
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto("metadata")
 			ib.Cols(
 				"meta_target_type",
 				"meta_target_id",
 				"meta_key",
+				"meta_type",
 				"meta_value",
 			)
 			ib.Values(
 				"tx",
 				fmt.Sprintf("%d", t.ID),
 				key,
-				string(value),
+				value.Type,
+				string(b),
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
@@ -185,6 +195,8 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 
 			if err != nil {
 				tx.Rollback()
+
+				return err
 			}
 		}
 	}

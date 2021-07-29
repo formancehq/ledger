@@ -48,10 +48,17 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			return c, err
 		}
 
-		results = append(results, core.Account{
+		account := core.Account{
 			Address:  address,
 			Contract: "default",
+		}
+
+		s.InjectMeta("acc", account.Address, func(m core.Metadata) {
+			fmt.Println(m)
+			account.Metadata = m
 		})
+
+		results = append(results, account)
 	}
 
 	c.PageSize = q.Limit - 1

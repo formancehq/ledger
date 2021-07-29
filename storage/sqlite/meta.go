@@ -1,15 +1,21 @@
 package sqlite
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/core"
 )
 
-func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(string, string)) {
+func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("meta_key", "meta_value")
+	sb.Select(
+		"meta_key",
+		"meta_type",
+		"meta_value",
+	)
 	sb.From("metadata")
 	sb.Where(
 		sb.And(
@@ -28,20 +34,40 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(string, string)) 
 		return
 	}
 
+	meta := core.Metadata{}
+
 	for rows.Next() {
 		var meta_key string
+		var meta_type string
 		var meta_value string
 
 		err := rows.Scan(
 			&meta_key,
+			&meta_type,
 			&meta_value,
 		)
 
 		if err != nil {
 			log.Println(err)
+
 			return
 		}
 
-		fn(meta_key, meta_value)
+		var value interface{}
+
+		err = json.Unmarshal([]byte(meta_value), &value)
+
+		if err != nil {
+			log.Println(err)
+
+			return
+		}
+
+		meta[meta_key] = core.MetaEntry{
+			Type:  meta_type,
+			Value: value,
+		}
 	}
+
+	fn(meta)
 }
