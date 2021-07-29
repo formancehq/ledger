@@ -1,6 +1,7 @@
-package sqlite
+package postgres
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,7 +10,7 @@ import (
 	"github.com/numary/ledger/core"
 )
 
-func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
+func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
@@ -24,10 +25,14 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 		),
 	)
 
-	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 	fmt.Println(sqlq, args)
 
-	rows, err := s.db.Query(sqlq, args...)
+	rows, err := s.Conn().Query(
+		context.TODO(),
+		sqlq,
+		args...,
+	)
 
 	if err != nil {
 		log.Println(err)
@@ -72,14 +77,14 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	fn(meta)
 }
 
-func (s *SQLiteStore) SaveMeta(ty string, id string, m core.Metadata) error {
-	tx, _ := s.db.Begin()
+func (s *PGStore) SaveMeta(ty string, id string, m core.Metadata) error {
+	tx, _ := s.Conn().Begin(context.TODO())
 
 	for key, value := range m {
 		b, err := json.Marshal(value.Value)
 
 		if err != nil {
-			tx.Rollback()
+			tx.Rollback(context.TODO())
 
 			return err
 		}
@@ -95,18 +100,22 @@ func (s *SQLiteStore) SaveMeta(ty string, id string, m core.Metadata) error {
 		)
 		ib.Values(ty, id, key, value.Type, string(b))
 
-		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-		_, err = tx.Exec(sqlq, args...)
+		_, err = tx.Exec(
+			context.TODO(),
+			sqlq,
+			args...,
+		)
 
 		if err != nil {
-			tx.Rollback()
+			tx.Rollback(context.TODO())
 
 			return err
 		}
 	}
 
-	err := tx.Commit()
+	err := tx.Commit(context.TODO())
 
 	if err != nil {
 		return err

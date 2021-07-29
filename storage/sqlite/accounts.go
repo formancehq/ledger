@@ -53,7 +53,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			Contract: "default",
 		}
 
-		s.InjectMeta("acc", account.Address, func(m core.Metadata) {
+		s.InjectMeta("account", account.Address, func(m core.Metadata) {
 			fmt.Println(m)
 			account.Metadata = m
 		})

@@ -96,7 +96,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		s.InjectMeta("tx", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
+		s.InjectMeta("transaction", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
 			t.Metadata = m
 		})
 
@@ -182,7 +182,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 				"meta_value",
 			)
 			ib.Values(
-				"tx",
+				"transaction",
 				fmt.Sprintf("%d", t.ID),
 				key,
 				value.Type,
