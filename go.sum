@@ -328,6 +328,7 @@ github.com/jackc/puddle v0.0.0-20190413234325-e4ced69a3a2b/go.mod h1:m4B5Dj62Y0f
 github.com/jackc/puddle v0.0.0-20190608224051-11cab39313c9/go.mod h1:m4B5Dj62Y0fbyuIc15OsIqK0+JU8nkqQjsgx7dvjSWk=
 github.com/jackc/puddle v1.1.0/go.mod h1:m4B5Dj62Y0fbyuIc15OsIqK0+JU8nkqQjsgx7dvjSWk=
 github.com/jackc/puddle v1.1.1/go.mod h1:m4B5Dj62Y0fbyuIc15OsIqK0+JU8nkqQjsgx7dvjSWk=
+github.com/jackc/puddle v1.1.3 h1:JnPg/5Q9xVJGfjsO5CPUOjnJps1JaRUm8I9FXVCFK94=
 github.com/jackc/puddle v1.1.3/go.mod h1:m4B5Dj62Y0fbyuIc15OsIqK0+JU8nkqQjsgx7dvjSWk=
 github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af/go.mod h1:Nht3zPeWKUH0NzdCt2Blrr5ys8VGpn0CEB0cQHVjt7k=
 github.com/jonboulle/clockwork v0.1.0/go.mod h1:Ii8DK3G1RaLaWxj9trq07+26W01tbo22gdxWY5EU2bo=
@@ -414,12 +415,6 @@ github.com/nats-io/nkeys v0.1.3/go.mod h1:xpnFELMwJABBLVhffcfd1MZx6VsNRFpEugbxzi
 github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDYd6id1qeD2uv7JDlajuRZ0fvOnCeDZmDxk=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
-github.com/numary/machine v0.0.0-20210719124351-aad80bd74032 h1:/0PgX+JYoyHa776kR98XXqLGvqHWPiDTCQAYT0siY2c=
-github.com/numary/machine v0.0.0-20210719124351-aad80bd74032/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
-github.com/numary/machine v0.0.0-20210721174107-2596ca4e5b60 h1:qUYxAdLEOSbBR9l5Vse9kde3dwZgkHdwfuAfGHmriJ0=
-github.com/numary/machine v0.0.0-20210721174107-2596ca4e5b60/go.mod h1:dvm8ZK8ywVDLDCKX8RyVT5bnD5/9A2RRmK8ZdJ9OvSM=
-github.com/numary/machine v0.0.0-20210723112905-42b29a92fe8d h1:YfQ7urinEfBDyDGijNer3aYaNhHV7xhy5mE/XdYyHms=
-github.com/numary/machine v0.0.0-20210723112905-42b29a92fe8d/go.mod h1:azMZte4ywWM0ISNMgMII4IS9XJ0N3ZAB7TfQ2Ay3dL0=
 github.com/numary/machine v0.0.0-20210726090747-5853ebec28f0 h1:TM2r/u2KwZBipmd6s5q/mzlzWfNCFwEadH9xyYbvZAw=
 github.com/numary/machine v0.0.0-20210726090747-5853ebec28f0/go.mod h1:azMZte4ywWM0ISNMgMII4IS9XJ0N3ZAB7TfQ2Ay3dL0=
 github.com/oklog/oklog v0.3.2/go.mod h1:FCV+B7mhrz4o+ueLpx+KqkyXRGMWOYEvfiXtdGtbWGs=

@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/spf13/viper"
 )
 
@@ -18,13 +18,13 @@ var migrations embed.FS
 type PGStore struct {
 	ledger     string
 	connString string
-	conn       *pgx.Conn
+	pool       *pgxpool.Pool
 }
 
 func (s *PGStore) connect() error {
-	log.Println("initiating postgres connection")
+	log.Println("initiating postgres pool")
 
-	conn, err := pgx.Connect(
+	pool, err := pgxpool.Connect(
 		context.TODO(),
 		s.connString,
 	)
@@ -33,21 +33,13 @@ func (s *PGStore) connect() error {
 		return err
 	}
 
-	s.conn = conn
+	s.pool = pool
 
 	return nil
 }
 
-func (s *PGStore) Conn() *pgx.Conn {
-	if s.conn.IsClosed() {
-		err := s.connect()
-
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	return s.conn
+func (s *PGStore) Conn() *pgxpool.Pool {
+	return s.pool
 }
 
 func NewStore(name string) (*PGStore, error) {
@@ -100,6 +92,7 @@ func (s *PGStore) Initialize() error {
 		if err != nil {
 			fmt.Println(err)
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			log.Println(statement)
 			return err
 		}
 	}
@@ -108,9 +101,9 @@ func (s *PGStore) Initialize() error {
 }
 
 func (s *PGStore) table(name string) string {
-	return fmt.Sprintf("%s.%s", s.ledger, name)
+	return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
 }
 
 func (s *PGStore) Close() {
-	s.conn.Close(context.TODO())
+	s.pool.Close()
 }
