@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -18,33 +19,38 @@ import (
 
 type Ledger struct {
 	sync.Mutex
-	store  storage.Store
-	config config.Config
-	_last  *core.Transaction
+	name  string
+	store storage.Store
+	_last *core.Transaction
 }
 
-func NewLedger(lc fx.Lifecycle, c config.Config) (*Ledger, error) {
-	store, err := storage.GetStore(c)
+func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
+	store, err := storage.GetStore(name)
 
 	if err != nil {
 		return nil, err
 	}
 
-	store.Initialize()
+	err = store.Initialize()
+
+	if err != nil {
+		err = fmt.Errorf("failed to initialize store: %w", err)
+		log.Println(err)
+		return nil, err
+	}
 
 	l := &Ledger{
-		store:  store,
-		config: c,
+		store: store,
+		name:  name,
 	}
 
 	lc.Append(fx.Hook{
 		OnStart: func(c context.Context) error {
-			fmt.Println("starting ledger")
-			fmt.Println(l.config)
+			log.Printf("starting ledger %s\n", l.name)
 			return nil
 		},
 		OnStop: func(c context.Context) error {
-			fmt.Println("closing ledger")
+			log.Printf("closing ledger %s\n", l.name)
 			l.Close()
 			return nil
 		},
@@ -58,6 +64,8 @@ func (l *Ledger) Close() {
 }
 
 func (l *Ledger) Commit(ts []core.Transaction) error {
+	defer config.Remember(l.name)
+
 	l.Lock()
 	defer l.Unlock()
 
@@ -146,10 +154,10 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 			balance, ok := balances[asset]
 
 			if !ok || balance < checks[asset] {
-				return errors.New(fmt.Sprintf(
+				return fmt.Errorf(
 					"balance.insufficient.%s",
 					asset,
-				))
+				)
 			}
 		}
 	}
@@ -212,6 +220,14 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 	}
 
 	account.Balances = balances
+
+	volumes, err := l.store.AggregateVolumes(address)
+
+	if err != nil {
+		return account, err
+	}
+
+	account.Volumes = volumes
 
 	return account, nil
 }

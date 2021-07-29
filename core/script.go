@@ -1,10 +1,8 @@
 package core
 
-type Script struct {
-	Plain    string `json:"plain"`
-	AST      AST    `json:"ast"`
-	Compiled []byte `json:"bytecode"`
-}
+import "encoding/json"
 
-type AST struct {
+type Script struct {
+	Plain string                     `json:"plain"`
+	Vars  map[string]json.RawMessage `json:"vars"`
 }

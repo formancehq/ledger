@@ -1,12 +1,41 @@
-package postgres
+package sqlite
 
 import (
-	"context"
-
 	"github.com/huandu/go-sqlbuilder"
 )
 
-func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
+func (s *SQLiteStore) CountTransactions() (int64, error) {
+	var count int64
+
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("count(*)")
+	sb.From("transactions")
+
+	sqlq, args := sb.Build()
+
+	err := s.db.QueryRow(sqlq, args...).Scan(&count)
+
+	return count, err
+}
+
+func (s *SQLiteStore) CountAccounts() (int64, error) {
+	var count int64
+
+	sb := sqlbuilder.NewSelectBuilder()
+
+	sb.
+		Select("count(*)").
+		From("addresses").
+		BuildWithFlavor(sqlbuilder.SQLite)
+
+	sqlq, args := sb.Build()
+
+	err := s.db.QueryRow(sqlq, args...).Scan(&count)
+
+	return count, err
+}
+
+func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
 	volumes, err := s.AggregateVolumes(address)
@@ -22,19 +51,19 @@ func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
 	return balances, nil
 }
 
-func (s *PGStore) AggregateVolumes(address string) (map[string]map[string]int64, error) {
+func (s *SQLiteStore) AggregateVolumes(address string) (map[string]map[string]int64, error) {
 	volumes := map[string]map[string]int64{}
 
 	agg1 := sqlbuilder.NewSelectBuilder()
 	agg1.
 		Select("asset", "'_out'", "sum(amount)").
-		From(s.table("postings")).Where(agg1.Equal("source", address)).
+		From("postings").Where(agg1.Equal("source", address)).
 		GroupBy("asset")
 
 	agg2 := sqlbuilder.NewSelectBuilder()
 	agg2.
 		Select("asset", "'_in'", "sum(amount)").
-		From(s.table("postings")).Where(agg2.Equal("destination", address)).
+		From("postings").Where(agg2.Equal("destination", address)).
 		GroupBy("asset")
 
 	union := sqlbuilder.Union(agg1, agg2)
@@ -43,13 +72,9 @@ func (s *PGStore) AggregateVolumes(address string) (map[string]map[string]int64,
 	sb.Select("*")
 	sb.From(sb.BuilderAs(union, "assets"))
 
-	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
 
-	rows, err := s.Conn().Query(
-		context.Background(),
-		sqlq,
-		args...,
-	)
+	rows, err := s.db.Query(sqlq, args...)
 
 	if err != nil {
 		return volumes, err

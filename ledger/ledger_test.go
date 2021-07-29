@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -18,14 +20,15 @@ func with(f func(l *Ledger)) {
 			fx.NopLogger,
 		),
 		fx.Provide(
-			func() config.Config {
-				c := config.DefaultConfig()
-				c.Storage.Driver = "sqlite"
-				c.Storage.SQLiteOpts.Directory = "/tmp"
-				c.Storage.SQLiteOpts.DBName = "ledger"
-				return c
+			func(lc fx.Lifecycle) (*Ledger, error) {
+				l, err := NewLedger("test", lc)
+
+				if err != nil {
+					return nil, err
+				}
+
+				return l, nil
 			},
-			NewLedger,
 		),
 		fx.Invoke(f),
 		fx.Invoke(func(l *Ledger) {
@@ -35,7 +38,15 @@ func with(f func(l *Ledger)) {
 }
 
 func TestMain(m *testing.M) {
-	os.Remove("/tmp/ledger.db")
+	config.Init()
+
+	// viper.Set("storage.driver", "postgres")
+	viper.Set("storage.dir", os.TempDir())
+	viper.Set("storage.sqlite.db_name", "ledger")
+	fmt.Println(viper.AllSettings())
+
+	os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
+
 	m.Run()
 }
 
@@ -99,54 +110,6 @@ func TestTransaction(t *testing.T) {
 		}
 
 		l.Close()
-	})
-}
-
-func TestTransactionInvalidScript(t *testing.T) {
-	with(func(l *Ledger) {
-		err := l.Commit([]core.Transaction{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "users:001",
-						Asset:       "GEM",
-						Amount:      100,
-					},
-				},
-				Script: "this is not a valid script",
-			},
-		})
-
-		if err == nil {
-			t.Error(errors.New(
-				"script was invalid yet the transaction was commited",
-			))
-		}
-	})
-}
-
-func TestTransactionFail(t *testing.T) {
-	with(func(l *Ledger) {
-		err := l.Commit([]core.Transaction{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "users:001",
-						Asset:       "GEM",
-						Amount:      100,
-					},
-				},
-				Script: "fail",
-			},
-		})
-
-		if err == nil {
-			t.Error(errors.New(
-				"script failed yet the transaction was commited",
-			))
-		}
 	})
 }
 

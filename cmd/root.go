@@ -1,13 +1,23 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
+	"regexp"
 
+	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/storage"
+	"github.com/numary/machine/script/compiler"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -29,19 +39,12 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
-					func() *config.Overrides {
-						v := config.Overrides{}
-
-						if cmd.Flag("http-bind-addr").Value.String() != "" {
-							v["http-bind-addr"] = cmd.Flag("http-bind-addr").Value.String()
-						}
-
-						return &v
-					},
-					config.GetConfig,
-					ledger.NewLedger,
+					ledger.NewResolver,
 					api.NewHttpAPI,
 				),
+				fx.Invoke(func() {
+					config.Init()
+				}),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.HttpAPI) {
 				}),
 			)
@@ -49,16 +52,6 @@ func Execute() {
 			app.Run()
 		},
 	}
-
-	start.Flags().StringVarP(
-		&FlagBindAddr,
-		"http-bind-addr",
-		// no shorthand
-		"",
-		// no default
-		"",
-		"override http api bind address",
-	)
 
 	server.AddCommand(start)
 
@@ -69,15 +62,123 @@ func Execute() {
 	conf.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := config.DefaultConfig()
-			b := c.Serialize()
-			os.WriteFile("numary.config.json", []byte(b), 0644)
+			config.Init()
+			err := viper.SafeWriteConfig()
+			if err != nil {
+				fmt.Println(err)
+			}
 		},
 	})
+
+	store := &cobra.Command{
+		Use: "storage",
+	}
+
+	store.AddCommand(&cobra.Command{
+		Use: "init",
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+			s, err := storage.GetStore("default")
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			err = s.Initialize()
+
+			if err != nil {
+				log.Fatal(err)
+			}
+		},
+	})
+
+	script_exec := &cobra.Command{
+		Use:  "exec [ledger] [script]",
+		Args: cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+
+			b, err := ioutil.ReadFile(args[1])
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			r := regexp.MustCompile(`^\n`)
+			s := string(b)
+			s = r.ReplaceAllString(s, "")
+
+			b, err = json.Marshal(gin.H{
+				"plain": string(s),
+			})
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			res, err := http.Post(
+				fmt.Sprintf(
+					"http://%s/%s/script",
+					viper.Get("server.http.bind_address"),
+					args[0],
+				),
+				"application/json",
+				bytes.NewReader([]byte(b)),
+			)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			b, err = ioutil.ReadAll(res.Body)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			var result struct {
+				Err string `json:"err,omitempty"`
+				Ok  bool   `json:"ok"`
+			}
+			err = json.Unmarshal(b, &result)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if result.Ok {
+				fmt.Println("Script ran successfully ✅")
+			} else {
+				log.Fatal(result.Err)
+			}
+		},
+	}
+
+	script_check := &cobra.Command{
+		Use:  "check [script]",
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Init()
+
+			b, err := ioutil.ReadFile(args[0])
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			_, err = compiler.Compile(string(b))
+			if err != nil {
+				log.Fatal(err)
+			} else {
+				fmt.Println("Script is correct ✅")
+			}
+		},
+	}
 
 	root.AddCommand(server)
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
+	root.AddCommand(store)
+	root.AddCommand(script_exec)
+	root.AddCommand(script_check)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

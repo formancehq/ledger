@@ -1,17 +1,22 @@
 package cmd
 
 import (
+	"embed"
 	"fmt"
-	"log"
-	"os"
+	"net/http"
 	"os/exec"
-	"path"
+	"regexp"
 	"runtime"
 
+	"github.com/numary/ledger/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
-func openuri(uri string) {
+//go:embed control
+var uipath embed.FS
+
+func openuri(uri string) bool {
 	var err error
 
 	switch runtime.GOOS {
@@ -25,28 +30,32 @@ func openuri(uri string) {
 		err = fmt.Errorf("unsupported platform, open manually: %s", uri)
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	return err != nil
 }
 
 var UICmd = &cobra.Command{
 	Use: "ui",
 	Run: func(cmd *cobra.Command, args []string) {
-		tmp := os.TempDir()
-		dir := path.Join(tmp, "numary-ui")
-		os.Mkdir(dir, 0700)
-		os.Chdir(dir)
+		config.Init()
 
-		os.WriteFile("index.html", []byte(`
-			<html>
-				<head></head>
-				<body>
-					<h1>coming soon</h1>
-				</body>
-			</html>
-		`), 0644)
+		addr := viper.GetString("ui.http.bind_address")
 
-		openuri(path.Join(dir, "index.html"))
+		handler := http.FileServer(http.FS(uipath))
+
+		http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+			isFile := regexp.MustCompile(`\.[a-z]{2,}$`)
+			path := r.URL.Path
+			if !isFile.MatchString(path) {
+				path = "/"
+			}
+			r.URL.Path = fmt.Sprintf("/control%s", path)
+
+			handler.ServeHTTP(rw, r)
+		})
+
+		openuri(addr)
+		fmt.Printf("Numary control is live on http://%s\n", addr)
+
+		http.ListenAndServe(addr, nil)
 	},
 }

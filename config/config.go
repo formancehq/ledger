@@ -1,125 +1,59 @@
 package config
 
 import (
-	"encoding/json"
-	"fmt"
+	"log"
 	"os"
 	"path"
+	"strings"
 
-	"github.com/kelseyhightower/envconfig"
+	"github.com/spf13/viper"
 )
 
-const (
-	filename = "numary.config.json"
-)
+func Init() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
+	}
 
-type Config struct {
-	Server struct {
-		Http struct {
-			BindAddress string `default:"127.0.0.1:3068" json:"bind_address"`
-		} `json:"http"`
-	} `json:"server"`
-	Storage struct {
-		Driver     string `default:"sqlite" json:"driver"`
-		SQLiteOpts struct {
-			Directory string `json:"directory"`
-			DBName    string `default:"ledger" json:"db_name"`
-		} `json:"sqlite_opts"`
-		PostgresOpts struct {
-			ConnString string `default:"postgresql://localhost/postgres" json:"conn_string"`
-		}
-	} `json:"storage"`
+	os.MkdirAll(path.Join(home, ".numary", "data"), 0700)
+
+	viper.SetDefault("debug", false)
+	viper.SetDefault("storage.driver", "sqlite")
+	viper.SetDefault("storage.dir", path.Join(home, ".numary/data"))
+	viper.SetDefault("storage.sqlite.db_name", "numary")
+	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
+	viper.SetDefault("server.http.bind_address", "localhost:3068")
+	viper.SetDefault("ui.http.bind_address", "localhost:3078")
+	viper.SetDefault("ledgers", []interface{}{"quickstart"})
+
+	viper.SetConfigName("numary")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME/.numary")
+	viper.AddConfigPath("/etc/numary")
+	viper.ReadInConfig()
+
+	viper.SetEnvPrefix("numary")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 }
 
-type Overrides map[string]interface{}
+func Remember(ledger string) {
+	ledgers := viper.Get("ledgers").([]interface{})
 
-func DefaultConfig() Config {
-	c := Config{}
+	for _, v := range ledgers {
+		if ledger == v.(string) {
+			return
+		}
+	}
 
-	h, err := os.UserHomeDir()
+	viper.Set("ledgers", append(ledgers, ledger))
+
+	err := viper.WriteConfig()
 
 	if err != nil {
-		panic("cannot get home directory")
+		log.Printf(
+			"failed to write config: ledger %s will not be remembered\n",
+			ledger,
+		)
 	}
-
-	p := path.Join(h, ".numary")
-
-	c.Storage.SQLiteOpts.Directory = path.Join(p, "storage")
-
-	return c
-}
-
-func (c Config) Serialize() string {
-	b, _ := json.MarshalIndent(c, "", "  ")
-
-	return string(b)
-}
-
-func GetConfig(overrides *Overrides) Config {
-	candidates := []string{
-		path.Join("/etc/numary", filename),
-	}
-
-	h, err := os.UserHomeDir()
-
-	if err != nil {
-		panic("cannot get home directory")
-	}
-
-	p := path.Join(h, ".numary")
-
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		err := os.Mkdir(p, 0700)
-
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	ps := path.Join(p, "storage")
-
-	if _, err := os.Stat(ps); os.IsNotExist(err) {
-		err := os.Mkdir(ps, 0700)
-
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	candidates = append(
-		candidates,
-		path.Join(h, ".numary", filename),
-	)
-
-	found := false
-	conf := DefaultConfig()
-
-	for _, c := range candidates {
-		b, err := os.ReadFile(c)
-
-		if err != nil {
-			continue
-		}
-
-		err = json.Unmarshal(b, &conf)
-
-		if err != nil {
-			fmt.Printf("error parsing config %s", c)
-			os.Exit(1)
-		}
-
-		found = true
-	}
-
-	if !found {
-		fmt.Println("fallback to default config")
-	}
-
-	envconfig.Process("numary", &conf)
-
-	if addr, ok := (*overrides)["http-bind-addr"]; ok {
-		conf.Server.Http.BindAddress = addr.(string)
-	}
-
-	return conf
 }
