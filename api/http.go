@@ -3,6 +3,10 @@ package api
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -124,7 +128,18 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 		}
 
 		if err != nil {
-			res["err"] = err.Error()
+			err_str := err.Error()
+			err_str = strings.ReplaceAll(err_str, "\n", "\r\n")
+			payload, err := json.Marshal(gin.H{
+				"error": err_str,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			payload_b64 := base64.StdEncoding.EncodeToString([]byte(payload))
+			link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payload_b64)
+			res["err"] = err_str
+			res["details"] = link
 		}
 
 		c.JSON(200, res)
