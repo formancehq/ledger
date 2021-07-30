@@ -169,7 +169,6 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 				"meta_target_type",
 				"meta_target_id",
 				"meta_key",
-				"meta_type",
 				"meta_value",
 			)
 			ib.Values(
