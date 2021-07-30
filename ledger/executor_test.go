@@ -9,6 +9,23 @@ import (
 	"github.com/numary/ledger/core"
 )
 
+func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount int64) {
+	user, err := l.GetAccount(account)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if b := user.Balances[asset]; b != amount {
+		t.Fatalf(
+			"wrong %v balance for account %v, expected: %d got: %d",
+			asset,
+			account,
+			amount,
+			b,
+		)
+	}
+}
+
 func TestTransactionInvalidScript(t *testing.T) {
 	with(func(l *Ledger) {
 		script := core.Script{
@@ -60,20 +77,7 @@ func TestSend(t *testing.T) {
 			return
 		}
 
-		user, err := l.GetAccount("user:001")
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		if b := user.Balances["USD/2"]; b != 99 {
-			t.Error(fmt.Sprintf(
-				"wrong USD/2 balance for account user:001, expected: %d got: %d",
-				99,
-				b,
-			))
-		}
+		assertBalance(t, l, "user:001", "USD/2", 99)
 	})
 }
 
@@ -188,5 +192,81 @@ func TestNotEnoughFunds(t *testing.T) {
 			t.Error("error wasn't supposed to be nil")
 			return
 		}
+	})
+}
+
+func TestMetadata(t *testing.T) {
+	with(func(l *Ledger) {
+		defer l.Close()
+
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "sales:042",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		err := l.Commit([]core.Transaction{tx})
+
+		l.SaveMeta("account", "sales:042", core.Metadata{
+			"seller": {
+				Type:  "account",
+				Value: json.RawMessage(`"users:053"`),
+			},
+		})
+
+		l.SaveMeta("account", "users:053", core.Metadata{
+			"commission": {
+				Type:  "portion",
+				Value: json.RawMessage(`"15.5%"`),
+			},
+		})
+
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		plain := `
+			vars {
+				account $sale
+				account $seller = meta($sale, "seller")
+				portion $commission = meta($seller, "commission")
+			}
+
+			send [COIN *] (
+				source = $sale
+				destination = {
+					remaining to $seller
+					$commission to @platform
+				}
+			)
+		`
+		if err != nil {
+			t.Fatalf("did not expect error: %v", err)
+		}
+
+		script := core.Script{
+			Plain: plain,
+			Vars: map[string]json.RawMessage{
+				"sale": json.RawMessage(`"sales:042"`),
+			},
+		}
+
+		err = l.Execute(script)
+
+		if err != nil {
+			t.Fatalf("execution error: %v", err)
+		}
+
+		assertBalance(t, l, "sales:042", "COIN", 0)
+
+		assertBalance(t, l, "users:053", "COIN", 85)
+
+		assertBalance(t, l, "platform", "COIN", 15)
 	})
 }

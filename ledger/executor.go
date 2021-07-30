@@ -19,6 +19,7 @@ func (l *Ledger) Execute(script core.Script) error {
 	if err != nil {
 		return fmt.Errorf("compile error: %v", err)
 	}
+
 	m := vm.NewMachine(p)
 
 	err = m.SetVarsFromJSON(script.Vars)
