@@ -13,7 +13,6 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
-		"meta_type",
 		"meta_value",
 	)
 	sb.From("metadata")
@@ -38,12 +37,10 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 
 	for rows.Next() {
 		var meta_key string
-		var meta_type string
 		var meta_value string
 
 		err := rows.Scan(
 			&meta_key,
-			&meta_type,
 			&meta_value,
 		)
 
@@ -63,10 +60,7 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 			return
 		}
 
-		meta[meta_key] = core.MetaEntry{
-			Type:  meta_type,
-			Value: value,
-		}
+		meta[meta_key] = value
 	}
 
 	fn(meta)
@@ -76,28 +70,19 @@ func (s *SQLiteStore) SaveMeta(ty string, id string, m core.Metadata) error {
 	tx, _ := s.db.Begin()
 
 	for key, value := range m {
-		b, err := json.Marshal(value.Value)
-
-		if err != nil {
-			tx.Rollback()
-
-			return err
-		}
-
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto("metadata")
 		ib.Cols(
 			"meta_target_type",
 			"meta_target_id",
 			"meta_key",
-			"meta_type",
 			"meta_value",
 		)
-		ib.Values(ty, id, key, value.Type, string(b))
+		ib.Values(ty, id, key, string(value))
 
 		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
 
-		_, err = tx.Exec(sqlq, args...)
+		_, err := tx.Exec(sqlq, args...)
 
 		if err != nil {
 			tx.Rollback()

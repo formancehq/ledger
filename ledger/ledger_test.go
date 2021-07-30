@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -170,6 +171,77 @@ func TestLast(t *testing.T) {
 
 		if err != nil {
 			t.Error(err)
+		}
+	})
+}
+
+func TestAccountMetadata(t *testing.T) {
+	with(func(l *Ledger) {
+		l.SaveMeta("account", "users:001", core.Metadata{
+			"a random metadata": json.RawMessage(`"old value"`),
+		})
+		l.SaveMeta("account", "users:001", core.Metadata{
+			"a random metadata": json.RawMessage(`"new value"`),
+		})
+
+		acc, err := l.GetAccount("users:001")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if meta, ok := acc.Metadata["a random metadata"]; ok {
+			var value string
+			err := json.Unmarshal(meta, &value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value != "new value" {
+				t.Fatalf("metadata entry did not match: expected \"new value\", got %v", value)
+			}
+		}
+	})
+}
+
+func TestTransactionMetadata(t *testing.T) {
+	with(func(l *Ledger) {
+
+		l.Commit([]core.Transaction{{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "payments:001",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}})
+
+		tx, err := l.GetLastTransaction()
+		if err != nil {
+			t.Error(err)
+		}
+
+		l.SaveMeta("transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+			"a random metadata": json.RawMessage(`"old value"`),
+		})
+		l.SaveMeta("transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+			"a random metadata": json.RawMessage(`"new value"`),
+		})
+
+		tx, err = l.GetLastTransaction()
+		if err != nil {
+			t.Error(err)
+		}
+
+		if meta, ok := tx.Metadata["a random metadata"]; ok {
+			var value string
+			err := json.Unmarshal(meta, &value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value != "new value" {
+				t.Fatalf("metadata entry did not match: expected \"new value\", got %v", value)
+			}
 		}
 	})
 }

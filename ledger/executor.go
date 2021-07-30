@@ -45,10 +45,9 @@ func (l *Ledger) Execute(script core.Script) error {
 			if !ok {
 				return fmt.Errorf("missing key %v in metadata for account %v", req.Key, req.Account)
 			}
-			typ := machine.TypenameToType(entry.Type)
-			value, err := machine.NewValueFromJSON(typ, entry.Value)
+			value, err := machine.NewValueFromTypedJSON(entry)
 			if err != nil {
-				return fmt.Errorf("json was invalid in key %v in metadata for account %v: %v", req.Key, req.Account, err)
+				return fmt.Errorf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err)
 			}
 			req.Response <- *value
 		}

@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -164,14 +163,6 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 		}
 
 		for key, value := range t.Metadata {
-			b, err := json.Marshal(value.Value)
-
-			if err != nil {
-				tx.Rollback()
-
-				return err
-			}
-
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto("metadata")
 			ib.Cols(
@@ -185,8 +176,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 				"transaction",
 				fmt.Sprintf("%d", t.ID),
 				key,
-				value.Type,
-				string(b),
+				string(value),
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
