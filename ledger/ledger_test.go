@@ -7,10 +7,12 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"reflect"
 	"testing"
 
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -41,7 +43,7 @@ func with(f func(l *Ledger)) {
 func TestMain(m *testing.M) {
 	config.Init()
 
-	// viper.Set("storage.driver", "postgres")
+	viper.Set("storage.driver", "postgres")
 	viper.Set("storage.dir", os.TempDir())
 	viper.Set("storage.sqlite.db_name", "ledger")
 	fmt.Println(viper.AllSettings())
@@ -184,19 +186,48 @@ func TestAccountMetadata(t *testing.T) {
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
 
-		acc, err := l.GetAccount("users:001")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if meta, ok := acc.Metadata["a random metadata"]; ok {
-			var value string
-			err := json.Unmarshal(meta, &value)
+		{
+			acc, err := l.GetAccount("users:001")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if value != "new value" {
-				t.Fatalf("metadata entry did not match: expected \"new value\", got %v", value)
+
+			if meta, ok := acc.Metadata["a random metadata"]; ok {
+				var value string
+				err := json.Unmarshal(meta, &value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if value != "new value" {
+					t.Fatalf("metadata entry did not match in get: expected \"new value\", got %v", value)
+				}
+			}
+		}
+
+		{
+			cursor, err := l.FindAccounts(query.Account("users:001"))
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			accounts, ok := cursor.Data.([]core.Account)
+			if !ok {
+				t.Fatalf("wrong cursor type: %v", reflect.TypeOf(cursor.Data))
+			}
+			if len(accounts) == 0 {
+				t.Fatal("no accounts returned by find")
+			}
+
+			if meta, ok := accounts[0].Metadata["a random metadata"]; ok {
+				var value string
+				err := json.Unmarshal(meta, &value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if value != "new value" {
+					t.Fatalf("metadata entry did not match in find: expected \"new value\", got %v", value)
+				}
 			}
 		}
 	})
@@ -241,6 +272,41 @@ func TestTransactionMetadata(t *testing.T) {
 			}
 			if value != "new value" {
 				t.Fatalf("metadata entry did not match: expected \"new value\", got %v", value)
+			}
+		}
+	})
+}
+
+func TestSaveTransactionMetadata(t *testing.T) {
+	with(func(l *Ledger) {
+
+		l.Commit([]core.Transaction{{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "payments:001",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+			Metadata: core.Metadata{
+				"a metadata": json.RawMessage(`"a value"`),
+			},
+		}})
+
+		tx, err := l.GetLastTransaction()
+		if err != nil {
+			t.Error(err)
+		}
+
+		if meta, ok := tx.Metadata["a metadata"]; ok {
+			var value string
+			err := json.Unmarshal(meta, &value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value != "a value" {
+				t.Fatalf("metadata entry did not match: expected \"a value\", got %v", value)
 			}
 		}
 	})

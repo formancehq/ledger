@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 
@@ -62,6 +63,33 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 				sqlq,
 				args...,
 			)
+
+			if err != nil {
+				tx.Rollback(context.Background())
+
+				return err
+			}
+		}
+
+		for key, value := range t.Metadata {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("metadata")
+			ib.Cols(
+				"meta_target_type",
+				"meta_target_id",
+				"meta_key",
+				"meta_value",
+			)
+			ib.Values(
+				"transaction",
+				fmt.Sprintf("%d", t.ID),
+				key,
+				string(value),
+			)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+			_, err = tx.Exec(context.Background(), sqlq, args...)
 
 			if err != nil {
 				tx.Rollback(context.Background())
@@ -167,6 +195,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
+				Metadata:  core.Metadata{},
 			}
 		}
 
@@ -176,6 +205,10 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
+		s.InjectMeta("transaction", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
+			t.Metadata = m
+		})
+
 		results = append(results, t)
 	}
 
