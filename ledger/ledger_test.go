@@ -43,7 +43,7 @@ func with(f func(l *Ledger)) {
 func TestMain(m *testing.M) {
 	config.Init()
 
-	viper.Set("storage.driver", "postgres")
+	// viper.Set("storage.driver", "postgres")
 	viper.Set("storage.dir", os.TempDir())
 	viper.Set("storage.sqlite.db_name", "ledger")
 	fmt.Println(viper.AllSettings())
