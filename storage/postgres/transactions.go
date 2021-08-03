@@ -205,9 +205,11 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		s.InjectMeta("transaction", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
-			t.Metadata = m
-		})
+		meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", t.ID))
+		if err != nil {
+			return c, err
+		}
+		t.Metadata = meta
 
 		results = append(results, t)
 	}

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
+	"github.com/spf13/viper"
 )
 
-func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
+func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
@@ -25,7 +25,9 @@ func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	)
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
-	fmt.Println(sqlq, args)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
+	}
 
 	rows, err := s.Conn().Query(
 		context.TODO(),
@@ -34,8 +36,7 @@ func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	)
 
 	if err != nil {
-		log.Println(err)
-		return
+		return nil, err
 	}
 
 	meta := core.Metadata{}
@@ -50,9 +51,7 @@ func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 		)
 
 		if err != nil {
-			log.Println(err)
-
-			return
+			return nil, err
 		}
 
 		var value json.RawMessage
@@ -60,15 +59,13 @@ func (s *PGStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 		err = json.Unmarshal([]byte(meta_value), &value)
 
 		if err != nil {
-			log.Println(err)
-
-			return
+			return nil, err
 		}
 
 		meta[meta_key] = value
 	}
 
-	fn(meta)
+	return meta, nil
 }
 
 func (s *PGStore) SaveMeta(ty string, id string, m core.Metadata) error {

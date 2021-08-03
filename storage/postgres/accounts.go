@@ -86,9 +86,11 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			Contract: "default",
 		}
 
-		s.InjectMeta("account", account.Address, func(m core.Metadata) {
-			account.Metadata = m
-		})
+		meta, err := s.GetMeta("account", account.Address)
+		if err != nil {
+			return c, err
+		}
+		account.Metadata = meta
 
 		results = append(results, account)
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/spf13/viper"
 )
 
 func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
@@ -49,7 +50,9 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	fmt.Println(sqlq, args)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
+	}
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -95,9 +98,11 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		s.InjectMeta("transaction", fmt.Sprintf("%d", t.ID), func(m core.Metadata) {
-			t.Metadata = m
-		})
+		meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", t.ID))
+		if err != nil {
+			return c, err
+		}
+		t.Metadata = meta
 
 		results = append(results, t)
 	}

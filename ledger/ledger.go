@@ -208,9 +208,11 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 
 	account.Volumes = volumes
 
-	l.store.InjectMeta("account", address, func(m core.Metadata) {
-		account.Metadata = m
-	})
+	meta, err := l.store.GetMeta("account", address)
+	if err != nil {
+		return account, err
+	}
+	account.Metadata = meta
 
 	return account, nil
 }

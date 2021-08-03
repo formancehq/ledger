@@ -3,13 +3,13 @@ package sqlite
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
+	"github.com/spf13/viper"
 )
 
-func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
+func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
@@ -24,13 +24,14 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 	)
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	fmt.Println(sqlq, args)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
+	}
 
 	rows, err := s.db.Query(sqlq, args...)
 
 	if err != nil {
-		log.Println(err)
-		return
+		return nil, err
 	}
 
 	meta := core.Metadata{}
@@ -45,9 +46,7 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 		)
 
 		if err != nil {
-			log.Println(err)
-
-			return
+			return nil, err
 		}
 
 		var value json.RawMessage
@@ -55,15 +54,13 @@ func (s *SQLiteStore) InjectMeta(ty string, id string, fn func(core.Metadata)) {
 		err = json.Unmarshal([]byte(meta_value), &value)
 
 		if err != nil {
-			log.Println(err)
-
-			return
+			return nil, err
 		}
 
 		meta[meta_key] = value
 	}
 
-	fn(meta)
+	return meta, nil
 }
 
 func (s *SQLiteStore) SaveMeta(ty string, id string, m core.Metadata) error {

@@ -18,7 +18,7 @@ type Store interface {
 	CountAccounts() (int64, error)
 	FindAccounts(query.Query) (query.Cursor, error)
 	SaveMeta(string, string, core.Metadata) error
-	InjectMeta(string, string, func(core.Metadata))
+	GetMeta(string, string) (core.Metadata, error)
 	Initialize() error
 	Close()
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/spf13/viper"
 )
 
 func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
@@ -28,7 +29,9 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	}
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	fmt.Println(sqlq, args)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
+	}
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -53,10 +56,11 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			Contract: "default",
 		}
 
-		s.InjectMeta("account", account.Address, func(m core.Metadata) {
-			fmt.Println(m)
-			account.Metadata = m
-		})
+		meta, err := s.GetMeta("account", account.Address)
+		if err != nil {
+			return c, err
+		}
+		account.Metadata = meta
 
 		results = append(results, account)
 	}
