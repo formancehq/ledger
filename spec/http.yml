@@ -23,6 +23,8 @@ components:
           type: object
           additionalProperties:
             type: "integer"
+        metadata:
+          type: object
     posting:
       type: object
       properties:
@@ -105,6 +107,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/account"
 
+  /{ledger}/accounts/{reference}/metadata:
+    post:
+      summary: Set metadata on account
+      parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: Success
+
   /{ledger}/transactions:
     get:
       summary: List transactions
@@ -125,6 +146,12 @@ paths:
                   $ref: "#/components/schemas/transaction"
     post:
       summary: Commit a new transaction to the ledger
+      parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -134,11 +161,30 @@ paths:
 
       responses:
         200:
-          description: Successfull commit
+          description: Successful commit
+
+  /{ledger}/transactions/{reference}/metadata:
+    post:
+      summary: Set metadata on transaction
+      parameters:
+        - required: true
+          name: ledger
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: Success
 
   /{ledger}/script:
     post:
-      summary: execute a transaction Numscript
+      summary: Execute Numscript
       parameters:
         - required: true
           name: ledger
