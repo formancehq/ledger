@@ -415,8 +415,12 @@ github.com/nats-io/nkeys v0.1.3/go.mod h1:xpnFELMwJABBLVhffcfd1MZx6VsNRFpEugbxzi
 github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDYd6id1qeD2uv7JDlajuRZ0fvOnCeDZmDxk=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
-github.com/numary/machine v0.0.0-20210726090747-5853ebec28f0 h1:TM2r/u2KwZBipmd6s5q/mzlzWfNCFwEadH9xyYbvZAw=
-github.com/numary/machine v0.0.0-20210726090747-5853ebec28f0/go.mod h1:azMZte4ywWM0ISNMgMII4IS9XJ0N3ZAB7TfQ2Ay3dL0=
+github.com/numary/machine v0.0.0-20210729165957-aa92270b0f57 h1:hMGEr+3Ld+hhJCdIG9OUCh+igSIMvKLqx0r2UEf964Q=
+github.com/numary/machine v0.0.0-20210729165957-aa92270b0f57/go.mod h1:KulcZIlMidEjXmuFSGNckmk0pKr4HFKFYy3bB+ksWSQ=
+github.com/numary/machine v0.0.0-20210730150440-46c0133da7be h1:Zn0JK8STaFzc2O1Vw7IcitVQLE+buvybu99J8zaIe9k=
+github.com/numary/machine v0.0.0-20210730150440-46c0133da7be/go.mod h1:KulcZIlMidEjXmuFSGNckmk0pKr4HFKFYy3bB+ksWSQ=
+github.com/numary/machine v0.0.0-20210803145033-12db2afffb8d h1:Z6nbKlnn/kCZjMXEh6Upscg+7V0+ZhxJFJZLCR1ctAY=
+github.com/numary/machine v0.0.0-20210803145033-12db2afffb8d/go.mod h1:KulcZIlMidEjXmuFSGNckmk0pKr4HFKFYy3bB+ksWSQ=
 github.com/oklog/oklog v0.3.2/go.mod h1:FCV+B7mhrz4o+ueLpx+KqkyXRGMWOYEvfiXtdGtbWGs=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=

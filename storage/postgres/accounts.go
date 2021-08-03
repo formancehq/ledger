@@ -81,10 +81,18 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			return c, err
 		}
 
-		results = append(results, core.Account{
+		account := core.Account{
 			Address:  address,
 			Contract: "default",
-		})
+		}
+
+		meta, err := s.GetMeta("account", account.Address)
+		if err != nil {
+			return c, err
+		}
+		account.Metadata = meta
+
+		results = append(results, account)
 	}
 
 	total, _ := s.CountAccounts()

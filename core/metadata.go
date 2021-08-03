@@ -1,3 +1,5 @@
 package core
 
-type Metadata map[string]interface{}
+import "encoding/json"
+
+type Metadata map[string]json.RawMessage

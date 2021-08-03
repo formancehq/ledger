@@ -214,5 +214,15 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 
 	account.Volumes = volumes
 
+	meta, err := l.store.GetMeta("account", address)
+	if err != nil {
+		return account, err
+	}
+	account.Metadata = meta
+
 	return account, nil
+}
+
+func (l *Ledger) SaveMeta(ty string, id string, m core.Metadata) error {
+	return l.store.SaveMeta(ty, id, m)
 }

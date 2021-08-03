@@ -8,6 +8,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/spf13/viper"
 )
 
 func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
@@ -49,7 +50,9 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	fmt.Println(sqlq, args)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
+	}
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -85,6 +88,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
+				Metadata:  core.Metadata{},
 			}
 		}
 
@@ -94,6 +98,12 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
+		meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", t.ID))
+		if err != nil {
+			return c, err
+		}
+		t.Metadata = meta
+
 		results = append(results, t)
 	}
 
@@ -113,4 +123,77 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	c.Total = int(total)
 
 	return c, nil
+}
+
+func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
+	tx, _ := s.db.Begin()
+
+	for _, t := range ts {
+		var ref *string
+
+		if t.Reference != "" {
+			ref = &t.Reference
+		}
+
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto("transactions")
+		ib.Cols("id", "reference", "timestamp", "hash")
+		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+		_, err := tx.Exec(sqlq, args...)
+
+		if err != nil {
+			tx.Rollback()
+
+			return err
+		}
+
+		for i, p := range t.Postings {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("postings")
+			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
+			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err := tx.Exec(sqlq, args...)
+
+			if err != nil {
+				tx.Rollback()
+
+				return err
+			}
+		}
+
+		for key, value := range t.Metadata {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto("metadata")
+			ib.Cols(
+				"meta_target_type",
+				"meta_target_id",
+				"meta_key",
+				"meta_value",
+			)
+			ib.Values(
+				"transaction",
+				fmt.Sprintf("%d", t.ID),
+				key,
+				string(value),
+			)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+
+			_, err = tx.Exec(sqlq, args...)
+
+			if err != nil {
+				tx.Rollback()
+
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
 }

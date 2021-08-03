@@ -8,9 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/huandu/go-sqlbuilder"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/numary/ledger/core"
 	"github.com/spf13/viper"
 )
 
@@ -95,50 +93,4 @@ func (s *SQLiteStore) Initialize() error {
 func (s *SQLiteStore) Close() {
 	s.db.Close()
 	log.Println("sqlite db closed")
-}
-
-func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
-	tx, _ := s.db.Begin()
-
-	for _, t := range ts {
-		var ref *string
-
-		if t.Reference != "" {
-			ref = &t.Reference
-		}
-
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto("transactions")
-		ib.Cols("id", "reference", "timestamp", "hash")
-		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
-
-		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
-
-		_, err := tx.Exec(sqlq, args...)
-
-		if err != nil {
-			tx.Rollback()
-
-			return err
-		}
-
-		for i, p := range t.Postings {
-			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto("postings")
-			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
-			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
-
-			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
-
-			_, err := tx.Exec(sqlq, args...)
-
-			if err != nil {
-				tx.Rollback()
-
-				return err
-			}
-		}
-	}
-
-	return tx.Commit()
 }

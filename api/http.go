@@ -104,9 +104,15 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 
 		err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 
-		c.JSON(200, gin.H{
+		res := gin.H{
 			"ok": err == nil,
-		})
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
 	})
 
 	r.POST("/:ledger/script", func(c *gin.Context) {
@@ -166,6 +172,52 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 		res := gin.H{
 			"ok":      err == nil,
 			"account": acc,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
+	})
+
+	r.POST("/:ledger/transactions/:id/metadata", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		var m core.Metadata
+		c.ShouldBind(&m)
+
+		err := l.(*ledger.Ledger).SaveMeta(
+			"transaction",
+			c.Param("id"),
+			m,
+		)
+
+		res := gin.H{
+			"ok": err == nil,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
+	})
+
+	r.POST("/:ledger/accounts/:id/metadata", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		var m core.Metadata
+		c.ShouldBind(&m)
+
+		err := l.(*ledger.Ledger).SaveMeta(
+			"account",
+			c.Param("id"),
+			m,
+		)
+
+		res := gin.H{
+			"ok": err == nil,
 		}
 
 		if err != nil {

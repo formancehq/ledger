@@ -17,6 +17,8 @@ type Store interface {
 	AggregateVolumes(string) (map[string]map[string]int64, error)
 	CountAccounts() (int64, error)
 	FindAccounts(query.Query) (query.Cursor, error)
+	SaveMeta(string, string, core.Metadata) error
+	GetMeta(string, string) (core.Metadata, error)
 	Initialize() error
 	Close()
 }

@@ -107,3 +107,10 @@ func (s *PGStore) table(name string) string {
 func (s *PGStore) Close() {
 	s.pool.Close()
 }
+
+func (s *PGStore) DropTest() {
+	s.Conn().Exec(
+		context.Background(),
+		"DROP SCHEMA test CASCADE",
+	)
+}
