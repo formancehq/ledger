@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/storage/postgres"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -27,7 +28,7 @@ func with(f func(l *Ledger)) {
 				l, err := NewLedger("test", lc)
 
 				if err != nil {
-					return nil, err
+					panic(err)
 				}
 
 				return l, nil
@@ -43,12 +44,19 @@ func with(f func(l *Ledger)) {
 func TestMain(m *testing.M) {
 	config.Init()
 
-	// viper.Set("storage.driver", "postgres")
 	viper.Set("storage.dir", os.TempDir())
-	viper.Set("storage.sqlite.db_name", "ledger")
+	switch viper.GetString("storage.driver") {
+	case "sqlite":
+		viper.Set("storage.sqlite.db_name", "ledger")
+		os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
+	case "postgres":
+		store, err := postgres.NewStore("test")
+		if err != nil {
+			panic(err)
+		}
+		store.DropTest()
+	}
 	fmt.Println(viper.AllSettings())
-
-	os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
 
 	m.Run()
 }

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".metadata (
   "meta_target_type" varchar,
   "meta_target_id"   varchar,
   "meta_key"         varchar,
+  "meta_value"       varchar,
   "timestamp"        varchar,
 
   UNIQUE("meta_id")

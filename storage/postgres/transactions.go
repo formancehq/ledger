@@ -73,7 +73,7 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto("metadata")
+			ib.InsertInto(s.table("metadata"))
 			ib.Cols(
 				"meta_target_type",
 				"meta_target_id",

@@ -16,7 +16,7 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 		"meta_key",
 		"meta_value",
 	)
-	sb.From("metadata")
+	sb.From(s.table("metadata"))
 	sb.Where(
 		sb.And(
 			sb.Equal("meta_target_type", ty),
@@ -73,7 +73,7 @@ func (s *PGStore) SaveMeta(ty string, id string, m core.Metadata) error {
 
 	for key, value := range m {
 		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto("metadata")
+		ib.InsertInto(s.table("metadata"))
 		ib.Cols(
 			"meta_target_type",
 			"meta_target_id",
