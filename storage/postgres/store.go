@@ -29,8 +29,6 @@ func (s *PGStore) connect() error {
 		s.connString,
 	)
 
-	fmt.Println(s.connString)
-
 	if err != nil {
 		return err
 	}
