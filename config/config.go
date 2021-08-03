@@ -18,7 +18,7 @@ func Init() {
 	os.MkdirAll(path.Join(home, ".numary", "data"), 0700)
 
 	viper.SetDefault("debug", false)
-	viper.SetDefault("storage.driver", "postgres")
+	viper.SetDefault("storage.driver", "sqlite")
 	viper.SetDefault("storage.dir", path.Join(home, ".numary/data"))
 	viper.SetDefault("storage.sqlite.db_name", "numary")
 	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
