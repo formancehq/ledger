@@ -4,7 +4,7 @@ type Cursor struct {
 	PageSize  int         `json:"page_size"`
 	HasMore   bool        `json:"has_more"`
 	Total     int         `json:"total,omitempty"`
-	Remaining int         `json:"remaning_results"`
+	Remaining int         `json:"remaining_results"`
 	Previous  string      `json:"previous,omitempty"`
 	Next      string      `json:"next,omitempty"`
 	Data      interface{} `json:"data"`

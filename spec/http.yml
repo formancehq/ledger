@@ -116,6 +116,11 @@ paths:
           in: path
           schema:
             type: string
+        - required: true
+          name: reference
+          in: path
+          schema:
+            $ref: "#/components/schemas/reference"
       requestBody:
         required: true
         content:
@@ -172,6 +177,11 @@ paths:
           in: path
           schema:
             type: string
+        - required: true
+          name: reference
+          in: path
+          schema:
+            $ref: "#/components/schemas/reference"
       requestBody:
         required: true
         content:
