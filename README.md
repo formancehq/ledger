@@ -64,17 +64,6 @@ A simple [dashboard](https://github.com/numary/control) is built in the ledger b
 numary ui
 ```
 
-# Alpha & Roadmap
+# Roadmap
 
-Please note that is currently in Alpha for a few weeks. The goal of the Alpha is to start taking early feedback from the community.
-
-During the Alpha,
-* Breaking changes can happen between releases
-* Critical bugs can be discovered
-* Documentation will be incomplete
-
-Beyond Alpha, the roadmap is:
-* Alpha: Feedback & Refining
-* Beta: Stabilizing
-* RC: API Freeze
-* 1.0.0: 🎉
+We keep a open roadmap of the upcoming releases and features [here](https://numary.notion.site/OSS-Roadmap-4535fa5716fb4f618027201afcc6f204).
