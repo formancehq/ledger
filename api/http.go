@@ -27,7 +27,13 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
-	r.Use(cors.Default())
+
+	cc := cors.DefaultConfig()
+	cc.AllowAllOrigins = true
+	cc.AllowCredentials = true
+	cc.AddAllowHeaders("authorization")
+	r.Use(cors.New(cc))
+
 	r.Use(gin.Recovery())
 
 	if auth := viper.Get("server.http.basic_auth"); auth != nil {
