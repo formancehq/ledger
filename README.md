@@ -1,5 +1,7 @@
 # Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml)
 
+![numary-github-header-15sept](https://user-images.githubusercontent.com/1770991/133505047-d02d5de6-732c-47f5-941e-92997ac5b161.png)
+
 Numary is a programmable financial ledger that wants to make building financial apps safe, fun and cheap.
 
 Building financial software is both critical and notably hard. The [same bugs](https://medium.com/selency-tech-product/your-balance-is-0-30000000004-b6f7870bd32e) are repeated again and again, paving the highway to catastrophes.
