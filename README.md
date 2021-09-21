@@ -71,3 +71,5 @@ Or by heading to [control.numary.com](https://control.numary.com)
 # Roadmap
 
 We keep an open roadmap of the upcoming releases and features [here](https://numary.notion.site/OSS-Roadmap-4535fa5716fb4f618027201afcc6f204).
+
+![Frame 1 (2)](https://user-images.githubusercontent.com/1770991/134163361-d86c5728-6075-4510-8de7-06df1f6ed740.png)
