@@ -1,4 +1,4 @@
-# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) ![goreportcard](https://goreportcard.com/badge/github.com/gin-gonic/gin)
+# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) ![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)
 
 ![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png)
 
