@@ -66,6 +66,8 @@ A simple [dashboard](https://github.com/numary/control) is built in the ledger b
 numary ui
 ```
 
+Or by heading to [control.numary.com](https://control.numary.com)
+
 # Roadmap
 
 We keep an open roadmap of the upcoming releases and features [here](https://numary.notion.site/OSS-Roadmap-4535fa5716fb4f618027201afcc6f204).
