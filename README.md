@@ -2,11 +2,11 @@
 
 ![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png)
 
-Numary is a programmable financial ledger that wants to make building financial apps safe, fun and cheap.
+Numary is a programmable ledger that is making it safe, fun and cheap to build money-moving applications.
 
 Building financial software is both critical and notably hard. The [same bugs](https://medium.com/selency-tech-product/your-balance-is-0-30000000004-b6f7870bd32e) are repeated again and again, paving the highway to catastrophes.
 
-Numary wants to tackle this issue with a ledger that provides atomic multi-postings transactions and is programmable in [Numscript](https://github.com/numary/machine), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-touching code such as:
+Numary wants to tackle this issue with a ledger that provides atomic multi-postings transactions and is programmable in [Numscript](https://github.com/numary/machine), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-moving code such as:
 
 * E-commerce with complex payments flows, payments splitting, such as marketplaces
 * Company-issued currencies systems, e.g. Twitch Bits
