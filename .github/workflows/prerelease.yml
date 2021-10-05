@@ -22,10 +22,6 @@ jobs:
         with:
           python-version: '3.9'
       - uses: actions/checkout@v2
-      - name: Configure git for private modules
-        env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        run: git config --global url."https://altitude:${TOKEN}@github.com".insteadOf "https://github.com"
       - uses: actions/cache@v2
         with:
           path: |
