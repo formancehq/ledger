@@ -1,0 +1,26 @@
+builds:
+  - goos:
+      - windows
+    goarch:
+      - amd64
+    binary: numary
+    env:
+      - CGO_ENABLED=1
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+
+checksum:
+  name_template: 'checksums_windows.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^spec:'

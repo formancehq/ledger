@@ -22,16 +22,34 @@ import (
 )
 
 var (
-	FlagBindAddr string
+	Version   = "develop"
+	BuildDate = "-"
+	Commit    = "-"
+
+	root = &cobra.Command{
+		Use:               "numary",
+		Short:             "Numary",
+		DisableAutoGenTag: true,
+	}
 )
 
-var root = &cobra.Command{
-	Use: "numary",
+func PrintVersion(cmd *cobra.Command, args []string) {
+	fmt.Printf("Version: %s \n", Version)
+	fmt.Printf("Date: %s \n", BuildDate)
+	fmt.Printf("Commit: %s \n", Commit)
 }
 
 func Execute() {
+	viper.SetDefault("version", Version)
+
 	server := &cobra.Command{
 		Use: "server",
+	}
+
+	version := &cobra.Command{
+		Use:   "version",
+		Short: "Get version",
+		Run:   PrintVersion,
 	}
 
 	start := &cobra.Command{
@@ -179,6 +197,7 @@ func Execute() {
 	root.AddCommand(store)
 	root.AddCommand(script_exec)
 	root.AddCommand(script_check)
+	root.AddCommand(version)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
