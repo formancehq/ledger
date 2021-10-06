@@ -1,14 +1,11 @@
 name: Pull Request - Open
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [assigned, opened, synchronize, reopened]
 jobs:
   Test:
     name: 'Test'
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/setup-go@v2
         with:
@@ -23,7 +20,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - name: get deps
-        run: go get
+        run: go mod download
       - name: fetch numary control
         run: make fetch-control
       - name: run tests
@@ -31,9 +28,6 @@ jobs:
   Lint:
       name: 'Lint'
       runs-on: ubuntu-latest
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       steps:
         - uses: actions/setup-go@v2
           with:
@@ -48,6 +42,6 @@ jobs:
             restore-keys: |
               ${{ runner.os }}-go-
         - name: get deps
-          run: go get
+          run: go mod download
         - name: run vet
           run: go vet .
