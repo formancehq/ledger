@@ -98,7 +98,7 @@ brews:
     name: numary
     folder: Formula
     homepage: https://numary.com
-    skip_upload: auto
+    skip_upload: false
     test: |
       system "#{bin}/numary version"
     install: |
