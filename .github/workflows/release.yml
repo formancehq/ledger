@@ -14,7 +14,7 @@ jobs:
         with:
           readme-oas-key: ${{ secrets.README_OAS_KEY }}
           oas-file-path: './spec/http.yml'
-          api-version: 'v1.0.0' # TODO : Use Release Version
+          api-version: 'v1.0-beta' # TODO : Use Release Version
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
