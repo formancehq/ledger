@@ -2,7 +2,7 @@ openapi: 3.0.0
 
 info:
   title: Numary Ledger API
-  version: 1.0.0-alpha
+  version: 1.0-beta
 
 servers:
   - url: http://localhost:3068
@@ -72,7 +72,7 @@ paths:
               schema:
                 type: object
 
-  /accounts:
+  /{ledger}/accounts:
     get:
       summary: List accounts
       responses:
@@ -85,6 +85,18 @@ paths:
                 items:
                   $ref: "#/components/schemas/account"
 
+  /{ledger}/stats:
+    get:
+      summary: Stats accounts
+      responses:
+        200:
+          description: The stats for account
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/stats"
   /{ledger}/accounts/{reference}:
     get:
       summary: Get an account by its fully-qualified reference
