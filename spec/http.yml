@@ -16,6 +16,8 @@ components:
       type: string
     account:
       type: object
+    stats:
+      type: object
       properties:
         reference:
           $ref: "#/components/schemas/reference"
