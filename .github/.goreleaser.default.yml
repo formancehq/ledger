@@ -1,0 +1,105 @@
+project_name: numary
+env:
+  - GO111MODULE=on
+  - GOPROXY=https://proxy.golang.org
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - binary: numary
+    id: numary_linux
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+  - binary: numary
+    id: numary_darwin
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -s
+    env:
+      - CGO_ENABLED=1
+      - CC=/home/runner/work/osxcross/target/bin/o64-clang
+      - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: "numary"
+    builds:
+      - numary_linux
+      - numary_darwin
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{.ProjectName}}_{{.Version}}_{{.Os}}-{{.Arch}}"
+    replacements:
+      amd64: 64bit
+      386: 32bit
+      arm: ARM
+      arm64: ARM64
+      darwin: macOS
+      linux: Linux
+      windows: Windows
+
+
+checksum:
+  name_template: 'checksums_linux.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^spec:'
+
+dockers:
+  - image_templates: ["ghcr.io/numary/ledger:{{ .Version }}-amd64"]
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/numary/ledger
+      - --label=org.opencontainers.image.source=https://github.com/numary/ledger
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+docker_manifests:
+  - name_template: ghcr.io/numary/ledger:{{ .Version }}
+    image_templates:
+      - ghcr.io/numary/ledger:{{ .Version }}-amd64
+  - name_template: ghcr.io/numary/ledger:latest
+    image_templates:
+      - ghcr.io/numary/ledger:{{ .Version }}-amd64
+
+brews:
+  - tap:
+      owner: numary
+      name: homebrew-tap
+    name: numary
+    folder: Formula
+    homepage: https://numary.com
+    skip_upload: false
+    test: |
+      system "#{bin}/numary version"
+    install: |
+      bin.install "numary"

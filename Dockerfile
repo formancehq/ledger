@@ -1,6 +1,8 @@
-FROM archlinux:latest
+FROM alpine
 
-ADD dist/ledger_linux_amd64/numary /usr/local/bin/numary
+RUN apk add --update-cache curl \
+   && rm -rf /var/cache/apk/*
+COPY numary /usr/local/bin/numary
 
 EXPOSE 3068
 

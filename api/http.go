@@ -66,7 +66,7 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 	r.GET("/_info", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"server":  "numary-ledger",
-			"version": "1.0.0-alpha.1",
+			"version": viper.Get("version"),
 			"config": gin.H{
 				"storage": gin.H{
 					"driver": viper.Get("storage.driver"),

@@ -1,38 +1,55 @@
 name: release
 on:
   release:
-    types: [created]
+    types: [prereleased, released]
 permissions:
   contents: write
 jobs:
+  oas:
+    name: 'OAS Readme'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: readmeio/github-readme-sync@v2
+        with:
+          readme-oas-key: ${{ secrets.README_OAS_KEY }}
+          oas-file-path: './spec/http.yml'
+          api-version: 'v1.0-beta' # TODO : Use Release Version
+  build_control:
+    name: 'Build Control'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest release of Numary/Control
+        uses: rez0n/actions-github-release@main
+        id: control_release
+        env:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: "numary/control"
+          type: "stable"
+      - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
+      - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - run: rm -rf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - uses: actions/upload-artifact@v2
+        with:
+          name: control-dist
+          path: ./**
   build:
+    name: 'Build'
+    needs: build_control
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [ windows-latest, ubuntu-latest ]
         include:
-          - os: macos-latest
-            GOOS: darwin
+          - os: windows-latest
+            file: windows
           - os: ubuntu-latest
-            GOOS: linux
-            GOARCH: amd64
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: "eu-west-1"
-      AWS_ECS_CLUSTER: "numary-prod-ecs"
+            file: default
     steps:
       - uses: actions/setup-go@v2
         with:
           go-version: '1.16'
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
       - uses: actions/checkout@v2
-      - name: Configure git for private modules
-        env:
-          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        run: git config --global url."https://altitude:${TOKEN}@github.com".insteadOf "https://github.com"
       - uses: actions/cache@v2
         with:
           path: |
@@ -41,51 +58,39 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-      - name: get deps
-        run: CGO_ENABLED=1 go get
       - name: fetch numary control
-        run: make fetch-control
-      - name: prepare goreleaser
-        run: cp .github/.goreleaser.${{matrix.GOOS}}.yml .goreleaser.yml
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: Set up QEMU
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/setup-buildx-action@v1
+      - name: Login to GitHub Container Registry
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: "NumaryBot"
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: OSXCross for CGO Support
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir ../../osxcross
+          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
+      - name: Downgrade libssl
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
+          sudo apt update && apt-cache policy libssl1.0-dev
+          sudo apt-get install libssl1.0-dev
       - name: Run GoReleaser
         env:
-          GOOS: ${{matrix.GOOS}}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: release --parallelism 2 --rm-dist --skip-validate
-      - if: matrix.os == 'ubuntu-latest'
-        name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-1
-      - if: matrix.os == 'ubuntu-latest'
-        name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-      - id: get_release
-        uses: bruceadams/get-release@v1.2.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - if: matrix.os == 'ubuntu-latest'
-        name: Build, tag, and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: numary-prod-ecr
-          IMAGE_TAG: ${{ steps.get_release.outputs.tag_name }}
-        run: |
-          docker build -t ledger .
-          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker tag ledger $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-      - if: matrix.os == 'ubuntu-latest'
-        name: Deploy new version in ECS
-        env:
-          IMAGE_TAG: ${{ steps.get_release.outputs.tag_name }}
-        run: |
-          pip install ecs-deploy boto3
-          python .github/deploy_ecs_service.py $AWS_ECS_CLUSTER $IMAGE_TAG
+          args: release --parallelism 4 --rm-dist --skip-validate --config .github/.goreleaser.${{matrix.file}}.yml
