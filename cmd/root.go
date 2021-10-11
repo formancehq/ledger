@@ -198,6 +198,7 @@ func Execute() {
 	root.AddCommand(script_exec)
 	root.AddCommand(script_check)
 	root.AddCommand(version)
+	root.AddCommand(stickersCmd)
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
