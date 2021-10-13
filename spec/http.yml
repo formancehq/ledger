@@ -9,6 +9,14 @@ servers:
     description: local
 
 components:
+  parameters:
+    cursorAfter:
+      in: query
+      name: after
+      required: false
+      schema:
+        type: string
+      description: Used for cursor-based pagination, indicates that you want items with ID < after
   schemas:
     reference:
       type: string
@@ -77,6 +85,8 @@ paths:
   /{ledger}/accounts:
     get:
       summary: List accounts
+      parameters:
+        - $ref: "#/components/parameters/cursorAfter"
       responses:
         200:
           description: The accounts list
@@ -113,6 +123,7 @@ paths:
           in: path
           schema:
             $ref: "#/components/schemas/reference"
+        - $ref: "#/components/parameters/cursorAfter"
       responses:
         200:
           description: The account object
@@ -152,6 +163,12 @@ paths:
         - required: true
           name: ledger
           in: path
+          schema:
+            type: string
+        - $ref: "#/components/parameters/cursorAfter"
+        - required: false
+          name: account
+          in: query
           schema:
             type: string
       responses:
