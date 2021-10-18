@@ -118,3 +118,22 @@ brews:
       system "#{bin}/numary version"
     install: |
       bin.install "numary"
+
+nfpms:
+  - id: packages
+    package_name: numary
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - numary_linux
+    homepage: https://numary.com
+    maintainer: Maxence Maireaux <maxence@numary.com>
+    formats:
+      - deb
+      - rpm
+
+publishers:
+  - name: fury.io
+    ids:
+      - packages
+    dir: "{{ dir .ArtifactPath }}"
+    cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/numary/
