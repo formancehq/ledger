@@ -148,6 +148,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		"t.id",
 		"t.timestamp",
 		"t.hash",
+		"t.reference",
 		"p.source",
 		"p.destination",
 		"p.amount",
@@ -176,6 +177,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		var txid int64
 		var ts string
 		var thash string
+		var tref string
 
 		posting := core.Posting{}
 
@@ -183,6 +185,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 			&txid,
 			&ts,
 			&thash,
+			&tref,
 			&posting.Source,
 			&posting.Destination,
 			&posting.Amount,
@@ -195,6 +198,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
+				Reference: tref,
 				Metadata:  core.Metadata{},
 			}
 		}
