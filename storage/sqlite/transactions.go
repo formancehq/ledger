@@ -70,20 +70,30 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		var txid int64
 		var ts string
 		var thash string
-		var tref string
+		// ref field can be NULL, treat it as an interface instead of string:
+		var ref interface{}
 
 		posting := core.Posting{}
 
-		rows.Scan(
+		err := rows.Scan(
 			&txid,
 			&ts,
 			&thash,
-			&tref,
+			&ref,
 			&posting.Source,
 			&posting.Destination,
 			&posting.Amount,
 			&posting.Asset,
 		)
+		if err != nil {
+			return c, err
+		}
+
+		// Convert ref to string if it's available:
+		var refStr string
+		if ref != nil {
+			refStr = ref.(string)
+		}
 
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
@@ -91,7 +101,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: tref,
+				Reference: refStr,
 				Metadata:  core.Metadata{},
 			}
 		}
