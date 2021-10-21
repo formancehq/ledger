@@ -133,16 +133,10 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 	tx, _ := s.db.Begin()
 
 	for _, t := range ts {
-		var ref *string
-
-		if t.Reference != "" {
-			ref = &t.Reference
-		}
-
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto("transactions")
 		ib.Cols("id", "reference", "timestamp", "hash")
-		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+		ib.Values(t.ID, t.Reference, t.Timestamp, t.Hash)
 
 		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
 
