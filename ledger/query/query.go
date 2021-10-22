@@ -74,3 +74,9 @@ func Destination(v string) func(*Query) {
 		q.Params["destination"] = v
 	}
 }
+
+func Reference(v string) func(*Query) {
+	return func(q *Query) {
+		q.Params["reference"] = v
+	}
+}
