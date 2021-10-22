@@ -24,7 +24,9 @@ jobs:
       - name: fetch numary control
         run: make fetch-control
       - name: run tests
-        run: go test -v -coverpkg=./... -coverprofile=coverage.out ./...
+        run: go test -v -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash)
   Lint:
       name: 'Lint'
       runs-on: ubuntu-latest
