@@ -57,6 +57,12 @@ func After(v string) func(*Query) {
 	}
 }
 
+func TransactionHash(v string) func(*Query) {
+	return func(q *Query) {
+		q.Params["hash"] = v
+	}
+}
+
 func Account(v string) func(*Query) {
 	return func(q *Query) {
 		q.Params["account"] = v

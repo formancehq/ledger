@@ -26,6 +26,22 @@ func (t *Transaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
+func (t *Transaction) Reverse() *Transaction {
+	var reversedPostings []Posting
+	for i := len(t.Postings) - 1; i >= 0; i-- {
+		p := t.Postings[i]
+		newPosting := Posting{
+			Source:      p.Destination,
+			Destination: p.Source,
+			Amount:      p.Amount,
+			Asset:       p.Asset,
+		}
+		reversedPostings = append(reversedPostings, newPosting)
+	}
+	t.Postings = reversedPostings
+	return t
+}
+
 func Hash(t1 *Transaction, t2 *Transaction) string {
 	b1, _ := json.Marshal(t1)
 	b2, _ := json.Marshal(t2)

@@ -121,6 +121,22 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 		c.JSON(200, res)
 	})
 
+	r.POST("/:ledger/transactions/:id/revert", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+		txID, _ := c.Params.Get("id")
+		ledger := l.(*ledger.Ledger)
+		cursor, _ := ledger.FindTransactions(
+			query.After(c.Query("after")),
+			query.TransactionHash(txID),
+		)
+		txs := cursor.Data.([]core.Transaction)
+		tx := txs[0]
+		newTx := tx.Reverse()
+		err := ledger.Commit([]core.Transaction{*newTx})
+		res := gin.H{"ok": err == nil}
+		c.JSON(200, res)
+	})
+
 	r.POST("/:ledger/script", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
 

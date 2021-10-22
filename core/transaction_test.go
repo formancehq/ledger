@@ -4,6 +4,33 @@ import (
 	"testing"
 )
 
+func TestReverse(t *testing.T) {
+	a := Transaction{
+		ID: 0,
+		Postings: []Posting{
+			{
+				Source:      "world",
+				Destination: "users:001",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+			{
+				Source:      "users:001",
+				Destination: "payments:001",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+		},
+	}
+	b := a.Reverse()
+	if b.Postings[1].Destination != "world" && b.Postings[1].Source != "users:001" {
+		t.Fail()
+	}
+	if b.Postings[0].Source != "payments:001" && b.Postings[0].Destination != "users:001" {
+		t.Fail()
+	}
+}
+
 func TestHash(t *testing.T) {
 	a := Transaction{
 		ID: 0,
