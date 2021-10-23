@@ -320,6 +320,35 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	})
 }
 
+func (l *Ledger) TestGetTransaction(t *testing.T) {
+	with(func(l *Ledger) {
+		l.Commit([]core.Transaction{{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "payments:001",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}})
+
+		last, err := l.GetLastTransaction()
+		if err != nil {
+			t.Error(err)
+		}
+
+		tx, err := l.GetTransaction(fmt.Sprint(last.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(tx, last) {
+			t.Fail()
+		}
+	})
+}
+
 func BenchmarkTransaction1(b *testing.B) {
 	with(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
