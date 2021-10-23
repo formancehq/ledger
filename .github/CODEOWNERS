@@ -1,0 +1,9 @@
+/api/ @numary/core
+/cmd/ @numary/core
+/config/ @numary/core
+/core/ @numary/core
+/ledger/ @numary/core
+*.go @numary/core
+
+/.devcontainer @flemzord
+/.github @flemzord
