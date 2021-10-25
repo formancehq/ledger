@@ -89,10 +89,11 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 
 	r.GET("/:ledger/transactions", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
+		ref := c.Query("reference")
 
 		cursor, err := l.(*ledger.Ledger).FindTransactions(
 			query.After(c.Query("after")),
-			query.Account(c.Query("account")),
+			query.Reference(ref),
 		)
 
 		c.JSON(200, gin.H{
