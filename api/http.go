@@ -124,23 +124,8 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 	r.POST("/:ledger/transactions/:id/revert", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
 
-		t, err := l.(*ledger.Ledger).GetTransaction(c.Param("id"))
-		if err != nil {
-			c.JSON(404, gin.H{"ok": false, "err": err.Error()})
-			return
-		}
-
-		rt := t.Reverse()
-		err = l.(*ledger.Ledger).Commit([]core.Transaction{rt})
-		if err != nil {
-			c.JSON(500, gin.H{"ok": false, "err": err.Error()})
-			return
-		}
-
-		m := core.Metadata{}
-		last, _ := l.(*ledger.Ledger).GetLastTransaction()
-		m.MarkRevertedBy(fmt.Sprint(last.ID))
-		err = l.(*ledger.Ledger).SaveMeta("transaction", fmt.Sprint(t.ID), m)
+		id := c.Param("id")
+		err := l.(*ledger.Ledger).RevertTransaction(id)
 
 		res := gin.H{
 			"ok": err == nil,

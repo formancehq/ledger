@@ -186,16 +186,27 @@ func (l *Ledger) FindTransactions(m ...query.QueryModifier) (query.Cursor, error
 
 func (l *Ledger) GetTransaction(id string) (core.Transaction, error) {
 	tx, err := l.store.GetTransaction(id)
+
+	return tx, err
+}
+
+func (l *Ledger) RevertTransaction(id string) error {
+	tx, err := l.store.GetTransaction(id)
 	if err != nil {
-		return tx, err
+		return err
 	}
 
-	meta, err := l.store.GetMeta("transaction", id)
+	rt := tx.Reverse()
+	err = l.Commit([]core.Transaction{rt})
 	if err != nil {
-		return tx, err
+		return err
 	}
-	tx.Metadata = meta
-	return tx, nil
+
+	m := core.Metadata{}
+	m.MarkRevertedBy(fmt.Sprint(l._last.ID))
+	err = l.SaveMeta("transaction", fmt.Sprint(l._last.ID), m)
+
+	return err
 }
 
 func (l *Ledger) FindAccounts(m ...query.QueryModifier) (query.Cursor, error) {
