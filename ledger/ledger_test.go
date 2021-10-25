@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
@@ -320,9 +321,10 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	})
 }
 
-func (l *Ledger) TestGetTransaction(t *testing.T) {
+func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		l.Commit([]core.Transaction{{
+			Reference: "foo",
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -345,6 +347,67 @@ func (l *Ledger) TestGetTransaction(t *testing.T) {
 
 		if !reflect.DeepEqual(tx, last) {
 			t.Fail()
+		}
+	})
+}
+
+func TestRevertTransaction(t *testing.T) {
+	with(func(l *Ledger) {
+		revertAmt := int64(100)
+
+		l.Commit([]core.Transaction{{
+			Reference: "foo",
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "payments:001",
+					Amount:      revertAmt,
+					Asset:       "COIN",
+				},
+			},
+		}})
+
+		world, err := l.GetAccount("world")
+		if err != nil {
+			t.Fatal(err)
+		}
+		originalBal := world.Balances["COIN"]
+
+		committedTx, err := l.GetLastTransaction()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = l.RevertTransaction(fmt.Sprint(committedTx.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		revertTx, err := l.GetLastTransaction()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedPosting := core.Posting{
+			Source:      "payments:001",
+			Destination: "world",
+			Amount:      100,
+			Asset:       "COIN",
+		}
+
+		if diff := cmp.Diff(revertTx.Postings[0], expectedPosting); diff != "" {
+			t.Errorf("RevertTransaction() reverted posting mismatch (-want +got):\n%s", diff)
+		}
+
+		world, err = l.GetAccount("world")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		newBal := world.Balances["COIN"]
+		expectedBal := originalBal + revertAmt
+		if newBal != expectedBal {
+			t.Fatalf("COIN world balances expected %d, got %d", expectedBal, newBal)
 		}
 	})
 }
