@@ -101,7 +101,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 			refStr = ref.(string)
 		}
 
-		fmt.Println(txid, ts, thash, tref, posting)
+		fmt.Println(txid, ts, thash, ref, posting)
 
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
