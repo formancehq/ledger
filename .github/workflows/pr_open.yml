@@ -3,12 +3,6 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
 jobs:
-  Triage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/labeler@v3
-        with:
-          repo-token: "${{ secrets.GITHUB_TOKEN }}"
   Test:
     name: 'Test'
     runs-on: ubuntu-latest
