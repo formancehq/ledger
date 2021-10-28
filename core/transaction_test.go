@@ -2,6 +2,8 @@ package core
 
 import (
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestHash(t *testing.T) {
@@ -40,5 +42,47 @@ func TestHash(t *testing.T) {
 
 	if h2 != "b604e920f4f0d20fd2a2b09038ab9fc21d5761f05cdbd33148000a3f2ab7e65c" {
 		t.Fail()
+	}
+}
+
+func TestReverseTransaction(t *testing.T) {
+	tx := &Transaction{
+		Postings: Postings{
+			{
+				Source:      "world",
+				Destination: "users:001",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+			{
+				Source:      "users:001",
+				Destination: "payments:001",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+		},
+		Reference: "foo",
+	}
+
+	expected := Transaction{
+		Postings: Postings{
+			{
+				Source:      "payments:001",
+				Destination: "users:001",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+			{
+				Source:      "users:001",
+				Destination: "world",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+		},
+		Reference: "revert_foo",
+	}
+
+	if diff := cmp.Diff(expected, tx.Reverse()); diff != "" {
+		t.Errorf("Reverse() mismatch (-want +got):\n%s", diff)
 	}
 }

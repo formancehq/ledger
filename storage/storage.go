@@ -13,6 +13,7 @@ type Store interface {
 	SaveTransactions([]core.Transaction) error
 	CountTransactions() (int64, error)
 	FindTransactions(query.Query) (query.Cursor, error)
+	GetTransaction(string) (core.Transaction, error)
 	AggregateBalances(string) (map[string]int64, error)
 	AggregateVolumes(string) (map[string]map[string]int64, error)
 	CountAccounts() (int64, error)

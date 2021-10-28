@@ -122,6 +122,23 @@ func NewHttpAPI(lc fx.Lifecycle, resolver *ledger.Resolver) *HttpAPI {
 		c.JSON(200, res)
 	})
 
+	r.POST("/:ledger/transactions/:id/revert", func(c *gin.Context) {
+		l, _ := c.Get("ledger")
+
+		id := c.Param("id")
+		err := l.(*ledger.Ledger).RevertTransaction(id)
+
+		res := gin.H{
+			"ok": err == nil,
+		}
+
+		if err != nil {
+			res["err"] = err.Error()
+		}
+
+		c.JSON(200, res)
+	})
+
 	r.POST("/:ledger/script", func(c *gin.Context) {
 		l, _ := c.Get("ledger")
 
