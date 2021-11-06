@@ -70,38 +70,36 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	return meta, nil
 }
 
-func (s *PGStore) SaveMeta(id, timestamp, targetType, targetID string, m core.Metadata) error {
+func (s *PGStore) SaveMeta(id, timestamp, targetType, targetID, key, value string) error {
 	tx, _ := s.Conn().Begin(context.TODO())
 
-	for key, value := range m {
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("metadata"))
-		ib.Cols(
-			"meta_id",
-			"meta_target_type",
-			"meta_target_id",
-			"meta_key",
-			"meta_value",
-			"timestamp",
-		)
-		ib.Values(id, targetType, targetID, key, string(value), timestamp)
+	ib := sqlbuilder.NewInsertBuilder()
+	ib.InsertInto(s.table("metadata"))
+	ib.Cols(
+		"meta_id",
+		"meta_target_type",
+		"meta_target_id",
+		"meta_key",
+		"meta_value",
+		"timestamp",
+	)
+	ib.Values(id, targetType, targetID, key, string(value), timestamp)
 
-		sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
+	sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-		_, err := tx.Exec(
-			context.TODO(),
-			sqlq,
-			args...,
-		)
+	_, err := tx.Exec(
+		context.TODO(),
+		sqlq,
+		args...,
+	)
 
-		if err != nil {
-			tx.Rollback(context.TODO())
+	if err != nil {
+		tx.Rollback(context.TODO())
 
-			return err
-		}
+		return err
 	}
 
-	err := tx.Commit(context.TODO())
+	err = tx.Commit(context.TODO())
 
 	if err != nil {
 		return err

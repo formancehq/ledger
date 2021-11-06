@@ -262,36 +262,31 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 	defer l.Unlock()
 
 	if l._lastMetaID == 0 {
-		lastID, err := l.getLastMetaID()
+		count, err := l.store.CountMeta()
 		if err != nil {
 			return err
 		}
-		l._lastMetaID = lastID
+		l._lastMetaID = int(count) - 1
 	}
 
-	metaRowID := fmt.Sprint(l._lastMetaID)
 	timestamp := time.Now().Format(time.RFC3339)
 
-	err := l.store.SaveMeta(metaRowID, timestamp, targetType, targetID, m)
-	if err != nil {
-		l._lastMetaID++
+	for key, value := range m {
+		metaRowID := fmt.Sprint(l._lastMetaID + 1)
+
+		err := l.store.SaveMeta(
+			metaRowID,
+			timestamp,
+			targetType,
+			targetID,
+			key,
+			string(value),
+		)
+		if err == nil {
+			l._lastMetaID++
+		} else {
+			return err
+		}
 	}
-	return err
-}
-
-func (l *Ledger) getLastMetaID() (int, error) {
-	q := query.New()
-	q.Modify(query.Limit(1))
-
-	c, err := l.store.FindMeta(q)
-
-	if err != nil {
-		return 0, err
-	}
-
-	mds := (c.Data).([]core.Metadata)
-
-	id := len(mds) - 1
-
-	return id, nil
+	return nil
 }
