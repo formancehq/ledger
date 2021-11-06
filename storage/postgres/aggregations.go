@@ -6,6 +6,27 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 )
 
+func (s *PGStore) CountMeta() (int64, error) {
+	var count int64
+
+	sb := sqlbuilder.NewSelectBuilder()
+
+	sb.
+		Select("count(*)").
+		From("metadata").
+		BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+	sqlq, args := sb.Build()
+
+	err := s.Conn().QueryRow(
+		context.Background(),
+		sqlq,
+		args...,
+	).Scan(&count)
+
+	return count, err
+}
+
 func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
