@@ -282,11 +282,10 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 			key,
 			string(value),
 		)
-		if err == nil {
-			l._lastMetaID++
-		} else {
+		if err != nil {
 			return err
 		}
+		l._lastMetaID++
 	}
 	return nil
 }
