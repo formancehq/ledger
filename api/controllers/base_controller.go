@@ -1,8 +1,11 @@
 package controllers
 
 import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 // BaseController -
@@ -19,16 +22,25 @@ func CreateBaseController() *BaseController {
 	return NewBaseController()
 }
 
-// GetStats -
-func (ctl *BaseController) GetInfos(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"server":  "numary-ledger",
-		"version": viper.Get("version"),
-		"config": gin.H{
-			"storage": gin.H{
-				"driver": viper.Get("storage.driver"),
-			},
-			"ledgers": viper.Get("ledgers"),
-		},
-	})
+func (ctl *BaseController) success(c *gin.Context, status int, data interface{}, responseFormat interface{}) {
+	response, err := ctl.toResponse(data, responseFormat)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(status, response)
+}
+
+func (ctl *BaseController) toResponse(data interface{}, toFormat interface{}) (interface{}, error) {
+	if toFormat == nil {
+		return nil, errors.New("toFormat is nil")
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(b, toFormat); err != nil {
+		return nil, err
+	}
+	return toFormat, nil
 }
