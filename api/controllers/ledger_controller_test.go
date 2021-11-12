@@ -8,7 +8,8 @@ import (
 func TestNewLedgerController(t *testing.T) {
 	if reflect.TypeOf(NewLedgerController()) != reflect.TypeOf(&LedgerController{}) {
 		t.Errorf(
-			"LedgerController return type is '%s' should be '%s'",
+			"%s return type is '%s' should be '%s'",
+			t.Name(),
 			reflect.TypeOf(NewLedgerController()),
 			reflect.TypeOf(&LedgerController{}),
 		)

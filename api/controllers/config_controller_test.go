@@ -11,7 +11,8 @@ func TestNewConfigController(t *testing.T) {
 	newConfigController := NewConfigController(services.CreateConfigService())
 	if reflect.TypeOf(newConfigController) != reflect.TypeOf(&ConfigController{}) {
 		t.Errorf(
-			"NewConfigController return type is '%s' should be '%s'",
+			"%s return type is '%s' should be '%s'",
+			t.Name(),
 			reflect.TypeOf(newConfigController),
 			reflect.TypeOf(&ConfigController{}),
 		)

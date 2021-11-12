@@ -8,7 +8,8 @@ import (
 func TestNewScriptController(t *testing.T) {
 	if reflect.TypeOf(NewScriptController()) != reflect.TypeOf(&ScriptController{}) {
 		t.Errorf(
-			"ScriptController return type is '%s' should be '%s'",
+			"%s return type is '%s' should be '%s'",
+			t.Name(),
 			reflect.TypeOf(NewScriptController()),
 			reflect.TypeOf(&ScriptController{}),
 		)

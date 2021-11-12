@@ -8,7 +8,8 @@ import (
 func TestNewTransactionController(t *testing.T) {
 	if reflect.TypeOf(NewTransactionController()) != reflect.TypeOf(&TransactionController{}) {
 		t.Errorf(
-			"TransactionController return type is '%s' should be '%s'",
+			"%s return type is '%s' should be '%s'",
+			t.Name(),
 			reflect.TypeOf(NewTransactionController()),
 			reflect.TypeOf(&TransactionController{}),
 		)
