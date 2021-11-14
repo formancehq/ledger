@@ -25,7 +25,7 @@ func (s *PGStore) connect() error {
 	log.Println("initiating postgres pool")
 
 	pool, err := pgxpool.Connect(
-		context.TODO(),
+		context.Background(),
 		s.connString,
 	)
 

@@ -3,11 +3,9 @@ package sqlite
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
 	"github.com/spf13/viper"
 )
 
@@ -108,88 +106,4 @@ func (s *SQLiteStore) SaveMeta(id, timestamp, targetType, targetID, key, value s
 	}
 
 	return nil
-}
-
-func (s *SQLiteStore) FindMeta(q query.Query) (query.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
-
-	c := query.Cursor{}
-
-	in := sqlbuilder.NewSelectBuilder()
-	in.Select(
-		"meta_id",
-		"meta_target_type",
-		"meta_target_id",
-		"meta_key",
-		"meta_value",
-	)
-	in.From("metadata")
-	in.OrderBy("meta_id desc")
-	in.Limit(q.Limit)
-
-	sqlq, args := in.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
-
-	rows, err := s.db.Query(
-		sqlq,
-		args...,
-	)
-
-	if err != nil {
-		return c, err
-	}
-
-	foundMetadata := map[int64]core.Metadata{}
-
-	for rows.Next() {
-
-		fmt.Println("rows.Next()")
-		md := core.Metadata{}
-
-		var (
-			metaID     int64
-			targetType string
-			targetID   string
-			metaKey    string
-			metaValue  string
-		)
-
-		rows.Scan(
-			&metaID,
-			&targetType,
-			&targetID,
-			&metaKey,
-			&metaValue,
-		)
-
-		var value json.RawMessage
-
-		err = json.Unmarshal([]byte(metaValue), &value)
-		if err != nil {
-			return c, err
-		}
-
-		md[metaKey] = value
-		foundMetadata[metaID] = md
-	}
-
-	results := make([]core.Metadata, len(foundMetadata))
-	for id, md := range foundMetadata {
-		results[id] = md
-	}
-
-	c.PageSize = q.Limit - 1
-
-	c.HasMore = len(results) == q.Limit
-	if c.HasMore {
-		results = results[:len(results)-1]
-	}
-	c.Data = results
-
-	total, _ := s.CountMeta()
-	c.Total = int(total)
-
-	return c, nil
 }

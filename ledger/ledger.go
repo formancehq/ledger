@@ -211,9 +211,6 @@ func (l *Ledger) RevertTransaction(id string) error {
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(l._last.ID))
 	err = l.Commit([]core.Transaction{rt})
-	if err != nil {
-		return err
-	}
 
 	return err
 }
