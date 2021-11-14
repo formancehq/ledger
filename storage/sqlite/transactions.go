@@ -142,7 +142,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	c.Data = results
 
 	total, _ := s.CountTransactions()
-	c.Total = int(total)
+	c.Total = total
 
 	return c, nil
 }
