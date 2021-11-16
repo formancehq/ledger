@@ -44,16 +44,16 @@ func (ctl *BaseController) responseError(c *gin.Context, status int, err error) 
 	})
 }
 
-func (ctl *BaseController) toResource(data interface{}, toFormat interface{}) (interface{}, error) {
-	if toFormat == nil {
-		return nil, errors.New("toFormat is nil")
+func (ctl *BaseController) toResource(data interface{}, toResource interface{}) (interface{}, error) {
+	if toResource == nil {
+		return nil, errors.New("toResource is nil")
 	}
 	b, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
 	}
-	if err = json.Unmarshal(b, toFormat); err != nil {
+	if err = json.Unmarshal(b, toResource); err != nil {
 		return nil, err
 	}
-	return toFormat, nil
+	return toResource, nil
 }
