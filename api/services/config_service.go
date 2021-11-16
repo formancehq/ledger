@@ -19,7 +19,8 @@ func CreateConfigService() *ConfigService {
 	return NewConfigService()
 }
 
-func (s *ConfigService) GetConfigs() *models.Infos {
+// GetConfig -
+func (s *ConfigService) GetConfig() *models.Infos {
 	return &models.Infos{
 		Server:  "numary-ledger",
 		Version: viper.Get("version"),

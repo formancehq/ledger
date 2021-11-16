@@ -30,12 +30,12 @@ func CreateConfigController() *ConfigController {
 	)
 }
 
-// GetInfos -
-func (ctl *ConfigController) GetInfos(c *gin.Context) {
+// GetInfo -
+func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	ctl.success(
 		c,
 		http.StatusOK,
-		ctl.configService.GetConfigs(),
+		ctl.configService.GetConfig(),
 		&schemas.Infos{},
 	)
 }
