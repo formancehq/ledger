@@ -4,36 +4,33 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/services"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/ledger/query"
 )
 
 // TransactionController -
 type TransactionController struct {
 	BaseController
-	transactionService *services.TransactionService
 }
 
 // NewTransactionController -
-func NewTransactionController(
-	transactionService *services.TransactionService,
-) *TransactionController {
-	return &TransactionController{
-		transactionService: transactionService,
-	}
+func NewTransactionController() *TransactionController {
+	return &TransactionController{}
 }
 
 // CreateTransactionController -
 func CreateTransactionController() *TransactionController {
-	return NewTransactionController(
-		services.CreateTransactionService(),
-	)
+	return NewTransactionController()
 }
 
 // GetTransactions -
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
-	cursor, err := ctl.transactionService.GetTransactions(c)
+	l, _ := c.Get("ledger")
+	cursor, err := l.(*ledger.Ledger).FindTransactions(
+		query.After(c.Query("after")),
+		query.Reference(c.Query("reference")),
+	)
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -41,7 +38,6 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			err,
 		)
 	}
-
 	ctl.responseCollection(
 		c,
 		http.StatusOK,
