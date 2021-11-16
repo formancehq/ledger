@@ -1,42 +1,52 @@
 package controllers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/api/services"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
-	"github.com/numary/ledger/ledger/query"
 )
 
 // TransactionController -
 type TransactionController struct {
 	BaseController
+	transactionService *services.TransactionService
 }
 
 // NewTransactionController -
-func NewTransactionController() *TransactionController {
-	return &TransactionController{}
+func NewTransactionController(
+	transactionService *services.TransactionService,
+) *TransactionController {
+	return &TransactionController{
+		transactionService: transactionService,
+	}
 }
 
 // CreateTransactionController -
 func CreateTransactionController() *TransactionController {
-	return NewTransactionController()
+	return NewTransactionController(
+		services.CreateTransactionService(),
+	)
 }
 
 // GetTransactions -
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
-	l, _ := c.Get("ledger")
-	ref := c.Query("reference")
+	cursor, err := ctl.transactionService.GetTransactions(c)
+	if err != nil {
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+	}
 
-	cursor, err := l.(*ledger.Ledger).FindTransactions(
-		query.After(c.Query("after")),
-		query.Reference(ref),
+	ctl.responseCollection(
+		c,
+		http.StatusOK,
+		cursor,
 	)
-
-	c.JSON(200, gin.H{
-		"ok":     err == nil,
-		"cursor": cursor,
-		"err":    err,
-	})
 }
 
 // PostTransaction -

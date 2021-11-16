@@ -1,7 +1,7 @@
-package schemas
+package resources
 
-// Infos -
-type Infos struct {
+// Info -
+type Info struct {
 	Server  string      `json:"server,omitempty"`
 	Version interface{} `json:"version,omitempty"`
 	Config  struct {

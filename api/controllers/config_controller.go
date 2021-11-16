@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/schemas"
+	"github.com/numary/ledger/api/resources"
 	"github.com/numary/ledger/api/services"
 )
 
@@ -32,10 +32,11 @@ func CreateConfigController() *ConfigController {
 
 // GetInfo -
 func (ctl *ConfigController) GetInfo(c *gin.Context) {
-	ctl.success(
+	info := ctl.configService.GetConfig()
+	ctl.responseResource(
 		c,
 		http.StatusOK,
-		ctl.configService.GetConfig(),
-		&schemas.Infos{},
+		info,
+		&resources.Info{},
 	)
 }
