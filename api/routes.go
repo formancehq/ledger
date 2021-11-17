@@ -26,7 +26,6 @@ func NewRoutes(
 	// API Controllers
 	configController := controllers.CreateConfigController()
 	ledgerController := controllers.CreateLedgerController()
-	// transactionController := controllers.CreateTransactionController()
 	accountController := controllers.CreateAccountController()
 	scriptController := controllers.CreateScriptController()
 
