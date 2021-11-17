@@ -9,7 +9,7 @@ import (
 
 // AccountController -
 type AccountController struct {
-	BaseController
+	Controllers
 }
 
 // NewAccountController -

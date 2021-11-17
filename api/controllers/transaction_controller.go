@@ -11,17 +11,12 @@ import (
 
 // TransactionController -
 type TransactionController struct {
-	BaseController
+	Controllers
 }
 
 // NewTransactionController -
 func NewTransactionController() *TransactionController {
 	return &TransactionController{}
-}
-
-// CreateTransactionController -
-func CreateTransactionController() *TransactionController {
-	return NewTransactionController()
 }
 
 // GetTransactions -

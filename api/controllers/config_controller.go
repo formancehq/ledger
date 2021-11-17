@@ -10,7 +10,7 @@ import (
 
 // ConfigController -
 type ConfigController struct {
-	BaseController
+	Controllers
 	configService *services.ConfigService
 }
 

@@ -14,7 +14,7 @@ import (
 
 // ScriptController -
 type ScriptController struct {
-	BaseController
+	Controllers
 }
 
 // NewScriptController -

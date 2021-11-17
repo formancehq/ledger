@@ -7,7 +7,7 @@ import (
 
 // LedgerController -
 type LedgerController struct {
-	BaseController
+	Controllers
 }
 
 // NewLedgerController -
