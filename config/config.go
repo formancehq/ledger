@@ -16,12 +16,12 @@ type ConfigInfo struct {
 	Config  *Config     `json:"config"`
 }
 
-// Config -
+// Config struct
 type Config struct {
 	LedgerStorage *LedgerStorage `json:"storage"`
 }
 
-// LedgerStorage -
+// LedgerStorage struct
 type LedgerStorage struct {
 	Driver  interface{} `json:"driver"`
 	Ledgers interface{} `json:"ledgers"`
