@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/api/routes"
-	"github.com/numary/ledger/ledger"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -25,7 +24,6 @@ type API struct {
 
 func NewAPI(
 	lc fx.Lifecycle,
-	resolver *ledger.Resolver,
 	routes *routes.Routes,
 ) *API {
 	gin.SetMode(gin.ReleaseMode)
