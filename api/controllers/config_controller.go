@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/models"
 	"github.com/numary/ledger/api/resources"
+	"github.com/numary/ledger/config"
 	"github.com/spf13/viper"
 )
 
@@ -24,11 +24,11 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	ctl.responseResource(
 		c,
 		http.StatusOK,
-		&models.Infos{
+		config.ConfigInfo{
 			Server:  "numary-ledger",
 			Version: viper.Get("version"),
-			Config: &models.Config{
-				LedgerStorage: &models.LedgerStorage{
+			Config: &config.Config{
+				LedgerStorage: &config.LedgerStorage{
 					Driver:  viper.Get("storage.driver"),
 					Ledgers: viper.Get("ledgers"),
 				},
