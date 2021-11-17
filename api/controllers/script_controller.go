@@ -14,17 +14,12 @@ import (
 
 // ScriptController -
 type ScriptController struct {
-	Controllers
+	BaseController
 }
 
 // NewScriptController -
 func NewScriptController() *ScriptController {
 	return &ScriptController{}
-}
-
-// CreateScriptController -
-func CreateScriptController() *ScriptController {
-	return NewScriptController()
 }
 
 // PostScript -

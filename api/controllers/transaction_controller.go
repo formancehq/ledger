@@ -11,7 +11,7 @@ import (
 
 // TransactionController -
 type TransactionController struct {
-	Controllers
+	BaseController
 }
 
 // NewTransactionController -

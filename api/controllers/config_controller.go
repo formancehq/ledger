@@ -1,42 +1,26 @@
 package controllers
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/resources"
-	"github.com/numary/ledger/api/services"
 )
 
 // ConfigController -
 type ConfigController struct {
-	Controllers
-	configService *services.ConfigService
+	BaseController
 }
 
 // NewConfigController -
-func NewConfigController(
-	configService *services.ConfigService,
-) *ConfigController {
-	return &ConfigController{
-		configService: configService,
-	}
-}
-
-// CreateConfigController -
-func CreateConfigController() *ConfigController {
-	return NewConfigController(
-		services.CreateConfigService(),
-	)
+func NewConfigController() *ConfigController {
+	return &ConfigController{}
 }
 
 // GetInfo -
 func (ctl *ConfigController) GetInfo(c *gin.Context) {
-	info := ctl.configService.GetConfig()
-	ctl.responseResource(
-		c,
-		http.StatusOK,
-		info,
-		&resources.Info{},
-	)
+	// info := ctl.configService.GetConfig()
+	// ctl.responseResource(
+	// 	c,
+	// 	http.StatusOK,
+	// 	info,
+	// 	&resources.Info{},
+	// )
 }

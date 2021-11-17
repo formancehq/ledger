@@ -7,17 +7,12 @@ import (
 
 // LedgerController -
 type LedgerController struct {
-	Controllers
+	BaseController
 }
 
 // NewLedgerController -
 func NewLedgerController() *LedgerController {
 	return &LedgerController{}
-}
-
-// CreateLedgerController -
-func CreateLedgerController() *LedgerController {
-	return NewLedgerController()
 }
 
 // GetStats -

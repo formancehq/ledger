@@ -25,7 +25,11 @@ type API struct {
 func NewAPI(
 	lc fx.Lifecycle,
 	resolver *ledger.Resolver,
-	transactionController *controllers.TransactionController,
+	configController *controllers.ConfigController, //todo: use fx
+	ledgerController *controllers.LedgerController, //todo: use fx
+	scriptController *controllers.ScriptController, //todo: use fx
+	accountController *controllers.AccountController, //todo: use fx
+	transactionController *controllers.TransactionController, //todo: use fx
 ) *API {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -34,10 +38,19 @@ func NewAPI(
 	cc.AllowCredentials = true
 	cc.AddAllowHeaders("authorization")
 
-	router := NewRoutes(cc, resolver, transactionController) //todo: use fx
+	//todo: use fx
+	router := NewRoutes(
+		cc,
+		resolver,
+		configController,
+		ledgerController,
+		scriptController,
+		accountController,
+		transactionController,
+	)
 
 	h := &API{
-		engine: router,
+		engine: router, //todo: use fx
 		addr:   viper.GetString("server.http.bind_address"),
 	}
 

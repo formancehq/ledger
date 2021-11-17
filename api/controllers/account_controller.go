@@ -9,17 +9,12 @@ import (
 
 // AccountController -
 type AccountController struct {
-	Controllers
+	BaseController
 }
 
 // NewAccountController -
 func NewAccountController() *AccountController {
 	return &AccountController{}
-}
-
-// CreateAccountController -
-func CreateAccountController() *AccountController {
-	return NewAccountController()
 }
 
 // GetAccounts -
