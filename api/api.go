@@ -7,13 +7,14 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api/controllers"
+	"github.com/numary/ledger/api/routes"
 	"github.com/numary/ledger/ledger"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
-// Module exported for initializing application
 var Module = fx.Options(
+	routes.Module,
 	controllers.Module,
 )
 
@@ -25,11 +26,7 @@ type API struct {
 func NewAPI(
 	lc fx.Lifecycle,
 	resolver *ledger.Resolver,
-	configController *controllers.ConfigController, //todo: use fx
-	ledgerController *controllers.LedgerController, //todo: use fx
-	scriptController *controllers.ScriptController, //todo: use fx
-	accountController *controllers.AccountController, //todo: use fx
-	transactionController *controllers.TransactionController, //todo: use fx
+	routes *routes.Routes,
 ) *API {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -38,19 +35,8 @@ func NewAPI(
 	cc.AllowCredentials = true
 	cc.AddAllowHeaders("authorization")
 
-	//todo: use fx
-	router := NewRoutes(
-		cc,
-		resolver,
-		configController,
-		ledgerController,
-		scriptController,
-		accountController,
-		transactionController,
-	)
-
 	h := &API{
-		engine: router, //todo: use fx
+		engine: routes.Engine(cc),
 		addr:   viper.GetString("server.http.bind_address"),
 	}
 
