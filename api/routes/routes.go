@@ -71,12 +71,12 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		ledger.GET("/transactions", r.transactionController.GetTransactions)
 		ledger.POST("/transactions", r.transactionController.PostTransaction)
 		ledger.POST("/transactions/:transactionId/revert", r.transactionController.RevertTransaction)
-		ledger.GET("/transactions/:transactionId/metadata", r.transactionController.GetTransactionMetadata)
+		ledger.POST("/transactions/:transactionId/metadata", r.transactionController.PostTransactionMetadata)
 
 		// AccountController
 		ledger.GET("/accounts", r.accountController.GetAccounts)
 		ledger.GET("/accounts/:accountId", r.accountController.GetAddress)
-		ledger.GET("/accounts/:accountId/metadata", r.accountController.GetAccountMetadata)
+		ledger.POST("/accounts/:accountId/metadata", r.accountController.PostAccountMetadata)
 
 		// ScriptController
 		ledger.POST("/script", r.scriptController.PostScript)

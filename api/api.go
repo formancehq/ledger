@@ -38,8 +38,8 @@ func NewAPI(
 	cc.AddAllowHeaders("authorization")
 
 	h := &API{
-		engine: routes.Engine(cc),
 		addr:   viper.GetString("server.http.bind_address"),
+		engine: routes.Engine(cc),
 	}
 
 	lc.Append(fx.Hook{
