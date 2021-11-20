@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
@@ -20,61 +22,64 @@ func NewAccountController() AccountController {
 // GetAccounts -
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
-
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
 		query.After(c.Query("after")),
 	)
-
-	res := gin.H{
-		"ok":     err == nil,
-		"cursor": cursor,
-	}
-
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		cursor,
+	)
 }
 
 // GetAddress -
 func (ctl *AccountController) GetAddress(c *gin.Context) {
 	l, _ := c.Get("ledger")
-
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
-
-	res := gin.H{
-		"ok":      err == nil,
-		"account": acc,
-	}
-
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		acc,
+	)
 }
 
-// GetAccountMetadata -
-func (ctl *AccountController) GetAccountMetadata(c *gin.Context) {
+// PostAccountMetadata -
+func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
-
 	var m core.Metadata
 	c.ShouldBind(&m)
-
 	err := l.(*ledger.Ledger).SaveMeta(
 		"account",
 		c.Param("accountId"),
 		m,
 	)
-
-	res := gin.H{
-		"ok": err == nil,
-	}
-
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		nil,
+	)
 }

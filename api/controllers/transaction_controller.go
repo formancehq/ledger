@@ -32,8 +32,9 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			http.StatusInternalServerError,
 			err,
 		)
+		return
 	}
-	ctl.responseCollection(
+	ctl.response(
 		c,
 		http.StatusOK,
 		cursor,
@@ -47,38 +48,43 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.Transaction
 	c.ShouldBind(&t)
 
-	err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
-
-	res := gin.H{
-		"ok": err == nil,
-	}
-
+	ts, err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		ts,
+	)
 }
 
 // RevertTransaction -
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-
 	err := l.(*ledger.Ledger).RevertTransaction(c.Param("transactionId"))
-
-	res := gin.H{
-		"ok": err == nil,
-	}
-
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		nil,
+	)
 }
 
-// GetTransactionMetadata -
-func (ctl *TransactionController) GetTransactionMetadata(c *gin.Context) {
+// PostTransactionMetadata -
+func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var m core.Metadata
@@ -89,14 +95,17 @@ func (ctl *TransactionController) GetTransactionMetadata(c *gin.Context) {
 		c.Param("transactionId"),
 		m,
 	)
-
-	res := gin.H{
-		"ok": err == nil,
-	}
-
 	if err != nil {
-		res["err"] = err.Error()
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
 	}
-
-	c.JSON(200, res)
+	ctl.response(
+		c,
+		http.StatusOK,
+		nil,
+	)
 }

@@ -1,49 +1,38 @@
 package controllers
 
 import (
-	"encoding/json"
-	"errors"
-	"net/http"
+	"reflect"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/ledger/query"
 )
 
-// Controllers -
-type BaseController struct {
-}
+// Controllers struct
+type BaseController struct{}
 
-func (ctl *BaseController) responseResource(c *gin.Context, status int, data interface{}, resourceFormat interface{}) {
-	response, err := ctl.toResource(data, resourceFormat)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err)
-		return
+func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
+	if data == nil {
+		c.Status(status)
 	}
-	c.JSON(status, response)
-}
-
-func (ctl *BaseController) responseCollection(c *gin.Context, status int, cursor query.Cursor) {
-	c.JSON(status, cursor)
+	if reflect.TypeOf(data) == reflect.TypeOf(query.Cursor{}) {
+		c.JSON(status, gin.H{
+			"ok":     true,
+			"cursor": data,
+		})
+	} else {
+		c.JSON(status, gin.H{
+			"ok":   true,
+			"data": data,
+		})
+	}
 }
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, err error) {
+	c.Abort()
 	c.AbortWithStatusJSON(status, gin.H{
-		"error":   true,
-		"code":    status,
-		"message": err.Error(),
+		"ok":            false,
+		"error":         true,
+		"error_code":    status,
+		"error_message": err.Error(),
 	})
-}
-
-func (ctl *BaseController) toResource(data interface{}, toResource interface{}) (interface{}, error) {
-	if toResource == nil {
-		return nil, errors.New("toResource is nil")
-	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	if err = json.Unmarshal(b, toResource); err != nil {
-		return nil, err
-	}
-	return toResource, nil
 }
