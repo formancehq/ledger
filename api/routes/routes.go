@@ -16,24 +16,30 @@ var Module = fx.Options(
 // Routes -
 type Routes struct {
 	resolver              *ledger.Resolver
-	configController      *controllers.ConfigController
-	ledgerController      *controllers.LedgerController
-	scriptController      *controllers.ScriptController
-	accountController     *controllers.AccountController
-	transactionController *controllers.TransactionController
+	authMiddleware        middlewares.AuthMiddleware
+	ledgerMiddleware      middlewares.LedgerMiddleware
+	configController      controllers.ConfigController
+	ledgerController      controllers.LedgerController
+	scriptController      controllers.ScriptController
+	accountController     controllers.AccountController
+	transactionController controllers.TransactionController
 }
 
 // NewRoutes -
 func NewRoutes(
 	resolver *ledger.Resolver,
-	configController *controllers.ConfigController,
-	ledgerController *controllers.LedgerController,
-	scriptController *controllers.ScriptController,
-	accountController *controllers.AccountController,
-	transactionController *controllers.TransactionController,
+	authMiddleware middlewares.AuthMiddleware,
+	ledgerMiddleware middlewares.LedgerMiddleware,
+	configController controllers.ConfigController,
+	ledgerController controllers.LedgerController,
+	scriptController controllers.ScriptController,
+	accountController controllers.AccountController,
+	transactionController controllers.TransactionController,
 ) *Routes {
 	return &Routes{
 		resolver:              resolver,
+		authMiddleware:        authMiddleware,
+		ledgerMiddleware:      ledgerMiddleware,
 		configController:      configController,
 		ledgerController:      ledgerController,
 		scriptController:      scriptController,
@@ -50,30 +56,30 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	engine.Use(
 		cors.New(cc),
 		gin.Recovery(),
-		middlewares.AuthMiddleware(engine),
+		r.authMiddleware.AuthMiddleware(engine),
 	)
 
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)
 
-	ledgerGroup := engine.Group("/:ledger", middlewares.LedgerMiddleware(r.resolver))
+	ledger := engine.Group("/:ledger", r.ledgerMiddleware.LedgerMiddleware())
 	{
 		// LedgerController
-		ledgerGroup.GET("/stats", r.ledgerController.GetStats)
+		ledger.GET("/stats", r.ledgerController.GetStats)
 
 		// TransactionController
-		ledgerGroup.GET("/transactions", r.transactionController.GetTransactions)
-		ledgerGroup.POST("/transactions", r.transactionController.PostTransaction)
-		ledgerGroup.POST("/transactions/:transactionId/revert", r.transactionController.RevertTransaction)
-		ledgerGroup.GET("/transactions/:transactionId/metadata", r.transactionController.GetTransactionMetadata)
+		ledger.GET("/transactions", r.transactionController.GetTransactions)
+		ledger.POST("/transactions", r.transactionController.PostTransaction)
+		ledger.POST("/transactions/:transactionId/revert", r.transactionController.RevertTransaction)
+		ledger.GET("/transactions/:transactionId/metadata", r.transactionController.GetTransactionMetadata)
 
 		// AccountController
-		ledgerGroup.GET("/accounts", r.accountController.GetAccounts)
-		ledgerGroup.GET("/accounts/:accountId", r.accountController.GetAddress)
-		ledgerGroup.GET("/accounts/:accountId/metadata", r.accountController.GetAccountMetadata)
+		ledger.GET("/accounts", r.accountController.GetAccounts)
+		ledger.GET("/accounts/:accountId", r.accountController.GetAddress)
+		ledger.GET("/accounts/:accountId/metadata", r.accountController.GetAccountMetadata)
 
 		// ScriptController
-		ledgerGroup.POST("/script", r.scriptController.PostScript)
+		ledger.POST("/script", r.scriptController.PostScript)
 	}
 
 	return engine

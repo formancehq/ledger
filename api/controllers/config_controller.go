@@ -15,8 +15,8 @@ type ConfigController struct {
 }
 
 // NewConfigController -
-func NewConfigController() *ConfigController {
-	return &ConfigController{}
+func NewConfigController() ConfigController {
+	return ConfigController{}
 }
 
 // GetInfo -

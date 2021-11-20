@@ -13,8 +13,8 @@ type AccountController struct {
 }
 
 // NewAccountController -
-func NewAccountController() *AccountController {
-	return &AccountController{}
+func NewAccountController() AccountController {
+	return AccountController{}
 }
 
 // GetAccounts -

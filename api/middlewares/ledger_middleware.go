@@ -5,7 +5,22 @@ import (
 	"github.com/numary/ledger/ledger"
 )
 
-func LedgerMiddleware(resolver *ledger.Resolver) gin.HandlerFunc {
+// LedgerMiddleware struct
+type LedgerMiddleware struct {
+	resolver *ledger.Resolver
+}
+
+// NewLedgerMiddleware
+func NewLedgerMiddleware(
+	resolver *ledger.Resolver,
+) LedgerMiddleware {
+	return LedgerMiddleware{
+		resolver: resolver,
+	}
+}
+
+// LedgerMiddleware
+func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("ledger")
 
@@ -13,7 +28,7 @@ func LedgerMiddleware(resolver *ledger.Resolver) gin.HandlerFunc {
 			return
 		}
 
-		l, err := resolver.GetLedger(name)
+		l, err := m.resolver.GetLedger(name)
 
 		if err != nil {
 			c.JSON(400, gin.H{

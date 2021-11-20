@@ -18,8 +18,8 @@ type ScriptController struct {
 }
 
 // NewScriptController -
-func NewScriptController() *ScriptController {
-	return &ScriptController{}
+func NewScriptController() ScriptController {
+	return ScriptController{}
 }
 
 // PostScript -

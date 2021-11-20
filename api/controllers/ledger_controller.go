@@ -11,8 +11,8 @@ type LedgerController struct {
 }
 
 // NewLedgerController -
-func NewLedgerController() *LedgerController {
-	return &LedgerController{}
+func NewLedgerController() LedgerController {
+	return LedgerController{}
 }
 
 // GetStats -

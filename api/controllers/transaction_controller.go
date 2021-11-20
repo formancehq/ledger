@@ -15,8 +15,8 @@ type TransactionController struct {
 }
 
 // NewTransactionController -
-func NewTransactionController() *TransactionController {
-	return &TransactionController{}
+func NewTransactionController() TransactionController {
+	return TransactionController{}
 }
 
 // GetTransactions -

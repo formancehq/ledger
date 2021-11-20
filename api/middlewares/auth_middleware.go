@@ -7,7 +7,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-func AuthMiddleware(engine *gin.Engine) gin.HandlerFunc {
+// AuthMiddleware struct
+type AuthMiddleware struct{}
+
+// NewAuthMiddleware
+func NewAuthMiddleware() AuthMiddleware {
+	return AuthMiddleware{}
+}
+
+// AuthMiddleware
+func (m AuthMiddleware) AuthMiddleware(engine *gin.Engine) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if auth := viper.Get("server.http.basic_auth"); auth != nil {
 			segment := strings.Split(auth.(string), ":")
