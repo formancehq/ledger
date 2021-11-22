@@ -22,7 +22,14 @@ func NewScriptController() ScriptController {
 	return ScriptController{}
 }
 
-// PostScript -
+// PostScript godoc
+// @Summary List Accounts
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Accept json
+// @Produce json
+// @Success 200 {string} string	""
+// @Router /{ledger}/script [post]
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
