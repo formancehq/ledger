@@ -18,7 +18,7 @@ func NewLedgerController() LedgerController {
 }
 
 // GetStats godoc
-// @Summary Get Stats
+// @Summary Get ledger stats (aggregate metrics on accounts and transactions)
 // @Schemes
 // @Description The stats for account
 // @Accept json

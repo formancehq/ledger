@@ -23,7 +23,7 @@ func NewScriptController() ScriptController {
 }
 
 // PostScript godoc
-// @Summary List Accounts
+// @Summary Execute a Numscript and commit transaction if any
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Accept json

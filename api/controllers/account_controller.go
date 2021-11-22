@@ -75,7 +75,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 }
 
 // PostAccountMetadata godoc
-// @Summary List Accounts
+// @Summary Add metadata to account
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Param accountId path string true "accountId"
