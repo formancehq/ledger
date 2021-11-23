@@ -142,7 +142,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	c.Data = results
 
 	total, _ := s.CountTransactions()
-	c.Total = int(total)
+	c.Total = total
 
 	return c, nil
 }
@@ -189,23 +189,37 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 			}
 		}
 
+		nextID, err := s.CountMeta()
+		if err != nil {
+			tx.Rollback()
+
+			return err
+		}
+
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto("metadata")
 			ib.Cols(
+				"meta_id",
 				"meta_target_type",
 				"meta_target_id",
 				"meta_key",
 				"meta_value",
+				"timestamp",
 			)
 			ib.Values(
+				int(nextID),
 				"transaction",
 				fmt.Sprintf("%d", t.ID),
 				key,
 				string(value),
+				t.Timestamp,
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+			if viper.GetBool("debug") {
+				fmt.Println(sqlq, args)
+			}
 
 			_, err = tx.Exec(sqlq, args...)
 
@@ -214,6 +228,8 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 
 				return err
 			}
+
+			nextID++
 		}
 	}
 
