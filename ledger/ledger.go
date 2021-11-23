@@ -39,8 +39,9 @@ func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
 	}
 
 	l := &Ledger{
-		store: store,
-		name:  name,
+		store:       store,
+		name:        name,
+		_lastMetaID: -1,
 	}
 
 	lc.Append(fx.Hook{
@@ -258,17 +259,21 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 	l.Lock()
 	defer l.Unlock()
 
-	if l._lastMetaID == 0 {
+	if l._lastMetaID == -1 {
 		count, err := l.store.CountMeta()
+
 		if err != nil {
 			return err
 		}
-		l._lastMetaID = count
+
+		l._lastMetaID = count - 1
 	}
+
 	timestamp := time.Now().Format(time.RFC3339)
 
 	for key, value := range m {
-		metaRowID := fmt.Sprint(l._lastMetaID + 1)
+		l._lastMetaID++
+		metaRowID := fmt.Sprint(l._lastMetaID)
 
 		err := l.store.SaveMeta(
 			metaRowID,
@@ -278,10 +283,10 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 			key,
 			string(value),
 		)
+
 		if err != nil {
 			return err
 		}
-		l._lastMetaID++
 	}
 	return nil
 }

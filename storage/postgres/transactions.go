@@ -88,6 +88,7 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 				"meta_target_id",
 				"meta_key",
 				"meta_value",
+				"timestamp",
 			)
 			ib.Values(
 				int(nextID),
@@ -95,6 +96,7 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 				fmt.Sprintf("%d", t.ID),
 				key,
 				string(value),
+				t.Timestamp,
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
