@@ -259,9 +259,9 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 		"p.amount",
 		"p.asset",
 	)
-	sb.From(sb.As("transactions", "t"))
+	sb.From(sb.As(s.table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", id))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
