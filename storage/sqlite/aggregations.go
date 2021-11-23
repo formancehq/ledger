@@ -41,15 +41,13 @@ func (s *SQLiteStore) CountMeta() (int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 
 	sb.
-		Select("meta_id").
-		From("metadata").
-		OrderBy("meta_id desc").
-		Limit(1).
-		BuildWithFlavor(sqlbuilder.SQLite)
+		Select("count(*)").
+		From("metadata")
 
-	sqlq, args := sb.Build()
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
 
-	err := s.db.QueryRow(sqlq, args...).Scan(&count)
+	q := s.db.QueryRow(sqlq, args...)
+	err := q.Scan(&count)
 
 	return count, err
 }

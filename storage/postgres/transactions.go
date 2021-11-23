@@ -72,16 +72,25 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 			}
 		}
 
+		nextID, err := s.CountMeta()
+		if err != nil {
+			tx.Rollback(context.Background())
+
+			return err
+		}
+
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto(s.table("metadata"))
 			ib.Cols(
+				"meta_id",
 				"meta_target_type",
 				"meta_target_id",
 				"meta_key",
 				"meta_value",
 			)
 			ib.Values(
+				int(nextID),
 				"transaction",
 				fmt.Sprintf("%d", t.ID),
 				key,
@@ -97,6 +106,8 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 
 				return err
 			}
+
+			nextID++
 		}
 	}
 

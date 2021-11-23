@@ -12,13 +12,10 @@ func (s *PGStore) CountMeta() (int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 
 	sb.
-		Select("meta_id").
-		From("metadata").
-		OrderBy("meta_id desc").
-		Limit(1).
-		BuildWithFlavor(sqlbuilder.PostgreSQL)
+		Select("count(*)").
+		From(s.table("metadata"))
 
-	sqlq, args := sb.Build()
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	err := s.Conn().QueryRow(
 		context.Background(),
