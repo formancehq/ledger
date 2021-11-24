@@ -9,6 +9,24 @@ import (
 	"github.com/spf13/viper"
 )
 
+// ConfigInfo struct
+type ConfigInfo struct {
+	Server  string      `json:"server"`
+	Version interface{} `json:"version"`
+	Config  *Config     `json:"config"`
+}
+
+// Config struct
+type Config struct {
+	LedgerStorage *LedgerStorage `json:"storage"`
+}
+
+// LedgerStorage struct
+type LedgerStorage struct {
+	Driver  interface{} `json:"driver"`
+	Ledgers interface{} `json:"ledgers"`
+}
+
 func Init() {
 	home, err := os.UserHomeDir()
 	if err != nil {

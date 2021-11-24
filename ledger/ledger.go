@@ -63,7 +63,7 @@ func (l *Ledger) Close() {
 	l.store.Close()
 }
 
-func (l *Ledger) Commit(ts []core.Transaction) error {
+func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 	defer config.Remember(l.name)
 
 	l.Lock()
@@ -77,7 +77,7 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 		last, err := l.GetLastTransaction()
 
 		if err != nil {
-			return err
+			return ts, err
 		}
 
 		l._last = &last
@@ -88,7 +88,7 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 	for i := range ts {
 
 		if len(ts[i].Postings) == 0 {
-			return errors.New("transaction has no postings")
+			return ts, errors.New("transaction has no postings")
 		}
 
 		ts[i].ID = count + int64(i)
@@ -134,14 +134,14 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 		balances, err := l.store.AggregateBalances(addr)
 
 		if err != nil {
-			return err
+			return ts, err
 		}
 
 		for asset := range checks {
 			balance, ok := balances[asset]
 
 			if !ok || balance < checks[asset] {
-				return fmt.Errorf(
+				return ts, fmt.Errorf(
 					"balance.insufficient.%s",
 					asset,
 				)
@@ -153,7 +153,7 @@ func (l *Ledger) Commit(ts []core.Transaction) error {
 
 	l._last = &ts[len(ts)-1]
 
-	return err
+	return ts, err
 }
 
 func (l *Ledger) GetLastTransaction() (core.Transaction, error) {
@@ -211,7 +211,7 @@ func (l *Ledger) RevertTransaction(id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(l._last.ID))
-	err = l.Commit([]core.Transaction{rt})
+	_, err = l.Commit([]core.Transaction{rt})
 
 	return err
 }

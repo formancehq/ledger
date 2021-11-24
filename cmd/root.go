@@ -58,13 +58,14 @@ func Execute() {
 			app := fx.New(
 				fx.Provide(
 					ledger.NewResolver,
-					api.NewHttpAPI,
+					api.NewAPI,
 				),
 				fx.Invoke(func() {
 					config.Init()
 				}),
-				fx.Invoke(func(lc fx.Lifecycle, h *api.HttpAPI) {
+				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 				}),
+				api.Module,
 			)
 
 			app.Run()

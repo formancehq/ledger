@@ -134,7 +134,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit([]core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
@@ -172,7 +172,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit([]core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
@@ -210,7 +210,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit([]core.Transaction{tx})
 
 		l.SaveMeta("account", "sales:042", core.Metadata{
 			"seller": json.RawMessage(`{
