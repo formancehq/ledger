@@ -25,6 +25,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
+		query.Account(c.Query("account")),
 	)
 	if err != nil {
 		ctl.responseError(
