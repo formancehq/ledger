@@ -211,7 +211,7 @@ func (l *Ledger) RevertTransaction(id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(l._last.ID))
-	err = l.Commit([]core.Transaction{rt})
+	_, err = l.Commit([]core.Transaction{rt})
 
 	return err
 }
