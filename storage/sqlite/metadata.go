@@ -63,32 +63,43 @@ func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	return meta, nil
 }
 
-func (s *SQLiteStore) SaveMeta(ty string, id string, m core.Metadata) error {
+func (s *SQLiteStore) SaveMeta(id, timestamp, targetType, targetID, key, value string) error {
 	tx, _ := s.db.Begin()
 
-	for key, value := range m {
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto("metadata")
-		ib.Cols(
-			"meta_target_type",
-			"meta_target_id",
-			"meta_key",
-			"meta_value",
-		)
-		ib.Values(ty, id, key, string(value))
+	ib := sqlbuilder.NewInsertBuilder()
+	ib.InsertInto("metadata")
+	ib.Cols(
+		"meta_id",
+		"meta_target_type",
+		"meta_target_id",
+		"meta_key",
+		"meta_value",
+		"timestamp",
+	)
+	ib.Values(
+		id,
+		targetType,
+		targetID,
+		key,
+		string(value),
+		timestamp,
+	)
 
-		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
-
-		_, err := tx.Exec(sqlq, args...)
-
-		if err != nil {
-			tx.Rollback()
-
-			return err
-		}
+	sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+	if viper.GetBool("debug") {
+		fmt.Println(sqlq, args)
 	}
 
-	err := tx.Commit()
+	_, err := tx.Exec(sqlq, args...)
+
+	if err != nil {
+		fmt.Println("failed to save metadata", err)
+		tx.Rollback()
+
+		return err
+	}
+
+	err = tx.Commit()
 
 	if err != nil {
 		return err

@@ -35,6 +35,23 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 	return count, err
 }
 
+func (s *SQLiteStore) CountMeta() (int64, error) {
+	var count int64
+
+	sb := sqlbuilder.NewSelectBuilder()
+
+	sb.
+		Select("count(*)").
+		From("metadata")
+
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+
+	q := s.db.QueryRow(sqlq, args...)
+	err := q.Scan(&count)
+
+	return count, err
+}
+
 func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 

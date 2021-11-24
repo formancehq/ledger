@@ -100,7 +100,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	c.PageSize = q.Limit
 	c.HasMore = len(results) < remaining
 	c.Remaining = remaining - len(results)
-	c.Total = int(total)
+	c.Total = total
 	c.Data = results
 
 	return c, nil

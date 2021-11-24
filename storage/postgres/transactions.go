@@ -72,20 +72,31 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 			}
 		}
 
+		nextID, err := s.CountMeta()
+		if err != nil {
+			tx.Rollback(context.Background())
+
+			return err
+		}
+
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto(s.table("metadata"))
 			ib.Cols(
+				"meta_id",
 				"meta_target_type",
 				"meta_target_id",
 				"meta_key",
 				"meta_value",
+				"timestamp",
 			)
 			ib.Values(
+				int(nextID),
 				"transaction",
 				fmt.Sprintf("%d", t.ID),
 				key,
 				string(value),
+				t.Timestamp,
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
@@ -97,6 +108,8 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 
 				return err
 			}
+
+			nextID++
 		}
 	}
 
@@ -169,7 +182,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	rows, err := s.Conn().Query(
-		context.TODO(),
+		context.Background(),
 		sqlq,
 		args...,
 	)
@@ -246,9 +259,9 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 		"p.amount",
 		"p.asset",
 	)
-	sb.From(sb.As("transactions", "t"))
+	sb.From(sb.As(s.table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", id))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
@@ -259,7 +272,7 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 	tx := core.Transaction{}
 
 	rows, err := s.Conn().Query(
-		context.TODO(),
+		context.Background(),
 		sqlq,
 		args...,
 	)

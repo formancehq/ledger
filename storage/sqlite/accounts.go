@@ -74,7 +74,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	c.Data = results
 
 	total, _ := s.CountAccounts()
-	c.Total = int(total)
+	c.Total = total
 
 	return c, nil
 }
