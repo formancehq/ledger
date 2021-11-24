@@ -75,8 +75,8 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 
 		// AccountController
 		ledger.GET("/accounts", r.accountController.GetAccounts)
-		ledger.GET("/accounts/:accountId", r.accountController.GetAddress)
-		ledger.POST("/accounts/:accountId/metadata", r.accountController.PostAccountMetadata)
+		ledger.GET("/accounts/:address", r.accountController.GetAccount)
+		ledger.POST("/accounts/:address/metadata", r.accountController.PostAccountMetadata)
 
 		// ScriptController
 		ledger.POST("/script", r.scriptController.PostScript)

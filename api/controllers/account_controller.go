@@ -40,8 +40,8 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	)
 }
 
-// GetAddress -
-func (ctl *AccountController) GetAddress(c *gin.Context) {
+// GetAccount -
+func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
 	if err != nil {
@@ -66,7 +66,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	c.ShouldBind(&m)
 	err := l.(*ledger.Ledger).SaveMeta(
 		"account",
-		c.Param("accountId"),
+		c.Param("address"),
 		m,
 	)
 	if err != nil {
