@@ -1,0 +1,24 @@
+{
+  "projectName": "ledger",
+  "projectOwner": "numary",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "none",
+  "contributors": [
+    {
+      "login": "Azorlogh",
+      "name": "Alix Bott",
+      "avatar_url": "https://avatars.githubusercontent.com/u/17968319?v=4",
+      "profile": "https://github.com/Azorlogh",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7
+}
