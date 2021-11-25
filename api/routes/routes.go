@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/api/middlewares"
@@ -50,14 +51,17 @@ func NewRoutes(
 
 // Engine -
 func (r *Routes) Engine(cc cors.Config) *gin.Engine {
-	engine := gin.Default()
+	engine := gin.New()
 
 	// Default Middlewares
 	engine.Use(
 		cors.New(cc),
 		gin.Recovery(),
+		logger.SetLogger(),
 		r.authMiddleware.AuthMiddleware(engine),
 	)
+
+	engine.GET("/swagger.json", r.configController.GetDocs)
 
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)

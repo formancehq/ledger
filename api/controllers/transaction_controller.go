@@ -21,7 +21,15 @@ func NewTransactionController() TransactionController {
 	return TransactionController{}
 }
 
-// GetTransactions -
+// GetTransactions godoc
+// @Summary Get Transactions
+// @Schemes
+// @Description List transactions
+// @Param ledger path string true "ledger"
+// @Accept json
+// @Produce json
+// @Success 200 {object} storage.Store{}
+// @Router /{ledger}/transactions [get]
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	limit, err := strconv.Atoi(c.Query("limit"))
@@ -52,7 +60,15 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	)
 }
 
-// PostTransaction -
+// PostTransactions godoc
+// @Summary Commit a new transaction to the ledger
+// @Schemes
+// @Description Commit a new transaction to the ledger
+// @Param ledger path string true "ledger"
+// @Accept json
+// @Produce json
+// @Success 200 {string} string	""
+// @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -75,7 +91,15 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	)
 }
 
-// RevertTransaction -
+// RevertTransaction godoc
+// @Summary Revert transaction
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param reference path string true "reference"
+// @Accept json
+// @Produce json
+// @Success 200 {string} string	""
+// @Router /{ledger}/transactions/{reference}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	err := l.(*ledger.Ledger).RevertTransaction(c.Param("transactionId"))
@@ -94,7 +118,15 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	)
 }
 
-// PostTransactionMetadata -
+// PostTransactionMetadata godoc
+// @Summary Set metadata on transaction
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param reference path string true "reference"
+// @Accept json
+// @Produce json
+// @Success 200 {string} string	""
+// @Router /{ledger}/transactions/{reference}/metadata [post]
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
