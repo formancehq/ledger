@@ -91,6 +91,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <td align="center"><a href="https://matias.insaurral.de/"><img src="https://avatars.githubusercontent.com/u/20110?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Matias Insaurralde</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=matiasinsaurralde" title="Code">💻</a> <a href="https://github.com/numary/ledger/pulls?q=is%3Apr+reviewed-by%3Amatiasinsaurralde" title="Reviewed Pull Requests">👀</a></td>
     <td align="center"><a href="https://github.com/S0c5"><img src="https://avatars.githubusercontent.com/u/5241972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David barinas</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=S0c5" title="Code">💻</a></td>
     <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=djimnz" title="Code">💻</a></td>
+    <td align="center"><a href="http://32b6.com/"><img src="https://avatars.githubusercontent.com/u/1770991?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Clément Salaün</b></sub></a><br /><a href="#ideas-altitude" title="Ideas, Planning, & Feedback">🤔</a></td>
   </tr>
 </table>
 
