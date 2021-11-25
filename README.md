@@ -1,6 +1,6 @@
 # Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)](https://goreportcard.com/report/github.com/numary/ledger)
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 ![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png)
@@ -79,7 +79,7 @@ If you need help, want to show us what you built or just hang out and chat about
 
 ![Frame 1 (2)](https://user-images.githubusercontent.com/1770991/134163361-d86c5728-6075-4510-8de7-06df1f6ed740.png)
 
-## Contributors ✨
+# Contributors ✨
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
@@ -89,6 +89,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <table>
   <tr>
     <td align="center"><a href="https://github.com/Azorlogh"><img src="https://avatars.githubusercontent.com/u/17968319?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Alix Bott</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=Azorlogh" title="Code">💻</a></td>
+    <td align="center"><a href="https://www.flemzord.fr/"><img src="https://avatars.githubusercontent.com/u/1952914?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Maxence Maireaux</b></sub></a><br /><a href="#infra-flemzord" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a></td>
   </tr>
 </table>
 
