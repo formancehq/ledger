@@ -93,6 +93,9 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=djimnz" title="Code">💻</a></td>
     <td align="center"><a href="http://32b6.com/"><img src="https://avatars.githubusercontent.com/u/1770991?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Clément Salaün</b></sub></a><br /><a href="#ideas-altitude" title="Ideas, Planning, & Feedback">🤔</a></td>
   </tr>
+  <tr>
+    <td align="center"><a href="https://karmanyaah.malhotra.cc/"><img src="https://avatars.githubusercontent.com/u/32671690?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Karmanyaah Malhotra</b></sub></a><br /><a href="#userTesting-karmanyaahm" title="User Testing">📓</a></td>
+  </tr>
 </table>
 
 <!-- markdownlint-restore -->

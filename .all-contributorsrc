@@ -75,6 +75,15 @@
       "contributions": [
         "ideas"
       ]
+    },
+    {
+      "login": "karmanyaahm",
+      "name": "Karmanyaah Malhotra",
+      "avatar_url": "https://avatars.githubusercontent.com/u/32671690?v=4",
+      "profile": "https://karmanyaah.malhotra.cc/",
+      "contributions": [
+        "userTesting"
+      ]
     }
   ],
   "contributorsPerLine": 7
