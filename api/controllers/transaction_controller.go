@@ -26,7 +26,7 @@ func NewTransactionController() TransactionController {
 // @Param ledger path string true "ledger"
 // @Accept json
 // @Produce json
-// @Success 200 {object} storage.Store{}
+// @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Transaction}}
 // @Router /{ledger}/transactions [get]
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -55,9 +55,10 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Schemes
 // @Description Commit a new transaction to the ledger
 // @Param ledger path string true "ledger"
+// @Param transaction body core.Transaction true "transaction"
 // @Accept json
 // @Produce json
-// @Success 200 {string} string	""
+// @Success 200 {object} controllers.BaseResponse
 // @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -85,11 +86,11 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 // @Summary Revert transaction
 // @Schemes
 // @Param ledger path string true "ledger"
-// @Param reference path string true "reference"
+// @Param transactionId path string true "transactionId"
 // @Accept json
 // @Produce json
-// @Success 200 {string} string	""
-// @Router /{ledger}/transactions/{reference}/revert [post]
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/transactions/{transactionId}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	err := l.(*ledger.Ledger).RevertTransaction(c.Param("transactionId"))
@@ -115,7 +116,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 // @Param reference path string true "reference"
 // @Accept json
 // @Produce json
-// @Success 200 {string} string	""
+// @Success 200 {object} controllers.BaseResponse
 // @Router /{ledger}/transactions/{reference}/metadata [post]
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
