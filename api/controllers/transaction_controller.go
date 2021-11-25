@@ -3,6 +3,8 @@ package controllers
 import (
 	"net/http"
 
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
@@ -22,11 +24,19 @@ func NewTransactionController() TransactionController {
 // GetTransactions -
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
+	limit, err := strconv.Atoi(c.Query("limit"))
+
+	if err != nil {
+		limit = -1
+	}
+
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
 		query.Account(c.Query("account")),
+		query.Limit(limit),
 	)
+
 	if err != nil {
 		ctl.responseError(
 			c,

@@ -112,8 +112,8 @@ func Execute() {
 	})
 
 	script_exec := &cobra.Command{
-		Use:  "exec [ledger] [script]",
-		Args: cobra.ExactArgs(2),
+		Use:  "exec [ledger] [script] <reference>",
+		Args: cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			config.Init()
 
@@ -123,12 +123,15 @@ func Execute() {
 				log.Fatal(err)
 			}
 
+			reference := args[2]
+
 			r := regexp.MustCompile(`^\n`)
 			s := string(b)
 			s = r.ReplaceAllString(s, "")
 
 			b, err = json.Marshal(gin.H{
-				"plain": string(s),
+				"plain":     string(s),
+				"reference": reference,
 			})
 
 			if err != nil {
@@ -160,6 +163,7 @@ func Execute() {
 				Ok  bool   `json:"ok"`
 			}
 			err = json.Unmarshal(b, &result)
+
 			if err != nil {
 				log.Fatal(err)
 			}

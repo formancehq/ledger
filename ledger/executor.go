@@ -83,7 +83,8 @@ func (l *Ledger) Execute(script core.Script) error {
 	}
 
 	t := core.Transaction{
-		Postings: m.Postings,
+		Postings:  m.Postings,
+		Reference: script.Reference,
 	}
 
 	_, err = l.Commit([]core.Transaction{t})

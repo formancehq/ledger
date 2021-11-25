@@ -47,7 +47,9 @@ func (q *Query) HasParam(name string) bool {
 
 func Limit(n int) func(*Query) {
 	return func(q *Query) {
-		q.Limit = n
+		if n != -1 {
+			q.Limit = n
+		}
 	}
 }
 
