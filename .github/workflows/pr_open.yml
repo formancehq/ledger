@@ -3,6 +3,19 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
 jobs:
+  docs:
+    name: 'Build Docs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: |
+          wget https://github.com/swaggo/swag/releases/download/v1.7.4/swag_1.7.4_Linux_x86_64.tar.gz
+          tar -zxvf swag_1.7.4_Linux_x86_64.tar.gz
+      - run: ./swag init
+      - uses: actions/upload-artifact@v2
+        with:
+          name: docs-dist
+          path: ./docs/**
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
