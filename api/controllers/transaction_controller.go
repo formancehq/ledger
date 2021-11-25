@@ -19,12 +19,21 @@ func NewTransactionController() TransactionController {
 	return TransactionController{}
 }
 
-// GetTransactions -
+// GetTransactions godoc
+// @Summary Get Transactions
+// @Schemes
+// @Description List transactions
+// @Param ledger path string true "ledger"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Transaction}}
+// @Router /{ledger}/transactions [get]
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
+		query.Account(c.Query("account")),
 	)
 	if err != nil {
 		ctl.responseError(
@@ -41,7 +50,16 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	)
 }
 
-// PostTransaction -
+// PostTransactions godoc
+// @Summary Commit a new transaction to the ledger
+// @Schemes
+// @Description Commit a new transaction to the ledger
+// @Param ledger path string true "ledger"
+// @Param transaction body core.Transaction true "transaction"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -64,7 +82,15 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	)
 }
 
-// RevertTransaction -
+// RevertTransaction godoc
+// @Summary Revert transaction
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param transactionId path string true "transactionId"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/transactions/{transactionId}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	err := l.(*ledger.Ledger).RevertTransaction(c.Param("transactionId"))
@@ -83,7 +109,15 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	)
 }
 
-// PostTransactionMetadata -
+// PostTransactionMetadata godoc
+// @Summary Set metadata on transaction
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param reference path string true "reference"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/transactions/{reference}/metadata [post]
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 

@@ -10,6 +10,10 @@ import (
 // Controllers struct
 type BaseController struct{}
 
+type BaseResponse struct {
+	Ok bool `json:"ok"`
+}
+
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
 	if data == nil {
 		c.Status(status)

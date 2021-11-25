@@ -11,8 +11,8 @@ type Transaction struct {
 	Postings  Postings `json:"postings"`
 	Reference string   `json:"reference"`
 	Timestamp string   `json:"timestamp"`
-	Hash      string   `json:"hash"`
-	Metadata  Metadata `json:"metadata"`
+	Hash      string   `json:"hash" swaggerignore:"true"`
+	Metadata  Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func (t *Transaction) AppendPosting(p Posting) {

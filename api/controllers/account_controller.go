@@ -19,7 +19,14 @@ func NewAccountController() AccountController {
 	return AccountController{}
 }
 
-// GetAccounts -
+// GetAccounts godoc
+// @Summary List All Accounts
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Account}}
+// @Router /{ledger}/accounts [get]
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
@@ -40,7 +47,15 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	)
 }
 
-// GetAccount -
+// GetAccount godoc
+// @Summary Get account by address
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param accountId path string true "accountId"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse{account=core.Account}
+// @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
@@ -59,7 +74,15 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 	)
 }
 
-// PostAccountMetadata -
+// PostAccountMetadata godoc
+// @Summary Add metadata to account
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param accountId path string true "accountId"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/accounts/{accountId}/metadata [post]
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	var m core.Metadata
