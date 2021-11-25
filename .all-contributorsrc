@@ -27,6 +27,15 @@
       "contributions": [
         "infra"
       ]
+    },
+    {
+      "login": "henry-jackson",
+      "name": "Henry Jackson",
+      "avatar_url": "https://avatars.githubusercontent.com/u/34102861?v=4",
+      "profile": "https://github.com/henry-jackson",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7
