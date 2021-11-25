@@ -1,7 +1,4 @@
-# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)](https://goreportcard.com/report/github.com/numary/ledger)
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-5-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
+# Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)](https://goreportcard.com/report/github.com/numary/ledger) 
 
 ![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png)
 
@@ -93,6 +90,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <td align="center"><a href="https://github.com/henry-jackson"><img src="https://avatars.githubusercontent.com/u/34102861?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Henry Jackson</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=henry-jackson" title="Code">💻</a></td>
     <td align="center"><a href="https://matias.insaurral.de/"><img src="https://avatars.githubusercontent.com/u/20110?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Matias Insaurralde</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=matiasinsaurralde" title="Code">💻</a> <a href="https://github.com/numary/ledger/pulls?q=is%3Apr+reviewed-by%3Amatiasinsaurralde" title="Reviewed Pull Requests">👀</a></td>
     <td align="center"><a href="https://github.com/S0c5"><img src="https://avatars.githubusercontent.com/u/5241972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David barinas</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=S0c5" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=djimnz" title="Code">💻</a></td>
   </tr>
 </table>
 
