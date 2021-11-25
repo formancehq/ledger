@@ -63,7 +63,36 @@ var doc = `{
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {}
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "cursor": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/query.Cursor"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "data": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/core.Account"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
                     }
                 }
             }
@@ -76,7 +105,7 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "List Account by Address",
+                "summary": "Get account by address",
                 "parameters": [
                     {
                         "type": "string",
@@ -97,7 +126,19 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "account": {
+                                            "$ref": "#/definitions/core.Account"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -111,7 +152,7 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "List Accounts",
+                "summary": "Add metadata to account",
                 "parameters": [
                     {
                         "type": "string",
@@ -132,7 +173,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     }
                 }
@@ -146,7 +187,7 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "List Accounts",
+                "summary": "Execute a Numscript and commit transaction if any",
                 "parameters": [
                     {
                         "type": "string",
@@ -154,13 +195,22 @@ var doc = `{
                         "name": "ledger",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "script",
+                        "name": "script",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/core.Script"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     }
                 }
@@ -175,7 +225,7 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "Get Stats",
+                "summary": "Get ledger stats (aggregate metrics on accounts and transactions)",
                 "parameters": [
                     {
                         "type": "string",
@@ -217,7 +267,36 @@ var doc = `{
                 "responses": {
                     "200": {
                         "description": "OK",
-                        "schema": {}
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "cursor": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/query.Cursor"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "data": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/core.Transaction"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
                     }
                 }
             },
@@ -237,13 +316,22 @@ var doc = `{
                         "name": "ledger",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "transaction",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/core.Transaction"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     }
                 }
@@ -278,13 +366,13 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     }
                 }
             }
         },
-        "/{ledger}/transactions/{reference}/revert": {
+        "/{ledger}/transactions/{transactionId}/revert": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -303,8 +391,8 @@ var doc = `{
                     },
                     {
                         "type": "string",
-                        "description": "reference",
-                        "name": "reference",
+                        "description": "transactionId",
+                        "name": "transactionId",
                         "in": "path",
                         "required": true
                     }
@@ -313,7 +401,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     }
                 }
@@ -348,6 +436,103 @@ var doc = `{
                 "ledgers": {}
             }
         },
+        "controllers.BaseResponse": {
+            "type": "object",
+            "properties": {
+                "ok": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "core.Account": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "example": "users:001"
+                },
+                "balances": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    },
+                    "example": {
+                        "COIN": 100
+                    }
+                },
+                "contract": {
+                    "type": "string",
+                    "example": "default"
+                },
+                "metadata": {
+                    "type": "object"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "virtual"
+                },
+                "volumes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
+        "core.Posting": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "asset": {
+                    "type": "string"
+                },
+                "destination": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                }
+            }
+        },
+        "core.Script": {
+            "type": "object",
+            "properties": {
+                "plain": {
+                    "type": "string"
+                },
+                "vars": {
+                    "type": "object"
+                }
+            }
+        },
+        "core.Transaction": {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "type": "object"
+                },
+                "postings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Posting"
+                    }
+                },
+                "reference": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "txid": {
+                    "type": "integer"
+                }
+            }
+        },
         "ledger.Stats": {
             "type": "object",
             "properties": {
@@ -355,6 +540,30 @@ var doc = `{
                     "type": "integer"
                 },
                 "transactions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "query.Cursor": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "has_more": {
+                    "type": "boolean"
+                },
+                "next": {
+                    "type": "string"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "previous": {
+                    "type": "string"
+                },
+                "remaining_results": {
+                    "type": "integer"
+                },
+                "total": {
                     "type": "integer"
                 }
             }
