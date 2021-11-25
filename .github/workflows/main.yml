@@ -42,7 +42,9 @@ jobs:
           path: ./**
   build:
     name: 'Build'
-    needs: build_control
+    needs:
+      - build_control
+      - docs
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
