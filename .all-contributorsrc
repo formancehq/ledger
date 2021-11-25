@@ -1,0 +1,90 @@
+{
+  "projectName": "ledger",
+  "projectOwner": "numary",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "none",
+  "contributors": [
+    {
+      "login": "Azorlogh",
+      "name": "Alix Bott",
+      "avatar_url": "https://avatars.githubusercontent.com/u/17968319?v=4",
+      "profile": "https://github.com/Azorlogh",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "flemzord",
+      "name": "Maxence Maireaux",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1952914?v=4",
+      "profile": "https://www.flemzord.fr/",
+      "contributions": [
+        "infra",
+        "platform",
+        "code"
+      ]
+    },
+    {
+      "login": "henry-jackson",
+      "name": "Henry Jackson",
+      "avatar_url": "https://avatars.githubusercontent.com/u/34102861?v=4",
+      "profile": "https://github.com/henry-jackson",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "matiasinsaurralde",
+      "name": "Matias Insaurralde",
+      "avatar_url": "https://avatars.githubusercontent.com/u/20110?v=4",
+      "profile": "https://matias.insaurral.de/",
+      "contributions": [
+        "code",
+        "review"
+      ]
+    },
+    {
+      "login": "S0c5",
+      "name": "David barinas",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5241972?v=4",
+      "profile": "https://github.com/S0c5",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "djimnz",
+      "name": "David Jimenez",
+      "avatar_url": "https://avatars.githubusercontent.com/u/949997?v=4",
+      "profile": "https://github.com/djimnz",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "altitude",
+      "name": "Clément Salaün",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1770991?v=4",
+      "profile": "http://32b6.com/",
+      "contributions": [
+        "ideas"
+      ]
+    },
+    {
+      "login": "karmanyaahm",
+      "name": "Karmanyaah Malhotra",
+      "avatar_url": "https://avatars.githubusercontent.com/u/32671690?v=4",
+      "profile": "https://karmanyaah.malhotra.cc/",
+      "contributions": [
+        "userTesting"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7
+}

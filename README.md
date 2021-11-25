@@ -75,3 +75,32 @@ We keep an open roadmap of the upcoming releases and features [here](https://num
 If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Discord](https://discord.gg/xyHvcbzk4w) - looking forward to see you there!
 
 ![Frame 1 (2)](https://user-images.githubusercontent.com/1770991/134163361-d86c5728-6075-4510-8de7-06df1f6ed740.png)
+
+# Contributors ✨
+
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/Azorlogh"><img src="https://avatars.githubusercontent.com/u/17968319?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Alix Bott</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=Azorlogh" title="Code">💻</a></td>
+    <td align="center"><a href="https://www.flemzord.fr/"><img src="https://avatars.githubusercontent.com/u/1952914?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Maxence Maireaux</b></sub></a><br /><a href="#infra-flemzord" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a> <a href="#platform-flemzord" title="Packaging/porting to new platform">📦</a> <a href="https://github.com/numary/ledger/commits?author=flemzord" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/henry-jackson"><img src="https://avatars.githubusercontent.com/u/34102861?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Henry Jackson</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=henry-jackson" title="Code">💻</a></td>
+    <td align="center"><a href="https://matias.insaurral.de/"><img src="https://avatars.githubusercontent.com/u/20110?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Matias Insaurralde</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=matiasinsaurralde" title="Code">💻</a> <a href="https://github.com/numary/ledger/pulls?q=is%3Apr+reviewed-by%3Amatiasinsaurralde" title="Reviewed Pull Requests">👀</a></td>
+    <td align="center"><a href="https://github.com/S0c5"><img src="https://avatars.githubusercontent.com/u/5241972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David barinas</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=S0c5" title="Code">💻</a></td>
+    <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=djimnz" title="Code">💻</a></td>
+    <td align="center"><a href="http://32b6.com/"><img src="https://avatars.githubusercontent.com/u/1770991?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Clément Salaün</b></sub></a><br /><a href="#ideas-altitude" title="Ideas, Planning, & Feedback">🤔</a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://karmanyaah.malhotra.cc/"><img src="https://avatars.githubusercontent.com/u/32671690?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Karmanyaah Malhotra</b></sub></a><br /><a href="#userTesting-karmanyaahm" title="User Testing">📓</a></td>
+  </tr>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
