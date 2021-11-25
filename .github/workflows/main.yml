@@ -20,8 +20,8 @@ jobs:
           path: ./docs/**
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: [skip ci] Update docs
-          file_pattern: docs/docs.go
+          commit_message: "[skip ci] Update docs"
+          file_pattern: docs/docs.go docs/*.go
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
