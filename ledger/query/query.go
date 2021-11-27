@@ -80,3 +80,15 @@ func Reference(v string) func(*Query) {
 		q.Params["reference"] = v
 	}
 }
+
+func Metakey(v string) func(*Query) {
+	return func(q *Query) {
+		q.Params["meta_key"] = v
+	}
+}
+
+func Metavalue(v string) func(*Query) {
+	return func(q *Query) {
+		q.Params["meta_value"] = v
+	}
+}

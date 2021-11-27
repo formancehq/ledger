@@ -60,6 +60,23 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		queryAcc.Where(queryAcc.LessThan("address", q.After))
 	}
 
+	if q.HasParam("meta_key") {
+		queryAcc.JoinWithOption(
+			sqlbuilder.LeftJoin,
+			queryAcc.As("metadata", "m"),
+			"m.meta_target_id = t.id",
+		)
+		queryAcc.Where(
+			queryAcc.Equal("m.meta_key", q.Params["meta_key"]),
+			queryAcc.Equal("m.meta_target_type", "account"),
+		)
+		if q.HasParam("meta_value") {
+			queryAcc.Where(
+				queryAcc.Equal("m.meta_value", q.Params["meta_value"]),
+			)
+		}
+	}
+
 	sqlAcc, args := queryAcc.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	rows, err := s.Conn().Query(
@@ -71,6 +88,8 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	if err != nil {
 		return c, err
 	}
+
+	defer rows.Close()
 
 	for rows.Next() {
 		var address string

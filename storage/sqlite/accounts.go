@@ -28,6 +28,23 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		sb.Where(sb.LessThan("address", q.After))
 	}
 
+	if q.HasParam("meta_key") {
+		sb.JoinWithOption(
+			sqlbuilder.LeftJoin,
+			sb.As("metadata", "m"),
+			"m.meta_target_id = t.id",
+		)
+		sb.Where(
+			sb.Equal("m.meta_key", q.Params["meta_key"]),
+			sb.Equal("m.meta_target_type", "account"),
+		)
+		if q.HasParam("meta_value") {
+			sb.Where(
+				sb.Equal("m.meta_value", q.Params["meta_value"]),
+			)
+		}
+	}
+
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
 	if viper.GetBool("debug") {
 		fmt.Println(sqlq, args)
@@ -41,6 +58,8 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	if err != nil {
 		return c, err
 	}
+
+	defer rows.Close()
 
 	for rows.Next() {
 		var address string
