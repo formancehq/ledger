@@ -31,6 +31,8 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
 		query.After(c.Query("after")),
+		query.Metakey(c.Query("meta_key")),
+		query.Metavalue(c.Query("meta_value")),
 	)
 	if err != nil {
 		ctl.responseError(

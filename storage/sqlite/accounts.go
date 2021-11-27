@@ -32,7 +32,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		sb.JoinWithOption(
 			sqlbuilder.LeftJoin,
 			sb.As("metadata", "m"),
-			"m.meta_target_id = t.id",
+			"m.meta_target_id = address",
 		)
 		sb.Where(
 			sb.Equal("m.meta_key", q.Params["meta_key"]),

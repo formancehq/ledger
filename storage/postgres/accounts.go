@@ -64,7 +64,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		queryAcc.JoinWithOption(
 			sqlbuilder.LeftJoin,
 			queryAcc.As("metadata", "m"),
-			"m.meta_target_id = t.id",
+			"m.meta_target_id = address",
 		)
 		queryAcc.Where(
 			queryAcc.Equal("m.meta_key", q.Params["meta_key"]),
