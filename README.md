@@ -1,6 +1,8 @@
 # Numary Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)](https://goreportcard.com/report/github.com/numary/ledger) [![discord](https://img.shields.io/discord/846686859869814784?label=chat%20@%20discord)](https://discord.gg/8B5td4ZC)
 
-![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png)
+<!--- ![Numary GitHub Header Illustration Monochrome](https://user-images.githubusercontent.com/1770991/134161854-03797c76-d580-4b15-b0cf-5f8ce0080efb.png) --->
+
+<img width="50%" align="right" alt="numscript-example" src="https://user-images.githubusercontent.com/1770991/143925680-8c2db950-925f-4428-85bd-f0ea11b08254.png">
 
 Numary is a programmable ledger that is making it safe, fun and cheap to build money-moving applications.
 
