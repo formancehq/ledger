@@ -82,18 +82,45 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	)
 }
 
+// GetTransaction godoc
+// @Summary Revert transaction
+// @Schemes
+// @Param ledger path string true "ledger"
+// @Param txid path string true "txid"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Router /{ledger}/transactions/{txid} [get]
+func (ctl *TransactionController) GetTransaction(c *gin.Context) {
+	l, _ := c.Get("ledger")
+	tx, err := l.(*ledger.Ledger).GetTransaction(c.Param("txid"))
+	if err != nil {
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			err,
+		)
+		return
+	}
+	ctl.response(
+		c,
+		http.StatusOK,
+		tx,
+	)
+}
+
 // RevertTransaction godoc
 // @Summary Revert transaction
 // @Schemes
 // @Param ledger path string true "ledger"
-// @Param transactionId path string true "transactionId"
+// @Param txid path string true "txid"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
-// @Router /{ledger}/transactions/{transactionId}/revert [post]
+// @Router /{ledger}/transactions/{txid}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	err := l.(*ledger.Ledger).RevertTransaction(c.Param("transactionId"))
+	err := l.(*ledger.Ledger).RevertTransaction(c.Param("txid"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -113,11 +140,11 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 // @Summary Set metadata on transaction
 // @Schemes
 // @Param ledger path string true "ledger"
-// @Param reference path string true "reference"
+// @Param txid path string true "txid"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
-// @Router /{ledger}/transactions/{reference}/metadata [post]
+// @Router /{ledger}/transactions/{txid}/metadata [post]
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -126,7 +153,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 
 	err := l.(*ledger.Ledger).SaveMeta(
 		"transaction",
-		c.Param("transactionId"),
+		c.Param("txid"),
 		m,
 	)
 	if err != nil {
