@@ -3,7 +3,7 @@ package core
 type Posting struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
-	Amount      int64  `json:"amount"`
+	Amount      int64  `json:"amount" binding:"required,min=1"`
 	Asset       string `json:"asset"`
 }
 

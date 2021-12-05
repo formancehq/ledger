@@ -8,7 +8,7 @@ import (
 
 type Transaction struct {
 	ID        int64    `json:"txid"`
-	Postings  Postings `json:"postings"`
+	Postings  Postings `json:"postings" binding:"dive,required"`
 	Reference string   `json:"reference"`
 	Timestamp string   `json:"timestamp"`
 	Hash      string   `json:"hash" swaggerignore:"true"`
