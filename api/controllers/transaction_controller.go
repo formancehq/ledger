@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,8 @@ func NewTransactionController() TransactionController {
 
 // GetTransactions godoc
 // @Summary Get Transactions
+// @Description Get all ledger transactions
+// @Tags transactions
 // @Schemes
 // @Description List transactions
 // @Param ledger path string true "ledger"
@@ -51,7 +54,9 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 // PostTransactions godoc
-// @Summary Commit a new transaction to the ledger
+// @Summary Create Transaction
+// @Description Create a new ledger transaction
+// @Tags transactions
 // @Schemes
 // @Description Commit a new transaction to the ledger
 // @Param ledger path string true "ledger"
@@ -83,13 +88,16 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 }
 
 // GetTransaction godoc
-// @Summary Revert transaction
+// @Summary Revert Transaction
+// @Description Get transaction by transaction id
+// @Tags transactions
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Param txid path string true "txid"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
+// @Failure 404 {object} controllers.BaseResponse
 // @Router /{ledger}/transactions/{txid} [get]
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -102,6 +110,14 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		)
 		return
 	}
+	if tx.Postings == nil {
+		ctl.responseError(
+			c,
+			http.StatusNotFound,
+			errors.New("transaction not found"),
+		)
+		return
+	}
 	ctl.response(
 		c,
 		http.StatusOK,
@@ -110,7 +126,9 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 }
 
 // RevertTransaction godoc
-// @Summary Revert transaction
+// @Summary Revert Transaction
+// @Description Revert a ledger transaction by transaction id
+// @Tags transactions
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Param txid path string true "txid"
@@ -137,7 +155,9 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 }
 
 // PostTransactionMetadata godoc
-// @Summary Set metadata on transaction
+// @Summary Set Transaction Metadata
+// @Description Set a new metadata to a ledger transaction by transaction id
+// @Tags transactions
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Param txid path string true "txid"

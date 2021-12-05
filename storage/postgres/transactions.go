@@ -247,7 +247,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	return c, nil
 }
 
-func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
+func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -260,7 +260,7 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 		"p.asset",
 	)
 	sb.From(sb.As(s.table("transactions"), "t"))
-	sb.Where(sb.Equal("t.id", id))
+	sb.Where(sb.Equal("t.id", txid))
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
@@ -268,8 +268,6 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 	if viper.GetBool("debug") {
 		fmt.Println(sqlq, args)
 	}
-
-	tx := core.Transaction{}
 
 	rows, err := s.Conn().Query(
 		context.Background(),
@@ -281,17 +279,15 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 		return tx, err
 	}
 
-	txFieldsSet := false
-
 	for rows.Next() {
 		var txid int64
 		var ts string
 		var thash string
-		var tref string
+		var tref interface{}
 
 		posting := core.Posting{}
 
-		rows.Scan(
+		err := rows.Scan(
 			&txid,
 			&ts,
 			&thash,
@@ -301,16 +297,16 @@ func (s *PGStore) GetTransaction(id string) (core.Transaction, error) {
 			&posting.Amount,
 			&posting.Asset,
 		)
+		if err != nil {
+			return tx, err
+		}
 
-		if !txFieldsSet {
-			tx.ID = txid
-			tx.Postings = []core.Posting{}
-			tx.Timestamp = ts
-			tx.Hash = thash
-			tx.Reference = tref
-			tx.Metadata = core.Metadata{}
-
-			txFieldsSet = true
+		tx.ID = txid
+		tx.Timestamp = ts
+		tx.Hash = thash
+		tx.Metadata = core.Metadata{}
+		if tref != nil {
+			tx.Reference = tref.(string)
 		}
 
 		tx.AppendPosting(posting)
