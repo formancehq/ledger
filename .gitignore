@@ -7,3 +7,4 @@ cmd/control/*
 docs/swagger.json
 docs/swagger.yaml
 .idea
+vendor
