@@ -23,8 +23,8 @@ type Ledger struct {
 	_lastMetaID int64
 }
 
-func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
-	store, err := storage.GetStore(name)
+func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory) (*Ledger, error) {
+	store, err := storageFactory.GetStore(name)
 
 	if err != nil {
 		return nil, err
