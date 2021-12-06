@@ -6,3 +6,5 @@ cmd/control/*
 .DS_Store
 docs/swagger.json
 docs/swagger.yaml
+.idea
+vendor
