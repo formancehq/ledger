@@ -2,8 +2,29 @@ package ledger
 
 import (
 	"github.com/numary/ledger/storage"
+	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
+
+type ResolverOption interface {
+	apply(r *Resolver) error
+}
+type ResolveOptionFn func(r *Resolver) error
+
+func (fn ResolveOptionFn) apply(r *Resolver) error {
+	return fn(r)
+}
+
+func WithStorageFactory(factory storage.Factory) ResolveOptionFn {
+	return ResolveOptionFn(func(r *Resolver) error {
+		r.storageFactory = factory
+		return nil
+	})
+}
+
+var DefaultResolverOptions = []ResolverOption{
+	WithStorageFactory(storage.DefaultFactory),
+}
 
 type Resolver struct {
 	lifecycle      fx.Lifecycle
@@ -11,12 +32,20 @@ type Resolver struct {
 	storageFactory storage.Factory
 }
 
-func NewResolver(lc fx.Lifecycle, storageFactory storage.Factory) *Resolver {
-	return &Resolver{
-		ledgers:        make(map[string]*Ledger),
-		lifecycle:      lc,
-		storageFactory: storageFactory,
+func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
+	options = append(DefaultResolverOptions, options...)
+	r := &Resolver{
+		ledgers:   make(map[string]*Ledger),
+		lifecycle: lc,
 	}
+	for _, opt := range options {
+		err := opt.apply(r)
+		if err != nil {
+			panic(errors.Wrap(err, "applying option on resolver"))
+		}
+	}
+
+	return r
 }
 
 func (r *Resolver) GetLedger(name string) (*Ledger, error) {
