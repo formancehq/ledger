@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/numary/ledger/storage"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -28,7 +29,7 @@ func with(f func(l *Ledger)) {
 		),
 		fx.Provide(
 			func(lc fx.Lifecycle) (*Ledger, error) {
-				l, err := NewLedger("test", lc)
+				l, err := NewLedger("test", lc, storage.DefaultFactory)
 
 				if err != nil {
 					panic(err)

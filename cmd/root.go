@@ -57,6 +57,7 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
+					storage.NewDefaultFactory,
 					ledger.NewResolver,
 					api.NewAPI,
 				),
