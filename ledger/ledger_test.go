@@ -330,7 +330,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		l.Commit([]core.Transaction{{
-			Reference: "foo",
+			Reference: "bar",
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -390,7 +390,7 @@ func TestRevertTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		l.Commit([]core.Transaction{{
+		txs, err := l.Commit([]core.Transaction{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -402,18 +402,17 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}})
 
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		world, err := l.GetAccount("world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		originalBal := world.Balances["COIN"]
 
-		committedTx, err := l.GetLastTransaction()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = l.RevertTransaction(fmt.Sprint(committedTx.ID))
+		err = l.RevertTransaction(fmt.Sprint(txs[0].ID))
 		if err != nil {
 			t.Fatal(err)
 		}
