@@ -1,8 +1,9 @@
 package controllers
 
 import (
-	"github.com/swaggo/swag"
 	"net/http"
+
+	"github.com/swaggo/swag"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/config"
@@ -22,6 +23,8 @@ func NewConfigController() ConfigController {
 
 // GetInfo godoc
 // @Summary Server Info
+// @Description Show server informations
+// @Tags server
 // @Schemes
 // @Accept json
 // @Produce json
