@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/numary/ledger/storage"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -12,6 +11,8 @@ import (
 	"path"
 	"reflect"
 	"testing"
+
+	"github.com/numary/ledger/storage"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/config"
@@ -352,6 +353,35 @@ func TestGetTransaction(t *testing.T) {
 
 		if !reflect.DeepEqual(tx, last) {
 			t.Fail()
+		}
+	})
+}
+
+func TestFindTransactions(t *testing.T) {
+	with(func(l *Ledger) {
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "test_find_transactions",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		l.Commit([]core.Transaction{tx})
+
+		res, err := l.FindTransactions()
+
+		if err != nil {
+			t.Error(err)
+		}
+
+		txs := res.Data.([]core.Transaction)
+
+		if txs[0].Postings[0].Destination != "test_find_transactions" {
+			t.Error()
 		}
 	})
 }
