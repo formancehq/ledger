@@ -1,9 +1,12 @@
 package ledger
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v4/pgxpool"
+
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -57,7 +60,14 @@ func TestMain(m *testing.M) {
 		viper.Set("storage.sqlite.db_name", "ledger")
 		os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
 	case "postgres":
-		store, err := postgres.NewStore("test")
+		pool, err := pgxpool.Connect(
+			context.Background(),
+			viper.GetString("storage.postgres.conn_string"),
+		)
+		if err != nil {
+			panic(err)
+		}
+		store, err := postgres.NewStore("test", pool)
 		if err != nil {
 			panic(err)
 		}
@@ -446,7 +456,7 @@ func TestRevertTransaction(t *testing.T) {
 	})
 }
 
-func BenchmarkTransaction1(b *testing.B) {
+func markTransaction1(b *testing.B) {
 	with(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
 			txs := []core.Transaction{}
