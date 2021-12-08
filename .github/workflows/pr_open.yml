@@ -149,7 +149,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
           benchmark-data-dir-path: dev/bench-sqlite
-          auto-push: true
+          auto-push: false
           comment-always: true
   Bench_postgres:
     name: 'Bench - PostgreSQL'
@@ -206,7 +206,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
           benchmark-data-dir-path: dev/bench-pgsql
-          auto-push: true
+          auto-push: false
           comment-always: true
   Lint:
       name: 'Lint'

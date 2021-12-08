@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -76,8 +77,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		var txid int64
 		var ts string
 		var thash string
-		// ref field can be NULL, treat it as an interface instead of string:
-		var ref interface{}
+		var ref sql.NullString
 
 		posting := core.Posting{}
 
@@ -95,19 +95,13 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 			return c, err
 		}
 
-		// Convert ref to string if it's available:
-		var refStr string
-		if ref != nil {
-			refStr = ref.(string)
-		}
-
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
 				ID:        txid,
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: refStr,
+				Reference: ref.String,
 				Metadata:  core.Metadata{},
 			}
 		}
@@ -234,7 +228,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 	return tx.Commit()
 }
 
-func (s *SQLiteStore) GetTransaction(id string) (core.Transaction, error) {
+func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -247,7 +241,7 @@ func (s *SQLiteStore) GetTransaction(id string) (core.Transaction, error) {
 		"p.asset",
 	)
 	sb.From(sb.As("transactions", "t"))
-	sb.Where(sb.Equal("t.id", id))
+	sb.Where(sb.Equal("t.id", txid))
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
@@ -255,8 +249,6 @@ func (s *SQLiteStore) GetTransaction(id string) (core.Transaction, error) {
 	if viper.GetBool("debug") {
 		fmt.Println(sqlq, args)
 	}
-
-	tx := core.Transaction{}
 
 	rows, err := s.db.Query(
 		sqlq,
@@ -267,17 +259,15 @@ func (s *SQLiteStore) GetTransaction(id string) (core.Transaction, error) {
 		return tx, err
 	}
 
-	txFieldsSet := false
-
 	for rows.Next() {
 		var txid int64
 		var ts string
 		var thash string
-		var tref string
+		var tref sql.NullString
 
 		posting := core.Posting{}
 
-		rows.Scan(
+		err := rows.Scan(
 			&txid,
 			&ts,
 			&thash,
@@ -287,17 +277,15 @@ func (s *SQLiteStore) GetTransaction(id string) (core.Transaction, error) {
 			&posting.Amount,
 			&posting.Asset,
 		)
-
-		if !txFieldsSet {
-			tx.ID = txid
-			tx.Postings = []core.Posting{}
-			tx.Timestamp = ts
-			tx.Hash = thash
-			tx.Reference = tref
-			tx.Metadata = core.Metadata{}
-
-			txFieldsSet = true
+		if err != nil {
+			return tx, err
 		}
+
+		tx.ID = txid
+		tx.Timestamp = ts
+		tx.Hash = thash
+		tx.Metadata = core.Metadata{}
+		tx.Reference = tref.String
 
 		tx.AppendPosting(posting)
 	}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/numary/ledger/storage"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -12,6 +11,8 @@ import (
 	"path"
 	"reflect"
 	"testing"
+
+	"github.com/numary/ledger/storage"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/config"
@@ -329,7 +330,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		l.Commit([]core.Transaction{{
-			Reference: "foo",
+			Reference: "bar",
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -356,11 +357,40 @@ func TestGetTransaction(t *testing.T) {
 	})
 }
 
+func TestFindTransactions(t *testing.T) {
+	with(func(l *Ledger) {
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "test_find_transactions",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		l.Commit([]core.Transaction{tx})
+
+		res, err := l.FindTransactions()
+
+		if err != nil {
+			t.Error(err)
+		}
+
+		txs := res.Data.([]core.Transaction)
+
+		if txs[0].Postings[0].Destination != "test_find_transactions" {
+			t.Error()
+		}
+	})
+}
+
 func TestRevertTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		l.Commit([]core.Transaction{{
+		txs, err := l.Commit([]core.Transaction{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -372,18 +402,17 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}})
 
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		world, err := l.GetAccount("world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		originalBal := world.Balances["COIN"]
 
-		committedTx, err := l.GetLastTransaction()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = l.RevertTransaction(fmt.Sprint(committedTx.ID))
+		err = l.RevertTransaction(fmt.Sprint(txs[0].ID))
 		if err != nil {
 			t.Fatal(err)
 		}
