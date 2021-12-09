@@ -57,6 +57,10 @@ func NewStore(name string) (*PGStore, error) {
 	return store, nil
 }
 
+func (s *PGStore) Name() string {
+	return s.ledger
+}
+
 func (s *PGStore) Initialize() error {
 	statements := []string{}
 
