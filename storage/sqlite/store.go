@@ -47,6 +47,10 @@ func NewStore(name string) (*SQLiteStore, error) {
 	}, nil
 }
 
+func (s *SQLiteStore) Name() string {
+	return s.ledger
+}
+
 func (s *SQLiteStore) Initialize() error {
 	log.Println("initializing sqlite db")
 

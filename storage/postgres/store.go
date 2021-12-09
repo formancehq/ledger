@@ -30,6 +30,10 @@ func NewStore(name string, pool *pgxpool.Pool) (*PGStore, error) {
 	}, nil
 }
 
+func (s *PGStore) Name() string {
+	return s.ledger
+}
+
 func (s *PGStore) Initialize() error {
 	statements := []string{}
 
