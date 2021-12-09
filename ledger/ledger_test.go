@@ -456,7 +456,7 @@ func TestRevertTransaction(t *testing.T) {
 	})
 }
 
-func markTransaction1(b *testing.B) {
+func BenchmarkTransaction1(b *testing.B) {
 	with(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
 			txs := []core.Transaction{}
