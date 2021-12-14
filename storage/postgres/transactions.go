@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -214,7 +215,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		var txid int64
 		var ts string
 		var thash string
-		var tref string
+		var tref sql.NullString
 
 		posting := core.Posting{}
 
@@ -235,7 +236,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: tref,
+				Reference: tref.String,
 				Metadata:  core.Metadata{},
 			}
 		}
@@ -300,7 +301,7 @@ func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 		var txid int64
 		var ts string
 		var thash string
-		var tref interface{}
+		var tref sql.NullString
 
 		posting := core.Posting{}
 
@@ -322,9 +323,7 @@ func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 		tx.Timestamp = ts
 		tx.Hash = thash
 		tx.Metadata = core.Metadata{}
-		if tref != nil {
-			tx.Reference = tref.(string)
-		}
+		tx.Reference = tref.String
 
 		tx.AppendPosting(posting)
 	}

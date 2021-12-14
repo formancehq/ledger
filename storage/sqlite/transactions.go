@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -95,8 +96,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 		var txid int64
 		var ts string
 		var thash string
-		// ref field can be NULL, treat it as an interface instead of string:
-		var ref interface{}
+		var ref sql.NullString
 
 		posting := core.Posting{}
 
@@ -114,19 +114,13 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 			return c, err
 		}
 
-		// Convert ref to string if it's available:
-		var refStr string
-		if ref != nil {
-			refStr = ref.(string)
-		}
-
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
 				ID:        txid,
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: refStr,
+				Reference: ref.String,
 				Metadata:  core.Metadata{},
 			}
 		}
@@ -288,7 +282,7 @@ func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err erro
 		var txid int64
 		var ts string
 		var thash string
-		var tref interface{}
+		var tref sql.NullString
 
 		posting := core.Posting{}
 
@@ -310,9 +304,7 @@ func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err erro
 		tx.Timestamp = ts
 		tx.Hash = thash
 		tx.Metadata = core.Metadata{}
-		if tref != nil {
-			tx.Reference = tref.(string)
-		}
+		tx.Reference = tref.String
 
 		tx.AppendPosting(posting)
 	}

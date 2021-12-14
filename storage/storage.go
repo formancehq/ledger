@@ -22,6 +22,7 @@ type Store interface {
 	GetMeta(string, string) (core.Metadata, error)
 	CountMeta() (int64, error)
 	Initialize() error
+	Name() string
 	Close()
 }
 
