@@ -9,52 +9,25 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/spf13/viper"
 )
 
 //go:embed migration
 var migrations embed.FS
 
 type PGStore struct {
-	ledger     string
-	connString string
-	pool       *pgxpool.Pool
-}
-
-func (s *PGStore) connect() error {
-	log.Println("initiating postgres pool")
-
-	pool, err := pgxpool.Connect(
-		context.Background(),
-		s.connString,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	s.pool = pool
-
-	return nil
+	ledger string
+	pool   *pgxpool.Pool
 }
 
 func (s *PGStore) Conn() *pgxpool.Pool {
 	return s.pool
 }
 
-func NewStore(name string) (*PGStore, error) {
-	store := &PGStore{
-		ledger:     name,
-		connString: viper.GetString("storage.postgres.conn_string"),
-	}
-
-	err := store.connect()
-
-	if err != nil {
-		return store, err
-	}
-
-	return store, nil
+func NewStore(name string, pool *pgxpool.Pool) (*PGStore, error) {
+	return &PGStore{
+		ledger: name,
+		pool:   pool,
+	}, nil
 }
 
 func (s *PGStore) Name() string {
@@ -108,9 +81,7 @@ func (s *PGStore) table(name string) string {
 	return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
 }
 
-func (s *PGStore) Close() {
-	s.pool.Close()
-}
+func (s *PGStore) Close() {}
 
 func (s *PGStore) DropTest() {
 	s.Conn().Exec(
