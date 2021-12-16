@@ -63,7 +63,7 @@ func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	return meta, nil
 }
 
-func (s *SQLiteStore) SaveMeta(id, timestamp, targetType, targetID, key, value string) error {
+func (s *SQLiteStore) SaveMeta(id int64, timestamp, targetType, targetID, key, value string) error {
 	tx, _ := s.db.Begin()
 
 	ib := sqlbuilder.NewInsertBuilder()

@@ -68,7 +68,7 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	return meta, nil
 }
 
-func (s *PGStore) SaveMeta(id, timestamp, targetType, targetID, key, value string) error {
+func (s *PGStore) SaveMeta(id int64, timestamp, targetType, targetID, key, value string) error {
 	tx, _ := s.Conn().Begin(context.Background())
 
 	ib := sqlbuilder.NewInsertBuilder()

@@ -271,10 +271,9 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 
 	for key, value := range m {
 		state.LastMetaID++
-		metaRowID := fmt.Sprint(state.LastMetaID)
 
 		err := l.store.SaveMeta(
-			metaRowID,
+			state.LastMetaID,
 			timestamp,
 			targetType,
 			targetID,
