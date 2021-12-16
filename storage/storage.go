@@ -8,7 +8,8 @@ import (
 )
 
 type Store interface {
-	LoadState() (*core.State, error)
+	LastTransaction() (*core.Transaction, error)
+	LastMetaID() (int64, error)
 	SaveTransactions([]core.Transaction) error
 	CountTransactions() (int64, error)
 	FindTransactions(query.Query) (query.Cursor, error)

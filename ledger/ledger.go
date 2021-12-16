@@ -75,12 +75,10 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 	rf := map[string]map[string]int64{}
 	timestamp := time.Now().Format(time.RFC3339)
 
-	state, err := l.store.LoadState()
+	last, err := l.store.LastTransaction()
 	if err != nil {
 		return nil, err
 	}
-
-	last := state.LastTransaction
 
 	for i := range ts {
 
@@ -196,14 +194,14 @@ func (l *Ledger) RevertTransaction(id string) error {
 		return err
 	}
 
-	state, err := l.store.LoadState()
+	lastTransaction, err := l.store.LastTransaction()
 	if err != nil {
 		return err
 	}
 
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkRevertedBy(fmt.Sprint(state.LastTransaction.ID))
+	rt.Metadata.MarkRevertedBy(fmt.Sprint(lastTransaction.ID))
 	_, err = l.Commit([]core.Transaction{rt})
 
 	return err
@@ -262,7 +260,7 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 		return errors.New("empty target id")
 	}
 
-	state, err := l.store.LoadState()
+	lastMetaID, err := l.store.LastMetaID()
 	if err != nil {
 		return err
 	}
@@ -270,10 +268,10 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 	timestamp := time.Now().Format(time.RFC3339)
 
 	for key, value := range m {
-		state.LastMetaID++
+		lastMetaID++
 
 		err := l.store.SaveMeta(
-			state.LastMetaID,
+			lastMetaID,
 			timestamp,
 			targetType,
 			targetID,

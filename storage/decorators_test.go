@@ -15,9 +15,6 @@ func (noOpStorage) SaveTransactions([]core.Transaction) error {
 func (noOpStorage) SaveMeta(int64, string, string, string, string, string) error {
 	return nil
 }
-func (noOpStorage) LoadState() (*core.State, error) {
-	return &core.State{}, nil
-}
 
 func TestCacheState(t *testing.T) {
 	s := NewCachedStateStorage(noOpStorage{})
@@ -28,10 +25,14 @@ func TestCacheState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to save transactions: %s", err)
 	}
-	if s.Cached().LastTransaction == nil {
+	lastTransaction, err := s.LastTransaction()
+	if err != nil {
+		t.Fatalf("error fetching last transaction: %s", err)
+	}
+	if lastTransaction == nil {
 		t.Fatalf("cached version should not be nil")
 	}
-	if s.Cached().LastTransaction.ID != 3 {
+	if lastTransaction.ID != 3 {
 		t.Fatalf("last transaction id must be 3")
 	}
 
@@ -39,7 +40,11 @@ func TestCacheState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to save meta: %s", err)
 	}
-	if s.Cached().LastMetaID != 12 {
+	lastMetaID, err := s.LastMetaID()
+	if err != nil {
+		t.Fatalf("error fetching lastMetaId: %s", err)
+	}
+	if lastMetaID != 12 {
 		t.Fatalf("last meta id must be 12")
 	}
 }

@@ -4,59 +4,51 @@ import "github.com/numary/ledger/core"
 
 type cachedStateStorage struct {
 	Store
-	cache *core.State
+	lastTransaction *core.Transaction
+	lastMetaId      *int64
 }
 
-func (s *cachedStateStorage) Cached() *core.State {
-	return s.cache
-}
-
-func (s *cachedStateStorage) loadState() (*core.State, error) {
-	if s.cache != nil {
-		return s.cache, nil
+func (s *cachedStateStorage) LastTransaction() (*core.Transaction, error) {
+	if s.lastTransaction != nil {
+		return s.lastTransaction, nil
 	}
-	state, err := s.Store.LoadState()
+	var err error
+	s.lastTransaction, err = s.Store.LastTransaction()
 	if err != nil {
 		return nil, err
 	}
-	s.cache = state
-	return state, nil
+	return s.lastTransaction, nil
 }
 
-func (s *cachedStateStorage) LoadState() (*core.State, error) {
-	state, err := s.loadState()
-	if err != nil {
-		return nil, err
+func (s *cachedStateStorage) LastMetaID() (int64, error) {
+	if s.lastMetaId != nil {
+		return *s.lastMetaId, nil
 	}
-	cp := *state // State can be modified by the called, we have to provide a copy
-	return &cp, nil
+	lastMetaID, err := s.Store.LastMetaID()
+	if err != nil {
+		return 0, err
+	}
+	*s.lastMetaId = lastMetaID
+	return lastMetaID, nil
 }
 
 func (s *cachedStateStorage) SaveTransactions(txs []core.Transaction) error {
-	state, err := s.loadState()
-	if err != nil {
-		return err
-	}
-	err = s.Store.SaveTransactions(txs)
+	err := s.Store.SaveTransactions(txs)
 	if err != nil {
 		return err
 	}
 	if len(txs) > 0 {
-		state.LastTransaction = &txs[len(txs)-1]
+		s.lastTransaction = &txs[len(txs)-1]
 	}
 	return nil
 }
 
 func (s *cachedStateStorage) SaveMeta(id int64, timestamp, targetType, targetID, key, value string) error {
-	state, err := s.loadState()
+	err := s.Store.SaveMeta(id, timestamp, targetType, targetID, key, value)
 	if err != nil {
 		return err
 	}
-	err = s.Store.SaveMeta(id, timestamp, targetType, targetID, key, value)
-	if err != nil {
-		return err
-	}
-	state.LastMetaID = id
+	s.lastMetaId = &id
 	return nil
 }
 
