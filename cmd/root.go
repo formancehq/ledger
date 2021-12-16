@@ -19,6 +19,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+
+	// These lines allow registering sql drivers using init() functions
+	_ "github.com/numary/ledger/storage/postgres"
+	_ "github.com/numary/ledger/storage/sqlite"
 )
 
 var (

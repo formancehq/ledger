@@ -24,6 +24,10 @@ import (
 	"github.com/numary/ledger/storage/postgres"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+
+	// Register sql drivers
+	_ "github.com/numary/ledger/storage/postgres"
+	_ "github.com/numary/ledger/storage/sqlite"
 )
 
 func with(f func(l *Ledger)) {
