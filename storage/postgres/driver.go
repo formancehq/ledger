@@ -9,12 +9,12 @@ import (
 	"sync"
 )
 
-type PGSqlDriver struct {
+type Driver struct {
 	once sync.Once
 	pool *pgxpool.Pool
 }
 
-func (d *PGSqlDriver) Initialize() error {
+func (d *Driver) Initialize() error {
 	errCh := make(chan error, 1)
 	d.once.Do(func() {
 		log.Println("initiating postgres pool")
@@ -37,10 +37,10 @@ func (d *PGSqlDriver) Initialize() error {
 	}
 }
 
-func (d *PGSqlDriver) NewStore(name string) (storage.Store, error) {
+func (d *Driver) NewStore(name string) (storage.Store, error) {
 	return NewStore(name, d.pool)
 }
 
 func init() {
-	storage.RegisterDriver("postgres", &PGSqlDriver{})
+	storage.RegisterDriver("postgres", &Driver{})
 }

@@ -2,16 +2,16 @@ package sqlite
 
 import "github.com/numary/ledger/storage"
 
-type SQLiteSDriver struct{}
+type Driver struct{}
 
-func (d *SQLiteSDriver) Initialize() error {
+func (d *Driver) Initialize() error {
 	return nil
 }
 
-func (d *SQLiteSDriver) NewStore(name string) (storage.Store, error) {
+func (d *Driver) NewStore(name string) (storage.Store, error) {
 	return NewStore(name)
 }
 
 func init() {
-	storage.RegisterDriver("sqlite", &SQLiteSDriver{})
+	storage.RegisterDriver("sqlite", &Driver{})
 }
