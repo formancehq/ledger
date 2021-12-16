@@ -14,6 +14,7 @@ import (
 )
 
 type Store interface {
+	LoadState() (*core.State, error)
 	SaveTransactions([]core.Transaction) error
 	CountTransactions() (int64, error)
 	FindTransactions(query.Query) (query.Cursor, error)

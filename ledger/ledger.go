@@ -20,14 +20,8 @@ const (
 	targetTypeTransaction = "transaction"
 )
 
-type State struct {
-	_last       *core.Transaction
-	_lastMetaID int64
-}
-
 type Ledger struct {
 	sync.Mutex
-	State
 	name  string
 	store storage.Store
 }
@@ -50,9 +44,6 @@ func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory) (*L
 	l := &Ledger{
 		store: store,
 		name:  name,
-		State: State{
-			_lastMetaID: -1,
-		},
 	}
 
 	lc.Append(fx.Hook{
@@ -84,17 +75,12 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 	rf := map[string]map[string]int64{}
 	timestamp := time.Now().Format(time.RFC3339)
 
-	if l._last == nil {
-		last, err := l.GetLastTransaction()
-
-		if err != nil {
-			return ts, err
-		}
-
-		l._last = &last
+	state, err := l.store.LoadState()
+	if err != nil {
+		return nil, err
 	}
 
-	last := l._last
+	last := state.LastTransaction
 
 	for i := range ts {
 
@@ -160,9 +146,10 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 		}
 	}
 
-	err := l.store.SaveTransactions(ts)
-
-	l._last = &ts[len(ts)-1]
+	err = l.store.SaveTransactions(ts)
+	if err != nil {
+		return nil, err
+	}
 
 	return ts, err
 }
@@ -209,19 +196,14 @@ func (l *Ledger) RevertTransaction(id string) error {
 		return err
 	}
 
-	if l._last == nil {
-		last, err := l.GetLastTransaction()
-
-		if err != nil {
-			return err
-		}
-
-		l._last = &last
+	state, err := l.store.LoadState()
+	if err != nil {
+		return err
 	}
 
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkRevertedBy(fmt.Sprint(l._last.ID))
+	rt.Metadata.MarkRevertedBy(fmt.Sprint(state.LastTransaction.ID))
 	_, err = l.Commit([]core.Transaction{rt})
 
 	return err
@@ -280,21 +262,16 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 		return errors.New("empty target id")
 	}
 
-	if l._lastMetaID == -1 {
-		count, err := l.store.CountMeta()
-
-		if err != nil {
-			return err
-		}
-
-		l._lastMetaID = count - 1
+	state, err := l.store.LoadState()
+	if err != nil {
+		return err
 	}
 
 	timestamp := time.Now().Format(time.RFC3339)
 
 	for key, value := range m {
-		l._lastMetaID++
-		metaRowID := fmt.Sprint(l._lastMetaID)
+		state.LastMetaID++
+		metaRowID := fmt.Sprint(state.LastMetaID)
 
 		err := l.store.SaveMeta(
 			metaRowID,

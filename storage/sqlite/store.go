@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
 	"log"
 	"path"
 	"strings"
@@ -49,6 +51,36 @@ func NewStore(name string) (*SQLiteStore, error) {
 
 func (s *SQLiteStore) Name() string {
 	return s.ledger
+}
+
+func (s *SQLiteStore) LoadState() (*core.State, error) {
+
+	// Get last transaction
+	var lastTransaction core.Transaction
+
+	q := query.New()
+	q.Modify(query.Limit(1))
+
+	c, err := s.FindTransactions(q)
+	if err != nil {
+		return nil, err
+	}
+
+	txs := (c.Data).([]core.Transaction)
+	if len(txs) > 0 {
+		lastTransaction = txs[0]
+	}
+
+	// Get last meta id
+	count, err := s.CountMeta()
+	if err != nil {
+		return nil, err
+	}
+
+	return &core.State{
+		LastTransaction: &lastTransaction,
+		LastMetaID:      count - 1,
+	}, nil
 }
 
 func (s *SQLiteStore) Initialize() error {
