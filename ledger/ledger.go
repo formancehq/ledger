@@ -20,12 +20,16 @@ const (
 	targetTypeTransaction = "transaction"
 )
 
-type Ledger struct {
-	sync.Mutex
-	name        string
-	store       storage.Store
+type State struct {
 	_last       *core.Transaction
 	_lastMetaID int64
+}
+
+type Ledger struct {
+	sync.Mutex
+	State
+	name  string
+	store storage.Store
 }
 
 func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory) (*Ledger, error) {
@@ -44,9 +48,11 @@ func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory) (*L
 	}
 
 	l := &Ledger{
-		store:       store,
-		name:        name,
-		_lastMetaID: -1,
+		store: store,
+		name:  name,
+		State: State{
+			_lastMetaID: -1,
+		},
 	}
 
 	lc.Append(fx.Hook{
