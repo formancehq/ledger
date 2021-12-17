@@ -18,7 +18,6 @@ import (
 	"github.com/numary/ledger/storage"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage/postgres"
@@ -63,8 +62,6 @@ func TestMain(m *testing.M) {
 	if testing.Verbose() {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
-
-	config.Init()
 
 	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
 	case "sqlite":

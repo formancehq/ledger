@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/numary/ledger/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -36,8 +35,6 @@ func openuri(uri string) bool {
 var UICmd = &cobra.Command{
 	Use: "ui",
 	Run: func(cmd *cobra.Command, args []string) {
-		config.Init()
-
 		addr := viper.GetString("ui.http.bind_address")
 
 		handler := http.FileServer(http.FS(uipath))
