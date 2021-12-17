@@ -59,14 +59,33 @@ func Execute() {
 	start := &cobra.Command{
 		Use: "start",
 		Run: func(cmd *cobra.Command, args []string) {
+
+			config.Init()
+
+			options := make([]interface{}, 0)
+			if viper.GetBool("storage.cache") {
+				options = append(options, fx.Annotate(
+					storage.NewDefaultFactory,
+					fx.ResultTags(`name:"underlyingStorage"`),
+				))
+				options = append(options, fx.Annotate(
+					storage.NewCachedStorageFactory,
+					fx.ParamTags(`name:"underlyingStorage"`),
+					fx.As(new(storage.Factory)),
+				))
+				options = append(options, fx.Annotate(
+					ledger.WithStorageFactory,
+					fx.ResultTags(`group:"resolverOptions"`),
+					fx.As(new(ledger.ResolverOption)),
+				))
+			}
+
 			app := fx.New(
+				fx.Provide(options...),
 				fx.Provide(
-					ledger.NewResolver,
+					fx.Annotate(ledger.NewResolver, fx.ParamTags("", `group:"resolverOptions"`)),
 					api.NewAPI,
 				),
-				fx.Invoke(func() {
-					config.Init()
-				}),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 				}),
 				api.Module,

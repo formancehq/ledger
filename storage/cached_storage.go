@@ -1,6 +1,8 @@
 package storage
 
-import "github.com/numary/ledger/core"
+import (
+	"github.com/numary/ledger/core"
+)
 
 type cachedStateStorage struct {
 	Store
@@ -55,5 +57,23 @@ func (s *cachedStateStorage) SaveMeta(id int64, timestamp, targetType, targetID,
 func NewCachedStateStorage(underlying Store) *cachedStateStorage {
 	return &cachedStateStorage{
 		Store: underlying,
+	}
+}
+
+type CachedStorageFactory struct {
+	underlying Factory
+}
+
+func (f CachedStorageFactory) GetStore(name string) (Store, error) {
+	store, err := f.underlying.GetStore(name)
+	if err != nil {
+		return nil, err
+	}
+	return NewCachedStateStorage(store), nil
+}
+
+func NewCachedStorageFactory(underlying Factory) *CachedStorageFactory {
+	return &CachedStorageFactory{
+		underlying: underlying,
 	}
 }

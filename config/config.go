@@ -40,6 +40,7 @@ func Init() {
 	viper.SetDefault("storage.dir", path.Join(home, ".numary/data"))
 	viper.SetDefault("storage.sqlite.db_name", "numary")
 	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
+	viper.SetDefault("storage.cache", false)
 	viper.SetDefault("server.http.bind_address", "localhost:3068")
 	viper.SetDefault("ui.http.bind_address", "localhost:3078")
 	viper.SetDefault("ledgers", []string{"quickstart"})
