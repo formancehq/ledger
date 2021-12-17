@@ -30,11 +30,11 @@ CREATE INDEX IF NOT EXISTS p_c0 ON "VAR_LEDGER_NAME".postings (
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".metadata (
   "meta_id"          bigint,
-  "meta_target_type" varchar,
-  "meta_target_id"   varchar,
-  "meta_key"         varchar,
+  "meta_target_type" varchar NOT NULL CHECK (meta_target_type <> ''),
+  "meta_target_id"   varchar NOT NULL CHECK (meta_target_id <> ''),
+  "meta_key"         varchar NOT NULL CHECK (meta_key <> ''),
   "meta_value"       varchar,
-  "timestamp"        varchar,
+  "timestamp"        varchar NOT NULL CHECK (timestamp <> ''),
 
   UNIQUE("meta_id")
 );
