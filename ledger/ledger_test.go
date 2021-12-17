@@ -37,7 +37,7 @@ func with(f func(l *Ledger)) {
 		),
 		fx.Provide(
 			func(lc fx.Lifecycle) (*Ledger, error) {
-				l, err := NewLedger("test", lc, storage.DefaultFactory)
+				l, err := NewLedger("test", lc, storage.DefaultFactory, NewInMemoryLocker())
 
 				if err != nil {
 					panic(err)

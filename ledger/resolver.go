@@ -22,14 +22,23 @@ func WithStorageFactory(factory storage.Factory) ResolveOptionFn {
 	})
 }
 
+func WithLocker(locker Locker) ResolveOptionFn {
+	return ResolveOptionFn(func(r *Resolver) error {
+		r.locker = locker
+		return nil
+	})
+}
+
 var DefaultResolverOptions = []ResolverOption{
 	WithStorageFactory(storage.DefaultFactory),
+	WithLocker(NewInMemoryLocker()),
 }
 
 type Resolver struct {
 	lifecycle      fx.Lifecycle
 	ledgers        map[string]*Ledger
 	storageFactory storage.Factory
+	locker         Locker
 }
 
 func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
@@ -50,7 +59,7 @@ func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
 
 func (r *Resolver) GetLedger(name string) (*Ledger, error) {
 	if _, ok := r.ledgers[name]; !ok {
-		l, err := NewLedger(name, r.lifecycle, r.storageFactory)
+		l, err := NewLedger(name, r.lifecycle, r.storageFactory, r.locker)
 
 		if err != nil {
 			return nil, err
