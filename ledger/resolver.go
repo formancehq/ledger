@@ -36,7 +36,6 @@ var DefaultResolverOptions = []ResolverOption{
 
 type Resolver struct {
 	lifecycle      fx.Lifecycle
-	ledgers        map[string]*Ledger
 	storageFactory storage.Factory
 	locker         Locker
 }
@@ -44,7 +43,6 @@ type Resolver struct {
 func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
-		ledgers:   make(map[string]*Ledger),
 		lifecycle: lc,
 	}
 	for _, opt := range options {
@@ -58,15 +56,5 @@ func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
 }
 
 func (r *Resolver) GetLedger(name string) (*Ledger, error) {
-	if _, ok := r.ledgers[name]; !ok {
-		l, err := NewLedger(name, r.lifecycle, r.storageFactory, r.locker)
-
-		if err != nil {
-			return nil, err
-		}
-
-		r.ledgers[name] = l
-	}
-
-	return r.ledgers[name], nil
+	return NewLedger(name, r.lifecycle, r.storageFactory, r.locker)
 }
