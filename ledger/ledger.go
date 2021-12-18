@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
-	"log"
+	"github.com/sirupsen/logrus"
 	"time"
 
 	"github.com/numary/ledger/config"
@@ -35,7 +35,7 @@ func NewLedger(ctx context.Context, name string, storageFactory storage.Factory,
 
 	if err != nil {
 		err = fmt.Errorf("failed to initialize store: %w", err)
-		log.Println(err)
+		logrus.Debugln(err)
 		return nil, err
 	}
 

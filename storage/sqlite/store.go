@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"log"
+	"github.com/sirupsen/logrus"
 	"path"
 	"strings"
 
@@ -29,7 +29,7 @@ func NewStore(storageDir, dbName, name string) (*SQLiteStore, error) {
 		),
 	)
 
-	log.Printf("opening %s\n", dbpath)
+	logrus.Debugf("opening %s\n", dbpath)
 
 	db, err := sql.Open("sqlite3", dbpath)
 
@@ -48,7 +48,7 @@ func (s *SQLiteStore) Name() string {
 }
 
 func (s *SQLiteStore) Initialize(ctx context.Context) error {
-	log.Println("initializing sqlite db")
+	logrus.Debugln("initializing sqlite db")
 
 	statements := []string{}
 
@@ -59,7 +59,7 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
 	}
 
 	for _, m := range entries {
-		log.Printf("running migration %s\n", m.Name())
+		logrus.Debugf("running migration %s\n", m.Name())
 
 		b, err := migrations.ReadFile(path.Join("migration", m.Name()))
 
@@ -79,8 +79,8 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
 		_, err = s.db.ExecContext(ctx, statement)
 
 		if err != nil {
-			fmt.Println(err)
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			logrus.Errorln(err)
 			return err
 		}
 	}
@@ -89,7 +89,7 @@ func (s *SQLiteStore) Initialize(ctx context.Context) error {
 }
 
 func (s *SQLiteStore) Close(ctx context.Context) error {
-	log.Println("sqlite db closed")
+	logrus.Debugln("sqlite db closed")
 	err := s.db.Close()
 	if err != nil {
 		return err

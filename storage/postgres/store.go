@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"log"
+	"github.com/sirupsen/logrus"
 	"path"
 	"strings"
 
@@ -44,7 +44,7 @@ func (s *PGStore) Initialize(ctx context.Context) error {
 	}
 
 	for _, m := range entries {
-		log.Printf("running migration %s\n", m.Name())
+		logrus.Debugf("running migration %s\n", m.Name())
 
 		b, err := migrations.ReadFile(path.Join("migration", m.Name()))
 
@@ -67,9 +67,8 @@ func (s *PGStore) Initialize(ctx context.Context) error {
 		)
 
 		if err != nil {
-			fmt.Println(err)
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
-			log.Println(statement)
+			logrus.Errorf("error running statement: %s", err)
 			return err
 		}
 	}

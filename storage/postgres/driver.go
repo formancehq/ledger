@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/numary/ledger/storage"
-	"log"
+	"github.com/sirupsen/logrus"
 	"sync"
 )
 
@@ -17,7 +17,7 @@ type Driver struct {
 func (d *Driver) Initialize(ctx context.Context) error {
 	errCh := make(chan error, 1)
 	d.once.Do(func() {
-		log.Println("initiating postgres pool")
+		logrus.Debugln("initiating postgres pool")
 
 		pool, err := pgxpool.Connect(ctx, d.connString)
 		if err != nil {

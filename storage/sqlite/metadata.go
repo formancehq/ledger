@@ -3,8 +3,6 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/sirupsen/logrus"
@@ -98,7 +96,7 @@ func (s *SQLiteStore) SaveMeta(ctx context.Context, id int64, timestamp, targetT
 	_, err := tx.ExecContext(ctx, sqlq, args...)
 
 	if err != nil {
-		fmt.Println("failed to save metadata", err)
+		logrus.Debugln("failed to save metadata", err)
 		tx.Rollback()
 
 		return err

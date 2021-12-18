@@ -9,8 +9,8 @@ import (
 	"github.com/numary/ledger/storage/postgres"
 	"github.com/numary/ledger/storage/sqlite"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -50,6 +50,9 @@ var (
 			default:
 				return fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
 			}
+			if viper.GetBool("debug") {
+				logrus.StandardLogger().Level = logrus.DebugLevel
+			}
 			return nil
 		},
 	}
@@ -77,8 +80,6 @@ func Execute() {
 	start := &cobra.Command{
 		Use: "start",
 		Run: func(cmd *cobra.Command, args []string) {
-
-			config.Init()
 
 			options := make([]interface{}, 0)
 			options = append(options,
@@ -131,7 +132,7 @@ func Execute() {
 					}()
 					lc.Append(fx.Hook{
 						OnStop: func(ctx context.Context) error {
-							log.Println("closing storage factory")
+							logrus.Println("closing storage factory")
 							err := storageFactory.Close(ctx)
 							if err != nil {
 								return errors.Wrap(err, "closing storage factory")
@@ -156,7 +157,6 @@ func Execute() {
 	conf.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
-			config.Init()
 			err := viper.SafeWriteConfig()
 			if err != nil {
 				fmt.Println(err)
@@ -171,17 +171,16 @@ func Execute() {
 	store.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
-			config.Init()
 			s, err := storage.GetStore(viper.GetString("storage.driver"), "default")
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			err = s.Initialize(context.Background())
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 		},
 	})
@@ -190,12 +189,10 @@ func Execute() {
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			config.Init()
-
 			b, err := ioutil.ReadFile(args[1])
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			r := regexp.MustCompile(`^\n`)
@@ -207,7 +204,7 @@ func Execute() {
 			})
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			res, err := http.Post(
@@ -221,13 +218,13 @@ func Execute() {
 			)
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			b, err = ioutil.ReadAll(res.Body)
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			var result struct {
@@ -236,12 +233,12 @@ func Execute() {
 			}
 			err = json.Unmarshal(b, &result)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 			if result.Ok {
 				fmt.Println("Script ran successfully ✅")
 			} else {
-				log.Fatal(result.Err)
+				logrus.Fatal(result.Err)
 			}
 		},
 	}
@@ -250,17 +247,15 @@ func Execute() {
 		Use:  "check [script]",
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			config.Init()
-
 			b, err := ioutil.ReadFile(args[0])
 
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 
 			_, err = compiler.Compile(string(b))
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			} else {
 				fmt.Println("Script is correct ✅")
 			}

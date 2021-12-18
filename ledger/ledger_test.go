@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/numary/ledger/storage/sqlite"
-	"io/ioutil"
-	"log"
+	"github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"path"
@@ -52,7 +52,11 @@ func with(f func(l *Ledger)) {
 }
 
 func TestMain(m *testing.M) {
-	log.SetOutput(ioutil.Discard)
+
+	flag.Parse()
+	if testing.Verbose() {
+		logrus.StandardLogger().Level = logrus.DebugLevel
+	}
 
 	config.Init()
 
@@ -77,7 +81,7 @@ func TestMain(m *testing.M) {
 		}
 		store.DropTest()
 	}
-	fmt.Println(viper.AllSettings())
+	logrus.Debugln(viper.AllSettings())
 
 	m.Run()
 }
@@ -115,7 +119,7 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			fmt.Println(i)
+			logrus.Debugln(i)
 
 			_, err := l.Commit(context.Background(), batch)
 

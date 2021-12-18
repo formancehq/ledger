@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"os"
 	"path"
 	"strings"
@@ -70,7 +70,7 @@ func Remember(ledger string) {
 	err := viper.WriteConfig()
 
 	if err != nil {
-		log.Printf(
+		logrus.Printf(
 			"failed to write config: ledger %s will not be remembered\n",
 			ledger,
 		)
