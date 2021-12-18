@@ -1,9 +1,11 @@
 package storage
 
+import "context"
+
 type Driver interface {
-	Initialize() error
+	Initialize(ctx context.Context) error
 	NewStore(name string) (Store, error)
-	Close() error
+	Close(ctx context.Context) error
 }
 
 var drivers = make(map[string]Driver)

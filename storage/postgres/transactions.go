@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
+func (s *PGStore) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
 	tx, _ := s.Conn().Begin(context.Background())
 
 	for _, t := range ts {
@@ -31,13 +31,13 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 		sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 		_, err := tx.Exec(
-			context.Background(),
+			ctx,
 			sqlq,
 			args...,
 		)
 
 		if err != nil {
-			tx.Rollback(context.Background())
+			tx.Rollback(ctx)
 
 			return err
 		}
@@ -51,7 +51,7 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 			_, err := tx.Exec(
-				context.Background(),
+				ctx,
 				// `INSERT INTO "postings"
 				// 	("id", "txid", "source", "destination", "amount", "asset")
 				// VALUES
@@ -67,15 +67,15 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 			)
 
 			if err != nil {
-				tx.Rollback(context.Background())
+				tx.Rollback(ctx)
 
 				return err
 			}
 		}
 
-		nextID, err := s.CountMeta()
+		nextID, err := s.CountMeta(ctx)
 		if err != nil {
-			tx.Rollback(context.Background())
+			tx.Rollback(ctx)
 
 			return err
 		}
@@ -102,10 +102,10 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-			_, err = tx.Exec(context.Background(), sqlq, args...)
+			_, err = tx.Exec(ctx, sqlq, args...)
 
 			if err != nil {
-				tx.Rollback(context.Background())
+				tx.Rollback(ctx)
 
 				return err
 			}
@@ -114,10 +114,10 @@ func (s *PGStore) SaveTransactions(ts []core.Transaction) error {
 		}
 	}
 
-	return tx.Commit(context.Background())
+	return tx.Commit(ctx)
 }
 
-func (s *PGStore) CountTransactions() (int64, error) {
+func (s *PGStore) CountTransactions(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -127,7 +127,7 @@ func (s *PGStore) CountTransactions() (int64, error) {
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	err := s.Conn().QueryRow(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	).Scan(&count)
@@ -135,7 +135,7 @@ func (s *PGStore) CountTransactions() (int64, error) {
 	return count, err
 }
 
-func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
+func (s *PGStore) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100)))
 
 	c := query.Cursor{}
@@ -183,7 +183,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	rows, err := s.Conn().Query(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -230,7 +230,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", t.ID))
+		meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", t.ID))
 		if err != nil {
 			return c, err
 		}
@@ -248,7 +248,7 @@ func (s *PGStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	return c, nil
 }
 
-func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
+func (s *PGStore) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -271,7 +271,7 @@ func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 	}
 
 	rows, err := s.Conn().Query(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -311,11 +311,30 @@ func (s *PGStore) GetTransaction(txid string) (tx core.Transaction, err error) {
 		tx.AppendPosting(posting)
 	}
 
-	meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", tx.ID))
+	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
 		return tx, err
 	}
 	tx.Metadata = meta
 
 	return tx, nil
+}
+
+func (s *PGStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+	var lastTransaction core.Transaction
+
+	q := query.New()
+	q.Modify(query.Limit(1))
+
+	c, err := s.FindTransactions(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	txs := (c.Data).([]core.Transaction)
+	if len(txs) > 0 {
+		lastTransaction = txs[0]
+		return &lastTransaction, nil
+	}
+	return nil, nil
 }

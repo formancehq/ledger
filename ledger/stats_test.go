@@ -1,10 +1,13 @@
 package ledger
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestStats(t *testing.T) {
 	with(func(l *Ledger) {
-		_, err := l.Stats()
+		_, err := l.Stats(context.Background())
 
 		if err != nil {
 

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -9,7 +10,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
+func (s *SQLiteStore) LastMetaID(ctx context.Context) (int64, error) {
+	count, err := s.CountMeta(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return count - 1, nil
+}
+
+func (s *SQLiteStore) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
@@ -28,7 +37,7 @@ func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 		fmt.Println(sqlq, args)
 	}
 
-	rows, err := s.db.Query(sqlq, args...)
+	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {
 		return nil, err
@@ -37,12 +46,12 @@ func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	meta := core.Metadata{}
 
 	for rows.Next() {
-		var meta_key string
-		var meta_value string
+		var metaKey string
+		var metaValue string
 
 		err := rows.Scan(
-			&meta_key,
-			&meta_value,
+			&metaKey,
+			&metaValue,
 		)
 
 		if err != nil {
@@ -51,19 +60,19 @@ func (s *SQLiteStore) GetMeta(ty string, id string) (core.Metadata, error) {
 
 		var value json.RawMessage
 
-		err = json.Unmarshal([]byte(meta_value), &value)
+		err = json.Unmarshal([]byte(metaValue), &value)
 
 		if err != nil {
 			return nil, err
 		}
 
-		meta[meta_key] = value
+		meta[metaKey] = value
 	}
 
 	return meta, nil
 }
 
-func (s *SQLiteStore) SaveMeta(id int64, timestamp, targetType, targetID, key, value string) error {
+func (s *SQLiteStore) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
 	tx, _ := s.db.Begin()
 
 	ib := sqlbuilder.NewInsertBuilder()
@@ -81,7 +90,7 @@ func (s *SQLiteStore) SaveMeta(id int64, timestamp, targetType, targetID, key, v
 		targetType,
 		targetID,
 		key,
-		string(value),
+		value,
 		timestamp,
 	)
 
@@ -90,7 +99,7 @@ func (s *SQLiteStore) SaveMeta(id int64, timestamp, targetType, targetID, key, v
 		fmt.Println(sqlq, args)
 	}
 
-	_, err := tx.Exec(sqlq, args...)
+	_, err := tx.ExecContext(ctx, sqlq, args...)
 
 	if err != nil {
 		fmt.Println("failed to save metadata", err)

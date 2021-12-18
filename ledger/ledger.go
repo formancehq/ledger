@@ -11,7 +11,6 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
-	"go.uber.org/fx"
 )
 
 const (
@@ -25,14 +24,14 @@ type Ledger struct {
 	store  storage.Store
 }
 
-func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory, locker Locker) (*Ledger, error) {
+func NewLedger(ctx context.Context, name string, storageFactory storage.Factory, locker Locker) (*Ledger, error) {
 	store, err := storageFactory.GetStore(name)
 
 	if err != nil {
 		return nil, err
 	}
 
-	err = store.Initialize()
+	err = store.Initialize(ctx)
 
 	if err != nil {
 		err = fmt.Errorf("failed to initialize store: %w", err)
@@ -46,30 +45,18 @@ func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory, loc
 		locker: locker,
 	}
 
-	lc.Append(fx.Hook{
-		OnStart: func(c context.Context) error {
-			log.Printf("starting ledger %s\n", l.name)
-			return nil
-		},
-		OnStop: func(c context.Context) error {
-			log.Printf("closing ledger %s\n", l.name)
-			l.Close()
-			return nil
-		},
-	})
-
 	return l, nil
 }
 
-func (l *Ledger) Close() error {
-	err := l.store.Close()
+func (l *Ledger) Close(ctx context.Context) error {
+	err := l.store.Close(ctx)
 	if err != nil {
 		return errors.Wrap(err, "closing store")
 	}
 	return nil
 }
 
-func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Transaction, error) {
 	defer config.Remember(l.name)
 
 	unlock, err := l.locker.Lock(l.name)
@@ -78,11 +65,11 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 	}
 	defer unlock()
 
-	count, _ := l.store.CountTransactions()
+	count, _ := l.store.CountTransactions(ctx)
 	rf := map[string]map[string]int64{}
 	timestamp := time.Now().Format(time.RFC3339)
 
-	last, err := l.store.LastTransaction()
+	last, err := l.store.LastTransaction(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +120,7 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 			continue
 		}
 
-		balances, err := l.store.AggregateBalances(addr)
+		balances, err := l.store.AggregateBalances(ctx, addr)
 
 		if err != nil {
 			return ts, err
@@ -151,7 +138,7 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 		}
 	}
 
-	err = l.store.SaveTransactions(ts)
+	err = l.store.SaveTransactions(ctx, ts)
 	if err != nil {
 		return nil, err
 	}
@@ -159,13 +146,13 @@ func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 	return ts, err
 }
 
-func (l *Ledger) GetLastTransaction() (core.Transaction, error) {
+func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {
 	var tx core.Transaction
 
 	q := query.New()
 	q.Modify(query.Limit(1))
 
-	c, err := l.store.FindTransactions(q)
+	c, err := l.store.FindTransactions(ctx, q)
 
 	if err != nil {
 		return tx, err
@@ -182,26 +169,26 @@ func (l *Ledger) GetLastTransaction() (core.Transaction, error) {
 	return tx, nil
 }
 
-func (l *Ledger) FindTransactions(m ...query.QueryModifier) (query.Cursor, error) {
+func (l *Ledger) FindTransactions(ctx context.Context, m ...query.QueryModifier) (query.Cursor, error) {
 	q := query.New(m)
-	c, err := l.store.FindTransactions(q)
+	c, err := l.store.FindTransactions(ctx, q)
 
 	return c, err
 }
 
-func (l *Ledger) GetTransaction(id string) (core.Transaction, error) {
-	tx, err := l.store.GetTransaction(id)
+func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transaction, error) {
+	tx, err := l.store.GetTransaction(ctx, id)
 
 	return tx, err
 }
 
-func (l *Ledger) RevertTransaction(id string) error {
-	tx, err := l.store.GetTransaction(id)
+func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
+	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	lastTransaction, err := l.store.LastTransaction()
+	lastTransaction, err := l.store.LastTransaction(ctx)
 	if err != nil {
 		return err
 	}
@@ -209,26 +196,26 @@ func (l *Ledger) RevertTransaction(id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(lastTransaction.ID))
-	_, err = l.Commit([]core.Transaction{rt})
+	_, err = l.Commit(ctx, []core.Transaction{rt})
 
 	return err
 }
 
-func (l *Ledger) FindAccounts(m ...query.QueryModifier) (query.Cursor, error) {
+func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (query.Cursor, error) {
 	q := query.New(m)
 
-	c, err := l.store.FindAccounts(q)
+	c, err := l.store.FindAccounts(ctx, q)
 
 	return c, err
 }
 
-func (l *Ledger) GetAccount(address string) (core.Account, error) {
+func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
 	account := core.Account{
 		Address:  address,
 		Contract: "default",
 	}
 
-	balances, err := l.store.AggregateBalances(address)
+	balances, err := l.store.AggregateBalances(ctx, address)
 
 	if err != nil {
 		return account, err
@@ -236,7 +223,7 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 
 	account.Balances = balances
 
-	volumes, err := l.store.AggregateVolumes(address)
+	volumes, err := l.store.AggregateVolumes(ctx, address)
 
 	if err != nil {
 		return account, err
@@ -244,7 +231,7 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 
 	account.Volumes = volumes
 
-	meta, err := l.store.GetMeta("account", address)
+	meta, err := l.store.GetMeta(ctx, "account", address)
 	if err != nil {
 		return account, err
 	}
@@ -253,7 +240,7 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 	return account, nil
 }
 
-func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m core.Metadata) error {
 	unlock, err := l.locker.Lock(l.name)
 	if err != nil {
 		return errors.Wrap(err, "unable to acquire lock")
@@ -270,7 +257,7 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 		return errors.New("empty target id")
 	}
 
-	lastMetaID, err := l.store.LastMetaID()
+	lastMetaID, err := l.store.LastMetaID(ctx)
 	if err != nil {
 		return err
 	}
@@ -281,6 +268,7 @@ func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) e
 		lastMetaID++
 
 		err := l.store.SaveMeta(
+			ctx,
 			lastMetaID,
 			timestamp,
 			targetType,

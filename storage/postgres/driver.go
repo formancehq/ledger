@@ -14,13 +14,13 @@ type Driver struct {
 	pool *pgxpool.Pool
 }
 
-func (d *Driver) Initialize() error {
+func (d *Driver) Initialize(ctx context.Context) error {
 	errCh := make(chan error, 1)
 	d.once.Do(func() {
 		log.Println("initiating postgres pool")
 
 		pool, err := pgxpool.Connect(
-			context.Background(),
+			ctx,
 			viper.GetString("storage.postgres.conn_string"),
 		)
 		if err != nil {
@@ -41,7 +41,7 @@ func (d *Driver) NewStore(name string) (storage.Store, error) {
 	return NewStore(name, d.pool)
 }
 
-func (d *Driver) Close() error {
+func (d *Driver) Close(ctx context.Context) error {
 	if d.pool != nil {
 		d.pool.Close()
 	}

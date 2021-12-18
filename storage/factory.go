@@ -1,10 +1,13 @@
 package storage
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type Factory interface {
 	GetStore(name string) (Store, error)
-	Close() error
+	Close(ctx context.Context) error
 }
 type FactoryFn func(string) (Store, error)
 
@@ -33,12 +36,12 @@ func (f *BuiltInFactory) GetStore(name string) (Store, error) {
 	return GetStore(name)
 }
 
-func (f *BuiltInFactory) Close() error {
+func (f *BuiltInFactory) Close(ctx context.Context) error {
 	closeErr := &closeError{
 		errs: map[string]error{},
 	}
 	for name, driver := range drivers {
-		err := driver.Close()
+		err := driver.Close(ctx)
 		if err != nil {
 			closeErr.errs[name] = err
 		}

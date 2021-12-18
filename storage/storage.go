@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/pkg/errors"
@@ -8,22 +9,22 @@ import (
 )
 
 type Store interface {
-	LastTransaction() (*core.Transaction, error)
-	LastMetaID() (int64, error)
-	SaveTransactions([]core.Transaction) error
-	CountTransactions() (int64, error)
-	FindTransactions(query.Query) (query.Cursor, error)
-	GetTransaction(string) (core.Transaction, error)
-	AggregateBalances(string) (map[string]int64, error)
-	AggregateVolumes(string) (map[string]map[string]int64, error)
-	CountAccounts() (int64, error)
-	FindAccounts(query.Query) (query.Cursor, error)
-	SaveMeta(int64, string, string, string, string, string) error
-	GetMeta(string, string) (core.Metadata, error)
-	CountMeta() (int64, error)
-	Initialize() error
+	LastTransaction(context.Context) (*core.Transaction, error)
+	LastMetaID(context.Context) (int64, error)
+	SaveTransactions(context.Context, []core.Transaction) error
+	CountTransactions(context.Context) (int64, error)
+	FindTransactions(context.Context, query.Query) (query.Cursor, error)
+	GetTransaction(context.Context, string) (core.Transaction, error)
+	AggregateBalances(context.Context, string) (map[string]int64, error)
+	AggregateVolumes(context.Context, string) (map[string]map[string]int64, error)
+	CountAccounts(context.Context) (int64, error)
+	FindAccounts(context.Context, query.Query) (query.Cursor, error)
+	SaveMeta(context.Context, int64, string, string, string, string, string) error
+	GetMeta(context.Context, string, string) (core.Metadata, error)
+	CountMeta(context.Context) (int64, error)
+	Initialize(context.Context) error
 	Name() string
-	Close() error
+	Close(context.Context) error
 }
 
 func GetStore(name string) (Store, error) {
@@ -35,7 +36,7 @@ func GetStore(name string) (Store, error) {
 			driver,
 		))
 	}
-	err := driver.Initialize()
+	err := driver.Initialize(context.Background())
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing driver")
 	}

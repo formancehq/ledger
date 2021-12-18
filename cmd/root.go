@@ -87,14 +87,14 @@ func Execute() {
 			app := fx.New(
 				fx.Provide(options...),
 				fx.Provide(
-					fx.Annotate(ledger.NewResolver, fx.ParamTags("", `group:"resolverOptions"`)),
+					fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
 					api.NewAPI,
 				),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
 					lc.Append(fx.Hook{
 						OnStop: func(ctx context.Context) error {
 							log.Println("closing storage factory")
-							err := storageFactory.Close()
+							err := storageFactory.Close(ctx)
 							if err != nil {
 								return errors.Wrap(err, "closing storage factory")
 							}
@@ -140,7 +140,7 @@ func Execute() {
 				log.Fatal(err)
 			}
 
-			err = s.Initialize()
+			err = s.Initialize(context.Background())
 
 			if err != nil {
 				log.Fatal(err)

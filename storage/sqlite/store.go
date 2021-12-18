@@ -1,11 +1,10 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
 	"log"
 	"path"
 	"strings"
@@ -53,34 +52,7 @@ func (s *SQLiteStore) Name() string {
 	return s.ledger
 }
 
-func (s *SQLiteStore) LastTransaction() (*core.Transaction, error) {
-	var lastTransaction core.Transaction
-
-	q := query.New()
-	q.Modify(query.Limit(1))
-
-	c, err := s.FindTransactions(q)
-	if err != nil {
-		return nil, err
-	}
-
-	txs := (c.Data).([]core.Transaction)
-	if len(txs) > 0 {
-		lastTransaction = txs[0]
-		return &lastTransaction, nil
-	}
-	return nil, nil
-}
-
-func (s *SQLiteStore) LastMetaID() (int64, error) {
-	count, err := s.CountMeta()
-	if err != nil {
-		return 0, err
-	}
-	return count - 1, nil
-}
-
-func (s *SQLiteStore) Initialize() error {
+func (s *SQLiteStore) Initialize(ctx context.Context) error {
 	log.Println("initializing sqlite db")
 
 	statements := []string{}
@@ -109,9 +81,7 @@ func (s *SQLiteStore) Initialize() error {
 	}
 
 	for i, statement := range statements {
-		_, err = s.db.Exec(
-			statement,
-		)
+		_, err = s.db.ExecContext(ctx, statement)
 
 		if err != nil {
 			fmt.Println(err)
@@ -123,7 +93,7 @@ func (s *SQLiteStore) Initialize() error {
 	return nil
 }
 
-func (s *SQLiteStore) Close() error {
+func (s *SQLiteStore) Close(ctx context.Context) error {
 	log.Println("sqlite db closed")
 	err := s.db.Close()
 	if err != nil {

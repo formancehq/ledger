@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 )
 
 func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount int64) {
-	user, err := l.GetAccount(account)
+	user, err := l.GetAccount(context.Background(), account)
 	if err != nil {
 		t.Error(err)
 		return
@@ -32,14 +33,14 @@ func TestTransactionInvalidScript(t *testing.T) {
 			Plain: "this is not a valid script",
 		}
 
-		err := l.Execute(script)
+		err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
 				"script was invalid yet the transaction was commited",
 			))
 		}
-		l.Close()
+		l.Close(context.Background())
 	})
 }
 
@@ -49,20 +50,20 @@ func TestTransactionFail(t *testing.T) {
 			Plain: "fail",
 		}
 
-		err := l.Execute(script)
+		err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
 				"script failed yet the transaction was commited",
 			))
 		}
-		l.Close()
+		l.Close(context.Background())
 	})
 }
 
 func TestSend(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close()
+		defer l.Close(context.Background())
 		script := core.Script{
 			Plain: `send [USD/2 99] (
 				source=@world
@@ -70,7 +71,7 @@ func TestSend(t *testing.T) {
 			)`,
 		}
 
-		err := l.Execute(script)
+		err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -83,7 +84,7 @@ func TestSend(t *testing.T) {
 
 func TestVariables(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close()
+		defer l.Close(context.Background())
 
 		var script core.Script
 		json.Unmarshal(
@@ -95,14 +96,14 @@ func TestVariables(t *testing.T) {
 			}`),
 			&script)
 
-		err := l.Execute(script)
+		err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
 			return
 		}
 
-		user, err := l.GetAccount("user:042")
+		user, err := l.GetAccount(context.Background(), "user:042")
 
 		if err != nil {
 			t.Error(err)
@@ -121,7 +122,7 @@ func TestVariables(t *testing.T) {
 
 func TestEnoughFunds(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close()
+		defer l.Close(context.Background())
 
 		tx := core.Transaction{
 			Postings: []core.Posting{
@@ -134,7 +135,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit(context.Background(), []core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
@@ -142,13 +143,17 @@ func TestEnoughFunds(t *testing.T) {
 		}
 
 		var script core.Script
-		json.Unmarshal(
+		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
 			}`),
 			&script)
+		if err != nil {
+			t.Error(err)
+			return
+		}
 
-		err = l.Execute(script)
+		err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -159,7 +164,7 @@ func TestEnoughFunds(t *testing.T) {
 
 func TestNotEnoughFunds(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close()
+		defer l.Close(context.Background())
 
 		tx := core.Transaction{
 			Postings: []core.Posting{
@@ -172,7 +177,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit(context.Background(), []core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
@@ -186,7 +191,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			}`),
 			&script)
 
-		err = l.Execute(script)
+		err = l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error("error wasn't supposed to be nil")
@@ -197,7 +202,7 @@ func TestNotEnoughFunds(t *testing.T) {
 
 func TestMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close()
+		defer l.Close(context.Background())
 
 		tx := core.Transaction{
 			Postings: []core.Posting{
@@ -210,16 +215,16 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit([]core.Transaction{tx})
+		_, err := l.Commit(context.Background(), []core.Transaction{tx})
 
-		l.SaveMeta("account", "sales:042", core.Metadata{
+		l.SaveMeta(context.Background(), "account", "sales:042", core.Metadata{
 			"seller": json.RawMessage(`{
 				"type":  "account",
 				"value": "users:053"
 			}`),
 		})
 
-		l.SaveMeta("account", "users:053", core.Metadata{
+		l.SaveMeta(context.Background(), "account", "users:053", core.Metadata{
 			"commission": json.RawMessage(`{
 				"type":  "portion",
 				"value": "15.5%"
@@ -257,7 +262,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		err = l.Execute(script)
+		err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Fatalf("execution error: %v", err)

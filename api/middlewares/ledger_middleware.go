@@ -29,7 +29,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		l, err := m.resolver.GetLedger(name)
+		l, err := m.resolver.GetLedger(c, name)
 		if err != nil {
 			c.JSON(400, gin.H{
 				"ok":  false,
@@ -37,7 +37,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 			})
 		}
 		defer func() {
-			err := l.Close()
+			err := l.Close(c)
 			if err != nil {
 				log.Printf("error closing ledger: %s", err)
 			}

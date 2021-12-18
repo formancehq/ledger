@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"github.com/numary/ledger/core"
 )
 
@@ -10,23 +11,23 @@ type cachedStateStorage struct {
 	lastMetaId      *int64
 }
 
-func (s *cachedStateStorage) LastTransaction() (*core.Transaction, error) {
+func (s *cachedStateStorage) LastTransaction(ctx context.Context) (*core.Transaction, error) {
 	if s.lastTransaction != nil {
 		return s.lastTransaction, nil
 	}
 	var err error
-	s.lastTransaction, err = s.Store.LastTransaction()
+	s.lastTransaction, err = s.Store.LastTransaction(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return s.lastTransaction, nil
 }
 
-func (s *cachedStateStorage) LastMetaID() (int64, error) {
+func (s *cachedStateStorage) LastMetaID(ctx context.Context) (int64, error) {
 	if s.lastMetaId != nil {
 		return *s.lastMetaId, nil
 	}
-	lastMetaID, err := s.Store.LastMetaID()
+	lastMetaID, err := s.Store.LastMetaID(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -34,8 +35,8 @@ func (s *cachedStateStorage) LastMetaID() (int64, error) {
 	return lastMetaID, nil
 }
 
-func (s *cachedStateStorage) SaveTransactions(txs []core.Transaction) error {
-	err := s.Store.SaveTransactions(txs)
+func (s *cachedStateStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) error {
+	err := s.Store.SaveTransactions(ctx, txs)
 	if err != nil {
 		return err
 	}
@@ -45,8 +46,8 @@ func (s *cachedStateStorage) SaveTransactions(txs []core.Transaction) error {
 	return nil
 }
 
-func (s *cachedStateStorage) SaveMeta(id int64, timestamp, targetType, targetID, key, value string) error {
-	err := s.Store.SaveMeta(id, timestamp, targetType, targetID, key, value)
+func (s *cachedStateStorage) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
+	err := s.Store.SaveMeta(ctx, id, timestamp, targetType, targetID, key, value)
 	if err != nil {
 		return err
 	}
