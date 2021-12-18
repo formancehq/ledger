@@ -2,13 +2,12 @@ package sqlite
 
 import (
 	"context"
-	"fmt"
+	"github.com/sirupsen/logrus"
 	"math"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/spf13/viper"
 )
 
 func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
@@ -30,9 +29,7 @@ func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cu
 	}
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,

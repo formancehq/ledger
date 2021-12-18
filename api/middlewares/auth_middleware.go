@@ -4,22 +4,25 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
 
 // AuthMiddleware struct
-type AuthMiddleware struct{}
+type AuthMiddleware struct {
+	HTTPBasic string
+}
 
 // NewAuthMiddleware
-func NewAuthMiddleware() AuthMiddleware {
-	return AuthMiddleware{}
+func NewAuthMiddleware(httpBasic string) AuthMiddleware {
+	return AuthMiddleware{
+		HTTPBasic: httpBasic,
+	}
 }
 
 // AuthMiddleware
 func (m AuthMiddleware) AuthMiddleware(engine *gin.Engine) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if auth := viper.Get("server.http.basic_auth"); auth != nil {
-			segment := strings.Split(auth.(string), ":")
+		if auth := m.HTTPBasic; auth != "" {
+			segment := strings.Split(auth, ":")
 			engine.Use(gin.BasicAuth(gin.Accounts{
 				segment[0]: segment[1],
 			}))

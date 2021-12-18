@@ -1,15 +1,14 @@
 package api
 
 import (
-	"context"
 	_ "embed"
+	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/api/middlewares"
 	"github.com/numary/ledger/api/routes"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -21,13 +20,15 @@ var Module = fx.Options(
 
 // API struct
 type API struct {
-	addr   string
 	engine *gin.Engine
+}
+
+func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.engine.ServeHTTP(w, r)
 }
 
 // NewAPI
 func NewAPI(
-	lc fx.Lifecycle,
 	routes *routes.Routes,
 ) *API {
 	gin.SetMode(gin.ReleaseMode)
@@ -38,21 +39,8 @@ func NewAPI(
 	cc.AddAllowHeaders("authorization")
 
 	h := &API{
-		addr:   viper.GetString("server.http.bind_address"),
 		engine: routes.Engine(cc),
 	}
 
-	lc.Append(fx.Hook{
-		OnStart: func(c context.Context) error {
-			go h.Start()
-			return nil
-		},
-	})
-
 	return h
-}
-
-// Start
-func (h *API) Start() {
-	h.engine.Run(h.addr)
 }

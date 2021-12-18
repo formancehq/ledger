@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v4/pgxpool"
-
+	"github.com/numary/ledger/storage/sqlite"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -36,8 +36,8 @@ func with(f func(l *Ledger)) {
 			fx.NopLogger,
 		),
 		fx.Provide(
-			func() (*Ledger, error) {
-				l, err := NewLedger(context.Background(), "test", storage.DefaultFactory, NewInMemoryLocker())
+			func(storageFactory storage.Factory) (*Ledger, error) {
+				l, err := NewLedger(context.Background(), "test", storageFactory, NewInMemoryLocker())
 				if err != nil {
 					panic(err)
 				}
@@ -56,12 +56,14 @@ func TestMain(m *testing.M) {
 
 	config.Init()
 
-	viper.Set("storage.dir", os.TempDir())
 	switch viper.GetString("storage.driver") {
 	case "sqlite":
-		viper.Set("storage.sqlite.db_name", "ledger")
+		storage.RegisterDriver("sqlite", sqlite.NewDriver(os.TempDir(), "ledger"))
 		os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
 	case "postgres":
+		storage.RegisterDriver("postgres", postgres.NewDriver(viper.GetString("storage.postgres.conn_string")))
+
+		// @gfyrag: Why this test?
 		pool, err := pgxpool.Connect(
 			context.Background(),
 			viper.GetString("storage.postgres.conn_string"),

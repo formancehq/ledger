@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/spf13/viper"
 )
 
 //go:embed migration
@@ -21,16 +20,12 @@ type SQLiteStore struct {
 	db     *sql.DB
 }
 
-func NewStore(name string) (*SQLiteStore, error) {
+func NewStore(storageDir, dbName, name string) (*SQLiteStore, error) {
 	dbpath := fmt.Sprintf(
 		"file:%s?_journal=WAL",
 		path.Join(
-			viper.GetString("storage.dir"),
-			fmt.Sprintf(
-				"%s_%s.db",
-				viper.GetString("storage.sqlite.db_name"),
-				name,
-			),
+			storageDir,
+			fmt.Sprintf("%s_%s.db", dbName, name),
 		),
 	)
 

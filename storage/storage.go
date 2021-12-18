@@ -5,7 +5,6 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/pkg/errors"
-	"github.com/spf13/viper"
 )
 
 type Store interface {
@@ -27,8 +26,7 @@ type Store interface {
 	Close(context.Context) error
 }
 
-func GetStore(name string) (Store, error) {
-	driverStr := viper.GetString("storage.driver")
+func GetStore(driverStr, name string) (Store, error) {
 	driver, ok := drivers[driverStr]
 	if !ok {
 		panic(errors.Errorf(

@@ -30,10 +30,12 @@ func (e *closeError) Error() string {
 	return buf[:len(buf)-1]
 }
 
-type BuiltInFactory struct{}
+type BuiltInFactory struct {
+	Driver string
+}
 
 func (f *BuiltInFactory) GetStore(name string) (Store, error) {
-	return GetStore(name)
+	return GetStore(f.Driver, name)
 }
 
 func (f *BuiltInFactory) Close(ctx context.Context) error {
@@ -52,8 +54,6 @@ func (f *BuiltInFactory) Close(ctx context.Context) error {
 	return nil
 }
 
-var DefaultFactory Factory = &BuiltInFactory{}
-
-func NewDefaultFactory() (Factory, error) {
-	return DefaultFactory, nil
+func NewDefaultFactory(driver string) (Factory, error) {
+	return &BuiltInFactory{Driver: driver}, nil
 }

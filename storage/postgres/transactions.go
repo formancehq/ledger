@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"math"
 	"sort"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/spf13/viper"
 )
 
 func (s *PGStore) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
@@ -266,9 +266,7 @@ func (s *PGStore) GetTransaction(ctx context.Context, txid string) (tx core.Tran
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	rows, err := s.Conn().Query(
 		ctx,

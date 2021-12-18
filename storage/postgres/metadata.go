@@ -3,11 +3,10 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/sirupsen/logrus"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
-	"github.com/spf13/viper"
 )
 
 func (s *PGStore) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
@@ -25,9 +24,7 @@ func (s *PGStore) GetMeta(ctx context.Context, ty string, id string) (core.Metad
 	)
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	rows, err := s.Conn().Query(
 		ctx,

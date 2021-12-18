@@ -7,7 +7,7 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
-	"github.com/spf13/viper"
+	"github.com/sirupsen/logrus"
 )
 
 func (s *SQLiteStore) LastMetaID(ctx context.Context) (int64, error) {
@@ -33,9 +33,7 @@ func (s *SQLiteStore) GetMeta(ctx context.Context, ty string, id string) (core.M
 	)
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
@@ -95,9 +93,7 @@ func (s *SQLiteStore) SaveMeta(ctx context.Context, id int64, timestamp, targetT
 	)
 
 	sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	_, err := tx.ExecContext(ctx, sqlq, args...)
 
