@@ -45,7 +45,10 @@ func with(f func(l *Ledger)) {
 		),
 		fx.Invoke(f),
 		fx.Invoke(func(l *Ledger) {
-			l.Close(context.Background())
+			err := l.Close(context.Background())
+			if err != nil {
+				logrus.Error(err)
+			}
 		}),
 	)
 }
