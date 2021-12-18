@@ -22,7 +22,6 @@ import (
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage/postgres"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 
 	// Register sql drivers
@@ -60,18 +59,19 @@ func TestMain(m *testing.M) {
 
 	config.Init()
 
-	switch viper.GetString("storage.driver") {
+	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
 	case "sqlite":
 		storage.RegisterDriver("sqlite", sqlite.NewDriver(os.TempDir(), "ledger"))
-		os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
+		err := os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
+		if err != nil {
+			panic(err)
+		}
 	case "postgres":
-		storage.RegisterDriver("postgres", postgres.NewDriver(viper.GetString("storage.postgres.conn_string")))
+		connString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
+		storage.RegisterDriver("postgres", postgres.NewDriver(connString))
 
 		// @gfyrag: Why this test?
-		pool, err := pgxpool.Connect(
-			context.Background(),
-			viper.GetString("storage.postgres.conn_string"),
-		)
+		pool, err := pgxpool.Connect(context.Background(), connString)
 		if err != nil {
 			panic(err)
 		}
@@ -81,7 +81,6 @@ func TestMain(m *testing.M) {
 		}
 		store.DropTest()
 	}
-	logrus.Debugln(viper.AllSettings())
 
 	m.Run()
 }
