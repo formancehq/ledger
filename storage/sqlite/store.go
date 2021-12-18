@@ -123,7 +123,11 @@ func (s *SQLiteStore) Initialize() error {
 	return nil
 }
 
-func (s *SQLiteStore) Close() {
-	s.db.Close()
+func (s *SQLiteStore) Close() error {
 	log.Println("sqlite db closed")
+	err := s.db.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }

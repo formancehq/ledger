@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -78,6 +80,8 @@ func Execute() {
 					fx.ResultTags(`group:"resolverOptions"`),
 					fx.As(new(ledger.ResolverOption)),
 				))
+			} else {
+				options = append(options, storage.NewDefaultFactory)
 			}
 
 			app := fx.New(
@@ -86,7 +90,17 @@ func Execute() {
 					fx.Annotate(ledger.NewResolver, fx.ParamTags("", `group:"resolverOptions"`)),
 					api.NewAPI,
 				),
-				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+				fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
+					lc.Append(fx.Hook{
+						OnStop: func(ctx context.Context) error {
+							log.Println("closing storage factory")
+							err := storageFactory.Close()
+							if err != nil {
+								return errors.Wrap(err, "closing storage factory")
+							}
+							return nil
+						},
+					})
 				}),
 				api.Module,
 			)
@@ -134,7 +148,7 @@ func Execute() {
 		},
 	})
 
-	script_exec := &cobra.Command{
+	scriptExec := &cobra.Command{
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -194,7 +208,7 @@ func Execute() {
 		},
 	}
 
-	script_check := &cobra.Command{
+	scriptCheck := &cobra.Command{
 		Use:  "check [script]",
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -219,8 +233,8 @@ func Execute() {
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
 	root.AddCommand(store)
-	root.AddCommand(script_exec)
-	root.AddCommand(script_check)
+	root.AddCommand(scriptExec)
+	root.AddCommand(scriptCheck)
 	root.AddCommand(version)
 	root.AddCommand(stickersCmd)
 

@@ -110,7 +110,9 @@ func (s *PGStore) table(name string) string {
 	return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
 }
 
-func (s *PGStore) Close() {}
+func (s *PGStore) Close() error {
+	return nil
+}
 
 func (s *PGStore) DropTest() {
 	s.Conn().Exec(

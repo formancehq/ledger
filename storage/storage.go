@@ -23,12 +23,12 @@ type Store interface {
 	CountMeta() (int64, error)
 	Initialize() error
 	Name() string
-	Close()
+	Close() error
 }
 
 func GetStore(name string) (Store, error) {
 	driverStr := viper.GetString("storage.driver")
-	driver, ok := builtInDrivers[driverStr]
+	driver, ok := drivers[driverStr]
 	if !ok {
 		panic(errors.Errorf(
 			"unsupported store: %s",

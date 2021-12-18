@@ -61,8 +61,12 @@ func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory, loc
 	return l, nil
 }
 
-func (l *Ledger) Close() {
-	l.store.Close()
+func (l *Ledger) Close() error {
+	err := l.store.Close()
+	if err != nil {
+		return errors.Wrap(err, "closing store")
+	}
+	return nil
 }
 
 func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {

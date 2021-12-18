@@ -41,6 +41,13 @@ func (d *Driver) NewStore(name string) (storage.Store, error) {
 	return NewStore(name, d.pool)
 }
 
+func (d *Driver) Close() error {
+	if d.pool != nil {
+		d.pool.Close()
+	}
+	return nil
+}
+
 func init() {
 	storage.RegisterDriver("postgres", &Driver{})
 }
