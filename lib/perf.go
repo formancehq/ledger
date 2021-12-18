@@ -1,11 +1,11 @@
 package lib
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"time"
 )
 
 func TimeTrack(start time.Time, name string) {
 	elapsed := time.Since(start)
-	log.Printf("%s took %s", name, elapsed)
+	logrus.Printf("%s took %s", name, elapsed)
 }

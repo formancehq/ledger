@@ -5,25 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/numary/ledger/api/controllers"
+	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/storage/postgres"
 	"github.com/numary/ledger/storage/sqlite"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/fx"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/config"
-	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/storage"
 	"github.com/numary/machine/script/compiler"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.uber.org/fx"
 )
 
 var (
@@ -80,49 +77,7 @@ func Execute() {
 	start := &cobra.Command{
 		Use: "start",
 		Run: func(cmd *cobra.Command, args []string) {
-
-			options := make([]interface{}, 0)
-			options = append(options,
-				fx.Annotate(func() string { return viper.GetString("version") }, fx.ResultTags(`name:"version"`)),
-				fx.Annotate(func() string { return viper.GetString("storage.driver") }, fx.ResultTags(`name:"storageDriver"`)),
-				fx.Annotate(func() controllers.LedgerLister {
-					return controllers.LedgerListerFn(func() []string {
-						// Ledgers are updated by function config.Remember
-						// We have to resolve the list dynamically
-						return viper.GetStringSlice("ledgers")
-					})
-				}, fx.ResultTags(`name:"ledgerLister"`)),
-				fx.Annotate(func() string { return viper.GetString("server.http.basic_auth") }, fx.ResultTags(`name:"httpBasic"`)),
-			)
-			if viper.GetBool("storage.cache") {
-				options = append(options, fx.Annotate(
-					storage.NewDefaultFactory,
-					fx.ParamTags(`name:"storageDriver"`),
-					fx.ResultTags(`name:"underlyingStorage"`),
-				))
-				options = append(options, fx.Annotate(
-					storage.NewCachedStorageFactory,
-					fx.ParamTags(`name:"underlyingStorage"`),
-					fx.As(new(storage.Factory)),
-				))
-				options = append(options, fx.Annotate(
-					ledger.WithStorageFactory,
-					fx.ResultTags(`group:"resolverOptions"`),
-					fx.As(new(ledger.ResolverOption)),
-				))
-			} else {
-				options = append(options, fx.Annotate(
-					storage.NewDefaultFactory,
-					fx.ParamTags(`name:"storageDriver"`),
-				))
-			}
-
-			app := fx.New(
-				fx.Provide(options...),
-				fx.Provide(
-					fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
-					api.NewAPI,
-				),
+			app := NewContainer(
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
 					go func() {
 						err := http.ListenAndServe(viper.GetString("server.http.bind_address"), h)
@@ -130,20 +85,8 @@ func Execute() {
 							panic(err)
 						}
 					}()
-					lc.Append(fx.Hook{
-						OnStop: func(ctx context.Context) error {
-							logrus.Println("closing storage factory")
-							err := storageFactory.Close(ctx)
-							if err != nil {
-								return errors.Wrap(err, "closing storage factory")
-							}
-							return nil
-						},
-					})
 				}),
-				api.Module,
 			)
-
 			app.Run()
 		},
 	}
