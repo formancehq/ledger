@@ -23,7 +23,9 @@ func NewScriptController() ScriptController {
 }
 
 // PostScript godoc
-// @Summary Execute a Numscript and commit transaction if any
+// @Summary Execute Numscript
+// @Description Execute a Numscript and create the transaction if any
+// @Tags script
 // @Schemes
 // @Param ledger path string true "ledger"
 // @Param script body core.Script true "script"
