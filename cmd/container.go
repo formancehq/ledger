@@ -7,25 +7,79 @@ import (
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/storage"
 	"github.com/pkg/errors"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
-func NewContainer(options ...fx.Option) *fx.App {
+type containerConfig struct {
+	version       string
+	storageDriver string
+	ledgerLister  controllers.LedgerLister
+	basicAuth     string
+	providers     []fx.Option
+	cache         bool
+}
+
+type option func(*containerConfig)
+
+func WithVersion(version string) option {
+	return func(c *containerConfig) {
+		c.version = version
+	}
+}
+
+func WithStorageDriver(driver string) option {
+	return func(c *containerConfig) {
+		c.storageDriver = driver
+	}
+}
+
+func WithLedgerLister(lister controllers.LedgerLister) option {
+	return func(c *containerConfig) {
+		c.ledgerLister = lister
+	}
+}
+
+func WithHttpBasicAuth(v string) option {
+	return func(c *containerConfig) {
+		c.basicAuth = v
+	}
+}
+
+func WithOption(providers ...fx.Option) option {
+	return func(c *containerConfig) {
+		c.providers = append(c.providers, providers...)
+	}
+}
+
+func WithCacheStorage(cache bool) option {
+	return func(c *containerConfig) {
+		c.cache = cache
+	}
+}
+
+var DefaultOptions = []option{
+	WithVersion("latest"),
+	WithStorageDriver("sqlite"),
+	WithLedgerLister(controllers.LedgerListerFn(func() []string {
+		return []string{}
+	})),
+}
+
+func NewContainer(options ...option) *fx.App {
+
+	cfg := &containerConfig{}
+	for _, opt := range append(DefaultOptions, options...) {
+		opt(cfg)
+	}
+
 	providers := make([]interface{}, 0)
 	providers = append(providers,
-		fx.Annotate(func() string { return viper.GetString("version") }, fx.ResultTags(`name:"version"`)),
-		fx.Annotate(func() string { return viper.GetString("storage.driver") }, fx.ResultTags(`name:"storageDriver"`)),
-		fx.Annotate(func() controllers.LedgerLister {
-			return controllers.LedgerListerFn(func() []string {
-				// Ledgers are updated by function config.Remember
-				// We have to resolve the list dynamically
-				return viper.GetStringSlice("ledgers")
-			})
-		}, fx.ResultTags(`name:"ledgerLister"`)),
-		fx.Annotate(func() string { return viper.GetString("server.http.basic_auth") }, fx.ResultTags(`name:"httpBasic"`)),
+		fx.Annotate(func() string { return cfg.version }, fx.ResultTags(`name:"version"`)),
+		fx.Annotate(func() string { return cfg.storageDriver }, fx.ResultTags(`name:"storageDriver"`)),
+		fx.Annotate(func() controllers.LedgerLister { return cfg.ledgerLister }, fx.ResultTags(`name:"ledgerLister"`)),
+		fx.Annotate(func() string { return cfg.basicAuth }, fx.ResultTags(`name:"httpBasic"`)),
 	)
-	if viper.GetBool("storage.cache") {
+	if cfg.cache {
 		providers = append(providers, fx.Annotate(
 			storage.NewDefaultFactory,
 			fx.ParamTags(`name:"storageDriver"`),
@@ -36,11 +90,7 @@ func NewContainer(options ...fx.Option) *fx.App {
 			fx.ParamTags(`name:"underlyingStorage"`),
 			fx.As(new(storage.Factory)),
 		))
-		providers = append(providers, fx.Annotate(
-			ledger.WithStorageFactory,
-			fx.ResultTags(`group:"resolverOptions"`),
-			fx.As(new(ledger.ResolverOption)),
-		))
+		providers = append(providers)
 	} else {
 		providers = append(providers, fx.Annotate(
 			storage.NewDefaultFactory,
@@ -49,10 +99,15 @@ func NewContainer(options ...fx.Option) *fx.App {
 	}
 	providers = append(providers,
 		fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
+		fx.Annotate(
+			ledger.WithStorageFactory,
+			fx.ResultTags(`group:"resolverOptions"`),
+			fx.As(new(ledger.ResolverOption)),
+		),
 		api.NewAPI,
 	)
 
-	options = append(
+	fxOptions := append(
 		[]fx.Option{
 			fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
 				lc.Append(fx.Hook{
@@ -68,8 +123,8 @@ func NewContainer(options ...fx.Option) *fx.App {
 			fx.Provide(providers...),
 			api.Module,
 		},
-		options...,
+		cfg.providers...,
 	)
 
-	return fx.New(options...)
+	return fx.New(fxOptions...)
 }

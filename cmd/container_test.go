@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"go.uber.org/fx"
 	"testing"
 )
@@ -10,10 +9,9 @@ import (
 func TestContainer(t *testing.T) {
 	run := make(chan struct{}, 1)
 	app := NewContainer(
-		fx.Invoke(func() {
-			fmt.Println("run invoke")
+		WithOption(fx.Invoke(func() {
 			run <- struct{}{}
-		}),
+		})),
 	)
 	err := app.Start(context.Background())
 	if err != nil {

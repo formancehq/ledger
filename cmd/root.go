@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/numary/ledger/api"
+	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/storage/postgres"
 	"github.com/numary/ledger/storage/sqlite"
 	"github.com/sirupsen/logrus"
@@ -78,14 +79,21 @@ func Execute() {
 		Use: "start",
 		Run: func(cmd *cobra.Command, args []string) {
 			app := NewContainer(
-				fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
+				WithVersion(Version),
+				WithStorageDriver(viper.GetString("storage.driver")),
+				WithCacheStorage(viper.GetBool("storage.cache")),
+				WithHttpBasicAuth(viper.GetString("server.http.basic_auth")),
+				WithLedgerLister(controllers.LedgerListerFn(func() []string {
+					return viper.GetStringSlice("ledgers")
+				})),
+				WithOption(fx.Invoke(func(h *api.API) {
 					go func() {
 						err := http.ListenAndServe(viper.GetString("server.http.bind_address"), h)
 						if err != nil {
 							panic(err)
 						}
 					}()
-				}),
+				})),
 			)
 			app.Run()
 		},
@@ -114,14 +122,13 @@ func Execute() {
 	store.AddCommand(&cobra.Command{
 		Use: "init",
 		Run: func(cmd *cobra.Command, args []string) {
+			// TODO: Use the container?
 			s, err := storage.GetStore(viper.GetString("storage.driver"), "default")
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
 
 			err = s.Initialize(context.Background())
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -133,7 +140,6 @@ func Execute() {
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			b, err := ioutil.ReadFile(args[1])
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -145,7 +151,6 @@ func Execute() {
 			b, err = json.Marshal(gin.H{
 				"plain": string(s),
 			})
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -159,13 +164,11 @@ func Execute() {
 				"application/json",
 				bytes.NewReader([]byte(b)),
 			)
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
 
 			b, err = ioutil.ReadAll(res.Body)
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -178,6 +181,7 @@ func Execute() {
 			if err != nil {
 				logrus.Fatal(err)
 			}
+
 			if result.Ok {
 				fmt.Println("Script ran successfully ✅")
 			} else {
@@ -191,7 +195,6 @@ func Execute() {
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			b, err := ioutil.ReadFile(args[0])
-
 			if err != nil {
 				logrus.Fatal(err)
 			}
