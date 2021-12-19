@@ -95,6 +95,53 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	)
 }
 
+// PostTransactionsBatch godoc
+// @Summary Create Transactions Batch
+// @Description Create a new ledger transactions batch
+// @Tags transactions
+// @Schemes
+// @Description Commit a batch of new transactions to the ledger
+// @Param ledger path string true "ledger"
+// @Param transactions body core.Transactions true "transactions"
+// @Accept json
+// @Produce json
+// @Success 200 {object} controllers.BaseResponse
+// @Failure 400
+// @Router /{ledger}/transactions/batch [post]
+func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
+	l, _ := c.Get("ledger")
+
+	var transactions core.Transactions
+	if err := c.ShouldBindJSON(&transactions); err != nil {
+		ctl.responseError(
+			c,
+			http.StatusBadRequest,
+			err,
+		)
+		return
+	}
+
+	var ts [][]core.Transaction
+	for _, t := range transactions.Transactions {
+		tx, err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
+		if err != nil {
+			ctl.responseError(
+				c,
+				http.StatusInternalServerError,
+				err,
+			)
+			return
+		}
+		ts = append(ts, tx)
+	}
+
+	ctl.response(
+		c,
+		http.StatusOK,
+		ts,
+	)
+}
+
 // GetTransaction godoc
 // @Summary Revert Transaction
 // @Description Get transaction by transaction id

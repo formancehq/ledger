@@ -74,6 +74,7 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		// TransactionController
 		ledger.GET("/transactions", r.transactionController.GetTransactions)
 		ledger.POST("/transactions", r.transactionController.PostTransaction)
+		ledger.POST("/transactions/batch", r.transactionController.PostTransactionsBatch)
 		ledger.GET("/transactions/:txid", r.transactionController.GetTransaction)
 		ledger.POST("/transactions/:txid/revert", r.transactionController.RevertTransaction)
 		ledger.POST("/transactions/:txid/metadata", r.transactionController.PostTransactionMetadata)
