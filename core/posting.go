@@ -4,10 +4,10 @@ import "regexp"
 
 // Posting struct
 type Posting struct {
-	Source      string `json:"source" binding:"source"`
-	Destination string `json:"destination" binding:"destination"`
+	Source      string `json:"source" binding:"required,source"`
+	Destination string `json:"destination" binding:"required,destination"`
 	Amount      int64  `json:"amount" binding:"required,min=1"`
-	Asset       string `json:"asset" binding:"asset"`
+	Asset       string `json:"asset" binding:"required,asset"`
 }
 
 // Postings struct
