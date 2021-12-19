@@ -11,12 +11,13 @@ import (
 )
 
 type containerConfig struct {
-	version       string
-	storageDriver string
-	ledgerLister  controllers.LedgerLister
-	basicAuth     string
-	providers     []fx.Option
-	cache         bool
+	version        string
+	storageDriver  string
+	ledgerLister   controllers.LedgerLister
+	basicAuth      string
+	options        []fx.Option
+	cache          bool
+	rememberConfig bool
 }
 
 type option func(*containerConfig)
@@ -47,13 +48,19 @@ func WithHttpBasicAuth(v string) option {
 
 func WithOption(providers ...fx.Option) option {
 	return func(c *containerConfig) {
-		c.providers = append(c.providers, providers...)
+		c.options = append(c.options, providers...)
 	}
 }
 
 func WithCacheStorage(cache bool) option {
 	return func(c *containerConfig) {
 		c.cache = cache
+	}
+}
+
+func WithRememberConfig(rememberConfig bool) option {
+	return func(c *containerConfig) {
+		c.rememberConfig = rememberConfig
 	}
 }
 
@@ -78,26 +85,6 @@ func NewContainer(options ...option) *fx.App {
 		fx.Annotate(func() string { return cfg.storageDriver }, fx.ResultTags(`name:"storageDriver"`)),
 		fx.Annotate(func() controllers.LedgerLister { return cfg.ledgerLister }, fx.ResultTags(`name:"ledgerLister"`)),
 		fx.Annotate(func() string { return cfg.basicAuth }, fx.ResultTags(`name:"httpBasic"`)),
-	)
-	if cfg.cache {
-		providers = append(providers, fx.Annotate(
-			storage.NewDefaultFactory,
-			fx.ParamTags(`name:"storageDriver"`),
-			fx.ResultTags(`name:"underlyingStorage"`),
-		))
-		providers = append(providers, fx.Annotate(
-			storage.NewCachedStorageFactory,
-			fx.ParamTags(`name:"underlyingStorage"`),
-			fx.As(new(storage.Factory)),
-		))
-		providers = append(providers)
-	} else {
-		providers = append(providers, fx.Annotate(
-			storage.NewDefaultFactory,
-			fx.ParamTags(`name:"storageDriver"`),
-		))
-	}
-	providers = append(providers,
 		fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
 		fx.Annotate(
 			ledger.WithStorageFactory,
@@ -105,6 +92,19 @@ func NewContainer(options ...option) *fx.App {
 			fx.As(new(ledger.ResolverOption)),
 		),
 		api.NewAPI,
+		func() (f storage.Factory, err error) {
+			f, err = storage.NewDefaultFactory(cfg.storageDriver)
+			if err != nil {
+				return nil, err
+			}
+			if cfg.cache {
+				f = storage.NewCachedStorageFactory(f)
+			}
+			if cfg.rememberConfig {
+				f = storage.NewRememberConfigStorageFactory(f)
+			}
+			return f, nil
+		},
 	)
 
 	fxOptions := append(
@@ -123,7 +123,7 @@ func NewContainer(options ...option) *fx.App {
 			fx.Provide(providers...),
 			api.Module,
 		},
-		cfg.providers...,
+		cfg.options...,
 	)
 
 	return fx.New(fxOptions...)

@@ -6,7 +6,6 @@ import (
 	"github.com/pkg/errors"
 	"time"
 
-	"github.com/numary/ledger/config"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
 	"github.com/numary/ledger/storage"
@@ -40,8 +39,6 @@ func (l *Ledger) Close(ctx context.Context) error {
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Transaction, error) {
-	defer config.Remember(l.name)
-
 	unlock, err := l.locker.Lock(l.name)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to acquire lock")

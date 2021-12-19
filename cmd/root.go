@@ -33,7 +33,7 @@ var (
 		Use:               "numary",
 		Short:             "Numary",
 		DisableAutoGenTag: true,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			config.Init()
 			switch viper.GetString("storage.driver") {
 			case "sqlite":
@@ -86,6 +86,7 @@ func Execute() {
 				WithLedgerLister(controllers.LedgerListerFn(func() []string {
 					return viper.GetStringSlice("ledgers")
 				})),
+				WithRememberConfig(true),
 				WithOption(fx.Invoke(func(h *api.API) {
 					go func() {
 						err := http.ListenAndServe(viper.GetString("server.http.bind_address"), h)
