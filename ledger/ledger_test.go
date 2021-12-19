@@ -36,7 +36,11 @@ func with(f func(l *Ledger)) {
 		),
 		fx.Provide(
 			func(storageFactory storage.Factory) (*Ledger, error) {
-				l, err := NewLedger(context.Background(), "test", storageFactory, NewInMemoryLocker())
+				store, err := storageFactory.GetStore("test")
+				if err != nil {
+					return nil, err
+				}
+				l, err := NewLedger("test", store, NewInMemoryLocker())
 				if err != nil {
 					panic(err)
 				}

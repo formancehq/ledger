@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"time"
 
 	"github.com/numary/ledger/config"
@@ -24,28 +23,12 @@ type Ledger struct {
 	store  storage.Store
 }
 
-func NewLedger(ctx context.Context, name string, storageFactory storage.Factory, locker Locker) (*Ledger, error) {
-	store, err := storageFactory.GetStore(name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	err = store.Initialize(ctx)
-
-	if err != nil {
-		err = fmt.Errorf("failed to initialize store: %w", err)
-		logrus.Debugln(err)
-		return nil, err
-	}
-
-	l := &Ledger{
+func NewLedger(name string, store storage.Store, locker Locker) (*Ledger, error) {
+	return &Ledger{
 		store:  store,
 		name:   name,
 		locker: locker,
-	}
-
-	return l, nil
+	}, nil
 }
 
 func (l *Ledger) Close(ctx context.Context) error {

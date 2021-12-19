@@ -2,8 +2,11 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 	"github.com/numary/ledger/storage"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"sync"
 )
 
 type ResolverOption interface {
@@ -35,13 +38,17 @@ var DefaultResolverOptions = []ResolverOption{
 }
 
 type Resolver struct {
-	storageFactory storage.Factory
-	locker         Locker
+	storageFactory    storage.Factory
+	locker            Locker
+	lock              sync.RWMutex
+	initializedStores map[string]struct{}
 }
 
 func NewResolver(options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
-	r := &Resolver{}
+	r := &Resolver{
+		initializedStores: map[string]struct{}{},
+	}
 	for _, opt := range options {
 		err := opt.apply(r)
 		if err != nil {
@@ -53,5 +60,32 @@ func NewResolver(options ...ResolverOption) *Resolver {
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
-	return NewLedger(ctx, name, r.storageFactory, r.locker)
+
+	store, err := r.storageFactory.GetStore(name)
+	if err != nil {
+		return nil, err
+	}
+
+	r.lock.RLock()
+	_, ok := r.initializedStores[name]
+	r.lock.RUnlock()
+	if ok {
+		goto ret
+	}
+
+	r.lock.Lock()
+	_, ok = r.initializedStores[name]
+	if !ok {
+		err = store.Initialize(ctx)
+		if err != nil {
+			err = fmt.Errorf("failed to initialize store: %w", err)
+			logrus.Debugln(err)
+			return nil, err
+		}
+		r.initializedStores[name] = struct{}{}
+	}
+	r.lock.Unlock()
+
+ret:
+	return NewLedger(name, store, r.locker)
 }
