@@ -42,7 +42,7 @@ func Init() {
 	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
 	viper.SetDefault("server.http.bind_address", "localhost:3068")
 	viper.SetDefault("ui.http.bind_address", "localhost:3078")
-	viper.SetDefault("ledgers", []interface{}{"quickstart"})
+	viper.SetDefault("ledgers", []string{"quickstart"})
 
 	viper.SetConfigName("numary")
 	viper.SetConfigType("yaml")
@@ -56,10 +56,10 @@ func Init() {
 }
 
 func Remember(ledger string) {
-	ledgers := viper.Get("ledgers").([]interface{})
+	ledgers := viper.GetStringSlice("ledgers")
 
 	for _, v := range ledgers {
-		if ledger == v.(string) {
+		if ledger == v {
 			return
 		}
 	}

@@ -1,9 +1,12 @@
 package ledger
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v4/pgxpool"
+
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -11,6 +14,8 @@ import (
 	"path"
 	"reflect"
 	"testing"
+
+	"github.com/numary/ledger/storage"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/config"
@@ -28,7 +33,7 @@ func with(f func(l *Ledger)) {
 		),
 		fx.Provide(
 			func(lc fx.Lifecycle) (*Ledger, error) {
-				l, err := NewLedger("test", lc)
+				l, err := NewLedger("test", lc, storage.DefaultFactory)
 
 				if err != nil {
 					panic(err)
@@ -55,7 +60,14 @@ func TestMain(m *testing.M) {
 		viper.Set("storage.sqlite.db_name", "ledger")
 		os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
 	case "postgres":
-		store, err := postgres.NewStore("test")
+		pool, err := pgxpool.Connect(
+			context.Background(),
+			viper.GetString("storage.postgres.conn_string"),
+		)
+		if err != nil {
+			panic(err)
+		}
+		store, err := postgres.NewStore("test", pool)
 		if err != nil {
 			panic(err)
 		}
@@ -328,7 +340,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		l.Commit([]core.Transaction{{
-			Reference: "foo",
+			Reference: "bar",
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -355,11 +367,40 @@ func TestGetTransaction(t *testing.T) {
 	})
 }
 
+func TestFindTransactions(t *testing.T) {
+	with(func(l *Ledger) {
+		tx := core.Transaction{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "test_find_transactions",
+					Amount:      100,
+					Asset:       "COIN",
+				},
+			},
+		}
+
+		l.Commit([]core.Transaction{tx})
+
+		res, err := l.FindTransactions()
+
+		if err != nil {
+			t.Error(err)
+		}
+
+		txs := res.Data.([]core.Transaction)
+
+		if txs[0].Postings[0].Destination != "test_find_transactions" {
+			t.Error()
+		}
+	})
+}
+
 func TestRevertTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		l.Commit([]core.Transaction{{
+		txs, err := l.Commit([]core.Transaction{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -371,18 +412,17 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}})
 
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		world, err := l.GetAccount("world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		originalBal := world.Balances["COIN"]
 
-		committedTx, err := l.GetLastTransaction()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = l.RevertTransaction(fmt.Sprint(committedTx.ID))
+		err = l.RevertTransaction(fmt.Sprint(txs[0].ID))
 		if err != nil {
 			t.Fatal(err)
 		}

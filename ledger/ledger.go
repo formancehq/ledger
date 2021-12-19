@@ -15,6 +15,11 @@ import (
 	"go.uber.org/fx"
 )
 
+const (
+	targetTypeAccount     = "account"
+	targetTypeTransaction = "transaction"
+)
+
 type Ledger struct {
 	sync.Mutex
 	name        string
@@ -23,8 +28,8 @@ type Ledger struct {
 	_lastMetaID int64
 }
 
-func NewLedger(name string, lc fx.Lifecycle) (*Ledger, error) {
-	store, err := storage.GetStore(name)
+func NewLedger(name string, lc fx.Lifecycle, storageFactory storage.Factory) (*Ledger, error) {
+	store, err := storageFactory.GetStore(name)
 
 	if err != nil {
 		return nil, err
@@ -258,6 +263,16 @@ func (l *Ledger) GetAccount(address string) (core.Account, error) {
 func (l *Ledger) SaveMeta(targetType string, targetID string, m core.Metadata) error {
 	l.Lock()
 	defer l.Unlock()
+
+	if targetType == "" {
+		return errors.New("empty target type")
+	}
+	if targetType != targetTypeTransaction && targetType != targetTypeAccount {
+		return fmt.Errorf("unknown target type '%s'", targetType)
+	}
+	if targetID == "" {
+		return errors.New("empty target id")
+	}
 
 	if l._lastMetaID == -1 {
 		count, err := l.store.CountMeta()
