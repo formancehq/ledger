@@ -87,14 +87,14 @@ func Remember(ledger string) {
 	if writeTo == "" {
 		_, err := os.Create(userConfigFile)
 		if err != nil {
-			logrus.Printf("failed to create config file: ledger %s will not be remembered\n", ledger)
+			logrus.Errorf("failed to create config file: ledger %s will not be remembered\n", ledger)
 		}
 	}
 
 	viper.Set("ledgers", append(ledgers, ledger))
 	err := viper.WriteConfig()
 	if err != nil {
-		logrus.Printf("failed to write config: ledger %s will not be remembered\n",
+		logrus.Errorf("failed to write config: ledger %s will not be remembered\n",
 			ledger)
 	}
 }
