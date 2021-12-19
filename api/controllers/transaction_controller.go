@@ -59,12 +59,20 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
+// @Failure 400
 // @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var t core.Transaction
-	c.ShouldBind(&t)
+	if err := c.ShouldBindJSON(&t); err != nil {
+		ctl.responseError(
+			c,
+			http.StatusBadRequest,
+			err,
+		)
+		return
+	}
 
 	ts, err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 	if err != nil {

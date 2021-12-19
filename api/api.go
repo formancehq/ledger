@@ -9,6 +9,7 @@ import (
 	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/api/middlewares"
 	"github.com/numary/ledger/api/routes"
+	"github.com/numary/ledger/api/validators"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -17,12 +18,14 @@ var Module = fx.Options(
 	middlewares.Module,
 	routes.Module,
 	controllers.Module,
+	validators.Module,
 )
 
 // API struct
 type API struct {
-	addr   string
-	engine *gin.Engine
+	addr       string
+	engine     *gin.Engine
+	validators validators.Validators
 }
 
 // NewAPI
@@ -54,5 +57,6 @@ func NewAPI(
 
 // Start
 func (h *API) Start() {
+	h.validators.Register()
 	h.engine.Run(h.addr)
 }

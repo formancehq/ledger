@@ -8,6 +8,7 @@ require (
 	github.com/gin-contrib/logger v0.2.0
 	github.com/gin-gonic/gin v1.7.4
 	github.com/go-openapi/spec v0.20.4 // indirect
+	github.com/go-playground/validator/v10 v10.4.1
 	github.com/google/go-cmp v0.5.6
 	github.com/huandu/go-sqlbuilder v1.12.1
 	github.com/jackc/pgx/v4 v4.11.0
