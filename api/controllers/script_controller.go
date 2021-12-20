@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -39,24 +38,24 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	err := l.(*ledger.Ledger).Execute(script)
+	err := l.(*ledger.Ledger).Execute(c, script)
 
 	res := gin.H{
 		"ok": err == nil,
 	}
 
 	if err != nil {
-		err_str := err.Error()
-		err_str = strings.ReplaceAll(err_str, "\n", "\r\n")
+		errStr := err.Error()
+		errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
 		payload, err := json.Marshal(gin.H{
-			"error": err_str,
+			"error": errStr,
 		})
 		if err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
-		payload_b64 := base64.StdEncoding.EncodeToString([]byte(payload))
-		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payload_b64)
-		res["err"] = err_str
+		payloadB64 := base64.StdEncoding.EncodeToString(payload)
+		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
+		res["err"] = errStr
 		res["details"] = link
 	}
 

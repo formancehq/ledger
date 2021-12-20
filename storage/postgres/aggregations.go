@@ -6,7 +6,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 )
 
-func (s *PGStore) CountMeta() (int64, error) {
+func (s *PGStore) CountMeta(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -17,19 +17,15 @@ func (s *PGStore) CountMeta() (int64, error) {
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-	err := s.Conn().QueryRow(
-		context.Background(),
-		sqlq,
-		args...,
-	).Scan(&count)
+	err := s.Conn().QueryRow(ctx, sqlq, args...).Scan(&count)
 
 	return count, err
 }
 
-func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
+func (s *PGStore) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
-	volumes, err := s.AggregateVolumes(address)
+	volumes, err := s.AggregateVolumes(ctx, address)
 
 	if err != nil {
 		return balances, err
@@ -42,7 +38,7 @@ func (s *PGStore) AggregateBalances(address string) (map[string]int64, error) {
 	return balances, nil
 }
 
-func (s *PGStore) AggregateVolumes(address string) (map[string]map[string]int64, error) {
+func (s *PGStore) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
 	volumes := map[string]map[string]int64{}
 
 	agg1 := sqlbuilder.NewSelectBuilder()
@@ -66,7 +62,7 @@ func (s *PGStore) AggregateVolumes(address string) (map[string]map[string]int64,
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	rows, err := s.Conn().Query(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	)

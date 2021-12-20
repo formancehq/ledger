@@ -8,7 +8,7 @@ import (
 	"github.com/numary/ledger/ledger/query"
 )
 
-func (s *PGStore) CountAccounts() (int64, error) {
+func (s *PGStore) CountAccounts(ctx context.Context) (int64, error) {
 	var count int64
 
 	sqlq, _ := sqlbuilder.
@@ -17,14 +17,14 @@ func (s *PGStore) CountAccounts() (int64, error) {
 		BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	err := s.Conn().QueryRow(
-		context.Background(),
+		ctx,
 		sqlq,
 	).Scan(&count)
 
 	return count, err
 }
 
-func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
+func (s *PGStore) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
 	c := query.Cursor{}
 	results := []core.Account{}
 
@@ -40,7 +40,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	var remaining int
 
 	err := s.Conn().QueryRow(
-		context.Background(),
+		ctx,
 		sqlRem,
 		args...,
 	).Scan(&remaining)
@@ -63,7 +63,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	sqlAcc, args := queryAcc.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	rows, err := s.Conn().Query(
-		context.Background(),
+		ctx,
 		sqlAcc,
 		args...,
 	)
@@ -86,7 +86,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			Contract: "default",
 		}
 
-		meta, err := s.GetMeta("account", account.Address)
+		meta, err := s.GetMeta(ctx, "account", account.Address)
 		if err != nil {
 			return c, err
 		}
@@ -95,7 +95,7 @@ func (s *PGStore) FindAccounts(q query.Query) (query.Cursor, error) {
 		results = append(results, account)
 	}
 
-	total, _ := s.CountAccounts()
+	total, _ := s.CountAccounts(ctx)
 
 	c.PageSize = q.Limit
 	c.HasMore = len(results) < remaining

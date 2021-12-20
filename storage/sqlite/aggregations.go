@@ -1,10 +1,11 @@
 package sqlite
 
 import (
+	"context"
 	"github.com/huandu/go-sqlbuilder"
 )
 
-func (s *SQLiteStore) CountTransactions() (int64, error) {
+func (s *SQLiteStore) CountTransactions(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -13,12 +14,12 @@ func (s *SQLiteStore) CountTransactions() (int64, error) {
 
 	sqlq, args := sb.Build()
 
-	err := s.db.QueryRow(sqlq, args...).Scan(&count)
+	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, err
 }
 
-func (s *SQLiteStore) CountAccounts() (int64, error) {
+func (s *SQLiteStore) CountAccounts(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -30,12 +31,12 @@ func (s *SQLiteStore) CountAccounts() (int64, error) {
 
 	sqlq, args := sb.Build()
 
-	err := s.db.QueryRow(sqlq, args...).Scan(&count)
+	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, err
 }
 
-func (s *SQLiteStore) CountMeta() (int64, error) {
+func (s *SQLiteStore) CountMeta(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -46,16 +47,16 @@ func (s *SQLiteStore) CountMeta() (int64, error) {
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
 
-	q := s.db.QueryRow(sqlq, args...)
+	q := s.db.QueryRowContext(ctx, sqlq, args...)
 	err := q.Scan(&count)
 
 	return count, err
 }
 
-func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error) {
+func (s *SQLiteStore) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
-	volumes, err := s.AggregateVolumes(address)
+	volumes, err := s.AggregateVolumes(ctx, address)
 
 	if err != nil {
 		return balances, err
@@ -68,7 +69,7 @@ func (s *SQLiteStore) AggregateBalances(address string) (map[string]int64, error
 	return balances, nil
 }
 
-func (s *SQLiteStore) AggregateVolumes(address string) (map[string]map[string]int64, error) {
+func (s *SQLiteStore) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
 	volumes := map[string]map[string]int64{}
 
 	agg1 := sqlbuilder.NewSelectBuilder()
@@ -91,7 +92,7 @@ func (s *SQLiteStore) AggregateVolumes(address string) (map[string]map[string]in
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
 
-	rows, err := s.db.Query(sqlq, args...)
+	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {
 		return volumes, err

@@ -5,6 +5,8 @@ import (
 )
 
 var Module = fx.Options(
-	fx.Provide(NewAuthMiddleware),
+	fx.Provide(
+		fx.Annotate(NewAuthMiddleware, fx.ParamTags(`name:"httpBasic"`)),
+	),
 	fx.Provide(NewLedgerMiddleware),
 )

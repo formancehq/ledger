@@ -30,6 +30,7 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
+		c,
 		query.After(c.Query("after")),
 	)
 	if err != nil {
@@ -58,7 +59,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 // @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	acc, err := l.(*ledger.Ledger).GetAccount(c.Param("address"))
+	acc, err := l.(*ledger.Ledger).GetAccount(c, c.Param("address"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -88,6 +89,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	var m core.Metadata
 	c.ShouldBind(&m)
 	err := l.(*ledger.Ledger).SaveMeta(
+		c,
 		"account",
 		c.Param("address"),
 		m,

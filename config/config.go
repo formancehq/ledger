@@ -1,9 +1,10 @@
 package config
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -27,19 +28,28 @@ type LedgerStorage struct {
 	Ledgers interface{} `json:"ledgers"`
 }
 
-func Init() {
-	home, err := os.UserHomeDir()
+var home string
+
+func init() {
+	var err error
+	home, err = os.UserHomeDir()
 	if err != nil {
 		home = "/root"
 	}
+}
 
-	os.MkdirAll(path.Join(home, ".numary", "data"), 0700)
+func Init() {
+	err := os.MkdirAll(path.Join(home, ".numary", "data"), 0700)
+	if err != nil {
+		panic(err)
+	}
 
 	viper.SetDefault("debug", false)
 	viper.SetDefault("storage.driver", "sqlite")
 	viper.SetDefault("storage.dir", path.Join(home, ".numary/data"))
 	viper.SetDefault("storage.sqlite.db_name", "numary")
 	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
+	viper.SetDefault("storage.cache", false)
 	viper.SetDefault("server.http.bind_address", "localhost:3068")
 	viper.SetDefault("ui.http.bind_address", "localhost:3078")
 	viper.SetDefault("ledgers", []string{"quickstart"})
@@ -47,6 +57,7 @@ func Init() {
 	viper.SetConfigName("numary")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("$HOME/.numary")
+	// TODO: Path not writeable if not root, should be removed?
 	viper.AddConfigPath("/etc/numary")
 	viper.ReadInConfig()
 
@@ -64,14 +75,26 @@ func Remember(ledger string) {
 		}
 	}
 
+	writeTo := ""
+	userConfigFile := filepath.Join(home, ".numary/numary.yaml")
+	for _, file := range []string{"/etc/numary/numary.yaml", userConfigFile} {
+		_, err := os.Open(file)
+		if err == nil {
+			writeTo = file
+			break
+		}
+	}
+	if writeTo == "" {
+		_, err := os.Create(userConfigFile)
+		if err != nil {
+			logrus.Errorf("failed to create config file: ledger %s will not be remembered\n", ledger)
+		}
+	}
+
 	viper.Set("ledgers", append(ledgers, ledger))
-
 	err := viper.WriteConfig()
-
 	if err != nil {
-		log.Printf(
-			"failed to write config: ledger %s will not be remembered\n",
-			ledger,
-		)
+		logrus.Errorf("failed to write config: ledger %s will not be remembered\n",
+			ledger)
 	}
 }

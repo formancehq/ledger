@@ -1,9 +1,12 @@
 package ledger
 
 import (
+	"context"
+	"fmt"
 	"github.com/numary/ledger/storage"
 	"github.com/pkg/errors"
-	"go.uber.org/fx"
+	"github.com/sirupsen/logrus"
+	"sync"
 )
 
 type ResolverOption interface {
@@ -22,21 +25,29 @@ func WithStorageFactory(factory storage.Factory) ResolveOptionFn {
 	})
 }
 
+func WithLocker(locker Locker) ResolveOptionFn {
+	return ResolveOptionFn(func(r *Resolver) error {
+		r.locker = locker
+		return nil
+	})
+}
+
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(storage.DefaultFactory),
+	WithStorageFactory(&storage.BuiltInFactory{Driver: "sqlite"}),
+	WithLocker(NewInMemoryLocker()),
 }
 
 type Resolver struct {
-	lifecycle      fx.Lifecycle
-	ledgers        map[string]*Ledger
-	storageFactory storage.Factory
+	storageFactory    storage.Factory
+	locker            Locker
+	lock              sync.RWMutex
+	initializedStores map[string]struct{}
 }
 
-func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
+func NewResolver(options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
-		ledgers:   make(map[string]*Ledger),
-		lifecycle: lc,
+		initializedStores: map[string]struct{}{},
 	}
 	for _, opt := range options {
 		err := opt.apply(r)
@@ -48,16 +59,33 @@ func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
 	return r
 }
 
-func (r *Resolver) GetLedger(name string) (*Ledger, error) {
-	if _, ok := r.ledgers[name]; !ok {
-		l, err := NewLedger(name, r.lifecycle, r.storageFactory)
+func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
 
-		if err != nil {
-			return nil, err
-		}
-
-		r.ledgers[name] = l
+	store, err := r.storageFactory.GetStore(name)
+	if err != nil {
+		return nil, err
 	}
 
-	return r.ledgers[name], nil
+	r.lock.RLock()
+	_, ok := r.initializedStores[name]
+	r.lock.RUnlock()
+	if ok {
+		goto ret
+	}
+
+	r.lock.Lock()
+	_, ok = r.initializedStores[name]
+	if !ok {
+		err = store.Initialize(ctx)
+		if err != nil {
+			err = fmt.Errorf("failed to initialize store: %w", err)
+			logrus.Debugln(err)
+			return nil, err
+		}
+		r.initializedStores[name] = struct{}{}
+	}
+	r.lock.Unlock()
+
+ret:
+	return NewLedger(name, store, r.locker)
 }

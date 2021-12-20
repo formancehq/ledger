@@ -1,18 +1,19 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"math"
 	"sort"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/spf13/viper"
 )
 
-func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
+func (s *SQLiteStore) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
@@ -58,11 +59,10 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
-	rows, err := s.db.Query(
+	rows, err := s.db.QueryContext(
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -112,7 +112,7 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 
 	for _, t := range transactions {
-		meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", t.ID))
+		meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", t.ID))
 		if err != nil {
 			return c, err
 		}
@@ -133,14 +133,14 @@ func (s *SQLiteStore) FindTransactions(q query.Query) (query.Cursor, error) {
 	}
 	c.Data = results
 
-	total, _ := s.CountTransactions()
+	total, _ := s.CountTransactions(ctx)
 	c.Total = total
 
 	return c, nil
 }
 
-func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
-	tx, _ := s.db.Begin()
+func (s *SQLiteStore) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
+	tx, _ := s.db.BeginTx(ctx, nil)
 
 	for _, t := range ts {
 		var ref *string
@@ -156,7 +156,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 
 		sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
 
-		_, err := tx.Exec(sqlq, args...)
+		_, err := tx.ExecContext(ctx, sqlq, args...)
 
 		if err != nil {
 			tx.Rollback()
@@ -172,7 +172,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
 
-			_, err := tx.Exec(sqlq, args...)
+			_, err := tx.ExecContext(ctx, sqlq, args...)
 
 			if err != nil {
 				tx.Rollback()
@@ -181,7 +181,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 			}
 		}
 
-		nextID, err := s.CountMeta()
+		nextID, err := s.CountMeta(ctx)
 		if err != nil {
 			tx.Rollback()
 
@@ -209,11 +209,9 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 			)
 
 			sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
-			if viper.GetBool("debug") {
-				fmt.Println(sqlq, args)
-			}
+			logrus.Debugln(sqlq, args)
 
-			_, err = tx.Exec(sqlq, args...)
+			_, err = tx.ExecContext(ctx, sqlq, args...)
 
 			if err != nil {
 				tx.Rollback()
@@ -228,7 +226,7 @@ func (s *SQLiteStore) SaveTransactions(ts []core.Transaction) error {
 	return tx.Commit()
 }
 
-func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err error) {
+func (s *SQLiteStore) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -246,11 +244,10 @@ func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err erro
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
-	rows, err := s.db.Query(
+	rows, err := s.db.QueryContext(
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -290,11 +287,30 @@ func (s *SQLiteStore) GetTransaction(txid string) (tx core.Transaction, err erro
 		tx.AppendPosting(posting)
 	}
 
-	meta, err := s.GetMeta("transaction", fmt.Sprintf("%d", tx.ID))
+	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
 		return tx, err
 	}
 	tx.Metadata = meta
 
 	return tx, nil
+}
+
+func (s *SQLiteStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+	var lastTransaction core.Transaction
+
+	q := query.New()
+	q.Modify(query.Limit(1))
+
+	c, err := s.FindTransactions(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	txs := (c.Data).([]core.Transaction)
+	if len(txs) > 0 {
+		lastTransaction = txs[0]
+		return &lastTransaction, nil
+	}
+	return nil, nil
 }

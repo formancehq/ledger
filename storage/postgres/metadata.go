@@ -3,14 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"github.com/sirupsen/logrus"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
-	"github.com/spf13/viper"
 )
 
-func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
+func (s *PGStore) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
@@ -25,12 +24,10 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	)
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
 	rows, err := s.Conn().Query(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -42,12 +39,12 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 	meta := core.Metadata{}
 
 	for rows.Next() {
-		var meta_key string
-		var meta_value string
+		var metaKey string
+		var metaValue string
 
 		err := rows.Scan(
-			&meta_key,
-			&meta_value,
+			&metaKey,
+			&metaValue,
 		)
 
 		if err != nil {
@@ -56,20 +53,20 @@ func (s *PGStore) GetMeta(ty string, id string) (core.Metadata, error) {
 
 		var value json.RawMessage
 
-		err = json.Unmarshal([]byte(meta_value), &value)
+		err = json.Unmarshal([]byte(metaValue), &value)
 
 		if err != nil {
 			return nil, err
 		}
 
-		meta[meta_key] = value
+		meta[metaKey] = value
 	}
 
 	return meta, nil
 }
 
-func (s *PGStore) SaveMeta(id, timestamp, targetType, targetID, key, value string) error {
-	tx, _ := s.Conn().Begin(context.Background())
+func (s *PGStore) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
+	tx, _ := s.Conn().Begin(ctx)
 
 	ib := sqlbuilder.NewInsertBuilder()
 	ib.InsertInto(s.table("metadata"))
@@ -86,22 +83,30 @@ func (s *PGStore) SaveMeta(id, timestamp, targetType, targetID, key, value strin
 	sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
 	_, err := tx.Exec(
-		context.Background(),
+		ctx,
 		sqlq,
 		args...,
 	)
 
 	if err != nil {
-		tx.Rollback(context.Background())
+		tx.Rollback(ctx)
 
 		return err
 	}
 
-	err = tx.Commit(context.Background())
+	err = tx.Commit(ctx)
 
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (s *PGStore) LastMetaID(ctx context.Context) (int64, error) {
+	count, err := s.CountMeta(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return count - 1, nil
 }

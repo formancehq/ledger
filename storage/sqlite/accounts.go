@@ -1,16 +1,16 @@
 package sqlite
 
 import (
-	"fmt"
+	"context"
+	"github.com/sirupsen/logrus"
 	"math"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/spf13/viper"
 )
 
-func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
+func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
@@ -29,11 +29,10 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	}
 
 	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
-	if viper.GetBool("debug") {
-		fmt.Println(sqlq, args)
-	}
+	logrus.Debugln(sqlq, args)
 
-	rows, err := s.db.Query(
+	rows, err := s.db.QueryContext(
+		ctx,
 		sqlq,
 		args...,
 	)
@@ -56,7 +55,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 			Contract: "default",
 		}
 
-		meta, err := s.GetMeta("account", account.Address)
+		meta, err := s.GetMeta(ctx, "account", account.Address)
 		if err != nil {
 			return c, err
 		}
@@ -73,7 +72,7 @@ func (s *SQLiteStore) FindAccounts(q query.Query) (query.Cursor, error) {
 	}
 	c.Data = results
 
-	total, _ := s.CountAccounts()
+	total, _ := s.CountAccounts(ctx)
 	c.Total = total
 
 	return c, nil

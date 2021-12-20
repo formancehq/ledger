@@ -1,15 +1,15 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
-	"log"
+	"github.com/sirupsen/logrus"
 	"path"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/spf13/viper"
 )
 
 //go:embed migration
@@ -20,20 +20,16 @@ type SQLiteStore struct {
 	db     *sql.DB
 }
 
-func NewStore(name string) (*SQLiteStore, error) {
+func NewStore(storageDir, dbName, name string) (*SQLiteStore, error) {
 	dbpath := fmt.Sprintf(
 		"file:%s?_journal=WAL",
 		path.Join(
-			viper.GetString("storage.dir"),
-			fmt.Sprintf(
-				"%s_%s.db",
-				viper.GetString("storage.sqlite.db_name"),
-				name,
-			),
+			storageDir,
+			fmt.Sprintf("%s_%s.db", dbName, name),
 		),
 	)
 
-	log.Printf("opening %s\n", dbpath)
+	logrus.Debugf("opening %s\n", dbpath)
 
 	db, err := sql.Open("sqlite3", dbpath)
 
@@ -51,8 +47,8 @@ func (s *SQLiteStore) Name() string {
 	return s.ledger
 }
 
-func (s *SQLiteStore) Initialize() error {
-	log.Println("initializing sqlite db")
+func (s *SQLiteStore) Initialize(ctx context.Context) error {
+	logrus.Debugln("initializing sqlite db")
 
 	statements := []string{}
 
@@ -63,7 +59,7 @@ func (s *SQLiteStore) Initialize() error {
 	}
 
 	for _, m := range entries {
-		log.Printf("running migration %s\n", m.Name())
+		logrus.Debugf("running migration %s\n", m.Name())
 
 		b, err := migrations.ReadFile(path.Join("migration", m.Name()))
 
@@ -80,13 +76,11 @@ func (s *SQLiteStore) Initialize() error {
 	}
 
 	for i, statement := range statements {
-		_, err = s.db.Exec(
-			statement,
-		)
+		_, err = s.db.ExecContext(ctx, statement)
 
 		if err != nil {
-			fmt.Println(err)
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			logrus.Errorln(err)
 			return err
 		}
 	}
@@ -94,7 +88,11 @@ func (s *SQLiteStore) Initialize() error {
 	return nil
 }
 
-func (s *SQLiteStore) Close() {
-	s.db.Close()
-	log.Println("sqlite db closed")
+func (s *SQLiteStore) Close(ctx context.Context) error {
+	logrus.Debugln("sqlite db closed")
+	err := s.db.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }
