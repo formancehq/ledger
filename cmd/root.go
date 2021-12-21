@@ -5,19 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/api/controllers"
 	"github.com/numary/ledger/storage/postgres"
 	"github.com/numary/ledger/storage/sqlite"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/fx"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/storage"
 	"github.com/numary/machine/script/compiler"
 	"github.com/spf13/cobra"
@@ -34,7 +36,11 @@ var (
 		Short:             "Numary",
 		DisableAutoGenTag: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			config.Init()
+			err := os.MkdirAll(viper.GetString("storage.dir"), 0700)
+			if err != nil {
+				return errors.Wrap(err, "creating storage directory")
+			}
+
 			switch viper.GetString("storage.driver") {
 			case "sqlite":
 				storage.RegisterDriver("sqlite", sqlite.NewDriver(
@@ -217,6 +223,32 @@ func Execute() {
 	root.AddCommand(scriptCheck)
 	root.AddCommand(version)
 	root.AddCommand(stickersCmd)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
+	}
+
+	root.PersistentFlags().Bool("debug", false, "Debug mode")
+	root.PersistentFlags().String("storage.driver", "sqlite", "Storage driver")
+	root.PersistentFlags().String("storage.dir", path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
+	root.PersistentFlags().String("storage.sqlite.db_name", "numary", "SQLite database name")
+	root.PersistentFlags().String("storage.postgres.conn_string", "postgresql://localhost/postgres", "Postgre connection string")
+	root.PersistentFlags().Bool("storage.cache", true, "Storage cache")
+	root.PersistentFlags().String("server.http.bind_address", "localhost:3068", "API bind address")
+	root.PersistentFlags().String("ui.http.bind_address", "localhost:3068", "UI bind address")
+	root.PersistentFlags().StringSlice("ledgers", []string{"quickstart"}, "Ledgers")
+
+	viper.BindPFlags(root.PersistentFlags())
+	viper.SetConfigName("numary")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME/.numary")
+	viper.AddConfigPath("/etc/numary")
+	viper.ReadInConfig()
+
+	viper.SetEnvPrefix("numary")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+	viper.AutomaticEnv()
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -2,12 +2,9 @@ package config
 
 import (
 	"github.com/sirupsen/logrus"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
-
 	"github.com/spf13/viper"
+	"os"
+	"path/filepath"
 )
 
 // ConfigInfo struct
@@ -28,44 +25,6 @@ type LedgerStorage struct {
 	Ledgers interface{} `json:"ledgers"`
 }
 
-var home string
-
-func init() {
-	var err error
-	home, err = os.UserHomeDir()
-	if err != nil {
-		home = "/root"
-	}
-}
-
-func Init() {
-	err := os.MkdirAll(path.Join(home, ".numary", "data"), 0700)
-	if err != nil {
-		panic(err)
-	}
-
-	viper.SetDefault("debug", false)
-	viper.SetDefault("storage.driver", "sqlite")
-	viper.SetDefault("storage.dir", path.Join(home, ".numary/data"))
-	viper.SetDefault("storage.sqlite.db_name", "numary")
-	viper.SetDefault("storage.postgres.conn_string", "postgresql://localhost/postgres")
-	viper.SetDefault("storage.cache", false)
-	viper.SetDefault("server.http.bind_address", "localhost:3068")
-	viper.SetDefault("ui.http.bind_address", "localhost:3078")
-	viper.SetDefault("ledgers", []string{"quickstart"})
-
-	viper.SetConfigName("numary")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("$HOME/.numary")
-	// TODO: Path not writeable if not root, should be removed?
-	viper.AddConfigPath("/etc/numary")
-	viper.ReadInConfig()
-
-	viper.SetEnvPrefix("numary")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-}
-
 func Remember(ledger string) {
 	ledgers := viper.GetStringSlice("ledgers")
 
@@ -73,6 +32,11 @@ func Remember(ledger string) {
 		if ledger == v {
 			return
 		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
 	}
 
 	writeTo := ""
@@ -92,7 +56,7 @@ func Remember(ledger string) {
 	}
 
 	viper.Set("ledgers", append(ledgers, ledger))
-	err := viper.WriteConfig()
+	err = viper.WriteConfig()
 	if err != nil {
 		logrus.Errorf("failed to write config: ledger %s will not be remembered\n",
 			ledger)
