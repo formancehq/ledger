@@ -104,6 +104,8 @@ func (d *cachedDBDriver) Close(ctx context.Context) error {
 	return d.db.Close()
 }
 
+const SQLiteMemoryConnString = "file::memory:?cache=shared"
+
 func NewCachedDBDriver(flavor Flavor, where string) *cachedDBDriver {
 	return &cachedDBDriver{
 		where:  where,
@@ -113,7 +115,7 @@ func NewCachedDBDriver(flavor Flavor, where string) *cachedDBDriver {
 
 func NewInMemorySQLiteDriver() *cachedDBDriver {
 	return &cachedDBDriver{
-		where:  "file::memory:?cache=shared",
+		where:  SQLiteMemoryConnString,
 		flavor: SQLite,
 	}
 }
