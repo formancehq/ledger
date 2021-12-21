@@ -6,12 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/numary/ledger/storage/sqlite"
+	"github.com/numary/ledger/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
-	"path"
 	"reflect"
 	"testing"
 
@@ -20,12 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/numary/ledger/storage/postgres"
 	"go.uber.org/fx"
-
-	// Register sql drivers
-	_ "github.com/numary/ledger/storage/postgres"
-	_ "github.com/numary/ledger/storage/sqlite"
 )
 
 func with(f func(l *Ledger)) {
@@ -65,25 +58,31 @@ func TestMain(m *testing.M) {
 
 	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
 	case "sqlite":
-		storage.RegisterDriver("sqlite", sqlite.NewDriver(os.TempDir(), "ledger"))
-		err := os.Remove(path.Join(os.TempDir(), "ledger_test.db"))
-		if err != nil {
-			panic(err)
-		}
+		storage.RegisterDriver("sqlite", sqlstorage.NewOpenCloseDBDriver(
+			sqlstorage.SQLite,
+			func(name string) string {
+				return fmt.Sprintf("file:%s/%s.db?_journal=WAL", os.TempDir(), name)
+			}),
+		)
 	case "postgres":
 		connString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
-		storage.RegisterDriver("postgres", postgres.NewDriver(connString))
+		storage.RegisterDriver("postgres", sqlstorage.NewOpenCloseDBDriver(
+			sqlstorage.PostgreSQL,
+			func(name string) string {
+				return connString
+			}),
+		)
 
 		// @gfyrag: Why this test?
-		pool, err := pgxpool.Connect(context.Background(), connString)
-		if err != nil {
-			panic(err)
-		}
-		store, err := postgres.NewStore("test", pool)
-		if err != nil {
-			panic(err)
-		}
-		store.DropTest()
+		//pool, err := pgxpool.Connect(context.Background(), connString)
+		//if err != nil {
+		//	panic(err)
+		//}
+		//store, err := postgres.NewStore("test", pool)
+		//if err != nil {
+		//	panic(err)
+		//}
+		//store.DropTest()
 	}
 
 	m.Run()

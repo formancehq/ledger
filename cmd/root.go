@@ -6,8 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/numary/ledger/api/controllers"
-	"github.com/numary/ledger/storage/postgres"
-	"github.com/numary/ledger/storage/sqlite"
+	"github.com/numary/ledger/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/fx"
@@ -41,22 +40,31 @@ var (
 				return errors.Wrap(err, "creating storage directory")
 			}
 
-			switch viper.GetString("storage.driver") {
-			case "sqlite":
-				storage.RegisterDriver("sqlite", sqlite.NewDriver(
-					viper.GetString("storage.dir"),
-					viper.GetString("storage.sqlite.db_name"),
-				))
-			case "postgres":
-				storage.RegisterDriver("postgres", postgres.NewDriver(
-					viper.GetString("storage.postgres.conn_string"),
-				))
-			default:
-				return fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
-			}
 			if viper.GetBool("debug") {
 				logrus.StandardLogger().Level = logrus.DebugLevel
 			}
+
+			var (
+				driver storage.Driver
+			)
+
+			switch viper.GetString("storage.driver") {
+			case "sqlite":
+				driver = sqlstorage.NewOpenCloseDBDriver(sqlstorage.SQLite, func(name string) string {
+					return fmt.Sprintf(
+						"file:%s?_journal=WAL",
+						path.Join(
+							viper.GetString("storage.dir"),
+							fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
+						),
+					)
+				})
+			case "postgres":
+				driver = sqlstorage.NewCachedDBDriver(sqlstorage.PostgreSQL, viper.GetString("storage.postgres.conn_string"))
+			default:
+				return fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
+			}
+			storage.RegisterDriver(viper.GetString("storage.driver"), driver)
 			return nil
 		},
 	}
