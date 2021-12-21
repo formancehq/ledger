@@ -30,6 +30,9 @@ var sqlDrivers = map[Flavor]struct {
 
 type ConnStringResolver func(name string) string
 
+// cachedDBDriver is a driver which connect on the database each time the NewStore() method is called.
+// Therefore, the provided store is configured to close the *sql.DB instance when the Close() method of the store is called.
+// It is suitable for databases engines like SQLite
 type openCloseDBDriver struct {
 	connString ConnStringResolver
 	flavor     Flavor
@@ -64,6 +67,9 @@ func NewOpenCloseDBDriver(flavor Flavor, connString ConnStringResolver) *openClo
 	}
 }
 
+// cachedDBDriver is a driver which connect on a database and keep the connection open until closed
+// it suitable for databases engines like PostgreSQL or MySQL
+// Therefore, the NewStore() method return stores backed with the same underlying *sql.DB instance.
 type cachedDBDriver struct {
 	where  string
 	db     *sql.DB
@@ -92,6 +98,9 @@ func (s *cachedDBDriver) NewStore(name string) (storage.Store, error) {
 }
 
 func (d *cachedDBDriver) Close(ctx context.Context) error {
+	if d.db == nil {
+		return nil
+	}
 	return d.db.Close()
 }
 

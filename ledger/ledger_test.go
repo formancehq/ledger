@@ -72,17 +72,6 @@ func TestMain(m *testing.M) {
 				return connString
 			}),
 		)
-
-		// @gfyrag: Why this test?
-		//pool, err := pgxpool.Connect(context.Background(), connString)
-		//if err != nil {
-		//	panic(err)
-		//}
-		//store, err := postgres.NewStore("test", pool)
-		//if err != nil {
-		//	panic(err)
-		//}
-		//store.DropTest()
 	}
 
 	m.Run()
