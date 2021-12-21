@@ -101,3 +101,18 @@ func NewCachedDBDriver(flavor Flavor, where string) *cachedDBDriver {
 		flavor: flavor,
 	}
 }
+
+func NewInMemorySQLiteDriver() *cachedDBDriver {
+	return &cachedDBDriver{
+		where:  "file::memory:?cache=shared",
+		flavor: SQLite,
+	}
+}
+
+func RegisterInMemorySQLite() {
+	storage.RegisterDriver("sqlite-memory", NewInMemorySQLiteDriver())
+}
+
+func init() {
+	RegisterInMemorySQLite()
+}
