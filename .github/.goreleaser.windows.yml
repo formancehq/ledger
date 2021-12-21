@@ -14,6 +14,25 @@ builds:
 checksum:
   name_template: 'checksums_windows.txt'
 
+archives:
+  - id: "numary"
+    builds:
+      - numary_linux
+      - numary_darwin
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{.ProjectName}}_{{.Version}}_{{.Os}}-{{.Arch}}"
+    replacements:
+      amd64: 64bit
+      386: 32bit
+      arm: ARM
+      arm64: ARM64
+      darwin: macOS
+      linux: Linux
+      windows: Windows
+
 snapshot:
   name_template: "{{ .Tag }}"
 
