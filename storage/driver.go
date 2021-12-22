@@ -1,6 +1,8 @@
 package storage
 
-import "context"
+import (
+	"context"
+)
 
 type Driver interface {
 	Initialize(ctx context.Context) error

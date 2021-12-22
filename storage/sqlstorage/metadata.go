@@ -1,4 +1,4 @@
-package sqlite
+package sqlstorage
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func (s *SQLiteStore) LastMetaID(ctx context.Context) (int64, error) {
+func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
 	count, err := s.CountMeta(ctx)
 	if err != nil {
 		return 0, err
@@ -16,13 +16,13 @@ func (s *SQLiteStore) LastMetaID(ctx context.Context) (int64, error) {
 	return count - 1, nil
 }
 
-func (s *SQLiteStore) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
+func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"meta_key",
 		"meta_value",
 	)
-	sb.From("metadata")
+	sb.From(s.table("metadata"))
 	sb.Where(
 		sb.And(
 			sb.Equal("meta_target_type", ty),
@@ -30,7 +30,7 @@ func (s *SQLiteStore) GetMeta(ctx context.Context, ty string, id string) (core.M
 		),
 	)
 
-	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(ctx, sqlq, args...)
@@ -68,11 +68,14 @@ func (s *SQLiteStore) GetMeta(ctx context.Context, ty string, id string) (core.M
 	return meta, nil
 }
 
-func (s *SQLiteStore) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
-	tx, _ := s.db.Begin()
+func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
 
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto("metadata")
+	ib.InsertInto(s.table("metadata"))
 	ib.Cols(
 		"meta_id",
 		"meta_target_type",
@@ -90,11 +93,10 @@ func (s *SQLiteStore) SaveMeta(ctx context.Context, id int64, timestamp, targetT
 		timestamp,
 	)
 
-	sqlq, args := ib.BuildWithFlavor(sqlbuilder.SQLite)
+	sqlq, args := ib.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
 
-	_, err := tx.ExecContext(ctx, sqlq, args...)
-
+	_, err = tx.ExecContext(ctx, sqlq, args...)
 	if err != nil {
 		logrus.Debugln("failed to save metadata", err)
 		tx.Rollback()
