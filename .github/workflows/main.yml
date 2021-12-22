@@ -22,6 +22,7 @@ jobs:
         with:
           commit_message: "[skip ci] Update docs"
           file_pattern: docs/docs.go docs/*.go
+          push_options: '--force'
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
