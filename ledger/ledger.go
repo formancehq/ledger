@@ -3,8 +3,9 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
@@ -82,7 +83,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 	}
 
 	for addr := range rf {
-		if addr == "world" {
+		if (core.Account{Address: addr}).CanEmit() {
 			continue
 		}
 
