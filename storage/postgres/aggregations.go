@@ -1,43 +1,12 @@
-package sqlstorage
+package postgres
 
 import (
 	"context"
+
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/sirupsen/logrus"
 )
 
-func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
-	var count int64
-
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("count(*)")
-	sb.From(s.table("transactions"))
-
-	sqlq, args := sb.Build()
-
-	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
-
-	return count, err
-}
-
-func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
-	var count int64
-
-	sb := sqlbuilder.NewSelectBuilder()
-
-	sb.
-		Select("count(*)").
-		From(s.table("addresses")).
-		BuildWithFlavor(s.flavor)
-
-	sqlq, args := sb.Build()
-
-	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
-
-	return count, err
-}
-
-func (s *Store) CountMeta(ctx context.Context) (int64, error) {
+func (s *PGStore) CountMeta(ctx context.Context) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -46,16 +15,14 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 		Select("count(*)").
 		From(s.table("metadata"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.StandardLogger().Debugln(sqlq)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-	q := s.db.QueryRowContext(ctx, sqlq, args...)
-	err := q.Scan(&count)
+	err := s.Conn().QueryRow(ctx, sqlq, args...).Scan(&count)
 
 	return count, err
 }
 
-func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
+func (s *PGStore) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
 	volumes, err := s.AggregateVolumes(ctx, address)
@@ -71,7 +38,7 @@ func (s *Store) AggregateBalances(ctx context.Context, address string) (map[stri
 	return balances, nil
 }
 
-func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
+func (s *PGStore) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
 	volumes := map[string]map[string]int64{}
 
 	agg1 := sqlbuilder.NewSelectBuilder()
@@ -92,9 +59,13 @@ func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[strin
 	sb.Select("*")
 	sb.From(sb.BuilderAs(union, "assets"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-	rows, err := s.db.QueryContext(ctx, sqlq, args...)
+	rows, err := s.Conn().Query(
+		ctx,
+		sqlq,
+		args...,
+	)
 
 	if err != nil {
 		return volumes, err
