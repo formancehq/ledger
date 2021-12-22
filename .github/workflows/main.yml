@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - run: |
           wget https://github.com/swaggo/swag/releases/download/v1.7.4/swag_1.7.4_Linux_x86_64.tar.gz
           tar -zxvf swag_1.7.4_Linux_x86_64.tar.gz
@@ -22,7 +24,6 @@ jobs:
         with:
           commit_message: "[skip ci] Update docs"
           file_pattern: docs/docs.go docs/*.go
-          push_options: '--force'
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
