@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}

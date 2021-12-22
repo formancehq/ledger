@@ -51,13 +51,10 @@ var (
 			switch viper.GetString("storage.driver") {
 			case "sqlite":
 				driver = sqlstorage.NewOpenCloseDBDriver(sqlstorage.SQLite, func(name string) string {
-					return fmt.Sprintf(
-						"file:%s?_journal=WAL",
-						path.Join(
-							viper.GetString("storage.dir"),
-							fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
-						),
-					)
+					return sqlstorage.SQLiteFileConnString(path.Join(
+						viper.GetString("storage.dir"),
+						fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
+					))
 				})
 			case "postgres":
 				driver = sqlstorage.NewCachedDBDriver(sqlstorage.PostgreSQL, viper.GetString("storage.postgres.conn_string"))

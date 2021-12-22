@@ -106,6 +106,13 @@ func (d *cachedDBDriver) Close(ctx context.Context) error {
 
 const SQLiteMemoryConnString = "file::memory:?cache=shared"
 
+func SQLiteFileConnString(path string) string {
+	return fmt.Sprintf(
+		"file:%s?_journal=WAL",
+		path,
+	)
+}
+
 func NewCachedDBDriver(flavor Flavor, where string) *cachedDBDriver {
 	return &cachedDBDriver{
 		where:  where,

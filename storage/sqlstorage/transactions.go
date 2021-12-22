@@ -241,7 +241,7 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	)
 	sb.From(sb.As(s.table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As("postings", "p"), "p.txid = t.id")
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
