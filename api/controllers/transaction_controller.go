@@ -21,7 +21,7 @@ func NewTransactionController() TransactionController {
 }
 
 // GetTransactions godoc
-// @Summary Get Transactions
+// @Summary Get all Transactions
 // @Description Get all ledger transactions
 // @Tags transactions
 // @Schemes
@@ -89,7 +89,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 }
 
 // GetTransaction godoc
-// @Summary Revert Transaction
+// @Summary Get Transaction
 // @Description Get transaction by transaction id
 // @Tags transactions
 // @Schemes
