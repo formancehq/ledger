@@ -14,7 +14,6 @@ type Flavor = sqlbuilder.Flavor
 var (
 	SQLite     = sqlbuilder.SQLite
 	PostgreSQL = sqlbuilder.PostgreSQL
-	MySQL      = sqlbuilder.MySQL
 )
 
 var sqlDrivers = map[Flavor]struct {
