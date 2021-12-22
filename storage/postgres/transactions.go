@@ -1,4 +1,4 @@
-package sqlstorage
+package postgres
 
 import (
 	"context"
@@ -13,11 +13,133 @@ import (
 	"github.com/numary/ledger/ledger/query"
 )
 
-func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+func (s *PGStore) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
+	tx, _ := s.Conn().Begin(context.Background())
+
+	for _, t := range ts {
+		var ref *string
+
+		if t.Reference != "" {
+			ref = &t.Reference
+		}
+
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto(s.table("transactions"))
+		ib.Cols("id", "reference", "timestamp", "hash")
+		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
+
+		sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+		_, err := tx.Exec(
+			ctx,
+			sqlq,
+			args...,
+		)
+
+		if err != nil {
+			tx.Rollback(ctx)
+
+			return err
+		}
+
+		for i, p := range t.Postings {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto(s.table("postings"))
+			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
+			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+			_, err := tx.Exec(
+				ctx,
+				// `INSERT INTO "postings"
+				// 	("id", "txid", "source", "destination", "amount", "asset")
+				// VALUES
+				// 	($1, $2, $3, $4, $5, $6)`,
+				// i,
+				// t.ID,
+				// p.Source,
+				// p.Destination,
+				// p.Amount,
+				// p.Asset,
+				sqlq,
+				args...,
+			)
+
+			if err != nil {
+				tx.Rollback(ctx)
+
+				return err
+			}
+		}
+
+		nextID, err := s.CountMeta(ctx)
+		if err != nil {
+			tx.Rollback(ctx)
+
+			return err
+		}
+
+		for key, value := range t.Metadata {
+			ib := sqlbuilder.NewInsertBuilder()
+			ib.InsertInto(s.table("metadata"))
+			ib.Cols(
+				"meta_id",
+				"meta_target_type",
+				"meta_target_id",
+				"meta_key",
+				"meta_value",
+				"timestamp",
+			)
+			ib.Values(
+				int(nextID),
+				"transaction",
+				fmt.Sprintf("%d", t.ID),
+				key,
+				string(value),
+				t.Timestamp,
+			)
+
+			sqlq, args := ib.BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+			_, err = tx.Exec(ctx, sqlq, args...)
+
+			if err != nil {
+				tx.Rollback(ctx)
+
+				return err
+			}
+
+			nextID++
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *PGStore) CountTransactions(ctx context.Context) (int64, error) {
+	var count int64
+
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("count(*)")
+	sb.From(s.table("transactions"))
+
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
+
+	err := s.Conn().QueryRow(
+		ctx,
+		sqlq,
+		args...,
+	).Scan(&count)
+
+	return count, err
+}
+
+func (s *PGStore) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
+	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100)))
 
 	c := query.Cursor{}
-	results := make([]core.Transaction, 0)
+	results := []core.Transaction{}
 
 	in := sqlbuilder.NewSelectBuilder()
 	in.Select("txid").From(s.table("postings"))
@@ -58,10 +180,9 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("t.id desc, p.id asc")
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 
-	rows, err := s.db.QueryContext(
+	rows, err := s.Conn().Query(
 		ctx,
 		sqlq,
 		args...,
@@ -77,23 +198,20 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 		var txid int64
 		var ts string
 		var thash string
-		var ref sql.NullString
+		var tref sql.NullString
 
 		posting := core.Posting{}
 
-		err := rows.Scan(
+		rows.Scan(
 			&txid,
 			&ts,
 			&thash,
-			&ref,
+			&tref,
 			&posting.Source,
 			&posting.Destination,
 			&posting.Amount,
 			&posting.Asset,
 		)
-		if err != nil {
-			return c, err
-		}
 
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
@@ -101,7 +219,7 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 				Postings:  []core.Posting{},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: ref.String,
+				Reference: tref.String,
 				Metadata:  core.Metadata{},
 			}
 		}
@@ -125,109 +243,12 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 		return results[i].ID > results[j].ID
 	})
 
-	c.PageSize = q.Limit - 1
-
-	c.HasMore = len(results) == q.Limit
-	if c.HasMore {
-		results = results[:len(results)-1]
-	}
 	c.Data = results
-
-	total, _ := s.CountTransactions(ctx)
-	c.Total = total
 
 	return c, nil
 }
 
-func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	for _, t := range ts {
-		var ref *string
-
-		if t.Reference != "" {
-			ref = &t.Reference
-		}
-
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("transactions"))
-		ib.Cols("id", "reference", "timestamp", "hash")
-		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
-
-		sqlq, args := ib.BuildWithFlavor(s.flavor)
-		_, err := tx.ExecContext(ctx, sqlq, args...)
-		if err != nil {
-			tx.Rollback()
-
-			return err
-		}
-
-		for i, p := range t.Postings {
-			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("postings"))
-			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
-			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
-
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
-
-			_, err := tx.ExecContext(ctx, sqlq, args...)
-
-			if err != nil {
-				tx.Rollback()
-
-				return err
-			}
-		}
-
-		nextID, err := s.CountMeta(ctx)
-		if err != nil {
-			tx.Rollback()
-
-			return err
-		}
-
-		for key, value := range t.Metadata {
-			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("metadata"))
-			ib.Cols(
-				"meta_id",
-				"meta_target_type",
-				"meta_target_id",
-				"meta_key",
-				"meta_value",
-				"timestamp",
-			)
-			ib.Values(
-				int(nextID),
-				"transaction",
-				fmt.Sprintf("%d", t.ID),
-				key,
-				string(value),
-				t.Timestamp,
-			)
-
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
-			logrus.Debugln(sqlq, args)
-
-			_, err = tx.ExecContext(ctx, sqlq, args...)
-			if err != nil {
-				tx.Rollback()
-
-				return err
-			}
-
-			nextID++
-		}
-	}
-
-	return tx.Commit()
-}
-
-func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
+func (s *PGStore) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -244,10 +265,10 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(sqlbuilder.PostgreSQL)
 	logrus.Debugln(sqlq, args)
 
-	rows, err := s.db.QueryContext(
+	rows, err := s.Conn().Query(
 		ctx,
 		sqlq,
 		args...,
@@ -297,7 +318,7 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	return tx, nil
 }
 
-func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (s *PGStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
 	var lastTransaction core.Transaction
 
 	q := query.New()
