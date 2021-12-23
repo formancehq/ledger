@@ -1,4 +1,4 @@
-package sqlite
+package sqlstorage
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"github.com/numary/ledger/ledger/query"
 )
 
-func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
@@ -19,7 +20,7 @@ func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cu
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("address").
-		From("addresses").
+		From(s.table("addresses")).
 		GroupBy("address").
 		OrderBy("address desc").
 		Limit(q.Limit)
@@ -28,7 +29,7 @@ func (s *SQLiteStore) FindAccounts(ctx context.Context, q query.Query) (query.Cu
 		sb.Where(sb.LessThan("address", q.After))
 	}
 
-	sqlq, args := sb.BuildWithFlavor(sqlbuilder.SQLite)
+	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
