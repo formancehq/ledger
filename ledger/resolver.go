@@ -75,6 +75,8 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	}
 
 	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	_, ok = r.initializedStores[name]
 	if !ok {
 		err = store.Initialize(ctx)
@@ -85,7 +87,6 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		}
 		r.initializedStores[name] = struct{}{}
 	}
-	r.lock.Unlock()
 
 ret:
 	return NewLedger(name, store, r.locker)
