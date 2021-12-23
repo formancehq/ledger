@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"sync"
@@ -33,7 +34,7 @@ func WithLocker(locker Locker) ResolveOptionFn {
 }
 
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(&storage.BuiltInFactory{Driver: "sqlite"}),
+	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
 	WithLocker(NewInMemoryLocker()),
 }
 

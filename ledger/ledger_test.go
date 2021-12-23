@@ -6,14 +6,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/numary/ledger/ledgertesting"
+	"github.com/numary/ledger/storage"
 	"github.com/numary/ledger/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"reflect"
 	"testing"
-
-	"github.com/numary/ledger/storage"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/core"
@@ -21,14 +22,25 @@ import (
 	"go.uber.org/fx"
 )
 
+var driver storage.Driver
+
 func with(f func(l *Ledger)) {
-	fx.New(
-		fx.Option(
-			fx.NopLogger,
-		),
+	app := fx.New(
+		fx.NopLogger,
+		fx.Provide(func() storage.Driver {
+			return driver
+		}),
+		fx.Invoke(func(d storage.Driver) error {
+			return d.Initialize(context.Background())
+		}),
+		fx.Provide(storage.NewDefaultFactory),
 		fx.Provide(
 			func(storageFactory storage.Factory) (*Ledger, error) {
 				store, err := storageFactory.GetStore("test")
+				if err != nil {
+					return nil, err
+				}
+				err = store.Initialize(context.Background())
 				if err != nil {
 					return nil, err
 				}
@@ -46,10 +58,25 @@ func with(f func(l *Ledger)) {
 				logrus.Error(err)
 			}
 		}),
+		// Closing the driver after each test cause a test to fail
+		// Tests seems not independent
+		//fx.Invoke(func(d storage.Driver) error {
+		//	return d.Close(context.Background())
+		//}),
 	)
+	if app.Err() != nil {
+		panic(app.Err())
+	}
 }
 
 func TestMain(m *testing.M) {
+
+	var (
+		code int
+	)
+	defer func() {
+		os.Exit(code) // os.Exit don't care about defer so defer the os.Exit allow us to execute other defer
+	}()
 
 	flag.Parse()
 	if testing.Verbose() {
@@ -57,29 +84,30 @@ func TestMain(m *testing.M) {
 	}
 
 	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
-	case "sqlite":
-		storage.RegisterDriver("sqlite", sqlstorage.NewOpenCloseDBDriver(
-			sqlstorage.SQLite,
-			func(name string) string {
-				return fmt.Sprintf("file:%s/%s.db?_journal=WAL", os.TempDir(), name)
-			}),
-		)
+	case "sqlite", "":
+		driver = sqlstorage.NewInMemorySQLiteDriver()
 	case "postgres":
-		connString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
-		storage.RegisterDriver("postgres", sqlstorage.NewOpenCloseDBDriver(
+		pgServer, err := ledgertesting.PostgresServer()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer pgServer.Close()
+
+		driver = sqlstorage.NewOpenCloseDBDriver(
+			"postgres",
 			sqlstorage.PostgreSQL,
 			func(name string) string {
-				return connString
-			}),
+				return pgServer.ConnString()
+			},
 		)
 	}
 
-	m.Run()
+	code = m.Run()
 }
 
 func TestTransaction(t *testing.T) {
 	with(func(l *Ledger) {
-
 		testsize := 1e4
 		total := 0
 		batch := []core.Transaction{}
@@ -203,12 +231,15 @@ func TestLast(t *testing.T) {
 
 func TestAccountMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		err := l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		assert.NoError(t, err)
+
+		err = l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
+		assert.NoError(t, err)
 
 		{
 			acc, err := l.GetAccount(context.Background(), "users:001")
@@ -230,7 +261,6 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			cursor, err := l.FindAccounts(context.Background(), query.Account("users:001"))
-
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,7 +289,6 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-
 		l.Commit(context.Background(), []core.Transaction{{
 			Postings: []core.Posting{
 				{

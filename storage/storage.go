@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
-	"github.com/pkg/errors"
 )
 
 type Store interface {
@@ -24,20 +23,4 @@ type Store interface {
 	Initialize(context.Context) error
 	Name() string
 	Close(context.Context) error
-}
-
-func GetStore(driverStr, name string) (Store, error) {
-	driver, ok := drivers[driverStr]
-	if !ok {
-		panic(errors.Errorf(
-			"unsupported store: %s",
-			driver,
-		))
-	}
-	err := driver.Initialize(context.Background())
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing driver")
-	}
-
-	return driver.NewStore(name)
 }

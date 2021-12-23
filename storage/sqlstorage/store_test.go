@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
-	_ "github.com/jackc/pgx/v4/stdlib"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/ledgertesting"
 	"github.com/numary/ledger/storage"
-	"github.com/ory/dockertest/v3"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -27,20 +25,9 @@ func TestStore(t *testing.T) {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
 
-	pool, err := dockertest.NewPool("")
+	pgServer, err := ledgertesting.PostgresServer()
 	assert.NoError(t, err)
-
-	resource, err := pool.Run("postgres", "13-alpine", []string{
-		"POSTGRES_USER=root",
-		"POSTGRES_PASSWORD=root",
-		"POSTGRES_DB=ledger",
-	})
-	assert.NoError(t, err)
-
-	defer func() {
-		err := pool.Purge(resource)
-		assert.NoError(t, err)
-	}()
+	defer pgServer.Close()
 
 	type driverConfig struct {
 		driver     string
@@ -58,7 +45,7 @@ func TestStore(t *testing.T) {
 		{
 			driver: "pgx",
 			connString: func(name string) string {
-				return "postgresql://root:root@localhost:" + resource.GetPort("5432/tcp") + "/ledger"
+				return pgServer.ConnString()
 			},
 			flavor: sqlbuilder.PostgreSQL,
 		},

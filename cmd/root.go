@@ -43,25 +43,6 @@ var (
 			if viper.GetBool("debug") {
 				logrus.StandardLogger().Level = logrus.DebugLevel
 			}
-
-			var (
-				driver storage.Driver
-			)
-
-			switch viper.GetString("storage.driver") {
-			case "sqlite":
-				driver = sqlstorage.NewOpenCloseDBDriver(sqlstorage.SQLite, func(name string) string {
-					return sqlstorage.SQLiteFileConnString(path.Join(
-						viper.GetString("storage.dir"),
-						fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
-					))
-				})
-			case "postgres":
-				driver = sqlstorage.NewCachedDBDriver(sqlstorage.PostgreSQL, viper.GetString("storage.postgres.conn_string"))
-			default:
-				return fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
-			}
-			storage.RegisterDriver(viper.GetString("storage.driver"), driver)
 			return nil
 		},
 	}
@@ -71,6 +52,37 @@ func PrintVersion(cmd *cobra.Command, args []string) {
 	fmt.Printf("Version: %s \n", Version)
 	fmt.Printf("Date: %s \n", BuildDate)
 	fmt.Printf("Commit: %s \n", Commit)
+}
+
+func createContainer(opts ...option) (*fx.App, error) {
+
+	opts = append(opts,
+		WithVersion(Version),
+		WithOption(fx.Provide(func() (storage.Driver, error) {
+			switch viper.GetString("storage.driver") {
+			case "sqlite":
+				return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {
+					return sqlstorage.SQLiteFileConnString(path.Join(
+						viper.GetString("storage.dir"),
+						fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
+					))
+				}), nil
+			case "postgres":
+				return sqlstorage.NewCachedDBDriver("postgres", sqlstorage.PostgreSQL,
+					viper.GetString("storage.postgres.conn_string")), nil
+			default:
+				return nil, fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
+			}
+		})),
+		WithCacheStorage(viper.GetBool("storage.cache")),
+		WithHttpBasicAuth(viper.GetString("server.http.basic_auth")),
+		WithLedgerLister(controllers.LedgerListerFn(func() []string {
+			return viper.GetStringSlice("ledgers")
+		})),
+		WithRememberConfig(true),
+	)
+
+	return NewContainer(opts...), nil
 }
 
 func Execute() {
@@ -88,16 +100,8 @@ func Execute() {
 
 	start := &cobra.Command{
 		Use: "start",
-		Run: func(cmd *cobra.Command, args []string) {
-			app := NewContainer(
-				WithVersion(Version),
-				WithStorageDriver(viper.GetString("storage.driver")),
-				WithCacheStorage(viper.GetBool("storage.cache")),
-				WithHttpBasicAuth(viper.GetString("server.http.basic_auth")),
-				WithLedgerLister(controllers.LedgerListerFn(func() []string {
-					return viper.GetStringSlice("ledgers")
-				})),
-				WithRememberConfig(true),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := createContainer(
 				WithOption(fx.Invoke(func(h *api.API) {
 					go func() {
 						err := http.ListenAndServe(viper.GetString("server.http.bind_address"), h)
@@ -107,7 +111,11 @@ func Execute() {
 					}()
 				})),
 			)
+			if err != nil {
+				return err
+			}
 			app.Run()
+			return nil
 		},
 	}
 
@@ -122,7 +130,7 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			err := viper.SafeWriteConfig()
 			if err != nil {
-				fmt.Println(err)
+				logrus.Println(err)
 			}
 		},
 	})
@@ -133,17 +141,26 @@ func Execute() {
 
 	store.AddCommand(&cobra.Command{
 		Use: "init",
-		Run: func(cmd *cobra.Command, args []string) {
-			// TODO: Use the container?
-			s, err := storage.GetStore(viper.GetString("storage.driver"), "default")
-			if err != nil {
-				logrus.Fatal(err)
-			}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := createContainer(
+				WithOption(fx.Invoke(func(storageFactory storage.Factory) error {
+					s, err := storageFactory.GetStore("default")
+					if err != nil {
+						return err
+					}
 
-			err = s.Initialize(context.Background())
+					err = s.Initialize(context.Background())
+					if err != nil {
+						return err
+					}
+					return nil
+				})),
+			)
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
+			app.Run()
+			return nil
 		},
 	})
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewOpenCloseDBDriver(t *testing.T) {
-	d := NewOpenCloseDBDriver(SQLite, func(name string) string {
+	d := NewOpenCloseDBDriver("sqlite", SQLite, func(name string) string {
 		return SQLiteMemoryConnString
 	})
 	err := d.Initialize(context.Background())
@@ -28,7 +28,7 @@ func TestNewOpenCloseDBDriver(t *testing.T) {
 }
 
 func TestNewCachedDBDriver(t *testing.T) {
-	d := NewCachedDBDriver(SQLite, SQLiteMemoryConnString)
+	d := NewCachedDBDriver("sqlite", SQLite, SQLiteMemoryConnString)
 	err := d.Initialize(context.Background())
 	assert.NoError(t, err)
 	defer d.Close(context.Background())

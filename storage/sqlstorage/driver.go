@@ -33,8 +33,13 @@ type ConnStringResolver func(name string) string
 // Therefore, the provided store is configured to close the *sql.DB instance when the Close() method of the store is called.
 // It is suitable for databases engines like SQLite
 type openCloseDBDriver struct {
+	name       string
 	connString ConnStringResolver
 	flavor     Flavor
+}
+
+func (d *openCloseDBDriver) Name() string {
+	return d.name
 }
 
 func (d *openCloseDBDriver) Initialize(ctx context.Context) error {
@@ -59,10 +64,11 @@ func (d *openCloseDBDriver) Close(ctx context.Context) error {
 	return nil
 }
 
-func NewOpenCloseDBDriver(flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
+func NewOpenCloseDBDriver(name string, flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
 	return &openCloseDBDriver{
 		flavor:     flavor,
 		connString: connString,
+		name:       name,
 	}
 }
 
@@ -70,9 +76,14 @@ func NewOpenCloseDBDriver(flavor Flavor, connString ConnStringResolver) *openClo
 // it suitable for databases engines like PostgreSQL or MySQL
 // Therefore, the NewStore() method return stores backed with the same underlying *sql.DB instance.
 type cachedDBDriver struct {
+	name   string
 	where  string
 	db     *sql.DB
 	flavor Flavor
+}
+
+func (s *cachedDBDriver) Name() string {
+	return s.name
 }
 
 func (s *cachedDBDriver) Initialize(ctx context.Context) error {
@@ -112,9 +123,10 @@ func SQLiteFileConnString(path string) string {
 	)
 }
 
-func NewCachedDBDriver(flavor Flavor, where string) *cachedDBDriver {
+func NewCachedDBDriver(name string, flavor Flavor, where string) *cachedDBDriver {
 	return &cachedDBDriver{
 		where:  where,
+		name:   name,
 		flavor: flavor,
 	}
 }
@@ -123,13 +135,6 @@ func NewInMemorySQLiteDriver() *cachedDBDriver {
 	return &cachedDBDriver{
 		where:  SQLiteMemoryConnString,
 		flavor: SQLite,
+		name:   "sqlite",
 	}
-}
-
-func RegisterInMemorySQLite() {
-	storage.RegisterDriver("sqlite-memory", NewInMemorySQLiteDriver())
-}
-
-func init() {
-	RegisterInMemorySQLite()
 }

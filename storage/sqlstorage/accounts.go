@@ -15,7 +15,7 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
-	results := []core.Account{}
+	results := make([]core.Account, 0)
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
