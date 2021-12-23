@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"sync"
@@ -33,7 +34,7 @@ func WithLocker(locker Locker) ResolveOptionFn {
 }
 
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(&storage.BuiltInFactory{Driver: "sqlite"}),
+	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
 	WithLocker(NewInMemoryLocker()),
 }
 
@@ -74,6 +75,8 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	}
 
 	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	_, ok = r.initializedStores[name]
 	if !ok {
 		err = store.Initialize(ctx)
@@ -84,7 +87,6 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		}
 		r.initializedStores[name] = struct{}{}
 	}
-	r.lock.Unlock()
 
 ret:
 	return NewLedger(name, store, r.locker)

@@ -12,7 +12,6 @@ import (
 
 type containerConfig struct {
 	version        string
-	storageDriver  string
 	ledgerLister   controllers.LedgerLister
 	basicAuth      string
 	options        []fx.Option
@@ -25,12 +24,6 @@ type option func(*containerConfig)
 func WithVersion(version string) option {
 	return func(c *containerConfig) {
 		c.version = version
-	}
-}
-
-func WithStorageDriver(driver string) option {
-	return func(c *containerConfig) {
-		c.storageDriver = driver
 	}
 }
 
@@ -66,7 +59,6 @@ func WithRememberConfig(rememberConfig bool) option {
 
 var DefaultOptions = []option{
 	WithVersion("latest"),
-	WithStorageDriver("sqlite"),
 	WithLedgerLister(controllers.LedgerListerFn(func() []string {
 		return []string{}
 	})),
@@ -82,7 +74,7 @@ func NewContainer(options ...option) *fx.App {
 	providers := make([]interface{}, 0)
 	providers = append(providers,
 		fx.Annotate(func() string { return cfg.version }, fx.ResultTags(`name:"version"`)),
-		fx.Annotate(func() string { return cfg.storageDriver }, fx.ResultTags(`name:"storageDriver"`)),
+		fx.Annotate(func(driver storage.Driver) string { return driver.Name() }, fx.ResultTags(`name:"storageDriver"`)),
 		fx.Annotate(func() controllers.LedgerLister { return cfg.ledgerLister }, fx.ResultTags(`name:"ledgerLister"`)),
 		fx.Annotate(func() string { return cfg.basicAuth }, fx.ResultTags(`name:"httpBasic"`)),
 		fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
@@ -92,35 +84,32 @@ func NewContainer(options ...option) *fx.App {
 			fx.As(new(ledger.ResolverOption)),
 		),
 		api.NewAPI,
-		func() (f storage.Factory, err error) {
-			f, err = storage.NewDefaultFactory(cfg.storageDriver)
-			if err != nil {
-				return nil, err
-			}
+		func(driver storage.Driver) storage.Factory {
+			f := storage.NewDefaultFactory(driver)
 			if cfg.cache {
 				f = storage.NewCachedStorageFactory(f)
 			}
 			if cfg.rememberConfig {
 				f = storage.NewRememberConfigStorageFactory(f)
 			}
-			return f, nil
+			return f
 		},
 	)
-
+	invokes := make([]interface{}, 0)
+	invokes = append(invokes, func(driver storage.Driver, lifecycle fx.Lifecycle) error {
+		err := driver.Initialize(context.Background())
+		if err != nil {
+			return errors.Wrap(err, "initializing driver")
+		}
+		lifecycle.Append(fx.Hook{
+			OnStop: driver.Close,
+		})
+		return nil
+	})
 	fxOptions := append(
 		[]fx.Option{
-			fx.Invoke(func(lc fx.Lifecycle, h *api.API, storageFactory storage.Factory) {
-				lc.Append(fx.Hook{
-					OnStop: func(ctx context.Context) error {
-						err := storageFactory.Close(ctx)
-						if err != nil {
-							return errors.Wrap(err, "closing storage factory")
-						}
-						return nil
-					},
-				})
-			}),
 			fx.Provide(providers...),
+			fx.Invoke(invokes...),
 			api.Module,
 		},
 		cfg.options...,
