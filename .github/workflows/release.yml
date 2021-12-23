@@ -153,4 +153,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: numary/ledger:latest,numary/ledger:${{ github.event.release.tag_name }}
+          tags: ghcr.io/numary/ledger:latest,ghcr.io/numary/ledger:${{ github.event.release.tag_name }}
