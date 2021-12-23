@@ -1,9 +1,4 @@
-FROM alpine
-
-RUN apk add --update-cache curl \
-   && rm -rf /var/cache/apk/*
+FROM ubuntu:20.04
 COPY numary /usr/local/bin/numary
-
 EXPOSE 3068
-
 CMD ["numary", "server", "start"]
