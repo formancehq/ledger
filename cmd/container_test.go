@@ -29,6 +29,7 @@ func TestContainers(t *testing.T) {
 		{
 			name: "pg",
 			options: []option{
+				WithRememberConfig(false),
 				WithOption(fx.Provide(ledgertesting.PostgresServer)),
 				WithOption(fx.Provide(func(t *testing.T, pgServer *ledgertesting.PGServer) storage.Driver {
 					return sqlstorage.NewCachedDBDriver("postgres", sqlstorage.PostgreSQL, pgServer.ConnString())
@@ -43,11 +44,15 @@ func TestContainers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run := make(chan struct{}, 1)
-			options := append(tc.options, WithOption(fx.Invoke(func() {
-				run <- struct{}{}
-			})), WithOption(fx.Provide(func() *testing.T {
-				return t
-			})))
+			options := append(tc.options,
+				WithRememberConfig(false),
+				WithOption(fx.Invoke(func() {
+					run <- struct{}{}
+				})),
+				WithOption(fx.Provide(func() *testing.T {
+					return t
+				})),
+			)
 			app := NewContainer(options...)
 
 			err := app.Start(context.Background())
