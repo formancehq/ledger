@@ -268,7 +268,7 @@ var doc = `{
                 "tags": [
                     "transactions"
                 ],
-                "summary": "Get Transactions",
+                "summary": "Get all Transactions",
                 "parameters": [
                     {
                         "type": "string",
@@ -366,7 +366,7 @@ var doc = `{
                 "tags": [
                     "transactions"
                 ],
-                "summary": "Revert Transaction",
+                "summary": "Get Transaction",
                 "parameters": [
                     {
                         "type": "string",
