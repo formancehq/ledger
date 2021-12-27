@@ -18,7 +18,9 @@ services:
       - postgres:/data/postgres
 
   ledger:
-    image: "ghcr.io/numary/ledger:latest"
+    #image: "ghcr.io/numary/ledger:latest"
+    image: golang:1.16-alpine
+    command: go run main.go server start
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:3068/_info"]
       interval: 10s
@@ -29,10 +31,16 @@ services:
         condition: service_healthy
     ports:
       - "3068:3068"
+    volumes:
+      - .:/src
+    working_dir: /src
     environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
+      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
 
   control:
     image: "ghcr.io/numary/ledger:latest"
@@ -44,3 +52,9 @@ services:
       - "3078:3078"
     environment:
       NUMARY_UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"
+
+  jaeger:
+    image: "jaegertracing/all-in-one"
+    ports:
+      - "16686:16686/tcp"
+

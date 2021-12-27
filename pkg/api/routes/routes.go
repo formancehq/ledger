@@ -28,6 +28,7 @@ type Routes struct {
 
 // NewRoutes -
 func NewRoutes(
+	tracerProvider trace.TracerProvider,
 	resolver *ledger.Resolver,
 	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
@@ -38,6 +39,7 @@ func NewRoutes(
 	transactionController controllers.TransactionController,
 ) *Routes {
 	return &Routes{
+		tracerProvider:        tracerProvider,
 		resolver:              resolver,
 		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,
@@ -58,7 +60,7 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		cors.New(cc),
 		gin.Recovery(),
 		logger.SetLogger(),
-		r.authMiddleware.AuthMiddleware(engine),
+		otelgin.Middleware("ledger", otelgin.WithTracerProvider(r.tracerProvider)),
 	)
 
 	engine.GET("/swagger.json", r.configController.GetDocs)

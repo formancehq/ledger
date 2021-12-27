@@ -31,7 +31,7 @@ func NewLedgerController() LedgerController {
 func (ctl *LedgerController) GetStats(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	stats, err := l.(*ledger.Ledger).Stats(c)
+	stats, err := l.(*ledger.Ledger).Stats(c.Request.Context())
 	if err != nil {
 		ctl.responseError(
 			c,

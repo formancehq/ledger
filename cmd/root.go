@@ -244,6 +244,12 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String("server.http.bind_address", "localhost:3068", "API bind address")
 	root.PersistentFlags().String("ui.http.bind_address", "localhost:3068", "UI bind address")
 	root.PersistentFlags().StringSlice("ledgers", []string{"quickstart"}, "Ledgers")
+	root.PersistentFlags().String("otel-exporter", "stdout", "OpenTelemetry exporter")
+	root.PersistentFlags().String("otel-exporter-jaeger-agent-host", "localhost", "Jaeger agent host")
+	root.PersistentFlags().Int("otel-exporter-jaeger-agent-port", 6831, "Jaeger agent port")
+	root.PersistentFlags().String("otel-exporter-jaeger-endpoint", "http://localhost:14268/api/traces", "Jaeger agent endpoint")
+	root.PersistentFlags().String("otel-exporter-jaeger-user", "", "Jaeger agent user")
+	root.PersistentFlags().String("otel-exporter-jaeger-password", "", "Jaeger agent password")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
@@ -292,6 +298,15 @@ func createContainer(opts ...option) (*fx.App, error) {
 		})),
 		WithRememberConfig(true),
 	)
+
+	switch viper.GetString("otel-exporter") {
+	case "stdout":
+		opts = append(opts, WithOption(opentelemetry.StdoutModule()))
+	case "jaeger":
+		opts = append(opts, WithOption(opentelemetry.JaegerModule()))
+	case "noop":
+		opts = append(opts, WithOption(opentelemetry.NoOpModule()))
+	}
 
 	return NewContainer(opts...), nil
 }

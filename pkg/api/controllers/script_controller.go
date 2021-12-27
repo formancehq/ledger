@@ -38,7 +38,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	err := l.(*ledger.Ledger).Execute(c, script)
+	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
 	res := gin.H{
 		"ok": err == nil,

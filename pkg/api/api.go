@@ -20,11 +20,11 @@ var Module = fx.Options(
 
 // API struct
 type API struct {
-	engine *gin.Engine
+	handler *gin.Engine
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.engine.ServeHTTP(w, r)
+	a.handler.ServeHTTP(w, r)
 }
 
 // NewAPI
@@ -39,7 +39,7 @@ func NewAPI(
 	cc.AddAllowHeaders("authorization")
 
 	h := &API{
-		engine: routes.Engine(cc),
+		handler: routes.Engine(cc),
 	}
 
 	return h

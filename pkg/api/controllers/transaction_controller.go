@@ -35,7 +35,7 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
-		c,
+		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
 		query.Account(c.Query("account")),
@@ -73,7 +73,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.Transaction
 	c.ShouldBind(&t)
 
-	ts, err := l.(*ledger.Ledger).Commit(c, []core.Transaction{t})
+	ts, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
 	if err != nil {
 		switch eerr := err.(type) {
 		case *storage.Error:
@@ -111,7 +111,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 // @Router /{ledger}/transactions/{txid} [get]
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	tx, err := l.(*ledger.Ledger).GetTransaction(c, c.Param("txid"))
+	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -148,7 +148,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 // @Router /{ledger}/transactions/{txid}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	err := l.(*ledger.Ledger).RevertTransaction(c, c.Param("txid"))
+	err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -182,7 +182,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	c.ShouldBind(&m)
 
 	err := l.(*ledger.Ledger).SaveMeta(
-		c,
+		c.Request.Context(),
 		"transaction",
 		c.Param("txid"),
 		m,

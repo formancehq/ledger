@@ -74,6 +74,7 @@ func NewContainer(options ...option) *fx.App {
 
 	providers := make([]interface{}, 0)
 	providers = append(providers,
+		fx.Annotate(func() string { return "ledger" }, fx.ResultTags(`name:"serviceName"`)),
 		fx.Annotate(func() string { return cfg.version }, fx.ResultTags(`name:"version"`)),
 		fx.Annotate(func(driver storage.Driver) string { return driver.Name() }, fx.ResultTags(`name:"storageDriver"`)),
 		fx.Annotate(func() controllers.LedgerLister { return cfg.ledgerLister }, fx.ResultTags(`name:"ledgerLister"`)),
@@ -93,6 +94,7 @@ func NewContainer(options ...option) *fx.App {
 			if cfg.rememberConfig {
 				f = storage.NewRememberConfigStorageFactory(f)
 			}
+			f = opentelemetry.NewOpenTelemetryStorageFactory(f)
 			return f
 		},
 	)
