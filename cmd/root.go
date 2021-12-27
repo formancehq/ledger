@@ -25,6 +25,21 @@ import (
 	"strings"
 )
 
+const (
+	debugFlag                            = "debug"
+	storageDirFlag                       = "storage.dir"
+	storageDriverFlag                    = "storage.driver"
+	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
+	storagePostgresConnectionStringFlagd = "storage.postgres.conn_string"
+	storageCacheFlag                     = "storage.cache"
+	persistConfigFlag                    = "persist-config"
+	serverHttpBindAddressFlag            = "server.http.bind_address"
+	uiHttpBindAddressFlag                = "ui.http.bind_address"
+	ledgersFlag                          = "ledgers"
+	otelExporterFlag                     = "otel-exporter"
+	serverHttpBasicAuthFlag              = "server.http.basic_auth"
+)
+
 var (
 	Version   = "develop"
 	BuildDate = "-"
@@ -39,12 +54,12 @@ func NewRootCommand() *cobra.Command {
 		Short:             "Numary",
 		DisableAutoGenTag: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			err := os.MkdirAll(viper.GetString("storage.dir"), 0700)
+			err := os.MkdirAll(viper.GetString(storageDirFlag), 0700)
 			if err != nil {
 				return errors.Wrap(err, "creating storage directory")
 			}
 
-			if viper.GetBool("debug") {
+			if viper.GetBool(debugFlag) {
 				logrus.StandardLogger().Level = logrus.DebugLevel
 			}
 			return nil
@@ -66,7 +81,7 @@ func NewRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := createContainer(
 				WithOption(fx.Invoke(func(h *api.API) error {
-					listener, err := net.Listen("tcp", viper.GetString("server.http.bind_address"))
+					listener, err := net.Listen("tcp", viper.GetString(serverHttpBindAddressFlag))
 					if err != nil {
 						return err
 					}
@@ -170,7 +185,7 @@ func NewRootCommand() *cobra.Command {
 			res, err := http.Post(
 				fmt.Sprintf(
 					"http://%s/%s/script",
-					viper.Get("server.http.bind_address"),
+					viper.Get(serverHttpBindAddressFlag),
 					args[0],
 				),
 				"application/json",
@@ -234,22 +249,18 @@ func NewRootCommand() *cobra.Command {
 		home = "/root"
 	}
 
-	root.PersistentFlags().Bool("debug", false, "Debug mode")
-	root.PersistentFlags().String("storage.driver", "sqlite", "Storage driver")
-	root.PersistentFlags().String("storage.dir", path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
-	root.PersistentFlags().String("storage.sqlite.db_name", "numary", "SQLite database name")
-	root.PersistentFlags().String("storage.postgres.conn_string", "postgresql://localhost/postgres", "Postgre connection string")
-	root.PersistentFlags().Bool("storage.cache", true, "Storage cache")
-	root.PersistentFlags().Bool("persist-config", true, "Persist config on disk")
-	root.PersistentFlags().String("server.http.bind_address", "localhost:3068", "API bind address")
-	root.PersistentFlags().String("ui.http.bind_address", "localhost:3068", "UI bind address")
-	root.PersistentFlags().StringSlice("ledgers", []string{"quickstart"}, "Ledgers")
-	root.PersistentFlags().String("otel-exporter", "stdout", "OpenTelemetry exporter")
-	root.PersistentFlags().String("otel-exporter-jaeger-agent-host", "localhost", "Jaeger agent host")
-	root.PersistentFlags().Int("otel-exporter-jaeger-agent-port", 6831, "Jaeger agent port")
-	root.PersistentFlags().String("otel-exporter-jaeger-endpoint", "http://localhost:14268/api/traces", "Jaeger agent endpoint")
-	root.PersistentFlags().String("otel-exporter-jaeger-user", "", "Jaeger agent user")
-	root.PersistentFlags().String("otel-exporter-jaeger-password", "", "Jaeger agent password")
+	root.PersistentFlags().Bool(debugFlag, false, "Debug mode")
+	root.PersistentFlags().String(storageDriverFlag, "sqlite", "Storage driver")
+	root.PersistentFlags().String(storageDirFlag, path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
+	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
+	root.PersistentFlags().String(storagePostgresConnectionStringFlagd, "postgresql://localhost/postgres", "Postgre connection string")
+	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
+	root.PersistentFlags().Bool(persistConfigFlag, true, "Persist config on disk")
+	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
+	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
+	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
+	root.PersistentFlags().String(otelExporterFlag, "stdout", "OpenTelemetry exporter")
+	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
@@ -276,30 +287,30 @@ func createContainer(opts ...option) (*fx.App, error) {
 	opts = append(opts,
 		WithVersion(Version),
 		WithOption(fx.Provide(func() (storage.Driver, error) {
-			switch viper.GetString("storage.driver") {
+			switch viper.GetString(storageDriverFlag) {
 			case "sqlite":
 				return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {
 					return sqlstorage.SQLiteFileConnString(path.Join(
-						viper.GetString("storage.dir"),
-						fmt.Sprintf("%s_%s.db", viper.GetString("storage.sqlite.db_name"), name),
+						viper.GetString(storageDirFlag),
+						fmt.Sprintf("%s_%s.db", viper.GetString(storageSQLiteDBNameFlag), name),
 					))
 				}), nil
 			case "postgres":
 				return sqlstorage.NewCachedDBDriver("postgres", sqlstorage.PostgreSQL,
-					viper.GetString("storage.postgres.conn_string")), nil
+					viper.GetString(storagePostgresConnectionStringFlagd)), nil
 			default:
-				return nil, fmt.Errorf("unknown storage driver %s", viper.GetString("storage.driver"))
+				return nil, fmt.Errorf("unknown storage driver %s", viper.GetString(storageDriverFlag))
 			}
 		})),
-		WithCacheStorage(viper.GetBool("storage.cache")),
-		WithHttpBasicAuth(viper.GetString("server.http.basic_auth")),
+		WithCacheStorage(viper.GetBool(storageCacheFlag)),
+		WithHttpBasicAuth(viper.GetString(serverHttpBasicAuthFlag)),
 		WithLedgerLister(controllers.LedgerListerFn(func(*http.Request) []string {
-			return viper.GetStringSlice("ledgers")
+			return viper.GetStringSlice(ledgersFlag)
 		})),
 		WithRememberConfig(true),
 	)
 
-	switch viper.GetString("otel-exporter") {
+	switch viper.GetString(otelExporterFlag) {
 	case "stdout":
 		opts = append(opts, WithOption(opentelemetry.StdoutModule()))
 	case "jaeger":
