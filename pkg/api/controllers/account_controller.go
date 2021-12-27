@@ -1,12 +1,12 @@
 package controllers
 
 import (
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger/query"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger"
-	"github.com/numary/ledger/ledger/query"
 )
 
 // AccountController -

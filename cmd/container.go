@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"context"
-	"github.com/numary/ledger/api"
-	"github.com/numary/ledger/api/controllers"
-	"github.com/numary/ledger/ledger"
-	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/ledger"
+	storage2 "github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
@@ -74,7 +74,7 @@ func NewContainer(options ...option) *fx.App {
 	providers := make([]interface{}, 0)
 	providers = append(providers,
 		fx.Annotate(func() string { return cfg.version }, fx.ResultTags(`name:"version"`)),
-		fx.Annotate(func(driver storage.Driver) string { return driver.Name() }, fx.ResultTags(`name:"storageDriver"`)),
+		fx.Annotate(func(driver storage2.Driver) string { return driver.Name() }, fx.ResultTags(`name:"storageDriver"`)),
 		fx.Annotate(func() controllers.LedgerLister { return cfg.ledgerLister }, fx.ResultTags(`name:"ledgerLister"`)),
 		fx.Annotate(func() string { return cfg.basicAuth }, fx.ResultTags(`name:"httpBasic"`)),
 		fx.Annotate(ledger.NewResolver, fx.ParamTags(`group:"resolverOptions"`)),
@@ -84,19 +84,19 @@ func NewContainer(options ...option) *fx.App {
 			fx.As(new(ledger.ResolverOption)),
 		),
 		api.NewAPI,
-		func(driver storage.Driver) storage.Factory {
-			f := storage.NewDefaultFactory(driver)
+		func(driver storage2.Driver) storage2.Factory {
+			f := storage2.NewDefaultFactory(driver)
 			if cfg.cache {
-				f = storage.NewCachedStorageFactory(f)
+				f = storage2.NewCachedStorageFactory(f)
 			}
 			if cfg.rememberConfig {
-				f = storage.NewRememberConfigStorageFactory(f)
+				f = storage2.NewRememberConfigStorageFactory(f)
 			}
 			return f
 		},
 	)
 	invokes := make([]interface{}, 0)
-	invokes = append(invokes, func(driver storage.Driver, lifecycle fx.Lifecycle) error {
+	invokes = append(invokes, func(driver storage2.Driver, lifecycle fx.Lifecycle) error {
 		err := driver.Initialize(context.Background())
 		if err != nil {
 			return errors.Wrap(err, "initializing driver")

@@ -2,8 +2,8 @@ package storage
 
 import (
 	"context"
-	"github.com/numary/ledger/config"
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/config"
+	"github.com/numary/ledger/pkg/core"
 )
 
 type rememberConfigStorage struct {

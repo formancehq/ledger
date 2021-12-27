@@ -2,7 +2,7 @@ package middlewares
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/sirupsen/logrus"
 )
 

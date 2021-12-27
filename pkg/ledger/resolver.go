@@ -3,8 +3,8 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"github.com/numary/ledger/storage"
-	"github.com/numary/ledger/storage/sqlstorage"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"sync"

@@ -6,8 +6,8 @@ import (
 	"github.com/swaggo/swag"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/config"
 	_ "github.com/numary/ledger/docs"
+	"github.com/numary/ledger/pkg/config"
 )
 
 type LedgerLister interface {

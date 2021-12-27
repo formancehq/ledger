@@ -4,9 +4,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/controllers"
-	"github.com/numary/ledger/api/middlewares"
-	"github.com/numary/ledger/ledger"
+	controllers2 "github.com/numary/ledger/pkg/api/controllers"
+	middlewares2 "github.com/numary/ledger/pkg/api/middlewares"
+	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
 )
 
@@ -17,25 +17,25 @@ var Module = fx.Options(
 // Routes -
 type Routes struct {
 	resolver              *ledger.Resolver
-	authMiddleware        middlewares.AuthMiddleware
-	ledgerMiddleware      middlewares.LedgerMiddleware
-	configController      controllers.ConfigController
-	ledgerController      controllers.LedgerController
-	scriptController      controllers.ScriptController
-	accountController     controllers.AccountController
-	transactionController controllers.TransactionController
+	authMiddleware        middlewares2.AuthMiddleware
+	ledgerMiddleware      middlewares2.LedgerMiddleware
+	configController      controllers2.ConfigController
+	ledgerController      controllers2.LedgerController
+	scriptController      controllers2.ScriptController
+	accountController     controllers2.AccountController
+	transactionController controllers2.TransactionController
 }
 
 // NewRoutes -
 func NewRoutes(
 	resolver *ledger.Resolver,
-	authMiddleware middlewares.AuthMiddleware,
-	ledgerMiddleware middlewares.LedgerMiddleware,
-	configController controllers.ConfigController,
-	ledgerController controllers.LedgerController,
-	scriptController controllers.ScriptController,
-	accountController controllers.AccountController,
-	transactionController controllers.TransactionController,
+	authMiddleware middlewares2.AuthMiddleware,
+	ledgerMiddleware middlewares2.LedgerMiddleware,
+	configController controllers2.ConfigController,
+	ledgerController controllers2.LedgerController,
+	scriptController controllers2.ScriptController,
+	accountController controllers2.AccountController,
+	transactionController controllers2.TransactionController,
 ) *Routes {
 	return &Routes{
 		resolver:              resolver,
