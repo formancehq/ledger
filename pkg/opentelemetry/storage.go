@@ -2,9 +2,9 @@ package opentelemetry
 
 import (
 	"context"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
-	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -14,12 +14,12 @@ type openTelemetryStorage struct {
 	underlying storage.Store
 }
 
-func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func() error) error {
+func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
 	ctx, span := otel.Tracer("Store").Start(ctx, name)
 	defer span.End()
 
 	span.SetAttributes(attribute.String("ledger", o.Name()))
-	err := fn()
+	err := fn(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -28,7 +28,7 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 }
 
 func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (tx *core.Transaction, err error) {
-	o.handle(ctx, "LastTransaction", func() error {
+	o.handle(ctx, "LastTransaction", func(ctx context.Context) error {
 		tx, err = o.underlying.LastTransaction(ctx)
 		return err
 	})
@@ -36,7 +36,7 @@ func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (tx *core.Tr
 }
 
 func (o *openTelemetryStorage) LastMetaID(ctx context.Context) (count int64, err error) {
-	o.handle(ctx, "LastMetaID", func() error {
+	o.handle(ctx, "LastMetaID", func(ctx context.Context) error {
 		count, err = o.underlying.LastMetaID(ctx)
 		return err
 	})
@@ -44,13 +44,13 @@ func (o *openTelemetryStorage) LastMetaID(ctx context.Context) (count int64, err
 }
 
 func (o *openTelemetryStorage) SaveTransactions(ctx context.Context, transactions []core.Transaction) error {
-	return o.handle(ctx, "SaveTransactions", func() error {
+	return o.handle(ctx, "SaveTransactions", func(ctx context.Context) error {
 		return o.underlying.SaveTransactions(ctx, transactions)
 	})
 }
 
 func (o *openTelemetryStorage) CountTransactions(ctx context.Context) (count int64, err error) {
-	o.handle(ctx, "CountTransactions", func() error {
+	o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
 		count, err = o.underlying.CountTransactions(ctx)
 		return err
 	})
@@ -58,7 +58,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context) (count int
 }
 
 func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query.Query) (q query.Cursor, err error) {
-	o.handle(ctx, "FindTransactions", func() error {
+	o.handle(ctx, "FindTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.FindTransactions(ctx, query)
 		return err
 	})
@@ -66,7 +66,7 @@ func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query
 }
 
 func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s string) (tx core.Transaction, err error) {
-	o.handle(ctx, "GetTransaction", func() error {
+	o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
 		tx, err = o.underlying.GetTransaction(ctx, s)
 		return err
 	})
@@ -74,7 +74,7 @@ func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s string) (tx
 }
 
 func (o *openTelemetryStorage) AggregateBalances(ctx context.Context, s string) (balances map[string]int64, err error) {
-	o.handle(ctx, "AggregateBalances", func() error {
+	o.handle(ctx, "AggregateBalances", func(ctx context.Context) error {
 		balances, err = o.underlying.AggregateBalances(ctx, s)
 		return err
 	})
@@ -82,7 +82,7 @@ func (o *openTelemetryStorage) AggregateBalances(ctx context.Context, s string) 
 }
 
 func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (balances map[string]map[string]int64, err error) {
-	o.handle(ctx, "AggregateVolumes", func() error {
+	o.handle(ctx, "AggregateVolumes", func(ctx context.Context) error {
 		balances, err = o.underlying.AggregateVolumes(ctx, s)
 		return err
 	})
@@ -90,7 +90,7 @@ func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (
 }
 
 func (o *openTelemetryStorage) CountAccounts(ctx context.Context) (count int64, err error) {
-	o.handle(ctx, "CountAccounts", func() error {
+	o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx)
 		return err
 	})
@@ -98,7 +98,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context) (count int64, 
 }
 
 func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Query) (q query.Cursor, err error) {
-	o.handle(ctx, "FindAccounts", func() error {
+	o.handle(ctx, "FindAccounts", func(ctx context.Context) error {
 		q, err = o.underlying.FindAccounts(ctx, query)
 		return err
 	})
@@ -106,13 +106,13 @@ func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Que
 }
 
 func (o *openTelemetryStorage) SaveMeta(ctx context.Context, i int64, s string, s2 string, s3 string, s4 string, s5 string) error {
-	return o.handle(ctx, "SaveMeta", func() error {
+	return o.handle(ctx, "SaveMeta", func(ctx context.Context) error {
 		return o.underlying.SaveMeta(ctx, i, s, s2, s3, s4, s5)
 	})
 }
 
 func (o *openTelemetryStorage) GetMeta(ctx context.Context, s string, s2 string) (m core.Metadata, err error) {
-	o.handle(ctx, "GetMeta", func() error {
+	o.handle(ctx, "GetMeta", func(ctx context.Context) error {
 		m, err = o.underlying.GetMeta(ctx, s, s2)
 		return err
 	})
@@ -120,7 +120,7 @@ func (o *openTelemetryStorage) GetMeta(ctx context.Context, s string, s2 string)
 }
 
 func (o *openTelemetryStorage) CountMeta(ctx context.Context) (count int64, err error) {
-	o.handle(ctx, "CountMeta", func() error {
+	o.handle(ctx, "CountMeta", func(ctx context.Context) error {
 		count, err = o.underlying.CountMeta(ctx)
 		return err
 	})
@@ -128,7 +128,7 @@ func (o *openTelemetryStorage) CountMeta(ctx context.Context) (count int64, err 
 }
 
 func (o *openTelemetryStorage) Initialize(ctx context.Context) error {
-	return o.handle(ctx, "Initialize", func() error {
+	return o.handle(ctx, "Initialize", func(ctx context.Context) error {
 		return o.underlying.Initialize(ctx)
 	})
 }
@@ -138,7 +138,7 @@ func (o *openTelemetryStorage) Name() string {
 }
 
 func (o *openTelemetryStorage) Close(ctx context.Context) error {
-	return o.handle(ctx, "Close", func() error {
+	return o.handle(ctx, "Close", func(ctx context.Context) error {
 		return o.underlying.Close(ctx)
 	})
 }

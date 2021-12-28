@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/XSAM/otelsql"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/numary/machine/script/compiler"
@@ -36,6 +38,7 @@ const (
 	serverHttpBindAddressFlag            = "server.http.bind_address"
 	uiHttpBindAddressFlag                = "ui.http.bind_address"
 	ledgersFlag                          = "ledgers"
+	otelFlag                             = "otel"
 	otelExporterFlag                     = "otel-exporter"
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
 )
@@ -259,6 +262,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
 	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
+	root.PersistentFlags().Bool(otelFlag, false, "Enable OpenTelemetry support")
 	root.PersistentFlags().String(otelExporterFlag, "stdout", "OpenTelemetry exporter")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 
@@ -287,20 +291,47 @@ func createContainer(opts ...option) (*fx.App, error) {
 	opts = append(opts,
 		WithVersion(Version),
 		WithOption(fx.Provide(func() (storage.Driver, error) {
-			switch viper.GetString(storageDriverFlag) {
-			case "sqlite":
-				return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {
+
+			var (
+				flavor             = sqlstorage.FlavorFromString(viper.GetString(storageDriverFlag))
+				cached             bool
+				connString         string
+				connStringResolver sqlstorage.ConnStringResolver
+			)
+			switch flavor {
+			case sqlstorage.PostgreSQL:
+				cached = true
+				connString = viper.GetString(storagePostgresConnectionStringFlagd)
+			case sqlstorage.SQLite:
+				connStringResolver = func(name string) string {
 					return sqlstorage.SQLiteFileConnString(path.Join(
 						viper.GetString(storageDirFlag),
 						fmt.Sprintf("%s_%s.db", viper.GetString(storageSQLiteDBNameFlag), name),
 					))
-				}), nil
-			case "postgres":
-				return sqlstorage.NewCachedDBDriver("postgres", sqlstorage.PostgreSQL,
-					viper.GetString(storagePostgresConnectionStringFlagd)), nil
+				}
 			default:
-				return nil, fmt.Errorf("unknown storage driver %s", viper.GetString(storageDriverFlag))
+				return nil, fmt.Errorf("Unknown storage driver: %s", viper.GetString(storageDirFlag))
 			}
+
+			if viper.GetBool(otelFlag) {
+				sqlDriverName, err := otelsql.Register(
+					sqlstorage.SQLDriverName(flavor),
+					flavor.AttributeKeyValue().Value.AsString(),
+				)
+				if err != nil {
+					return nil, fmt.Errorf("Error registering otel driver: %s", err)
+				}
+				sqlstorage.UpdateSQLDriverMapping(flavor, sqlDriverName)
+			}
+
+			var driver storage.Driver
+			if cached {
+				driver = sqlstorage.NewCachedDBDriver(flavor.String(), flavor, connString)
+			} else {
+				driver = sqlstorage.NewOpenCloseDBDriver(flavor.String(), flavor, connStringResolver)
+			}
+
+			return driver, nil
 		})),
 		WithCacheStorage(viper.GetBool(storageCacheFlag)),
 		WithHttpBasicAuth(viper.GetString(serverHttpBasicAuthFlag)),
