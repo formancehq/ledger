@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
-	storage2 "github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/numary/machine/script/compiler"
 	"github.com/pkg/errors"
@@ -127,7 +127,7 @@ func NewRootCommand() *cobra.Command {
 		Use: "init",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := createContainer(
-				WithOption(fx.Invoke(func(storageFactory storage2.Factory) error {
+				WithOption(fx.Invoke(func(storageFactory storage.Factory) error {
 					s, err := storageFactory.GetStore("default")
 					if err != nil {
 						return err
@@ -269,7 +269,7 @@ func createContainer(opts ...option) (*fx.App, error) {
 
 	opts = append(opts,
 		WithVersion(Version),
-		WithOption(fx.Provide(func() (storage2.Driver, error) {
+		WithOption(fx.Provide(func() (storage.Driver, error) {
 			switch viper.GetString("storage.driver") {
 			case "sqlite":
 				return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {

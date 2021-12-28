@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	storage2 "github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -22,20 +22,20 @@ import (
 	"go.uber.org/fx"
 )
 
-var driver storage2.Driver
+var driver storage.Driver
 
 func with(f func(l *Ledger)) {
 	app := fx.New(
 		fx.NopLogger,
-		fx.Provide(func() storage2.Driver {
+		fx.Provide(func() storage.Driver {
 			return driver
 		}),
-		fx.Invoke(func(d storage2.Driver) error {
+		fx.Invoke(func(d storage.Driver) error {
 			return d.Initialize(context.Background())
 		}),
-		fx.Provide(storage2.NewDefaultFactory),
+		fx.Provide(storage.NewDefaultFactory),
 		fx.Provide(
-			func(storageFactory storage2.Factory) (*Ledger, error) {
+			func(storageFactory storage.Factory) (*Ledger, error) {
 				store, err := storageFactory.GetStore("test")
 				if err != nil {
 					return nil, err
