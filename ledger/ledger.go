@@ -69,6 +69,11 @@ func (l *Ledger) Close() {
 }
 
 func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
+
+	if err := core.Validate(ts); err != nil {
+		return ts, err
+	}
+
 	defer config.Remember(l.name)
 
 	l.Lock()

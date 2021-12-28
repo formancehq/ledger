@@ -70,20 +70,13 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var t core.Transaction
-	if err := c.ShouldBindJSON(&t); err != nil {
-		ctl.responseError(
-			c,
-			http.StatusBadRequest,
-			err,
-		)
-		return
-	}
+	c.ShouldBind(&t)
 
 	ts, err := l.(*ledger.Ledger).Commit([]core.Transaction{t})
 	if err != nil {
 		ctl.responseError(
 			c,
-			http.StatusInternalServerError,
+			http.StatusBadRequest,
 			err,
 		)
 		return
