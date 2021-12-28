@@ -6,7 +6,7 @@ import "regexp"
 type Posting struct {
 	Source      string `json:"source" validate:"required,source"`
 	Destination string `json:"destination" validate:"required,destination"`
-	Amount      int64  `json:"amount" validate:"required,min=2"`
+	Amount      int64  `json:"amount" validate:"required,min=1"`
 	Asset       string `json:"asset" validate:"required,asset"`
 }
 
