@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 type Flavor = sqlbuilder.Flavor

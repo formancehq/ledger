@@ -6,8 +6,8 @@ import (
 	"math"
 
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger/query"
 )
 
 func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {

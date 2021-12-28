@@ -4,7 +4,7 @@ import (
 	"reflect"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/pkg/ledger/query"
 )
 
 // Controllers struct

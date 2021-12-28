@@ -3,7 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"github.com/numary/ledger/ledgertesting"
+	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"os"

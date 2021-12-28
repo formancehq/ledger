@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/sirupsen/logrus"
 )
 

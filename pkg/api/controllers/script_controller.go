@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
 // ScriptController -

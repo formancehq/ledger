@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/core"
 )
 
 func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount int64) {
