@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	storage2 "github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -21,7 +21,7 @@ func TestContainers(t *testing.T) {
 		{
 			name: "default",
 			options: []option{
-				WithOption(fx.Provide(func() storage2.Driver {
+				WithOption(fx.Provide(func() storage.Driver {
 					return sqlstorage.NewInMemorySQLiteDriver()
 				})),
 			},
@@ -31,10 +31,10 @@ func TestContainers(t *testing.T) {
 			options: []option{
 				WithRememberConfig(false),
 				WithOption(fx.Provide(ledgertesting.PostgresServer)),
-				WithOption(fx.Provide(func(t *testing.T, pgServer *ledgertesting.PGServer) storage2.Driver {
+				WithOption(fx.Provide(func(t *testing.T, pgServer *ledgertesting.PGServer) storage.Driver {
 					return sqlstorage.NewCachedDBDriver("postgres", sqlstorage.PostgreSQL, pgServer.ConnString())
 				})),
-				WithOption(fx.Invoke(func(t *testing.T, storageFactory storage2.Factory) {
+				WithOption(fx.Invoke(func(t *testing.T, storageFactory storage.Factory) {
 					store, err := storageFactory.GetStore("testing")
 					assert.NoError(t, err)
 					assert.NoError(t, store.Close(context.Background()))
