@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -38,11 +39,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	err := l.(*ledger.Ledger).Execute(c, script)
-
-	res := gin.H{
-		"ok": err == nil,
-	}
+	txs, err := l.(*ledger.Ledger).Execute(c, script)
 
 	if err != nil {
 		errStr := err.Error()
@@ -55,9 +52,13 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		}
 		payloadB64 := base64.StdEncoding.EncodeToString(payload)
 		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
-		res["err"] = errStr
-		res["details"] = link
-	}
 
-	c.JSON(200, res)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"ok":      false,
+			"err":     errStr,
+			"details": link,
+		})
+	} else {
+		ctl.response(c, http.StatusOK, txs)
+	}
 }

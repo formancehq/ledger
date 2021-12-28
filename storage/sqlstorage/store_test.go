@@ -5,18 +5,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
-	"github.com/numary/ledger/ledgertesting"
-	"github.com/numary/ledger/storage"
-	"github.com/pborman/uuid"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/storage"
+	"github.com/pborman/uuid"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStore(t *testing.T) {
@@ -25,9 +25,9 @@ func TestStore(t *testing.T) {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
 
-	pgServer, err := ledgertesting.PostgresServer()
-	assert.NoError(t, err)
-	defer pgServer.Close()
+	// pgServer, err := ledgertesting.PostgresServer()
+	// assert.NoError(t, err)
+	// defer pgServer.Close()
 
 	type driverConfig struct {
 		driver     string
@@ -42,13 +42,13 @@ func TestStore(t *testing.T) {
 			},
 			flavor: sqlbuilder.SQLite,
 		},
-		{
-			driver: "pgx",
-			connString: func(name string) string {
-				return pgServer.ConnString()
-			},
-			flavor: sqlbuilder.PostgreSQL,
-		},
+		// {
+		// 	driver: "pgx",
+		// 	connString: func(name string) string {
+		// 		return pgServer.ConnString()
+		// 	},
+		// 	flavor: sqlbuilder.PostgreSQL,
+		// },
 	}
 
 	type testingFunction struct {

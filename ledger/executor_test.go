@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/core"
+	machine "github.com/numary/machine/core"
 )
 
 func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount int64) {
@@ -33,7 +34,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 			Plain: "this is not a valid script",
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
@@ -50,7 +51,7 @@ func TestTransactionFail(t *testing.T) {
 			Plain: "fail",
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
@@ -71,7 +72,7 @@ func TestSend(t *testing.T) {
 			)`,
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -96,7 +97,7 @@ func TestVariables(t *testing.T) {
 			}`),
 			&script)
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -153,7 +154,7 @@ func TestEnoughFunds(t *testing.T) {
 			return
 		}
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -191,7 +192,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			}`),
 			&script)
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error("error wasn't supposed to be nil")
@@ -262,7 +263,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Fatalf("execution error: %v", err)
@@ -273,5 +274,54 @@ func TestMetadata(t *testing.T) {
 		assertBalance(t, l, "users:053", "COIN", 85)
 
 		assertBalance(t, l, "platform", "COIN", 15)
+	})
+}
+
+func TestSetTxMeta(t *testing.T) {
+	with(func(l *Ledger) {
+		defer l.Close(context.Background())
+
+		plain := `
+			vars {
+				account $user
+			}
+
+			set_tx_meta("test_meta", [COIN 10])
+
+			send [COIN 10] (
+				source = @world
+				destination = $user
+			)
+		`
+
+		script := core.Script{
+			Plain: plain,
+			Vars: map[string]json.RawMessage{
+				"user": json.RawMessage(`"user:042"`),
+			},
+		}
+
+		txs, err := l.Execute(context.Background(), script)
+
+		if err != nil {
+			t.Fatalf("execution error: %v", err)
+		}
+
+		assertBalance(t, l, "user:042", "COIN", 10)
+
+		fmt.Printf("%v\n", string(txs[0].Metadata["test_meta"]))
+
+		value, err := machine.NewValueFromTypedJSON(txs[0].Metadata["test_meta"])
+
+		if err != nil {
+			t.Fatalf("tx metadata was invalid: %v", err)
+		}
+
+		if !machine.ValueEquals(*value, machine.Monetary{
+			Asset:  "COIN",
+			Amount: 10,
+		}) {
+			t.Fatalf("tx metadata was not the expected value")
+		}
 	})
 }
