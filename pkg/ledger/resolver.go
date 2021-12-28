@@ -7,6 +7,7 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/fx"
 	"sync"
 )
 
@@ -90,4 +91,21 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 ret:
 	return NewLedger(name, store, r.locker)
+}
+
+const ResolverOptionsKey = `group:"_ledgerResolverOptions"`
+
+func ProvideResolverOption(provider interface{}) fx.Option {
+	return fx.Provide(
+		fx.Annotate(provider, fx.ResultTags(ResolverOptionsKey), fx.As(new(ResolverOption))),
+	)
+}
+
+func ResolveModule() fx.Option {
+	return fx.Options(
+		fx.Provide(
+			fx.Annotate(NewResolver, fx.ParamTags(ResolverOptionsKey)),
+		),
+		ProvideResolverOption(WithStorageFactory),
+	)
 }

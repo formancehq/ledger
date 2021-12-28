@@ -12,19 +12,22 @@ import (
 )
 
 const (
-	debugFlag                            = "debug"
-	storageDirFlag                       = "storage.dir"
-	storageDriverFlag                    = "storage.driver"
-	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
-	storagePostgresConnectionStringFlagd = "storage.postgres.conn_string"
-	storageCacheFlag                     = "storage.cache"
-	persistConfigFlag                    = "persist-config"
-	serverHttpBindAddressFlag            = "server.http.bind_address"
-	uiHttpBindAddressFlag                = "ui.http.bind_address"
-	ledgersFlag                          = "ledgers"
-	otelFlag                             = "otel"
-	otelExporterFlag                     = "otel-exporter"
-	serverHttpBasicAuthFlag              = "server.http.basic_auth"
+	debugFlag                           = "debug"
+	storageDirFlag                      = "storage.dir"
+	storageDriverFlag                   = "storage.driver"
+	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
+	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
+	storageCacheFlag                    = "storage.cache"
+	persistConfigFlag                   = "persist-config"
+	serverHttpBindAddressFlag           = "server.http.bind_address"
+	uiHttpBindAddressFlag               = "ui.http.bind_address"
+	ledgersFlag                         = "ledgers"
+	otelFlag                            = "otel"
+	otelExporterFlag                    = "otel-exporter"
+	serverHttpBasicAuthFlag             = "server.http.basic_auth"
+	otelExporterJaegerEndpointFlag      = "otel-exporter-jaeger-endpoint"
+	otelExporterJaegerUserFlag          = "otel-exporter-jaeger-user"
+	otelExporterJaegerPasswordFlag      = "otel-exporter-jaeger-password"
 )
 
 var (
@@ -84,7 +87,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(storageDriverFlag, "sqlite", "Storage driver")
 	root.PersistentFlags().String(storageDirFlag, path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
 	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
-	root.PersistentFlags().String(storagePostgresConnectionStringFlagd, "postgresql://localhost/postgres", "Postgre connection string")
+	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
 	root.PersistentFlags().Bool(persistConfigFlag, true, "Persist config on disk")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
@@ -92,6 +95,9 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
 	root.PersistentFlags().Bool(otelFlag, false, "Enable OpenTelemetry support")
 	root.PersistentFlags().String(otelExporterFlag, "stdout", "OpenTelemetry exporter")
+	root.PersistentFlags().String(otelExporterJaegerEndpointFlag, "", "Jaeger exporter endpoint")
+	root.PersistentFlags().String(otelExporterJaegerUserFlag, "", "Jaeger exporter user")
+	root.PersistentFlags().String(otelExporterJaegerPasswordFlag, "", "Jaeger exporter password")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 
 	viper.BindPFlags(root.PersistentFlags())

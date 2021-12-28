@@ -11,11 +11,10 @@ import (
 )
 
 const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
-const PerLedgerMiddlewaresKey = `group:"_perLedgerMiddlewares"`
 
 var Module = fx.Options(
 	fx.Provide(
-		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey, PerLedgerMiddlewaresKey)),
+		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey)),
 	),
 )
 
@@ -24,11 +23,6 @@ func ProvideGlobalMiddleware(provider interface{}, additionalAnnotations ...fx.A
 	return fx.Provide(
 		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
 	)
-}
-
-func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) interface{} {
-	opts := []fx.Annotation{fx.ResultTags(PerLedgerMiddlewaresKey)}
-	return fx.Annotate(provider, append(opts, additionalAnnotations...)...)
 }
 
 // Routes -
@@ -42,13 +36,11 @@ type Routes struct {
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
 	globalMiddlewares     []gin.HandlerFunc
-	perLedgerMiddlewares  []gin.HandlerFunc
 }
 
 // NewRoutes -
 func NewRoutes(
 	globalMiddlewares []gin.HandlerFunc,
-	perLedgerMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
 	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
@@ -60,7 +52,6 @@ func NewRoutes(
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
-		perLedgerMiddlewares:  perLedgerMiddlewares,
 		resolver:              resolver,
 		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,

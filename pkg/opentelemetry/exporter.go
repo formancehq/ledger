@@ -8,6 +8,19 @@ import (
 	"go.uber.org/fx"
 )
 
+const (
+	ServiceNameKey    = `name:"serviceName"`
+	ServiceVersionKey = `name:"version"`
+)
+
+func ProvideServiceName(provider interface{}) fx.Option {
+	return fx.Provide(fx.Annotate(provider, fx.ResultTags(ServiceNameKey)))
+}
+
+func ProvideServiceVersion(provider interface{}) fx.Option {
+	return fx.Provide(fx.Annotate(provider, fx.ResultTags(ServiceVersionKey)))
+}
+
 func commonExporterModule() fx.Option {
 	return fx.Options(
 		fx.Invoke(func(lc fx.Lifecycle, tracerProvider *tracesdk.TracerProvider) {

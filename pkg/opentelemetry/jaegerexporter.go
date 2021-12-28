@@ -23,13 +23,21 @@ func LoadJaegerTracerProvider(serviceName string, version string, options ...jae
 	return tp, nil
 }
 
+const (
+	JaegerCollectorEndpointGroupKey = `group:"collectorEndpointOptions"`
+)
+
+func ProvideJaegerCollectorEndpoint(provider interface{}) fx.Option {
+	return fx.Provide(fx.Annotate(provider, fx.ResultTags(JaegerCollectorEndpointGroupKey)))
+}
+
 func JaegerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadJaegerTracerProvider, fx.ParamTags(
-				`name:"serviceName"`,
-				`name:"version"`,
-				`group:"collectorEndpointOptions"`,
+				ServiceNameKey,
+				ServiceVersionKey,
+				JaegerCollectorEndpointGroupKey,
 			)),
 		),
 		traceSdkExportModule(),

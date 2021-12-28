@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -12,6 +13,7 @@ func NewStorageInit() *cobra.Command {
 		Use: "init",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			NewContainer(
+				viper.GetViper(),
 				fx.Invoke(func(storageFactory storage.Factory) error {
 					s, err := storageFactory.GetStore("default")
 					if err != nil {

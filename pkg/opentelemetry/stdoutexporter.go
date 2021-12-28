@@ -30,8 +30,8 @@ func StdoutModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadStdoutTracerProvider, fx.ParamTags(
-				`name:"serviceName"`,
-				`name:"version"`,
+				ServiceNameKey,
+				ServiceVersionKey,
 			)),
 		),
 		traceSdkExportModule(),

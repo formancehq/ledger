@@ -15,6 +15,7 @@ func NewServerStart() *cobra.Command {
 		Use: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
+				viper.GetViper(),
 				fx.Invoke(func(h *api.API) error {
 					listener, err := net.Listen("tcp", viper.GetString(serverHttpBindAddressFlag))
 					if err != nil {
