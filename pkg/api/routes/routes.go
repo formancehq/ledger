@@ -7,14 +7,29 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
+const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
+const PerLedgerMiddlewaresKey = `group:"_perLedgerMiddlewares"`
+
 var Module = fx.Options(
-	fx.Provide(NewRoutes),
+	fx.Provide(
+		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey, PerLedgerMiddlewaresKey)),
+	),
 )
+
+func ProvideGlobalMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
+	opts := []fx.Annotation{fx.ResultTags(GlobalMiddlewaresKey)}
+	return fx.Provide(
+		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
+	)
+}
+
+func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) interface{} {
+	opts := []fx.Annotation{fx.ResultTags(PerLedgerMiddlewaresKey)}
+	return fx.Annotate(provider, append(opts, additionalAnnotations...)...)
+}
 
 // Routes -
 type Routes struct {
@@ -26,12 +41,14 @@ type Routes struct {
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
-	tracerProvider        trace.TracerProvider
+	globalMiddlewares     []gin.HandlerFunc
+	perLedgerMiddlewares  []gin.HandlerFunc
 }
 
 // NewRoutes -
 func NewRoutes(
-	tracerProvider trace.TracerProvider,
+	globalMiddlewares []gin.HandlerFunc,
+	perLedgerMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
 	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
@@ -42,7 +59,8 @@ func NewRoutes(
 	transactionController controllers.TransactionController,
 ) *Routes {
 	return &Routes{
-		tracerProvider:        tracerProvider,
+		globalMiddlewares:     globalMiddlewares,
+		perLedgerMiddlewares:  perLedgerMiddlewares,
 		resolver:              resolver,
 		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,
@@ -58,13 +76,14 @@ func NewRoutes(
 func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	engine := gin.New()
 
-	// Default Middlewares
-	engine.Use(
+	globalMiddlewares := append([]gin.HandlerFunc{
 		cors.New(cc),
 		gin.Recovery(),
 		logger.SetLogger(),
-		otelgin.Middleware("ledger", otelgin.WithTracerProvider(r.tracerProvider)),
-	)
+	}, r.globalMiddlewares...)
+
+	// Default Middlewares
+	engine.Use(globalMiddlewares...)
 
 	engine.GET("/swagger.json", r.configController.GetDocs)
 

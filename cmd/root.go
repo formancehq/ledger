@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -17,6 +18,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 	"io/ioutil"
 	"net"
@@ -341,13 +344,18 @@ func createContainer(opts ...option) (*fx.App, error) {
 		WithRememberConfig(true),
 	)
 
-	switch viper.GetString(otelExporterFlag) {
-	case "stdout":
-		opts = append(opts, WithOption(opentelemetry.StdoutModule()))
-	case "jaeger":
-		opts = append(opts, WithOption(opentelemetry.JaegerModule()))
-	case "noop":
-		opts = append(opts, WithOption(opentelemetry.NoOpModule()))
+	if viper.GetBool(otelFlag) {
+		switch viper.GetString(otelExporterFlag) {
+		case "stdout":
+			opts = append(opts, WithOption(opentelemetry.StdoutModule()))
+		case "jaeger":
+			opts = append(opts, WithOption(opentelemetry.JaegerModule()))
+		case "noop":
+			opts = append(opts, WithOption(opentelemetry.NoOpModule()))
+		}
+		opts = append(opts, WithOption(routes.ProvideGlobalMiddleware(func(tracerProvider trace.TracerProvider) gin.HandlerFunc {
+			return otelgin.Middleware("ledger", otelgin.WithTracerProvider(tracerProvider))
+		})))
 	}
 
 	return NewContainer(opts...), nil
