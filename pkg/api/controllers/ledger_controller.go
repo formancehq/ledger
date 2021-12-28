@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
 // LedgerController -

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/core"
 	machine "github.com/numary/machine/core"
 )
 

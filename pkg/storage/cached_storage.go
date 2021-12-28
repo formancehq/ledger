@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/core"
 )
 
 type cachedStateStorage struct {

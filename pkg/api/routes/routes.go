@@ -4,9 +4,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/api/controllers"
-	"github.com/numary/ledger/api/middlewares"
-	"github.com/numary/ledger/ledger"
+	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/middlewares"
+	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
 )
 
@@ -16,10 +16,10 @@ var Module = fx.Options(
 
 // Routes -
 type Routes struct {
-	resolver              *ledger.Resolver
-	authMiddleware        middlewares.AuthMiddleware
-	ledgerMiddleware      middlewares.LedgerMiddleware
-	configController      controllers.ConfigController
+	resolver         *ledger.Resolver
+	authMiddleware   middlewares.AuthMiddleware
+	ledgerMiddleware middlewares.LedgerMiddleware
+	configController controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController

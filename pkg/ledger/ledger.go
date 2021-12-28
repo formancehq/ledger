@@ -3,12 +3,12 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"time"
 
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
-	"github.com/numary/ledger/storage"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger/query"
 )
 
 const (

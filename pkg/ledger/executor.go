@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/numary/ledger/core"
+	"github.com/numary/ledger/pkg/core"
 	machine "github.com/numary/machine/core"
 	"github.com/numary/machine/script/compiler"
 	"github.com/numary/machine/vm"

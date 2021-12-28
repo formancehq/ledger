@@ -6,9 +6,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/numary/ledger/ledgertesting"
-	"github.com/numary/ledger/storage"
-	"github.com/numary/ledger/storage/sqlstorage"
+	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
@@ -17,8 +17,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/numary/ledger/core"
-	"github.com/numary/ledger/ledger/query"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger/query"
 	"go.uber.org/fx"
 )
 
