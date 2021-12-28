@@ -122,6 +122,10 @@ func NewContainer(options ...fx.Option) *fx.App {
 		return nil
 	})
 
+	if !viper.GetBool(debugFlag) {
+		options = append(options, fx.NopLogger)
+	}
+
 	fxOptions := []fx.Option{
 		fx.Provide(providers...),
 		fx.Invoke(invokes...),
