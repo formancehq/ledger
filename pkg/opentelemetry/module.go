@@ -16,6 +16,7 @@ const (
 	JaegerExporter = "jaeger"
 	NoOpExporter   = "noop"
 	StdoutExporter = "stdout"
+	OTLPExporter   = "otlp"
 )
 
 type JaegerConfig struct {
@@ -24,11 +25,21 @@ type JaegerConfig struct {
 	Password string
 }
 
+const (
+	ModeGRPC = "grpc"
+	ModeHTTP = "http"
+)
+
+type OTLPConfig struct {
+	Mode string
+}
+
 type Config struct {
 	ServiceName       string
 	Version           string
 	Exporter          string
 	JaegerConfig      *JaegerConfig
+	OTLPConfig        *OTLPConfig
 	ApiMiddlewareName string
 }
 
@@ -83,6 +94,18 @@ func Module(cfg Config) fx.Option {
 		options = append(options, JaegerModule())
 	case NoOpExporter:
 		options = append(options, NoOpModule())
+	case OTLPExporter:
+		options = append(options, OTLPModule())
+		mode := ModeGRPC
+		if cfg.OTLPConfig != nil && cfg.OTLPConfig.Mode != "" {
+			mode = cfg.OTLPConfig.Mode
+		}
+		switch mode {
+		case ModeGRPC:
+			options = append(options, OTLPGRPCClientModule())
+		case ModeHTTP:
+			options = append(options, OTLPHTTPClientModule())
+		}
 	}
 	if cfg.ApiMiddlewareName != "" {
 		options = append(options, routes.ProvideGlobalMiddleware(func(tracerProvider trace.TracerProvider) gin.HandlerFunc {

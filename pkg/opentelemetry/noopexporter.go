@@ -11,7 +11,6 @@ func LoadNoOpTracerProvider() trace.TracerProvider {
 
 func NoOpModule() fx.Option {
 	return fx.Options(
-		fx.Provide(LoadNoOpTracerProvider()),
-		commonExporterModule(),
+		fx.Provide(LoadNoOpTracerProvider),
 	)
 }

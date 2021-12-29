@@ -21,8 +21,9 @@ func ProvideServiceVersion(provider interface{}) fx.Option {
 	return fx.Provide(fx.Annotate(provider, fx.ResultTags(ServiceVersionKey)))
 }
 
-func commonExporterModule() fx.Option {
+func traceSdkExportModule() fx.Option {
 	return fx.Options(
+		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),
 		fx.Invoke(func(lc fx.Lifecycle, tracerProvider *tracesdk.TracerProvider) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
@@ -34,12 +35,5 @@ func commonExporterModule() fx.Option {
 				},
 			})
 		}),
-	)
-}
-
-func traceSdkExportModule() fx.Option {
-	return fx.Options(
-		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),
-		commonExporterModule(),
 	)
 }
