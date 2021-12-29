@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"context"
@@ -26,15 +26,15 @@ func LoadOTLPTracerProvider(serviceName string, version string, client otlptrace
 	return tp, nil
 }
 
-func LoadOTLPGRPCClient(options ...otlptracegrpc.Option) otlptrace.Client {
+func LoadOTLPTracerGRPCClient(options ...otlptracegrpc.Option) otlptrace.Client {
 	return otlptracegrpc.NewClient(options...)
 }
 
-func LoadOTLPHTTPClient(options ...otlptracehttp.Option) otlptrace.Client {
+func LoadOTLPTracerHTTPClient(options ...otlptracehttp.Option) otlptrace.Client {
 	return otlptracehttp.NewClient(options...)
 }
 
-func OTLPModule() fx.Option {
+func OTLPTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadOTLPTracerProvider, fx.ParamTags(
@@ -46,34 +46,34 @@ func OTLPModule() fx.Option {
 	)
 }
 
-const OTLPGRPCOptionsKey = `group:"_otlpGrpcOptions"`
+const OTLPTracerGRPCOptionsKey = `group:"_otlpTracerGrpcOptions"`
 
-func ProvideOTLPGRPCClientOption(provider interface{}) fx.Option {
+func ProvideOTLPTracerGRPCClientOption(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(OTLPGRPCOptionsKey), fx.As(new(otlptracegrpc.Option))),
+		fx.Annotate(provider, fx.ResultTags(OTLPTracerGRPCOptionsKey), fx.As(new(otlptracegrpc.Option))),
 	)
 }
 
-func OTLPGRPCClientModule() fx.Option {
+func OTLPTracerGRPCClientModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadOTLPGRPCClient, fx.ParamTags(OTLPGRPCOptionsKey)),
+			fx.Annotate(LoadOTLPTracerGRPCClient, fx.ParamTags(OTLPTracerGRPCOptionsKey)),
 		),
 	)
 }
 
-const OTLPHTTPOptionsKey = `group:"_otlpHTTPOptions"`
+const OTLPTracerHTTPOptionsKey = `group:"_otlpTracerHTTPOptions"`
 
-func ProvideOTLPHTTPClientOption(provider interface{}) fx.Option {
+func ProvideOTLPTracerHTTPClientOption(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(OTLPHTTPOptionsKey), fx.As(new(otlptracehttp.Option))),
+		fx.Annotate(provider, fx.ResultTags(OTLPTracerHTTPOptionsKey), fx.As(new(otlptracehttp.Option))),
 	)
 }
 
-func OTLPHTTPClientModule() fx.Option {
+func OTLPTracerHTTPClientModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadOTLPHTTPClient, fx.ParamTags(OTLPHTTPOptionsKey)),
+			fx.Annotate(LoadOTLPTracerHTTPClient, fx.ParamTags(OTLPTracerHTTPOptionsKey)),
 		),
 	)
 }

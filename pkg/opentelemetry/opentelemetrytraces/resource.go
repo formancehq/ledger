@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"go.opentelemetry.io/otel/sdk/resource"

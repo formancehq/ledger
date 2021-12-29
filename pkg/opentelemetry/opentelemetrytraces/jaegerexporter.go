@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -24,14 +24,14 @@ func LoadJaegerTracerProvider(serviceName string, version string, options ...jae
 }
 
 const (
-	JaegerCollectorEndpointGroupKey = `group:"collectorEndpointOptions"`
+	JaegerCollectorEndpointGroupKey = `group:"_tracerCollectorEndpointOptions"`
 )
 
-func ProvideJaegerCollectorEndpoint(provider interface{}) fx.Option {
+func ProvideJaegerTracerCollectorEndpoint(provider interface{}) fx.Option {
 	return fx.Provide(fx.Annotate(provider, fx.ResultTags(JaegerCollectorEndpointGroupKey)))
 }
 
-func JaegerModule() fx.Option {
+func JaegerTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadJaegerTracerProvider, fx.ParamTags(

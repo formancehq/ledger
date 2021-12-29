@@ -4,10 +4,13 @@ import (
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/opentelemetry"
+	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
+	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/dig"
 	"go.uber.org/fx"
 	"net/http"
 )
@@ -19,32 +22,47 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	}
 
 	// Handle OpenTelemetry
-	if v.GetBool(otelFlag) {
-		options = append(options, opentelemetry.Module(opentelemetry.Config{
+	if v.GetBool(otelTracesFlag) {
+		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.TracesModuleConfig{
 			ServiceName: "ledger",
 			Version:     Version,
-			Exporter:    v.GetString(otelExporterFlag),
-			JaegerConfig: func() *opentelemetry.JaegerConfig {
-				if v.GetString(otelExporterFlag) != opentelemetry.JaegerExporter {
+			Exporter:    v.GetString(otelTracesExporterFlag),
+			JaegerConfig: func() *opentelemetrytraces.JaegerConfig {
+				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.JaegerTracesExporter {
 					return nil
 				}
-				return &opentelemetry.JaegerConfig{
-					Endpoint: v.GetString(otelExporterJaegerEndpointFlag),
-					User:     v.GetString(otelExporterJaegerUserFlag),
-					Password: v.GetString(otelExporterJaegerPasswordFlag),
+				return &opentelemetrytraces.JaegerConfig{
+					Endpoint: v.GetString(otelTracesExporterJaegerEndpointFlag),
+					User:     v.GetString(otelTracesExporterJaegerUserFlag),
+					Password: v.GetString(otelTracesExporterJaegerPasswordFlag),
 				}
 			}(),
-			OTLPConfig: func() *opentelemetry.OTLPConfig {
-				if v.GetString(otelExporterFlag) != opentelemetry.OTLPExporter {
+			OTLPConfig: func() *opentelemetrytraces.OTLPTracesConfig {
+				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.OTLPTracesExporter {
 					return nil
 				}
-				return &opentelemetry.OTLPConfig{
-					Mode:     v.GetString(otelExporterOTLPModeFlag),
-					Endpoint: v.GetString(otelExporterOTLPEndpointFlag),
-					Insecure: v.GetBool(otelExporterOTLPInsecureFlag),
+				return &opentelemetrytraces.OTLPTracesConfig{
+					Mode:     v.GetString(otelTracesExporterOTLPModeFlag),
+					Endpoint: v.GetString(otelTracesExporterOTLPEndpointFlag),
+					Insecure: v.GetBool(otelTracesExporterOTLPInsecureFlag),
 				}
 			}(),
 			ApiMiddlewareName: "ledger",
+		}))
+	}
+	if v.GetBool(otelMetricsFlag) {
+		options = append(options, opentelemetrymetrics.MetricsModule(opentelemetrymetrics.MetricsModuleConfig{
+			Exporter: v.GetString(otelMetricsExporterFlag),
+			OTLPConfig: func() *opentelemetrymetrics.OTLPMetricsConfig {
+				if v.GetString(otelMetricsExporterFlag) != opentelemetrymetrics.OTLPMetricsExporter {
+					return nil
+				}
+				return &opentelemetrymetrics.OTLPMetricsConfig{
+					Mode:     v.GetString(otelMetricsExporterOTLPModeFlag),
+					Endpoint: v.GetString(otelMetricsExporterOTLPEndpointFlag),
+					Insecure: v.GetBool(otelMetricsExporterOTLPInsecureFlag),
+				}
+			}(),
 		}))
 	}
 
@@ -85,16 +103,23 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 	// fx has issues about decorators feature. We will wait until released.
 	options = append(options,
-		fx.Provide(func(driver storage.Driver) storage.Factory {
-			f := storage.NewDefaultFactory(driver)
+		fx.Provide(func(params struct {
+			dig.In
+			Driver storage.Driver
+			Meter  metric.Meter `optional:"true"`
+		}) storage.Factory {
+			f := storage.NewDefaultFactory(params.Driver)
 			if v.GetBool(storageCacheFlag) {
 				f = storage.NewCachedStorageFactory(f)
 			}
 			if v.GetBool(persistConfigFlag) {
 				f = storage.NewRememberConfigStorageFactory(f)
 			}
-			if v.GetBool(otelFlag) {
-				f = opentelemetry.NewOpenTelemetryStorageFactory(f)
+			if v.GetBool(otelTracesFlag) {
+				f = opentelemetrytraces.WrapStorageFactory(f)
+			}
+			if v.GetBool(otelMetricsFlag) {
+				f = opentelemetrymetrics.WrapStorageFactory(f, params.Meter)
 			}
 			return f
 		}),

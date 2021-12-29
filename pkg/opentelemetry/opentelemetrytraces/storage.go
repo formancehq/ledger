@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"context"
@@ -169,7 +169,7 @@ func (o openTelemetryStorageFactory) Close(ctx context.Context) error {
 
 var _ storage.Factory = &openTelemetryStorageFactory{}
 
-func NewOpenTelemetryStorageFactory(underlying storage.Factory) *openTelemetryStorageFactory {
+func WrapStorageFactory(underlying storage.Factory) *openTelemetryStorageFactory {
 	return &openTelemetryStorageFactory{
 		underlying: underlying,
 	}

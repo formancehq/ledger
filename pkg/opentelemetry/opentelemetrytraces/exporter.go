@@ -1,11 +1,19 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"context"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
+)
+
+const (
+	JaegerTracesExporter = "jaeger"
+	NoOpTracesExporter   = "noop"
+	StdoutTracesExporter = "stdout"
+	OTLPTracesExporter   = "otlp"
 )
 
 const (
@@ -25,6 +33,8 @@ func traceSdkExportModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),
 		fx.Invoke(func(lc fx.Lifecycle, tracerProvider *tracesdk.TracerProvider) {
+			// set global propagator to tracecontext (the default is no-op).
+			otel.SetTextMapPropagator(propagation.TraceContext{})
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					otel.SetTracerProvider(tracerProvider)

@@ -12,25 +12,30 @@ import (
 )
 
 const (
-	debugFlag                           = "debug"
-	storageDirFlag                      = "storage.dir"
-	storageDriverFlag                   = "storage.driver"
-	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
-	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
-	storageCacheFlag                    = "storage.cache"
-	persistConfigFlag                   = "persist-config"
-	serverHttpBindAddressFlag           = "server.http.bind_address"
-	uiHttpBindAddressFlag               = "ui.http.bind_address"
-	ledgersFlag                         = "ledgers"
-	otelFlag                            = "otel"
-	otelExporterFlag                    = "otel-exporter"
-	serverHttpBasicAuthFlag             = "server.http.basic_auth"
-	otelExporterJaegerEndpointFlag      = "otel-exporter-jaeger-endpoint"
-	otelExporterJaegerUserFlag          = "otel-exporter-jaeger-user"
-	otelExporterJaegerPasswordFlag      = "otel-exporter-jaeger-password"
-	otelExporterOTLPModeFlag            = "otel-exporter-otlp-mode"
-	otelExporterOTLPEndpointFlag        = "otel-exporter-otlp-endpoint"
-	otelExporterOTLPInsecureFlag        = "otel-exporter-otlp-insecure"
+	debugFlag                            = "debug"
+	storageDirFlag                       = "storage.dir"
+	storageDriverFlag                    = "storage.driver"
+	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
+	storagePostgresConnectionStringFlag  = "storage.postgres.conn_string"
+	storageCacheFlag                     = "storage.cache"
+	persistConfigFlag                    = "persist-config"
+	serverHttpBindAddressFlag            = "server.http.bind_address"
+	uiHttpBindAddressFlag                = "ui.http.bind_address"
+	ledgersFlag                          = "ledgers"
+	serverHttpBasicAuthFlag              = "server.http.basic_auth"
+	otelTracesFlag                       = "otel-traces"
+	otelTracesExporterFlag               = "otel-traces-exporter"
+	otelTracesExporterJaegerEndpointFlag = "otel-traces-exporter-jaeger-endpoint"
+	otelTracesExporterJaegerUserFlag     = "otel-traces-exporter-jaeger-user"
+	otelTracesExporterJaegerPasswordFlag = "otel-traces-exporter-jaeger-password"
+	otelTracesExporterOTLPModeFlag       = "otel-traces-exporter-otlp-mode"
+	otelTracesExporterOTLPEndpointFlag   = "otel-traces-exporter-otlp-endpoint"
+	otelTracesExporterOTLPInsecureFlag   = "otel-traces-exporter-otlp-insecure"
+	otelMetricsFlag                      = "otel-metrics"
+	otelMetricsExporterFlag              = "otel-metrics-exporter"
+	otelMetricsExporterOTLPModeFlag      = "otel-metrics-exporter-otlp-mode"
+	otelMetricsExporterOTLPEndpointFlag  = "otel-metrics-exporter-otlp-endpoint"
+	otelMetricsExporterOTLPInsecureFlag  = "otel-metrics-exporter-otlp-insecure"
 )
 
 var (
@@ -96,15 +101,20 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
 	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
-	root.PersistentFlags().Bool(otelFlag, false, "Enable OpenTelemetry support")
-	root.PersistentFlags().String(otelExporterFlag, "stdout", "OpenTelemetry exporter")
-	root.PersistentFlags().String(otelExporterJaegerEndpointFlag, "", "Jaeger exporter endpoint")
-	root.PersistentFlags().String(otelExporterJaegerUserFlag, "", "Jaeger exporter user")
-	root.PersistentFlags().String(otelExporterJaegerPasswordFlag, "", "Jaeger exporter password")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
-	root.PersistentFlags().String(otelExporterOTLPModeFlag, "grpc", "OpenTelemetry OTLP exporter mode (grpc|http)")
-	root.PersistentFlags().String(otelExporterOTLPEndpointFlag, "", "OpenTelemetry grpc endpoint")
-	root.PersistentFlags().Bool(otelExporterOTLPInsecureFlag, false, "OpenTelemetry grpc insecure")
+	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
+	root.PersistentFlags().String(otelTracesExporterFlag, "stdout", "OpenTelemetry traces exporter")
+	root.PersistentFlags().String(otelTracesExporterJaegerEndpointFlag, "", "OpenTelemetry traces Jaeger exporter endpoint")
+	root.PersistentFlags().String(otelTracesExporterJaegerUserFlag, "", "OpenTelemetry traces Jaeger exporter user")
+	root.PersistentFlags().String(otelTracesExporterJaegerPasswordFlag, "", "OpenTelemetry traces Jaeger exporter password")
+	root.PersistentFlags().String(otelTracesExporterOTLPModeFlag, "grpc", "OpenTelemetry traces OTLP exporter mode (grpc|http)")
+	root.PersistentFlags().String(otelTracesExporterOTLPEndpointFlag, "", "OpenTelemetry traces grpc endpoint")
+	root.PersistentFlags().Bool(otelTracesExporterOTLPInsecureFlag, false, "OpenTelemetry traces grpc insecure")
+	root.PersistentFlags().Bool(otelMetricsFlag, false, "Enable OpenTelemetry metrics support")
+	root.PersistentFlags().String(otelMetricsExporterFlag, "stdout", "OpenTelemetry metrics exporter")
+	root.PersistentFlags().String(otelMetricsExporterOTLPModeFlag, "grpc", "OpenTelemetry metrics OTLP exporter mode (grpc|http)")
+	root.PersistentFlags().String(otelMetricsExporterOTLPEndpointFlag, "", "OpenTelemetry metrics grpc endpoint")
+	root.PersistentFlags().Bool(otelMetricsExporterOTLPInsecureFlag, false, "OpenTelemetry metrics grpc insecure")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")

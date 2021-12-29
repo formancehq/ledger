@@ -1,36 +1,37 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"fmt"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"testing"
 )
 
-func TestModule(t *testing.T) {
+func TestTracesModule(t *testing.T) {
 
 	type testCase struct {
 		name   string
-		config Config
+		config TracesModuleConfig
 	}
 
 	tests := []testCase{
 		{
 			name: fmt.Sprintf("otlp-exporter"),
-			config: Config{
+			config: TracesModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    OTLPExporter,
+				Exporter:    OTLPTracesExporter,
 			},
 		},
 		{
 			name: fmt.Sprintf("otlp-exporter-with-config"),
-			config: Config{
+			config: TracesModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    OTLPExporter,
-				OTLPConfig: &OTLPConfig{
-					Mode:     ModeGRPC,
+				Exporter:    OTLPTracesExporter,
+				OTLPConfig: &OTLPTracesConfig{
+					Mode:     opentelemetry.ModeGRPC,
 					Endpoint: "remote:8080",
 					Insecure: true,
 				},
@@ -39,33 +40,33 @@ func TestModule(t *testing.T) {
 
 		{
 			name: fmt.Sprintf("jaeger-exporter"),
-			config: Config{
+			config: TracesModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    JaegerExporter,
+				Exporter:    JaegerTracesExporter,
 			},
 		},
 		{
 			name: fmt.Sprintf("noop-exporter"),
-			config: Config{
+			config: TracesModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    NoOpExporter,
+				Exporter:    NoOpTracesExporter,
 			},
 		},
 		{
 			name: fmt.Sprintf("stdout-exporter"),
-			config: Config{
+			config: TracesModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    StdoutExporter,
+				Exporter:    StdoutTracesExporter,
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			options := []fx.Option{Module(test.config)}
+			options := []fx.Option{TracesModule(test.config)}
 			if !testing.Verbose() {
 				options = append(options, fx.NopLogger)
 			}

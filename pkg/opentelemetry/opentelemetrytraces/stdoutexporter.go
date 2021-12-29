@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -26,7 +26,7 @@ func LoadStdoutTracerProvider(serviceName, version string) (*tracesdk.TracerProv
 	return tp, nil
 }
 
-func StdoutModule() fx.Option {
+func StdoutTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadStdoutTracerProvider, fx.ParamTags(

@@ -1,4 +1,4 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"go.opentelemetry.io/otel/trace"
@@ -9,7 +9,7 @@ func LoadNoOpTracerProvider() trace.TracerProvider {
 	return trace.NewNoopTracerProvider()
 }
 
-func NoOpModule() fx.Option {
+func NoOpTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(LoadNoOpTracerProvider),
 	)

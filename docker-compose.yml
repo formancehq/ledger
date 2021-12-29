@@ -39,9 +39,14 @@ services:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
-      NUMARY_OTEL_EXPORTER: jaeger
-      NUMARY_OTEL: "true"
-      OTEL_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      NUMARY_OTEL_TRACES: "true"
+      NUMARY_OTEL_TRACES_EXPORTER: otlp
+      NUMARY_OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
+      NUMARY_OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
+      NUMARY_OTEL_METRICS: "true"
+      NUMARY_OTEL_METRICS_EXPORTER: otlp
+      NUMARY_OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
+      NUMARY_OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"
 
   control:
     image: "ghcr.io/numary/ledger:latest"
@@ -54,8 +59,6 @@ services:
     environment:
       NUMARY_UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"
 
-  jaeger:
-    image: "jaegertracing/all-in-one"
-    ports:
-      - "16686:16686/tcp"
+  otlp-exporter:
+    image: otel/opentelemetry-collector
 

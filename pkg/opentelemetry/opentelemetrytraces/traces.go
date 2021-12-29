@@ -1,10 +1,11 @@
-package opentelemetry
+package opentelemetrytraces
 
 import (
 	"fmt"
 	"github.com/XSAM/otelsql"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/routes"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -14,40 +15,28 @@ import (
 	"go.uber.org/fx"
 )
 
-const (
-	JaegerExporter = "jaeger"
-	NoOpExporter   = "noop"
-	StdoutExporter = "stdout"
-	OTLPExporter   = "otlp"
-)
-
 type JaegerConfig struct {
 	Endpoint string
 	User     string
 	Password string
 }
 
-const (
-	ModeGRPC = "grpc"
-	ModeHTTP = "http"
-)
-
-type OTLPConfig struct {
+type OTLPTracesConfig struct {
 	Mode     string
 	Endpoint string
 	Insecure bool
 }
 
-type Config struct {
+type TracesModuleConfig struct {
 	ServiceName       string
 	Version           string
 	Exporter          string
 	JaegerConfig      *JaegerConfig
-	OTLPConfig        *OTLPConfig
+	OTLPConfig        *OTLPTracesConfig
 	ApiMiddlewareName string
 }
 
-func Module(cfg Config) fx.Option {
+func TracesModule(cfg TracesModuleConfig) fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options,
 		ProvideServiceName(func() string { return "ledger" }),
@@ -72,68 +61,68 @@ func Module(cfg Config) fx.Option {
 	}))
 
 	switch cfg.Exporter {
-	case JaegerExporter:
-		options = append(options, JaegerModule())
+	case JaegerTracesExporter:
+		options = append(options, JaegerTracerModule())
 		if cfg.JaegerConfig != nil {
 			if v := cfg.JaegerConfig.Endpoint; v != "" {
-				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
 					return jaeger.WithEndpoint(v)
 				}))
 			}
 
 			if v := cfg.JaegerConfig.User; v != "" {
-				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
 					return jaeger.WithUsername(v)
 				}))
 			}
 
 			if v := cfg.JaegerConfig.Password; v != "" {
-				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
 					return jaeger.WithPassword(v)
 				}))
 			}
 		}
-	case StdoutExporter:
-		options = append(options, StdoutModule())
-	case NoOpExporter:
-		options = append(options, NoOpModule())
-	case OTLPExporter:
-		options = append(options, OTLPModule())
-		mode := ModeGRPC
+	case StdoutTracesExporter:
+		options = append(options, StdoutTracerModule())
+	case NoOpTracesExporter:
+		options = append(options, NoOpTracerModule())
+	case OTLPTracesExporter:
+		options = append(options, OTLPTracerModule())
+		mode := opentelemetry.ModeGRPC
 		if cfg.OTLPConfig != nil {
 			if cfg.OTLPConfig.Mode != "" {
 				mode = cfg.OTLPConfig.Mode
 			}
 			switch mode {
-			case ModeGRPC:
+			case opentelemetry.ModeGRPC:
 				if cfg.OTLPConfig.Endpoint != "" {
-					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracegrpc.Option {
+					options = append(options, ProvideOTLPTracerGRPCClientOption(func() otlptracegrpc.Option {
 						return otlptracegrpc.WithEndpoint(cfg.OTLPConfig.Endpoint)
 					}))
 				}
 				if cfg.OTLPConfig.Insecure {
-					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracegrpc.Option {
+					options = append(options, ProvideOTLPTracerGRPCClientOption(func() otlptracegrpc.Option {
 						return otlptracegrpc.WithInsecure()
 					}))
 				}
-			case ModeHTTP:
+			case opentelemetry.ModeHTTP:
 				if cfg.OTLPConfig.Endpoint != "" {
-					options = append(options, ProvideOTLPHTTPClientOption(func() otlptracehttp.Option {
+					options = append(options, ProvideOTLPTracerHTTPClientOption(func() otlptracehttp.Option {
 						return otlptracehttp.WithEndpoint(cfg.OTLPConfig.Endpoint)
 					}))
 				}
 				if cfg.OTLPConfig.Insecure {
-					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracehttp.Option {
+					options = append(options, ProvideOTLPTracerGRPCClientOption(func() otlptracehttp.Option {
 						return otlptracehttp.WithInsecure()
 					}))
 				}
 			}
 		}
 		switch mode {
-		case ModeGRPC:
-			options = append(options, OTLPGRPCClientModule())
-		case ModeHTTP:
-			options = append(options, OTLPHTTPClientModule())
+		case opentelemetry.ModeGRPC:
+			options = append(options, OTLPTracerGRPCClientModule())
+		case opentelemetry.ModeHTTP:
+			options = append(options, OTLPTracerHTTPClientModule())
 		}
 	}
 	if cfg.ApiMiddlewareName != "" {
