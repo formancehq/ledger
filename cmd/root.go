@@ -28,6 +28,9 @@ const (
 	otelExporterJaegerEndpointFlag      = "otel-exporter-jaeger-endpoint"
 	otelExporterJaegerUserFlag          = "otel-exporter-jaeger-user"
 	otelExporterJaegerPasswordFlag      = "otel-exporter-jaeger-password"
+	otelExporterOTLPModeFlag            = "otel-exporter-otlp-mode"
+	otelExporterOTLPEndpointFlag        = "otel-exporter-otlp-endpoint"
+	otelExporterOTLPInsecureFlag        = "otel-exporter-otlp-insecure"
 )
 
 var (
@@ -99,6 +102,9 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(otelExporterJaegerUserFlag, "", "Jaeger exporter user")
 	root.PersistentFlags().String(otelExporterJaegerPasswordFlag, "", "Jaeger exporter password")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
+	root.PersistentFlags().String(otelExporterOTLPModeFlag, "grpc", "OpenTelemetry OTLP exporter mode (grpc|http)")
+	root.PersistentFlags().String(otelExporterOTLPEndpointFlag, "", "OpenTelemetry grpc endpoint")
+	root.PersistentFlags().Bool(otelExporterOTLPInsecureFlag, false, "OpenTelemetry grpc insecure")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")

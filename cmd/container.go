@@ -34,6 +34,16 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 					Password: v.GetString(otelExporterJaegerPasswordFlag),
 				}
 			}(),
+			OTLPConfig: func() *opentelemetry.OTLPConfig {
+				if v.GetString(otelExporterFlag) != opentelemetry.OTLPExporter {
+					return nil
+				}
+				return &opentelemetry.OTLPConfig{
+					Mode:     v.GetString(otelExporterOTLPModeFlag),
+					Endpoint: v.GetString(otelExporterOTLPEndpointFlag),
+					Insecure: v.GetBool(otelExporterOTLPInsecureFlag),
+				}
+			}(),
 			ApiMiddlewareName: "ledger",
 		}))
 	}

@@ -8,6 +8,8 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
@@ -31,7 +33,9 @@ const (
 )
 
 type OTLPConfig struct {
-	Mode string
+	Mode     string
+	Endpoint string
+	Insecure bool
 }
 
 type Config struct {
@@ -49,26 +53,6 @@ func Module(cfg Config) fx.Option {
 		ProvideServiceName(func() string { return "ledger" }),
 		ProvideServiceVersion(func() string { return cfg.Version }),
 	)
-
-	if cfg.Exporter == JaegerExporter && cfg.JaegerConfig != nil {
-		if v := cfg.JaegerConfig.Endpoint; v != "" {
-			options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-				return jaeger.WithEndpoint(v)
-			}))
-		}
-
-		if v := cfg.JaegerConfig.User; v != "" {
-			options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-				return jaeger.WithUsername(v)
-			}))
-		}
-
-		if v := cfg.JaegerConfig.Password; v != "" {
-			options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-				return jaeger.WithPassword(v)
-			}))
-		}
-	}
 
 	options = append(options, fx.Invoke(func(cfg struct {
 		fx.In
@@ -88,17 +72,62 @@ func Module(cfg Config) fx.Option {
 	}))
 
 	switch cfg.Exporter {
-	case StdoutExporter:
-		options = append(options, StdoutModule())
 	case JaegerExporter:
 		options = append(options, JaegerModule())
+		if cfg.JaegerConfig != nil {
+			if v := cfg.JaegerConfig.Endpoint; v != "" {
+				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+					return jaeger.WithEndpoint(v)
+				}))
+			}
+
+			if v := cfg.JaegerConfig.User; v != "" {
+				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+					return jaeger.WithUsername(v)
+				}))
+			}
+
+			if v := cfg.JaegerConfig.Password; v != "" {
+				options = append(options, ProvideJaegerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
+					return jaeger.WithPassword(v)
+				}))
+			}
+		}
+	case StdoutExporter:
+		options = append(options, StdoutModule())
 	case NoOpExporter:
 		options = append(options, NoOpModule())
 	case OTLPExporter:
 		options = append(options, OTLPModule())
 		mode := ModeGRPC
-		if cfg.OTLPConfig != nil && cfg.OTLPConfig.Mode != "" {
-			mode = cfg.OTLPConfig.Mode
+		if cfg.OTLPConfig != nil {
+			if cfg.OTLPConfig.Mode != "" {
+				mode = cfg.OTLPConfig.Mode
+			}
+			switch mode {
+			case ModeGRPC:
+				if cfg.OTLPConfig.Endpoint != "" {
+					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracegrpc.Option {
+						return otlptracegrpc.WithEndpoint(cfg.OTLPConfig.Endpoint)
+					}))
+				}
+				if cfg.OTLPConfig.Insecure {
+					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracegrpc.Option {
+						return otlptracegrpc.WithInsecure()
+					}))
+				}
+			case ModeHTTP:
+				if cfg.OTLPConfig.Endpoint != "" {
+					options = append(options, ProvideOTLPHTTPClientOption(func() otlptracehttp.Option {
+						return otlptracehttp.WithEndpoint(cfg.OTLPConfig.Endpoint)
+					}))
+				}
+				if cfg.OTLPConfig.Insecure {
+					options = append(options, ProvideOTLPGRPCClientOption(func() otlptracehttp.Option {
+						return otlptracehttp.WithInsecure()
+					}))
+				}
+			}
 		}
 		switch mode {
 		case ModeGRPC:

@@ -24,6 +24,20 @@ func TestModule(t *testing.T) {
 			},
 		},
 		{
+			name: fmt.Sprintf("otlp-exporter-with-config"),
+			config: Config{
+				ServiceName: "testing",
+				Version:     "latest",
+				Exporter:    OTLPExporter,
+				OTLPConfig: &OTLPConfig{
+					Mode:     ModeGRPC,
+					Endpoint: "remote:8080",
+					Insecure: true,
+				},
+			},
+		},
+
+		{
 			name: fmt.Sprintf("jaeger-exporter"),
 			config: Config{
 				ServiceName: "testing",
@@ -55,6 +69,9 @@ func TestModule(t *testing.T) {
 			if !testing.Verbose() {
 				options = append(options, fx.NopLogger)
 			}
+			options = append(options, fx.Provide(func() *testing.T {
+				return t
+			}))
 			assert.NoError(t, fx.ValidateApp(options...))
 		})
 	}

@@ -50,7 +50,7 @@ const OTLPGRPCOptionsKey = `group:"_otlpGrpcOptions"`
 
 func ProvideOTLPGRPCClientOption(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(OTLPGRPCOptionsKey)),
+		fx.Annotate(provider, fx.ResultTags(OTLPGRPCOptionsKey), fx.As(new(otlptracegrpc.Option))),
 	)
 }
 
@@ -66,7 +66,7 @@ const OTLPHTTPOptionsKey = `group:"_otlpHTTPOptions"`
 
 func ProvideOTLPHTTPClientOption(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(OTLPHTTPOptionsKey)),
+		fx.Annotate(provider, fx.ResultTags(OTLPHTTPOptionsKey), fx.As(new(otlptracehttp.Option))),
 	)
 }
 
