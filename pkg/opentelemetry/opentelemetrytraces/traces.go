@@ -127,7 +127,7 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 	}
 	if cfg.ApiMiddlewareName != "" {
 		options = append(options, routes.ProvideGlobalMiddleware(func(tracerProvider trace.TracerProvider) gin.HandlerFunc {
-			return otelgin.Middleware("ledger", otelgin.WithTracerProvider(tracerProvider))
+			return otelgin.Middleware(cfg.ApiMiddlewareName, otelgin.WithTracerProvider(tracerProvider))
 		}))
 	}
 	return fx.Options(options...)
