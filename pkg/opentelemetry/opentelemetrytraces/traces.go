@@ -21,22 +21,22 @@ type JaegerConfig struct {
 	Password string
 }
 
-type OTLPTracesConfig struct {
+type OTLPConfig struct {
 	Mode     string
 	Endpoint string
 	Insecure bool
 }
 
-type TracesModuleConfig struct {
+type ModuleConfig struct {
 	ServiceName       string
 	Version           string
 	Exporter          string
 	JaegerConfig      *JaegerConfig
-	OTLPConfig        *OTLPTracesConfig
+	OTLPConfig        *OTLPConfig
 	ApiMiddlewareName string
 }
 
-func TracesModule(cfg TracesModuleConfig) fx.Option {
+func TracesModule(cfg ModuleConfig) fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options,
 		ProvideServiceName(func() string { return "ledger" }),
@@ -61,7 +61,7 @@ func TracesModule(cfg TracesModuleConfig) fx.Option {
 	}))
 
 	switch cfg.Exporter {
-	case JaegerTracesExporter:
+	case JaegerExporter:
 		options = append(options, JaegerTracerModule())
 		if cfg.JaegerConfig != nil {
 			if v := cfg.JaegerConfig.Endpoint; v != "" {
@@ -82,11 +82,11 @@ func TracesModule(cfg TracesModuleConfig) fx.Option {
 				}))
 			}
 		}
-	case StdoutTracesExporter:
+	case StdoutExporter:
 		options = append(options, StdoutTracerModule())
-	case NoOpTracesExporter:
+	case NoOpExporter:
 		options = append(options, NoOpTracerModule())
-	case OTLPTracesExporter:
+	case OTLPExporter:
 		options = append(options, OTLPTracerModule())
 		mode := opentelemetry.ModeGRPC
 		if cfg.OTLPConfig != nil {
@@ -112,7 +112,7 @@ func TracesModule(cfg TracesModuleConfig) fx.Option {
 					}))
 				}
 				if cfg.OTLPConfig.Insecure {
-					options = append(options, ProvideOTLPTracerGRPCClientOption(func() otlptracehttp.Option {
+					options = append(options, ProvideOTLPTracerHTTPClientOption(func() otlptracehttp.Option {
 						return otlptracehttp.WithInsecure()
 					}))
 				}

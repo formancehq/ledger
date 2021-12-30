@@ -1,6 +1,7 @@
 package opentelemetrytraces
 
 import (
+	"context"
 	"fmt"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/stretchr/testify/assert"
@@ -12,54 +13,75 @@ func TestTracesModule(t *testing.T) {
 
 	type testCase struct {
 		name   string
-		config TracesModuleConfig
+		config ModuleConfig
 	}
 
 	tests := []testCase{
 		{
 			name: fmt.Sprintf("otlp-exporter"),
-			config: TracesModuleConfig{
+			config: ModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    OTLPTracesExporter,
+				Exporter:    OTLPExporter,
 			},
 		},
 		{
-			name: fmt.Sprintf("otlp-exporter-with-config"),
-			config: TracesModuleConfig{
+			name: fmt.Sprintf("otlp-exporter-with-grpc-config"),
+			config: ModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    OTLPTracesExporter,
-				OTLPConfig: &OTLPTracesConfig{
+				Exporter:    OTLPExporter,
+				OTLPConfig: &OTLPConfig{
 					Mode:     opentelemetry.ModeGRPC,
 					Endpoint: "remote:8080",
 					Insecure: true,
 				},
 			},
 		},
-
 		{
-			name: fmt.Sprintf("jaeger-exporter"),
-			config: TracesModuleConfig{
+			name: fmt.Sprintf("otlp-exporter-with-http-config"),
+			config: ModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    JaegerTracesExporter,
+				Exporter:    OTLPExporter,
+				OTLPConfig: &OTLPConfig{
+					Mode:     opentelemetry.ModeHTTP,
+					Endpoint: "remote:8080",
+					Insecure: true,
+				},
+			},
+		},
+		{
+			name: fmt.Sprintf("jaeger-exporter"),
+			config: ModuleConfig{
+				ServiceName: "testing",
+				Version:     "latest",
+				Exporter:    JaegerExporter,
+			},
+		},
+		{
+			name: fmt.Sprintf("jaeger-exporter-with-config"),
+			config: ModuleConfig{
+				ServiceName:  "testing",
+				Version:      "latest",
+				Exporter:     JaegerExporter,
+				JaegerConfig: &JaegerConfig{},
 			},
 		},
 		{
 			name: fmt.Sprintf("noop-exporter"),
-			config: TracesModuleConfig{
+			config: ModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    NoOpTracesExporter,
+				Exporter:    NoOpExporter,
 			},
 		},
 		{
 			name: fmt.Sprintf("stdout-exporter"),
-			config: TracesModuleConfig{
+			config: ModuleConfig{
 				ServiceName: "testing",
 				Version:     "latest",
-				Exporter:    StdoutTracesExporter,
+				Exporter:    StdoutExporter,
 			},
 		},
 	}
@@ -74,6 +96,21 @@ func TestTracesModule(t *testing.T) {
 				return t
 			}))
 			assert.NoError(t, fx.ValidateApp(options...))
+
+			ch := make(chan struct{})
+			options = append(options, fx.Invoke(func() { // Inject validate the object availability
+				close(ch)
+			}))
+
+			app := fx.New(options...)
+			assert.NoError(t, app.Start(context.Background()))
+			defer app.Stop(context.Background())
+
+			select {
+			case <-ch:
+			default:
+				assert.Fail(t, "something went wrong")
+			}
 		})
 	}
 

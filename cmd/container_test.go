@@ -31,6 +31,46 @@ func TestContainers(t *testing.T) {
 			},
 		},
 		{
+			name: "default-with-opentelemetry-traces-on-stdout",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelTracesFlag, true)
+				v.Set(otelTracesExporterFlag, "stdout")
+			},
+		},
+		{
+			name: "default-with-opentelemetry-traces-on-otlp",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelTracesFlag, true)
+				v.Set(otelTracesExporterFlag, "otlp")
+			},
+		},
+		{
+			name: "default-with-opentelemetry-traces-on-jaeger",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelTracesFlag, true)
+				v.Set(otelTracesExporterFlag, "jaeger")
+			},
+		},
+		{
+			name: "default-with-opentelemetry-metrics-on-stdout",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelMetricsFlag, true)
+				v.Set(otelMetricsExporterFlag, "stdout")
+			},
+		},
+		{
+			name: "default-with-opentelemetry-metrics-on-otlp",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelMetricsFlag, true)
+				v.Set(otelMetricsExporterFlag, "otlp")
+			},
+		},
+		{
 			name: "pg",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.PostgreSQL.String())

@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	JaegerTracesExporter = "jaeger"
-	NoOpTracesExporter   = "noop"
-	StdoutTracesExporter = "stdout"
-	OTLPTracesExporter   = "otlp"
+	JaegerExporter = "jaeger"
+	NoOpExporter   = "noop"
+	StdoutExporter = "stdout"
+	OTLPExporter   = "otlp"
 )
 
 const (

@@ -145,7 +145,7 @@ func (o *openTelemetryStorage) Close(ctx context.Context) error {
 
 var _ storage.Store = &openTelemetryStorage{}
 
-func NewOpenTelemetryStorage(underlying storage.Store) *openTelemetryStorage {
+func NewStorageDecorator(underlying storage.Store) *openTelemetryStorage {
 	return &openTelemetryStorage{
 		underlying: underlying,
 	}
@@ -160,7 +160,7 @@ func (o openTelemetryStorageFactory) GetStore(name string) (storage.Store, error
 	if err != nil {
 		return nil, err
 	}
-	return NewOpenTelemetryStorage(store), nil
+	return NewStorageDecorator(store), nil
 }
 
 func (o openTelemetryStorageFactory) Close(ctx context.Context) error {

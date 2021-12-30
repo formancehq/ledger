@@ -23,12 +23,12 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
-		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.TracesModuleConfig{
+		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.ModuleConfig{
 			ServiceName: "ledger",
 			Version:     Version,
 			Exporter:    v.GetString(otelTracesExporterFlag),
 			JaegerConfig: func() *opentelemetrytraces.JaegerConfig {
-				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.JaegerTracesExporter {
+				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.JaegerExporter {
 					return nil
 				}
 				return &opentelemetrytraces.JaegerConfig{
@@ -37,11 +37,11 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 					Password: v.GetString(otelTracesExporterJaegerPasswordFlag),
 				}
 			}(),
-			OTLPConfig: func() *opentelemetrytraces.OTLPTracesConfig {
-				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.OTLPTracesExporter {
+			OTLPConfig: func() *opentelemetrytraces.OTLPConfig {
+				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.OTLPExporter {
 					return nil
 				}
-				return &opentelemetrytraces.OTLPTracesConfig{
+				return &opentelemetrytraces.OTLPConfig{
 					Mode:     v.GetString(otelTracesExporterOTLPModeFlag),
 					Endpoint: v.GetString(otelTracesExporterOTLPEndpointFlag),
 					Insecure: v.GetBool(otelTracesExporterOTLPInsecureFlag),

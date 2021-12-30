@@ -1,11 +1,11 @@
 package opentelemetrymetrics
 
 import (
+	"context"
 	"fmt"
 	"github.com/numary/ledger/pkg/opentelemetry"
-	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/fx"
 	"testing"
 )
@@ -21,13 +21,13 @@ func TestMetricsModule(t *testing.T) {
 		{
 			name: fmt.Sprintf("otlp-exporter"),
 			config: MetricsModuleConfig{
-				Exporter: opentelemetrytraces.OTLPTracesExporter,
+				Exporter: OTLPMetricsExporter,
 			},
 		},
 		{
-			name: fmt.Sprintf("otlp-exporter-with-config"),
+			name: fmt.Sprintf("otlp-exporter-with-grpc-config"),
 			config: MetricsModuleConfig{
-				Exporter: opentelemetrytraces.OTLPTracesExporter,
+				Exporter: OTLPMetricsExporter,
 				OTLPConfig: &OTLPMetricsConfig{
 					Mode:     opentelemetry.ModeGRPC,
 					Endpoint: "remote:8080",
@@ -36,9 +36,20 @@ func TestMetricsModule(t *testing.T) {
 			},
 		},
 		{
+			name: fmt.Sprintf("otlp-exporter-with-http-config"),
+			config: MetricsModuleConfig{
+				Exporter: OTLPMetricsExporter,
+				OTLPConfig: &OTLPMetricsConfig{
+					Mode:     opentelemetry.ModeHTTP,
+					Endpoint: "remote:8080",
+					Insecure: true,
+				},
+			},
+		},
+		{
 			name: fmt.Sprintf("noop-exporter"),
 			config: MetricsModuleConfig{
-				Exporter: opentelemetrytraces.NoOpTracesExporter,
+				Exporter: NoOpMetricsExporter,
 			},
 		},
 	}
@@ -53,7 +64,21 @@ func TestMetricsModule(t *testing.T) {
 				return t
 			}))
 			assert.NoError(t, fx.ValidateApp(options...))
-			assert.NotEmpty(t, global.GetMeterProvider())
+
+			ch := make(chan struct{})
+			options = append(options, fx.Invoke(func(meter metric.Meter) { // Inject validate the object availability
+				close(ch)
+			}))
+
+			app := fx.New(options...)
+			assert.NoError(t, app.Start(context.Background()))
+			defer app.Stop(context.Background())
+
+			select {
+			case <-ch:
+			default:
+				assert.Fail(t, "something went wrong")
+			}
 		})
 	}
 

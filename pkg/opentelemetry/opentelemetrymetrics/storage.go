@@ -9,6 +9,14 @@ import (
 	"sync"
 )
 
+func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {
+	return m.NewInt64Counter("store/transactions")
+}
+
+func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
+	return m.NewInt64Counter("store/reverts")
+}
+
 type storageDecorator struct {
 	storage.Store
 	transactionsCounter metric.Int64Counter
@@ -59,11 +67,11 @@ type openTelemetryStorageFactory struct {
 func (o *openTelemetryStorageFactory) GetStore(name string) (storage.Store, error) {
 	var err error
 	o.once.Do(func() {
-		o.transactionsCounter, err = o.meter.NewInt64Counter("store/transactions")
+		o.transactionsCounter, err = transactionsCounter(o.meter)
 		if err != nil {
 			return
 		}
-		o.revertsCounter, err = o.meter.NewInt64Counter("store/reverts")
+		o.revertsCounter, err = revertsCounter(o.meter)
 	})
 	if err != nil {
 		return nil, errors.New("error creating meters")
