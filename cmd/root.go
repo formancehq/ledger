@@ -287,7 +287,7 @@ func createContainer(opts ...option) (*fx.App, error) {
 		})),
 		WithCacheStorage(viper.GetBool("storage.cache")),
 		WithHttpBasicAuth(viper.GetString("server.http.basic_auth")),
-		WithLedgerLister(controllers.LedgerListerFn(func() []string {
+		WithLedgerLister(controllers.LedgerListerFn(func(*http.Request) []string {
 			return viper.GetStringSlice("ledgers")
 		})),
 		WithRememberConfig(true),
