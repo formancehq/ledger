@@ -8,6 +8,7 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
+	"net/http"
 )
 
 type containerConfig struct {
@@ -59,7 +60,7 @@ func WithRememberConfig(rememberConfig bool) option {
 
 var DefaultOptions = []option{
 	WithVersion("latest"),
-	WithLedgerLister(controllers.LedgerListerFn(func() []string {
+	WithLedgerLister(controllers.LedgerListerFn(func(*http.Request) []string {
 		return []string{}
 	})),
 }
