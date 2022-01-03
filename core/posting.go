@@ -1,7 +1,5 @@
 package core
 
-import "regexp"
-
 // Posting struct
 type Posting struct {
 	Source      string `json:"source" validate:"required,source"`
@@ -25,10 +23,4 @@ func (ps Postings) Reverse() {
 		ps[i].Source, ps[i].Destination = ps[i].Destination, ps[i].Source
 		ps[opp].Source, ps[opp].Destination = ps[opp].Destination, ps[opp].Source
 	}
-}
-
-// IsValidSourceOrDestination
-func IsValidSourceOrDestination(source string) bool {
-	valid, _ := regexp.MatchString("^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$", source)
-	return valid
 }

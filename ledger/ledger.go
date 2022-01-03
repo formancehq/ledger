@@ -24,6 +24,7 @@ type Ledger struct {
 	sync.Mutex
 	name        string
 	store       storage.Store
+	validator   core.Validator
 	_last       *core.Transaction
 	_lastMetaID int64
 }
@@ -70,7 +71,7 @@ func (l *Ledger) Close() {
 
 func (l *Ledger) Commit(ts []core.Transaction) ([]core.Transaction, error) {
 
-	if err := core.Validate(ts); err != nil {
+	if err := l.validator.Validate(ts); err != nil {
 		return ts, err
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/api"
 	"github.com/numary/ledger/config"
+	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/ledger"
 	"github.com/numary/ledger/storage"
 	"github.com/numary/machine/script/compiler"
@@ -57,6 +58,7 @@ func Execute() {
 		Run: func(cmd *cobra.Command, args []string) {
 			app := fx.New(
 				fx.Provide(
+					core.NewValidator,
 					ledger.NewResolver,
 					api.NewAPI,
 				),

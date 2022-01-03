@@ -2,36 +2,46 @@ package core
 
 import (
 	"github.com/go-playground/validator/v10"
+	"github.com/numary/ledger/core/global"
 )
 
-func register(validator *validator.Validate) {
-	validator.RegisterValidation("source", validateSourceOrDestination)
-	validator.RegisterValidation("destination", validateSourceOrDestination)
-	validator.RegisterValidation("asset", validateAsset)
+type Validator struct {
+	validator *validator.Validate
+}
+
+func NewValidator() Validator {
+	return Validator{
+		validator: validator.New(),
+	}
+}
+
+// Register
+func (v *Validator) Register() {
+	v.validator.RegisterValidation("source", v.validateSourceOrDestination)
+	v.validator.RegisterValidation("destination", v.validateSourceOrDestination)
+	v.validator.RegisterValidation("asset", v.validateAsset)
 }
 
 // Validate
-func Validate(value interface{}) error {
-	validator := validator.New()
-	register(validator)
-	if err := validator.Var(value, "required,dive"); err != nil {
+func (v *Validator) Validate(value interface{}) error {
+	if err := v.validator.Var(value, "required,dive"); err != nil {
 		return err
 	}
 	return nil
 }
 
-var validateSourceOrDestination validator.Func = func(fl validator.FieldLevel) bool {
+func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return IsValidSourceOrDestination(value)
+		return global.RegexSourceOrDestinationFormat.MatchString(value)
 	}
 	return false
 }
 
-var validateAsset validator.Func = func(fl validator.FieldLevel) bool {
+func (v *Validator) validateAsset(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return AssetIsValid(value)
+		return global.RegexAssetFormat.MatchString(value)
 	}
 	return false
 }

@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"github.com/numary/ledger/core"
 	"github.com/numary/ledger/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
@@ -30,13 +31,15 @@ type Resolver struct {
 	lifecycle      fx.Lifecycle
 	ledgers        map[string]*Ledger
 	storageFactory storage.Factory
+	validator      core.Validator
 }
 
-func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
+func NewResolver(lc fx.Lifecycle, validator core.Validator, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
 		ledgers:   make(map[string]*Ledger),
 		lifecycle: lc,
+		validator: validator,
 	}
 	for _, opt := range options {
 		err := opt.apply(r)
@@ -44,7 +47,7 @@ func NewResolver(lc fx.Lifecycle, options ...ResolverOption) *Resolver {
 			panic(errors.Wrap(err, "applying option on resolver"))
 		}
 	}
-
+	r.validator.Register()
 	return r
 }
 
@@ -57,6 +60,7 @@ func (r *Resolver) GetLedger(name string) (*Ledger, error) {
 		}
 
 		r.ledgers[name] = l
+		r.ledgers[name].validator = r.validator
 	}
 
 	return r.ledgers[name], nil
