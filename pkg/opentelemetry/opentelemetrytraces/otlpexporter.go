@@ -9,8 +9,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func LoadOTLPTracerProvider(serviceName string, version string, client otlptrace.Client) (*tracesdk.TracerProvider, error) {
-	r, err := newResource(serviceName, version)
+func LoadOTLPTracerProvider(f *resourceFactory, client otlptrace.Client) (*tracesdk.TracerProvider, error) {
+	r, err := f.Make()
 	if err != nil {
 		return nil, err
 	}
@@ -37,10 +37,7 @@ func LoadOTLPTracerHTTPClient(options ...otlptracehttp.Option) otlptrace.Client 
 func OTLPTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadOTLPTracerProvider, fx.ParamTags(
-				ServiceNameKey,
-				ServiceVersionKey,
-			)),
+			LoadOTLPTracerProvider,
 		),
 		traceSdkExportModule(),
 	)

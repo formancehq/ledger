@@ -16,19 +16,6 @@ const (
 	OTLPExporter   = "otlp"
 )
 
-const (
-	ServiceNameKey    = `name:"serviceName"`
-	ServiceVersionKey = `name:"version"`
-)
-
-func ProvideServiceName(provider interface{}) fx.Option {
-	return fx.Provide(fx.Annotate(provider, fx.ResultTags(ServiceNameKey)))
-}
-
-func ProvideServiceVersion(provider interface{}) fx.Option {
-	return fx.Provide(fx.Annotate(provider, fx.ResultTags(ServiceVersionKey)))
-}
-
 func traceSdkExportModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),

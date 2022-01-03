@@ -7,9 +7,9 @@ import (
 	"os"
 )
 
-func LoadStdoutTracerProvider(serviceName, version string) (*tracesdk.TracerProvider, error) {
+func LoadStdoutTracerProvider(f *resourceFactory) (*tracesdk.TracerProvider, error) {
 
-	r, err := newResource(serviceName, version)
+	r, err := f.Make()
 	if err != nil {
 		return nil, err
 	}
@@ -29,10 +29,7 @@ func LoadStdoutTracerProvider(serviceName, version string) (*tracesdk.TracerProv
 func StdoutTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadStdoutTracerProvider, fx.ParamTags(
-				ServiceNameKey,
-				ServiceVersionKey,
-			)),
+			LoadStdoutTracerProvider,
 		),
 		traceSdkExportModule(),
 	)

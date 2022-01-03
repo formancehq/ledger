@@ -98,7 +98,8 @@ func TestTracesModule(t *testing.T) {
 			assert.NoError(t, fx.ValidateApp(options...))
 
 			ch := make(chan struct{})
-			options = append(options, fx.Invoke(func() { // Inject validate the object availability
+			options = append(options, fx.Invoke(func(f *resourceFactory) { // Inject validate the object availability
+				assert.Len(t, f.attributes, 2)
 				close(ch)
 			}))
 

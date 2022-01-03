@@ -6,8 +6,8 @@ import (
 	"go.uber.org/fx"
 )
 
-func LoadJaegerTracerProvider(serviceName string, version string, options ...jaeger.CollectorEndpointOption) (*tracesdk.TracerProvider, error) {
-	r, err := newResource(serviceName, version)
+func LoadJaegerTracerProvider(resourceFactory *resourceFactory, options ...jaeger.CollectorEndpointOption) (*tracesdk.TracerProvider, error) {
+	r, err := resourceFactory.Make()
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +35,7 @@ func JaegerTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(LoadJaegerTracerProvider, fx.ParamTags(
-				ServiceNameKey,
-				ServiceVersionKey,
+				"",
 				JaegerCollectorEndpointGroupKey,
 			)),
 		),

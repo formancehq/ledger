@@ -8,9 +8,11 @@ import (
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
@@ -39,8 +41,9 @@ type ModuleConfig struct {
 func TracesModule(cfg ModuleConfig) fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options,
-		ProvideServiceName(func() string { return "ledger" }),
-		ProvideServiceVersion(func() string { return cfg.Version }),
+		ResourceFactoryModule(),
+		ProvideOTLPAttribute(semconv.ServiceNameKey.String(cfg.ServiceName)),
+		ProvideOTLPAttribute(semconv.ServiceVersionKey.String(cfg.Version)),
 	)
 
 	options = append(options, fx.Invoke(func(cfg struct {
@@ -48,10 +51,14 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 		Flavor sqlstorage.Flavor `optional:"true"`
 	}) error {
 		if cfg.Flavor != 0 {
-			sqlDriverName, err := otelsql.Register(
-				sqlstorage.SQLDriverName(cfg.Flavor),
-				cfg.Flavor.AttributeKeyValue().Value.AsString(),
-			)
+			var attr attribute.KeyValue
+			switch cfg.Flavor {
+			case sqlstorage.SQLite:
+				attr = semconv.DBSystemSqlite
+			case sqlstorage.PostgreSQL:
+				attr = semconv.DBSystemPostgreSQL
+			}
+			sqlDriverName, err := otelsql.Register(sqlstorage.SQLDriverName(cfg.Flavor), attr.Value.AsString())
 			if err != nil {
 				return fmt.Errorf("Error registering otel driver: %s", err)
 			}
