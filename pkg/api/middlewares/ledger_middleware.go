@@ -37,7 +37,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 			})
 		}
 		defer func() {
-			err := l.Close(c)
+			err := l.Close(c.Request.Context())
 			if err != nil {
 				logrus.Printf("error closing ledger: %s", err)
 			}
