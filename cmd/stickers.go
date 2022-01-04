@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+	"github.com/sirupsen/logrus"
 	"os/exec"
 	"runtime"
 	"time"
@@ -25,7 +25,7 @@ func open(url string) {
 	}
 
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 }
 
