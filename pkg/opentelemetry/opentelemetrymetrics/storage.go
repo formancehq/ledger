@@ -11,11 +11,11 @@ import (
 )
 
 func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {
-	return m.NewInt64Counter("store/transactions")
+	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".transactions")
 }
 
 func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
-	return m.NewInt64Counter("store/reverts")
+	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".reverts")
 }
 
 type storageDecorator struct {
