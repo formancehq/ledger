@@ -6,15 +6,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand"
+	"os"
+	"reflect"
+	"testing"
+
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
-	"os"
-	"reflect"
-	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/pkg/core"
@@ -44,7 +45,7 @@ func with(f func(l *Ledger)) {
 				if err != nil {
 					return nil, err
 				}
-				l, err := NewLedger("test", store, NewInMemoryLocker())
+				l, err := NewLedger("test", store, NewInMemoryLocker(), core.NewValidator())
 				if err != nil {
 					panic(err)
 				}

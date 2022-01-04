@@ -3,9 +3,10 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"time"
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -17,16 +18,18 @@ const (
 )
 
 type Ledger struct {
-	locker Locker
-	name   string
-	store  storage.Store
+	locker    Locker
+	name      string
+	store     storage.Store
+	validator core.Validator
 }
 
-func NewLedger(name string, store storage.Store, locker Locker) (*Ledger, error) {
+func NewLedger(name string, store storage.Store, locker Locker, validator core.Validator) (*Ledger, error) {
 	return &Ledger{
-		store:  store,
-		name:   name,
-		locker: locker,
+		store:     store,
+		name:      name,
+		locker:    locker,
+		validator: validator,
 	}, nil
 }
 
@@ -39,6 +42,10 @@ func (l *Ledger) Close(ctx context.Context) error {
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Transaction, error) {
+	if err := l.validator.Validate(ts); err != nil {
+		return ts, err
+	}
+
 	unlock, err := l.locker.Lock(l.name)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to acquire lock")

@@ -3,11 +3,13 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"sync"
+
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"sync"
 )
 
 type ResolverOption interface {
@@ -33,15 +35,25 @@ func WithLocker(locker Locker) ResolveOptionFn {
 	})
 }
 
+func WithValidator(validator core.Validator) ResolveOptionFn {
+	return ResolveOptionFn(func(r *Resolver) error {
+		r.validator = validator
+		r.validator.Register()
+		return nil
+	})
+}
+
 var DefaultResolverOptions = []ResolverOption{
 	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
 	WithLocker(NewInMemoryLocker()),
+	WithValidator(core.NewValidator()),
 }
 
 type Resolver struct {
 	storageFactory    storage.Factory
 	locker            Locker
 	lock              sync.RWMutex
+	validator         core.Validator
 	initializedStores map[string]struct{}
 }
 
@@ -89,5 +101,5 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	}
 
 ret:
-	return NewLedger(name, store, r.locker)
+	return NewLedger(name, store, r.locker, r.validator)
 }

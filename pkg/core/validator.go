@@ -2,7 +2,7 @@ package core
 
 import (
 	"github.com/go-playground/validator/v10"
-	"github.com/numary/ledger/core/global"
+	"github.com/numary/ledger/pkg/core/global"
 )
 
 type Validator struct {
