@@ -105,8 +105,8 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	options = append(options,
 		fx.Provide(func(params struct {
 			dig.In
-			Driver storage.Driver
-			Meter  metric.Meter `optional:"true"`
+			Driver        storage.Driver
+			MeterProvider metric.MeterProvider `optional:"true"`
 		}) storage.Factory {
 			f := storage.NewDefaultFactory(params.Driver)
 			if v.GetBool(storageCacheFlag) {
@@ -119,7 +119,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 				f = opentelemetrytraces.WrapStorageFactory(f)
 			}
 			if v.GetBool(otelMetricsFlag) {
-				f = opentelemetrymetrics.WrapStorageFactory(f, params.Meter)
+				f = opentelemetrymetrics.WrapStorageFactory(f, params.MeterProvider)
 			}
 			return f
 		}),

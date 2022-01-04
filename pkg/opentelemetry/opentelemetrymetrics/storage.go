@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel/metric"
 	"sync"
@@ -89,9 +90,9 @@ func (o *openTelemetryStorageFactory) Close(ctx context.Context) error {
 
 var _ storage.Factory = &openTelemetryStorageFactory{}
 
-func WrapStorageFactory(underlying storage.Factory, meter metric.Meter) *openTelemetryStorageFactory {
+func WrapStorageFactory(underlying storage.Factory, mp metric.MeterProvider) *openTelemetryStorageFactory {
 	return &openTelemetryStorageFactory{
 		underlying: underlying,
-		meter:      meter,
+		meter:      mp.Meter(opentelemetry.StoreInstrumentationName),
 	}
 }

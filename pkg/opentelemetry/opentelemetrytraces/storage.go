@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -15,7 +16,7 @@ type openTelemetryStorage struct {
 }
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
-	ctx, span := otel.Tracer("com.numary.opentelemetry.store").Start(ctx, name)
+	ctx, span := otel.Tracer(opentelemetry.StoreInstrumentationName).Start(ctx, name)
 	defer span.End()
 
 	span.SetAttributes(attribute.String("ledger", o.Name()))

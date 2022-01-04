@@ -66,7 +66,7 @@ func TestMetricsModule(t *testing.T) {
 			assert.NoError(t, fx.ValidateApp(options...))
 
 			ch := make(chan struct{})
-			options = append(options, fx.Invoke(func(meter metric.Meter) { // Inject validate the object availability
+			options = append(options, fx.Invoke(func(mp metric.MeterProvider) { // Inject validate the object availability
 				close(ch)
 			}))
 

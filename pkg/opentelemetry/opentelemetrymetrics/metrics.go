@@ -20,7 +20,6 @@ type MetricsModuleConfig struct {
 
 func MetricsModule(cfg MetricsModuleConfig) fx.Option {
 	options := make([]fx.Option, 0)
-	options = append(options, ProvideMeter())
 	switch cfg.Exporter {
 	case OTLPMetricsExporter:
 		options = append(options, OTLPMeterModule())
