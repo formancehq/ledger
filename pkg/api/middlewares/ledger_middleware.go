@@ -29,7 +29,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		l, err := m.resolver.GetLedger(c, name)
+		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
 			c.JSON(400, gin.H{
 				"ok":  false,
