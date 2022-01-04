@@ -15,7 +15,7 @@ type openTelemetryStorage struct {
 }
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
-	ctx, span := otel.Tracer("Store").Start(ctx, name)
+	ctx, span := otel.Tracer("com.numary.opentelemetry.store").Start(ctx, name)
 	defer span.End()
 
 	span.SetAttributes(attribute.String("ledger", o.Name()))
