@@ -1,8 +1,9 @@
 package core
 
 import (
+	"regexp"
+
 	"github.com/go-playground/validator/v10"
-	"github.com/numary/ledger/pkg/core/global"
 )
 
 type Validator struct {
@@ -33,7 +34,7 @@ func (v *Validator) Validate(value interface{}) error {
 func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return global.RegexSourceOrDestinationFormat.MatchString(value)
+		return regexp.MustCompile("^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$").MatchString(value)
 	}
 	return false
 }
@@ -41,7 +42,7 @@ func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 func (v *Validator) validateAsset(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return global.RegexAssetFormat.MatchString(value)
+		return regexp.MustCompile("^[A-Z]{1,16}$").MatchString(value)
 	}
 	return false
 }
