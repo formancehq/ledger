@@ -38,16 +38,10 @@ func (v *Validator) Validate(value interface{}) error {
 
 func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
-	if ok {
-		return regexp.MustCompile(`^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$`).MatchString(value)
-	}
-	return false
+	return ok && regexp.MustCompile(`^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$`).MatchString(value)
 }
 
 func (v *Validator) validateAsset(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
-	if ok {
-		return regexp.MustCompile(`^[A-Z]{1,16}(\/\d{1,6})$`).MatchString(value)
-	}
-	return false
+	return ok && regexp.MustCompile(`^[A-Z]{1,16}(\/\d{1,6})$`).MatchString(value)
 }
