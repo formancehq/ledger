@@ -63,6 +63,10 @@ func TestStore(t *testing.T) {
 				fn:   testSaveTransaction,
 			},
 			{
+				name: "DuplicatedTransaction",
+				fn:   testDuplicatedTransaction,
+			},
+			{
 				name: "SaveMeta",
 				fn:   testSaveMeta,
 			},
@@ -165,6 +169,24 @@ func testSaveTransaction(t *testing.T, store storage.Store) {
 	}
 	err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
+}
+
+func testDuplicatedTransaction(t *testing.T, store storage.Store) {
+	txs := []core.Transaction{
+		{
+			Postings: []core.Posting{
+				{},
+			},
+			Reference: "foo",
+		},
+	}
+	err := store.SaveTransactions(context.Background(), txs)
+	assert.NoError(t, err)
+
+	err = store.SaveTransactions(context.Background(), txs)
+	assert.Error(t, err)
+	assert.IsType(t, &storage.Error{}, err)
+	assert.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
 }
 
 func testSaveMeta(t *testing.T, store storage.Store) {

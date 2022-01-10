@@ -4,13 +4,14 @@ go 1.16
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-contrib/logger v0.2.0
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-openapi/spec v0.20.4 // indirect
 	github.com/google/go-cmp v0.5.6
 	github.com/huandu/go-sqlbuilder v1.13.0
+	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-sqlite3 v1.14.9

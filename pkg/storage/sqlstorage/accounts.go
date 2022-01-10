@@ -39,7 +39,7 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 	)
 
 	if err != nil {
-		return c, err
+		return c, s.error(err)
 	}
 
 	for rows.Next() {

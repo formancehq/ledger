@@ -5,15 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/storage"
-)
-
-type Flavor = sqlbuilder.Flavor
-
-var (
-	SQLite     = sqlbuilder.SQLite
-	PostgreSQL = sqlbuilder.PostgreSQL
 )
 
 var sqlDrivers = map[Flavor]struct {
