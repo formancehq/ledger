@@ -7,7 +7,8 @@ import (
 )
 
 type Validator struct {
-	validator *validator.Validate
+	validator  *validator.Validate
+	registered bool
 }
 
 func NewValidator() Validator {
@@ -21,10 +22,14 @@ func (v *Validator) Register() {
 	v.validator.RegisterValidation("source", v.validateSourceOrDestination)
 	v.validator.RegisterValidation("destination", v.validateSourceOrDestination)
 	v.validator.RegisterValidation("asset", v.validateAsset)
+	v.registered = true
 }
 
 // Validate
 func (v *Validator) Validate(value interface{}) error {
+	if !v.registered {
+		v.Register()
+	}
 	if err := v.validator.Var(value, "required,dive"); err != nil {
 		return err
 	}
@@ -34,7 +39,7 @@ func (v *Validator) Validate(value interface{}) error {
 func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return regexp.MustCompile("^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$").MatchString(value)
+		return regexp.MustCompile(`^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$`).MatchString(value)
 	}
 	return false
 }
@@ -42,7 +47,7 @@ func (v *Validator) validateSourceOrDestination(fl validator.FieldLevel) bool {
 func (v *Validator) validateAsset(fl validator.FieldLevel) bool {
 	value, ok := fl.Field().Interface().(string)
 	if ok {
-		return regexp.MustCompile("^[A-Z]{1,16}$").MatchString(value)
+		return regexp.MustCompile(`^[A-Z]{1,16}(\/\d{1,6})$`).MatchString(value)
 	}
 	return false
 }
