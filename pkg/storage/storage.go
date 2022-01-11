@@ -2,9 +2,32 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
+
+type Code string
+
+const (
+	ConstraintFailed Code = "CONSTRAINT_FAILED"
+)
+
+type Error struct {
+	Code          Code
+	OriginalError error
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s [%s]", e.OriginalError, e.Code)
+}
+
+func NewError(code Code, originalError error) *Error {
+	return &Error{
+		Code:          code,
+		OriginalError: originalError,
+	}
+}
 
 type Store interface {
 	LastTransaction(context.Context) (*core.Transaction, error)

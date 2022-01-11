@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"errors"
+	"github.com/numary/ledger/pkg/storage"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -75,6 +76,14 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	ts, err := l.(*ledger.Ledger).Commit(c, []core.Transaction{t})
 	if err != nil {
+		switch eerr := err.(type) {
+		case *storage.Error:
+			switch eerr.Code {
+			case storage.ConstraintFailed:
+				ctl.responseError(c, http.StatusConflict, err)
+				return
+			}
+		}
 		ctl.responseError(
 			c,
 			http.StatusBadRequest,

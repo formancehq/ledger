@@ -68,7 +68,7 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	)
 
 	if err != nil {
-		return c, err
+		return c, s.error(err)
 	}
 
 	transactions := map[int64]core.Transaction{}
@@ -114,7 +114,7 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	for _, t := range transactions {
 		meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", t.ID))
 		if err != nil {
-			return c, err
+			return c, s.error(err)
 		}
 		t.Metadata = meta
 
@@ -143,7 +143,7 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return s.error(err)
 	}
 
 	for _, t := range ts {
@@ -163,7 +163,7 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 		if err != nil {
 			tx.Rollback()
 
-			return err
+			return s.error(err)
 		}
 
 		for i, p := range t.Postings {
@@ -179,7 +179,7 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 			if err != nil {
 				tx.Rollback()
 
-				return err
+				return s.error(err)
 			}
 		}
 
@@ -187,7 +187,7 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 		if err != nil {
 			tx.Rollback()
 
-			return err
+			return s.error(err)
 		}
 
 		for key, value := range t.Metadata {
@@ -217,7 +217,7 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 			if err != nil {
 				tx.Rollback()
 
-				return err
+				return s.error(err)
 			}
 
 			nextID++
@@ -254,7 +254,7 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	)
 
 	if err != nil {
-		return tx, err
+		return tx, s.error(err)
 	}
 
 	for rows.Next() {
@@ -290,7 +290,7 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 
 	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
-		return tx, err
+		return tx, s.error(err)
 	}
 	tx.Metadata = meta
 
@@ -305,7 +305,7 @@ func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) 
 
 	c, err := s.FindTransactions(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, s.error(err)
 	}
 
 	txs := (c.Data).([]core.Transaction)
