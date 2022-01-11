@@ -18,8 +18,7 @@ services:
       - postgres:/data/postgres
 
   ledger:
-    image: golang:1.16-alpine
-    command: go run main.go server start
+    image: "ghcr.io/numary/ledger:latest"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:3068/_info"]
       interval: 10s
@@ -30,12 +29,7 @@ services:
         condition: service_healthy
     ports:
       - "3068:3068"
-    volumes:
-      - .:/src
-    working_dir: /src
     environment:
-      CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
