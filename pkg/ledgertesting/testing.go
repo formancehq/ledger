@@ -18,6 +18,9 @@ func (s *PGServer) ConnString() string {
 }
 
 func (s *PGServer) Close() error {
+	if s.close == nil {
+		return nil
+	}
 	return s.close()
 }
 

@@ -25,7 +25,7 @@ type Store struct {
 }
 
 func (s *Store) table(name string) string {
-	switch s.flavor {
+	switch Flavor(s.flavor) {
 	case PostgreSQL:
 		return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
 	default:
@@ -34,7 +34,7 @@ func (s *Store) table(name string) string {
 }
 
 func (s *Store) error(err error) error {
-	return errorFromFlavor(s.flavor, err)
+	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
 func NewStore(name string, flavor sqlbuilder.Flavor, db *sql.DB, onClose func(ctx context.Context) error) (*Store, error) {

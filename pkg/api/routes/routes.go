@@ -10,24 +10,37 @@ import (
 	"go.uber.org/fx"
 )
 
+const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
+
 var Module = fx.Options(
-	fx.Provide(NewRoutes),
+	fx.Provide(
+		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey)),
+	),
 )
+
+func ProvideGlobalMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
+	opts := []fx.Annotation{fx.ResultTags(GlobalMiddlewaresKey)}
+	return fx.Provide(
+		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
+	)
+}
 
 // Routes -
 type Routes struct {
-	resolver         *ledger.Resolver
-	authMiddleware   middlewares.AuthMiddleware
-	ledgerMiddleware middlewares.LedgerMiddleware
-	configController controllers.ConfigController
+	resolver              *ledger.Resolver
+	authMiddleware        middlewares.AuthMiddleware
+	ledgerMiddleware      middlewares.LedgerMiddleware
+	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
+	globalMiddlewares     []gin.HandlerFunc
 }
 
 // NewRoutes -
 func NewRoutes(
+	globalMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
 	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
@@ -38,6 +51,7 @@ func NewRoutes(
 	transactionController controllers.TransactionController,
 ) *Routes {
 	return &Routes{
+		globalMiddlewares:     globalMiddlewares,
 		resolver:              resolver,
 		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,
@@ -53,13 +67,14 @@ func NewRoutes(
 func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	engine := gin.New()
 
-	// Default Middlewares
-	engine.Use(
+	globalMiddlewares := append([]gin.HandlerFunc{
 		cors.New(cc),
 		gin.Recovery(),
 		logger.SetLogger(),
-		r.authMiddleware.AuthMiddleware(engine),
-	)
+	}, r.globalMiddlewares...)
+
+	// Default Middlewares
+	engine.Use(globalMiddlewares...)
 
 	engine.GET("/swagger.json", r.configController.GetDocs)
 
