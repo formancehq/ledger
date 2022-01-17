@@ -191,7 +191,6 @@ func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (qu
 func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
 	account := core.Account{
 		Address:  address,
-		Contract: "default",
 	}
 
 	balances, err := l.store.AggregateBalances(ctx, address)
