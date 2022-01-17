@@ -8,6 +8,29 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func (s *Store) DeleteContract(ctx context.Context, id string) error {
+	sb := sqlbuilder.NewDeleteBuilder()
+	sb.DeleteFrom(s.table("contract")).Equal("contract_id", id)
+	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	logrus.Debugln(sqlq, args)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, sqlq)
+	if err != nil {
+		eerr := tx.Rollback()
+		if eerr != nil {
+			panic(eerr)
+		}
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (s *Store) FindContracts(ctx context.Context) ([]core.Contract, error) {
 	results := make([]core.Contract, 0)
 	sb := sqlbuilder.NewSelectBuilder()

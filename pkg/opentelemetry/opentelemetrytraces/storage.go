@@ -128,6 +128,26 @@ func (o *openTelemetryStorage) CountMeta(ctx context.Context) (count int64, err 
 	return
 }
 
+func (o *openTelemetryStorage) FindContracts(ctx context.Context) (contracts []core.Contract, err error) {
+	o.handle(ctx, "FindContracts", func(ctx context.Context) error {
+		contracts, err = o.underlying.FindContracts(ctx)
+		return err
+	})
+	return
+}
+
+func (o *openTelemetryStorage) SaveContract(ctx context.Context, contract core.Contract) error {
+	return o.handle(ctx, "SaveMeta", func(ctx context.Context) error {
+		return o.underlying.SaveContract(ctx, contract)
+	})
+}
+
+func (o *openTelemetryStorage) DeleteContract(ctx context.Context, s string) error {
+	return o.handle(ctx, "DeleteContract", func(ctx context.Context) error {
+		return o.underlying.DeleteContract(ctx, s)
+	})
+}
+
 func (o *openTelemetryStorage) Initialize(ctx context.Context) error {
 	return o.handle(ctx, "Initialize", func(ctx context.Context) error {
 		return o.underlying.Initialize(ctx)

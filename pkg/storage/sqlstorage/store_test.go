@@ -499,6 +499,13 @@ func testContracts(t *testing.T, store storage.Store) {
 	assert.NoError(t, err)
 	assert.Len(t, contracts, 1)
 	assert.EqualValues(t, contract, contracts[0])
+
+	err = store.DeleteContract(context.Background(), contract.ID)
+	assert.NoError(t, err)
+
+	contracts, err = store.FindContracts(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {

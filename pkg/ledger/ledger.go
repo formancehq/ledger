@@ -197,6 +197,18 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 	return tx, err
 }
 
+func (l *Ledger) SaveContract(ctx context.Context, contract core.Contract) error {
+	return l.store.SaveContract(ctx, contract)
+}
+
+func (l *Ledger) DeleteContract(ctx context.Context, id string) error {
+	return l.store.DeleteContract(ctx, id)
+}
+
+func (l *Ledger) FindContracts(ctx context.Context) ([]core.Contract, error) {
+	return l.store.FindContracts(ctx)
+}
+
 func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {

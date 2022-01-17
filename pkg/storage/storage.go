@@ -45,6 +45,7 @@ type Store interface {
 	CountMeta(context.Context) (int64, error)
 	FindContracts(context.Context) ([]core.Contract, error)
 	SaveContract(ctx context.Context, contract core.Contract) error
+	DeleteContract(context.Context, string) error
 	Initialize(context.Context) error
 	Name() string
 	Close(context.Context) error
@@ -112,7 +113,12 @@ func (n noOpStore) Initialize(ctx context.Context) error {
 func (n noOpStore) FindContracts(context.Context) ([]core.Contract, error) {
 	return nil, nil
 }
+
 func (n noOpStore) SaveContract(ctx context.Context, contract core.Contract) error {
+	return nil
+}
+
+func (n noOpStore) DeleteContract(ctx context.Context, id string) error {
 	return nil
 }
 
