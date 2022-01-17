@@ -40,4 +40,7 @@ require (
 	go.uber.org/fx v1.16.0
 )
 
-require github.com/go-logr/stdr v1.2.2 // indirect
+require (
+	github.com/davecgh/go-spew v1.1.1
+	github.com/go-logr/stdr v1.2.2 // indirect
+)
