@@ -86,6 +86,21 @@ func (e ExprGt) MarshalJSON() ([]byte, error) {
 	})
 }
 
+type ExprLt struct {
+	Op1 Value
+	Op2 Value
+}
+
+func (o *ExprLt) Eval(ctx EvalContext) bool {
+	return o.Op1.eval(ctx).(int) > o.Op2.eval(ctx).(int)
+}
+
+func (e ExprLt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$lt": []interface{}{e.Op1, e.Op2},
+	})
+}
+
 type ExprGte struct {
 	Op1 Value
 	Op2 Value
@@ -98,6 +113,21 @@ func (o *ExprGte) Eval(ctx EvalContext) bool {
 func (e ExprGte) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"$gte": []interface{}{e.Op1, e.Op2},
+	})
+}
+
+type ExprLte struct {
+	Op1 Value
+	Op2 Value
+}
+
+func (o *ExprLte) Eval(ctx EvalContext) bool {
+	return o.Op1.eval(ctx).(float64) >= o.Op2.eval(ctx).(float64)
+}
+
+func (e ExprLte) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$lte": []interface{}{e.Op1, e.Op2},
 	})
 }
 
@@ -178,7 +208,7 @@ func parse(v interface{}) (expr interface{}, err error) {
 					case "$or":
 						expr = ExprOr(exprs)
 					}
-				case "$eq", "$gt", "$lt":
+				case "$eq", "$gt", "$gte", "$lt", "$lte":
 					vv, ok := vvv.([]interface{})
 					if !ok {
 						return nil, errors.New("expected array when using $eq")
@@ -210,6 +240,21 @@ func parse(v interface{}) (expr interface{}, err error) {
 						}
 					case "$gt":
 						expr = &ExprGt{
+							Op1: op1Value,
+							Op2: op2Value,
+						}
+					case "$gte":
+						expr = &ExprGte{
+							Op1: op1Value,
+							Op2: op2Value,
+						}
+					case "$lt":
+						expr = &ExprLt{
+							Op1: op1Value,
+							Op2: op2Value,
+						}
+					case "$lte":
+						expr = &ExprLte{
 							Op1: op1Value,
 							Op2: op2Value,
 						}
