@@ -12,8 +12,8 @@ type ContractController struct {
 	BaseController
 }
 
-func NewContractController() *ContractController {
-	return &ContractController{}
+func NewContractController() ContractController {
+	return ContractController{}
 }
 
 // PostContract godoc

@@ -36,4 +36,5 @@ var Module = fx.Options(
 	fx.Provide(NewScriptController),
 	fx.Provide(NewAccountController),
 	fx.Provide(NewTransactionController),
+	fx.Provide(NewContractController),
 )
