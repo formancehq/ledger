@@ -10,7 +10,7 @@ import (
 
 func (s *Store) DeleteContract(ctx context.Context, id string) error {
 	sb := sqlbuilder.NewDeleteBuilder()
-	sb.DeleteFrom(s.table("contract")).Equal("contract_id", id)
+	sb.DeleteFrom(s.table("contract")).Where(sb.Equal("contract_id", id))
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
 
@@ -19,7 +19,7 @@ func (s *Store) DeleteContract(ctx context.Context, id string) error {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, sqlq)
+	_, err = tx.ExecContext(ctx, sqlq, args...)
 	if err != nil {
 		eerr := tx.Rollback()
 		if eerr != nil {
