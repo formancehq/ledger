@@ -77,7 +77,7 @@ type ExprGt struct {
 }
 
 func (o *ExprGt) Eval(ctx EvalContext) bool {
-	return o.Op1.eval(ctx).(int) > o.Op2.eval(ctx).(int)
+	return o.Op1.eval(ctx).(float64) > o.Op2.eval(ctx).(float64)
 }
 
 func (e ExprGt) MarshalJSON() ([]byte, error) {
@@ -92,7 +92,7 @@ type ExprLt struct {
 }
 
 func (o *ExprLt) Eval(ctx EvalContext) bool {
-	return o.Op1.eval(ctx).(int) > o.Op2.eval(ctx).(int)
+	return o.Op1.eval(ctx).(float64) > o.Op2.eval(ctx).(float64)
 }
 
 func (e ExprLt) MarshalJSON() ([]byte, error) {
