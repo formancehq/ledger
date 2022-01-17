@@ -43,6 +43,8 @@ type Store interface {
 	SaveMeta(context.Context, int64, string, string, string, string, string) error
 	GetMeta(context.Context, string, string) (core.Metadata, error)
 	CountMeta(context.Context) (int64, error)
+	FindContracts(context.Context) ([]core.Contract, error)
+	SaveContract(ctx context.Context, contract core.Contract) error
 	Initialize(context.Context) error
 	Name() string
 	Close(context.Context) error
@@ -104,6 +106,13 @@ func (n noOpStore) CountMeta(ctx context.Context) (int64, error) {
 }
 
 func (n noOpStore) Initialize(ctx context.Context) error {
+	return nil
+}
+
+func (n noOpStore) FindContracts(context.Context) ([]core.Contract, error) {
+	return nil, nil
+}
+func (n noOpStore) SaveContract(ctx context.Context, contract core.Contract) error {
 	return nil
 }
 

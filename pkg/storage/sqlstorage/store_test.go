@@ -114,6 +114,10 @@ func TestStore(t *testing.T) {
 				name: "GetTransaction",
 				fn:   testGetTransaction,
 			},
+			{
+				name: "Contracts",
+				fn:   testContracts,
+			},
 		} {
 			t.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(t *testing.T) {
 				ledger := uuid.New()
@@ -477,6 +481,24 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 	assert.Equal(t, 1, cursor.PageSize)
 	assert.False(t, cursor.HasMore)
 
+}
+
+func testContracts(t *testing.T, store storage.Store) {
+	contract := core.Contract{
+		ID: "1",
+		Expr: &core.ExprGt{
+			Op1: core.VariableExpr{Name: "balance"},
+			Op2: core.ConstantExpr{Value: float64(0)},
+		},
+		Account: "orders:*",
+	}
+	err := store.SaveContract(context.Background(), contract)
+	assert.NoError(t, err)
+
+	contracts, err := store.FindContracts(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, contracts, 1)
+	assert.EqualValues(t, contract, contracts[0])
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {

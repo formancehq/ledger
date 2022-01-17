@@ -1,25 +1,16 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
-)
-
-const (
-	PolicyAccept = "accept"
-	PolicyDeny   = "deny"
 )
 
 type EvalContext struct {
 	Variables map[string]interface{}
 	Metadata  Metadata
-}
-
-type Rule struct {
-	Account string
-	Policy  string
-	Expr    Expr
 }
 
 type Expr interface {
@@ -30,12 +21,10 @@ type Value interface {
 	eval(ctx EvalContext) interface{}
 }
 
-type or struct {
-	exprs []Expr
-}
+type ExprOr []Expr
 
-func (o *or) Eval(ctx EvalContext) bool {
-	for _, e := range o.exprs {
+func (o ExprOr) Eval(ctx EvalContext) bool {
+	for _, e := range o {
 		if e.Eval(ctx) {
 			return true
 		}
@@ -43,12 +32,16 @@ func (o *or) Eval(ctx EvalContext) bool {
 	return false
 }
 
-type and struct {
-	exprs []Expr
+func (e ExprOr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$or": []Expr(e),
+	})
 }
 
-func (o *and) Eval(ctx EvalContext) bool {
-	for _, e := range o.exprs {
+type ExprAnd []Expr
+
+func (o ExprAnd) Eval(ctx EvalContext) bool {
+	for _, e := range o {
 		if !e.Eval(ctx) {
 			return false
 		}
@@ -56,46 +49,78 @@ func (o *and) Eval(ctx EvalContext) bool {
 	return true
 }
 
-type eq struct {
+func (e ExprAnd) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$and": []Expr(e),
+	})
+}
+
+type ExprEq struct {
 	Op1 Value
 	Op2 Value
 }
 
-func (o *eq) Eval(ctx EvalContext) bool {
+func (o *ExprEq) Eval(ctx EvalContext) bool {
 	return reflect.DeepEqual(o.Op1.eval(ctx), o.Op2.eval(ctx))
 }
 
-type gt struct {
+func (e ExprEq) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$eq": []interface{}{e.Op1, e.Op2},
+	})
+}
+
+type ExprGt struct {
 	Op1 Value
 	Op2 Value
 }
 
-func (o *gt) Eval(ctx EvalContext) bool {
+func (o *ExprGt) Eval(ctx EvalContext) bool {
 	return o.Op1.eval(ctx).(int) > o.Op2.eval(ctx).(int)
 }
 
-type constantExpr struct {
-	v interface{}
+func (e ExprGt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$gt": []interface{}{e.Op1, e.Op2},
+	})
 }
 
-func (e constantExpr) eval(ctx EvalContext) interface{} {
-	return e.v
+type ConstantExpr struct {
+	Value interface{}
 }
 
-type variableExpr struct {
-	name string
+func (e ConstantExpr) eval(ctx EvalContext) interface{} {
+	return e.Value
 }
 
-func (e variableExpr) eval(ctx EvalContext) interface{} {
-	return ctx.Variables[e.name]
+func (e ConstantExpr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.Value)
 }
 
-type metaExpr struct {
-	name string
+type VariableExpr struct {
+	Name string
 }
 
-func (e metaExpr) eval(ctx EvalContext) interface{} {
-	return string(ctx.Metadata[e.name])
+func (e VariableExpr) eval(ctx EvalContext) interface{} {
+	return ctx.Variables[e.Name]
+}
+
+func (e VariableExpr) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"$%s"`, e.Name)), nil
+}
+
+type MetaExpr struct {
+	Name string
+}
+
+func (e MetaExpr) eval(ctx EvalContext) interface{} {
+	return string(ctx.Metadata[e.Name])
+}
+
+func (e MetaExpr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$meta": e.Name,
+	})
 }
 
 func parse(v interface{}) (expr interface{}, err error) {
@@ -113,7 +138,7 @@ func parse(v interface{}) (expr interface{}, err error) {
 					if !ok {
 						return nil, errors.New("$meta operator invalid")
 					}
-					return &metaExpr{name: value}, nil
+					return &MetaExpr{Name: value}, nil
 				case "$or", "$and":
 					slice, ok := vvv.([]interface{})
 					if !ok {
@@ -133,9 +158,9 @@ func parse(v interface{}) (expr interface{}, err error) {
 					}
 					switch key {
 					case "$and":
-						expr = &and{exprs: exprs}
+						expr = ExprAnd(exprs)
 					case "$or":
-						expr = &or{exprs: exprs}
+						expr = ExprOr(exprs)
 					}
 				case "$eq", "$gt", "$lt":
 					vv, ok := vvv.([]interface{})
@@ -163,12 +188,12 @@ func parse(v interface{}) (expr interface{}, err error) {
 					}
 					switch key {
 					case "$eq":
-						expr = &eq{
+						expr = &ExprEq{
 							Op1: op1Value,
 							Op2: op2Value,
 						}
 					case "$gt":
-						expr = &gt{
+						expr = &ExprGt{
 							Op1: op1Value,
 							Op2: op2Value,
 						}
@@ -180,11 +205,11 @@ func parse(v interface{}) (expr interface{}, err error) {
 		}
 	case string:
 		if !strings.HasPrefix(vv, "$") {
-			return constantExpr{v}, nil
+			return ConstantExpr{v}, nil
 		}
-		return variableExpr{vv[1:]}, nil
+		return VariableExpr{vv[1:]}, nil
 	default:
-		return constantExpr{v}, nil
+		return ConstantExpr{v}, nil
 	}
 
 	return expr, nil
@@ -196,4 +221,13 @@ func ParseRuleExpr(v map[string]interface{}) (Expr, error) {
 		return nil, err
 	}
 	return ret.(Expr), nil
+}
+
+func ParseRule(data string) (Expr, error) {
+	m := make(map[string]interface{})
+	err := json.Unmarshal([]byte(data), &m)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRuleExpr(m)
 }
