@@ -11,6 +11,7 @@ import (
 type EvalContext struct {
 	Variables map[string]interface{}
 	Metadata  Metadata
+	Asset     string
 }
 
 type Expr interface {
@@ -82,6 +83,21 @@ func (o *ExprGt) Eval(ctx EvalContext) bool {
 func (e ExprGt) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"$gt": []interface{}{e.Op1, e.Op2},
+	})
+}
+
+type ExprGte struct {
+	Op1 Value
+	Op2 Value
+}
+
+func (o *ExprGte) Eval(ctx EvalContext) bool {
+	return o.Op1.eval(ctx).(float64) >= o.Op2.eval(ctx).(float64)
+}
+
+func (e ExprGte) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"$gte": []interface{}{e.Op1, e.Op2},
 	})
 }
 

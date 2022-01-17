@@ -16,6 +16,20 @@ const (
 	targetTypeTransaction = "transaction"
 )
 
+var DefaultContracts = []core.Contract{
+	{
+		Expr: &core.ExprGte{
+			Op1: core.VariableExpr{
+				Name: "balance",
+			},
+			Op2: core.ConstantExpr{
+				Value: float64(0),
+			},
+		},
+		Account: "*", // world still an exception
+	},
+}
+
 type Ledger struct {
 	locker Locker
 	name   string
@@ -84,6 +98,14 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 	}
 
+	contracts, err := l.store.FindContracts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(contracts) == 0 { // Keep default behavior
+		contracts = DefaultContracts
+	}
+
 	for addr := range rf {
 		if addr == "world" {
 			continue
@@ -109,10 +131,24 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 
 		for asset := range checks {
-			balance, ok := balances[asset]
-
-			if !ok || balance < checks[asset] {
-				return ts, NewInsufficientFundError(asset)
+			expectedBalance := balances[asset] - checks[asset]
+			for _, contract := range contracts {
+				if contract.Match(addr) {
+					meta, err := l.store.GetMeta(ctx, "account", addr)
+					if err != nil {
+						return nil, err
+					}
+					ok := contract.Expr.Eval(core.EvalContext{
+						Variables: map[string]interface{}{
+							"balance": float64(expectedBalance),
+						},
+						Metadata: meta,
+						Asset:    asset,
+					})
+					if !ok {
+						return nil, NewInsufficientFundError(asset)
+					}
+				}
 			}
 		}
 	}
@@ -190,7 +226,7 @@ func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (qu
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
 	account := core.Account{
-		Address:  address,
+		Address: address,
 	}
 
 	balances, err := l.store.AggregateBalances(ctx, address)
