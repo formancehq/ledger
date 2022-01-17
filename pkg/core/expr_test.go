@@ -21,7 +21,7 @@ func TestRules(t *testing.T) {
 				"$or": []interface{}{
 					map[string]interface{}{
 						"$gt": []interface{}{
-							"$balance", 0,
+							"$balance", float64(0),
 						},
 					},
 					map[string]interface{}{
@@ -36,7 +36,7 @@ func TestRules(t *testing.T) {
 			},
 			context: EvalContext{
 				Variables: map[string]interface{}{
-					"balance": -10,
+					"balance": float64(-10),
 				},
 				Metadata: map[string]json.RawMessage{
 					"approved": json.RawMessage("yes"),
@@ -49,7 +49,7 @@ func TestRules(t *testing.T) {
 				"$and": []interface{}{
 					map[string]interface{}{
 						"$gt": []interface{}{
-							"$balance", 0,
+							"$balance", float64(0),
 						},
 					},
 					map[string]interface{}{
@@ -64,7 +64,7 @@ func TestRules(t *testing.T) {
 			},
 			context: EvalContext{
 				Variables: map[string]interface{}{
-					"balance": 10,
+					"balance": float64(10),
 				},
 				Metadata: map[string]json.RawMessage{
 					"approved": json.RawMessage("no"),
