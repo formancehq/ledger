@@ -115,8 +115,8 @@ func TestStore(t *testing.T) {
 				fn:   testGetTransaction,
 			},
 			{
-				name: "Contracts",
-				fn:   testContracts,
+				name: "Mapping",
+				fn:   testMapping,
 			},
 		} {
 			t.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(t *testing.T) {
@@ -483,29 +483,36 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 
 }
 
-func testContracts(t *testing.T, store storage.Store) {
-	contract := core.Contract{
-		ID: "1",
-		Expr: &core.ExprGt{
-			Op1: core.VariableExpr{Name: "balance"},
-			Op2: core.ConstantExpr{Value: float64(0)},
+func testMapping(t *testing.T, store storage.Store) {
+
+	m := core.Mapping{
+		Contracts: []core.Contract{
+			{
+				Expr: &core.ExprGt{
+					Op1: core.VariableExpr{Name: "balance"},
+					Op2: core.ConstantExpr{Value: float64(0)},
+				},
+				Account: "orders:*",
+			},
 		},
-		Account: "orders:*",
 	}
-	err := store.SaveContract(context.Background(), contract)
+	err := store.SaveMapping(context.Background(), m)
 	assert.NoError(t, err)
 
-	contracts, err := store.FindContracts(context.Background())
+	mapping, err := store.LoadMapping(context.Background())
 	assert.NoError(t, err)
-	assert.Len(t, contracts, 1)
-	assert.EqualValues(t, contract, contracts[0])
+	assert.Len(t, mapping.Contracts, 1)
+	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
 
-	err = store.DeleteContract(context.Background(), contract.ID)
+	m2 := core.Mapping{
+		Contracts: []core.Contract{},
+	}
+	err = store.SaveMapping(context.Background(), m2)
 	assert.NoError(t, err)
 
-	contracts, err = store.FindContracts(context.Background())
+	mapping, err = store.LoadMapping(context.Background())
 	assert.NoError(t, err)
-	assert.Len(t, contracts, 0)
+	assert.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {

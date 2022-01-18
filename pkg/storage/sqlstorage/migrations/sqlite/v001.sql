@@ -37,12 +37,11 @@ CREATE TABLE IF NOT EXISTS metadata (
   UNIQUE("meta_id")
 );
 --statement
-CREATE TABLE IF NOT EXISTS contract (
-    "contract_id" integer,
-    "contract_account" varchar,
-    "contract_expr" varchar,
+CREATE TABLE IF NOT EXISTS mapping (
+    "mapping_id" varchar,
+    "mapping" varchar,
 
-    UNIQUE("contract_id")
+    UNIQUE("mapping_id")
 )
 --statement
 CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (

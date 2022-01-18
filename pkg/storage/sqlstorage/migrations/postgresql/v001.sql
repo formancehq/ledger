@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".contract (
     UNIQUE("contract_id")
 )
 --statement
+CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".mapping (
+    "mapping_id" varchar,
+    "mapping" varchar,
+
+    UNIQUE("mapping_id")
+)
+--statement
 CREATE INDEX IF NOT EXISTS m_i0 ON "VAR_LEDGER_NAME".metadata (
   "meta_target_type",
   "meta_target_id"

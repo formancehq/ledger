@@ -7,7 +7,6 @@ import (
 )
 
 type Contract struct {
-	ID      string `json:"id"`
 	Expr    Expr   `json:"expr"`
 	Account string `json:"account"`
 }
@@ -28,7 +27,6 @@ func (c *Contract) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*c = Contract{
-		ID:      aux.ID,
 		Expr:    expr,
 		Account: aux.Account,
 	}

@@ -98,13 +98,16 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 	}
 
-	contracts, err := l.store.FindContracts(ctx)
+	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(contracts) == 0 { // Keep default behavior
-		contracts = DefaultContracts
+
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
 	}
+	contracts = append(contracts, DefaultContracts...)
 
 	for addr := range rf {
 		if addr == "world" {
@@ -148,6 +151,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 					if !ok {
 						return nil, NewInsufficientFundError(asset)
 					}
+					break
 				}
 			}
 		}
@@ -197,16 +201,12 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 	return tx, err
 }
 
-func (l *Ledger) SaveContract(ctx context.Context, contract core.Contract) error {
-	return l.store.SaveContract(ctx, contract)
+func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+	return l.store.SaveMapping(ctx, mapping)
 }
 
-func (l *Ledger) DeleteContract(ctx context.Context, id string) error {
-	return l.store.DeleteContract(ctx, id)
-}
-
-func (l *Ledger) FindContracts(ctx context.Context) ([]core.Contract, error) {
-	return l.store.FindContracts(ctx)
+func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+	return l.store.LoadMapping(ctx)
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {

@@ -43,9 +43,8 @@ type Store interface {
 	SaveMeta(context.Context, int64, string, string, string, string, string) error
 	GetMeta(context.Context, string, string) (core.Metadata, error)
 	CountMeta(context.Context) (int64, error)
-	FindContracts(context.Context) ([]core.Contract, error)
-	SaveContract(ctx context.Context, contract core.Contract) error
-	DeleteContract(context.Context, string) error
+	LoadMapping(ctx context.Context) (*core.Mapping, error)
+	SaveMapping(ctx context.Context, m core.Mapping) error
 	Initialize(context.Context) error
 	Name() string
 	Close(context.Context) error
@@ -110,15 +109,11 @@ func (n noOpStore) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpStore) FindContracts(context.Context) ([]core.Contract, error) {
+func (n noOpStore) LoadMapping(context.Context) (*core.Mapping, error) {
 	return nil, nil
 }
 
-func (n noOpStore) SaveContract(ctx context.Context, contract core.Contract) error {
-	return nil
-}
-
-func (n noOpStore) DeleteContract(ctx context.Context, id string) error {
+func (n noOpStore) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 	return nil
 }
 
