@@ -80,14 +80,16 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			switch eerr.Code {
 			case storage.ConstraintFailed:
 				ctl.responseError(c, http.StatusConflict, err)
-				return
+			default:
+				ctl.responseError(c, http.StatusInternalServerError, err)
 			}
+		case *ledger.InsufficientFundError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		case *ledger.ValidationError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		default:
+			ctl.responseError(c, http.StatusInternalServerError, err)
 		}
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
 		return
 	}
 	ctl.response(
@@ -150,11 +152,21 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		switch eerr := err.(type) {
+		case *storage.Error:
+			switch eerr.Code {
+			case storage.ConstraintFailed:
+				ctl.responseError(c, http.StatusConflict, err)
+			default:
+				ctl.responseError(c, http.StatusInternalServerError, err)
+			}
+		case *ledger.InsufficientFundError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		case *ledger.ValidationError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		default:
+			ctl.responseError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 	ctl.response(
