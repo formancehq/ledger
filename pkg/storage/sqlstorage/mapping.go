@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/sirupsen/logrus"
@@ -75,7 +74,7 @@ func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 	switch s.flavor {
 	case sqlbuilder.Flavor(PostgreSQL):
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
-		sqlq = fmt.Sprintf("%s ON CONFLICT (mapping_id) DO UPDATE SET mapping = '%s'", sqlq, string(data))
+		sqlq += " ON CONFLICT (mapping_id) DO UPDATE SET mapping = $2"
 	default:
 		ib.ReplaceInto(s.table("mapping"))
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
