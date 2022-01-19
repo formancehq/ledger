@@ -57,7 +57,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 	for i := range ts {
 
 		if len(ts[i].Postings) == 0 {
-			return ts, errors.New("transaction has no postings")
+			return ts, NewValidationError("transaction has no postings")
 		}
 
 		ts[i].ID = count + int64(i)
@@ -67,6 +67,9 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		last = &ts[i]
 
 		for _, p := range ts[i].Postings {
+			if p.Amount < 0 {
+				return ts, NewValidationError("negative amount")
+			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]int64{}
 			}
@@ -101,7 +104,6 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 
 		balances, err := l.store.AggregateBalances(ctx, addr)
-
 		if err != nil {
 			return ts, err
 		}
@@ -110,10 +112,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 			balance, ok := balances[asset]
 
 			if !ok || balance < checks[asset] {
-				return ts, fmt.Errorf(
-					"balance.insufficient.%s",
-					asset,
-				)
+				return ts, NewInsufficientFundError(asset)
 			}
 		}
 	}
@@ -228,13 +227,13 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 	defer unlock()
 
 	if targetType == "" {
-		return errors.New("empty target type")
+		return NewValidationError("empty target type")
 	}
 	if targetType != targetTypeTransaction && targetType != targetTypeAccount {
-		return fmt.Errorf("unknown target type '%s'", targetType)
+		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if targetID == "" {
-		return errors.New("empty target id")
+		return NewValidationError("empty target id")
 	}
 
 	lastMetaID, err := l.store.LastMetaID(ctx)
