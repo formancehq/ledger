@@ -183,6 +183,80 @@ var doc = `{
                 }
             }
         },
+        "/{ledger}/mapping": {
+            "get": {
+                "description": "Get ledger mapping",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Get mapping",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ledger",
+                        "name": "ledger",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update ledger mapping",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mapping"
+                ],
+                "summary": "Put mapping",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ledger",
+                        "name": "ledger",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/{ledger}/script": {
             "post": {
                 "description": "Execute a Numscript and create the transaction if any",
@@ -524,10 +598,6 @@ var doc = `{
                     "example": {
                         "COIN": 100
                     }
-                },
-                "contract": {
-                    "type": "string",
-                    "example": "default"
                 },
                 "metadata": {
                     "type": "object"
