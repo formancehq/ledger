@@ -40,9 +40,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 
 	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
-	res := gin.H{
-		"ok": err == nil,
-	}
+	res := gin.H{}
 
 	if err != nil {
 		errStr := err.Error()
