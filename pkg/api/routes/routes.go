@@ -43,6 +43,7 @@ type Routes struct {
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
+	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
 }
@@ -59,6 +60,7 @@ func NewRoutes(
 	scriptController controllers.ScriptController,
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
+	mappingController controllers.MappingController,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -71,6 +73,7 @@ func NewRoutes(
 		scriptController:      scriptController,
 		accountController:     accountController,
 		transactionController: transactionController,
+		mappingController:     mappingController,
 	}
 }
 
@@ -108,6 +111,10 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		ledger.GET("/accounts", r.accountController.GetAccounts)
 		ledger.GET("/accounts/:address", r.accountController.GetAccount)
 		ledger.POST("/accounts/:address/metadata", r.accountController.PostAccountMetadata)
+
+		// MappingController
+		ledger.GET("/mapping", r.mappingController.GetMapping)
+		ledger.PUT("/mapping", r.mappingController.PutMapping)
 
 		// ScriptController
 		ledger.POST("/script", r.scriptController.PostScript)

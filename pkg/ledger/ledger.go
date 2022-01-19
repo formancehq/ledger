@@ -16,6 +16,20 @@ const (
 	targetTypeTransaction = "transaction"
 )
 
+var DefaultContracts = []core.Contract{
+	{
+		Expr: &core.ExprGte{
+			Op1: core.VariableExpr{
+				Name: "balance",
+			},
+			Op2: core.ConstantExpr{
+				Value: float64(0),
+			},
+		},
+		Account: "*", // world still an exception
+	},
+}
+
 type Ledger struct {
 	locker Locker
 	name   string
@@ -84,6 +98,17 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 	}
 
+	mapping, err := l.store.LoadMapping(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
+	}
+	contracts = append(contracts, DefaultContracts...)
+
 	for addr := range rf {
 		if addr == "world" {
 			continue
@@ -109,10 +134,25 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 
 		for asset := range checks {
-			balance, ok := balances[asset]
-
-			if !ok || balance < checks[asset] {
-				return ts, NewInsufficientFundError(asset)
+			expectedBalance := balances[asset] - checks[asset]
+			for _, contract := range contracts {
+				if contract.Match(addr) {
+					meta, err := l.store.GetMeta(ctx, "account", addr)
+					if err != nil {
+						return nil, err
+					}
+					ok := contract.Expr.Eval(core.EvalContext{
+						Variables: map[string]interface{}{
+							"balance": float64(expectedBalance),
+						},
+						Metadata: meta,
+						Asset:    asset,
+					})
+					if !ok {
+						return nil, NewInsufficientFundError(asset)
+					}
+					break
+				}
 			}
 		}
 	}
@@ -161,6 +201,14 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 	return tx, err
 }
 
+func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+	return l.store.SaveMapping(ctx, mapping)
+}
+
+func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+	return l.store.LoadMapping(ctx)
+}
+
 func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
@@ -190,8 +238,7 @@ func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (qu
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
 	account := core.Account{
-		Address:  address,
-		Contract: "default",
+		Address: address,
 	}
 
 	balances, err := l.store.AggregateBalances(ctx, address)

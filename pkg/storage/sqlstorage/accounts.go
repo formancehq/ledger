@@ -53,7 +53,6 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 
 		account := core.Account{
 			Address:  address,
-			Contract: "default",
 		}
 
 		meta, err := s.GetMeta(ctx, "account", account.Address)

@@ -128,6 +128,20 @@ func (o *openTelemetryStorage) CountMeta(ctx context.Context) (count int64, err 
 	return
 }
 
+func (o *openTelemetryStorage) LoadMapping(ctx context.Context) (m *core.Mapping, err error) {
+	o.handle(ctx, "FindContracts", func(ctx context.Context) error {
+		m, err = o.underlying.LoadMapping(ctx)
+		return err
+	})
+	return
+}
+
+func (o *openTelemetryStorage) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+	return o.handle(ctx, "SaveMapping", func(ctx context.Context) error {
+		return o.underlying.SaveMapping(ctx, mapping)
+	})
+}
+
 func (o *openTelemetryStorage) Initialize(ctx context.Context) error {
 	return o.handle(ctx, "Initialize", func(ctx context.Context) error {
 		return o.underlying.Initialize(ctx)

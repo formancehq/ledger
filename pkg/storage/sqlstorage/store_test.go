@@ -114,6 +114,10 @@ func TestStore(t *testing.T) {
 				name: "GetTransaction",
 				fn:   testGetTransaction,
 			},
+			{
+				name: "Mapping",
+				fn:   testMapping,
+			},
 		} {
 			t.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(t *testing.T) {
 				ledger := uuid.New()
@@ -477,6 +481,38 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 	assert.Equal(t, 1, cursor.PageSize)
 	assert.False(t, cursor.HasMore)
 
+}
+
+func testMapping(t *testing.T, store storage.Store) {
+
+	m := core.Mapping{
+		Contracts: []core.Contract{
+			{
+				Expr: &core.ExprGt{
+					Op1: core.VariableExpr{Name: "balance"},
+					Op2: core.ConstantExpr{Value: float64(0)},
+				},
+				Account: "orders:*",
+			},
+		},
+	}
+	err := store.SaveMapping(context.Background(), m)
+	assert.NoError(t, err)
+
+	mapping, err := store.LoadMapping(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 1)
+	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
+
+	m2 := core.Mapping{
+		Contracts: []core.Contract{},
+	}
+	err = store.SaveMapping(context.Background(), m2)
+	assert.NoError(t, err)
+
+	mapping, err = store.LoadMapping(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {
