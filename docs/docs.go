@@ -507,12 +507,7 @@ var doc = `{
             }
         },
         "controllers.BaseResponse": {
-            "type": "object",
-            "properties": {
-                "ok": {
-                    "type": "boolean"
-                }
-            }
+            "type": "object"
         },
         "core.Account": {
             "type": "object",
