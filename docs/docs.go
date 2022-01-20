@@ -54,13 +54,20 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "List All Accounts",
+                "summary": "List all accounts",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "ledger",
                         "name": "ledger",
                         "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "pagination cursor, will return accounts after given address (in descending order)",
+                        "name": "after",
+                        "in": "query",
                         "required": true
                     }
                 ],
@@ -332,7 +339,7 @@ var doc = `{
         },
         "/{ledger}/transactions": {
             "get": {
-                "description": "Get all ledger transactions\nList transactions",
+                "description": "Get all ledger transactions",
                 "consumes": [
                     "application/json"
                 ],
@@ -350,6 +357,24 @@ var doc = `{
                         "name": "ledger",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "pagination cursor, will return transactions after given txid (in descending order)",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "find transactions by reference field",
+                        "name": "reference",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "find transactions with postings involving given account, either as source or destination",
+                        "name": "account",
+                        "in": "query"
                     }
                 ],
                 "responses": {

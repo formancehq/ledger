@@ -2,8 +2,9 @@ package controllers
 
 import (
 	"errors"
-	"github.com/numary/ledger/pkg/storage"
 	"net/http"
+
+	"github.com/numary/ledger/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
@@ -26,8 +27,10 @@ func NewTransactionController() TransactionController {
 // @Description Get all ledger transactions
 // @Tags transactions
 // @Schemes
-// @Description List transactions
 // @Param ledger path string true "ledger"
+// @Param after query string false "pagination cursor, will return transactions after given txid (in descending order)"
+// @Param reference query string false "find transactions by reference field"
+// @Param account query string false "find transactions with postings involving given account, either as source or destination"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Transaction}}
