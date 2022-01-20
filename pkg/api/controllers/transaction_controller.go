@@ -191,7 +191,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 // @Param transactions body core.Transactions true "transactions"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=[]core.Transaction}
+// @Success 200 {object} controllers.BaseResponse
 // @Failure 400
 // @Router /{ledger}/transactions/batch [post]
 func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
@@ -199,15 +199,29 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 
 	var transactions core.Transactions
 	if err := c.ShouldBindJSON(&transactions); err != nil {
-		ctl.responseError(c, http.StatusBadRequest, ErrValidation, err)
+		ctl.responseError(
+			c,
+			http.StatusBadRequest,
+			ErrValidation,
+			err,
+		)
 		return
 	}
 
 	_, ret, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
 	if err != nil {
-		ctl.responseError(c, http.StatusBadRequest, ErrInternal, err)
+		ctl.responseError(
+			c,
+			http.StatusInternalServerError,
+			ErrInternal,
+			err,
+		)
 		return
 	}
 
-	ctl.response(c, http.StatusOK, ret)
+	ctl.response(
+		c,
+		http.StatusOK,
+		ret,
+	)
 }
