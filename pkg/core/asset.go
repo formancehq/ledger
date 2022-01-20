@@ -2,8 +2,8 @@ package core
 
 import "regexp"
 
-func AssetIsValid(v string) bool {
-	re := regexp.MustCompile("[A-Z]{1,8}")
+var assetRegexp = regexp.MustCompile("[A-Z]{1,16}(\\/\\d{1,6})?")
 
-	return re.Match([]byte(v))
+func AssetIsValid(v string) bool {
+	return assetRegexp.Match([]byte(v))
 }

@@ -84,6 +84,15 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 			if p.Amount < 0 {
 				return ts, NewValidationError("negative amount")
 			}
+			if !core.ValidateAddress(p.Source) {
+				return nil, NewValidationError("invalid source address")
+			}
+			if !core.ValidateAddress(p.Destination) {
+				return nil, NewValidationError("invalid destination address")
+			}
+			if !core.AssetIsValid(p.Asset) {
+				return nil, NewValidationError("invalid asset")
+			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]int64{}
 			}
