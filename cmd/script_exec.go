@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"regexp"
+
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"io/ioutil"
-	"net/http"
-	"regexp"
 )
 
 func NewScriptExec() *cobra.Command {
@@ -61,10 +62,10 @@ func NewScriptExec() *cobra.Command {
 				logrus.Fatal(err)
 			}
 
-			if result.Ok {
-				fmt.Println("Script ran successfully ✅")
-			} else {
+			if result.Err != "" {
 				logrus.Fatal(result.Err)
+			} else {
+				fmt.Println("Script ran successfully ✅")
 			}
 		},
 	}

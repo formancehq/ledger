@@ -76,11 +76,22 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 	}
 
 	c, err := m.Execute()
+
 	if err != nil {
 		return fmt.Errorf("script failed: %v", err)
 	}
-	if c == vm.EXIT_FAIL {
-		return errors.New("script exited with error code EXIT_FAIL")
+
+	if c != vm.EXIT_OK {
+		switch c {
+		case vm.EXIT_FAIL:
+			return errors.New("script exited with error code EXIT_FAIL")
+		case vm.EXIT_FAIL_INVALID:
+			return errors.New("internal error: compiled script was invalid")
+		case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
+			return errors.New("account had insufficient funds")
+		default:
+			return errors.New("script execution failed")
+		}
 	}
 
 	t := core.Transaction{
