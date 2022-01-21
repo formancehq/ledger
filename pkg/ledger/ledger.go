@@ -85,8 +85,8 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 	}
 	contracts = append(contracts, DefaultContracts...)
 
-	aggregatedBalances := make(map[string]map[string]int64)
 	ret := make([]CommitTransactionResult, 0)
+	aggregatedBalances := make(map[string]map[string]int64)
 	hasError := false
 
 	txs := make([]core.Transaction, 0)
