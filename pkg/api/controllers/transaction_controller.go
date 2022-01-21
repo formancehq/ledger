@@ -77,7 +77,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.Transaction
 	c.ShouldBind(&t)
 
-	ts, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
+	_, ts, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
 	if err != nil {
 		switch eerr := err.(type) {
 		case *storage.Error:
@@ -242,7 +242,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	ret, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
+	_, ret, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
 	if err != nil {
 		ctl.responseError(c, http.StatusBadRequest, err)
 		return
