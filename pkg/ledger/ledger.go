@@ -92,10 +92,6 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 txLoop:
 	for i := range ts {
 
-		if len(ts[i].Postings) == 0 {
-			return nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
-		}
-
 		ts[i].ID = count + int64(i)
 		ts[i].Timestamp = timestamp
 
@@ -108,6 +104,11 @@ txLoop:
 				Err:         err,
 			})
 			hasError = true
+		}
+
+		if len(ts[i].Postings) == 0 {
+			commitError(NewTransactionCommitError(i, NewValidationError("transaction has no postings")))
+			continue txLoop
 		}
 
 		rf := map[string]map[string]int64{}
