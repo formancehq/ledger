@@ -140,7 +140,7 @@ func TestTransaction(t *testing.T) {
 
 			logrus.Debugln(i)
 
-			_, err := l.Commit(context.Background(), batch)
+			_, _, err := l.Commit(context.Background(), batch)
 
 			if err != nil {
 				t.Error(err)
@@ -203,7 +203,7 @@ func TestTransactionWithIntermediateWrongState(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), batch)
+		_, _, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
 		assert.IsType(t, new(CommitError), err)
 		assert.Equal(t, 1, err.(*CommitError).TXIndex)
@@ -215,7 +215,7 @@ func TestTransactionWithIntermediateWrongState(t *testing.T) {
 
 func TestBalance(t *testing.T) {
 	with(func(l *Ledger) {
-		_, err := l.Commit(context.Background(), []core.Transaction{
+		_, _, err := l.Commit(context.Background(), []core.Transaction{
 			{
 				Postings: []core.Posting{
 					{
@@ -250,13 +250,13 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.Transaction{tx})
+		_, _, err := l.Commit(context.Background(), []core.Transaction{tx})
 
 		if err != nil {
 			t.Error(err)
 		}
 
-		_, err = l.Commit(context.Background(), []core.Transaction{tx})
+		_, _, err = l.Commit(context.Background(), []core.Transaction{tx})
 
 		if err == nil {
 			t.Fail()
@@ -473,7 +473,7 @@ func TestRevertTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		txs, err := l.Commit(context.Background(), []core.Transaction{{
+		_, txs, err := l.Commit(context.Background(), []core.Transaction{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{

@@ -98,6 +98,6 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 		Postings: m.Postings,
 	}
 
-	_, err = l.Commit(ctx, []core.Transaction{t})
+	_, _, err = l.Commit(ctx, []core.Transaction{t})
 	return err
 }
