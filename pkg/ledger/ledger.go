@@ -60,51 +60,11 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 	defer unlock(ctx)
 
 	count, _ := l.store.CountTransactions(ctx)
-	rf := map[string]map[string]int64{}
 	timestamp := time.Now().Format(time.RFC3339)
 
 	last, err := l.store.LastTransaction(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	for i := range ts {
-
-		if len(ts[i].Postings) == 0 {
-			return ts, NewValidationError("transaction has no postings")
-		}
-
-		ts[i].ID = count + int64(i)
-		ts[i].Timestamp = timestamp
-
-		ts[i].Hash = core.Hash(last, &ts[i])
-		last = &ts[i]
-
-		for _, p := range ts[i].Postings {
-			if p.Amount < 0 {
-				return ts, NewValidationError("negative amount")
-			}
-			if !core.ValidateAddress(p.Source) {
-				return nil, NewValidationError("invalid source address")
-			}
-			if !core.ValidateAddress(p.Destination) {
-				return nil, NewValidationError("invalid destination address")
-			}
-			if !core.AssetIsValid(p.Asset) {
-				return nil, NewValidationError("invalid asset")
-			}
-			if _, ok := rf[p.Source]; !ok {
-				rf[p.Source] = map[string]int64{}
-			}
-
-			rf[p.Source][p.Asset] += p.Amount
-
-			if _, ok := rf[p.Destination]; !ok {
-				rf[p.Destination] = map[string]int64{}
-			}
-
-			rf[p.Destination][p.Asset] -= p.Amount
-		}
 	}
 
 	mapping, err := l.store.LoadMapping(ctx)
@@ -118,50 +78,83 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 	}
 	contracts = append(contracts, DefaultContracts...)
 
-	for addr := range rf {
-		if addr == "world" {
-			continue
+	aggregatedBalances := make(map[string]map[string]int64)
+	for i := range ts {
+
+		if len(ts[i].Postings) == 0 {
+			return ts, NewCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
-		checks := map[string]int64{}
+		ts[i].ID = count + int64(i)
+		ts[i].Timestamp = timestamp
 
-		for asset := range rf[addr] {
-			if rf[addr][asset] <= 0 {
+		ts[i].Hash = core.Hash(last, &ts[i])
+		last = &ts[i]
+
+		rf := map[string]map[string]int64{}
+		for _, p := range ts[i].Postings {
+			if p.Amount < 0 {
+				return ts, NewCommitError(i, NewValidationError("negative amount"))
+			}
+			if !core.ValidateAddress(p.Source) {
+				return nil, NewCommitError(i, NewValidationError("invalid source address"))
+			}
+			if !core.ValidateAddress(p.Destination) {
+				return nil, NewCommitError(i, NewValidationError("invalid destination address"))
+			}
+			if !core.AssetIsValid(p.Asset) {
+				return nil, NewCommitError(i, NewValidationError("invalid asset"))
+			}
+			if _, ok := rf[p.Source]; !ok {
+				rf[p.Source] = map[string]int64{}
+			}
+
+			rf[p.Source][p.Asset] += p.Amount
+
+			if _, ok := rf[p.Destination]; !ok {
+				rf[p.Destination] = map[string]int64{}
+			}
+
+			rf[p.Destination][p.Asset] -= p.Amount
+		}
+
+		// Check balances
+		for addr := range rf {
+			if addr == "world" {
 				continue
 			}
 
-			checks[asset] = rf[addr][asset]
-		}
-
-		if len(checks) == 0 {
-			continue
-		}
-
-		balances, err := l.store.AggregateBalances(ctx, addr)
-		if err != nil {
-			return ts, err
-		}
-
-		for asset := range checks {
-			expectedBalance := balances[asset] - checks[asset]
-			for _, contract := range contracts {
-				if contract.Match(addr) {
-					meta, err := l.store.GetMeta(ctx, "account", addr)
-					if err != nil {
-						return nil, err
-					}
-					ok := contract.Expr.Eval(core.EvalContext{
-						Variables: map[string]interface{}{
-							"balance": float64(expectedBalance),
-						},
-						Metadata: meta,
-						Asset:    asset,
-					})
-					if !ok {
-						return nil, NewInsufficientFundError(asset)
-					}
-					break
+			balances, ok := aggregatedBalances[addr]
+			if !ok {
+				balances, err = l.store.AggregateBalances(ctx, addr)
+				if err != nil {
+					return ts, err
 				}
+				aggregatedBalances[addr] = balances
+			}
+
+			for asset, amount := range rf[addr] {
+				expectedBalance := balances[asset] - amount
+				for _, contract := range contracts {
+					if contract.Match(addr) {
+						meta, err := l.store.GetMeta(ctx, "account", addr)
+						if err != nil {
+							return nil, err
+						}
+						ok := contract.Expr.Eval(core.EvalContext{
+							Variables: map[string]interface{}{
+								"balance": float64(expectedBalance),
+							},
+							Metadata: meta,
+							Asset:    asset,
+						})
+						if !ok {
+							return nil, NewCommitError(i, NewInsufficientFundError(asset))
+						}
+						break
+					}
+				}
+				balances[asset] = expectedBalance
 			}
 		}
 	}

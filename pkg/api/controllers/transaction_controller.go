@@ -69,6 +69,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
+// @Failure 400
 // @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -86,20 +87,22 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			default:
 				ctl.responseError(c, http.StatusInternalServerError, err)
 			}
-		case *ledger.InsufficientFundError:
-			ctl.responseError(c, http.StatusBadRequest, err)
-		case *ledger.ValidationError:
-			ctl.responseError(c, http.StatusBadRequest, err)
+		case *ledger.CommitError:
+			switch eerr.Err.(type) {
+			case *ledger.InsufficientFundError:
+				ctl.responseError(c, http.StatusBadRequest, err)
+			case *ledger.ValidationError:
+				ctl.responseError(c, http.StatusBadRequest, err)
+			default:
+				ctl.responseError(c, http.StatusInternalServerError, err)
+
+			}
 		default:
 			ctl.responseError(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		ts,
-	)
+	ctl.response(c, http.StatusOK, ts)
 }
 
 // GetTransaction godoc

@@ -1,6 +1,25 @@
 package ledger
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/pkg/errors"
+)
+
+type CommitError struct {
+	TXIndex int   `json:"index"`
+	Err     error `json:"error"`
+}
+
+func (e CommitError) Error() string {
+	return errors.Wrapf(e.Err, "processing tx %d", e.TXIndex).Error()
+}
+
+func NewCommitError(txIndex int, err error) *CommitError {
+	return &CommitError{
+		TXIndex: txIndex,
+		Err:     err,
+	}
+}
 
 type InsufficientFundError struct {
 	Asset string
@@ -11,7 +30,9 @@ func (e InsufficientFundError) Error() string {
 }
 
 func NewInsufficientFundError(asset string) *InsufficientFundError {
-	return &InsufficientFundError{Asset: asset}
+	return &InsufficientFundError{
+		Asset: asset,
+	}
 }
 
 type ValidationError struct {

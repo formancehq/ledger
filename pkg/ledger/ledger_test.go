@@ -168,6 +168,51 @@ func TestTransaction(t *testing.T) {
 	})
 }
 
+func TestTransactionWithIntermediateWrongState(t *testing.T) {
+	with(func(l *Ledger) {
+		batch := []core.Transaction{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player2",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "player",
+						Destination: "game",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+		}
+
+		_, err := l.Commit(context.Background(), batch)
+		assert.Error(t, err)
+		assert.IsType(t, new(CommitError), err)
+		assert.Equal(t, 1, err.(*CommitError).TXIndex)
+		assert.IsType(t, new(InsufficientFundError), err.(*CommitError).Err)
+
+		l.Close(context.Background())
+	})
+}
+
 func TestBalance(t *testing.T) {
 	with(func(l *Ledger) {
 		_, err := l.Commit(context.Background(), []core.Transaction{
