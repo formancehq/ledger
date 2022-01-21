@@ -36,15 +36,15 @@ func (s *cachedStateStorage) LastMetaID(ctx context.Context) (int64, error) {
 	return lastMetaID, nil
 }
 
-func (s *cachedStateStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) error {
-	err := s.Store.SaveTransactions(ctx, txs)
+func (s *cachedStateStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) (map[int]error, error) {
+	ret, err := s.Store.SaveTransactions(ctx, txs)
 	if err != nil {
-		return err
+		return ret, err
 	}
-	if len(txs) > 0 {
+	if len(txs) > 0 && len(ret) == 0 {
 		s.lastTransaction = &txs[len(txs)-1]
 	}
-	return nil
+	return ret, nil
 }
 
 func (s *cachedStateStorage) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {

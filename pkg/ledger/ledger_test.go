@@ -168,7 +168,7 @@ func TestTransaction(t *testing.T) {
 	})
 }
 
-func TestTransactionWithIntermediateWrongState(t *testing.T) {
+func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 	with(func(l *Ledger) {
 		batch := []core.Transaction{
 			{
@@ -203,13 +203,67 @@ func TestTransactionWithIntermediateWrongState(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), batch)
+		_, result, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
-		assert.IsType(t, new(CommitError), err)
-		assert.Equal(t, 1, err.(*CommitError).TXIndex)
-		assert.IsType(t, new(InsufficientFundError), err.(*CommitError).Err)
+		assert.Equal(t, ErrCommitError, err)
+		assert.Len(t, result, 3)
+		assert.Nil(t, result[0].Err)
+		assert.Nil(t, result[2].Err)
+		assert.NotNil(t, result[1].Err)
+		assert.IsType(t, new(TransactionCommitError), result[1].Err)
+		assert.Equal(t, 1, result[1].Err.TXIndex)
+		assert.IsType(t, new(InsufficientFundError), result[1].Err.Err)
+	})
+}
 
-		l.Close(context.Background())
+func TestTransactionBatchWithConflictingReference(t *testing.T) {
+	with(func(l *Ledger) {
+		batch := []core.Transaction{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref1",
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "player",
+						Destination: "game",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref2",
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref1",
+			},
+		}
+
+		_, result, err := l.Commit(context.Background(), batch)
+		assert.Error(t, err)
+		assert.Equal(t, ErrCommitError, err)
+		assert.Len(t, result, 3)
+		assert.Nil(t, result[0].Err)
+		assert.Nil(t, result[1].Err)
+		assert.NotNil(t, result[2].Err)
+		assert.IsType(t, new(TransactionCommitError), result[2].Err)
+		assert.Equal(t, 2, result[2].Err.TXIndex)
+		assert.IsType(t, new(ConflictError), result[2].Err.Err)
 	})
 }
 

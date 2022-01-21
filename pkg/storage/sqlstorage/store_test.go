@@ -171,26 +171,30 @@ func testSaveTransaction(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 }
 
 func testDuplicatedTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
+			ID: 1,
 			Postings: []core.Posting{
 				{},
 			},
 			Reference: "foo",
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
-	err = store.SaveTransactions(context.Background(), txs)
+	txs[0].ID = 2
+	ret, err := store.SaveTransactions(context.Background(), txs)
 	assert.Error(t, err)
-	assert.IsType(t, &storage.Error{}, err)
-	assert.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
+	assert.Equal(t, storage.ErrAborted, err)
+	assert.Len(t, ret, 1)
+	assert.IsType(t, &storage.Error{}, ret[0])
+	assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code)
 }
 
 func testSaveMeta(t *testing.T, store storage.Store) {
@@ -234,7 +238,7 @@ func testLastTransaction(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	lastTx, err := store.LastTransaction(context.Background())
@@ -274,7 +278,7 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	countAccounts, err := store.CountAccounts(context.Background())
@@ -297,7 +301,7 @@ func testAggregateBalances(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	balances, err := store.AggregateBalances(context.Background(), "central_bank")
@@ -321,7 +325,7 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	volumes, err := store.AggregateVolumes(context.Background(), "central_bank")
@@ -346,7 +350,7 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	accounts, err := store.FindAccounts(context.Background(), query.Query{
@@ -385,7 +389,7 @@ func testCountMeta(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	err = store.SaveMeta(context.Background(), 1, time.Now().Format(time.RFC3339),
@@ -415,7 +419,7 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	countTransactions, err := store.CountTransactions(context.Background())
@@ -452,7 +456,7 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 			Reference: "tx2",
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	cursor, err := store.FindTransactions(context.Background(), query.Query{
@@ -546,7 +550,7 @@ func testGetTransaction(t *testing.T, store storage.Store) {
 			Metadata:  core.Metadata{},
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	tx, err := store.GetTransaction(context.Background(), "1")

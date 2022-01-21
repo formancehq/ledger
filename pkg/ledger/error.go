@@ -5,17 +5,19 @@ import (
 	"github.com/pkg/errors"
 )
 
-type CommitError struct {
+var ErrCommitError = errors.New("commit error")
+
+type TransactionCommitError struct {
 	TXIndex int   `json:"index"`
 	Err     error `json:"error"`
 }
 
-func (e CommitError) Error() string {
+func (e TransactionCommitError) Error() string {
 	return errors.Wrapf(e.Err, "processing tx %d", e.TXIndex).Error()
 }
 
-func NewCommitError(txIndex int, err error) *CommitError {
-	return &CommitError{
+func NewTransactionCommitError(txIndex int, err error) *TransactionCommitError {
+	return &TransactionCommitError{
 		TXIndex: txIndex,
 		Err:     err,
 	}
@@ -46,5 +48,19 @@ func (v ValidationError) Error() string {
 func NewValidationError(msg string) *ValidationError {
 	return &ValidationError{
 		Msg: msg,
+	}
+}
+
+type ConflictError struct {
+	Reference string
+}
+
+func (e ConflictError) Error() string {
+	return fmt.Sprintf("conflict error on reference '%s'", e.Reference)
+}
+
+func NewConflictError(ref string) *ConflictError {
+	return &ConflictError{
+		Reference: ref,
 	}
 }

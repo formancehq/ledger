@@ -4,8 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/numary/ledger/pkg/storage"
-
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -20,6 +18,19 @@ type TransactionController struct {
 // NewTransactionController -
 func NewTransactionController() TransactionController {
 	return TransactionController{}
+}
+
+func (ctl *TransactionController) handleCommitError(c *gin.Context, err *ledger.TransactionCommitError) {
+	switch err.Err.(type) {
+	case *ledger.ConflictError:
+		ctl.responseError(c, http.StatusConflict, err)
+	case *ledger.InsufficientFundError:
+		ctl.responseError(c, http.StatusBadRequest, err)
+	case *ledger.ValidationError:
+		ctl.responseError(c, http.StatusBadRequest, err)
+	default:
+		ctl.responseError(c, http.StatusInternalServerError, err)
+	}
 }
 
 // GetTransactions godoc
@@ -77,32 +88,18 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.Transaction
 	c.ShouldBind(&t)
 
-	_, ts, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
+	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
 	if err != nil {
-		switch eerr := err.(type) {
-		case *storage.Error:
-			switch eerr.Code {
-			case storage.ConstraintFailed:
-				ctl.responseError(c, http.StatusConflict, err)
-			default:
-				ctl.responseError(c, http.StatusInternalServerError, err)
-			}
-		case *ledger.CommitError:
-			switch eerr.Err.(type) {
-			case *ledger.InsufficientFundError:
-				ctl.responseError(c, http.StatusBadRequest, err)
-			case *ledger.ValidationError:
-				ctl.responseError(c, http.StatusBadRequest, err)
-			default:
-				ctl.responseError(c, http.StatusInternalServerError, err)
-
-			}
+		switch err {
+		case ledger.ErrCommitError:
+			tx := result[0]
+			ctl.handleCommitError(c, tx.Err)
 		default:
 			ctl.responseError(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, ts)
+	ctl.response(c, http.StatusOK, result[0])
 }
 
 // GetTransaction godoc
@@ -158,28 +155,15 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
-		switch eerr := err.(type) {
-		case *storage.Error:
-			switch eerr.Code {
-			case storage.ConstraintFailed:
-				ctl.responseError(c, http.StatusConflict, err)
-			default:
-				ctl.responseError(c, http.StatusInternalServerError, err)
-			}
-		case *ledger.InsufficientFundError:
-			ctl.responseError(c, http.StatusBadRequest, err)
-		case *ledger.ValidationError:
-			ctl.responseError(c, http.StatusBadRequest, err)
+		switch ee := err.(type) {
+		case *ledger.TransactionCommitError:
+			ctl.handleCommitError(c, ee)
 		default:
 			ctl.responseError(c, http.StatusInternalServerError, err)
 		}
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		nil,
-	)
+	ctl.response(c, http.StatusOK, nil)
 }
 
 // PostTransactionMetadata godoc
