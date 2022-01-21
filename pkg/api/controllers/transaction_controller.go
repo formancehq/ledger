@@ -85,7 +85,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.TransactionData
 	c.ShouldBind(&t)
 
-	ts, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
+	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		switch err {
 		case ledger.ErrCommitError:
@@ -96,7 +96,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, ts)
+	ctl.response(c, http.StatusOK, result[0])
 }
 
 // GetTransaction godoc
