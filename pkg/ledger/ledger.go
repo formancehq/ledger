@@ -142,7 +142,6 @@ txLoop:
 			rf[p.Destination][p.Asset] -= p.Amount
 		}
 
-		// Check balances
 		for addr := range rf {
 			if addr == "world" {
 				continue
