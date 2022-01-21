@@ -75,7 +75,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Param transaction body core.TransactionData true "transaction"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=core.Transaction}
+// @Success 200 {object} controllers.BaseResponse{data=core.Transaction[]}
 // @Failure 400 {object} controllers.ErrorResponse
 // @Failure 409 {object} controllers.ErrorResponse
 // @Router /{ledger}/transactions [post]
@@ -85,7 +85,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.TransactionData
 	c.ShouldBind(&t)
 
-	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
+	ts, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		switch err {
 		case ledger.ErrCommitError:
@@ -96,7 +96,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, result[0])
+	ctl.response(c, http.StatusOK, ts)
 }
 
 // GetTransaction godoc
