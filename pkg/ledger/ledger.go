@@ -54,7 +54,12 @@ func (l *Ledger) Close(ctx context.Context) error {
 
 type Balances map[string]map[string]int64
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, []core.Transaction, error) {
+type CommitTransactionResult struct {
+	core.Transaction
+	Err *TransactionCommitError `json:",omitempty"`
+}
+
+func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to acquire lock")
@@ -81,10 +86,14 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 	contracts = append(contracts, DefaultContracts...)
 
 	aggregatedBalances := make(map[string]map[string]int64)
+	ret := make([]CommitTransactionResult, 0)
+	hasError := false
+
+txLoop:
 	for i := range ts {
 
 		if len(ts[i].Postings) == 0 {
-			return nil, ts, NewCommitError(i, NewValidationError("transaction has no postings"))
+			return nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
 		ts[i].ID = count + int64(i)
@@ -93,19 +102,31 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 		ts[i].Hash = core.Hash(last, &ts[i])
 		last = &ts[i]
 
+		commitError := func(err *TransactionCommitError) {
+			ret = append(ret, CommitTransactionResult{
+				Transaction: ts[i],
+				Err:         err,
+			})
+			hasError = true
+		}
+
 		rf := map[string]map[string]int64{}
 		for _, p := range ts[i].Postings {
 			if p.Amount < 0 {
-				return nil, ts, NewCommitError(i, NewValidationError("negative amount"))
+				commitError(NewTransactionCommitError(i, NewValidationError("negative amount")))
+				continue txLoop
 			}
 			if !core.ValidateAddress(p.Source) {
-				return nil, nil, NewCommitError(i, NewValidationError("invalid source address"))
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid source address")))
+				continue txLoop
 			}
 			if !core.ValidateAddress(p.Destination) {
-				return nil, nil, NewCommitError(i, NewValidationError("invalid destination address"))
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid destination address")))
+				continue txLoop
 			}
 			if !core.AssetIsValid(p.Asset) {
-				return nil, nil, NewCommitError(i, NewValidationError("invalid asset"))
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid asset")))
+				continue txLoop
 			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]int64{}
@@ -151,7 +172,8 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 							Asset:    asset,
 						})
 						if !ok {
-							return nil, nil, NewCommitError(i, NewInsufficientFundError(asset))
+							commitError(NewTransactionCommitError(i, NewInsufficientFundError(asset)))
+							continue txLoop
 						}
 						break
 					}
@@ -159,14 +181,38 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 				balances[asset] = expectedBalance
 			}
 		}
+		ret = append(ret, CommitTransactionResult{
+			Transaction: ts[i],
+		})
 	}
 
-	err = l.store.SaveTransactions(ctx, ts)
+	if hasError {
+		return nil, ret, ErrCommitError
+	}
+
+	commitErrors, err := l.store.SaveTransactions(ctx, ts)
 	if err != nil {
-		return nil, nil, err
+		switch err {
+		case storage.ErrAborted:
+			for ind, err := range commitErrors {
+				switch eerr := err.(type) {
+				case *storage.Error:
+					switch eerr.Code {
+					case storage.ConstraintFailed:
+						ret[ind].Err = NewTransactionCommitError(ind, NewConflictError(ts[ind].Reference))
+					default:
+						return nil, nil, err
+					}
+				default:
+					return nil, nil, err
+				}
+			}
+			return nil, ret, ErrCommitError
+		default:
+			return nil, nil, err
+		}
 	}
-
-	return aggregatedBalances, ts, err
+	return aggregatedBalances, ret, nil
 }
 
 func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {
@@ -227,7 +273,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(lastTransaction.ID))
-	_, _, err = l.Commit(ctx, []core.Transaction{rt})
+	_, ret, err := l.Commit(ctx, []core.Transaction{rt})
+	switch err {
+	case ErrCommitError:
+		return ret[0].Err
+	default:
+		return err
+	}
 
 	return err
 }

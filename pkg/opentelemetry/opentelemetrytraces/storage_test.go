@@ -90,7 +90,7 @@ func TestStore(t *testing.T) {
 
 func testSaveTransaction(t *testing.T, store storage.Store) {
 	txs := make([]core.Transaction, 0)
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 }
 

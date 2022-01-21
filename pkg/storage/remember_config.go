@@ -10,7 +10,7 @@ type rememberConfigStorage struct {
 	Store
 }
 
-func (s *rememberConfigStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) error {
+func (s *rememberConfigStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) (map[int]error, error) {
 	defer config.Remember(s.Name())
 	return s.Store.SaveTransactions(ctx, txs)
 }
