@@ -199,3 +199,40 @@ func TestNotFoundTransaction(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 	})
 }
+
+func TestGetTransactions(t *testing.T) {
+	internal.RunTest(t, func(api *api.API) {
+		rsp := internal.PostTransaction(t, api, core.Transaction{
+			Postings: core.Postings{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      1000,
+					Asset:       "USD",
+				},
+			},
+		})
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		rsp = internal.PostTransaction(t, api, core.Transaction{
+			Postings: core.Postings{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      1000,
+					Asset:       "USD",
+				},
+			},
+		})
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		rsp = internal.GetTransactions(api)
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Transaction{})
+
+		assert.Len(t, cursor.Data, 2)
+		assert.False(t, cursor.HasMore)
+		assert.EqualValues(t, 2, cursor.Total)
+	})
+}
