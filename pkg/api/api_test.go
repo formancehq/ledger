@@ -86,6 +86,7 @@ func TestCommitTransaction(t *testing.T) {
 		name               string
 		transactions       []core.Transaction
 		expectedStatusCode int
+		expectedErrorCode  string
 	}
 	testCases := []testCase{
 		{
@@ -112,10 +113,12 @@ func TestCommitTransaction(t *testing.T) {
 					Postings: core.Postings{},
 				},
 			},
+			expectedErrorCode: controllers.ErrValidation,
 		},
 		{
 			name:               "negative-amount",
 			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrValidation,
 			transactions: []core.Transaction{
 				{
 					Postings: core.Postings{
@@ -132,6 +135,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "wrong-asset",
 			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrValidation,
 			transactions: []core.Transaction{
 				{
 					Postings: core.Postings{
@@ -148,6 +152,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "bad-address",
 			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrValidation,
 			transactions: []core.Transaction{
 				{
 					Postings: core.Postings{
@@ -164,6 +169,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "missing-funds",
 			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrInsufficientFund,
 			transactions: []core.Transaction{
 				{
 					Postings: core.Postings{
@@ -180,6 +186,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "reference-conflict",
 			expectedStatusCode: http.StatusConflict,
+			expectedErrorCode:  controllers.ErrConflict,
 			transactions: []core.Transaction{
 				{
 					Postings: core.Postings{

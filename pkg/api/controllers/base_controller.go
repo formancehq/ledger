@@ -10,7 +10,7 @@ import (
 // Controllers struct
 type BaseController struct{}
 
-type BaseResponse struct {}
+type BaseResponse struct{}
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
 	if data == nil {
@@ -27,11 +27,15 @@ func (ctl *BaseController) response(c *gin.Context, status int, data interface{}
 	}
 }
 
-func (ctl *BaseController) responseError(c *gin.Context, status int, err error) {
+type Error struct {
+	ErrorCode    string `json:"error_code"`
+	ErrorMessage string `json:"error_message"`
+}
+
+func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
 	c.Abort()
-	c.AbortWithStatusJSON(status, gin.H{
-		"error":         true,
-		"error_code":    status,
-		"error_message": err.Error(),
+	c.AbortWithStatusJSON(status, Error{
+		ErrorCode:    code,
+		ErrorMessage: err.Error(),
 	})
 }

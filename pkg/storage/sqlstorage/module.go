@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"os"
@@ -79,7 +80,7 @@ func TestingModule() fx.Option {
 			StorageDriver: "sqlite",
 			SQLiteConfig: &SQLiteConfig{
 				Dir:    os.TempDir(),
-				DBName: "testing",
+				DBName: uuid.New(),
 			},
 		}),
 	)

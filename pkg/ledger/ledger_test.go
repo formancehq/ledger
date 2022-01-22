@@ -275,7 +275,7 @@ func TestTransactionExpectedBalances(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "player",
-						Asset:       "TOK1",
+						Asset:       "USD",
 						Amount:      int64(100),
 					},
 				},
@@ -285,7 +285,7 @@ func TestTransactionExpectedBalances(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "player",
-						Asset:       "TOK2",
+						Asset:       "EUR",
 						Amount:      int64(100),
 					},
 				},
@@ -295,7 +295,7 @@ func TestTransactionExpectedBalances(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "player2",
-						Asset:       "TOK2",
+						Asset:       "EUR",
 						Amount:      int64(100),
 					},
 				},
@@ -305,7 +305,7 @@ func TestTransactionExpectedBalances(t *testing.T) {
 					{
 						Source:      "player",
 						Destination: "player2",
-						Asset:       "TOK2",
+						Asset:       "EUR",
 						Amount:      int64(50),
 					},
 				},
@@ -317,11 +317,11 @@ func TestTransactionExpectedBalances(t *testing.T) {
 
 		assert.EqualValues(t, balances, Balances{
 			"player": map[string]int64{
-				"TOK1": 100,
-				"TOK2": 50,
+				"USD": 100,
+				"EUR": 50,
 			},
 			"player2": map[string]int64{
-				"TOK2": 150,
+				"EUR": 150,
 			},
 		})
 
