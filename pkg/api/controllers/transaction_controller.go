@@ -23,13 +23,13 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) handleCommitError(c *gin.Context, err *ledger.TransactionCommitError) {
 	switch err.Err.(type) {
 	case *ledger.ConflictError:
-		ctl.responseError(c, http.StatusConflict, err)
+		ctl.responseError(c, http.StatusConflict, ErrConflict, err)
 	case *ledger.InsufficientFundError:
-		ctl.responseError(c, http.StatusBadRequest, err)
+		ctl.responseError(c, http.StatusBadRequest, ErrInsufficientFund, err)
 	case *ledger.ValidationError:
-		ctl.responseError(c, http.StatusBadRequest, err)
+		ctl.responseError(c, http.StatusBadRequest, ErrValidation, err)
 	default:
-		ctl.responseError(c, http.StatusInternalServerError, err)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 	}
 }
 
@@ -55,11 +55,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		query.Account(c.Query("account")),
 	)
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
 	ctl.response(
@@ -95,7 +91,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			tx := result[0]
 			ctl.handleCommitError(c, tx.Err)
 		default:
-			ctl.responseError(c, http.StatusInternalServerError, err)
+			ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		}
 		return
 	}
@@ -118,26 +114,14 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
 	if tx.Postings == nil {
-		ctl.responseError(
-			c,
-			http.StatusNotFound,
-			errors.New("transaction not found"),
-		)
+		ctl.responseError(c, http.StatusNotFound, ErrNotFound, errors.New("transaction not found"))
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		tx,
-	)
+	ctl.response(c, http.StatusOK, tx)
 }
 
 // RevertTransaction godoc
@@ -159,7 +143,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		case *ledger.TransactionCommitError:
 			ctl.handleCommitError(c, ee)
 		default:
-			ctl.responseError(c, http.StatusInternalServerError, err)
+			ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		}
 		return
 	}
@@ -190,18 +174,10 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		m,
 	)
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		nil,
-	)
+	ctl.response(c, http.StatusOK, nil)
 }
 
 // PostTransactionsBatch godoc
