@@ -145,7 +145,7 @@ func TestCommitTransaction(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		internal.Run(t, tc.name, func(api *api.API) {
+		internal.RunSubTest(t, tc.name, func(api *api.API) {
 			for i := 0; i < len(tc.transactions)-1; i++ {
 				rsp := internal.PostTransaction(t, api, tc.transactions[i])
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -154,4 +154,48 @@ func TestCommitTransaction(t *testing.T) {
 			assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
 		})
 	}
+}
+
+func TestGetTransaction(t *testing.T) {
+	internal.RunTest(t, func(api *api.API) {
+		rsp := internal.PostTransaction(t, api, core.Transaction{
+			Postings: core.Postings{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      1000,
+					Asset:       "USD",
+				},
+			},
+			Reference: "ref",
+		})
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		rsp = internal.GetTransaction(api, 0)
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		ret := core.Transaction{}
+		internal.DecodeResponse(t, rsp.Body, &ret)
+
+		assert.EqualValues(t, ret.Postings, core.Postings{
+			{
+				Source:      "world",
+				Destination: "central_bank",
+				Amount:      1000,
+				Asset:       "USD",
+			},
+		})
+		assert.EqualValues(t, 0, ret.ID)
+		assert.EqualValues(t, core.Metadata{}, ret.Metadata)
+		assert.EqualValues(t, "ref", ret.Reference)
+		assert.NotEmpty(t, ret.Hash)
+		assert.NotEmpty(t, ret.Timestamp)
+	})
+}
+
+func TestNotFoundTransaction(t *testing.T) {
+	internal.RunTest(t, func(api *api.API) {
+		rsp := internal.GetTransaction(api, 0)
+		assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
+	})
 }

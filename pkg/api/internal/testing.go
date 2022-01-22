@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/core"
@@ -18,21 +19,43 @@ import (
 	"testing"
 )
 
-func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
+func Encode(t *testing.T, v interface{}) []byte {
 	data, err := json.Marshal(v)
 	assert.NoError(t, err)
-	return bytes.NewBuffer(data)
+	return data
 }
 
-func NewRequest(t *testing.T, method, path string, body io.Reader) (*http.Request, *httptest.ResponseRecorder) {
+func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
+	return bytes.NewBuffer(Encode(t, v))
+}
+
+func DecodeResponse(t *testing.T, reader io.Reader, v interface{}) {
+	type Response struct {
+		Data json.RawMessage `json:"data"`
+	}
+	res := Response{}
+	err := json.NewDecoder(reader).Decode(&res)
+	assert.NoError(t, err)
+
+	err = json.Unmarshal(res.Data, v)
+	assert.NoError(t, err)
+}
+
+func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/quickstart/transactions", body)
+	req := httptest.NewRequest(method, path, body)
 	req.Header.Set("Content-Type", "application/json")
 	return req, rec
 }
 
 func PostTransaction(t *testing.T, handler http.Handler, tx core.Transaction) *httptest.ResponseRecorder {
-	req, rec := NewRequest(t, http.MethodPost, "/quickstart/transactions", Buffer(t, tx))
+	req, rec := NewRequest(http.MethodPost, "/quickstart/transactions", Buffer(t, tx))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func GetTransaction(handler http.Handler, id int64) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/quickstart/transactions/%d", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -64,8 +87,12 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}
 }
 
-func Run(t *testing.T, name string, fn interface{}) {
+func RunSubTest(t *testing.T, name string, fn interface{}) {
 	t.Run(name, func(t *testing.T) {
-		WithNewModule(t, fx.Invoke(fn))
+		RunTest(t, fn)
 	})
+}
+
+func RunTest(t *testing.T, fn interface{}) {
+	WithNewModule(t, fx.Invoke(fn))
 }

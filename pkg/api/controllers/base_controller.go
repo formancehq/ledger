@@ -10,19 +10,22 @@ import (
 // Controllers struct
 type BaseController struct{}
 
-type BaseResponse struct{}
+type BaseResponse struct {
+	Cursor interface{} `json:"cursor,omitempty"`
+	Data   interface{} `json:"data,omitempty"`
+}
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
 	if data == nil {
 		c.Status(status)
 	}
 	if reflect.TypeOf(data) == reflect.TypeOf(query.Cursor{}) {
-		c.JSON(status, gin.H{
-			"cursor": data,
+		c.JSON(status, BaseResponse{
+			Cursor: data,
 		})
 	} else {
-		c.JSON(status, gin.H{
-			"data": data,
+		c.JSON(status, BaseResponse{
+			Data: data,
 		})
 	}
 }
