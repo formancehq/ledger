@@ -8,6 +8,7 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/viper"
@@ -29,7 +30,7 @@ func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(Encode(t, v))
 }
 
-func DecodeResponse(t *testing.T, reader io.Reader, v interface{}) {
+func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
@@ -41,6 +42,20 @@ func DecodeResponse(t *testing.T, reader io.Reader, v interface{}) {
 	assert.NoError(t, err)
 }
 
+func DecodeCursorResponse(t *testing.T, reader io.Reader) *query.Cursor {
+	type Response struct {
+		Cursor json.RawMessage `json:"cursor"`
+	}
+	res := Response{}
+	err := json.NewDecoder(reader).Decode(&res)
+	assert.NoError(t, err)
+
+	cursor := &query.Cursor{}
+	err = json.Unmarshal(res.Cursor, cursor)
+	assert.NoError(t, err)
+	return cursor
+}
+
 func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, body)
@@ -50,6 +65,12 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 
 func PostTransaction(t *testing.T, handler http.Handler, tx core.Transaction) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, "/quickstart/transactions", Buffer(t, tx))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, "/quickstart/transactions", nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
