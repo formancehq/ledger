@@ -1,16 +1,12 @@
 package controllers_test
 
 import (
-	"bytes"
-	"encoding/json"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/fx"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -149,27 +145,13 @@ func TestCommitTransaction(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			internal.WithNewModule(t, fx.Invoke(func(api *api.API) {
-				doRequest := func(tx core.Transaction) *httptest.ResponseRecorder {
-					data, err := json.Marshal(tx)
-					assert.NoError(t, err)
-
-					rec := httptest.NewRecorder()
-					req := httptest.NewRequest(http.MethodPost, "/quickstart/transactions", bytes.NewBuffer(data))
-					req.Header.Set("Content-Type", "application/json")
-
-					api.ServeHTTP(rec, req)
-					return rec
-				}
-				for i := 0; i < len(tc.transactions)-1; i++ {
-					rsp := doRequest(tc.transactions[i])
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				}
-				rsp := doRequest(tc.transactions[len(tc.transactions)-1])
-				assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
-			}))
-
+		internal.Run(t, tc.name, func(api *api.API) {
+			for i := 0; i < len(tc.transactions)-1; i++ {
+				rsp := internal.PostTransaction(t, api, tc.transactions[i])
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+			}
+			rsp := internal.PostTransaction(t, api, tc.transactions[len(tc.transactions)-1])
+			assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
 		})
 	}
 }
