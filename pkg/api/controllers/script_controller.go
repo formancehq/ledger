@@ -39,7 +39,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	txs, err := l.(*ledger.Ledger).Execute(c, script)
+	txs, err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
 	if err != nil {
 		errStr := err.Error()
@@ -54,7 +54,6 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
 
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
 			"err":     errStr,
 			"details": link,
 		})

@@ -1,0 +1,10 @@
+services:
+  ledger:
+    image: golang:1.16-alpine
+    entrypoint: go run main.go server start
+    volumes:
+      - .:/src
+    working_dir: /src
+    environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"

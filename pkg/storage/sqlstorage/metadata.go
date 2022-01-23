@@ -11,7 +11,7 @@ import (
 func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
 	count, err := s.CountMeta(ctx)
 	if err != nil {
-		return 0, err
+		return 0, s.error(err)
 	}
 	return count - 1, nil
 }
@@ -36,7 +36,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {
-		return nil, err
+		return nil, s.error(err)
 	}
 
 	meta := core.Metadata{}
@@ -51,7 +51,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, s.error(err)
 		}
 
 		var value json.RawMessage
@@ -59,7 +59,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 		err = json.Unmarshal([]byte(metaValue), &value)
 
 		if err != nil {
-			return nil, err
+			return nil, s.error(err)
 		}
 
 		meta[metaKey] = value
@@ -71,7 +71,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return s.error(err)
 	}
 
 	ib := sqlbuilder.NewInsertBuilder()
@@ -101,7 +101,7 @@ func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, t
 		logrus.Debugln("failed to save metadata", err)
 		tx.Rollback()
 
-		return err
+		return s.error(err)
 	}
 
 	err = tx.Commit()

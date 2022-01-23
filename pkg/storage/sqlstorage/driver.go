@@ -9,22 +9,24 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-type Flavor = sqlbuilder.Flavor
-
-var (
-	SQLite     = sqlbuilder.SQLite
-	PostgreSQL = sqlbuilder.PostgreSQL
-)
-
 var sqlDrivers = map[Flavor]struct {
 	driverName string
-}{
-	SQLite: {
-		driverName: "sqlite3",
-	},
-	PostgreSQL: {
-		driverName: "pgx",
-	},
+}{}
+
+func UpdateSQLDriverMapping(flavor Flavor, name string) {
+	cfg := sqlDrivers[flavor]
+	cfg.driverName = name
+	sqlDrivers[flavor] = cfg
+}
+
+func SQLDriverName(f Flavor) string {
+	return sqlDrivers[f].driverName
+}
+
+func init() {
+	// Default mapping for app driver/sql driver
+	UpdateSQLDriverMapping(SQLite, "sqlite3")
+	UpdateSQLDriverMapping(PostgreSQL, "pgx")
 }
 
 type ConnStringResolver func(name string) string
@@ -55,7 +57,7 @@ func (d *openCloseDBDriver) NewStore(name string) (storage.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStore(name, d.flavor, db, func(ctx context.Context) error {
+	return NewStore(name, sqlbuilder.Flavor(d.flavor), db, func(ctx context.Context) error {
 		return db.Close()
 	})
 }
@@ -102,7 +104,7 @@ func (s *cachedDBDriver) Initialize(ctx context.Context) error {
 }
 
 func (s *cachedDBDriver) NewStore(name string) (storage.Store, error) {
-	return NewStore(name, s.flavor, s.db, func(ctx context.Context) error {
+	return NewStore(name, sqlbuilder.Flavor(s.flavor), s.db, func(ctx context.Context) error {
 		return nil
 	})
 }

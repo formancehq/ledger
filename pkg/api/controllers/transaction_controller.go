@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/numary/ledger/pkg/storage"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -25,8 +27,10 @@ func NewTransactionController() TransactionController {
 // @Description Get all ledger transactions
 // @Tags transactions
 // @Schemes
-// @Description List transactions
 // @Param ledger path string true "ledger"
+// @Param after query string false "pagination cursor, will return transactions after given txid (in descending order)"
+// @Param reference query string false "find transactions by reference field"
+// @Param account query string false "find transactions with postings involving given account, either as source or destination"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Transaction}}
@@ -34,7 +38,7 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
-		c,
+		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
 		query.Account(c.Query("account")),
@@ -72,13 +76,23 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	var t core.Transaction
 	c.ShouldBind(&t)
 
-	ts, err := l.(*ledger.Ledger).Commit(c, []core.Transaction{t})
+	ts, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		switch eerr := err.(type) {
+		case *storage.Error:
+			switch eerr.Code {
+			case storage.ConstraintFailed:
+				ctl.responseError(c, http.StatusConflict, err)
+			default:
+				ctl.responseError(c, http.StatusInternalServerError, err)
+			}
+		case *ledger.InsufficientFundError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		case *ledger.ValidationError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		default:
+			ctl.responseError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 	ctl.response(
@@ -102,7 +116,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 // @Router /{ledger}/transactions/{txid} [get]
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	tx, err := l.(*ledger.Ledger).GetTransaction(c, c.Param("txid"))
+	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -139,13 +153,23 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 // @Router /{ledger}/transactions/{txid}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	err := l.(*ledger.Ledger).RevertTransaction(c, c.Param("txid"))
+	err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		switch eerr := err.(type) {
+		case *storage.Error:
+			switch eerr.Code {
+			case storage.ConstraintFailed:
+				ctl.responseError(c, http.StatusConflict, err)
+			default:
+				ctl.responseError(c, http.StatusInternalServerError, err)
+			}
+		case *ledger.InsufficientFundError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		case *ledger.ValidationError:
+			ctl.responseError(c, http.StatusBadRequest, err)
+		default:
+			ctl.responseError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 	ctl.response(
@@ -173,7 +197,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	c.ShouldBind(&m)
 
 	err := l.(*ledger.Ledger).SaveMeta(
-		c,
+		c.Request.Context(),
 		"transaction",
 		c.Param("txid"),
 		m,

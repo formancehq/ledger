@@ -1,10 +1,11 @@
 package controllers
 
 import (
+	"net/http"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,9 +21,10 @@ func NewAccountController() AccountController {
 }
 
 // GetAccounts godoc
-// @Summary List All Accounts
+// @Summary List all accounts
 // @Schemes
 // @Param ledger path string true "ledger"
+// @Param after query string true "pagination cursor, will return accounts after given address (in descending order)"
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Account}}
@@ -30,7 +32,7 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
-		c,
+		c.Request.Context(),
 		query.After(c.Query("after")),
 	)
 	if err != nil {
@@ -59,7 +61,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 // @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	acc, err := l.(*ledger.Ledger).GetAccount(c, c.Param("address"))
+	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
 	if err != nil {
 		ctl.responseError(
 			c,
@@ -89,7 +91,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	var m core.Metadata
 	c.ShouldBind(&m)
 	err := l.(*ledger.Ledger).SaveMeta(
-		c,
+		c.Request.Context(),
 		"account",
 		c.Param("address"),
 		m,

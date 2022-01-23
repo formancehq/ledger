@@ -24,3 +24,17 @@ func (f *BuiltInFactory) Close(ctx context.Context) error {
 func NewDefaultFactory(driver Driver) Factory {
 	return &BuiltInFactory{Driver: driver}
 }
+
+type noOpFactory struct{}
+
+func (f *noOpFactory) GetStore(name string) (Store, error) {
+	return nil, nil
+}
+
+func (f *noOpFactory) Close(ctx context.Context) error {
+	return nil
+}
+
+func NoOpFactory() Factory {
+	return &noOpFactory{}
+}

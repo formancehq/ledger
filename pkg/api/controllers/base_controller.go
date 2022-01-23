@@ -10,9 +10,7 @@ import (
 // Controllers struct
 type BaseController struct{}
 
-type BaseResponse struct {
-	Ok bool `json:"ok"`
-}
+type BaseResponse struct {}
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
 	if data == nil {
@@ -20,12 +18,10 @@ func (ctl *BaseController) response(c *gin.Context, status int, data interface{}
 	}
 	if reflect.TypeOf(data) == reflect.TypeOf(query.Cursor{}) {
 		c.JSON(status, gin.H{
-			"ok":     true,
 			"cursor": data,
 		})
 	} else {
 		c.JSON(status, gin.H{
-			"ok":   true,
 			"data": data,
 		})
 	}
@@ -34,7 +30,6 @@ func (ctl *BaseController) response(c *gin.Context, status int, data interface{}
 func (ctl *BaseController) responseError(c *gin.Context, status int, err error) {
 	c.Abort()
 	c.AbortWithStatusJSON(status, gin.H{
-		"ok":            false,
 		"error":         true,
 		"error_code":    status,
 		"error_message": err.Error(),

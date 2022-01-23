@@ -80,13 +80,18 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) ([]core.Transa
 	if err != nil {
 		return nil, fmt.Errorf("script execution failed: %v", err)
 	}
-	switch exit_code {
-	case vm.EXIT_FAIL:
-		return nil, errors.New("script exited with error code EXIT_FAIL")
-	case vm.EXIT_FAIL_INVALID:
-		return nil, errors.New("internal error: compiled script was invalid")
-	case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
-		return nil, errors.New("account had insufficient funds")
+
+	if exit_code != vm.EXIT_OK {
+		switch exit_code {
+		case vm.EXIT_FAIL:
+			return nil, errors.New("script exited with error code EXIT_FAIL")
+		case vm.EXIT_FAIL_INVALID:
+			return nil, errors.New("internal error: compiled script was invalid")
+		case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
+			return nil, errors.New("account had insufficient funds")
+		default:
+			return nil, errors.New("script execution failed")
+		}
 	}
 
 	tx := core.Transaction{

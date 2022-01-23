@@ -17,7 +17,7 @@ func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
 
 	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
-	return count, err
+	return count, s.error(err)
 }
 
 func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
@@ -34,7 +34,7 @@ func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
 
 	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
-	return count, err
+	return count, s.error(err)
 }
 
 func (s *Store) CountMeta(ctx context.Context) (int64, error) {
@@ -52,7 +52,7 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 	q := s.db.QueryRowContext(ctx, sqlq, args...)
 	err := q.Scan(&count)
 
-	return count, err
+	return count, s.error(err)
 }
 
 func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
@@ -61,7 +61,7 @@ func (s *Store) AggregateBalances(ctx context.Context, address string) (map[stri
 	volumes, err := s.AggregateVolumes(ctx, address)
 
 	if err != nil {
-		return balances, err
+		return balances, s.error(err)
 	}
 
 	for asset := range volumes {
@@ -97,7 +97,7 @@ func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[strin
 	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {
-		return volumes, err
+		return volumes, s.error(err)
 	}
 
 	for rows.Next() {
@@ -110,7 +110,7 @@ func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[strin
 		err := rows.Scan(&row.asset, &row.t, &row.amount)
 
 		if err != nil {
-			return volumes, err
+			return volumes, s.error(err)
 		}
 
 		if _, ok := volumes[row.asset]; !ok {

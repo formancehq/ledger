@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS metadata (
   UNIQUE("meta_id")
 );
 --statement
+CREATE TABLE IF NOT EXISTS mapping (
+    "mapping_id" varchar,
+    "mapping" varchar,
+
+    UNIQUE("mapping_id")
+)
+--statement
 CREATE INDEX IF NOT EXISTS 'm_i0' ON "metadata" (
   "meta_target_type",
   "meta_target_id"

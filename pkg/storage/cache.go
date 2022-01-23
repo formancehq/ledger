@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+
 	"github.com/numary/ledger/pkg/core"
 )
 
@@ -31,7 +32,7 @@ func (s *cachedStateStorage) LastMetaID(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	*s.lastMetaId = lastMetaID
+	s.lastMetaId = &lastMetaID
 	return lastMetaID, nil
 }
 

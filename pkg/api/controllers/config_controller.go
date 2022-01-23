@@ -11,12 +11,12 @@ import (
 )
 
 type LedgerLister interface {
-	List() []string
+	List(r *http.Request) []string
 }
-type LedgerListerFn func() []string
+type LedgerListerFn func(r *http.Request) []string
 
-func (fn LedgerListerFn) List() []string {
-	return fn()
+func (fn LedgerListerFn) List(r *http.Request) []string {
+	return fn(r)
 }
 
 // ConfigController -
@@ -55,7 +55,7 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 			Config: &config.Config{
 				LedgerStorage: &config.LedgerStorage{
 					Driver:  ctl.StorageDriver,
-					Ledgers: ctl.LedgerLister.List(),
+					Ledgers: ctl.LedgerLister.List(c.Request),
 				},
 			},
 		},

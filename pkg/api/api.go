@@ -12,19 +12,13 @@ import (
 	"go.uber.org/fx"
 )
 
-var Module = fx.Options(
-	middlewares.Module,
-	routes.Module,
-	controllers.Module,
-)
-
 // API struct
 type API struct {
-	engine *gin.Engine
+	handler *gin.Engine
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.engine.ServeHTTP(w, r)
+	a.handler.ServeHTTP(w, r)
 }
 
 // NewAPI
@@ -39,8 +33,36 @@ func NewAPI(
 	cc.AddAllowHeaders("authorization")
 
 	h := &API{
-		engine: routes.Engine(cc),
+		handler: routes.Engine(cc),
 	}
 
 	return h
+}
+
+type Config struct {
+	StorageDriver string
+	LedgerLister  controllers.LedgerLister
+	HttpBasicAuth string
+	Version       string
+}
+
+func Module(cfg Config) fx.Option {
+	return fx.Options(
+		controllers.ProvideVersion(func() string {
+			return cfg.Version
+		}),
+		controllers.ProvideStorageDriver(func() string {
+			return cfg.StorageDriver
+		}),
+		controllers.ProvideLedgerLister(func() controllers.LedgerLister {
+			return cfg.LedgerLister
+		}),
+		middlewares.ProvideHTTPBasic(func() string {
+			return cfg.HttpBasicAuth
+		}),
+		middlewares.Module,
+		routes.Module,
+		controllers.Module,
+		fx.Provide(NewAPI),
+	)
 }

@@ -16,6 +16,20 @@ const (
 	targetTypeTransaction = "transaction"
 )
 
+var DefaultContracts = []core.Contract{
+	{
+		Expr: &core.ExprGte{
+			Op1: core.VariableExpr{
+				Name: "balance",
+			},
+			Op2: core.ConstantExpr{
+				Value: float64(0),
+			},
+		},
+		Account: "*", // world still an exception
+	},
+}
+
 type Ledger struct {
 	locker Locker
 	name   string
@@ -57,7 +71,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 	for i := range ts {
 
 		if len(ts[i].Postings) == 0 {
-			return ts, errors.New("transaction has no postings")
+			return ts, NewValidationError("transaction has no postings")
 		}
 
 		ts[i].ID = count + int64(i)
@@ -67,6 +81,18 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		last = &ts[i]
 
 		for _, p := range ts[i].Postings {
+			if p.Amount < 0 {
+				return ts, NewValidationError("negative amount")
+			}
+			if !core.ValidateAddress(p.Source) {
+				return nil, NewValidationError("invalid source address")
+			}
+			if !core.ValidateAddress(p.Destination) {
+				return nil, NewValidationError("invalid destination address")
+			}
+			if !core.AssetIsValid(p.Asset) {
+				return nil, NewValidationError("invalid asset")
+			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]int64{}
 			}
@@ -80,6 +106,17 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 			rf[p.Destination][p.Asset] -= p.Amount
 		}
 	}
+
+	mapping, err := l.store.LoadMapping(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
+	}
+	contracts = append(contracts, DefaultContracts...)
 
 	for addr := range rf {
 		if addr == "world" {
@@ -101,19 +138,30 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 		}
 
 		balances, err := l.store.AggregateBalances(ctx, addr)
-
 		if err != nil {
 			return ts, err
 		}
 
 		for asset := range checks {
-			balance, ok := balances[asset]
-
-			if !ok || balance < checks[asset] {
-				return ts, fmt.Errorf(
-					"balance.insufficient.%s",
-					asset,
-				)
+			expectedBalance := balances[asset] - checks[asset]
+			for _, contract := range contracts {
+				if contract.Match(addr) {
+					meta, err := l.store.GetMeta(ctx, "account", addr)
+					if err != nil {
+						return nil, err
+					}
+					ok := contract.Expr.Eval(core.EvalContext{
+						Variables: map[string]interface{}{
+							"balance": float64(expectedBalance),
+						},
+						Metadata: meta,
+						Asset:    asset,
+					})
+					if !ok {
+						return nil, NewInsufficientFundError(asset)
+					}
+					break
+				}
 			}
 		}
 	}
@@ -162,6 +210,14 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 	return tx, err
 }
 
+func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+	return l.store.SaveMapping(ctx, mapping)
+}
+
+func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+	return l.store.LoadMapping(ctx)
+}
+
 func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
@@ -191,8 +247,7 @@ func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (qu
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
 	account := core.Account{
-		Address:  address,
-		Contract: "default",
+		Address: address,
 	}
 
 	balances, err := l.store.AggregateBalances(ctx, address)
@@ -228,13 +283,13 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 	defer unlock()
 
 	if targetType == "" {
-		return errors.New("empty target type")
+		return NewValidationError("empty target type")
 	}
 	if targetType != targetTypeTransaction && targetType != targetTypeAccount {
-		return fmt.Errorf("unknown target type '%s'", targetType)
+		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if targetID == "" {
-		return errors.New("empty target id")
+		return NewValidationError("empty target id")
 	}
 
 	lastMetaID, err := l.store.LastMetaID(ctx)

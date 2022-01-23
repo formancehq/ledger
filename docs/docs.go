@@ -54,13 +54,20 @@ var doc = `{
                 "produces": [
                     "application/json"
                 ],
-                "summary": "List All Accounts",
+                "summary": "List all accounts",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "ledger",
                         "name": "ledger",
                         "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "pagination cursor, will return accounts after given address (in descending order)",
+                        "name": "after",
+                        "in": "query",
                         "required": true
                     }
                 ],
@@ -183,6 +190,80 @@ var doc = `{
                 }
             }
         },
+        "/{ledger}/mapping": {
+            "get": {
+                "description": "Get ledger mapping",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Get mapping",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ledger",
+                        "name": "ledger",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update ledger mapping",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mapping"
+                ],
+                "summary": "Put mapping",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ledger",
+                        "name": "ledger",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/{ledger}/script": {
             "post": {
                 "description": "Execute a Numscript and create the transaction if any",
@@ -258,7 +339,7 @@ var doc = `{
         },
         "/{ledger}/transactions": {
             "get": {
-                "description": "Get all ledger transactions\nList transactions",
+                "description": "Get all ledger transactions",
                 "consumes": [
                     "application/json"
                 ],
@@ -276,6 +357,24 @@ var doc = `{
                         "name": "ledger",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "pagination cursor, will return transactions after given txid (in descending order)",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "find transactions by reference field",
+                        "name": "reference",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "find transactions with postings involving given account, either as source or destination",
+                        "name": "account",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -507,12 +606,7 @@ var doc = `{
             }
         },
         "controllers.BaseResponse": {
-            "type": "object",
-            "properties": {
-                "ok": {
-                    "type": "boolean"
-                }
-            }
+            "type": "object"
         },
         "core.Account": {
             "type": "object",
@@ -529,10 +623,6 @@ var doc = `{
                     "example": {
                         "COIN": 100
                     }
-                },
-                "contract": {
-                    "type": "string",
-                    "example": "default"
                 },
                 "metadata": {
                     "type": "object"

@@ -25,12 +25,16 @@ type Store struct {
 }
 
 func (s *Store) table(name string) string {
-	switch s.flavor {
-	case sqlbuilder.PostgreSQL:
+	switch Flavor(s.flavor) {
+	case PostgreSQL:
 		return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
 	default:
 		return name
 	}
+}
+
+func (s *Store) error(err error) error {
+	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
 func NewStore(name string, flavor sqlbuilder.Flavor, db *sql.DB, onClose func(ctx context.Context) error) (*Store, error) {
@@ -56,7 +60,7 @@ func (s *Store) Initialize(ctx context.Context) error {
 	entries, err := migrations.ReadDir(migrationsDir)
 
 	if err != nil {
-		return err
+		return s.error(err)
 	}
 
 	for _, m := range entries {
@@ -82,7 +86,7 @@ func (s *Store) Initialize(ctx context.Context) error {
 		if err != nil {
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
 			logrus.Errorln(err)
-			return err
+			return s.error(err)
 		}
 	}
 

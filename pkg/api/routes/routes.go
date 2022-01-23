@@ -10,24 +10,48 @@ import (
 	"go.uber.org/fx"
 )
 
+const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
+const PerLedgerMiddlewaresKey = `group:"_perLedgerMiddlewares"`
+
 var Module = fx.Options(
-	fx.Provide(NewRoutes),
+	fx.Provide(
+		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey, PerLedgerMiddlewaresKey)),
+	),
 )
+
+func ProvideGlobalMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
+	opts := []fx.Annotation{fx.ResultTags(GlobalMiddlewaresKey)}
+	return fx.Provide(
+		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
+	)
+}
+
+func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
+	opts := []fx.Annotation{fx.ResultTags(PerLedgerMiddlewaresKey)}
+	return fx.Provide(
+		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
+	)
+}
 
 // Routes -
 type Routes struct {
-	resolver         *ledger.Resolver
-	authMiddleware   middlewares.AuthMiddleware
-	ledgerMiddleware middlewares.LedgerMiddleware
-	configController controllers.ConfigController
+	resolver              *ledger.Resolver
+	authMiddleware        middlewares.AuthMiddleware
+	ledgerMiddleware      middlewares.LedgerMiddleware
+	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
+	mappingController     controllers.MappingController
+	globalMiddlewares     []gin.HandlerFunc
+	perLedgerMiddlewares  []gin.HandlerFunc
 }
 
 // NewRoutes -
 func NewRoutes(
+	globalMiddlewares []gin.HandlerFunc,
+	perLedgerMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
 	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
@@ -36,8 +60,11 @@ func NewRoutes(
 	scriptController controllers.ScriptController,
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
+	mappingController controllers.MappingController,
 ) *Routes {
 	return &Routes{
+		globalMiddlewares:     globalMiddlewares,
+		perLedgerMiddlewares:  perLedgerMiddlewares,
 		resolver:              resolver,
 		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,
@@ -46,6 +73,7 @@ func NewRoutes(
 		scriptController:      scriptController,
 		accountController:     accountController,
 		transactionController: transactionController,
+		mappingController:     mappingController,
 	}
 }
 
@@ -53,20 +81,21 @@ func NewRoutes(
 func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	engine := gin.New()
 
-	// Default Middlewares
-	engine.Use(
+	globalMiddlewares := append([]gin.HandlerFunc{
 		cors.New(cc),
 		gin.Recovery(),
 		logger.SetLogger(),
-		r.authMiddleware.AuthMiddleware(engine),
-	)
+	}, r.globalMiddlewares...)
+
+	// Default Middlewares
+	engine.Use(globalMiddlewares...)
 
 	engine.GET("/swagger.json", r.configController.GetDocs)
 
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)
 
-	ledger := engine.Group("/:ledger", r.ledgerMiddleware.LedgerMiddleware())
+	ledger := engine.Group("/:ledger", append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
 	{
 		// LedgerController
 		ledger.GET("/stats", r.ledgerController.GetStats)
@@ -82,6 +111,10 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		ledger.GET("/accounts", r.accountController.GetAccounts)
 		ledger.GET("/accounts/:address", r.accountController.GetAccount)
 		ledger.POST("/accounts/:address/metadata", r.accountController.PostAccountMetadata)
+
+		// MappingController
+		ledger.GET("/mapping", r.mappingController.GetMapping)
+		ledger.PUT("/mapping", r.mappingController.PutMapping)
 
 		// ScriptController
 		ledger.POST("/script", r.scriptController.PostScript)
