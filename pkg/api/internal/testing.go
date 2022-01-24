@@ -30,16 +30,18 @@ func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(Encode(t, v))
 }
 
+func Decode(t *testing.T, reader io.Reader, v interface{}) {
+	err := json.NewDecoder(reader).Decode(v)
+	assert.NoError(t, err)
+}
+
 func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
 	res := Response{}
-	err := json.NewDecoder(reader).Decode(&res)
-	assert.NoError(t, err)
-
-	err = json.Unmarshal(res.Data, v)
-	assert.NoError(t, err)
+	Decode(t, reader, &res)
+	Decode(t, bytes.NewBuffer(res.Data), v)
 }
 
 func DecodeCursorResponse(t *testing.T, reader io.Reader) *query.Cursor {
@@ -47,12 +49,11 @@ func DecodeCursorResponse(t *testing.T, reader io.Reader) *query.Cursor {
 		Cursor json.RawMessage `json:"cursor"`
 	}
 	res := Response{}
-	err := json.NewDecoder(reader).Decode(&res)
-	assert.NoError(t, err)
+	Decode(t, reader, &res)
 
 	cursor := &query.Cursor{}
-	err = json.Unmarshal(res.Cursor, cursor)
-	assert.NoError(t, err)
+	Decode(t, bytes.NewBuffer(res.Cursor), cursor)
+
 	return cursor
 }
 

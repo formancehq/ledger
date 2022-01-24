@@ -4,12 +4,31 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 )
+
+type ScriptResponse struct {
+	ErrorResponse
+	Link string `json:"details,omitempty"`
+}
+
+func EncodeLink(err error) string {
+	errStr := err.Error()
+	errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
+	payload, err := json.Marshal(gin.H{
+		"error": errStr,
+	})
+	if err != nil {
+		panic(err)
+	}
+	payloadB64 := base64.StdEncoding.EncodeToString(payload)
+	return fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
+}
 
 // ScriptController -
 type ScriptController struct {
@@ -30,7 +49,7 @@ func NewScriptController() ScriptController {
 // @Param script body core.Script true "script"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.ScriptResponse
 // @Router /{ledger}/script [post]
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -38,23 +57,18 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
+	spew.Dump(script)
+
 	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
-	res := gin.H{}
+	res := ScriptResponse{}
 
 	if err != nil {
-		errStr := err.Error()
-		errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
-		payload, err := json.Marshal(gin.H{
-			"error": errStr,
-		})
-		if err != nil {
-			panic(err)
+		res.ErrorResponse = ErrorResponse{
+			ErrorCode:    ErrInternal,
+			ErrorMessage: err.Error(),
 		}
-		payloadB64 := base64.StdEncoding.EncodeToString(payload)
-		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
-		res["err"] = errStr
-		res["details"] = link
+		res.Link = EncodeLink(err)
 	}
 
 	c.JSON(200, res)
