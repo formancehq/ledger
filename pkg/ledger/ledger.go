@@ -56,7 +56,7 @@ type Balances map[string]map[string]int64
 
 type CommitTransactionResult struct {
 	core.Transaction
-	Err *TransactionCommitError `json:",omitempty"`
+	Err *TransactionCommitError `json:"error,omitempty"`
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
