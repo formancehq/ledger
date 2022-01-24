@@ -39,8 +39,8 @@ const (
 )
 
 type ErrorResponse struct {
-	ErrorCode    string `json:"error_code" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
-	ErrorMessage string `json:"error_message"`
+	ErrorCode    string `json:"error_code,omitempty" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
+	ErrorMessage string `json:"error_message,omitempty"`
 }
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
