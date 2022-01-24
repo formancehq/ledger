@@ -69,6 +69,12 @@ func PostTransaction(t *testing.T, handler http.Handler, tx core.Transaction) *h
 	return rec
 }
 
+func PostTransactionMetadata(t *testing.T, handler http.Handler, id int64, m core.Metadata) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/quickstart/transactions/%d/metadata", id), Buffer(t, m))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, "/quickstart/transactions", nil)
 	handler.ServeHTTP(rec, req)
