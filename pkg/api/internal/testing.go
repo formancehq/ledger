@@ -125,6 +125,18 @@ func GetStats(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
+func LoadMapping(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, "/quickstart/mapping", nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func SaveMapping(t *testing.T, handler http.Handler, m core.Mapping) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPut, "/quickstart/mapping", Buffer(t, m))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func WithNewModule(t *testing.T, options ...fx.Option) {
 	module := api.Module(api.Config{
 		StorageDriver: viper.GetString("sqlite"),
