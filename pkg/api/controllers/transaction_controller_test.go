@@ -1,6 +1,7 @@
 package controllers_test
 
 import (
+	"encoding/json"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
@@ -223,6 +224,9 @@ func TestGetTransactions(t *testing.T) {
 					Asset:       "USD",
 				},
 			},
+			Metadata: map[string]json.RawMessage{
+				"foo": json.RawMessage(`"bar"`),
+			},
 		})
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
@@ -234,5 +238,38 @@ func TestGetTransactions(t *testing.T) {
 		assert.Len(t, cursor.Data, 2)
 		assert.False(t, cursor.HasMore)
 		assert.EqualValues(t, 2, cursor.Total)
+	})
+}
+
+func TestPostTransactionMetadata(t *testing.T) {
+	internal.RunTest(t, func(api *api.API) {
+		rsp := internal.PostTransaction(t, api, core.Transaction{
+			Postings: core.Postings{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      1000,
+					Asset:       "USD",
+				},
+			},
+		})
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		tx := core.Transaction{}
+		internal.DecodeSingleResponse(t, rsp.Body, &tx)
+
+		rsp = internal.PostTransactionMetadata(t, api, tx.ID, core.Metadata{
+			"foo": json.RawMessage(`"bar"`),
+		})
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		rsp = internal.GetTransaction(api, 0)
+		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+		ret := core.Transaction{}
+		internal.DecodeSingleResponse(t, rsp.Body, &ret)
+
+		assert.EqualValues(t, core.Metadata{
+			"foo": json.RawMessage(`"bar"`),
+		}, ret.Metadata)
 	})
 }
