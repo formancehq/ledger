@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -56,8 +55,6 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 
 	var script core.Script
 	c.ShouldBind(&script)
-
-	spew.Dump(script)
 
 	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
