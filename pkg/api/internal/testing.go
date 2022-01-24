@@ -119,6 +119,12 @@ func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core
 	return rec
 }
 
+func GetStats(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, "/quickstart/stats", nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func WithNewModule(t *testing.T, options ...fx.Option) {
 	module := api.Module(api.Config{
 		StorageDriver: viper.GetString("sqlite"),
