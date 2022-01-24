@@ -30,14 +30,22 @@ func (ctl *BaseController) response(c *gin.Context, status int, data interface{}
 	}
 }
 
-type Error struct {
-	ErrorCode    string `json:"error_code"`
+const (
+	ErrInternal         = "INTERNAL"
+	ErrConflict         = "CONFLICT"
+	ErrInsufficientFund = "INSUFFICIENT_FUND"
+	ErrValidation       = "VALIDATION"
+	ErrNotFound         = "NOT_FOUND"
+)
+
+type ErrorResponse struct {
+	ErrorCode    string `json:"error_code" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
 	ErrorMessage string `json:"error_message"`
 }
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
 	c.Abort()
-	c.AbortWithStatusJSON(status, Error{
+	c.AbortWithStatusJSON(status, ErrorResponse{
 		ErrorCode:    code,
 		ErrorMessage: err.Error(),
 	})
