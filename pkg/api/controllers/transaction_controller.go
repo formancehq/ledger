@@ -199,13 +199,13 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 
 	var transactions core.Transactions
 	if err := c.ShouldBindJSON(&transactions); err != nil {
-		ctl.responseError(c, http.StatusBadRequest, err)
+		ctl.responseError(c, http.StatusBadRequest, ErrValidation, err)
 		return
 	}
 
 	_, ret, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
 	if err != nil {
-		ctl.responseError(c, http.StatusBadRequest, err)
+		ctl.responseError(c, http.StatusBadRequest, ErrInternal, err)
 		return
 	}
 
