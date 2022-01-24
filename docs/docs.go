@@ -452,6 +452,15 @@ var doc = `{
                         "schema": {
                             "$ref": "#/definitions/controllers.BaseResponse"
                         }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": ""
                     }
                 }
             }
@@ -653,7 +662,29 @@ var doc = `{
             }
         },
         "controllers.BaseResponse": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "cursor": {},
+                "data": {}
+            }
+        },
+        "controllers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "INTERNAL",
+                        "CONFLICT",
+                        "INSUFFICIENT_FUND",
+                        "VALIDATION",
+                        "NOT_FOUND"
+                    ]
+                },
+                "error_message": {
+                    "type": "string"
+                }
+            }
         },
         "core.Account": {
             "type": "object",

@@ -76,7 +76,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
-// @Failure 400
+// @Failure 400 {object} controllers.ErrorResponse
+// @Failure 409 {object} controllers.ErrorResponse
 // @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
