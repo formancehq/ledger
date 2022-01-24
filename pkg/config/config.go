@@ -21,8 +21,8 @@ type Config struct {
 
 // LedgerStorage struct
 type LedgerStorage struct {
-	Driver  interface{} `json:"driver"`
-	Ledgers interface{} `json:"ledgers"`
+	Driver  string   `json:"driver"`
+	Ledgers []string `json:"ledgers"`
 }
 
 func Remember(ledger string) {

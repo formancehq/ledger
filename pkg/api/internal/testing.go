@@ -11,7 +11,6 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"io"
@@ -137,11 +136,19 @@ func SaveMapping(t *testing.T, handler http.Handler, m core.Mapping) *httptest.R
 	return rec
 }
 
+func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, "/_info", nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func WithNewModule(t *testing.T, options ...fx.Option) {
 	module := api.Module(api.Config{
-		StorageDriver: viper.GetString("sqlite"),
+		StorageDriver: "sqlite",
 		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
-			return []string{}
+			return []string{
+				"quickstart",
+			}
 		}),
 		Version: "latest",
 	})
