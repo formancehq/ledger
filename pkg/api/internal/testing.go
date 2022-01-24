@@ -107,6 +107,18 @@ func GetAccounts(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
+func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, "/quickstart/accounts/"+addr, nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core.Metadata) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/quickstart/accounts/%s/metadata", addr), Buffer(t, m))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func WithNewModule(t *testing.T, options ...fx.Option) {
 	module := api.Module(api.Config{
 		StorageDriver: viper.GetString("sqlite"),
