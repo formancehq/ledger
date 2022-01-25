@@ -186,6 +186,9 @@ var doc = `{
                         "schema": {
                             "$ref": "#/definitions/controllers.BaseResponse"
                         }
+                    },
+                    "400": {
+                        "description": ""
                     }
                 }
             }
