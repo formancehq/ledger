@@ -29,6 +29,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 			sb.Equal("meta_target_id", id),
 		),
 	)
+	sb.OrderBy("meta_id").Asc()
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
