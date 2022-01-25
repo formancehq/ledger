@@ -1,8 +1,8 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
-
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -85,15 +85,23 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} controllers.BaseResponse
+// @Failure 400
 // @Router /{ledger}/accounts/{accountId}/metadata [post]
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	var m core.Metadata
 	c.ShouldBind(&m)
+
+	addr := c.Param("address")
+	if !core.ValidateAddress(addr) {
+		ctl.responseError(c, http.StatusBadRequest, errors.New("invalid address"))
+		return
+	}
+
 	err := l.(*ledger.Ledger).SaveMeta(
 		c.Request.Context(),
 		"account",
-		c.Param("address"),
+		addr,
 		m,
 	)
 	if err != nil {
