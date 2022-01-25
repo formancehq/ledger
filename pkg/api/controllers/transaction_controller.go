@@ -20,16 +20,29 @@ func NewTransactionController() TransactionController {
 	return TransactionController{}
 }
 
+func coreErrorToErrorCode(err *ledger.TransactionCommitError) string {
+	switch err.Err.(type) {
+	case *ledger.ConflictError:
+		return ErrConflict
+	case *ledger.InsufficientFundError:
+		return ErrInsufficientFund
+	case *ledger.ValidationError:
+		return ErrValidation
+	default:
+		return ErrInternal
+	}
+}
+
 func (ctl *TransactionController) handleCommitError(c *gin.Context, err *ledger.TransactionCommitError) {
 	switch err.Err.(type) {
 	case *ledger.ConflictError:
-		ctl.responseError(c, http.StatusConflict, ErrConflict, err)
+		ctl.responseError(c, http.StatusConflict, coreErrorToErrorCode(err), err)
 	case *ledger.InsufficientFundError:
-		ctl.responseError(c, http.StatusBadRequest, ErrInsufficientFund, err)
+		ctl.responseError(c, http.StatusBadRequest, coreErrorToErrorCode(err), err)
 	case *ledger.ValidationError:
-		ctl.responseError(c, http.StatusBadRequest, ErrValidation, err)
+		ctl.responseError(c, http.StatusBadRequest, coreErrorToErrorCode(err), err)
 	default:
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ctl.responseError(c, http.StatusInternalServerError, coreErrorToErrorCode(err), err)
 	}
 }
 
@@ -207,7 +220,23 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case ledger.ErrCommitError:
-			ctl.response(c, http.StatusBadRequest, ret)
+			type TransactionError struct {
+				core.Transaction
+				ErrorCode    string `json:"errorCode"`
+				ErrorMessage string `json:"errorMessage"`
+			}
+			results := make([]TransactionError, 0)
+			for _, tx := range ret {
+				v := TransactionError{
+					Transaction: tx.Transaction,
+				}
+				if tx.Err != nil {
+					v.ErrorMessage = tx.Err.Error()
+					v.ErrorCode = coreErrorToErrorCode(tx.Err)
+				}
+				results = append(results, v)
+			}
+			ctl.response(c, http.StatusBadRequest, results)
 		default:
 			ctl.responseError(c, http.StatusBadRequest, ErrInternal, err)
 		}
