@@ -456,6 +456,50 @@ var doc = `{
                 }
             }
         },
+        "/{ledger}/transactions/batch": {
+            "post": {
+                "description": "Create a new ledger transactions batch\nCommit a batch of new transactions to the ledger",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Create Transactions Batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ledger",
+                        "name": "ledger",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "transactions",
+                        "name": "transactions",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/core.Transactions"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.BaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/{ledger}/transactions/{txid}": {
             "get": {
                 "description": "Get transaction by transaction id",
@@ -693,6 +737,20 @@ var doc = `{
                 },
                 "txid": {
                     "type": "integer"
+                }
+            }
+        },
+        "core.Transactions": {
+            "type": "object",
+            "required": [
+                "transactions"
+            ],
+            "properties": {
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Transaction"
+                    }
                 }
             }
         },
