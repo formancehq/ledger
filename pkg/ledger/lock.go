@@ -10,7 +10,7 @@ type Locker interface {
 
 type InMemoryLocker struct {
 	globalLock sync.RWMutex
-	locks      map[string]sync.Mutex
+	locks      map[string]*sync.Mutex
 }
 
 func (d *InMemoryLocker) Lock(ledger string) (Unlock, error) {
@@ -24,6 +24,7 @@ func (d *InMemoryLocker) Lock(ledger string) (Unlock, error) {
 	d.globalLock.Lock()
 	lock, ok = d.locks[ledger] // Double check, the lock can have been acquired by another go routing between RUnlock and Lock
 	if !ok {
+		lock = &sync.Mutex{}
 		d.locks[ledger] = lock
 	}
 	d.globalLock.Unlock()
@@ -34,6 +35,6 @@ ret:
 
 func NewInMemoryLocker() *InMemoryLocker {
 	return &InMemoryLocker{
-		locks: map[string]sync.Mutex{},
+		locks: map[string]*sync.Mutex{},
 	}
 }
