@@ -6,6 +6,11 @@ import (
 	"fmt"
 )
 
+// Transactions struct
+type Transactions struct {
+	Transactions []Transaction `json:"transactions" binding:"required,dive"`
+}
+
 type Transaction struct {
 	ID        int64    `json:"txid"`
 	Postings  Postings `json:"postings"`
