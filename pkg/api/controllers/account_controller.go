@@ -2,10 +2,10 @@ package controllers
 
 import (
 	"errors"
-	"net/http"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -86,7 +86,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 
 	addr := c.Param("address")
 	if !core.ValidateAddress(addr) {
-		ctl.responseError(c, http.StatusBadRequest, errors.New("invalid address"))
+		ctl.responseError(c, http.StatusBadRequest, ErrValidation, errors.New("invalid address"))
 		return
 	}
 
