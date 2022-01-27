@@ -94,11 +94,11 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 		}
 	}
 
-	t := core.Transaction{
+	t := core.TransactionData{
 		Postings: m.Postings,
 	}
 
-	_, ret, err := l.Commit(ctx, []core.Transaction{t})
+	_, ret, err := l.Commit(ctx, []core.TransactionData{t})
 	switch err {
 	case ErrCommitError:
 		return ret[0].Err

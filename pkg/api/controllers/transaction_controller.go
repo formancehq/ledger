@@ -65,27 +65,27 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	)
 }
 
-// PostTransactions godoc
+// PostTransaction godoc
 // @Summary Create Transaction
 // @Description Create a new ledger transaction
 // @Tags transactions
 // @Schemes
 // @Description Commit a new transaction to the ledger
 // @Param ledger path string true "ledger"
-// @Param transaction body core.Transaction true "transaction"
+// @Param transaction body core.TransactionData true "transaction"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.BaseResponse{data=core.Transaction}
 // @Failure 400 {object} controllers.ErrorResponse
 // @Failure 409 {object} controllers.ErrorResponse
 // @Router /{ledger}/transactions [post]
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var t core.Transaction
+	var t core.TransactionData
 	c.ShouldBind(&t)
 
-	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.Transaction{t})
+	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		switch err {
 		case ledger.ErrCommitError:
@@ -108,7 +108,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 // @Param txid path string true "txid"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.BaseResponse{data=core.Transaction}
 // @Failure 404 {object} controllers.BaseResponse
 // @Router /{ledger}/transactions/{txid} [get]
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -134,7 +134,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 // @Param txid path string true "txid"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 204 "Empty response"
 // @Router /{ledger}/transactions/{txid}/revert [post]
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -148,7 +148,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, nil)
+	ctl.noContent(c)
 }
 
 // PostTransactionMetadata godoc
@@ -160,7 +160,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 // @Param txid path string true "txid"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 204 "Empty response"
 // @Router /{ledger}/transactions/{txid}/metadata [post]
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -178,7 +178,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, nil)
+	ctl.noContent(c)
 }
 
 // PostTransactionsBatch godoc
@@ -191,7 +191,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 // @Param transactions body core.Transactions true "transactions"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.BaseResponse{data=[]core.Transaction}
 // @Failure 400
 // @Router /{ledger}/transactions/batch [post]
 func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {

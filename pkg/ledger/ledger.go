@@ -59,7 +59,7 @@ type CommitTransactionResult struct {
 	Err *TransactionCommitError `json:",omitempty"`
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, []CommitTransactionResult, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to acquire lock")
@@ -89,18 +89,25 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) (Balances, [
 	ret := make([]CommitTransactionResult, 0)
 	hasError := false
 
+	txs := make([]core.Transaction, 0)
+
 txLoop:
 	for i := range ts {
 
-		ts[i].ID = count + int64(i)
-		ts[i].Timestamp = timestamp
+		tx := core.Transaction{
+			TransactionData: ts[i],
+		}
 
-		ts[i].Hash = core.Hash(last, &ts[i])
-		last = &ts[i]
+		tx.ID = count + int64(i)
+		tx.Timestamp = timestamp
+
+		tx.Hash = core.Hash(last, &tx)
+		last = &tx
+		txs = append(txs, tx)
 
 		commitError := func(err *TransactionCommitError) {
 			ret = append(ret, CommitTransactionResult{
-				Transaction: ts[i],
+				Transaction: tx,
 				Err:         err,
 			})
 			hasError = true
@@ -182,7 +189,7 @@ txLoop:
 			}
 		}
 		ret = append(ret, CommitTransactionResult{
-			Transaction: ts[i],
+			Transaction: tx,
 		})
 	}
 
@@ -190,7 +197,7 @@ txLoop:
 		return nil, ret, ErrCommitError
 	}
 
-	commitErrors, err := l.store.SaveTransactions(ctx, ts)
+	commitErrors, err := l.store.SaveTransactions(ctx, txs)
 	if err != nil {
 		switch err {
 		case storage.ErrAborted:
@@ -273,7 +280,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(lastTransaction.ID))
-	_, ret, err := l.Commit(ctx, []core.Transaction{rt})
+	_, ret, err := l.Commit(ctx, []core.TransactionData{rt})
 	switch err {
 	case ErrCommitError:
 		return ret[0].Err

@@ -53,7 +53,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 // @Param accountId path string true "accountId"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse{account=core.Account}
+// @Success 200 {object} controllers.BaseResponse{data=core.Account}
 // @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -76,7 +76,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 // @Param accountId path string true "accountId"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
+// @Success 204 "Empty response"
 // @Failure 400
 // @Router /{ledger}/accounts/{accountId}/metadata [post]
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
@@ -100,5 +100,5 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, nil)
+	ctl.noContent(c)
 }

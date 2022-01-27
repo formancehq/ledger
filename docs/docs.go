@@ -144,7 +144,7 @@ var doc = `{
                                 {
                                     "type": "object",
                                     "properties": {
-                                        "account": {
+                                        "data": {
                                             "$ref": "#/definitions/core.Account"
                                         }
                                     }
@@ -181,11 +181,8 @@ var doc = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
-                        }
+                    "204": {
+                        "description": "Empty response"
                     },
                     "400": {
                         "description": ""
@@ -219,13 +216,19 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/core.Mapping"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -249,19 +252,34 @@ var doc = `{
                         "name": "ledger",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "mapping",
+                        "name": "mapping",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/core.Mapping"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/core.Mapping"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -302,7 +320,9 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
+==== BASE ====
                             "$ref": "#/definitions/controllers.ScriptResponse"
+==== BASE ====
                         }
                     }
                 }
@@ -334,7 +354,19 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/ledger.Stats"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/ledger.Stats"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -442,7 +474,7 @@ var doc = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/core.Transaction"
+                            "$ref": "#/definitions/core.TransactionData"
                         }
                     }
                 ],
@@ -450,7 +482,19 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/core.Transaction"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -503,7 +547,22 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/core.Transaction"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -545,7 +604,19 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controllers.BaseResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/core.Transaction"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "404": {
@@ -587,11 +658,8 @@ var doc = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
-                        }
+                    "204": {
+                        "description": "Empty response"
                     }
                 }
             }
@@ -626,11 +694,8 @@ var doc = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
-                        }
+                    "204": {
+                        "description": "Empty response"
                     }
                 }
             }
@@ -672,50 +737,9 @@ var doc = `{
             }
         },
         "controllers.BaseResponse": {
-            "type": "object",
-            "properties": {
-                "cursor": {},
-                "data": {}
-            }
-        },
-        "controllers.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "error_code": {
-                    "type": "string",
-                    "enum": [
-                        "INTERNAL",
-                        "CONFLICT",
-                        "INSUFFICIENT_FUND",
-                        "VALIDATION",
-                        "NOT_FOUND"
-                    ]
-                },
-                "error_message": {
-                    "type": "string"
-                }
-            }
-        },
-        "controllers.ScriptResponse": {
-            "type": "object",
-            "properties": {
-                "details": {
-                    "type": "string"
-                },
-                "error_code": {
-                    "type": "string",
-                    "enum": [
-                        "INTERNAL",
-                        "CONFLICT",
-                        "INSUFFICIENT_FUND",
-                        "VALIDATION",
-                        "NOT_FOUND"
-                    ]
-                },
-                "error_message": {
-                    "type": "string"
-                }
-            }
+==== BASE ====
+            "type": "object"
+==== BASE ====
         },
         "core.Account": {
             "type": "object",
@@ -747,6 +771,26 @@ var doc = `{
                         "additionalProperties": {
                             "type": "integer"
                         }
+                    }
+                }
+            }
+        },
+        "core.Contract": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "type": "string"
+                },
+                "expr": {}
+            }
+        },
+        "core.Mapping": {
+            "type": "object",
+            "properties": {
+                "contracts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Contract"
                     }
                 }
             }
@@ -802,6 +846,23 @@ var doc = `{
                 }
             }
         },
+        "core.TransactionData": {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "type": "object"
+                },
+                "postings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Posting"
+                    }
+                },
+                "reference": {
+                    "type": "string"
+                }
+            }
+        },
         "core.Transactions": {
             "type": "object",
             "required": [
@@ -811,7 +872,7 @@ var doc = `{
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/core.Transaction"
+                        "$ref": "#/definitions/core.TransactionData"
                     }
                 }
             }

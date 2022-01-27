@@ -26,7 +26,7 @@ func NewLedgerController() LedgerController {
 // @Accept json
 // @Produce json
 // @Param ledger path string true "ledger"
-// @Success 200 {object} ledger.Stats{}
+// @Success 200 {object} controllers.BaseResponse{data=ledger.Stats}
 // @Router /{ledger}/stats [get]
 func (ctl *LedgerController) GetStats(c *gin.Context) {
 	l, _ := c.Get("ledger")

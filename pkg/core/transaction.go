@@ -8,27 +8,31 @@ import (
 
 // Transactions struct
 type Transactions struct {
-	Transactions []Transaction `json:"transactions" binding:"required,dive"`
+	Transactions []TransactionData `json:"transactions" binding:"required,dive"`
+}
+
+type TransactionData struct {
+	Postings  Postings `json:"postings"`
+	Reference string   `json:"reference"`
+	Metadata  Metadata `json:"metadata" swaggertype:"object"`
 }
 
 type Transaction struct {
-	ID        int64    `json:"txid"`
-	Postings  Postings `json:"postings"`
-	Reference string   `json:"reference"`
-	Timestamp string   `json:"timestamp"`
-	Hash      string   `json:"hash" swaggerignore:"true"`
-	Metadata  Metadata `json:"metadata" swaggertype:"object"`
+	TransactionData
+	ID        int64  `json:"txid"`
+	Timestamp string `json:"timestamp"`
+	Hash      string `json:"hash" swaggerignore:"true"`
 }
 
 func (t *Transaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
-func (t *Transaction) Reverse() Transaction {
+func (t *Transaction) Reverse() TransactionData {
 	postings := t.Postings
 	postings.Reverse()
 
-	ret := Transaction{
+	ret := TransactionData{
 		Postings: postings,
 	}
 	if t.Reference != "" {

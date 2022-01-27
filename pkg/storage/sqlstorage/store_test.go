@@ -160,12 +160,14 @@ func testSaveTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -179,10 +181,12 @@ func testDuplicatedTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{},
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{},
+				},
+				Reference: "foo",
 			},
-			Reference: "foo",
 		},
 	}
 	_, err := store.SaveTransactions(context.Background(), txs)
@@ -227,12 +231,14 @@ func testLastTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -245,10 +251,12 @@ func testLastTransaction(t *testing.T, store storage.Store) {
 	assert.NoError(t, err)
 	assert.NotNil(t, lastTx)
 	assert.Equal(t, core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: txs[0].Postings,
+			Metadata: map[string]json.RawMessage{},
+		},
 		ID:        txs[0].ID,
-		Postings:  txs[0].Postings,
 		Timestamp: txs[0].Timestamp,
-		Metadata:  map[string]json.RawMessage{},
 	}, *lastTx)
 
 }
@@ -267,12 +275,14 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -290,12 +300,14 @@ func testAggregateBalances(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -314,12 +326,14 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -339,12 +353,14 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -375,16 +391,18 @@ func testCountMeta(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
-			},
-			Metadata: map[string]json.RawMessage{
-				"lastname": json.RawMessage(`"XXX"`),
+				Metadata: map[string]json.RawMessage{
+					"lastname": json.RawMessage(`"XXX"`),
+				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
@@ -405,16 +423,18 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
-			},
-			Metadata: map[string]json.RawMessage{
-				"lastname": json.RawMessage(`"XXX"`),
+				Metadata: map[string]json.RawMessage{
+					"lastname": json.RawMessage(`"XXX"`),
+				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
@@ -431,29 +451,33 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 0,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx1",
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx1",
 		},
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx2",
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx2",
 		},
 	}
 	_, err := store.SaveTransactions(context.Background(), txs)
@@ -522,32 +546,36 @@ func testMapping(t *testing.T, store storage.Store) {
 func testGetTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
-			ID: 0,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			ID:        0,
+			Timestamp: time.Now().Format(time.RFC3339),
+			TransactionData: core.TransactionData{
+				Reference: "tx1",
+				Metadata:  core.Metadata{},
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
-			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx1",
-			Metadata:  core.Metadata{},
 		},
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx2",
+				Metadata:  core.Metadata{},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx2",
-			Metadata:  core.Metadata{},
 		},
 	}
 	_, err := store.SaveTransactions(context.Background(), txs)

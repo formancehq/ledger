@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"net/http"
 	"reflect"
 
 	"github.com/gin-gonic/gin"
@@ -11,8 +12,8 @@ import (
 type BaseController struct{}
 
 type BaseResponse struct {
-	Cursor interface{} `json:"cursor,omitempty"`
 	Data   interface{} `json:"data,omitempty"`
+	Cursor interface{} `json:"cursor,omitempty"`
 }
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
@@ -41,6 +42,10 @@ const (
 type ErrorResponse struct {
 	ErrorCode    string `json:"error_code,omitempty" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
 	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+func (ctl *BaseController) noContent(c *gin.Context) {
+	c.Status(http.StatusNoContent)
 }
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {

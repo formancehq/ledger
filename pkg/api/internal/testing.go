@@ -77,7 +77,7 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	return req, rec
 }
 
-func PostTransaction(t *testing.T, handler http.Handler, tx core.Transaction) *httptest.ResponseRecorder {
+func PostTransaction(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, "/quickstart/transactions", Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -160,6 +160,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		storage.DefaultModule(),
 		sqlstorage.TestingModule(),
 		logging.LogrusModule(),
+		fx.NopLogger,
 	}, options...)
 	options = append(options, fx.Invoke(func() {
 		close(ch)

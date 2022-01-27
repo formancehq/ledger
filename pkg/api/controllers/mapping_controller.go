@@ -21,10 +21,10 @@ func NewMappingController() MappingController {
 // @Tags mapping
 // @Schemes
 // @Param ledger path string true "ledger"
+// @Param mapping body core.Mapping true "mapping"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
-// @Failure 404 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.BaseResponse{data=core.Mapping}
 // @Router /{ledger}/mapping [put]
 func (ctl *MappingController) PutMapping(c *gin.Context) {
 	l, _ := c.Get("ledger")
@@ -52,8 +52,7 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 // @Param ledger path string true "ledger"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse
-// @Failure 404 {object} controllers.BaseResponse
+// @Success 200 {object} controllers.BaseResponse{data=core.Mapping}
 // @Router /{ledger}/mapping [get]
 func (ctl *MappingController) GetMapping(c *gin.Context) {
 	l, _ := c.Get("ledger")
