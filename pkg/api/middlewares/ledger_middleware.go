@@ -3,7 +3,7 @@ package middlewares
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/sirupsen/logrus"
+	"github.com/numary/ledger/pkg/logging"
 )
 
 // LedgerMiddleware struct
@@ -40,7 +40,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		defer func() {
 			err := l.Close(c.Request.Context())
 			if err != nil {
-				logrus.Printf("error closing ledger: %s", err)
+				logging.Warn(c.Request.Context(), "error closing ledger: %s", err)
 			}
 		}()
 		c.Set("ledger", l)

@@ -6,7 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/sirupsen/logrus"
+	"github.com/numary/ledger/pkg/logging"
 	"path"
 	"strings"
 
@@ -51,7 +51,7 @@ func (s *Store) Name() string {
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
-	logrus.Debugln("initializing sqlite db")
+	logging.Debug(ctx, "initializing sqlite db")
 
 	statements := make([]string, 0)
 
@@ -64,7 +64,7 @@ func (s *Store) Initialize(ctx context.Context) error {
 	}
 
 	for _, m := range entries {
-		logrus.Debugf("running migrations %s\n", m.Name())
+		logging.Debug(ctx, "running migrations %s", m.Name())
 
 		b, err := migrations.ReadFile(path.Join(migrationsDir, m.Name()))
 		if err != nil {
@@ -80,12 +80,12 @@ func (s *Store) Initialize(ctx context.Context) error {
 	}
 
 	for i, statement := range statements {
-		logrus.Debugf("running statement: %s", statement)
+		logging.Debug(ctx, "running statement: %s", statement)
 		_, err = s.db.ExecContext(ctx, statement)
 
 		if err != nil {
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
-			logrus.Errorln(err)
+			logging.Error(ctx, "%s", err)
 			return s.error(err)
 		}
 	}

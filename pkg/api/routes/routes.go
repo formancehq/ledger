@@ -2,12 +2,13 @@ package routes
 
 import (
 	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/logging"
 	"go.uber.org/fx"
+	"time"
 )
 
 const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
@@ -84,7 +85,19 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	globalMiddlewares := append([]gin.HandlerFunc{
 		cors.New(cc),
 		gin.Recovery(),
-		logger.SetLogger(),
+		func(c *gin.Context) {
+			start := time.Now()
+			c.Next()
+			latency := time.Now().Sub(start)
+			logging.WithFields(map[string]interface{}{
+				"status":     c.Writer.Status(),
+				"method":     c.Request.Method,
+				"path":       c.Request.URL.Path,
+				"ip":         c.ClientIP(),
+				"latency":    latency,
+				"user_agent": c.Request.UserAgent(),
+			}).Info(c.Request.Context(), "Request")
+		},
 	}, r.globalMiddlewares...)
 
 	// Default Middlewares

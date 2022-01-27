@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ func with(f func(l *Ledger)) {
 		fx.Invoke(func(l *Ledger) {
 			err := l.Close(context.Background())
 			if err != nil {
-				logrus.Error(err)
+				logging.Error(context.Background(), "%s", err)
 			}
 		}),
 		// Closing the driver after each test cause a test to fail
@@ -137,8 +138,6 @@ func TestTransaction(t *testing.T) {
 			if i%int(1e3) != 0 {
 				continue
 			}
-
-			logrus.Debugln(i)
 
 			_, _, err := l.Commit(context.Background(), batch)
 

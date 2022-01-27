@@ -60,7 +60,6 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,
@@ -264,7 +263,6 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,

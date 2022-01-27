@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/XSAM/otelsql v0.10.0
 	github.com/gin-contrib/cors v1.3.1
-	github.com/gin-contrib/logger v0.2.0
+	github.com/gin-contrib/logger v0.2.0 // indirect
 	github.com/gin-gonic/gin v1.7.7
 	github.com/google/go-cmp v0.5.6
 	github.com/huandu/go-sqlbuilder v1.13.0
@@ -43,4 +43,5 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/rs/zerolog v1.26.1 // indirect
 )

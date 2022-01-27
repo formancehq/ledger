@@ -1,7 +1,8 @@
 package config
 
 import (
-	"github.com/sirupsen/logrus"
+	"context"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func Remember(ledger string) {
+func Remember(ctx context.Context, ledger string) {
 	ledgers := viper.GetStringSlice("ledgers")
 
 	for _, v := range ledgers {
@@ -51,14 +52,14 @@ func Remember(ledger string) {
 	if writeTo == "" {
 		_, err := os.Create(userConfigFile)
 		if err != nil {
-			logrus.Errorf("failed to create config file: ledger %s will not be remembered\n", ledger)
+			logging.Error(ctx, "failed to create config file: ledger %s will not be remembered", ledger)
 		}
 	}
 
 	viper.Set("ledgers", append(ledgers, ledger))
 	err = viper.WriteConfig()
 	if err != nil {
-		logrus.Errorf("failed to write config: ledger %s will not be remembered\n",
+		logging.Error(ctx, "failed to write config: ledger %s will not be remembered",
 			ledger)
 	}
 }
