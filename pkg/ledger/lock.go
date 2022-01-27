@@ -1,11 +1,14 @@
 package ledger
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
-type Unlock func()
+type Unlock func(ctx context.Context)
 
 type Locker interface {
-	Lock(name string) (Unlock, error)
+	Lock(ctx context.Context, name string) (Unlock, error)
 }
 
 type InMemoryLocker struct {
@@ -13,7 +16,7 @@ type InMemoryLocker struct {
 	locks      map[string]*sync.Mutex
 }
 
-func (d *InMemoryLocker) Lock(ledger string) (Unlock, error) {
+func (d *InMemoryLocker) Lock(ctx context.Context, ledger string) (Unlock, error) {
 	d.globalLock.RLock()
 	lock, ok := d.locks[ledger]
 	d.globalLock.RUnlock()
@@ -30,7 +33,9 @@ func (d *InMemoryLocker) Lock(ledger string) (Unlock, error) {
 	d.globalLock.Unlock()
 ret:
 	lock.Lock()
-	return lock.Unlock, nil
+	return func(ctx context.Context) {
+		lock.Unlock()
+	}, nil
 }
 
 func NewInMemoryLocker() *InMemoryLocker {
