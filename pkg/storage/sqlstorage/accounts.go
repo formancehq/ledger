@@ -2,7 +2,6 @@ package sqlstorage
 
 import (
 	"context"
-	"github.com/sirupsen/logrus"
 	"math"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -30,7 +29,6 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,
@@ -52,7 +50,7 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 		}
 
 		account := core.Account{
-			Address:  address,
+			Address: address,
 		}
 
 		meta, err := s.GetMeta(ctx, "account", account.Address)

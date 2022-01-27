@@ -3,10 +3,10 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/fx"
 	"sync"
 )
@@ -83,7 +83,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		err = store.Initialize(ctx)
 		if err != nil {
 			err = fmt.Errorf("failed to initialize store: %w", err)
-			logrus.Debugln(err)
+			logging.Debug(ctx, "%s", err)
 			return nil, err
 		}
 		r.initializedStores[name] = struct{}{}

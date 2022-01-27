@@ -19,7 +19,6 @@ func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 		From(s.table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,
