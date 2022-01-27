@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 )
 
@@ -38,6 +39,7 @@ type openCloseDBDriver struct {
 	name       string
 	connString ConnStringResolver
 	flavor     Flavor
+	logger     logging.Logger
 }
 
 func (d *openCloseDBDriver) Name() string {
@@ -57,7 +59,7 @@ func (d *openCloseDBDriver) NewStore(name string) (storage.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStore(name, sqlbuilder.Flavor(d.flavor), db, func(ctx context.Context) error {
+	return NewStore(name, sqlbuilder.Flavor(d.flavor), db, d.logger, func(ctx context.Context) error {
 		return db.Close()
 	})
 }
@@ -66,11 +68,12 @@ func (d *openCloseDBDriver) Close(ctx context.Context) error {
 	return nil
 }
 
-func NewOpenCloseDBDriver(name string, flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
+func NewOpenCloseDBDriver(logger logging.Logger, name string, flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
 	return &openCloseDBDriver{
 		flavor:     flavor,
 		connString: connString,
 		name:       name,
+		logger:     logger,
 	}
 }
 
@@ -82,6 +85,7 @@ type cachedDBDriver struct {
 	where  string
 	db     *sql.DB
 	flavor Flavor
+	logger logging.Logger
 }
 
 func (s *cachedDBDriver) Name() string {
@@ -104,7 +108,7 @@ func (s *cachedDBDriver) Initialize(ctx context.Context) error {
 }
 
 func (s *cachedDBDriver) NewStore(name string) (storage.Store, error) {
-	return NewStore(name, sqlbuilder.Flavor(s.flavor), s.db, func(ctx context.Context) error {
+	return NewStore(name, sqlbuilder.Flavor(s.flavor), s.db, s.logger, func(ctx context.Context) error {
 		return nil
 	})
 }
@@ -125,18 +129,15 @@ func SQLiteFileConnString(path string) string {
 	)
 }
 
-func NewCachedDBDriver(name string, flavor Flavor, where string) *cachedDBDriver {
+func NewCachedDBDriver(logger logging.Logger, name string, flavor Flavor, where string) *cachedDBDriver {
 	return &cachedDBDriver{
 		where:  where,
 		name:   name,
 		flavor: flavor,
+		logger: logger,
 	}
 }
 
-func NewInMemorySQLiteDriver() *cachedDBDriver {
-	return &cachedDBDriver{
-		where:  SQLiteMemoryConnString,
-		flavor: SQLite,
-		name:   "sqlite",
-	}
+func NewInMemorySQLiteDriver(logger logging.Logger) *cachedDBDriver {
+	return NewCachedDBDriver(logger, "sqlite", SQLite, SQLiteMemoryConnString)
 }

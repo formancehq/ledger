@@ -22,6 +22,7 @@ type Store struct {
 	ledger  string
 	db      *sql.DB
 	onClose func(ctx context.Context) error
+	logger  logging.Logger
 }
 
 func (s *Store) table(name string) string {
@@ -37,12 +38,13 @@ func (s *Store) error(err error) error {
 	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
-func NewStore(name string, flavor sqlbuilder.Flavor, db *sql.DB, onClose func(ctx context.Context) error) (*Store, error) {
+func NewStore(name string, flavor sqlbuilder.Flavor, db *sql.DB, logger logging.Logger, onClose func(ctx context.Context) error) (*Store, error) {
 	return &Store{
 		ledger:  name,
 		db:      db,
 		flavor:  flavor,
 		onClose: onClose,
+		logger:  logger,
 	}, nil
 }
 
@@ -51,7 +53,7 @@ func (s *Store) Name() string {
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
-	logging.Debug(ctx, "initializing sqlite db")
+	s.logger.Debug(ctx, "initializing sqlite db")
 
 	statements := make([]string, 0)
 
@@ -64,7 +66,7 @@ func (s *Store) Initialize(ctx context.Context) error {
 	}
 
 	for _, m := range entries {
-		logging.Debug(ctx, "running migrations %s", m.Name())
+		s.logger.Debug(ctx, "running migrations %s", m.Name())
 
 		b, err := migrations.ReadFile(path.Join(migrationsDir, m.Name()))
 		if err != nil {
@@ -80,12 +82,12 @@ func (s *Store) Initialize(ctx context.Context) error {
 	}
 
 	for i, statement := range statements {
-		logging.Debug(ctx, "running statement: %s", statement)
+		s.logger.Debug(ctx, "running statement: %s", statement)
 		_, err = s.db.ExecContext(ctx, statement)
 
 		if err != nil {
 			err = fmt.Errorf("failed to run statement %d: %w", i, err)
-			logging.Error(ctx, "%s", err)
+			s.logger.Error(ctx, "%s", err)
 			return s.error(err)
 		}
 	}
