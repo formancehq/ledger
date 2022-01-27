@@ -53,11 +53,11 @@ func (l *Ledger) Close(ctx context.Context) error {
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Transaction, error) {
-	unlock, err := l.locker.Lock(l.name)
+	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to acquire lock")
 	}
-	defer unlock()
+	defer unlock(ctx)
 
 	count, _ := l.store.CountTransactions(ctx)
 	rf := map[string]map[string]int64{}
@@ -276,11 +276,11 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m core.Metadata) error {
-	unlock, err := l.locker.Lock(l.name)
+	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return errors.Wrap(err, "unable to acquire lock")
 	}
-	defer unlock()
+	defer unlock(ctx)
 
 	if targetType == "" {
 		return NewValidationError("empty target type")
