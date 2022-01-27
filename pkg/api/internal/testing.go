@@ -9,6 +9,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
@@ -158,6 +159,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
 		sqlstorage.TestingModule(),
+		logging.LogrusModule(),
 	}, options...)
 	options = append(options, fx.Invoke(func() {
 		close(ch)

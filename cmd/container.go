@@ -4,6 +4,7 @@ import (
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
@@ -20,6 +21,8 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	if !v.GetBool(debugFlag) {
 		options = append(options, fx.NopLogger)
 	}
+
+	options = append(options, logging.LogrusModule())
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
@@ -99,7 +102,9 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	}))
 
 	// Handle resolver
-	options = append(options, ledger.ResolveModule())
+	options = append(options,
+		ledger.ResolveModule(),
+	)
 
 	// fx has issues about decorators feature. We will wait until released.
 	options = append(options,

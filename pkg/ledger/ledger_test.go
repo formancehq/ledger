@@ -86,7 +86,7 @@ func TestMain(m *testing.M) {
 
 	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
 	case "sqlite", "":
-		driver = sqlstorage.NewInMemorySQLiteDriver()
+		driver = sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger())
 	case "postgres":
 		pgServer, err := ledgertesting.PostgresServer()
 		if err != nil {
@@ -96,6 +96,7 @@ func TestMain(m *testing.M) {
 		defer pgServer.Close()
 
 		driver = sqlstorage.NewOpenCloseDBDriver(
+			logging.DefaultLogger(),
 			"postgres",
 			sqlstorage.PostgreSQL,
 			func(name string) string {

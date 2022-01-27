@@ -47,6 +47,7 @@ type Routes struct {
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
+	logger                logging.Logger
 }
 
 // NewRoutes -
@@ -62,6 +63,7 @@ func NewRoutes(
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
+	logger logging.Logger,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -75,6 +77,7 @@ func NewRoutes(
 		accountController:     accountController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
+		logger:                logger,
 	}
 }
 
@@ -89,7 +92,7 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 			start := time.Now()
 			c.Next()
 			latency := time.Now().Sub(start)
-			logging.WithFields(map[string]interface{}{
+			r.logger.WithFields(map[string]interface{}{
 				"status":     c.Writer.Status(),
 				"method":     c.Request.Method,
 				"path":       c.Request.URL.Path,

@@ -26,7 +26,7 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func Remember(ctx context.Context, ledger string) {
+func Remember(ctx context.Context, logger logging.Logger, ledger string) {
 	ledgers := viper.GetStringSlice("ledgers")
 
 	for _, v := range ledgers {
@@ -52,14 +52,14 @@ func Remember(ctx context.Context, ledger string) {
 	if writeTo == "" {
 		_, err := os.Create(userConfigFile)
 		if err != nil {
-			logging.Error(ctx, "failed to create config file: ledger %s will not be remembered", ledger)
+			logger.Error(ctx, "failed to create config file: ledger %s will not be remembered", ledger)
 		}
 	}
 
 	viper.Set("ledgers", append(ledgers, ledger))
 	err = viper.WriteConfig()
 	if err != nil {
-		logging.Error(ctx, "failed to write config: ledger %s will not be remembered",
+		logger.Error(ctx, "failed to write config: ledger %s will not be remembered",
 			ledger)
 	}
 }
