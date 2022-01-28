@@ -8,10 +8,10 @@ import (
 type Metadata map[string]json.RawMessage
 
 func (m Metadata) MarkRevertedBy(txID string) {
-	m["scheme/state"] = []byte("\"reverted\"")
-	m["scheme/state/reverted-by"] = []byte(fmt.Sprintf("\"%s\"", txID))
+	m["state"] = []byte("\"reverted\"")
+	m["state/reverted-by"] = []byte(fmt.Sprintf("\"%s\"", txID))
 }
 
 func (m Metadata) IsReverted() bool {
-	return string(m["scheme/state"]) == "\"reverted\""
+	return string(m["state"]) == "\"reverted\""
 }

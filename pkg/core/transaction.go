@@ -28,10 +28,13 @@ func (t *Transaction) Reverse() Transaction {
 	postings := t.Postings
 	postings.Reverse()
 
-	return Transaction{
-		Postings:  postings,
-		Reference: "revert_" + t.Reference,
+	ret := Transaction{
+		Postings: postings,
 	}
+	if t.Reference != "" {
+		ret.Reference = "revert_" + t.Reference
+	}
+	return ret
 }
 
 func Hash(t1 *Transaction, t2 *Transaction) string {
