@@ -8,5 +8,5 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o numary ./
 FROM alpine
 RUN apk add --no-cache ca-certificates curl
 COPY --from=src-alpine /app/numary /usr/local/bin/numary
-EXPOSE 80
+EXPOSE 3068
 CMD ["numary", "server", "start"]
