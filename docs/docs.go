@@ -302,7 +302,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.BaseResponse"
+                            "$ref": "#/definitions/controllers.ScriptResponse"
                         }
                     }
                 }
@@ -460,7 +460,10 @@ var doc = `{
                         }
                     },
                     "409": {
-                        "description": ""
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -657,8 +660,15 @@ var doc = `{
         "config.LedgerStorage": {
             "type": "object",
             "properties": {
-                "driver": {},
-                "ledgers": {}
+                "driver": {
+                    "type": "string"
+                },
+                "ledgers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
             }
         },
         "controllers.BaseResponse": {
@@ -671,6 +681,27 @@ var doc = `{
         "controllers.ErrorResponse": {
             "type": "object",
             "properties": {
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "INTERNAL",
+                        "CONFLICT",
+                        "INSUFFICIENT_FUND",
+                        "VALIDATION",
+                        "NOT_FOUND"
+                    ]
+                },
+                "error_message": {
+                    "type": "string"
+                }
+            }
+        },
+        "controllers.ScriptResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "string"
+                },
                 "error_code": {
                     "type": "string",
                     "enum": [
