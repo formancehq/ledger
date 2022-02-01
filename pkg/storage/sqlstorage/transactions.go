@@ -97,12 +97,14 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
-				ID:        txid,
-				Postings:  []core.Posting{},
+				ID: txid,
+				TransactionData: core.TransactionData{
+					Postings:  []core.Posting{},
+					Reference: ref.String,
+					Metadata:  core.Metadata{},
+				},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: ref.String,
-				Metadata:  core.Metadata{},
 			}
 		}
 

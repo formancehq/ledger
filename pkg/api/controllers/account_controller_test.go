@@ -14,7 +14,7 @@ func TestGetAccounts(t *testing.T) {
 
 	internal.RunTest(t, func(h *api.API) {
 
-		rsp := internal.PostTransaction(t, h, core.Transaction{
+		rsp := internal.PostTransaction(t, h, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -26,7 +26,7 @@ func TestGetAccounts(t *testing.T) {
 		})
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-		rsp = internal.PostTransaction(t, h, core.Transaction{
+		rsp = internal.PostTransaction(t, h, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -49,7 +49,7 @@ func TestGetAccounts(t *testing.T) {
 
 func TestGetAccount(t *testing.T) {
 	internal.RunTest(t, func(h *api.API) {
-		rsp := internal.PostTransaction(t, h, core.Transaction{
+		rsp := internal.PostTransaction(t, h, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -64,7 +64,7 @@ func TestGetAccount(t *testing.T) {
 		rsp = internal.PostAccountMetadata(t, h, "alice", core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		})
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
 		rsp = internal.GetAccount(h, "alice")
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)

@@ -15,7 +15,7 @@ func TestCommitTransaction(t *testing.T) {
 
 	type testCase struct {
 		name               string
-		transactions       []core.Transaction
+		transactions       []core.TransactionData
 		expectedStatusCode int
 		expectedErrorCode  string
 	}
@@ -23,7 +23,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "nominal",
 			expectedStatusCode: http.StatusOK,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -39,7 +39,7 @@ func TestCommitTransaction(t *testing.T) {
 		{
 			name:               "no-postings",
 			expectedStatusCode: http.StatusBadRequest,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{},
 				},
@@ -50,7 +50,7 @@ func TestCommitTransaction(t *testing.T) {
 			name:               "negative-amount",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  controllers.ErrValidation,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -67,7 +67,7 @@ func TestCommitTransaction(t *testing.T) {
 			name:               "wrong-asset",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  controllers.ErrValidation,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -84,7 +84,7 @@ func TestCommitTransaction(t *testing.T) {
 			name:               "bad-address",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  controllers.ErrValidation,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -101,7 +101,7 @@ func TestCommitTransaction(t *testing.T) {
 			name:               "missing-funds",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  controllers.ErrInsufficientFund,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -118,7 +118,7 @@ func TestCommitTransaction(t *testing.T) {
 			name:               "reference-conflict",
 			expectedStatusCode: http.StatusConflict,
 			expectedErrorCode:  controllers.ErrConflict,
-			transactions: []core.Transaction{
+			transactions: []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -159,7 +159,7 @@ func TestCommitTransaction(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	internal.RunTest(t, func(api *api.API) {
-		rsp := internal.PostTransaction(t, api, core.Transaction{
+		rsp := internal.PostTransaction(t, api, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -203,7 +203,7 @@ func TestNotFoundTransaction(t *testing.T) {
 
 func TestGetTransactions(t *testing.T) {
 	internal.RunTest(t, func(api *api.API) {
-		rsp := internal.PostTransaction(t, api, core.Transaction{
+		rsp := internal.PostTransaction(t, api, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -215,7 +215,7 @@ func TestGetTransactions(t *testing.T) {
 		})
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-		rsp = internal.PostTransaction(t, api, core.Transaction{
+		rsp = internal.PostTransaction(t, api, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -243,7 +243,7 @@ func TestGetTransactions(t *testing.T) {
 
 func TestPostTransactionMetadata(t *testing.T) {
 	internal.RunTest(t, func(api *api.API) {
-		rsp := internal.PostTransaction(t, api, core.Transaction{
+		rsp := internal.PostTransaction(t, api, core.TransactionData{
 			Postings: core.Postings{
 				{
 					Source:      "world",
@@ -260,7 +260,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 		rsp = internal.PostTransactionMetadata(t, api, tx.ID, core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		})
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
 		rsp = internal.GetTransaction(api, 0)
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
