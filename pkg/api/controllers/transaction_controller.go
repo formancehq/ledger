@@ -109,7 +109,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, result[0])
+	ctl.response(c, http.StatusOK, result)
 }
 
 // GetTransaction godoc
