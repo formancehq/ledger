@@ -4,7 +4,5 @@ coverage.out
 cmd/control/*
 !cmd/control/gitkeep
 .DS_Store
-docs/swagger.json
-docs/swagger.yaml
 .idea
 vendor
