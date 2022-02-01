@@ -13,7 +13,7 @@ paths:
       description: Show server informations
       operationId: getInfo
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -38,7 +38,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -64,7 +64,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -97,9 +97,9 @@ paths:
               $ref: '#/components/schemas/Metadata'
         required: true
       responses:
-        204:
+        "204":
           description: Empty response
-        400:
+        "400":
           description: ""
           content: {}
   /{ledger}/mapping:
@@ -117,7 +117,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -144,7 +144,7 @@ paths:
               $ref: '#/components/schemas/Mapping'
         required: true
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -173,7 +173,7 @@ paths:
               $ref: '#/components/schemas/Script'
         required: true
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -197,7 +197,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -235,7 +235,7 @@ paths:
           schema:
             type: string
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
@@ -264,19 +264,19 @@ paths:
               $ref: '#/components/schemas/TransactionData'
         required: true
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateTransactionResponse'
-        400:
+        "400":
           description: Commit error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        409:
+        "409":
           description: Confict
           content:
             application/json:
@@ -304,13 +304,13 @@ paths:
           schema:
             type: integer
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-        404:
+        "404":
           description: Not Found
           content:
             application/json:
@@ -343,7 +343,7 @@ paths:
             schema:
               $ref: '#/components/schemas/Metadata'
       responses:
-        204:
+        "204":
           description: Empty response
           content: {}
   /{ledger}/transactions/{txid}/revert:
@@ -367,7 +367,7 @@ paths:
           schema:
             type: integer
       responses:
-        204:
+        "204":
           description: Empty response
           content: {}
   /{ledger}/transactions/batch:
@@ -394,13 +394,13 @@ paths:
               $ref: '#/components/schemas/Transactions'
         required: true
       responses:
-        200:
+        "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionListResponse'
-        400:
+        "400":
           description: ""
           content:
             application/json:
