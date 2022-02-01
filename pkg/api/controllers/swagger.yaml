@@ -1,0 +1,727 @@
+openapi: 3.0.1
+info:
+  title: Ledger API
+  contact: {}
+  version: "1.0"
+
+paths:
+  /_info:
+    get:
+      tags:
+        - server
+      summary: Server Info
+      description: Show server informations
+      operationId: getInfo
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigInfoResponse'
+  /{ledger}/accounts:
+    get:
+      summary: List all accounts
+      operationId: listAccounts
+      tags:
+        - accounts
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: after
+          in: query
+          description: pagination cursor, will return accounts after given address (in descending order)
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCursorResponse'
+  /{ledger}/accounts/{accountId}:
+    get:
+      summary: Get account by address
+      operationId: getAccount
+      tags:
+        - accounts
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: accountId
+          in: path
+          description: accountId
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+  /{ledger}/accounts/{accountId}/metadata:
+    post:
+      summary: Add metadata to account
+      operationId: addMetadataToAccount
+      tags:
+        - accounts
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: accountId
+          in: path
+          description: accountId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Metadata'
+        required: true
+      responses:
+        204:
+          description: Empty response
+        400:
+          description: ""
+          content: {}
+  /{ledger}/mapping:
+    get:
+      tags:
+        - mapping
+      operationId: getMapping
+      summary: Get mapping
+      description: Get ledger mapping
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingResponse'
+    put:
+      tags:
+        - mapping
+      operationId: updateMapping
+      summary: Put mapping
+      description: Update ledger mapping
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: mapping
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Mapping'
+        required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappingResponse'
+      
+  /{ledger}/script:
+    post:
+      tags:
+        - script
+      operationId: runScript
+      summary: Execute Numscript
+      description: Execute a Numscript and create the transaction if any
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: script
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Script'
+        required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScriptResult'
+      
+  /{ledger}/stats:
+    get:
+      tags:
+        - stats
+      operationId: readStats
+      summary: Get Stats
+      description: |-
+        Get ledger stats (aggregate metrics on accounts and transactions)
+        The stats for account
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+  /{ledger}/transactions:
+    get:
+      tags:
+        - transactions
+      summary: Get all Transactions
+      description: Get all ledger transactions
+      operationId: listTransactions
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: after
+          in: query
+          description: pagination cursor, will return transactions after given txid
+            (in descending order)
+          schema:
+            type: string
+        - name: reference
+          in: query
+          description: find transactions by reference field
+          schema:
+            type: string
+        - name: account
+          in: query
+          description: find transactions with postings involving given account, either
+            as source or destination
+          schema:
+            type: string
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionCursorResponse'
+    post:
+      tags:
+        - transactions
+      summary: Create Transaction
+      operationId: createTransaction
+      description: |-
+        Create a new ledger transaction
+        Commit a new transaction to the ledger
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: transaction
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionData'
+        required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        400:
+          description: Commit error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        409:
+          description: Confict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      
+  /{ledger}/transactions/{txid}:
+    get:
+      tags:
+        - transactions
+      summary: Get Transaction
+      description: Get transaction by transaction id
+      operationId: getTransaction
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: txid
+          in: path
+          description: txid
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        404:
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /{ledger}/transactions/{txid}/metadata:
+    post:
+      tags:
+        - transactions
+      summary: Set Transaction Metadata
+      operationId: addMetadataOnTransaction
+      description: Set a new metadata to a ledger transaction by transaction id
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: txid
+          in: path
+          description: txid
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        description: metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Metadata'
+      responses:
+        204:
+          description: Empty response
+          content: {}
+  /{ledger}/transactions/{txid}/revert:
+    post:
+      tags:
+        - transactions
+      operationId: revertTransaction
+      summary: Revert Transaction
+      description: Revert a ledger transaction by transaction id
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+        - name: txid
+          in: path
+          description: txid
+          required: true
+          schema:
+            type: integer
+      responses:
+        204:
+          description: Empty response
+          content: {}
+  /{ledger}/transactions/batch:
+    post:
+      tags:
+        - transactions
+      summary: Create Transactions Batch
+      operationId: CreateTransactions
+      description: |-
+        Create a new ledger transactions batch
+        Commit a batch of new transactions to the ledger
+      parameters:
+        - name: ledger
+          in: path
+          description: ledger
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: transactions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transactions'
+        required: true
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListResponse'
+        400:
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionCommitErrorResponse'
+components:
+  schemas:
+    Config:
+      type: object
+      properties:
+        storage:
+          $ref: '#/components/schemas/LedgerStorage'
+      required:
+        - storage
+    Metadata:
+      type: object
+      nullable: true
+      additionalProperties: {}
+    ConfigInfo:
+      type: object
+      properties:
+        config:
+          $ref: '#/components/schemas/Config'
+        server:
+          type: string
+        version:
+          type: string
+      required:
+        - config
+        - server
+        - version
+    LedgerStorage:
+      type: object
+      properties:
+        driver:
+          type: string
+        ledgers:
+          type: array
+          items:
+            type: string
+      required:
+        - driver
+        - ledgers
+    CursorResponse:
+      type: object
+      properties:
+        cursor:
+          $ref: '#/components/schemas/Cursor'
+    ScriptResult:
+      type: object
+      properties:
+        details:
+          type: string
+        err:
+          type: string
+    Account:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          example: users:001
+        balances:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            COIN: 100
+        metadata:
+          type: object
+          properties: {}
+        type:
+          type: string
+          example: virtual
+        volumes:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
+    Contract:
+      type: object
+      properties:
+        account:
+          type: string
+        expr:
+          type: object
+      required:
+        - accounts
+        - expr
+    Mapping:
+      type: object
+      nullable: true
+      required:
+        - contracts
+      properties:
+        contracts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contract'
+    Posting:
+      type: object
+      properties:
+        amount:
+          type: integer
+        asset:
+          type: string
+        destination:
+          type: string
+        source:
+          type: string
+      required:
+        - amount
+        - asset
+        - destination
+        - source
+    Script:
+      type: object
+      properties:
+        plain:
+          type: string
+        vars:
+          type: object
+          properties: {}
+      required:
+        - plain
+    Transaction:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Posting'
+        reference:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        txid:
+          type: integer
+      required:
+        - postings
+        - timestamp
+        - txid
+    TransactionData:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties: {}
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Posting'
+        reference:
+          type: string
+      required:
+        - postings
+    Transactions:
+      required:
+        - transactions
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionData'
+    Stats:
+      type: object
+      properties:
+        accounts:
+          type: integer
+        transactions:
+          type: integer
+      required:
+        - accounts
+        - transactions
+    Cursor:
+      type: object
+      required:
+        - page_size
+        - has_more
+        - page_size
+        - remaining_results
+        - total
+      properties:
+        has_more:
+          type: boolean
+        next:
+          type: string
+        page_size:
+          type: integer
+        previous:
+          type: string
+        remaining_results:
+          type: integer
+        total:
+          type: integer
+    AccountCursor:
+      allOf:
+        - $ref: '#/components/schemas/Cursor'
+        - properties:
+            data:
+              items:
+                $ref: '#/components/schemas/Account'
+              type: array
+          type: object
+          required:
+            - data
+    AccountCursorResponse:
+      required:
+        - cursor
+      properties:
+        cursor:
+          $ref: '#/components/schemas/AccountCursor'
+    TransactionCursor:
+      allOf:
+      - $ref: '#/components/schemas/Cursor'
+      - type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '#/components/schemas/Transaction'
+        required:
+          - data
+    TransactionCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          $ref: '#/components/schemas/TransactionCursor'
+    TransactionListResponse:
+      allOf:
+        - $ref: '#/components/schemas/CursorResponse'
+        - properties:
+            data:
+              items:
+                $ref: '#/components/schemas/Transaction'
+              type: array
+          type: object
+          required:
+            - data
+    CreateTransactionResponse:
+      type: object
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Transaction'
+          type: array
+      required:
+        - data
+    AccountResponse:
+        properties:
+          data:
+            $ref: '#/components/schemas/Account'
+        type: object
+        required:
+          - data
+    TransactionResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/Transaction'
+      type: object
+      required:
+        - data
+    StatsResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/Stats'
+      type: object
+      required:
+        - data
+    MappingResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/Mapping'
+      type: object
+    ConfigInfoResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ConfigInfo'
+      type: object
+      required:
+        - data
+    ErrorCode:
+      type: string
+      enum:
+        - INTERNAL
+        - INSUFFICIENT_FUND
+        - VALIDATION
+        - CONFLICT
+        - NOT_FOUND
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+      properties:
+        error_code:
+          $ref: '#/components/schemas/ErrorCode'
+        error_message:
+          type: string
+    TransactionCommitError:
+      allOf:
+        - $ref: '#/components/schemas/Transaction'
+        - type: object
+          properties:
+            errorCode:
+              $ref: '#/components/schemas/ErrorCode'
+            errorMessage:
+              type: string
+    TransactionCommitErrorResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionCommitError'

@@ -39,17 +39,6 @@ func NewScriptController() ScriptController {
 	return ScriptController{}
 }
 
-// PostScript godoc
-// @Summary Execute Numscript
-// @Description Execute a Numscript and create the transaction if any
-// @Tags script
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param script body core.Script true "script"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.ScriptResponse
-// @Router /{ledger}/script [post]
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 

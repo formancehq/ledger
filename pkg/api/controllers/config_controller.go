@@ -1,12 +1,12 @@
 package controllers
 
 import (
+	"bytes"
+	"gopkg.in/yaml.v2"
 	"net/http"
 
-	"github.com/swaggo/swag"
-
+	_ "embed"
 	"github.com/gin-gonic/gin"
-	_ "github.com/numary/ledger/docs"
 	"github.com/numary/ledger/pkg/config"
 )
 
@@ -36,15 +36,6 @@ func NewConfigController(version string, storageDriver string, lister LedgerList
 	}
 }
 
-// GetInfo godoc
-// @Summary Server Info
-// @Description Show server informations
-// @Tags server
-// @Schemes
-// @Accept json
-// @Produce json
-// @Success 200 {object} config.ConfigInfo{}
-// @Router /_info [get]
 func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	ctl.response(
 		c,
@@ -62,11 +53,19 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	)
 }
 
-func (ctl *ConfigController) GetDocs(c *gin.Context) {
-	doc, err := swag.ReadDoc("swagger")
+//go:embed swagger.yaml
+var swagger string
+
+func (ctl *ConfigController) GetDocsAsYaml(c *gin.Context) {
+	c.Writer.Write([]byte(swagger))
+}
+
+func (ctl *ConfigController) GetDocsAsJSON(c *gin.Context) {
+	ret := make(map[string]interface{})
+	err := yaml.NewDecoder(bytes.NewBufferString(swagger)).Decode(&ret)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
+		panic(err)
 	}
-	c.Writer.Write([]byte(doc))
+
+	c.JSON(http.StatusOK, ret)
 }

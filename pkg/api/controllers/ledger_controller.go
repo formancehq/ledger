@@ -17,17 +17,6 @@ func NewLedgerController() LedgerController {
 	return LedgerController{}
 }
 
-// GetStats godoc
-// @Summary Get Stats
-// @Description Get ledger stats (aggregate metrics on accounts and transactions)
-// @Tags stats
-// @Schemes
-// @Description The stats for account
-// @Accept json
-// @Produce json
-// @Param ledger path string true "ledger"
-// @Success 200 {object} controllers.BaseResponse{data=ledger.Stats}
-// @Router /{ledger}/stats [get]
 func (ctl *LedgerController) GetStats(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
