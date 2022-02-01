@@ -106,7 +106,8 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	// Default Middlewares
 	engine.Use(globalMiddlewares...)
 
-	engine.GET("/swagger.json", r.configController.GetDocs)
+	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
+	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)
 
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)

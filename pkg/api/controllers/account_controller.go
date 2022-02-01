@@ -20,15 +20,6 @@ func NewAccountController() AccountController {
 	return AccountController{}
 }
 
-// GetAccounts godoc
-// @Summary List all accounts
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param after query string true "pagination cursor, will return accounts after given address (in descending order)"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Account}}
-// @Router /{ledger}/accounts [get]
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
@@ -46,15 +37,6 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	)
 }
 
-// GetAccount godoc
-// @Summary Get account by address
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param accountId path string true "accountId"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=core.Account}
-// @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
@@ -69,16 +51,6 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 	)
 }
 
-// PostAccountMetadata godoc
-// @Summary Add metadata to account
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param accountId path string true "accountId"
-// @Accept json
-// @Produce json
-// @Success 204 "Empty response"
-// @Failure 400
-// @Router /{ledger}/accounts/{accountId}/metadata [post]
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	var m core.Metadata

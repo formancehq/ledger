@@ -5,25 +5,6 @@ on:
 
 name: Main
 jobs:
-  docs:
-    name: 'Build Docs'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: |
-          wget https://github.com/swaggo/swag/releases/download/v1.7.4/swag_1.7.4_Linux_x86_64.tar.gz
-          tar -zxvf swag_1.7.4_Linux_x86_64.tar.gz
-      - run: ./swag init
-      - uses: actions/upload-artifact@v2
-        with:
-          name: docs-dist
-          path: ./docs/**
-      - uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: "[skip ci] Update docs"
-          file_pattern: docs/docs.go docs/*.go
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
@@ -46,7 +27,6 @@ jobs:
     name: 'Build'
     needs:
       - build_control
-      - docs
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -78,11 +58,6 @@ jobs:
         with:
           name: control-dist
           path: cmd/control/
-      - name: fetch docs
-        uses: actions/download-artifact@v2
-        with:
-          name: docs-dist
-          path: docs/
       - name: OSXCross for CGO Support
         if: matrix.os == 'ubuntu-latest'
         run: |

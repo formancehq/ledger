@@ -15,17 +15,6 @@ func NewMappingController() MappingController {
 	return MappingController{}
 }
 
-// PutMapping godoc
-// @Summary Put mapping
-// @Description Update ledger mapping
-// @Tags mapping
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param mapping body core.Mapping true "mapping"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=core.Mapping}
-// @Router /{ledger}/mapping [put]
 func (ctl *MappingController) PutMapping(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -44,16 +33,6 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 	ctl.response(c, http.StatusOK, mapping)
 }
 
-// GetMapping godoc
-// @Summary Get mapping
-// @Description Get ledger mapping
-// @Tags contracts
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=core.Mapping}
-// @Router /{ledger}/mapping [get]
 func (ctl *MappingController) GetMapping(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
