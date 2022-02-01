@@ -584,7 +584,6 @@ components:
     Cursor:
       type: object
       required:
-        - page_size
         - has_more
         - page_size
         - remaining_results
