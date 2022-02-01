@@ -254,10 +254,10 @@ func TestPostTransactionMetadata(t *testing.T) {
 			},
 		})
 		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-		tx := core.Transaction{}
+		tx := make([]core.Transaction, 0)
 		internal.DecodeSingleResponse(t, rsp.Body, &tx)
 
-		rsp = internal.PostTransactionMetadata(t, api, tx.ID, core.Metadata{
+		rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		})
 		assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
