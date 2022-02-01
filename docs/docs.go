@@ -488,7 +488,10 @@ var doc = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/core.Transaction"
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/core.Transaction"
+                                            }
                                         }
                                     }
                                 }
@@ -545,22 +548,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/controllers.BaseResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/core.Transaction"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/controllers.BaseResponse"
                         }
                     },
                     "400": {

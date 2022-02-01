@@ -88,7 +88,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 // @Param transaction body core.TransactionData true "transaction"
 // @Accept json
 // @Produce json
-// @Success 200 {object} controllers.BaseResponse{data=core.Transaction[]}
+// @Success 200 {object} controllers.BaseResponse{data=[]core.Transaction}
 // @Failure 400 {object} controllers.ErrorResponse
 // @Failure 409 {object} controllers.ErrorResponse
 // @Router /{ledger}/transactions [post]
