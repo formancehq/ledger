@@ -222,8 +222,8 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		case ledger.ErrCommitError:
 			type TransactionError struct {
 				core.Transaction
-				ErrorCode    string `json:"errorCode"`
-				ErrorMessage string `json:"errorMessage"`
+				ErrorCode    string `json:"errorCode,omitempty"`
+				ErrorMessage string `json:"errorMessage,omitempty"`
 			}
 			results := make([]TransactionError, 0)
 			for _, tx := range ret {
