@@ -320,9 +320,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-==== BASE ====
                             "$ref": "#/definitions/controllers.ScriptResponse"
-==== BASE ====
                         }
                     }
                 }
@@ -737,9 +735,50 @@ var doc = `{
             }
         },
         "controllers.BaseResponse": {
-==== BASE ====
-            "type": "object"
-==== BASE ====
+            "type": "object",
+            "properties": {
+                "cursor": {},
+                "data": {}
+            }
+        },
+        "controllers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "INTERNAL",
+                        "CONFLICT",
+                        "INSUFFICIENT_FUND",
+                        "VALIDATION",
+                        "NOT_FOUND"
+                    ]
+                },
+                "error_message": {
+                    "type": "string"
+                }
+            }
+        },
+        "controllers.ScriptResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "string"
+                },
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "INTERNAL",
+                        "CONFLICT",
+                        "INSUFFICIENT_FUND",
+                        "VALIDATION",
+                        "NOT_FOUND"
+                    ]
+                },
+                "error_message": {
+                    "type": "string"
+                }
+            }
         },
         "core.Account": {
             "type": "object",
