@@ -3,9 +3,10 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"time"
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
