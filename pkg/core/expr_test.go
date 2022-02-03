@@ -3,8 +3,9 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRules(t *testing.T) {
@@ -41,6 +42,57 @@ func TestRules(t *testing.T) {
 				Metadata: map[string]json.RawMessage{
 					"approved": json.RawMessage("yes"),
 				},
+			},
+			shouldBeAccepted: true,
+		},
+		{
+			rule: map[string]interface{}{
+				"$or": []interface{}{
+					map[string]interface{}{
+						"$gte": []interface{}{
+							"$balance", float64(0),
+						},
+					},
+					map[string]interface{}{
+						"$lte": []interface{}{
+							"$balance", float64(0),
+						},
+					},
+				},
+			},
+			context: EvalContext{
+				Variables: map[string]interface{}{
+					"balance": float64(-100),
+				},
+				Metadata: map[string]json.RawMessage{},
+			},
+			shouldBeAccepted: true,
+		},
+		{
+			rule: map[string]interface{}{
+				"$lt": []interface{}{
+					"$balance", float64(0),
+				},
+			},
+			context: EvalContext{
+				Variables: map[string]interface{}{
+					"balance": float64(100),
+				},
+				Metadata: map[string]json.RawMessage{},
+			},
+			shouldBeAccepted: false,
+		},
+		{
+			rule: map[string]interface{}{
+				"$lte": []interface{}{
+					"$balance", float64(0),
+				},
+			},
+			context: EvalContext{
+				Variables: map[string]interface{}{
+					"balance": float64(0),
+				},
+				Metadata: map[string]json.RawMessage{},
 			},
 			shouldBeAccepted: true,
 		},
