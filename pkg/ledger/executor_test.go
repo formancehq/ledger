@@ -28,6 +28,21 @@ func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount
 	}
 }
 
+func TestNoScript(t *testing.T) {
+	with(func(l *Ledger) {
+		script := core.Script{}
+
+		_, err := l.Execute(context.Background(), script)
+
+		if err.Error() != "no script to execute" {
+			t.Error(errors.New(
+				"unexpected error",
+			))
+		}
+		l.Close(context.Background())
+	})
+}
+
 func TestTransactionInvalidScript(t *testing.T) {
 	with(func(l *Ledger) {
 		script := core.Script{
@@ -38,7 +53,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 
 		if err == nil {
 			t.Error(errors.New(
-				"script was invalid yet the transaction was commited",
+				"script was invalid yet the transaction was committed",
 			))
 		}
 		l.Close(context.Background())
@@ -80,6 +95,27 @@ func TestSend(t *testing.T) {
 		}
 
 		assertBalance(t, l, "user:001", "USD/2", 99)
+	})
+}
+
+func TestNoVariables(t *testing.T) {
+	with(func(l *Ledger) {
+		var script core.Script
+		json.Unmarshal(
+			[]byte(`{
+				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
+				"vars": {}
+			}`),
+			&script)
+
+		_, err := l.Execute(context.Background(), script)
+
+		if err == nil {
+			t.Error(errors.New(
+				"variables were not provided but the transaction was committed",
+			))
+		}
+		l.Close(context.Background())
 	})
 }
 
@@ -197,6 +233,37 @@ func TestNotEnoughFunds(t *testing.T) {
 		if err == nil {
 			t.Error("error wasn't supposed to be nil")
 			return
+		}
+	})
+}
+
+func TestMissingMetadata(t *testing.T) {
+	with(func(l *Ledger) {
+		defer l.Close(context.Background())
+
+		plain := `
+			vars {
+				account $sale
+				account $seller = meta($sale, "seller")
+			}
+
+			send [COIN *] (
+				source = $sale
+				destination = $seller
+			)
+		`
+
+		script := core.Script{
+			Plain: plain,
+			Vars: map[string]json.RawMessage{
+				"sale": json.RawMessage(`"sales:042"`),
+			},
+		}
+
+		_, err := l.Execute(context.Background(), script)
+
+		if err == nil {
+			t.Fatalf("expected an error because of missing metadata")
 		}
 	})
 }
