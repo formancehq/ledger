@@ -33,5 +33,9 @@ archives:
       linux: Linux
       windows: Windows
 
+release:
+  prerelease: auto
+  mode: replace
+
 snapshot:
   name_template: "{{ .Tag }}"
