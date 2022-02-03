@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ func with(f func(l *Ledger)) {
 		fx.Invoke(func(l *Ledger) {
 			err := l.Close(context.Background())
 			if err != nil {
-				logrus.Error(err)
+				logging.Error(context.Background(), "%s", err)
 			}
 		}),
 		// Closing the driver after each test cause a test to fail
@@ -85,7 +86,7 @@ func TestMain(m *testing.M) {
 
 	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
 	case "sqlite", "":
-		driver = sqlstorage.NewInMemorySQLiteDriver()
+		driver = sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger())
 	case "postgres":
 		pgServer, err := ledgertesting.PostgresServer()
 		if err != nil {
@@ -95,6 +96,7 @@ func TestMain(m *testing.M) {
 		defer pgServer.Close()
 
 		driver = sqlstorage.NewOpenCloseDBDriver(
+			logging.DefaultLogger(),
 			"postgres",
 			sqlstorage.PostgreSQL,
 			func(name string) string {
@@ -110,14 +112,14 @@ func TestTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		testsize := 1e4
 		total := 0
-		batch := []core.Transaction{}
+		batch := []core.TransactionData{}
 
 		for i := 1; i <= int(testsize); i++ {
 			user := fmt.Sprintf("users:%03d", 1+rand.Intn(100))
 			amount := 100
 			total += amount
 
-			batch = append(batch, core.Transaction{
+			batch = append(batch, core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -138,15 +140,13 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			logrus.Debugln(i)
-
-			_, err := l.Commit(context.Background(), batch)
+			_, _, err := l.Commit(context.Background(), batch)
 
 			if err != nil {
 				t.Error(err)
 			}
 
-			batch = []core.Transaction{}
+			batch = []core.TransactionData{}
 		}
 
 		world, err := l.GetAccount(context.Background(), "world")
@@ -168,9 +168,169 @@ func TestTransaction(t *testing.T) {
 	})
 }
 
+func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
+	with(func(l *Ledger) {
+		batch := []core.TransactionData{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player2",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "player",
+						Destination: "game",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+			},
+		}
+
+		_, result, err := l.Commit(context.Background(), batch)
+		assert.Error(t, err)
+		assert.Equal(t, ErrCommitError, err)
+		assert.Len(t, result, 3)
+		assert.Nil(t, result[0].Err)
+		assert.Nil(t, result[2].Err)
+		assert.NotNil(t, result[1].Err)
+		assert.IsType(t, new(TransactionCommitError), result[1].Err)
+		assert.Equal(t, 1, result[1].Err.TXIndex)
+		assert.IsType(t, new(InsufficientFundError), result[1].Err.Err)
+	})
+}
+
+func TestTransactionBatchWithConflictingReference(t *testing.T) {
+	with(func(l *Ledger) {
+		batch := []core.TransactionData{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref1",
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "player",
+						Destination: "game",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref2",
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref1",
+			},
+		}
+
+		_, result, err := l.Commit(context.Background(), batch)
+		assert.Error(t, err)
+		assert.Equal(t, ErrCommitError, err)
+		assert.Len(t, result, 3)
+		assert.Nil(t, result[0].Err)
+		assert.Nil(t, result[1].Err)
+		assert.NotNil(t, result[2].Err)
+		assert.IsType(t, new(TransactionCommitError), result[2].Err)
+		assert.Equal(t, 2, result[2].Err.TXIndex)
+		assert.IsType(t, new(ConflictError), result[2].Err.Err)
+	})
+}
+
+func TestTransactionExpectedBalances(t *testing.T) {
+	with(func(l *Ledger) {
+		batch := []core.TransactionData{
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "USD",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "EUR",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player2",
+						Asset:       "EUR",
+						Amount:      int64(100),
+					},
+				},
+			},
+			{
+				Postings: []core.Posting{
+					{
+						Source:      "player",
+						Destination: "player2",
+						Asset:       "EUR",
+						Amount:      int64(50),
+					},
+				},
+			},
+		}
+
+		balances, _, err := l.Commit(context.Background(), batch)
+		assert.NoError(t, err)
+
+		assert.EqualValues(t, balances, Balances{
+			"player": map[string]int64{
+				"USD": 100,
+				"EUR": 50,
+			},
+			"player2": map[string]int64{
+				"EUR": 150,
+			},
+		})
+
+	})
+}
+
 func TestBalance(t *testing.T) {
 	with(func(l *Ledger) {
-		_, err := l.Commit(context.Background(), []core.Transaction{
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{
 			{
 				Postings: []core.Posting{
 					{
@@ -193,7 +353,7 @@ func TestBalance(t *testing.T) {
 
 func TestReference(t *testing.T) {
 	with(func(l *Ledger) {
-		tx := core.Transaction{
+		tx := core.TransactionData{
 			Reference: "payment_processor_id_01",
 			Postings: []core.Posting{
 				{
@@ -205,13 +365,13 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.Transaction{tx})
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
 
 		if err != nil {
 			t.Error(err)
 		}
 
-		_, err = l.Commit(context.Background(), []core.Transaction{tx})
+		_, _, err = l.Commit(context.Background(), []core.TransactionData{tx})
 
 		if err == nil {
 			t.Fail()
@@ -289,7 +449,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		l.Commit(context.Background(), []core.Transaction{{
+		l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -333,7 +493,7 @@ func TestTransactionMetadata(t *testing.T) {
 func TestSaveTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
 
-		l.Commit(context.Background(), []core.Transaction{{
+		l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -367,7 +527,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
-		l.Commit(context.Background(), []core.Transaction{{
+		l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "bar",
 			Postings: []core.Posting{
 				{
@@ -397,7 +557,7 @@ func TestGetTransaction(t *testing.T) {
 
 func TestFindTransactions(t *testing.T) {
 	with(func(l *Ledger) {
-		tx := core.Transaction{
+		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -408,7 +568,7 @@ func TestFindTransactions(t *testing.T) {
 			},
 		}
 
-		l.Commit(context.Background(), []core.Transaction{tx})
+		l.Commit(context.Background(), []core.TransactionData{tx})
 
 		res, err := l.FindTransactions(context.Background())
 
@@ -428,7 +588,7 @@ func TestRevertTransaction(t *testing.T) {
 	with(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		txs, err := l.Commit(context.Background(), []core.Transaction{{
+		_, txs, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -487,9 +647,9 @@ func TestRevertTransaction(t *testing.T) {
 func BenchmarkTransaction1(b *testing.B) {
 	with(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
-			txs := []core.Transaction{}
+			txs := []core.TransactionData{}
 
-			txs = append(txs, core.Transaction{
+			txs = append(txs, core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -509,10 +669,10 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 	with(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
 			for i := 0; i < 20; i++ {
-				txs := []core.Transaction{}
+				txs := []core.TransactionData{}
 
 				for j := 0; j < 1e3; j++ {
-					txs = append(txs, core.Transaction{
+					txs = append(txs, core.TransactionData{
 						Postings: []core.Posting{
 							{
 								Source:      "world",

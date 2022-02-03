@@ -10,8 +10,8 @@ type noOpStorage struct {
 	Store
 }
 
-func (noOpStorage) SaveTransactions(context.Context, []core.Transaction) error {
-	return nil
+func (noOpStorage) SaveTransactions(context.Context, []core.Transaction) (map[int]error, error) {
+	return nil, nil
 }
 func (noOpStorage) SaveMeta(context.Context, int64, string, string, string, string, string) error {
 	return nil
@@ -22,7 +22,7 @@ func TestCacheState(t *testing.T) {
 	transactions := []core.Transaction{{}, {}, {}, {
 		ID: 3,
 	}}
-	err := s.SaveTransactions(context.Background(), transactions)
+	_, err := s.SaveTransactions(context.Background(), transactions)
 	if err != nil {
 		t.Fatalf("unable to save transactions: %s", err)
 	}

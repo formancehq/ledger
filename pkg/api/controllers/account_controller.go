@@ -1,11 +1,11 @@
 package controllers
 
 import (
-	"net/http"
-
+	"errors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,15 +20,6 @@ func NewAccountController() AccountController {
 	return AccountController{}
 }
 
-// GetAccounts godoc
-// @Summary List all accounts
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param after query string true "pagination cursor, will return accounts after given address (in descending order)"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{cursor=query.Cursor{data=[]core.Account}}
-// @Router /{ledger}/accounts [get]
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
@@ -36,11 +27,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		query.After(c.Query("after")),
 	)
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
 	ctl.response(
@@ -50,24 +37,11 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	)
 }
 
-// GetAccount godoc
-// @Summary Get account by address
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param accountId path string true "accountId"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse{account=core.Account}
-// @Router /{ledger}/accounts/{accountId} [get]
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
 	ctl.response(
@@ -77,36 +51,26 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 	)
 }
 
-// PostAccountMetadata godoc
-// @Summary Add metadata to account
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param accountId path string true "accountId"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse
-// @Router /{ledger}/accounts/{accountId}/metadata [post]
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	var m core.Metadata
 	c.ShouldBind(&m)
+
+	addr := c.Param("address")
+	if !core.ValidateAddress(addr) {
+		ctl.responseError(c, http.StatusBadRequest, ErrValidation, errors.New("invalid address"))
+		return
+	}
+
 	err := l.(*ledger.Ledger).SaveMeta(
 		c.Request.Context(),
 		"account",
-		c.Param("address"),
+		addr,
 		m,
 	)
 	if err != nil {
-		ctl.responseError(
-			c,
-			http.StatusInternalServerError,
-			err,
-		)
+		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		nil,
-	)
+	ctl.noContent(c)
 }

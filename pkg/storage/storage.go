@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -12,6 +13,8 @@ type Code string
 const (
 	ConstraintFailed Code = "CONSTRAINT_FAILED"
 )
+
+var ErrAborted = errors.New("aborted transactions")
 
 type Error struct {
 	Code          Code
@@ -32,7 +35,7 @@ func NewError(code Code, originalError error) *Error {
 type Store interface {
 	LastTransaction(context.Context) (*core.Transaction, error)
 	LastMetaID(context.Context) (int64, error)
-	SaveTransactions(context.Context, []core.Transaction) error
+	SaveTransactions(context.Context, []core.Transaction) (map[int]error, error)
 	CountTransactions(context.Context) (int64, error)
 	FindTransactions(context.Context, query.Query) (query.Cursor, error)
 	GetTransaction(context.Context, string) (core.Transaction, error)
@@ -61,8 +64,8 @@ func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) SaveTransactions(ctx context.Context, transactions []core.Transaction) error {
-	return nil
+func (n noOpStore) SaveTransactions(ctx context.Context, transactions []core.Transaction) (map[int]error, error) {
+	return nil, nil
 }
 
 func (n noOpStore) CountTransactions(ctx context.Context) (int64, error) {

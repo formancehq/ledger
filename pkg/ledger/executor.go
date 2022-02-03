@@ -11,7 +11,7 @@ import (
 	"github.com/numary/machine/vm"
 )
 
-func (l *Ledger) Execute(ctx context.Context, script core.Script) ([]core.Transaction, error) {
+func (l *Ledger) Execute(ctx context.Context, script core.Script) ([]CommitTransactionResult, error) {
 	if script.Plain == "" {
 		return nil, errors.New("no script to execute")
 	}
@@ -94,10 +94,11 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) ([]core.Transa
 		}
 	}
 
-	tx := core.Transaction{
+	t := core.TransactionData{
 		Postings: m.Postings,
 		Metadata: m.GetTxMetaJson(),
 	}
 
-	return l.Commit(ctx, []core.Transaction{tx})
+	_, ret, err := l.Commit(ctx, []core.TransactionData{t})
+	return ret, err
 }

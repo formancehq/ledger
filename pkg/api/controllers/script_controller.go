@@ -12,6 +12,25 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
+type ScriptResponse struct {
+	ErrorResponse
+	Link string                           `json:"details,omitempty"`
+	Txs  []ledger.CommitTransactionResult `json:"txs,omitempty"`
+}
+
+func EncodeLink(err error) string {
+	errStr := err.Error()
+	errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
+	payload, err := json.Marshal(gin.H{
+		"error": errStr,
+	})
+	if err != nil {
+		panic(err)
+	}
+	payloadB64 := base64.StdEncoding.EncodeToString(payload)
+	return fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
+}
+
 // ScriptController -
 type ScriptController struct {
 	BaseController
@@ -22,17 +41,6 @@ func NewScriptController() ScriptController {
 	return ScriptController{}
 }
 
-// PostScript godoc
-// @Summary Execute Numscript
-// @Description Execute a Numscript and create the transaction if any
-// @Tags script
-// @Schemes
-// @Param ledger path string true "ledger"
-// @Param script body core.Script true "script"
-// @Accept json
-// @Produce json
-// @Success 200 {object} controllers.BaseResponse
-// @Router /{ledger}/script [post]
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -41,23 +49,17 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 
 	txs, err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
-	if err != nil {
-		errStr := err.Error()
-		errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
-		payload, err := json.Marshal(gin.H{
-			"error": errStr,
-		})
-		if err != nil {
-			panic(err)
-		}
-		payloadB64 := base64.StdEncoding.EncodeToString(payload)
-		link := fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
-
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-			"err":     errStr,
-			"details": link,
-		})
-	} else {
-		ctl.response(c, http.StatusOK, txs)
+	res := ScriptResponse{
+		Txs: txs,
 	}
+
+	if err != nil {
+		res.ErrorResponse = ErrorResponse{
+			ErrorCode:    ErrInternal,
+			ErrorMessage: err.Error(),
+		}
+		res.Link = EncodeLink(err)
+	}
+
+	ctl.response(c, http.StatusOK, res)
 }

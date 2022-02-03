@@ -3,10 +3,10 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/fx"
 	"sync"
 )
@@ -34,9 +34,17 @@ func WithLocker(locker Locker) ResolveOptionFn {
 	})
 }
 
+func WithLogger(logger logging.Logger) ResolveOptionFn {
+	return func(r *Resolver) error {
+		r.logger = logger
+		return nil
+	}
+}
+
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
+	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger()))),
 	WithLocker(NewInMemoryLocker()),
+	WithLogger(logging.DefaultLogger()),
 }
 
 type Resolver struct {
@@ -44,6 +52,7 @@ type Resolver struct {
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
+	logger            logging.Logger
 }
 
 func NewResolver(options ...ResolverOption) *Resolver {
@@ -83,7 +92,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		err = store.Initialize(ctx)
 		if err != nil {
 			err = fmt.Errorf("failed to initialize store: %w", err)
-			logrus.Debugln(err)
+			r.logger.Debug(ctx, "%s", err)
 			return nil, err
 		}
 		r.initializedStores[name] = struct{}{}
@@ -107,5 +116,6 @@ func ResolveModule() fx.Option {
 			fx.Annotate(NewResolver, fx.ParamTags(ResolverOptionsKey)),
 		),
 		ProvideResolverOption(WithStorageFactory),
+		ProvideResolverOption(WithLogger),
 	)
 }

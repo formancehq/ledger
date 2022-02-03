@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/sirupsen/logrus"
 )
 
 func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
@@ -47,7 +46,6 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 		From(s.table("metadata"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.StandardLogger().Debugln(sqlq)
 
 	q := s.db.QueryRowContext(ctx, sqlq, args...)
 	err := q.Scan(&count)

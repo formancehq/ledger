@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/sirupsen/logrus"
 	"math"
 	"sort"
@@ -59,7 +60,6 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,
@@ -97,12 +97,14 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 
 		if _, ok := transactions[txid]; !ok {
 			transactions[txid] = core.Transaction{
-				ID:        txid,
-				Postings:  []core.Posting{},
+				ID: txid,
+				TransactionData: core.TransactionData{
+					Postings:  []core.Posting{},
+					Reference: ref.String,
+					Metadata:  core.Metadata{},
+				},
 				Timestamp: ts,
 				Hash:      thash,
-				Reference: ref.String,
-				Metadata:  core.Metadata{},
 			}
 		}
 
@@ -139,18 +141,27 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	return c, nil
 }
 
-func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) error {
+func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (map[int]error, error) {
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return s.error(err)
+		return nil, s.error(err)
 	}
 
-	for _, t := range ts {
+	mustRollback := false
+	ret := make(map[int]error)
+
+txLoop:
+	for i, t := range ts {
 		var ref *string
 
 		if t.Reference != "" {
 			ref = &t.Reference
+		}
+
+		commitError := func(err error) {
+			mustRollback = true
+			ret[i] = s.error(err)
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
@@ -161,9 +172,8 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 		sqlq, args := ib.BuildWithFlavor(s.flavor)
 		_, err := tx.ExecContext(ctx, sqlq, args...)
 		if err != nil {
-			tx.Rollback()
-
-			return s.error(err)
+			commitError(err)
+			continue txLoop
 		}
 
 		for i, p := range t.Postings {
@@ -177,17 +187,15 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 			_, err := tx.ExecContext(ctx, sqlq, args...)
 
 			if err != nil {
-				tx.Rollback()
-
-				return s.error(err)
+				commitError(err)
+				continue txLoop
 			}
 		}
 
 		nextID, err := s.CountMeta(ctx)
 		if err != nil {
-			tx.Rollback()
-
-			return s.error(err)
+			commitError(err)
+			continue txLoop
 		}
 
 		for key, value := range t.Metadata {
@@ -215,16 +223,28 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) err
 
 			_, err = tx.ExecContext(ctx, sqlq, args...)
 			if err != nil {
-				tx.Rollback()
-
-				return s.error(err)
+				commitError(err)
+				continue txLoop
 			}
 
 			nextID++
 		}
 	}
 
-	return tx.Commit()
+	if mustRollback {
+		err = tx.Rollback()
+		if err != nil {
+			return nil, err
+		}
+		return ret, storage.ErrAborted
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
 }
 
 func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
@@ -245,7 +265,6 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(
 		ctx,

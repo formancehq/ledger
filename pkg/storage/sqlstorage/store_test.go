@@ -14,6 +14,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -141,8 +142,7 @@ func TestStore(t *testing.T) {
 					break
 				}
 
-				store, err := NewStore(ledger, driver.flavor, db, func(ctx context.Context) error {
-
+				store, err := NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
 					return db.Close()
 				})
 				assert.NoError(t, err)
@@ -161,37 +161,45 @@ func testSaveTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 }
 
 func testDuplicatedTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
-			Postings: []core.Posting{
-				{},
+			ID: 1,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{},
+				},
+				Reference: "foo",
 			},
-			Reference: "foo",
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
-	err = store.SaveTransactions(context.Background(), txs)
+	txs[0].ID = 2
+	ret, err := store.SaveTransactions(context.Background(), txs)
 	assert.Error(t, err)
-	assert.IsType(t, &storage.Error{}, err)
-	assert.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
+	assert.Equal(t, storage.ErrAborted, err)
+	assert.Len(t, ret, 1)
+	assert.IsType(t, &storage.Error{}, ret[0])
+	assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code)
 }
 
 func testSaveMeta(t *testing.T, store storage.Store) {
@@ -224,28 +232,32 @@ func testLastTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	lastTx, err := store.LastTransaction(context.Background())
 	assert.NoError(t, err)
 	assert.NotNil(t, lastTx)
 	assert.Equal(t, core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: txs[0].Postings,
+			Metadata: map[string]json.RawMessage{},
+		},
 		ID:        txs[0].ID,
-		Postings:  txs[0].Postings,
 		Timestamp: txs[0].Timestamp,
-		Metadata:  map[string]json.RawMessage{},
 	}, *lastTx)
 
 }
@@ -264,18 +276,20 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	countAccounts, err := store.CountAccounts(context.Background())
@@ -287,18 +301,20 @@ func testAggregateBalances(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	balances, err := store.AggregateBalances(context.Background(), "central_bank")
@@ -311,18 +327,20 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	volumes, err := store.AggregateVolumes(context.Background(), "central_bank")
@@ -336,18 +354,20 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	accounts, err := store.FindAccounts(context.Background(), query.Query{
@@ -372,21 +392,23 @@ func testCountMeta(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
-			},
-			Metadata: map[string]json.RawMessage{
-				"lastname": json.RawMessage(`"XXX"`),
+				Metadata: map[string]json.RawMessage{
+					"lastname": json.RawMessage(`"XXX"`),
+				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	err = store.SaveMeta(context.Background(), 1, time.Now().Format(time.RFC3339),
@@ -402,21 +424,23 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
-			},
-			Metadata: map[string]json.RawMessage{
-				"lastname": json.RawMessage(`"XXX"`),
+				Metadata: map[string]json.RawMessage{
+					"lastname": json.RawMessage(`"XXX"`),
+				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	countTransactions, err := store.CountTransactions(context.Background())
@@ -428,32 +452,36 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 0,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx1",
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx1",
 		},
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx2",
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx2",
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	cursor, err := store.FindTransactions(context.Background(), query.Query{
@@ -519,35 +547,39 @@ func testMapping(t *testing.T, store storage.Store) {
 func testGetTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
-			ID: 0,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			ID:        0,
+			Timestamp: time.Now().Format(time.RFC3339),
+			TransactionData: core.TransactionData{
+				Reference: "tx1",
+				Metadata:  core.Metadata{},
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
 			},
-			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx1",
-			Metadata:  core.Metadata{},
 		},
 		{
 			ID: 1,
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx2",
+				Metadata:  core.Metadata{},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
-			Reference: "tx2",
-			Metadata:  core.Metadata{},
 		},
 	}
-	err := store.SaveTransactions(context.Background(), txs)
+	_, err := store.SaveTransactions(context.Background(), txs)
 	assert.NoError(t, err)
 
 	tx, err := store.GetTransaction(context.Background(), "1")

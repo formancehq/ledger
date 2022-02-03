@@ -29,9 +29,9 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 			sb.Equal("meta_target_id", id),
 		),
 	)
+	sb.OrderBy("meta_id").Asc()
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	logrus.Debugln(sqlq, args)
 
 	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 
@@ -98,7 +98,6 @@ func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, t
 
 	_, err = tx.ExecContext(ctx, sqlq, args...)
 	if err != nil {
-		logrus.Debugln("failed to save metadata", err)
 		tx.Rollback()
 
 		return s.error(err)

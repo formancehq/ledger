@@ -52,46 +52,89 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Transaction, error) {
-	unlock, err := l.locker.Lock(l.name)
+type Balances map[string]map[string]int64
+
+type CommitTransactionResult struct {
+	core.Transaction
+	Err *TransactionCommitError `json:"error,omitempty"`
+}
+
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to acquire lock")
+		return nil, nil, errors.Wrap(err, "unable to acquire lock")
 	}
-	defer unlock()
+	defer unlock(ctx)
 
 	count, _ := l.store.CountTransactions(ctx)
-	rf := map[string]map[string]int64{}
 	timestamp := time.Now().Format(time.RFC3339)
 
 	last, err := l.store.LastTransaction(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	mapping, err := l.store.LoadMapping(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
+	}
+	contracts = append(contracts, DefaultContracts...)
+
+	ret := make([]CommitTransactionResult, 0)
+	aggregatedBalances := make(map[string]map[string]int64)
+	hasError := false
+
+	txs := make([]core.Transaction, 0)
+
+txLoop:
 	for i := range ts {
 
-		if len(ts[i].Postings) == 0 {
-			return ts, NewValidationError("transaction has no postings")
+		tx := core.Transaction{
+			TransactionData: ts[i],
 		}
 
-		ts[i].ID = count + int64(i)
-		ts[i].Timestamp = timestamp
+		tx.ID = count + int64(i)
+		tx.Timestamp = timestamp
 
-		ts[i].Hash = core.Hash(last, &ts[i])
-		last = &ts[i]
+		tx.Hash = core.Hash(last, &tx)
+		last = &tx
+		txs = append(txs, tx)
 
+		commitError := func(err *TransactionCommitError) {
+			ret = append(ret, CommitTransactionResult{
+				Transaction: tx,
+				Err:         err,
+			})
+			hasError = true
+		}
+
+		if len(ts[i].Postings) == 0 {
+			commitError(NewTransactionCommitError(i, NewValidationError("transaction has no postings")))
+			continue txLoop
+		}
+
+		rf := map[string]map[string]int64{}
 		for _, p := range ts[i].Postings {
 			if p.Amount < 0 {
-				return ts, NewValidationError("negative amount")
+				commitError(NewTransactionCommitError(i, NewValidationError("negative amount")))
+				continue txLoop
 			}
 			if !core.ValidateAddress(p.Source) {
-				return nil, NewValidationError("invalid source address")
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid source address")))
+				continue txLoop
 			}
 			if !core.ValidateAddress(p.Destination) {
-				return nil, NewValidationError("invalid destination address")
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid destination address")))
+				continue txLoop
 			}
 			if !core.AssetIsValid(p.Asset) {
-				return nil, NewValidationError("invalid asset")
+				commitError(NewTransactionCommitError(i, NewValidationError("invalid asset")))
+				continue txLoop
 			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]int64{}
@@ -105,73 +148,78 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.Transaction) ([]core.Tran
 
 			rf[p.Destination][p.Asset] -= p.Amount
 		}
-	}
 
-	mapping, err := l.store.LoadMapping(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	contracts := make([]core.Contract, 0)
-	if mapping != nil {
-		contracts = append(contracts, mapping.Contracts...)
-	}
-	contracts = append(contracts, DefaultContracts...)
-
-	for addr := range rf {
-		if addr == "world" {
-			continue
-		}
-
-		checks := map[string]int64{}
-
-		for asset := range rf[addr] {
-			if rf[addr][asset] <= 0 {
+		for addr := range rf {
+			if addr == "world" {
 				continue
 			}
 
-			checks[asset] = rf[addr][asset]
-		}
-
-		if len(checks) == 0 {
-			continue
-		}
-
-		balances, err := l.store.AggregateBalances(ctx, addr)
-		if err != nil {
-			return ts, err
-		}
-
-		for asset := range checks {
-			expectedBalance := balances[asset] - checks[asset]
-			for _, contract := range contracts {
-				if contract.Match(addr) {
-					meta, err := l.store.GetMeta(ctx, "account", addr)
-					if err != nil {
-						return nil, err
-					}
-					ok := contract.Expr.Eval(core.EvalContext{
-						Variables: map[string]interface{}{
-							"balance": float64(expectedBalance),
-						},
-						Metadata: meta,
-						Asset:    asset,
-					})
-					if !ok {
-						return nil, NewInsufficientFundError(asset)
-					}
-					break
+			balances, ok := aggregatedBalances[addr]
+			if !ok {
+				balances, err = l.store.AggregateBalances(ctx, addr)
+				if err != nil {
+					return nil, nil, err
 				}
+				aggregatedBalances[addr] = balances
+			}
+
+			for asset, amount := range rf[addr] {
+				expectedBalance := balances[asset] - amount
+				for _, contract := range contracts {
+					if contract.Match(addr) {
+						meta, err := l.store.GetMeta(ctx, "account", addr)
+						if err != nil {
+							return nil, nil, err
+						}
+						ok := contract.Expr.Eval(core.EvalContext{
+							Variables: map[string]interface{}{
+								"balance": float64(expectedBalance),
+							},
+							Metadata: meta,
+							Asset:    asset,
+						})
+						if !ok {
+							commitError(NewTransactionCommitError(i, NewInsufficientFundError(asset)))
+							continue txLoop
+						}
+						break
+					}
+				}
+				balances[asset] = expectedBalance
 			}
 		}
+		ret = append(ret, CommitTransactionResult{
+			Transaction: tx,
+		})
 	}
 
-	err = l.store.SaveTransactions(ctx, ts)
+	if hasError {
+		return nil, ret, ErrCommitError
+	}
+
+	commitErrors, err := l.store.SaveTransactions(ctx, txs)
 	if err != nil {
-		return nil, err
+		switch err {
+		case storage.ErrAborted:
+			for ind, err := range commitErrors {
+				switch eerr := err.(type) {
+				case *storage.Error:
+					switch eerr.Code {
+					case storage.ConstraintFailed:
+						ret[ind].Err = NewTransactionCommitError(ind, NewConflictError(ts[ind].Reference))
+					default:
+						return nil, nil, err
+					}
+				default:
+					return nil, nil, err
+				}
+			}
+			return nil, ret, ErrCommitError
+		default:
+			return nil, nil, err
+		}
 	}
-
-	return ts, err
+	return aggregatedBalances, ret, nil
 }
 
 func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {
@@ -232,7 +280,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkRevertedBy(fmt.Sprint(lastTransaction.ID))
-	_, err = l.Commit(ctx, []core.Transaction{rt})
+	_, ret, err := l.Commit(ctx, []core.TransactionData{rt})
+	switch err {
+	case ErrCommitError:
+		return ret[0].Err
+	default:
+		return err
+	}
 
 	return err
 }
@@ -276,11 +330,11 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m core.Metadata) error {
-	unlock, err := l.locker.Lock(l.name)
+	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return errors.Wrap(err, "unable to acquire lock")
 	}
-	defer unlock()
+	defer unlock(ctx)
 
 	if targetType == "" {
 		return NewValidationError("empty target type")

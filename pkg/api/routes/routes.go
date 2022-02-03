@@ -2,12 +2,13 @@ package routes
 
 import (
 	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/logging"
 	"go.uber.org/fx"
+	"time"
 )
 
 const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
@@ -46,6 +47,7 @@ type Routes struct {
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
+	logger                logging.Logger
 }
 
 // NewRoutes -
@@ -61,6 +63,7 @@ func NewRoutes(
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
+	logger logging.Logger,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -74,6 +77,7 @@ func NewRoutes(
 		accountController:     accountController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
+		logger:                logger,
 	}
 }
 
@@ -84,13 +88,26 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 	globalMiddlewares := append([]gin.HandlerFunc{
 		cors.New(cc),
 		gin.Recovery(),
-		logger.SetLogger(),
+		func(c *gin.Context) {
+			start := time.Now()
+			c.Next()
+			latency := time.Now().Sub(start)
+			r.logger.WithFields(map[string]interface{}{
+				"status":     c.Writer.Status(),
+				"method":     c.Request.Method,
+				"path":       c.Request.URL.Path,
+				"ip":         c.ClientIP(),
+				"latency":    latency,
+				"user_agent": c.Request.UserAgent(),
+			}).Info(c.Request.Context(), "Request")
+		},
 	}, r.globalMiddlewares...)
 
 	// Default Middlewares
 	engine.Use(globalMiddlewares...)
 
-	engine.GET("/swagger.json", r.configController.GetDocs)
+	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
+	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)
 
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)
@@ -103,6 +120,7 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 		// TransactionController
 		ledger.GET("/transactions", r.transactionController.GetTransactions)
 		ledger.POST("/transactions", r.transactionController.PostTransaction)
+		ledger.POST("/transactions/batch", r.transactionController.PostTransactionsBatch)
 		ledger.GET("/transactions/:txid", r.transactionController.GetTransaction)
 		ledger.POST("/transactions/:txid/revert", r.transactionController.RevertTransaction)
 		ledger.POST("/transactions/:txid/metadata", r.transactionController.PostTransactionMetadata)

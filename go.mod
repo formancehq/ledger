@@ -5,7 +5,6 @@ go 1.16
 require (
 	github.com/XSAM/otelsql v0.10.0
 	github.com/gin-contrib/cors v1.3.1
-	github.com/gin-contrib/logger v0.2.0
 	github.com/gin-gonic/gin v1.7.7
 	github.com/google/go-cmp v0.5.6
 	github.com/huandu/go-sqlbuilder v1.13.0
@@ -20,7 +19,6 @@ require (
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
 	github.com/stretchr/testify v1.7.0
-	github.com/swaggo/swag v1.7.8
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.28.0
 	go.opentelemetry.io/otel v1.3.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.3.0
@@ -39,4 +37,7 @@ require (
 	go.uber.org/fx v1.16.0
 )
 
-require github.com/go-logr/stdr v1.2.2 // indirect
+require (
+	github.com/go-logr/stdr v1.2.2 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+)

@@ -44,10 +44,15 @@ func (o *openTelemetryStorage) LastMetaID(ctx context.Context) (count int64, err
 	return
 }
 
-func (o *openTelemetryStorage) SaveTransactions(ctx context.Context, transactions []core.Transaction) error {
-	return o.handle(ctx, "SaveTransactions", func(ctx context.Context) error {
-		return o.underlying.SaveTransactions(ctx, transactions)
+func (o *openTelemetryStorage) SaveTransactions(ctx context.Context, transactions []core.Transaction) (ret map[int]error, err error) {
+	err = o.handle(ctx, "SaveTransactions", func(ctx context.Context) error {
+		ret, err = o.underlying.SaveTransactions(ctx, transactions)
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (o *openTelemetryStorage) CountTransactions(ctx context.Context) (count int64, err error) {

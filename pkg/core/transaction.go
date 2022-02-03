@@ -6,27 +6,39 @@ import (
 	"fmt"
 )
 
-type Transaction struct {
-	ID        int64    `json:"txid"`
+// Transactions struct
+type Transactions struct {
+	Transactions []TransactionData `json:"transactions" binding:"required,dive"`
+}
+
+type TransactionData struct {
 	Postings  Postings `json:"postings"`
 	Reference string   `json:"reference"`
-	Timestamp string   `json:"timestamp"`
-	Hash      string   `json:"hash" swaggerignore:"true"`
 	Metadata  Metadata `json:"metadata" swaggertype:"object"`
+}
+
+type Transaction struct {
+	TransactionData
+	ID        int64  `json:"txid"`
+	Timestamp string `json:"timestamp"`
+	Hash      string `json:"hash" swaggerignore:"true"`
 }
 
 func (t *Transaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
-func (t *Transaction) Reverse() Transaction {
+func (t *Transaction) Reverse() TransactionData {
 	postings := t.Postings
 	postings.Reverse()
 
-	return Transaction{
-		Postings:  postings,
-		Reference: "revert_" + t.Reference,
+	ret := TransactionData{
+		Postings: postings,
 	}
+	if t.Reference != "" {
+		ret.Reference = "revert_" + t.Reference
+	}
+	return ret
 }
 
 func Hash(t1 *Transaction, t2 *Transaction) string {

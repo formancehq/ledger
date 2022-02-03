@@ -27,6 +27,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      otlp-exporter:
+        condition: service_started
     ports:
       - "3068:3068"
     environment:
