@@ -61,5 +61,5 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		res.Link = EncodeLink(err)
 	}
 
-	ctl.response(c, http.StatusOK, res)
+	c.JSON(http.StatusOK, res)
 }

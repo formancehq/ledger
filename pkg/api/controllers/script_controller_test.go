@@ -2,14 +2,16 @@ package controllers_test
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 func TestScriptController(t *testing.T) {
@@ -31,6 +33,31 @@ send [COIN 100] (
   source = @centralbank
   destination = @users:001
 )`,
+			expectedResponse: controllers.ScriptResponse{
+				Txs: []ledger.CommitTransactionResult{
+					{
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Postings: core.Postings{
+									{
+										Source:      "world",
+										Destination: "centralbank",
+										Amount:      100,
+										Asset:       "COIN",
+									},
+									{
+										Source:      "centralbank",
+										Destination: "users:001",
+										Amount:      100,
+										Asset:       "COIN",
+									},
+								},
+								Metadata: core.Metadata{},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "failure",
@@ -62,6 +89,11 @@ send [COIN 100] (
 			assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
 			res := controllers.ScriptResponse{}
 			internal.Decode(t, rec.Body, &res)
+
+			for i := range res.Txs {
+				res.Txs[i].Timestamp = ""
+				res.Txs[i].Hash = ""
+			}
 
 			assert.EqualValues(t, c.expectedResponse, res)
 		})
