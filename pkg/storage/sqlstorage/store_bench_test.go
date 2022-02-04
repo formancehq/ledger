@@ -65,6 +65,10 @@ func BenchmarkStore(b *testing.B) {
 				name: "LastTransaction",
 				fn:   testBenchmarkLastTransaction,
 			},
+			{
+				name: "AggregateVolumes",
+				fn:   testBenchmarkAggregateVolumes,
+			},
 		} {
 			b.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(b *testing.B) {
 				ledger := uuid.New()
@@ -177,6 +181,48 @@ func testBenchmarkLastTransaction(b *testing.B, store *Store) {
 		tx, err := store.LastTransaction(context.Background())
 		assert.NoError(b, err)
 		assert.Equal(b, int64(count-1), tx.ID)
+	}
+
+}
+
+func testBenchmarkAggregateVolumes(b *testing.B, store *Store) {
+	datas := make([]core.Transaction, 0)
+	count := 1000
+	for i := 0; i < count; i++ {
+		datas = append(datas, core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: fmt.Sprintf("player%d", i),
+						Asset:       "USD",
+						Amount:      100,
+					},
+					{
+						Source:      "world",
+						Destination: fmt.Sprintf("player%d", i+1),
+						Asset:       "USD",
+						Amount:      100,
+					},
+					{
+						Source:      fmt.Sprintf("player%d", i),
+						Destination: fmt.Sprintf("player%d", i+1),
+						Asset:       "USD",
+						Amount:      50,
+					},
+				},
+			},
+			ID: int64(i),
+		})
+	}
+
+	_, err := store.SaveTransactions(context.Background(), datas)
+	assert.NoError(b, err)
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_, err := store.AggregateVolumes(context.Background(), "world")
+		assert.NoError(b, err)
 	}
 
 }
