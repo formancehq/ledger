@@ -101,6 +101,7 @@ func (r *Routes) Engine(cc cors.Config) *gin.Engine {
 				"user_agent": c.Request.UserAgent(),
 			}).Info(c.Request.Context(), "Request")
 		},
+		r.authMiddleware.AuthMiddleware(),
 	}, r.globalMiddlewares...)
 
 	// Default Middlewares

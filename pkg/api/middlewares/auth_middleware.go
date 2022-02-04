@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -19,13 +20,19 @@ func NewAuthMiddleware(httpBasic string) AuthMiddleware {
 }
 
 // AuthMiddleware
-func (m AuthMiddleware) AuthMiddleware(engine *gin.Engine) gin.HandlerFunc {
+func (m AuthMiddleware) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if auth := m.HTTPBasic; auth != "" {
 			segment := strings.Split(auth, ":")
-			engine.Use(gin.BasicAuth(gin.Accounts{
-				segment[0]: segment[1],
-			}))
+			username, password, ok := c.Request.BasicAuth()
+			if !ok {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			if segment[0] != username || segment[1] != password {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
 		}
 	}
 }
