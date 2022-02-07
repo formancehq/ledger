@@ -2,6 +2,7 @@ package opentelemetrytraces
 
 import (
 	"context"
+	"fmt"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/opentelemetry"
@@ -9,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type openTelemetryStorage struct {
@@ -17,7 +19,15 @@ type openTelemetryStorage struct {
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
 	ctx, span := otel.Tracer(opentelemetry.StoreInstrumentationName).Start(ctx, name)
-	defer span.End()
+	defer span.End(trace.WithStackTrace(true))
+	defer func() {
+		if e := recover(); e != nil {
+			defer func() {
+				panic(e)
+			}()
+			span.SetStatus(codes.Error, fmt.Sprintf("%s", e))
+		}
+	}()
 
 	span.SetAttributes(attribute.String("ledger", o.Name()))
 	err := fn(ctx)
@@ -50,7 +60,7 @@ func (o *openTelemetryStorage) SaveTransactions(ctx context.Context, transaction
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return ret, err
 	}
 	return ret, nil
 }
