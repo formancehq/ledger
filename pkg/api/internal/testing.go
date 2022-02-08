@@ -166,11 +166,11 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		close(ch)
 	}))
 
-	fx.New(options...)
+	app := fx.New(options...)
 	select {
 	case <-ch:
 	default:
-		assert.Fail(t, "something went wrong")
+		assert.Fail(t, app.Err().Error())
 	}
 }
 

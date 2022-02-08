@@ -15,9 +15,11 @@ import (
 
 func TestAdditionalGlobalMiddleware(t *testing.T) {
 	internal.WithNewModule(t,
-		routes.ProvideGlobalMiddleware(func() gin.HandlerFunc {
-			return func(context *gin.Context) {
-				context.AbortWithError(418, errors.New(""))
+		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
+			return []gin.HandlerFunc{
+				func(context *gin.Context) {
+					context.AbortWithError(418, errors.New(""))
+				},
 			}
 		}),
 		fx.Invoke(func(api *api.API) {
@@ -32,9 +34,11 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 
 func TestAdditionalPerLedgerMiddleware(t *testing.T) {
 	internal.WithNewModule(t,
-		routes.ProvidePerLedgerMiddleware(func() gin.HandlerFunc {
-			return func(context *gin.Context) {
-				context.AbortWithError(418, errors.New(""))
+		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
+			return []gin.HandlerFunc{
+				func(context *gin.Context) {
+					context.AbortWithError(418, errors.New(""))
+				},
 			}
 		}),
 		fx.Invoke(func(api *api.API) {

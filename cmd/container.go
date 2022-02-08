@@ -1,8 +1,13 @@
 package cmd
 
 import (
+	"fmt"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/middlewares"
+	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
@@ -10,10 +15,15 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/dig"
 	"go.uber.org/fx"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"os"
 )
 
 func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
@@ -50,7 +60,6 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 					Insecure: v.GetBool(otelTracesExporterOTLPInsecureFlag),
 				}
 			}(),
-			ApiMiddlewareName: "ledger",
 		}))
 	}
 	if v.GetBool(otelMetricsFlag) {
@@ -75,8 +84,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		LedgerLister: controllers.LedgerListerFn(func(*http.Request) []string {
 			return v.GetStringSlice(ledgersFlag)
 		}),
-		HttpBasicAuth: v.GetString(serverHttpBasicAuthFlag),
-		Version:       Version,
+		Version: Version,
 	}))
 
 	// Handle storage driver
@@ -129,6 +137,42 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 			return f
 		}),
 	)
+
+	// Api middlewares
+	options = append(options, routes.ProvideMiddlewares(func(params struct {
+		fx.In
+		TracerProvider trace.TracerProvider `optional:"true"`
+		Logger         logging.Logger
+	}) []gin.HandlerFunc {
+		res := make([]gin.HandlerFunc, 0)
+
+		cc := cors.DefaultConfig()
+		cc.AllowAllOrigins = true
+		cc.AllowCredentials = true
+		cc.AddAllowHeaders("authorization")
+
+		res = append(res, cors.New(cc))
+		if viper.GetBool(otelTracesFlag) {
+			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(params.TracerProvider)))
+		}
+		res = append(res, middlewares.Log(params.Logger))
+		var writer io.Writer = os.Stderr
+		if viper.GetBool(otelTracesFlag) {
+			writer = ioutil.Discard
+		}
+		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
+			eerr := fmt.Errorf("%s", err)
+			c.AbortWithError(http.StatusInternalServerError, eerr)
+			if viper.GetBool(otelTracesFlag) {
+				trace.
+					SpanFromContext(c.Request.Context()).
+					RecordError(fmt.Errorf("%s", err), trace.WithStackTrace(true))
+			}
+		}))
+		res = append(res, middlewares.Auth(viper.GetString(serverHttpBasicAuthFlag)))
+
+		return res
+	}))
 
 	return fx.New(options...)
 }

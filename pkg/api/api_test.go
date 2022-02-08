@@ -41,19 +41,21 @@ func withNewModule(t *testing.T, options ...fx.Option) {
 		close(ch)
 	}))
 
-	fx.New(options...)
+	app := fx.New(options...)
 	select {
 	case <-ch:
 	default:
-		assert.Fail(t, "something went wrong")
+		assert.Fail(t, app.Err().Error())
 	}
 }
 
 func TestAdditionalGlobalMiddleware(t *testing.T) {
 	withNewModule(t,
-		routes.ProvideGlobalMiddleware(func() gin.HandlerFunc {
-			return func(context *gin.Context) {
-				context.AbortWithError(418, errors.New(""))
+		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
+			return []gin.HandlerFunc{
+				func(context *gin.Context) {
+					context.AbortWithError(418, errors.New(""))
+				},
 			}
 		}),
 		fx.Invoke(func(api *API) {
@@ -68,9 +70,11 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 
 func TestAdditionalPerLedgerMiddleware(t *testing.T) {
 	withNewModule(t,
-		routes.ProvidePerLedgerMiddleware(func() gin.HandlerFunc {
-			return func(context *gin.Context) {
-				context.AbortWithError(418, errors.New(""))
+		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
+			return []gin.HandlerFunc{
+				func(context *gin.Context) {
+					context.AbortWithError(418, errors.New(""))
+				},
 			}
 		}),
 		fx.Invoke(func(api *API) {

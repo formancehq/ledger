@@ -3,17 +3,13 @@ package opentelemetrytraces
 import (
 	"fmt"
 	"github.com/XSAM/otelsql"
-	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
@@ -30,12 +26,11 @@ type OTLPConfig struct {
 }
 
 type ModuleConfig struct {
-	ServiceName       string
-	Version           string
-	Exporter          string
-	JaegerConfig      *JaegerConfig
-	OTLPConfig        *OTLPConfig
-	ApiMiddlewareName string
+	ServiceName  string
+	Version      string
+	Exporter     string
+	JaegerConfig *JaegerConfig
+	OTLPConfig   *OTLPConfig
 }
 
 func TracesModule(cfg ModuleConfig) fx.Option {
@@ -131,11 +126,6 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 		case opentelemetry.ModeHTTP:
 			options = append(options, OTLPTracerHTTPClientModule())
 		}
-	}
-	if cfg.ApiMiddlewareName != "" {
-		options = append(options, routes.ProvideGlobalMiddleware(func(tracerProvider trace.TracerProvider) gin.HandlerFunc {
-			return otelgin.Middleware(cfg.ApiMiddlewareName, otelgin.WithTracerProvider(tracerProvider))
-		}))
 	}
 	return fx.Options(options...)
 }
