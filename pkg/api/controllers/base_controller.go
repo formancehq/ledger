@@ -49,7 +49,7 @@ func (ctl *BaseController) noContent(c *gin.Context) {
 }
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
-	c.Abort()
+	c.Error(err)
 	c.AbortWithStatusJSON(status, ErrorResponse{
 		ErrorCode:    code,
 		ErrorMessage: err.Error(),
