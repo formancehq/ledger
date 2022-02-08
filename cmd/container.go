@@ -160,10 +160,13 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		if viper.GetBool(otelTracesFlag) {
 			writer = ioutil.Discard
 			res = append(res, func(context *gin.Context) {
-				for _, e := range context.Errors {
-					trace.SpanFromContext(context.Request.Context()).
-						RecordError(e)
-				}
+				defer func() {
+					for _, e := range context.Errors {
+						trace.SpanFromContext(context.Request.Context()).
+							RecordError(e)
+					}
+				}()
+				context.Next()
 			})
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
