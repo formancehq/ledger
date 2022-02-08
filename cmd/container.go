@@ -159,15 +159,16 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		var writer io.Writer = os.Stderr
 		if viper.GetBool(otelTracesFlag) {
 			writer = ioutil.Discard
+			res = append(res, func(context *gin.Context) {
+				for _, e := range context.Errors {
+					trace.SpanFromContext(context.Request.Context()).
+						RecordError(e)
+				}
+			})
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
 			eerr := fmt.Errorf("%s", err)
 			c.AbortWithError(http.StatusInternalServerError, eerr)
-			if viper.GetBool(otelTracesFlag) {
-				trace.
-					SpanFromContext(c.Request.Context()).
-					RecordError(fmt.Errorf("%s", err), trace.WithStackTrace(true))
-			}
 		}))
 		res = append(res, middlewares.Auth(viper.GetString(serverHttpBasicAuthFlag)))
 
