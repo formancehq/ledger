@@ -14,8 +14,7 @@ import (
 
 type ScriptResponse struct {
 	ErrorResponse
-	Link string                           `json:"details,omitempty"`
-	Txs  []ledger.CommitTransactionResult `json:"txs,omitempty"`
+	Link string `json:"details,omitempty"`
 }
 
 func EncodeLink(err error) string {
@@ -47,11 +46,9 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	txs, err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
+	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 
-	res := ScriptResponse{
-		Txs: txs,
-	}
+	res := ScriptResponse{}
 
 	if err != nil {
 		res.ErrorResponse = ErrorResponse{

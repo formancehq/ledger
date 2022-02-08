@@ -456,8 +456,6 @@ components:
           type: string
         err:
           type: string
-        txs:
-          $ref: '#/components/schemas/CreateTransactionResponse'
     Account:
       type: object
       required:
