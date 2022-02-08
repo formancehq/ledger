@@ -167,8 +167,12 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 			})
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
-			eerr := fmt.Errorf("%s", err)
-			c.AbortWithError(http.StatusInternalServerError, eerr)
+			switch eerr := err.(type) {
+			case error:
+				c.AbortWithError(http.StatusInternalServerError, eerr)
+			default:
+				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
+			}
 		}))
 		res = append(res, middlewares.Auth(viper.GetString(serverHttpBasicAuthFlag)))
 
