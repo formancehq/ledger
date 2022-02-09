@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"context"
+	"errors"
 	"github.com/numary/ledger/pkg/ledger"
 	"net/http"
 	"reflect"
@@ -37,13 +39,13 @@ const (
 	ErrConflict         = "CONFLICT"
 	ErrInsufficientFund = "INSUFFICIENT_FUND"
 	ErrValidation       = "VALIDATION"
-	ErrNotFound         = "NOT_FOUND"
+	ErrContextCancelled = "CONTEXT_CANCELLED"
 
 	errorCodeKey = "_errorCode"
 )
 
 type ErrorResponse struct {
-	ErrorCode    string `json:"error_code,omitempty" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
+	ErrorCode    string `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 }
 
@@ -51,26 +53,20 @@ func (ctl *BaseController) noContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
-	c.Error(err)
-	c.AbortWithStatusJSON(status, ErrorResponse{
-		ErrorCode:    code,
-		ErrorMessage: err.Error(),
-	})
-}
-
-func coreErrorToErrorCode(err error) (int, string) {
+func coreErrorToErrorCode(err error) (int, string, bool) {
 	switch {
 	case ledger.IsConflictError(err):
-		return http.StatusConflict, ErrConflict
+		return http.StatusConflict, ErrConflict, true
 	case ledger.IsInsufficientFundError(err):
-		return http.StatusBadRequest, ErrInsufficientFund
+		return http.StatusBadRequest, ErrInsufficientFund, true
 	case ledger.IsValidationError(err):
-		return http.StatusBadRequest, ErrValidation
+		return http.StatusBadRequest, ErrValidation, true
 	case ledger.IsUnavailableStoreError(err):
-		return http.StatusServiceUnavailable, ErrInternal
+		return http.StatusServiceUnavailable, ErrInternal, false
+	case errors.Is(err, context.Canceled):
+		return http.StatusInternalServerError, ErrContextCancelled, false
 	default:
-		return http.StatusInternalServerError, ErrInternal
+		return http.StatusInternalServerError, ErrInternal, false
 	}
 }
 
@@ -80,9 +76,9 @@ func ErrorCode(c *gin.Context) string {
 
 func ResponseError(c *gin.Context, err error) {
 	c.Error(err)
-	status, code := coreErrorToErrorCode(err)
+	status, code, exposeMessage := coreErrorToErrorCode(err)
 	message := ""
-	if code != ErrInternal {
+	if exposeMessage {
 		message = err.Error()
 	}
 	c.Set(errorCodeKey, code)

@@ -27,7 +27,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		query.After(c.Query("after")),
 	)
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.response(
@@ -41,7 +41,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.response(
@@ -58,7 +58,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 
 	addr := c.Param("address")
 	if !core.ValidateAddress(addr) {
-		ctl.responseError(c, http.StatusBadRequest, ErrValidation, errors.New("invalid address"))
+		ResponseError(c, errors.New("invalid address"))
 		return
 	}
 
@@ -69,7 +69,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		m,
 	)
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.noContent(c)
