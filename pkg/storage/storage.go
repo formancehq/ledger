@@ -13,6 +13,7 @@ type Code string
 const (
 	ConstraintFailed Code = "CONSTRAINT_FAILED"
 	TooManyClient    Code = "TOO_MANY_CLIENT"
+	Unknown          Code = "UNKNOWN"
 )
 
 var ErrAborted = errors.New("aborted transactions")
