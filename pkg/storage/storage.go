@@ -22,6 +22,14 @@ type Error struct {
 	OriginalError error
 }
 
+func (e Error) Is(err error) bool {
+	eerr, ok := err.(*Error)
+	if !ok {
+		return false
+	}
+	return eerr.Code == e.Code
+}
+
 func (e Error) Error() string {
 	return fmt.Sprintf("%s [%s]", e.OriginalError, e.Code)
 }
@@ -31,6 +39,16 @@ func NewError(code Code, originalError error) *Error {
 		Code:          code,
 		OriginalError: originalError,
 	}
+}
+
+func IsError(err error, code Code) bool {
+	return errors.Is(err, &Error{
+		Code: code,
+	})
+}
+
+func IsTooManyClientError(err error) bool {
+	return IsError(err, TooManyClient)
 }
 
 type Store interface {

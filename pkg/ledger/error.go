@@ -7,9 +7,40 @@ import (
 
 var ErrCommitError = errors.New("commit error")
 
+type UnavailableStoreError struct {
+	Err error
+}
+
+func (e UnavailableStoreError) Error() string {
+	return fmt.Sprintf("unavailable store: %s", e.Err)
+}
+
+func (e UnavailableStoreError) Unwrap() error {
+	return e.Err
+}
+
+func (e UnavailableStoreError) Is(err error) bool {
+	_, ok := err.(*UnavailableStoreError)
+	return ok
+}
+
+func NewUnavailableStoreError(err error) *UnavailableStoreError {
+	return &UnavailableStoreError{
+		Err: err,
+	}
+}
+
+func IsUnavailableStoreError(err error) bool {
+	return errors.Is(err, &UnavailableStoreError{})
+}
+
 type TransactionCommitError struct {
 	TXIndex int   `json:"index"`
 	Err     error `json:"error"`
+}
+
+func (e TransactionCommitError) Unwrap() error {
+	return e.Err
 }
 
 func (e TransactionCommitError) Error() string {
