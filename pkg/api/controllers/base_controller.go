@@ -40,6 +40,7 @@ const (
 	ErrInsufficientFund = "INSUFFICIENT_FUND"
 	ErrValidation       = "VALIDATION"
 	ErrContextCancelled = "CONTEXT_CANCELLED"
+	ErrUnavailableStore = "UNAVAILABLE_STORE"
 
 	errorCodeKey = "_errorCode"
 )
@@ -53,20 +54,20 @@ func (ctl *BaseController) noContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func coreErrorToErrorCode(err error) (int, string, bool) {
+func coreErrorToErrorCode(err error) (int, string) {
 	switch {
 	case ledger.IsConflictError(err):
-		return http.StatusConflict, ErrConflict, true
+		return http.StatusConflict, ErrConflict
 	case ledger.IsInsufficientFundError(err):
-		return http.StatusBadRequest, ErrInsufficientFund, true
+		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
-		return http.StatusBadRequest, ErrValidation, true
+		return http.StatusBadRequest, ErrValidation
 	case ledger.IsUnavailableStoreError(err):
-		return http.StatusServiceUnavailable, ErrInternal, false
+		return http.StatusServiceUnavailable, ErrUnavailableStore
 	case errors.Is(err, context.Canceled):
-		return http.StatusInternalServerError, ErrContextCancelled, false
+		return http.StatusInternalServerError, ErrContextCancelled
 	default:
-		return http.StatusInternalServerError, ErrInternal, false
+		return http.StatusInternalServerError, ErrInternal
 	}
 }
 
@@ -76,14 +77,15 @@ func ErrorCode(c *gin.Context) string {
 
 func ResponseError(c *gin.Context, err error) {
 	c.Error(err)
-	status, code, exposeMessage := coreErrorToErrorCode(err)
-	message := ""
-	if exposeMessage {
-		message = err.Error()
-	}
+	status, code := coreErrorToErrorCode(err)
 	c.Set(errorCodeKey, code)
-	c.AbortWithStatusJSON(status, ErrorResponse{
-		ErrorCode:    code,
-		ErrorMessage: message,
-	})
+
+	if status < 500 {
+		c.AbortWithStatusJSON(status, ErrorResponse{
+			ErrorCode:    code,
+			ErrorMessage: err.Error(),
+		})
+		return
+	}
+	c.AbortWithStatus(status)
 }

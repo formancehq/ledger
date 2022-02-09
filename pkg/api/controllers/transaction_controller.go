@@ -124,9 +124,9 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 					Transaction: tx.Transaction,
 				}
 				if tx.Err != nil {
-					var exposeMessage bool
-					_, v.ErrorCode, exposeMessage = coreErrorToErrorCode(tx.Err)
-					if exposeMessage {
+					var status int
+					status, v.ErrorCode = coreErrorToErrorCode(tx.Err)
+					if status < 500 {
 						v.ErrorMessage = tx.Err.Error()
 					}
 				}
