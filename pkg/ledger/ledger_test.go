@@ -60,7 +60,6 @@ func with(f func(l *Ledger)) {
 	go app.Start(context.Background())
 
 	select {
-	case <-time.After(5 * time.Second):
 	case <-done:
 	}
 	if app.Err() != nil {

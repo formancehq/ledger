@@ -31,6 +31,12 @@ func TestServer(t *testing.T) {
 	for _, tc := range []testCase{
 		{
 			name: "default",
+			env: []env{
+				{
+					key:   "NUMARY_STORAGE_DRIVER",
+					value: "sqlite",
+				},
+			},
 		},
 		{
 			name: "pg",
