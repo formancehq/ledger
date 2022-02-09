@@ -75,8 +75,12 @@ func coreErrorToErrorCode(err error) (int, string) {
 func ResponseError(c *gin.Context, err error) {
 	c.Error(err)
 	status, code := coreErrorToErrorCode(err)
+	message := ""
+	if code != ErrInternal {
+		message = err.Error()
+	}
 	c.AbortWithStatusJSON(status, ErrorResponse{
 		ErrorCode:    code,
-		ErrorMessage: err.Error(),
+		ErrorMessage: message,
 	})
 }
