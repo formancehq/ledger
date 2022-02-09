@@ -33,7 +33,7 @@ func withNewModule(t *testing.T, options ...fx.Option) {
 		module,
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
-		ledgertesting.TestingModule(),
+		ledgertesting.StorageModule(),
 		logging.LogrusModule(),
 		fx.NopLogger,
 	}, options...)

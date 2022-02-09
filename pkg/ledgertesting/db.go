@@ -13,7 +13,7 @@ import (
 	"path"
 )
 
-func TestingModule() fx.Option {
+func StorageModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(logger logging.Logger, lifecycle fx.Lifecycle) (storage.Driver, error) {
 			var driver storage.Driver
@@ -48,19 +48,14 @@ func TestingModule() fx.Option {
 			if driver == nil {
 				return nil, errors.New("not found driver")
 			}
-			return driver, nil
-		}),
-		fx.Invoke(func(driver storage.Driver, lifecycle fx.Lifecycle) error {
-			err := driver.Initialize(context.Background())
-			if err != nil {
-				return err
-			}
 			lifecycle.Append(fx.Hook{
-				OnStop: func(ctx context.Context) error {
-					return driver.Close(ctx)
+				OnStart: func(ctx context.Context) error {
+					fmt.Println("init driver")
+					return driver.Initialize(ctx)
 				},
+				OnStop: driver.Close,
 			})
-			return nil
+			return driver, nil
 		}),
 	)
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
@@ -24,21 +23,12 @@ import (
 	"go.uber.org/fx"
 )
 
-var driver storage.Driver
-
 func with(f func(l *Ledger)) {
 	done := make(chan struct{})
 	app := fx.New(
 		fx.NopLogger,
-		fx.Provide(func() storage.Driver {
-			return driver
-		}),
-		fx.Invoke(func(lc fx.Lifecycle, d storage.Driver) {
-			lc.Append(fx.Hook{
-				OnStop:  d.Close,
-				OnStart: d.Initialize,
-			})
-		}),
+		ledgertesting.StorageModule(),
+		logging.LogrusModule(),
 		fx.Provide(storage.NewDefaultFactory),
 		fx.Invoke(func(lc fx.Lifecycle, storageFactory storage.Factory) {
 			lc.Append(fx.Hook{
@@ -93,27 +83,6 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Verbose() {
 		logrus.StandardLogger().Level = logrus.DebugLevel
-	}
-
-	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
-	case "sqlite", "":
-		driver = sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger())
-	case "postgres":
-		pgServer, err := ledgertesting.PostgresServer()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer pgServer.Close()
-
-		driver = sqlstorage.NewOpenCloseDBDriver(
-			logging.DefaultLogger(),
-			"postgres",
-			sqlstorage.PostgreSQL,
-			func(name string) string {
-				return pgServer.ConnString()
-			},
-		)
 	}
 
 	code = m.Run()

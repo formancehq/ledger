@@ -2,7 +2,6 @@ package internal
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/numary/ledger/pkg/api"
@@ -159,7 +158,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		module,
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
-		ledgertesting.TestingModule(),
+		ledgertesting.StorageModule(),
 		logging.LogrusModule(),
 		fx.NopLogger,
 	}, options...)
@@ -168,9 +167,6 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}))
 
 	app := fx.New(options...)
-	err := app.Start(context.Background())
-	assert.NoError(t, err)
-	defer app.Stop(context.Background())
 
 	select {
 	case <-ch:
