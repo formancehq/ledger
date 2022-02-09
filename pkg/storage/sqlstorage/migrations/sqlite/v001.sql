@@ -26,6 +26,18 @@ CREATE INDEX IF NOT EXISTS 'p_c0' ON "postings" (
   "destination"
 );
 --statement
+CREATE INDEX IF NOT EXISTS 'posting_source' ON "postings" (
+  "source"
+);
+--statement
+CREATE INDEX IF NOT EXISTS 'posting_destination' ON "postings" (
+  "destination"
+);
+--statement
+CREATE INDEX IF NOT EXISTS 'posting_asset' ON "postings" (
+  "asset"
+);
+--statement
 CREATE TABLE IF NOT EXISTS metadata (
   "meta_id"          integer,
   "meta_target_type" varchar,
