@@ -2,9 +2,9 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
 
@@ -63,10 +63,10 @@ func coreErrorToErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
 		return http.StatusBadRequest, ErrValidation
-	case storage.IsError(err):
-		return http.StatusServiceUnavailable, ErrStore
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled
+	case storage.IsError(err):
+		return http.StatusServiceUnavailable, ErrStore
 	default:
 		return http.StatusInternalServerError, ErrInternal
 	}
