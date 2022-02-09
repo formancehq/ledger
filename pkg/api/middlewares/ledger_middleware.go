@@ -39,6 +39,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 				"error_code":    400,
 				"error_message": err.Error(),
 			})
+			return
 		}
 		defer func() {
 			err := l.Close(c.Request.Context())

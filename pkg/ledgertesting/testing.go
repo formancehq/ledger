@@ -2,6 +2,7 @@ package ledgertesting
 
 import (
 	"context"
+	"fmt"
 	"github.com/jackc/pgx/v4"
 	"github.com/ory/dockertest/v3"
 	"os"
@@ -24,6 +25,8 @@ func (s *PGServer) Close() error {
 	return s.close()
 }
 
+const MaxConnections = 2
+
 func PostgresServer() (*PGServer, error) {
 
 	externalConnectionString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
@@ -41,10 +44,16 @@ func PostgresServer() (*PGServer, error) {
 		return nil, err
 	}
 
-	resource, err := pool.Run("postgres", "13-alpine", []string{
-		"POSTGRES_USER=root",
-		"POSTGRES_PASSWORD=root",
-		"POSTGRES_DB=ledger",
+	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
+		Repository: "postgres",
+		Tag:        "13-alpine",
+		Env: []string{
+			"POSTGRES_USER=root",
+			"POSTGRES_PASSWORD=root",
+			"POSTGRES_DB=ledger",
+		},
+		Entrypoint: nil,
+		Cmd:        []string{"-c", fmt.Sprintf("max_connections=%d", MaxConnections), "-c", "superuser-reserved-connections=0"},
 	})
 	if err != nil {
 		return nil, err

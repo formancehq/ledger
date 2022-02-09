@@ -9,9 +9,9 @@ import (
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -33,7 +33,7 @@ func withNewModule(t *testing.T, options ...fx.Option) {
 		module,
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
-		sqlstorage.TestingModule(),
+		ledgertesting.TestingModule(),
 		logging.LogrusModule(),
 		fx.NopLogger,
 	}, options...)

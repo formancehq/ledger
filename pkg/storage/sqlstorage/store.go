@@ -34,6 +34,10 @@ func (s *Store) table(name string) string {
 	}
 }
 
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Store) error(err error) error {
 	return errorFromFlavor(Flavor(s.flavor), err)
 }

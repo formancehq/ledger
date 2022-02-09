@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
-	"os"
 	"path"
 )
 
@@ -73,16 +71,4 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		return nil
 	}))
 	return fx.Options(options...)
-}
-
-func TestingModule() fx.Option {
-	return fx.Options(
-		DriverModule(ModuleConfig{
-			StorageDriver: "sqlite",
-			SQLiteConfig: &SQLiteConfig{
-				Dir:    os.TempDir(),
-				DBName: uuid.New(),
-			},
-		}),
-	)
 }

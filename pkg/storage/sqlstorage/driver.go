@@ -3,11 +3,11 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 var sqlDrivers = map[Flavor]struct {
@@ -94,6 +94,10 @@ func (s *cachedDBDriver) Name() string {
 
 func (s *cachedDBDriver) Initialize(ctx context.Context) error {
 
+	if s.db != nil {
+		return errors.New("database already initialized")
+	}
+
 	cfg, ok := sqlDrivers[s.flavor]
 	if !ok {
 		return errors.New("unknown flavor")
@@ -117,7 +121,9 @@ func (d *cachedDBDriver) Close(ctx context.Context) error {
 	if d.db == nil {
 		return nil
 	}
-	return d.db.Close()
+	err := d.db.Close()
+	d.db = nil
+	return err
 }
 
 const SQLiteMemoryConnString = "file::memory:?cache=shared"

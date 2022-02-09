@@ -135,7 +135,10 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	}
 	c.Data = results
 
-	total, _ := s.CountTransactions(ctx)
+	total, err := s.CountTransactions(ctx)
+	if err != nil {
+		return c, err
+	}
 	c.Total = total
 
 	return c, nil

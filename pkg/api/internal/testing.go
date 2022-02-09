@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/numary/ledger/pkg/api"
@@ -9,9 +10,9 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"io"
@@ -158,7 +159,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		module,
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
-		sqlstorage.TestingModule(),
+		ledgertesting.TestingModule(),
 		logging.LogrusModule(),
 		fx.NopLogger,
 	}, options...)
@@ -167,6 +168,10 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}))
 
 	app := fx.New(options...)
+	err := app.Start(context.Background())
+	assert.NoError(t, err)
+	defer app.Stop(context.Background())
+
 	select {
 	case <-ch:
 	default:
