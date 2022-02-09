@@ -31,7 +31,6 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
-
 	if err != nil {
 		return c, s.error(err)
 	}
@@ -56,6 +55,9 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 		account.Metadata = meta
 
 		results = append(results, account)
+	}
+	if rows.Err() != nil {
+		return query.Cursor{}, s.error(rows.Err())
 	}
 
 	c.PageSize = q.Limit - 1

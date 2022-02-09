@@ -133,6 +133,9 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 			volumes[row.asset]["input"] += row.amount
 		}
 	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
+	}
 
 	return volumes, nil
 }

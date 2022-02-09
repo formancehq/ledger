@@ -25,6 +25,9 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 		return nil, s.error(err)
 	}
 	if !rows.Next() {
+		if rows.Err() != nil {
+			return nil, s.error(rows.Err())
+		}
 		return nil, nil
 	}
 

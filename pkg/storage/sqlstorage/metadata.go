@@ -63,6 +63,9 @@ func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string
 
 		meta[metaKey] = value
 	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
+	}
 
 	return meta, nil
 }

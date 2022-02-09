@@ -106,6 +106,9 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		t.AppendPosting(posting)
 		transactions[txid] = t
 	}
+	if rows.Err() != nil {
+		return query.Cursor{}, s.error(rows.Err())
+	}
 
 	for _, t := range transactions {
 		meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", t.ID))
@@ -282,6 +285,9 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 
 		tx.AppendPosting(posting)
 	}
+	if rows.Err() != nil {
+		return tx, s.error(rows.Err())
+	}
 
 	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
@@ -339,6 +345,9 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 		}
 		tx.Reference = ref.String
 		tx.AppendPosting(posting)
+	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
 	}
 
 	if len(tx.Postings) == 0 {
