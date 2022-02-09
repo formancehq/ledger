@@ -38,6 +38,8 @@ const (
 	ErrInsufficientFund = "INSUFFICIENT_FUND"
 	ErrValidation       = "VALIDATION"
 	ErrNotFound         = "NOT_FOUND"
+
+	errorCodeKey = "_errorCode"
 )
 
 type ErrorResponse struct {
@@ -72,6 +74,10 @@ func coreErrorToErrorCode(err error) (int, string) {
 	}
 }
 
+func ErrorCode(c *gin.Context) string {
+	return c.GetString(errorCodeKey)
+}
+
 func ResponseError(c *gin.Context, err error) {
 	c.Error(err)
 	status, code := coreErrorToErrorCode(err)
@@ -79,6 +85,7 @@ func ResponseError(c *gin.Context, err error) {
 	if code != ErrInternal {
 		message = err.Error()
 	}
+	c.Set(errorCodeKey, code)
 	c.AbortWithStatusJSON(status, ErrorResponse{
 		ErrorCode:    code,
 		ErrorMessage: message,
