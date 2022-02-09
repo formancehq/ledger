@@ -98,8 +98,6 @@ func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, t
 
 	_, err = tx.ExecContext(ctx, sqlq, args...)
 	if err != nil {
-		tx.Rollback()
-
 		return s.error(err)
 	}
 

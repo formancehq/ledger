@@ -235,10 +235,7 @@ txLoop:
 	}
 
 	if mustRollback {
-		err = tx.Rollback()
-		if err != nil {
-			return nil, err
-		}
+		tx.Rollback()
 		return ret, storage.ErrAborted
 	}
 
