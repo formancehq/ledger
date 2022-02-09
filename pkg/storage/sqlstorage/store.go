@@ -40,6 +40,9 @@ func (s *Store) DB() *sql.DB {
 }
 
 func (s *Store) error(err error) error {
+	if err == nil {
+		return nil
+	}
 	return errorFromFlavor(Flavor(s.flavor), err)
 }
 

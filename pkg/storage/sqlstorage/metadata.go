@@ -8,20 +8,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
-	count, err := s.CountMeta(ctx)
+func (s *Store) lastMetaID(ctx context.Context, exec executor) (int64, error) {
+	count, err := s.countMeta(ctx, exec)
 	if err != nil {
 		return 0, s.error(err)
 	}
 	return count - 1, nil
 }
 
-func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
+func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
+	return s.lastMetaID(ctx, s.db)
+}
+
+func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select(
-		"meta_key",
-		"meta_value",
-	)
+	sb.Select("meta_key", "meta_value")
 	sb.From(s.table("metadata"))
 	sb.Where(
 		sb.And(
@@ -32,9 +33,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 	sb.OrderBy("meta_id").Asc()
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-
-	rows, err := s.db.QueryContext(ctx, sqlq, args...)
-
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -68,12 +67,11 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 	return meta, nil
 }
 
-func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
+func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
+	return s.getMeta(ctx, s.db, ty, id)
+}
 
+func (s *Store) saveMeta(ctx context.Context, exec executor, id int64, timestamp, targetType, targetID, key, value string) error {
 	ib := sqlbuilder.NewInsertBuilder()
 	ib.InsertInto(s.table("metadata"))
 	ib.Cols(
@@ -84,28 +82,34 @@ func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, t
 		"meta_value",
 		"timestamp",
 	)
-	ib.Values(
-		id,
-		targetType,
-		targetID,
-		key,
-		value,
-		timestamp,
-	)
+	ib.Values(id, targetType, targetID, key, value, timestamp)
 
 	sqlq, args := ib.BuildWithFlavor(s.flavor)
 	logrus.Debugln(sqlq, args)
 
-	_, err = tx.ExecContext(ctx, sqlq, args...)
+	_, err := exec.ExecContext(ctx, sqlq, args...)
+	if err != nil {
+		return s.error(err)
+	}
+	return nil
+}
+
+func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return s.error(err)
 	}
 
-	err = tx.Commit()
-
+	err = s.saveMeta(ctx, tx, id, timestamp, targetType, targetID, key, value)
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
 
+	err = tx.Commit()
+	if err != nil {
+		tx.Rollback()
+		return s.error(err)
+	}
 	return nil
 }
