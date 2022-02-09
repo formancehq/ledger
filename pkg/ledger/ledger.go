@@ -67,7 +67,10 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 	}
 	defer unlock(ctx)
 
-	count, _ := l.store.CountTransactions(ctx)
+	count, err := l.store.CountTransactions(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	timestamp := time.Now().Format(time.RFC3339)
 
 	last, err := l.store.LastTransaction(ctx)
