@@ -5,7 +5,6 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/logging"
-	"net/http"
 )
 
 // LedgerMiddleware struct
@@ -36,16 +35,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 
 		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
-			statusCode := http.StatusBadRequest
-			res := controllers.ErrorResponse{
-				ErrorCode:    controllers.ErrInternal,
-				ErrorMessage: err.Error(),
-			}
-			switch {
-			case ledger.IsUnavailableStoreError(err):
-				statusCode = http.StatusServiceUnavailable
-			}
-			c.AbortWithStatusJSON(statusCode, res)
+			controllers.ResponseError(c, err)
 			return
 		}
 		defer func() {

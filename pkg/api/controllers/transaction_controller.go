@@ -20,32 +20,6 @@ func NewTransactionController() TransactionController {
 	return TransactionController{}
 }
 
-func coreErrorToErrorCode(err *ledger.TransactionCommitError) string {
-	switch err.Err.(type) {
-	case *ledger.ConflictError:
-		return ErrConflict
-	case *ledger.InsufficientFundError:
-		return ErrInsufficientFund
-	case *ledger.ValidationError:
-		return ErrValidation
-	default:
-		return ErrInternal
-	}
-}
-
-func (ctl *TransactionController) handleCommitError(c *gin.Context, err *ledger.TransactionCommitError) {
-	switch err.Err.(type) {
-	case *ledger.ConflictError:
-		ctl.responseError(c, http.StatusConflict, coreErrorToErrorCode(err), err)
-	case *ledger.InsufficientFundError:
-		ctl.responseError(c, http.StatusBadRequest, coreErrorToErrorCode(err), err)
-	case *ledger.ValidationError:
-		ctl.responseError(c, http.StatusBadRequest, coreErrorToErrorCode(err), err)
-	default:
-		ctl.responseError(c, http.StatusInternalServerError, coreErrorToErrorCode(err), err)
-	}
-}
-
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
@@ -76,7 +50,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		switch err {
 		case ledger.ErrCommitError:
 			tx := result[0]
-			ctl.handleCommitError(c, tx.Err)
+			ResponseError(c, tx.Err)
 		default:
 			ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		}
@@ -105,7 +79,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	if err != nil {
 		switch ee := err.(type) {
 		case *ledger.TransactionCommitError:
-			ctl.handleCommitError(c, ee)
+			ResponseError(c, ee)
 		default:
 			ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
 		}
@@ -158,7 +132,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 				}
 				if tx.Err != nil {
 					v.ErrorMessage = tx.Err.Error()
-					v.ErrorCode = coreErrorToErrorCode(tx.Err)
+					_, v.ErrorCode = coreErrorToErrorCode(tx.Err)
 				}
 				results = append(results, v)
 			}

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/numary/ledger/pkg/ledger"
 	"net/http"
 	"reflect"
 
@@ -50,6 +51,30 @@ func (ctl *BaseController) noContent(c *gin.Context) {
 
 func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
 	c.Error(err)
+	c.AbortWithStatusJSON(status, ErrorResponse{
+		ErrorCode:    code,
+		ErrorMessage: err.Error(),
+	})
+}
+
+func coreErrorToErrorCode(err error) (int, string) {
+	switch {
+	case ledger.IsConflictError(err):
+		return http.StatusConflict, ErrConflict
+	case ledger.IsInsufficientFundError(err):
+		return http.StatusBadRequest, ErrInsufficientFund
+	case ledger.IsValidationError(err):
+		return http.StatusBadRequest, ErrValidation
+	case ledger.IsUnavailableStoreError(err):
+		return http.StatusServiceUnavailable, ErrInternal
+	default:
+		return http.StatusInternalServerError, ErrInternal
+	}
+}
+
+func ResponseError(c *gin.Context, err error) {
+	c.Error(err)
+	status, code := coreErrorToErrorCode(err)
 	c.AbortWithStatusJSON(status, ErrorResponse{
 		ErrorCode:    code,
 		ErrorMessage: err.Error(),
