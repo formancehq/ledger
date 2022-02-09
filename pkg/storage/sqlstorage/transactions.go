@@ -316,7 +316,7 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 	s.logger.Debug(ctx, sqlq)
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return nil, err
+		return nil, s.error(err)
 	}
 
 	tx := core.Transaction{}
@@ -335,7 +335,7 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 			&posting.Asset,
 		)
 		if err != nil {
-			return nil, err
+			return nil, s.error(err)
 		}
 		tx.Reference = ref.String
 		tx.AppendPosting(posting)
@@ -347,7 +347,7 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 
 	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
-		return nil, s.error(err)
+		return nil, err
 	}
 	tx.Metadata = meta
 
