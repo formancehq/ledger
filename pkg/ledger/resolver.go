@@ -73,7 +73,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 	store, err := r.storageFactory.GetStore(name)
 	if err != nil {
-		return nil, NewUnavailableStoreError(err)
+		return nil, errors.Wrap(err, "retrieving ledger store")
 	}
 
 	r.lock.RLock()
@@ -90,7 +90,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	if !ok {
 		err = store.Initialize(ctx)
 		if err != nil {
-			return nil, NewUnavailableStoreError(err)
+			return nil, errors.Wrap(err, "initializing ledger store")
 		}
 		r.initializedStores[name] = struct{}{}
 	}

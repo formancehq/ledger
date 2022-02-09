@@ -27,6 +27,9 @@ func (e Error) Is(err error) bool {
 	if !ok {
 		return false
 	}
+	if eerr.Code == "" {
+		return true
+	}
 	return eerr.Code == e.Code
 }
 
@@ -41,14 +44,18 @@ func NewError(code Code, originalError error) *Error {
 	}
 }
 
-func IsError(err error, code Code) bool {
+func IsError(err error) bool {
+	return IsErrorCode(err, "")
+}
+
+func IsErrorCode(err error, code Code) bool {
 	return errors.Is(err, &Error{
 		Code: code,
 	})
 }
 
 func IsTooManyClientError(err error) bool {
-	return IsError(err, TooManyClient)
+	return IsErrorCode(err, TooManyClient)
 }
 
 type Store interface {

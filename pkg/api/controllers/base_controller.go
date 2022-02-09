@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"net/http"
 	"reflect"
 
@@ -40,7 +41,7 @@ const (
 	ErrInsufficientFund = "INSUFFICIENT_FUND"
 	ErrValidation       = "VALIDATION"
 	ErrContextCancelled = "CONTEXT_CANCELLED"
-	ErrUnavailableStore = "UNAVAILABLE_STORE"
+	ErrStore            = "STORE"
 
 	errorCodeKey = "_errorCode"
 )
@@ -62,8 +63,8 @@ func coreErrorToErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
 		return http.StatusBadRequest, ErrValidation
-	case ledger.IsUnavailableStoreError(err):
-		return http.StatusServiceUnavailable, ErrUnavailableStore
+	case storage.IsError(err):
+		return http.StatusServiceUnavailable, ErrStore
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled
 	default:
