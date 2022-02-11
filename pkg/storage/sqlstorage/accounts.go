@@ -9,7 +9,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (query.Cursor, error) {
 	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
@@ -30,12 +30,7 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
-	rows, err := s.db.QueryContext(
-		ctx,
-		sqlq,
-		args...,
-	)
-
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return c, s.error(err)
 	}
@@ -53,13 +48,16 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 			Address: address,
 		}
 
-		meta, err := s.GetMeta(ctx, "account", account.Address)
+		meta, err := s.getMeta(ctx, exec, "account", account.Address)
 		if err != nil {
 			return c, err
 		}
 		account.Metadata = meta
 
 		results = append(results, account)
+	}
+	if rows.Err() != nil {
+		return query.Cursor{}, s.error(rows.Err())
 	}
 
 	c.PageSize = q.Limit - 1
@@ -70,8 +68,12 @@ func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, 
 	}
 	c.Data = results
 
-	total, _ := s.CountAccounts(ctx)
+	total, _ := s.countAccounts(ctx, exec)
 	c.Total = total
 
 	return c, nil
+}
+
+func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+	return s.findAccounts(ctx, s.db, q)
 }

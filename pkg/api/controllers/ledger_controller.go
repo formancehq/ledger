@@ -22,7 +22,7 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 
 	stats, err := l.(*ledger.Ledger).Stats(c.Request.Context())
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.response(c, http.StatusOK, stats)

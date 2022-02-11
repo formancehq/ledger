@@ -21,13 +21,13 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 	mapping := &core.Mapping{}
 	err := c.ShouldBind(mapping)
 	if err != nil {
-		ctl.responseError(c, http.StatusBadRequest, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 
 	err = l.(*ledger.Ledger).SaveMapping(c.Request.Context(), *mapping)
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.response(c, http.StatusOK, mapping)
@@ -38,7 +38,7 @@ func (ctl *MappingController) GetMapping(c *gin.Context) {
 
 	mapping, err := l.(*ledger.Ledger).LoadMapping(c.Request.Context())
 	if err != nil {
-		ctl.responseError(c, http.StatusInternalServerError, ErrInternal, err)
+		ResponseError(c, err)
 		return
 	}
 	ctl.response(c, http.StatusOK, mapping)

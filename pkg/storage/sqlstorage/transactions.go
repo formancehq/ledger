@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/sirupsen/logrus"
 	"math"
 	"sort"
 
@@ -14,7 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
+func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (query.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := query.Cursor{}
@@ -61,12 +60,7 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
-	rows, err := s.db.QueryContext(
-		ctx,
-		sqlq,
-		args...,
-	)
-
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return c, s.error(err)
 	}
@@ -112,9 +106,12 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 		t.AppendPosting(posting)
 		transactions[txid] = t
 	}
+	if rows.Err() != nil {
+		return query.Cursor{}, s.error(rows.Err())
+	}
 
 	for _, t := range transactions {
-		meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", t.ID))
+		meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", t.ID))
 		if err != nil {
 			return c, s.error(err)
 		}
@@ -135,21 +132,23 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Curs
 	}
 	c.Data = results
 
-	total, _ := s.CountTransactions(ctx)
+	total, err := s.countTransactions(ctx, exec)
+	if err != nil {
+		return c, err
+	}
 	c.Total = total
 
 	return c, nil
 }
 
-func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (map[int]error, error) {
+func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
+	return s.findTransactions(ctx, s.db, q)
+}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, s.error(err)
-	}
+func (s *Store) saveTransactions(ctx context.Context, exec executor, ts []core.Transaction) (map[int]error, error) {
 
-	mustRollback := false
 	ret := make(map[int]error)
+	hasError := false
 
 txLoop:
 	for i, t := range ts {
@@ -160,8 +159,8 @@ txLoop:
 		}
 
 		commitError := func(err error) {
-			mustRollback = true
 			ret[i] = s.error(err)
+			hasError = true
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
@@ -170,7 +169,7 @@ txLoop:
 		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
 
 		sqlq, args := ib.BuildWithFlavor(s.flavor)
-		_, err := tx.ExecContext(ctx, sqlq, args...)
+		_, err := exec.ExecContext(ctx, sqlq, args...)
 		if err != nil {
 			commitError(err)
 			continue txLoop
@@ -183,8 +182,7 @@ txLoop:
 			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
 
 			sqlq, args := ib.BuildWithFlavor(s.flavor)
-
-			_, err := tx.ExecContext(ctx, sqlq, args...)
+			_, err := exec.ExecContext(ctx, sqlq, args...)
 
 			if err != nil {
 				commitError(err)
@@ -192,7 +190,7 @@ txLoop:
 			}
 		}
 
-		nextID, err := s.CountMeta(ctx)
+		nextID, err := s.countMeta(ctx, exec)
 		if err != nil {
 			commitError(err)
 			continue txLoop
@@ -201,27 +199,11 @@ txLoop:
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
 			ib.InsertInto(s.table("metadata"))
-			ib.Cols(
-				"meta_id",
-				"meta_target_type",
-				"meta_target_id",
-				"meta_key",
-				"meta_value",
-				"timestamp",
-			)
-			ib.Values(
-				int(nextID),
-				"transaction",
-				fmt.Sprintf("%d", t.ID),
-				key,
-				string(value),
-				t.Timestamp,
-			)
+			ib.Cols("meta_id", "meta_target_type", "meta_target_id", "meta_key", "meta_value", "timestamp")
+			ib.Values(int(nextID), "transaction", fmt.Sprintf("%d", t.ID), key, string(value), t.Timestamp)
 
 			sqlq, args := ib.BuildWithFlavor(s.flavor)
-			logrus.Debugln(sqlq, args)
-
-			_, err = tx.ExecContext(ctx, sqlq, args...)
+			_, err = exec.ExecContext(ctx, sqlq, args...)
 			if err != nil {
 				commitError(err)
 				continue txLoop
@@ -231,12 +213,24 @@ txLoop:
 		}
 	}
 
-	if mustRollback {
-		err = tx.Rollback()
-		if err != nil {
-			return nil, err
-		}
+	if hasError {
 		return ret, storage.ErrAborted
+	}
+
+	return ret, nil
+}
+
+func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (map[int]error, error) {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, s.error(err)
+	}
+
+	ret, err := s.saveTransactions(ctx, tx, ts)
+	if err != nil {
+		tx.Rollback()
+		return ret, err
 	}
 
 	err = tx.Commit()
@@ -247,48 +241,33 @@ txLoop:
 	return ret, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transaction, err error) {
+func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select(
-		"t.id",
-		"t.timestamp",
-		"t.hash",
-		"t.reference",
-		"p.source",
-		"p.destination",
-		"p.amount",
-		"p.asset",
-	)
+	sb.Select("t.id", "t.timestamp", "t.hash", "t.reference", "p.source", "p.destination", "p.amount", "p.asset")
 	sb.From(sb.As(s.table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-
-	rows, err := s.db.QueryContext(
-		ctx,
-		sqlq,
-		args...,
-	)
-
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return tx, s.error(err)
 	}
 
 	for rows.Next() {
-		var txid int64
+		var txId int64
 		var ts string
-		var thash string
-		var tref sql.NullString
+		var txHash string
+		var txRef sql.NullString
 
 		posting := core.Posting{}
 
 		err := rows.Scan(
-			&txid,
+			&txId,
 			&ts,
-			&thash,
-			&tref,
+			&txHash,
+			&txRef,
 			&posting.Source,
 			&posting.Destination,
 			&posting.Amount,
@@ -298,25 +277,32 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 			return tx, err
 		}
 
-		tx.ID = txid
+		tx.ID = txId
 		tx.Timestamp = ts
-		tx.Hash = thash
+		tx.Hash = txHash
 		tx.Metadata = core.Metadata{}
-		tx.Reference = tref.String
+		tx.Reference = txRef.String
 
 		tx.AppendPosting(posting)
 	}
+	if rows.Err() != nil {
+		return tx, s.error(rows.Err())
+	}
 
-	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
+	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
-		return tx, s.error(err)
+		return tx, err
 	}
 	tx.Metadata = meta
 
 	return tx, nil
 }
 
-func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (s *Store) GetTransaction(ctx context.Context, txId string) (tx core.Transaction, err error) {
+	return s.getTransaction(ctx, s.db, txId)
+}
+
+func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -334,7 +320,7 @@ func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) 
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	s.logger.Debug(ctx, sqlq)
-	rows, err := s.db.QueryContext(ctx, sqlq, args...)
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -355,21 +341,28 @@ func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) 
 			&posting.Asset,
 		)
 		if err != nil {
-			return nil, err
+			return nil, s.error(err)
 		}
 		tx.Reference = ref.String
 		tx.AppendPosting(posting)
+	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
 	}
 
 	if len(tx.Postings) == 0 {
 		return nil, nil
 	}
 
-	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
+	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
 	if err != nil {
-		return nil, s.error(err)
+		return nil, err
 	}
 	tx.Metadata = meta
 
 	return &tx, nil
+}
+
+func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+	return s.lastTransaction(ctx, s.db)
 }

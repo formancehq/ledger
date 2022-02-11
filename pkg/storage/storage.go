@@ -12,6 +12,8 @@ type Code string
 
 const (
 	ConstraintFailed Code = "CONSTRAINT_FAILED"
+	TooManyClient    Code = "TOO_MANY_CLIENT"
+	Unknown          Code = "UNKNOWN"
 )
 
 var ErrAborted = errors.New("aborted transactions")
@@ -19,6 +21,17 @@ var ErrAborted = errors.New("aborted transactions")
 type Error struct {
 	Code          Code
 	OriginalError error
+}
+
+func (e Error) Is(err error) bool {
+	eerr, ok := err.(*Error)
+	if !ok {
+		return false
+	}
+	if eerr.Code == "" {
+		return true
+	}
+	return eerr.Code == e.Code
 }
 
 func (e Error) Error() string {
@@ -30,6 +43,20 @@ func NewError(code Code, originalError error) *Error {
 		Code:          code,
 		OriginalError: originalError,
 	}
+}
+
+func IsError(err error) bool {
+	return IsErrorCode(err, "")
+}
+
+func IsErrorCode(err error, code Code) bool {
+	return errors.Is(err, &Error{
+		Code: code,
+	})
+}
+
+func IsTooManyClientError(err error) bool {
+	return IsErrorCode(err, TooManyClient)
 }
 
 type Store interface {

@@ -9,13 +9,13 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/pkg/core"
@@ -23,51 +23,51 @@ import (
 	"go.uber.org/fx"
 )
 
-var driver storage.Driver
-
 func with(f func(l *Ledger)) {
+	done := make(chan struct{})
 	app := fx.New(
 		fx.NopLogger,
-		fx.Provide(func() storage.Driver {
-			return driver
-		}),
-		fx.Invoke(func(d storage.Driver) error {
-			return d.Initialize(context.Background())
-		}),
+		ledgertesting.StorageModule(),
+		logging.LogrusModule(),
 		fx.Provide(storage.NewDefaultFactory),
-		fx.Provide(
-			func(storageFactory storage.Factory) (*Ledger, error) {
-				store, err := storageFactory.GetStore("test")
-				if err != nil {
-					return nil, err
-				}
-				err = store.Initialize(context.Background())
-				if err != nil {
-					return nil, err
-				}
-				l, err := NewLedger("test", store, NewInMemoryLocker())
-				if err != nil {
-					panic(err)
-				}
-				return l, nil
-			},
-		),
-		fx.Invoke(f),
-		fx.Invoke(func(l *Ledger) {
-			err := l.Close(context.Background())
-			if err != nil {
-				logging.Error(context.Background(), "%s", err)
-			}
+		fx.Invoke(func(lc fx.Lifecycle, storageFactory storage.Factory) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					defer func() {
+						close(done)
+					}()
+					store, err := storageFactory.GetStore("test")
+					if err != nil {
+						return err
+					}
+					err = store.Initialize(context.Background())
+					if err != nil {
+						return err
+					}
+					l, err := NewLedger("test", store, NewInMemoryLocker())
+					if err != nil {
+						panic(err)
+					}
+					lc.Append(fx.Hook{
+						OnStop: l.Close,
+					})
+					f(l)
+					return nil
+				},
+			})
 		}),
-		// Closing the driver after each test cause a test to fail
-		// Tests seems not independent
-		//fx.Invoke(func(d storage.Driver) error {
-		//	return d.Close(context.Background())
-		//}),
 	)
+	go app.Start(context.Background())
+
+	select {
+	case <-done:
+	}
 	if app.Err() != nil {
 		panic(app.Err())
 	}
+	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+	app.Stop(ctx)
+
 }
 
 func TestMain(m *testing.M) {
@@ -82,27 +82,6 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	if testing.Verbose() {
 		logrus.StandardLogger().Level = logrus.DebugLevel
-	}
-
-	switch os.Getenv("NUMARY_STORAGE_DRIVER") {
-	case "sqlite", "":
-		driver = sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger())
-	case "postgres":
-		pgServer, err := ledgertesting.PostgresServer()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer pgServer.Close()
-
-		driver = sqlstorage.NewOpenCloseDBDriver(
-			logging.DefaultLogger(),
-			"postgres",
-			sqlstorage.PostgreSQL,
-			func(name string) string {
-				return pgServer.ConnString()
-			},
-		)
 	}
 
 	code = m.Run()
@@ -391,6 +370,7 @@ func TestLast(t *testing.T) {
 
 func TestAccountMetadata(t *testing.T) {
 	with(func(l *Ledger) {
+
 		err := l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
@@ -410,9 +390,8 @@ func TestAccountMetadata(t *testing.T) {
 			if meta, ok := acc.Metadata["a random metadata"]; ok {
 				var value string
 				err := json.Unmarshal(meta, &value)
-				if err != nil {
-					t.Fatal(err)
-				}
+				assert.NoError(t, err)
+
 				if value != "new value" {
 					t.Fatalf("metadata entry did not match in get: expected \"new value\", got %v", value)
 				}
@@ -420,10 +399,23 @@ func TestAccountMetadata(t *testing.T) {
 		}
 
 		{
+			// We have to create at least one transaction to retrieve an account from FindAccounts store method
+			_, _, err := l.Commit(context.Background(), []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Amount:      100,
+							Asset:       "USD",
+							Destination: "users:001",
+						},
+					},
+				},
+			})
+			assert.NoError(t, err)
+
 			cursor, err := l.FindAccounts(context.Background(), query.Account("users:001"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
 
 			accounts, ok := cursor.Data.([]core.Account)
 			if !ok {

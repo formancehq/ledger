@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/logging"
+	"github.com/pkg/errors"
 	"path"
 	"strings"
 
@@ -34,7 +35,14 @@ func (s *Store) table(name string) string {
 	}
 }
 
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Store) error(err error) error {
+	if err == nil {
+		return nil
+	}
 	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
@@ -84,11 +92,10 @@ func (s *Store) Initialize(ctx context.Context) error {
 	for i, statement := range statements {
 		s.logger.Debug(ctx, "running statement: %s", statement)
 		_, err = s.db.ExecContext(ctx, statement)
-
 		if err != nil {
-			err = fmt.Errorf("failed to run statement %d: %w", i, err)
+			err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
 			s.logger.Error(ctx, "%s", err)
-			return s.error(err)
+			return err
 		}
 	}
 

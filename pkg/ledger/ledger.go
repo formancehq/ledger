@@ -67,17 +67,20 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 	}
 	defer unlock(ctx)
 
-	count, _ := l.store.CountTransactions(ctx)
 	timestamp := time.Now().Format(time.RFC3339)
 
+	startId := int64(0)
 	last, err := l.store.LastTransaction(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "loading last transaction")
+	}
+	if last != nil {
+		startId = last.ID + 1
 	}
 
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "loading mapping")
 	}
 
 	contracts := make([]core.Contract, 0)
@@ -99,7 +102,7 @@ txLoop:
 			TransactionData: ts[i],
 		}
 
-		tx.ID = count + int64(i)
+		tx.ID = startId + int64(i)
 		tx.Timestamp = timestamp
 
 		tx.Hash = core.Hash(last, &tx)
@@ -217,7 +220,7 @@ txLoop:
 			}
 			return nil, ret, ErrCommitError
 		default:
-			return nil, nil, err
+			return nil, nil, errors.Wrap(err, "committing transactions")
 		}
 	}
 	return aggregatedBalances, ret, nil

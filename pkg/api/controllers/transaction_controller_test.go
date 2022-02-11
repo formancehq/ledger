@@ -1,13 +1,19 @@
 package controllers_test
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -271,5 +277,30 @@ func TestPostTransactionMetadata(t *testing.T) {
 		assert.EqualValues(t, core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		}, ret.Metadata)
+	})
+}
+
+func TestTooManyClient(t *testing.T) {
+	internal.RunTest(t, func(api *api.API, factory storage.Factory) {
+
+		if ledgertesting.StorageDriverName() != "postgres" {
+			return
+		}
+		if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
+			return
+		}
+
+		store, err := factory.GetStore("quickstart")
+		assert.NoError(t, err)
+
+		// Grab all potential connections
+		for i := 0; i < ledgertesting.MaxConnections; i++ {
+			tx, err := store.(*sqlstorage.Store).DB().BeginTx(context.Background(), &sql.TxOptions{})
+			assert.NoError(t, err)
+			defer tx.Rollback()
+		}
+
+		rsp := internal.GetTransactions(api)
+		assert.Equal(t, http.StatusServiceUnavailable, rsp.Result().StatusCode)
 	})
 }

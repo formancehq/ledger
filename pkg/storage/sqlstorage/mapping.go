@@ -11,7 +11,7 @@ import (
 // We have only one mapping for a ledger, so hardcode the id
 const mappingId = "0000"
 
-func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, error) {
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
@@ -20,15 +20,14 @@ func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
-	rows, err := s.db.QueryContext(
-		ctx,
-		sqlq,
-		args...,
-	)
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
 	if !rows.Next() {
+		if rows.Err() != nil {
+			return nil, s.error(rows.Err())
+		}
 		return nil, nil
 	}
 
@@ -50,11 +49,11 @@ func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return m, nil
 }
 
-func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
+func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+	return s.loadMapping(ctx, s.db)
+}
+
+func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
 
 	data, err := json.Marshal(mapping)
 	if err != nil {
@@ -81,11 +80,10 @@ func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 
 	logrus.Debugln(sqlq, args)
 
-	_, err = tx.ExecContext(ctx, sqlq, args...)
-	if err != nil {
-		tx.Rollback()
+	_, err = exec.ExecContext(ctx, sqlq, args...)
+	return s.error(err)
+}
 
-		return s.error(err)
-	}
-	return tx.Commit()
+func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+	return s.saveMapping(ctx, s.db, mapping)
 }

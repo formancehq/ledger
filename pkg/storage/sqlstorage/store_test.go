@@ -1,24 +1,22 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path"
-	"testing"
-	"time"
-
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/fx"
+	"os"
+	"testing"
+	"time"
 )
 
 func TestStore(t *testing.T) {
@@ -27,137 +25,123 @@ func TestStore(t *testing.T) {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
 
-	pgServer, err := ledgertesting.PostgresServer()
-	assert.NoError(t, err)
-	defer pgServer.Close()
-
-	type driverConfig struct {
-		driver     string
-		connString ConnStringResolver
-		flavor     sqlbuilder.Flavor
+	type testCase struct {
+		name       string
+		onlyDriver string
+		fn         func(t *testing.T, store *sqlstorage.Store)
 	}
-	var drivers = []driverConfig{
+
+	for _, tf := range []testCase{
 		{
-			driver: "sqlite3",
-			connString: func(name string) string {
-				return SQLiteFileConnString(path.Join(os.TempDir(), name))
-			},
-			flavor: sqlbuilder.SQLite,
+			name:       "TooManyClient",
+			fn:         testTooManyClient,
+			onlyDriver: "pgx",
 		},
 		{
-			driver: "pgx",
-			connString: func(name string) string {
-				return pgServer.ConnString()
-			},
-			flavor: sqlbuilder.PostgreSQL,
+			name: "SaveTransactions",
+			fn:   testSaveTransaction,
 		},
-	}
-
-	type testingFunction struct {
-		name string
-		fn   func(t *testing.T, store storage.Store)
-	}
-
-	for _, driver := range drivers {
-		for _, tf := range []testingFunction{
-			{
-				name: "SaveTransactions",
-				fn:   testSaveTransaction,
-			},
-			{
-				name: "DuplicatedTransaction",
-				fn:   testDuplicatedTransaction,
-			},
-			{
-				name: "SaveMeta",
-				fn:   testSaveMeta,
-			},
-			{
-				name: "LastTransaction",
-				fn:   testLastTransaction,
-			},
-			{
-				name: "LastMetaID",
-				fn:   testLastMetaID,
-			},
-			{
-				name: "CountAccounts",
-				fn:   testCountAccounts,
-			},
-			{
-				name: "AggregateBalances",
-				fn:   testAggregateBalances,
-			},
-			{
-				name: "AggregateVolumes",
-				fn:   testAggregateVolumes,
-			},
-			{
-				name: "CountMeta",
-				fn:   testCountMeta,
-			},
-			{
-				name: "FindAccounts",
-				fn:   testFindAccounts,
-			},
-			{
-				name: "CountTransactions",
-				fn:   testCountTransactions,
-			},
-			{
-				name: "FindTransactions",
-				fn:   testFindTransactions,
-			},
-			{
-				name: "GetMeta",
-				fn:   testGetMeta,
-			},
-			{
-				name: "GetTransaction",
-				fn:   testGetTransaction,
-			},
-			{
-				name: "Mapping",
-				fn:   testMapping,
-			},
-		} {
-			t.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(t *testing.T) {
-				ledger := uuid.New()
-
-				db, err := sql.Open(driver.driver, driver.connString(ledger))
-				assert.NoError(t, err)
-
-				counter := 0
-				for {
-					err = db.Ping()
-					if err != nil {
-						if counter < 5 {
-							counter++
-							<-time.After(time.Second)
-							continue
-						}
-						assert.Fail(t, "timeout waiting database: %s", err)
-						return
-					}
-					break
-				}
-
-				store, err := NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
-					return db.Close()
-				})
-				assert.NoError(t, err)
-				defer store.Close(context.Background())
-
-				err = store.Initialize(context.Background())
-				assert.NoError(t, err)
-
-				tf.fn(t, store)
-			})
+		{
+			name: "DuplicatedTransaction",
+			fn:   testDuplicatedTransaction,
+		},
+		{
+			name: "SaveMeta",
+			fn:   testSaveMeta,
+		},
+		{
+			name: "LastTransaction",
+			fn:   testLastTransaction,
+		},
+		{
+			name: "LastMetaID",
+			fn:   testLastMetaID,
+		},
+		{
+			name: "CountAccounts",
+			fn:   testCountAccounts,
+		},
+		{
+			name: "AggregateBalances",
+			fn:   testAggregateBalances,
+		},
+		{
+			name: "AggregateVolumes",
+			fn:   testAggregateVolumes,
+		},
+		{
+			name: "CountMeta",
+			fn:   testCountMeta,
+		},
+		{
+			name: "FindAccounts",
+			fn:   testFindAccounts,
+		},
+		{
+			name: "CountTransactions",
+			fn:   testCountTransactions,
+		},
+		{
+			name: "FindTransactions",
+			fn:   testFindTransactions,
+		},
+		{
+			name: "GetMeta",
+			fn:   testGetMeta,
+		},
+		{
+			name: "GetTransaction",
+			fn:   testGetTransaction,
+		},
+		{
+			name: "Mapping",
+			fn:   testMapping,
+		},
+	} {
+		if tf.onlyDriver != "" && tf.onlyDriver != ledgertesting.StorageDriverName() {
+			continue
 		}
+		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
+
+			done := make(chan struct{})
+			app := fx.New(
+				ledgertesting.StorageModule(),
+				fx.Provide(storage.NewDefaultFactory),
+				logging.LogrusModule(),
+				fx.Invoke(func(storageFactory storage.Factory, lc fx.Lifecycle) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							defer func() {
+								close(done)
+							}()
+							ledger := uuid.New()
+							store, err := storageFactory.GetStore(ledger)
+							assert.NoError(t, err)
+
+							assert.NoError(t, err)
+							defer store.Close(context.Background())
+
+							err = store.Initialize(context.Background())
+							assert.NoError(t, err)
+
+							tf.fn(t, store.(*sqlstorage.Store))
+							return nil
+						},
+					})
+				}),
+			)
+			go app.Start(context.Background())
+			defer app.Stop(context.Background())
+
+			select {
+			case <-time.After(5 * time.Second):
+			case <-done:
+			}
+		})
 	}
 }
 
-func testSaveTransaction(t *testing.T, store storage.Store) {
+func testSaveTransaction(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -178,7 +162,7 @@ func testSaveTransaction(t *testing.T, store storage.Store) {
 	assert.NoError(t, err)
 }
 
-func testDuplicatedTransaction(t *testing.T, store storage.Store) {
+func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -202,13 +186,13 @@ func testDuplicatedTransaction(t *testing.T, store storage.Store) {
 	assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code)
 }
 
-func testSaveMeta(t *testing.T, store storage.Store) {
+func testSaveMeta(t *testing.T, store *sqlstorage.Store) {
 	err := store.SaveMeta(context.Background(), 1, time.Now().Format(time.RFC3339),
 		"transaction", "1", "firstname", "\"YYY\"")
 	assert.NoError(t, err)
 }
 
-func testGetMeta(t *testing.T, store storage.Store) {
+func testGetMeta(t *testing.T, store *sqlstorage.Store) {
 	var (
 		firstname = "\"John\""
 		lastname  = "\"Doe\""
@@ -228,7 +212,7 @@ func testGetMeta(t *testing.T, store storage.Store) {
 	}, meta)
 }
 
-func testLastTransaction(t *testing.T, store storage.Store) {
+func testLastTransaction(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 0,
@@ -262,7 +246,7 @@ func testLastTransaction(t *testing.T, store storage.Store) {
 
 }
 
-func testLastMetaID(t *testing.T, store storage.Store) {
+func testLastMetaID(t *testing.T, store *sqlstorage.Store) {
 	err := store.SaveMeta(context.Background(), 0, time.Now().Format(time.RFC3339),
 		"transaction", "1", "firstname", "\"YYY\"")
 	assert.NoError(t, err)
@@ -272,7 +256,7 @@ func testLastMetaID(t *testing.T, store storage.Store) {
 	assert.EqualValues(t, 0, lastMetaId)
 }
 
-func testCountAccounts(t *testing.T, store storage.Store) {
+func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -297,7 +281,7 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 
 }
 
-func testAggregateBalances(t *testing.T, store storage.Store) {
+func testAggregateBalances(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -323,7 +307,7 @@ func testAggregateBalances(t *testing.T, store storage.Store) {
 	assert.EqualValues(t, 100, balances["USD"])
 }
 
-func testAggregateVolumes(t *testing.T, store storage.Store) {
+func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -350,7 +334,7 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 	assert.EqualValues(t, 100, volumes["USD"]["input"])
 }
 
-func testFindAccounts(t *testing.T, store storage.Store) {
+func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -388,7 +372,7 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 	assert.Equal(t, 1, accounts.PageSize)
 }
 
-func testCountMeta(t *testing.T, store storage.Store) {
+func testCountMeta(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -420,7 +404,7 @@ func testCountMeta(t *testing.T, store storage.Store) {
 	assert.EqualValues(t, 2, countMeta)
 }
 
-func testCountTransactions(t *testing.T, store storage.Store) {
+func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 1,
@@ -448,7 +432,7 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 	assert.EqualValues(t, 1, countTransactions)
 }
 
-func testFindTransactions(t *testing.T, store storage.Store) {
+func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID: 0,
@@ -512,7 +496,7 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 
 }
 
-func testMapping(t *testing.T, store storage.Store) {
+func testMapping(t *testing.T, store *sqlstorage.Store) {
 
 	m := core.Mapping{
 		Contracts: []core.Contract{
@@ -544,7 +528,7 @@ func testMapping(t *testing.T, store storage.Store) {
 	assert.Len(t, mapping.Contracts, 0)
 }
 
-func testGetTransaction(t *testing.T, store storage.Store) {
+func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	txs := []core.Transaction{
 		{
 			ID:        0,
@@ -585,5 +569,21 @@ func testGetTransaction(t *testing.T, store storage.Store) {
 	tx, err := store.GetTransaction(context.Background(), "1")
 	assert.NoError(t, err)
 	assert.Equal(t, txs[1], tx)
+}
 
+func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
+
+	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
+		return
+	}
+
+	for i := 0; i < ledgertesting.MaxConnections; i++ {
+		tx, err := store.DB().BeginTx(context.Background(), nil)
+		assert.NoError(t, err)
+		defer tx.Rollback()
+	}
+	_, err := store.CountTransactions(context.Background())
+	assert.Error(t, err)
+	assert.IsType(t, new(storage.Error), err)
+	assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
 }

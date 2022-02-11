@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"fmt"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -74,7 +73,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 	store, err := r.storageFactory.GetStore(name)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "retrieving ledger store")
 	}
 
 	r.lock.RLock()
@@ -91,9 +90,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	if !ok {
 		err = store.Initialize(ctx)
 		if err != nil {
-			err = fmt.Errorf("failed to initialize store: %w", err)
-			r.logger.Debug(ctx, "%s", err)
-			return nil, err
+			return nil, errors.Wrap(err, "initializing ledger store")
 		}
 		r.initializedStores[name] = struct{}{}
 	}

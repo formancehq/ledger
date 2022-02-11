@@ -5,7 +5,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 )
 
-func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
+func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -14,29 +14,35 @@ func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
 
 	sqlq, args := sb.Build()
 
-	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
+func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
+	return s.countTransactions(ctx, s.db)
+}
+
+func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
-
 	sb.
 		Select("count(*)").
 		From(s.table("addresses")).
 		BuildWithFlavor(s.flavor)
 
 	sqlq, args := sb.Build()
-
-	err := s.db.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *Store) CountMeta(ctx context.Context) (int64, error) {
+func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
+	return s.countAccounts(ctx, s.db)
+}
+
+func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
 	var count int64
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -47,17 +53,20 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
-	q := s.db.QueryRowContext(ctx, sqlq, args...)
+	q := exec.QueryRowContext(ctx, sqlq, args...)
 	err := q.Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
+func (s *Store) CountMeta(ctx context.Context) (int64, error) {
+	return s.countMeta(ctx, s.db)
+}
+
+func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
 	balances := map[string]int64{}
 
-	volumes, err := s.AggregateVolumes(ctx, address)
-
+	volumes, err := s.aggregateVolumes(ctx, exec, address)
 	if err != nil {
 		return balances, s.error(err)
 	}
@@ -69,7 +78,11 @@ func (s *Store) AggregateBalances(ctx context.Context, address string) (map[stri
 	return balances, nil
 }
 
-func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
+func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
+	return s.aggregateBalances(ctx, s.db, address)
+}
+
+func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (map[string]map[string]int64, error) {
 	volumes := map[string]map[string]int64{}
 
 	agg1 := sqlbuilder.NewSelectBuilder()
@@ -91,8 +104,7 @@ func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[strin
 	sb.From(sb.BuilderAs(union, "assets"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-
-	rows, err := s.db.QueryContext(ctx, sqlq, args...)
+	rows, err := exec.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {
 		return volumes, s.error(err)
@@ -121,6 +133,13 @@ func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[strin
 			volumes[row.asset]["input"] += row.amount
 		}
 	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
+	}
 
 	return volumes, nil
+}
+
+func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
+	return s.aggregateVolumes(ctx, s.db, address)
 }

@@ -1,6 +1,10 @@
 package controllers
 
 import (
+	"context"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
 
@@ -36,11 +40,14 @@ const (
 	ErrConflict         = "CONFLICT"
 	ErrInsufficientFund = "INSUFFICIENT_FUND"
 	ErrValidation       = "VALIDATION"
-	ErrNotFound         = "NOT_FOUND"
+	ErrContextCancelled = "CONTEXT_CANCELLED"
+	ErrStore            = "STORE"
+
+	errorCodeKey = "_errorCode"
 )
 
 type ErrorResponse struct {
-	ErrorCode    string `json:"error_code,omitempty" enums:"INTERNAL,CONFLICT,INSUFFICIENT_FUND,VALIDATION,NOT_FOUND"`
+	ErrorCode    string `json:"error_code,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 }
 
@@ -48,10 +55,38 @@ func (ctl *BaseController) noContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (ctl *BaseController) responseError(c *gin.Context, status int, code string, err error) {
-	c.Abort()
-	c.AbortWithStatusJSON(status, ErrorResponse{
-		ErrorCode:    code,
-		ErrorMessage: err.Error(),
-	})
+func coreErrorToErrorCode(err error) (int, string) {
+	switch {
+	case ledger.IsConflictError(err):
+		return http.StatusConflict, ErrConflict
+	case ledger.IsInsufficientFundError(err):
+		return http.StatusBadRequest, ErrInsufficientFund
+	case ledger.IsValidationError(err):
+		return http.StatusBadRequest, ErrValidation
+	case errors.Is(err, context.Canceled):
+		return http.StatusInternalServerError, ErrContextCancelled
+	case storage.IsError(err):
+		return http.StatusServiceUnavailable, ErrStore
+	default:
+		return http.StatusInternalServerError, ErrInternal
+	}
+}
+
+func ErrorCode(c *gin.Context) string {
+	return c.GetString(errorCodeKey)
+}
+
+func ResponseError(c *gin.Context, err error) {
+	c.Error(err)
+	status, code := coreErrorToErrorCode(err)
+	c.Set(errorCodeKey, code)
+
+	if status < 500 {
+		c.AbortWithStatusJSON(status, ErrorResponse{
+			ErrorCode:    code,
+			ErrorMessage: err.Error(),
+		})
+		return
+	}
+	c.AbortWithStatus(status)
 }

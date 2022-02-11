@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/logging"
 )
@@ -34,11 +35,8 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 
 		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
-			c.JSON(400, gin.H{
-				"error":         true,
-				"error_code":    400,
-				"error_message": err.Error(),
-			})
+			controllers.ResponseError(c, err)
+			return
 		}
 		defer func() {
 			err := l.Close(c.Request.Context())
