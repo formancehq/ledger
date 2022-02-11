@@ -12,6 +12,7 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"io"
@@ -20,6 +21,8 @@ import (
 	"reflect"
 	"testing"
 )
+
+var testingLedger string
 
 func Encode(t *testing.T, v interface{}) []byte {
 	data, err := json.Marshal(v)
@@ -78,61 +81,61 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 }
 
 func PostTransaction(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, "/quickstart/transactions", Buffer(t, tx))
+	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions", Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostTransactionMetadata(t *testing.T, handler http.Handler, id int64, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/quickstart/transactions/%d/metadata", id), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/metadata", id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/quickstart/transactions", nil)
+	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/transactions", nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransaction(handler http.Handler, id int64) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/quickstart/transactions/%d", id), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccounts(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/quickstart/accounts", nil)
+	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/accounts", nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/quickstart/accounts/"+addr, nil)
+	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/accounts/"+addr, nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/quickstart/accounts/%s/metadata", addr), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/accounts/%s/metadata", addr), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetStats(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/quickstart/stats", nil)
+	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/stats", nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func LoadMapping(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/quickstart/mapping", nil)
+	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/mapping", nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func SaveMapping(t *testing.T, handler http.Handler, m core.Mapping) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPut, "/quickstart/mapping", Buffer(t, m))
+	req, rec := NewRequest(http.MethodPut, "/"+testingLedger+"/mapping", Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -144,6 +147,7 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func WithNewModule(t *testing.T, options ...fx.Option) {
+	testingLedger = uuid.New()
 	module := api.Module(api.Config{
 		StorageDriver: "sqlite",
 		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
