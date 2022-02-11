@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -57,5 +58,5 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		res.Link = EncodeLink(err)
 	}
 
-	c.JSON(200, res)
+	c.JSON(http.StatusOK, res)
 }

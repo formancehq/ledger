@@ -75,14 +75,14 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 		}
 	}
 
-	c, err := m.Execute()
+	exit_code, err := m.Execute()
 
 	if err != nil {
-		return fmt.Errorf("script failed: %v", err)
+		return fmt.Errorf("script execution failed: %v", err)
 	}
 
-	if c != vm.EXIT_OK {
-		switch c {
+	if exit_code != vm.EXIT_OK {
+		switch exit_code {
 		case vm.EXIT_FAIL:
 			return errors.New("script exited with error code EXIT_FAIL")
 		case vm.EXIT_FAIL_INVALID:
@@ -96,6 +96,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 
 	t := core.TransactionData{
 		Postings: m.Postings,
+		Metadata: m.GetTxMetaJson(),
 	}
 
 	_, ret, err := l.Commit(ctx, []core.TransactionData{t})
@@ -105,5 +106,4 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) error {
 	default:
 		return err
 	}
-	return err
 }
