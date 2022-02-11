@@ -2,15 +2,8 @@ package sqlstorage_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path"
-	"testing"
-	"time"
-
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -20,6 +13,9 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/fx"
+	"testing"
+	"time"
 )
 
 func TestStore(t *testing.T) {
@@ -28,146 +24,119 @@ func TestStore(t *testing.T) {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
 
-	pgServer, err := ledgertesting.PostgresServer()
-	assert.NoError(t, err)
-	defer pgServer.Close()
-
-	type driverConfig struct {
-		driver     string
-		connString sqlstorage.ConnStringResolver
-		flavor     sqlbuilder.Flavor
-	}
-	var drivers = []driverConfig{
-		{
-			driver: "sqlite3",
-			connString: func(name string) string {
-				return sqlstorage.SQLiteFileConnString(path.Join(os.TempDir(), name))
-			},
-			flavor: sqlbuilder.SQLite,
-		},
-		{
-			driver: "pgx",
-			connString: func(name string) string {
-				return pgServer.ConnString()
-			},
-			flavor: sqlbuilder.PostgreSQL,
-		},
-	}
-
 	type testCase struct {
 		name       string
 		onlyDriver string
 		fn         func(t *testing.T, store *sqlstorage.Store)
 	}
 
-	for _, driver := range drivers {
-		for _, tf := range []testCase{
-			{
-				name:       "TooManyClient",
-				fn:         testTooManyClient,
-				onlyDriver: "pgx",
-			},
-			{
-				name: "SaveTransactions",
-				fn:   testSaveTransaction,
-			},
-			{
-				name: "DuplicatedTransaction",
-				fn:   testDuplicatedTransaction,
-			},
-			{
-				name: "SaveMeta",
-				fn:   testSaveMeta,
-			},
-			{
-				name: "LastTransaction",
-				fn:   testLastTransaction,
-			},
-			{
-				name: "LastMetaID",
-				fn:   testLastMetaID,
-			},
-			{
-				name: "CountAccounts",
-				fn:   testCountAccounts,
-			},
-			{
-				name: "AggregateBalances",
-				fn:   testAggregateBalances,
-			},
-			{
-				name: "AggregateVolumes",
-				fn:   testAggregateVolumes,
-			},
-			{
-				name: "CountMeta",
-				fn:   testCountMeta,
-			},
-			{
-				name: "FindAccounts",
-				fn:   testFindAccounts,
-			},
-			{
-				name: "CountTransactions",
-				fn:   testCountTransactions,
-			},
-			{
-				name: "FindTransactions",
-				fn:   testFindTransactions,
-			},
-			{
-				name: "GetMeta",
-				fn:   testGetMeta,
-			},
-			{
-				name: "GetTransaction",
-				fn:   testGetTransaction,
-			},
-			{
-				name: "Mapping",
-				fn:   testMapping,
-			},
-		} {
-			if tf.onlyDriver != "" && tf.onlyDriver != driver.driver {
-				continue
-			}
-			t.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(t *testing.T) {
-
-				ledger := uuid.New()
-
-				db, err := sql.Open(driver.driver, driver.connString(ledger))
-				assert.NoError(t, err)
-				defer func() {
-					assert.NoError(t, db.Close())
-				}()
-
-				counter := 0
-				for {
-					err = db.Ping()
-					if err != nil {
-						if counter < 5 {
-							counter++
-							<-time.After(time.Second)
-							continue
-						}
-						assert.Fail(t, "timeout waiting database", err)
-						return
-					}
-					break
-				}
-
-				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
-					return db.Close()
-				})
-				assert.NoError(t, err)
-				defer store.Close(context.Background())
-
-				err = store.Initialize(context.Background())
-				assert.NoError(t, err)
-
-				tf.fn(t, store)
-			})
+	for _, tf := range []testCase{
+		{
+			name:       "TooManyClient",
+			fn:         testTooManyClient,
+			onlyDriver: "pgx",
+		},
+		{
+			name: "SaveTransactions",
+			fn:   testSaveTransaction,
+		},
+		{
+			name: "DuplicatedTransaction",
+			fn:   testDuplicatedTransaction,
+		},
+		{
+			name: "SaveMeta",
+			fn:   testSaveMeta,
+		},
+		{
+			name: "LastTransaction",
+			fn:   testLastTransaction,
+		},
+		{
+			name: "LastMetaID",
+			fn:   testLastMetaID,
+		},
+		{
+			name: "CountAccounts",
+			fn:   testCountAccounts,
+		},
+		{
+			name: "AggregateBalances",
+			fn:   testAggregateBalances,
+		},
+		{
+			name: "AggregateVolumes",
+			fn:   testAggregateVolumes,
+		},
+		{
+			name: "CountMeta",
+			fn:   testCountMeta,
+		},
+		{
+			name: "FindAccounts",
+			fn:   testFindAccounts,
+		},
+		{
+			name: "CountTransactions",
+			fn:   testCountTransactions,
+		},
+		{
+			name: "FindTransactions",
+			fn:   testFindTransactions,
+		},
+		{
+			name: "GetMeta",
+			fn:   testGetMeta,
+		},
+		{
+			name: "GetTransaction",
+			fn:   testGetTransaction,
+		},
+		{
+			name: "Mapping",
+			fn:   testMapping,
+		},
+	} {
+		if tf.onlyDriver != "" && tf.onlyDriver != ledgertesting.StorageDriverName() {
+			continue
 		}
+		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
+
+			done := make(chan struct{})
+			app := fx.New(
+				ledgertesting.StorageModule(),
+				fx.Provide(storage.NewDefaultFactory),
+				logging.LogrusModule(),
+				fx.Invoke(func(storageFactory storage.Factory, lc fx.Lifecycle) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							defer func() {
+								close(done)
+							}()
+							ledger := uuid.New()
+							store, err := storageFactory.GetStore(ledger)
+							assert.NoError(t, err)
+
+							assert.NoError(t, err)
+							defer store.Close(context.Background())
+
+							err = store.Initialize(context.Background())
+							assert.NoError(t, err)
+
+							tf.fn(t, store.(*sqlstorage.Store))
+							return nil
+						},
+					})
+				}),
+			)
+			go app.Start(context.Background())
+			defer app.Stop(context.Background())
+
+			select {
+			case <-time.After(5 * time.Second):
+			case <-done:
+			}
+		})
 	}
 }
 

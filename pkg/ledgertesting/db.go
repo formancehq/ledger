@@ -13,13 +13,21 @@ import (
 	"path"
 )
 
+func StorageDriverName() string {
+	fromEnv := os.Getenv("NUMARY_STORAGE_DRIVER")
+	if fromEnv != "" {
+		return fromEnv
+	}
+	return "sqlite"
+}
+
 func StorageModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(logger logging.Logger, lifecycle fx.Lifecycle) (storage.Driver, error) {
 			var driver storage.Driver
 			id := uuid.New()
-			switch os.Getenv("NUMARY_STORAGE_DRIVER") {
-			case "sqlite", "":
+			switch StorageDriverName() {
+			case "sqlite":
 				driver = sqlstorage.NewOpenCloseDBDriver(logger, "sqlite", sqlstorage.SQLite, func(name string) string {
 					return sqlstorage.SQLiteFileConnString(path.Join(
 						os.TempDir(),
@@ -50,7 +58,6 @@ func StorageModule() fx.Option {
 			}
 			lifecycle.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					fmt.Println("init driver")
 					return driver.Initialize(ctx)
 				},
 				OnStop: driver.Close,

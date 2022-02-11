@@ -1,4 +1,4 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -30,14 +31,14 @@ func BenchmarkStore(b *testing.B) {
 
 	type driverConfig struct {
 		driver     string
-		connString ConnStringResolver
+		connString sqlstorage.ConnStringResolver
 		flavor     sqlbuilder.Flavor
 	}
 	var drivers = []driverConfig{
 		{
 			driver: "sqlite3",
 			connString: func(name string) string {
-				return SQLiteFileConnString(path.Join(os.TempDir(), name))
+				return sqlstorage.SQLiteFileConnString(path.Join(os.TempDir(), name))
 			},
 			flavor: sqlbuilder.SQLite,
 		},
@@ -52,7 +53,7 @@ func BenchmarkStore(b *testing.B) {
 
 	type testingFunction struct {
 		name string
-		fn   func(b *testing.B, store *Store)
+		fn   func(b *testing.B, store *sqlstorage.Store)
 	}
 
 	for _, driver := range drivers {
@@ -91,7 +92,7 @@ func BenchmarkStore(b *testing.B) {
 					break
 				}
 
-				store, err := NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
+				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
 					return db.Close()
 				})
 				assert.NoError(b, err)
@@ -108,7 +109,7 @@ func BenchmarkStore(b *testing.B) {
 	}
 }
 
-func testBenchmarkFindTransactions(b *testing.B, store *Store) {
+func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 	datas := make([]core.Transaction, 0)
 	for i := 0; i < 1000; i++ {
 		datas = append(datas, core.Transaction{
@@ -148,7 +149,7 @@ func testBenchmarkFindTransactions(b *testing.B, store *Store) {
 
 }
 
-func testBenchmarkLastTransaction(b *testing.B, store *Store) {
+func testBenchmarkLastTransaction(b *testing.B, store *sqlstorage.Store) {
 	datas := make([]core.Transaction, 0)
 	count := 1000
 	for i := 0; i < count; i++ {
@@ -185,7 +186,7 @@ func testBenchmarkLastTransaction(b *testing.B, store *Store) {
 
 }
 
-func testBenchmarkAggregateVolumes(b *testing.B, store *Store) {
+func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 	datas := make([]core.Transaction, 0)
 	count := 1000
 	for i := 0; i < count; i++ {
