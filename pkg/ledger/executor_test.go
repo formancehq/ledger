@@ -32,7 +32,7 @@ func TestNoScript(t *testing.T) {
 	with(func(l *Ledger) {
 		script := core.Script{}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err.Error() != "no script to execute" {
 			t.Error(errors.New(
@@ -49,7 +49,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 			Plain: "this is not a valid script",
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
@@ -66,7 +66,7 @@ func TestTransactionFail(t *testing.T) {
 			Plain: "fail",
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
@@ -87,7 +87,7 @@ func TestSend(t *testing.T) {
 			)`,
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -108,7 +108,7 @@ func TestNoVariables(t *testing.T) {
 			}`),
 			&script)
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error(errors.New(
@@ -133,7 +133,7 @@ func TestVariables(t *testing.T) {
 			}`),
 			&script)
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -190,7 +190,7 @@ func TestEnoughFunds(t *testing.T) {
 			return
 		}
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Error(err)
@@ -228,7 +228,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			}`),
 			&script)
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Error("error wasn't supposed to be nil")
@@ -260,7 +260,7 @@ func TestMissingMetadata(t *testing.T) {
 			},
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err == nil {
 			t.Fatalf("expected an error because of missing metadata")
@@ -330,7 +330,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Fatalf("execution error: %v", err)
@@ -368,7 +368,7 @@ func TestSetTxMeta(t *testing.T) {
 			},
 		}
 
-		err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), script)
 
 		if err != nil {
 			t.Fatalf("execution error: %v", err)

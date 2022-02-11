@@ -1,7 +1,7 @@
 package controllers_test
 
 import (
-	"errors"
+	"github.com/numary/ledger/pkg/ledger"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,10 +42,10 @@ send [COIN 100] (
 )`,
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: controllers.ErrorResponse{
-					ErrorCode:    controllers.ErrInternal,
+					ErrorCode:    ledger.ScriptErrorInsufficientFund,
 					ErrorMessage: "account had insufficient funds",
 				},
-				Link: controllers.EncodeLink(errors.New("account had insufficient funds")),
+				Link: controllers.EncodeLink("account had insufficient funds"),
 			},
 		},
 	}
@@ -64,6 +64,7 @@ send [COIN 100] (
 			res := controllers.ScriptResponse{}
 			internal.Decode(t, rec.Body, &res)
 
+			res.Transaction = nil
 			assert.EqualValues(t, c.expectedResponse, res)
 		})
 	}

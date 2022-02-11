@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"io/ioutil"
 	"net/http"
 	"regexp"
@@ -29,7 +30,7 @@ func NewScriptExec() *cobra.Command {
 			s = r.ReplaceAllString(s, "")
 
 			b, err = json.Marshal(gin.H{
-				"plain": string(s),
+				"plain": s,
 			})
 			if err != nil {
 				logrus.Fatal(err)
@@ -42,31 +43,28 @@ func NewScriptExec() *cobra.Command {
 					args[0],
 				),
 				"application/json",
-				bytes.NewReader([]byte(b)),
+				bytes.NewReader(b),
 			)
 			if err != nil {
 				logrus.Fatal(err)
 			}
 
-			b, err = ioutil.ReadAll(res.Body)
+			result := controllers.ScriptResponse{}
+			err = json.NewDecoder(res.Body).Decode(&result)
 			if err != nil {
 				logrus.Fatal(err)
 			}
 
-			var result struct {
-				Err string `json:"err,omitempty"`
-				Ok  bool   `json:"ok"`
-			}
-			err = json.Unmarshal(b, &result)
-			if err != nil {
-				logrus.Fatal(err)
+			if result.ErrorCode != "" {
+				logrus.Fatal(result.ErrorCode, result.ErrorMessage)
 			}
 
-			if result.Err != "" {
-				logrus.Fatal(result.Err)
-			} else {
-				fmt.Println("Script ran successfully ✅")
-			}
+			fmt.Println("Script ran successfully ✅")
+			fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
+				viper.Get(serverHttpBindAddressFlag),
+				args[0],
+				result.Transaction.ID,
+			)
 		},
 	}
 }

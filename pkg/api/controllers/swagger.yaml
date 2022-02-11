@@ -462,8 +462,15 @@ components:
       properties:
         details:
           type: string
-        err:
+        error_code:
           type: string
+          enum:
+            - INTERNAL
+            - INSUFFICIENT_FUND
+        error_message:
+          type: string
+        transaction:
+          $ref: '#/components/schemas/Transaction'
     Account:
       type: object
       required:
