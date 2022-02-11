@@ -14,11 +14,11 @@ import (
 
 type ScriptResponse struct {
 	ErrorResponse
-	Link string `json:"details,omitempty"`
+	Link        string            `json:"details,omitempty"`
+	Transaction *core.Transaction `json:"transaction,omitempty"`
 }
 
-func EncodeLink(err error) string {
-	errStr := err.Error()
+func EncodeLink(errStr string) string {
 	errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
 	payload, err := json.Marshal(gin.H{
 		"error": errStr,
@@ -46,16 +46,28 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
-	err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
-
 	res := ScriptResponse{}
-
+	tx, err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
 	if err != nil {
-		res.ErrorResponse = ErrorResponse{
-			ErrorCode:    ErrInternal,
-			ErrorMessage: err.Error(),
+		var (
+			code    = ErrInternal
+			message string
+		)
+		scriptError, ok := err.(*ledger.ScriptError)
+		if ok {
+			code = scriptError.Code
+			message = scriptError.Message
 		}
-		res.Link = EncodeLink(err)
+		res.ErrorResponse = ErrorResponse{
+			ErrorCode:    code,
+			ErrorMessage: message,
+		}
+		if message != "" {
+			res.Link = EncodeLink(message)
+		}
+	}
+	if tx != nil {
+		res.Transaction = tx
 	}
 
 	c.JSON(http.StatusOK, res)
