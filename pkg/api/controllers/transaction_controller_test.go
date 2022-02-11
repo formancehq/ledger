@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -283,6 +284,9 @@ func TestTooManyClient(t *testing.T) {
 	internal.RunTest(t, func(api *api.API, factory storage.Factory) {
 
 		if ledgertesting.StorageDriverName() != "postgres" {
+			return
+		}
+		if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
 			return
 		}
 

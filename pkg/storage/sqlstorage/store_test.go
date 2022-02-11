@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
+	"os"
 	"testing"
 	"time"
 )
@@ -571,6 +572,11 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
+
+	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
+		return
+	}
+
 	for i := 0; i < ledgertesting.MaxConnections; i++ {
 		tx, err := store.DB().BeginTx(context.Background(), nil)
 		assert.NoError(t, err)
