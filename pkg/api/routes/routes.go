@@ -1,18 +1,16 @@
 package routes
 
 import (
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/logging"
 	"go.uber.org/fx"
-	"time"
 )
 
-const GlobalMiddlewaresKey = `group:"_routesGlobalMiddlewares"`
-const PerLedgerMiddlewaresKey = `group:"_perLedgerMiddlewares"`
+const GlobalMiddlewaresKey = `name:"_routesGlobalMiddlewares" optional:"true"`
+const PerLedgerMiddlewaresKey = `name:"_perLedgerMiddlewares" optional:"true"`
 
 var Module = fx.Options(
 	fx.Provide(
@@ -20,7 +18,7 @@ var Module = fx.Options(
 	),
 )
 
-func ProvideGlobalMiddleware(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
+func ProvideMiddlewares(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
 	opts := []fx.Annotation{fx.ResultTags(GlobalMiddlewaresKey)}
 	return fx.Provide(
 		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
@@ -37,7 +35,6 @@ func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...f
 // Routes -
 type Routes struct {
 	resolver              *ledger.Resolver
-	authMiddleware        middlewares.AuthMiddleware
 	ledgerMiddleware      middlewares.LedgerMiddleware
 	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
@@ -55,7 +52,6 @@ func NewRoutes(
 	globalMiddlewares []gin.HandlerFunc,
 	perLedgerMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
-	authMiddleware middlewares.AuthMiddleware,
 	ledgerMiddleware middlewares.LedgerMiddleware,
 	configController controllers.ConfigController,
 	ledgerController controllers.LedgerController,
@@ -69,7 +65,6 @@ func NewRoutes(
 		globalMiddlewares:     globalMiddlewares,
 		perLedgerMiddlewares:  perLedgerMiddlewares,
 		resolver:              resolver,
-		authMiddleware:        authMiddleware,
 		ledgerMiddleware:      ledgerMiddleware,
 		configController:      configController,
 		ledgerController:      ledgerController,
@@ -82,29 +77,11 @@ func NewRoutes(
 }
 
 // Engine -
-func (r *Routes) Engine(cc cors.Config) *gin.Engine {
+func (r *Routes) Engine() *gin.Engine {
 	engine := gin.New()
 
-	globalMiddlewares := append([]gin.HandlerFunc{
-		cors.New(cc),
-		gin.Recovery(),
-		func(c *gin.Context) {
-			start := time.Now()
-			c.Next()
-			latency := time.Now().Sub(start)
-			r.logger.WithFields(map[string]interface{}{
-				"status":     c.Writer.Status(),
-				"method":     c.Request.Method,
-				"path":       c.Request.URL.Path,
-				"ip":         c.ClientIP(),
-				"latency":    latency,
-				"user_agent": c.Request.UserAgent(),
-			}).Info(c.Request.Context(), "Request")
-		},
-	}, r.globalMiddlewares...)
-
 	// Default Middlewares
-	engine.Use(globalMiddlewares...)
+	engine.Use(r.globalMiddlewares...)
 
 	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
 	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)

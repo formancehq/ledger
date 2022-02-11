@@ -317,20 +317,59 @@ func (s *Store) GetTransaction(ctx context.Context, txid string) (tx core.Transa
 }
 
 func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
-	var lastTransaction core.Transaction
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select(
+		"t.id",
+		"t.timestamp",
+		"t.hash",
+		"t.reference",
+		"p.source",
+		"p.destination",
+		"p.amount",
+		"p.asset",
+	)
+	sb.From(sb.As(s.table("transactions"), "t"))
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
+	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.table("transactions")))
 
-	q := query.New()
-	q.Modify(query.Limit(1))
-
-	c, err := s.FindTransactions(ctx, q)
+	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	s.logger.Debug(ctx, sqlq)
+	rows, err := s.db.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
 
-	txs := (c.Data).([]core.Transaction)
-	if len(txs) > 0 {
-		lastTransaction = txs[0]
-		return &lastTransaction, nil
+	tx := core.Transaction{}
+
+	for rows.Next() {
+		var ref sql.NullString
+		posting := core.Posting{}
+		err := rows.Scan(
+			&tx.ID,
+			&tx.Timestamp,
+			&tx.Hash,
+			&ref,
+			&posting.Source,
+			&posting.Destination,
+			&posting.Amount,
+			&posting.Asset,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tx.Reference = ref.String
+		tx.AppendPosting(posting)
 	}
-	return nil, nil
+
+	if len(tx.Postings) == 0 {
+		return nil, nil
+	}
+
+	meta, err := s.GetMeta(ctx, "transaction", fmt.Sprintf("%d", tx.ID))
+	if err != nil {
+		return nil, s.error(err)
+	}
+	tx.Metadata = meta
+
+	return &tx, nil
 }

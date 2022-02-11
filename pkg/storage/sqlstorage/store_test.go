@@ -231,7 +231,7 @@ func testGetMeta(t *testing.T, store storage.Store) {
 func testLastTransaction(t *testing.T, store storage.Store) {
 	txs := []core.Transaction{
 		{
-			ID: 1,
+			ID: 0,
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{

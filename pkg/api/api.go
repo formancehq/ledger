@@ -7,7 +7,6 @@ import (
 	"github.com/numary/ledger/pkg/api/routes"
 	"net/http"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 )
@@ -26,23 +25,15 @@ func NewAPI(
 	routes *routes.Routes,
 ) *API {
 	gin.SetMode(gin.ReleaseMode)
-
-	cc := cors.DefaultConfig()
-	cc.AllowAllOrigins = true
-	cc.AllowCredentials = true
-	cc.AddAllowHeaders("authorization")
-
 	h := &API{
-		handler: routes.Engine(cc),
+		handler: routes.Engine(),
 	}
-
 	return h
 }
 
 type Config struct {
 	StorageDriver string
 	LedgerLister  controllers.LedgerLister
-	HttpBasicAuth string
 	Version       string
 }
 
@@ -56,9 +47,6 @@ func Module(cfg Config) fx.Option {
 		}),
 		controllers.ProvideLedgerLister(func() controllers.LedgerLister {
 			return cfg.LedgerLister
-		}),
-		middlewares.ProvideHTTPBasic(func() string {
-			return cfg.HttpBasicAuth
 		}),
 		middlewares.Module,
 		routes.Module,

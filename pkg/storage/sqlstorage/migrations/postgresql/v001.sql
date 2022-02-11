@@ -28,6 +28,22 @@ CREATE INDEX IF NOT EXISTS p_c0 ON "VAR_LEDGER_NAME".postings (
   "destination"
 );
 --statement
+CREATE INDEX IF NOT EXISTS posting_txid ON "VAR_LEDGER_NAME".postings (
+  "txid" DESC
+);
+--statement
+CREATE INDEX IF NOT EXISTS posting_source ON "VAR_LEDGER_NAME".postings (
+  "source"
+);
+--statement
+CREATE INDEX IF NOT EXISTS posting_destination ON "VAR_LEDGER_NAME".postings (
+  "destination"
+);
+--statement
+CREATE INDEX IF NOT EXISTS posting_asset ON "VAR_LEDGER_NAME".postings (
+  "asset"
+);
+--statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".metadata (
   "meta_id"          bigint,
   "meta_target_type" varchar NOT NULL CHECK (meta_target_type <> ''),

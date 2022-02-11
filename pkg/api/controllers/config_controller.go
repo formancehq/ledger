@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bytes"
+	"encoding/json"
 	"gopkg.in/yaml.v3"
 	"net/http"
 
@@ -56,16 +57,28 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 //go:embed swagger.yaml
 var swagger string
 
-func (ctl *ConfigController) GetDocsAsYaml(c *gin.Context) {
-	c.Writer.Write([]byte(swagger))
-}
-
-func (ctl *ConfigController) GetDocsAsJSON(c *gin.Context) {
+func parseSwagger(version string) map[string]interface{} {
 	ret := make(map[string]interface{})
 	err := yaml.NewDecoder(bytes.NewBufferString(swagger)).Decode(&ret)
 	if err != nil {
 		panic(err)
 	}
+	ret["info"].(map[string]interface{})["version"] = version
+	return ret
+}
 
-	c.JSON(http.StatusOK, ret)
+func (ctl *ConfigController) GetDocsAsYaml(c *gin.Context) {
+	err := yaml.NewEncoder(c.Writer).Encode(parseSwagger(ctl.Version))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (ctl *ConfigController) GetDocsAsJSON(c *gin.Context) {
+	enc := json.NewEncoder(c.Writer)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(parseSwagger(ctl.Version))
+	if err != nil {
+		panic(err)
+	}
 }
