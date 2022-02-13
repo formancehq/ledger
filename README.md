@@ -54,7 +54,7 @@ You can find the complete Numary documentation at [docs.numary.com](https://docs
 
 # Dashboard
 
-<img width="400" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/126158742-393ac0d0-1048-4b57-a7fd-7381f3da2ca8.png">
+<img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
 
 A simple [dashboard](https://github.com/numary/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
 
