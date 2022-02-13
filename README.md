@@ -54,15 +54,15 @@ You can find the complete Numary documentation at [docs.numary.com](https://docs
 
 # Dashboard
 
-<img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
-
 A simple [dashboard](https://github.com/numary/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
 
 ```SHELL
 numary ui
 ```
 
-Or by heading to [control.numary.com](https://control.numary.com)
+<img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
+
+Alternatively, you can use the dashboard by heading to [control.numary.com](https://control.numary.com) which provides a hosted version that can connect to any ledger instance.
 
 # Roadmap & Community
 
