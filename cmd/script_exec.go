@@ -7,6 +7,7 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +16,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	previewFlag = "preview"
+)
+
 func NewScriptExec() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -36,15 +41,23 @@ func NewScriptExec() *cobra.Command {
 				logrus.Fatal(err)
 			}
 
-			res, err := http.Post(
-				fmt.Sprintf(
-					"http://%s/%s/script",
-					viper.Get(serverHttpBindAddressFlag),
-					args[0],
-				),
-				"application/json",
-				bytes.NewReader(b),
-			)
+			logrus.Debugln(string(b))
+
+			req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/%s/script",
+				viper.Get(serverHttpBindAddressFlag),
+				args[0]), bytes.NewReader(b))
+			if err != nil {
+				logrus.Fatal(err)
+			}
+
+			values := url.Values{}
+			if viper.GetBool(previewFlag) {
+				values.Set("preview", "yes")
+			}
+			req.URL.RawQuery = values.Encode()
+			req.Header.Set("Content-Type", "application/json")
+
+			res, err := http.DefaultClient.Do(req)
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -56,15 +69,30 @@ func NewScriptExec() *cobra.Command {
 			}
 
 			if result.ErrorCode != "" {
-				logrus.Fatal(result.ErrorCode, result.ErrorMessage)
+				switch result.ErrorCode {
+				case "INTERNAL":
+					logrus.Fatal("unexpected error occured")
+				default:
+					logrus.Fatal(result.ErrorCode, result.ErrorMessage)
+				}
 			}
 
 			fmt.Println("Script ran successfully ✅")
-			fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
-				viper.Get(serverHttpBindAddressFlag),
-				args[0],
-				result.Transaction.ID,
-			)
+			fmt.Println("Tx resume:")
+			fmt.Printf("ID: %d\r\n", result.Transaction.ID)
+			fmt.Println("Postings:")
+			for _, p := range result.Transaction.Postings {
+				fmt.Printf("\t Source: %s, Destination: %s, Amount: %d, Asset: %s\r\n", p.Source, p.Destination, p.Amount, p.Asset)
+			}
+			if !viper.GetBool(previewFlag) {
+				fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
+					viper.Get(serverHttpBindAddressFlag),
+					args[0],
+					result.Transaction.ID)
+			}
 		},
 	}
+	cmd.Flags().Bool(previewFlag, false, "Preview mode (does not save transactions)")
+	viper.BindPFlags(cmd.Flags())
+	return cmd
 }

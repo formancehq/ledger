@@ -36,18 +36,19 @@ func NewServerStart() *cobra.Command {
 					return nil
 				}),
 			)
-			terminated := make(chan struct{})
+			terminated := make(chan error)
 			go func() {
-				app.Run()
-				close(terminated)
+				defer func() {
+					close(terminated)
+				}()
+				terminated <- app.Start(context.Background())
 			}()
 			select {
 			case <-cmd.Context().Done():
 				return app.Stop(context.Background())
-			case <-terminated:
+			case err := <-terminated:
+				return err
 			}
-
-			return nil
 		},
 	}
 }

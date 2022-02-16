@@ -11,7 +11,7 @@ import (
 	"github.com/numary/machine/vm"
 )
 
-func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transaction, error) {
+func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
 	if script.Plain == "" {
 		return nil, errors.New("no script to execute")
 	}
@@ -94,12 +94,39 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transac
 		}
 	}
 
-	t := core.TransactionData{
+	t := &core.TransactionData{
 		Postings: m.Postings,
 		Metadata: m.GetTxMetaJson(),
 	}
 
-	_, ret, err := l.Commit(ctx, []core.TransactionData{t})
+	return t, nil
+}
+
+func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transaction, error) {
+	t, err := l.execute(ctx, script)
+	if err != nil {
+		return nil, err
+	}
+
+	_, ret, err := l.Commit(ctx, []core.TransactionData{*t})
+	if err != nil {
+		switch err {
+		case ErrCommitError:
+			return &ret[0].Transaction, ret[0].Err
+		default:
+			return nil, err
+		}
+	}
+	return &ret[0].Transaction, nil
+}
+
+func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.Transaction, error) {
+	t, err := l.execute(ctx, script)
+	if err != nil {
+		return nil, err
+	}
+
+	_, ret, err := l.CommitPreview(ctx, []core.TransactionData{*t})
 	if err != nil {
 		switch err {
 		case ErrCommitError:

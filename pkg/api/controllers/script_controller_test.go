@@ -1,9 +1,14 @@
 package controllers_test
 
 import (
+	"context"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/numary/ledger/pkg/api"
@@ -53,7 +58,7 @@ send [COIN 100] (
 	for _, c := range cases {
 		internal.RunSubTest(t, c.name, func(h *api.API) {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest("POST", "/quickstart/script", internal.Buffer(t, core.Script{
+			req := httptest.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
 				Plain: c.script,
 			}))
 			req.Header.Set("Content-Type", "application/json")
@@ -68,4 +73,35 @@ send [COIN 100] (
 			assert.EqualValues(t, c.expectedResponse, res)
 		})
 	}
+}
+
+func TestScriptControllerPreview(t *testing.T) {
+
+	internal.RunTest(t, func(h *api.API, f storage.Factory) {
+		ledger := uuid.New()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/"+ledger+"/script", internal.Buffer(t, core.Script{
+			Plain: `send [COIN 100] (
+  source = @world
+  destination = @centralbank
+)`,
+		}))
+		req.Header.Set("Content-Type", "application/json")
+		values := url.Values{}
+		values.Set("preview", "yes")
+		req.URL.RawQuery = values.Encode()
+
+		h.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
+		res := controllers.ScriptResponse{}
+		internal.Decode(t, rec.Body, &res)
+
+		store, err := f.GetStore(ledger)
+		assert.NoError(t, err)
+
+		cursor, err := store.FindTransactions(context.Background(), query.Query{})
+		assert.NoError(t, err)
+		assert.Len(t, cursor.Data, 0)
+	})
 }
