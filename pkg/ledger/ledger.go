@@ -240,7 +240,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 	return balances, ret, nil
 }
 
-func (l *Ledger) Preview(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to acquire lock")

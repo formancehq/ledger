@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"net/http"
 	"strings"
 
@@ -46,9 +47,18 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	var script core.Script
 	c.ShouldBind(&script)
 
+	value, ok := c.GetQuery("preview")
+	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
+
+	fn := l.(*ledger.Ledger).Execute
+	if preview {
+		fn = l.(*ledger.Ledger).ExecutePreview
+	}
+
 	res := ScriptResponse{}
-	tx, err := l.(*ledger.Ledger).Execute(c.Request.Context(), script)
+	tx, err := fn(c.Request.Context(), script)
 	if err != nil {
+		spew.Dump(err)
 		var (
 			code    = ErrInternal
 			message string

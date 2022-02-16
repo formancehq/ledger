@@ -49,7 +49,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	fn := l.(*ledger.Ledger).Commit
 	if preview {
-		fn = l.(*ledger.Ledger).Preview
+		fn = l.(*ledger.Ledger).CommitPreview
 	}
 
 	_, result, err := fn(c.Request.Context(), []core.TransactionData{t})
