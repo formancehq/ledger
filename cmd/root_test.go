@@ -5,6 +5,7 @@ import (
 	"context"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/pborman/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"os"
@@ -13,6 +14,10 @@ import (
 )
 
 func TestServer(t *testing.T) {
+
+	if testing.Verbose() {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 
 	pgServer, err := ledgertesting.PostgresServer()
 	assert.NoError(t, err)

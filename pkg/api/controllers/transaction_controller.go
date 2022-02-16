@@ -6,6 +6,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"net/http"
+	"strings"
 )
 
 // TransactionController -
@@ -40,10 +41,18 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	value, ok := c.GetQuery("preview")
+	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
+
 	var t core.TransactionData
 	c.ShouldBind(&t)
 
-	_, result, err := l.(*ledger.Ledger).Commit(c.Request.Context(), []core.TransactionData{t})
+	fn := l.(*ledger.Ledger).Commit
+	if preview {
+		fn = l.(*ledger.Ledger).Preview
+	}
+
+	_, result, err := fn(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		switch err {
 		case ledger.ErrCommitError:
@@ -54,7 +63,11 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 		return
 	}
-	ctl.response(c, http.StatusOK, result)
+	status := http.StatusOK
+	if preview {
+		status = http.StatusNotModified
+	}
+	ctl.response(c, status, result)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
