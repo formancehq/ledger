@@ -158,10 +158,12 @@ func (o *openTelemetryStorage) SaveMapping(ctx context.Context, mapping core.Map
 	})
 }
 
-func (o *openTelemetryStorage) Initialize(ctx context.Context) error {
-	return o.handle(ctx, "Initialize", func(ctx context.Context) error {
-		return o.underlying.Initialize(ctx)
+func (o *openTelemetryStorage) Initialize(ctx context.Context) (modified bool, err error) {
+	o.handle(ctx, "Initialize", func(ctx context.Context) error {
+		modified, err = o.underlying.Initialize(ctx)
+		return nil
 	})
+	return
 }
 
 func (o *openTelemetryStorage) Name() string {

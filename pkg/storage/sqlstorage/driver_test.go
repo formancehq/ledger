@@ -18,7 +18,7 @@ func TestNewOpenCloseDBDriver(t *testing.T) {
 	store, err := d.NewStore("foo")
 	assert.NoError(t, err)
 
-	err = store.Initialize(context.Background())
+	_, err = store.Initialize(context.Background())
 	assert.NoError(t, err)
 
 	store.Close(context.Background())
@@ -38,7 +38,7 @@ func TestNewCachedDBDriver(t *testing.T) {
 	assert.NoError(t, err)
 	store.Close(context.Background())
 
-	err = store.Initialize(context.Background())
+	_, err = store.Initialize(context.Background())
 	assert.NoError(t, err)
 
 	_, err = store.(*Store).db.Query("select * from transactions")

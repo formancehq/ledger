@@ -1,6 +1,13 @@
 --statement
 CREATE SCHEMA IF NOT EXISTS "VAR_LEDGER_NAME";
 --statement
+CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".migrations (
+  "version" varchar,
+  "date" varchar,
+
+  UNIQUE("version")
+);
+--statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".transactions (
   "id"        bigint,
   "timestamp" varchar,

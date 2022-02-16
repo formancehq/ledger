@@ -80,7 +80,7 @@ func TestStore(t *testing.T) {
 			store := NewStorageDecorator(storage.NoOpStore())
 			defer store.Close(context.Background())
 
-			err := store.Initialize(context.Background())
+			_, err := store.Initialize(context.Background())
 			assert.NoError(t, err)
 
 			tf.fn(t, store)

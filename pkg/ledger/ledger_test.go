@@ -40,7 +40,7 @@ func with(f func(l *Ledger)) {
 					if err != nil {
 						return err
 					}
-					err = store.Initialize(context.Background())
+					_, err = store.Initialize(context.Background())
 					if err != nil {
 						return err
 					}
