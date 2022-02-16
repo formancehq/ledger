@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"os"
@@ -103,7 +104,7 @@ func TestServer(t *testing.T) {
 				break
 			}
 
-			res, err := http.DefaultClient.Post("http://localhost:3068/testing/transactions", "application/json", bytes.NewBufferString(`{
+			res, err := http.DefaultClient.Post("http://localhost:3068/"+uuid.New()+"/transactions", "application/json", bytes.NewBufferString(`{
 				"postings": [{
 					"source": "world",
 					"destination": "central_bank",
