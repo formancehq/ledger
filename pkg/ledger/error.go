@@ -106,7 +106,9 @@ func IsConflictError(err error) bool {
 }
 
 const (
-	ScriptErrorInsufficientFund = "INSUFFICIENT_FUND"
+	ScriptErrorInsufficientFund  = "INSUFFICIENT_FUND"
+	ScriptErrorCompilationFailed = "COMPILATION_FAILED"
+	ScriptErrorNoScript          = "NO_SCRIPT"
 )
 
 type ScriptError struct {
