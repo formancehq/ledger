@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
@@ -33,13 +34,20 @@ func TestNoScript(t *testing.T) {
 		script := core.Script{}
 
 		_, err := l.Execute(context.Background(), script)
+		assert.IsType(t, &ScriptError{}, err)
+		assert.Equal(t, ScriptErrorNoScript, err.(*ScriptError).Code)
+	})
+}
 
-		if err.Error() != "no script to execute" {
-			t.Error(errors.New(
-				"unexpected error",
-			))
+func TestCompilationError(t *testing.T) {
+	with(func(l *Ledger) {
+		script := core.Script{
+			Plain: "willnotcompile",
 		}
-		l.Close(context.Background())
+
+		_, err := l.Execute(context.Background(), script)
+		assert.IsType(t, &ScriptError{}, err)
+		assert.Equal(t, ScriptErrorCompilationFailed, err.(*ScriptError).Code)
 	})
 }
 

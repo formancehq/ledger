@@ -37,13 +37,11 @@ func NewServerStart() *cobra.Command {
 				}),
 			)
 			go app.Start(context.Background())
-			for {
-				select {
-				case <-cmd.Context().Done():
-					return app.Stop(context.Background())
-				case <-app.Done():
-					return app.Err()
-				}
+			select {
+			case <-cmd.Context().Done():
+				return app.Stop(context.Background())
+			case <-app.Done():
+				return app.Err()
 			}
 		},
 	}

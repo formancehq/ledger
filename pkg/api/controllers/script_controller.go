@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"net/http"
 	"strings"
 
@@ -58,7 +57,6 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	res := ScriptResponse{}
 	tx, err := fn(c.Request.Context(), script)
 	if err != nil {
-		spew.Dump(err)
 		var (
 			code    = ErrInternal
 			message string

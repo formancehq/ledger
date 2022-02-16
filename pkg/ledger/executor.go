@@ -13,12 +13,12 @@ import (
 
 func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
 	if script.Plain == "" {
-		return nil, errors.New("no script to execute")
+		return nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
 
 	p, err := compiler.Compile(script.Plain)
 	if err != nil {
-		return nil, fmt.Errorf("compile error: %v", err)
+		return nil, NewScriptError(ScriptErrorCompilationFailed, err.Error())
 	}
 
 	m := vm.NewMachine(p)
