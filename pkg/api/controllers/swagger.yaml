@@ -256,6 +256,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: preview
+          in: query
+          description: Preview mode
+          required: false
+          schema:
+            type: string
       requestBody:
         description: transaction
         content:
@@ -266,6 +272,12 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTransactionResponse'
+        "304":
+          description: Not modified (when preview is enabled)
           content:
             application/json:
               schema:

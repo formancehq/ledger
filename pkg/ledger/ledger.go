@@ -60,13 +60,7 @@ type CommitTransactionResult struct {
 	Err *TransactionCommitError `json:"error,omitempty"`
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.name)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to acquire lock")
-	}
-	defer unlock(ctx)
-
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
 	timestamp := time.Now().Format(time.RFC3339)
 
 	startId := int64(0)
@@ -201,6 +195,26 @@ txLoop:
 		return nil, ret, ErrCommitError
 	}
 
+	return aggregatedBalances, ret, nil
+}
+
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+	unlock, err := l.locker.Lock(ctx, l.name)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "unable to acquire lock")
+	}
+	defer unlock(ctx)
+
+	balances, ret, err := l.processTx(ctx, ts)
+	if err != nil {
+		return nil, ret, err
+	}
+
+	txs := make([]core.Transaction, 0)
+	for _, v := range ret {
+		txs = append(txs, v.Transaction)
+	}
+
 	commitErrors, err := l.store.SaveTransactions(ctx, txs)
 	if err != nil {
 		switch err {
@@ -223,7 +237,17 @@ txLoop:
 			return nil, nil, errors.Wrap(err, "committing transactions")
 		}
 	}
-	return aggregatedBalances, ret, nil
+	return balances, ret, nil
+}
+
+func (l *Ledger) Preview(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+	unlock, err := l.locker.Lock(ctx, l.name)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "unable to acquire lock")
+	}
+	defer unlock(ctx)
+
+	return l.processTx(ctx, ts)
 }
 
 func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {

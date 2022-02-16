@@ -200,6 +200,23 @@ func TestGetTransaction(t *testing.T) {
 	})
 }
 
+func TestPreviewTransaction(t *testing.T) {
+	internal.RunTest(t, func(api *api.API) {
+		rsp := internal.PostTransactionPreview(t, api, core.TransactionData{
+			Postings: core.Postings{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      1000,
+					Asset:       "USD",
+				},
+			},
+			Reference: "ref",
+		})
+		assert.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
+	})
+}
+
 func TestNotFoundTransaction(t *testing.T) {
 	internal.RunTest(t, func(api *api.API) {
 		rsp := internal.GetTransaction(api, 0)
