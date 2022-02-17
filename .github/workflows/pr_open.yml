@@ -123,15 +123,7 @@ jobs:
       - Test_sqlite
       - Test_postgres
       - Lint
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ windows-latest, ubuntu-latest ]
-        include:
-          - os: windows-latest
-            file: windows
-          - os: ubuntu-latest
-            file: default
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2
         with:
@@ -155,21 +147,20 @@ jobs:
           name: control-dist
           path: cmd/control/
       - name: OSXCross for CGO Support
-        if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir ../../osxcross
           git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
       - name: Downgrade libssl
-        if: matrix.os == 'ubuntu-latest'
         run: |
           echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
           sudo apt update && apt-cache policy libssl1.0-dev
           sudo apt-get install libssl1.0-dev
+      - run: sudo apt install gcc-mingw-w64 -y
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
           version: latest
-          args: build --parallelism 4 --rm-dist --skip-validate --snapshot --config .github/.goreleaser.${{matrix.file}}.yml
+          args: build --parallelism 4 --rm-dist --skip-validate --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v2
