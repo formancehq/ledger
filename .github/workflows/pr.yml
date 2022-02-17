@@ -1,0 +1,67 @@
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+
+name: Main2
+jobs:
+  build_control:
+    name: 'Build Control'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest release of Numary/Control
+        uses: rez0n/actions-github-release@main
+        id: control_release
+        env:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: "numary/control"
+          type: "stable"
+      - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
+      - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - run: rm -rf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - uses: actions/upload-artifact@v2
+        with:
+          name: control-dist
+          path: ./**
+  build:
+    name: 'Build'
+    needs:
+      - build_control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.16'
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: get deps
+        run: go get
+        env:
+          CGO_ENABLED: 1
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: OSXCross for CGO Support
+        run: |
+          mkdir ../../osxcross
+          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
+      - name: Downgrade libssl
+        run: |
+          echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
+          sudo apt update && apt-cache policy libssl1.0-dev
+          sudo apt-get install libssl1.0-dev
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: build --parallelism 4 --rm-dist --skip-validate --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
