@@ -8,6 +8,18 @@ before:
 
 builds:
   - binary: numary
+    id: numary_windows
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - windows
+    goarch:
+      - amd64
+  - binary: numary
     id: numary_linux
     ldflags:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
@@ -42,6 +54,7 @@ archives:
     builds:
       - numary_linux
       - numary_darwin
+      - numary_windows
     format: tar.gz
     format_overrides:
       - goos: windows
