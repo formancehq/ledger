@@ -3,11 +3,16 @@ package cmd
 import (
 	"context"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/fx"
+	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +41,53 @@ func TestContainers(t *testing.T) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otelTracesFlag, true)
 				v.Set(otelTracesExporterFlag, "stdout")
+			},
+			options: []fx.Option{
+				fx.Invoke(fx.Annotate(func(t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
+					assert.Len(t, options, 2)
+					var (
+						foundWithResource bool
+						foundWithSyncer   bool
+					)
+					for _, opt := range options {
+						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithSyncer") {
+							foundWithSyncer = true
+						}
+						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
+							foundWithResource = true
+						}
+					}
+					assert.True(t, foundWithResource)
+					assert.True(t, foundWithSyncer)
+				}, fx.ParamTags(``, ``, opentelemetrytraces.TracerProviderOptionKey))),
+			},
+		},
+		{
+			name: "default-with-opentelemetry-traces-on-stdout-and-batch",
+			init: func(v *viper.Viper) {
+				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+				v.Set(otelTracesFlag, true)
+				v.Set(otelTracesExporterFlag, "stdout")
+				v.Set(otelTracesBatchFlag, true)
+			},
+			options: []fx.Option{
+				fx.Invoke(fx.Annotate(func(t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
+					assert.Len(t, options, 2)
+					var (
+						foundWithResource bool
+						foundWithBatcher  bool
+					)
+					for _, opt := range options {
+						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithBatch") {
+							foundWithBatcher = true
+						}
+						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
+							foundWithResource = true
+						}
+					}
+					assert.True(t, foundWithResource)
+					assert.True(t, foundWithBatcher)
+				}, fx.ParamTags(``, ``, opentelemetrytraces.TracerProviderOptionKey))),
 			},
 		},
 		{

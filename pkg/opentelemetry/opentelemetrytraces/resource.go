@@ -15,11 +15,6 @@ func (f *resourceFactory) Make() (*resource.Resource, error) {
 	return resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(semconv.SchemaURL, f.attributes...),
-		//resource.NewWithAttributes(
-		//	semconv.SchemaURL,
-		//	semconv.ServiceNameKey.String(serviceName),
-		//	semconv.ServiceVersionKey.String(version),
-		//),
 	)
 }
 

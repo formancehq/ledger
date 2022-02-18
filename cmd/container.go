@@ -43,6 +43,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.ModuleConfig{
 			ServiceName: "ledger",
 			Version:     Version,
+			Batch:       v.GetBool(otelTracesBatchFlag),
 			Exporter:    v.GetString(otelTracesExporterFlag),
 			JaegerConfig: func() *opentelemetrytraces.JaegerConfig {
 				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.JaegerExporter {

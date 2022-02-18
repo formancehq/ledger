@@ -24,6 +24,7 @@ const (
 	ledgersFlag                          = "ledgers"
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
 	otelTracesFlag                       = "otel-traces"
+	otelTracesBatchFlag                  = "otel-traces-batch"
 	otelTracesExporterFlag               = "otel-traces-exporter"
 	otelTracesExporterJaegerEndpointFlag = "otel-traces-exporter-jaeger-endpoint"
 	otelTracesExporterJaegerUserFlag     = "otel-traces-exporter-jaeger-user"
@@ -103,6 +104,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
+	root.PersistentFlags().Bool(otelTracesBatchFlag, false, "Use OpenTelemetry batching")
 	root.PersistentFlags().String(otelTracesExporterFlag, "stdout", "OpenTelemetry traces exporter")
 	root.PersistentFlags().String(otelTracesExporterJaegerEndpointFlag, "", "OpenTelemetry traces Jaeger exporter endpoint")
 	root.PersistentFlags().String(otelTracesExporterJaegerUserFlag, "", "OpenTelemetry traces Jaeger exporter user")

@@ -69,14 +69,6 @@ func TestTracesModule(t *testing.T) {
 			},
 		},
 		{
-			name: fmt.Sprintf("noop-exporter"),
-			config: ModuleConfig{
-				ServiceName: "testing",
-				Version:     "latest",
-				Exporter:    NoOpExporter,
-			},
-		},
-		{
 			name: fmt.Sprintf("stdout-exporter"),
 			config: ModuleConfig{
 				ServiceName: "testing",

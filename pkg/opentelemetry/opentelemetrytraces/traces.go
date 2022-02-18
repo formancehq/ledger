@@ -1,16 +1,30 @@
 package opentelemetrytraces
 
 import (
+	"context"
 	"fmt"
 	"github.com/XSAM/otelsql"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
+)
+
+const (
+	JaegerExporter = "jaeger"
+	StdoutExporter = "stdout"
+	OTLPExporter   = "otlp"
+
+	TracerProviderOptionKey = `group:"_tracerProviderOption"`
 )
 
 type JaegerConfig struct {
@@ -29,8 +43,14 @@ type ModuleConfig struct {
 	ServiceName  string
 	Version      string
 	Exporter     string
+	Batch        bool
 	JaegerConfig *JaegerConfig
 	OTLPConfig   *OTLPConfig
+}
+
+func ProvideTracerProviderOption(v interface{}, annotations ...fx.Annotation) fx.Option {
+	annotations = append(annotations, fx.ResultTags(TracerProviderOptionKey))
+	return fx.Provide(fx.Annotate(v, annotations...))
 }
 
 func TracesModule(cfg ModuleConfig) fx.Option {
@@ -39,7 +59,33 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 		ResourceFactoryModule(),
 		ProvideOTLPAttribute(semconv.ServiceNameKey.String(cfg.ServiceName)),
 		ProvideOTLPAttribute(semconv.ServiceVersionKey.String(cfg.Version)),
+		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),
+		fx.Provide(fx.Annotate(func(options ...tracesdk.TracerProviderOption) *tracesdk.TracerProvider {
+			return tracesdk.NewTracerProvider(options...)
+		}, fx.ParamTags(TracerProviderOptionKey))),
+		fx.Invoke(func(lc fx.Lifecycle, tracerProvider *tracesdk.TracerProvider) {
+			// set global propagator to tracecontext (the default is no-op).
+			otel.SetTextMapPropagator(propagation.TraceContext{})
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					otel.SetTracerProvider(tracerProvider)
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					return tracerProvider.Shutdown(ctx)
+				},
+			})
+		}),
+		fx.Provide(func(factory *resourceFactory) (*resource.Resource, error) {
+			return factory.Make()
+		}),
+		ProvideTracerProviderOption(tracesdk.WithResource),
 	)
+	if cfg.Batch {
+		options = append(options, ProvideTracerProviderOption(tracesdk.WithBatcher, fx.ParamTags(``, `group:"_batchOptions"`)))
+	} else {
+		options = append(options, ProvideTracerProviderOption(tracesdk.WithSyncer))
+	}
 
 	options = append(options, fx.Invoke(func(cfg struct {
 		fx.In
@@ -86,8 +132,6 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 		}
 	case StdoutExporter:
 		options = append(options, StdoutTracerModule())
-	case NoOpExporter:
-		options = append(options, NoOpTracerModule())
 	case OTLPExporter:
 		options = append(options, OTLPTracerModule())
 		mode := opentelemetry.ModeGRPC

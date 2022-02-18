@@ -2,25 +2,12 @@ package opentelemetrytraces
 
 import (
 	"go.opentelemetry.io/otel/exporters/jaeger"
-	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/fx"
 )
 
-func LoadJaegerTracerProvider(resourceFactory *resourceFactory, options ...jaeger.CollectorEndpointOption) (*tracesdk.TracerProvider, error) {
-	r, err := resourceFactory.Make()
-	if err != nil {
-		return nil, err
-	}
-
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(options...))
-	if err != nil {
-		return nil, err
-	}
-	tp := tracesdk.NewTracerProvider(
-		tracesdk.WithBatcher(exp),
-		tracesdk.WithResource(r),
-	)
-	return tp, nil
+func LoadJaegerTracerExporter(options ...jaeger.CollectorEndpointOption) (*jaeger.Exporter, error) {
+	return jaeger.New(jaeger.WithCollectorEndpoint(options...))
 }
 
 const (
@@ -34,11 +21,9 @@ func ProvideJaegerTracerCollectorEndpoint(provider interface{}) fx.Option {
 func JaegerTracerModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadJaegerTracerProvider, fx.ParamTags(
-				"",
+			fx.Annotate(LoadJaegerTracerExporter, fx.ParamTags(
 				JaegerCollectorEndpointGroupKey,
-			)),
+			), fx.As(new(trace.SpanExporter))),
 		),
-		traceSdkExportModule(),
 	)
 }
