@@ -11,6 +11,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -222,12 +223,13 @@ func TestCommitTransaction(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			withNewModule(t, fx.Invoke(func(api *API) {
+				id := uuid.New()
 				doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
 					data, err := json.Marshal(tx)
 					assert.NoError(t, err)
 
 					rec := httptest.NewRecorder()
-					req := httptest.NewRequest(http.MethodPost, "/quickstart/transactions", bytes.NewBuffer(data))
+					req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
 					req.Header.Set("Content-Type", "application/json")
 
 					api.ServeHTTP(rec, req)
