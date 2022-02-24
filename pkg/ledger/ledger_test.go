@@ -602,7 +602,7 @@ func TestRevertTransaction(t *testing.T) {
 		}
 		originalBal := world.Balances["COIN"]
 
-		err = l.RevertTransaction(context.Background(), fmt.Sprint(txs[0].ID))
+		_, err = l.RevertTransaction(context.Background(), fmt.Sprint(txs[0].ID))
 		if err != nil {
 			t.Fatal(err)
 		}
