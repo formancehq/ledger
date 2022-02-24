@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
@@ -48,9 +48,9 @@ func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) {
 	Decode(t, bytes.NewBuffer(res.Data), v)
 }
 
-func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *query.Cursor {
+func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
 	type Cursor struct {
-		query.Cursor
+		sharedapi.Cursor
 		Data []json.RawMessage `json:"data"`
 	}
 	type Response struct {

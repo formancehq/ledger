@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/logging"
 	"net/http"
 	"strings"
@@ -14,7 +15,7 @@ import (
 )
 
 type ScriptResponse struct {
-	ErrorResponse
+	sharedapi.ErrorResponse
 	Link        string            `json:"details,omitempty"`
 	Transaction *core.Transaction `json:"transaction,omitempty"`
 }
@@ -72,7 +73,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		} else {
 			ctl.Logger.Error(c.Request.Context(), "internal errors executing script: %s", err)
 		}
-		res.ErrorResponse = ErrorResponse{
+		res.ErrorResponse = sharedapi.ErrorResponse{
 			ErrorCode:    code,
 			ErrorMessage: message,
 		}

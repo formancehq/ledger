@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -9,27 +10,23 @@ import (
 	"reflect"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/ledger/query"
+	_ "github.com/numary/go-libs/sharedapi"
 )
 
 // Controllers struct
 type BaseController struct{}
 
-type BaseResponse struct {
-	Data   interface{} `json:"data,omitempty"`
-	Cursor interface{} `json:"cursor,omitempty"`
-}
-
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
 	if data == nil {
 		c.Status(status)
 	}
-	if reflect.TypeOf(data) == reflect.TypeOf(query.Cursor{}) {
-		c.JSON(status, BaseResponse{
-			Cursor: data,
+	if reflect.TypeOf(data) == reflect.TypeOf(sharedapi.Cursor{}) {
+		cursor := data.(sharedapi.Cursor)
+		c.JSON(status, sharedapi.BaseResponse{
+			Cursor: &cursor,
 		})
 	} else {
-		c.JSON(status, BaseResponse{
+		c.JSON(status, sharedapi.BaseResponse{
 			Data: data,
 		})
 	}
@@ -45,11 +42,6 @@ const (
 
 	errorCodeKey = "_errorCode"
 )
-
-type ErrorResponse struct {
-	ErrorCode    string `json:"error_code,omitempty"`
-	ErrorMessage string `json:"error_message,omitempty"`
-}
 
 func (ctl *BaseController) noContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
@@ -82,7 +74,7 @@ func ResponseError(c *gin.Context, err error) {
 	c.Set(errorCodeKey, code)
 
 	if status < 500 {
-		c.AbortWithStatusJSON(status, ErrorResponse{
+		c.AbortWithStatusJSON(status, sharedapi.ErrorResponse{
 			ErrorCode:    code,
 			ErrorMessage: err.Error(),
 		})

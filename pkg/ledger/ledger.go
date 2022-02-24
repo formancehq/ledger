@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"time"
 
 	"github.com/numary/ledger/pkg/storage"
@@ -273,7 +274,7 @@ func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, erro
 	return tx, nil
 }
 
-func (l *Ledger) FindTransactions(ctx context.Context, m ...query.QueryModifier) (query.Cursor, error) {
+func (l *Ledger) FindTransactions(ctx context.Context, m ...query.QueryModifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
 	c, err := l.store.FindTransactions(ctx, q)
 
@@ -317,7 +318,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transa
 	}
 }
 
-func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (query.Cursor, error) {
+func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
 
 	c, err := l.store.FindAccounts(ctx, q)
