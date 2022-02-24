@@ -10,7 +10,6 @@ import (
 	"reflect"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/numary/go-libs/sharedapi"
 )
 
 // Controllers struct
