@@ -294,15 +294,15 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
+func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	lastTransaction, err := l.store.LastTransaction(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rt := tx.Reverse()
@@ -311,12 +311,10 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) error {
 	_, ret, err := l.Commit(ctx, []core.TransactionData{rt})
 	switch err {
 	case ErrCommitError:
-		return ret[0].Err
+		return nil, ret[0].Err
 	default:
-		return err
+		return &ret[0].Transaction, err
 	}
-
-	return err
 }
 
 func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (query.Cursor, error) {

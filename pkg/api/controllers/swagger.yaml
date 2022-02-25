@@ -384,9 +384,12 @@ paths:
           schema:
             type: integer
       responses:
-        "204":
-          description: Empty response
-          content: {}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
   /{ledger}/transactions/batch:
     post:
       tags:

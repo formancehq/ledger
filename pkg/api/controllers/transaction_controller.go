@@ -86,12 +86,12 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
+	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
-	ctl.noContent(c)
+	ctl.response(c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
