@@ -25,7 +25,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 
 	err = m.SetVarsFromJSON(script.Vars)
 	if err != nil {
-		return nil, fmt.Errorf("could not set variables: %v", err)
+		return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("could not set variables: %v", err))
 	}
 
 	{
@@ -35,7 +35,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 		}
 		for req := range ch {
 			if req.Error != nil {
-				return nil, fmt.Errorf("could not resolve program resources: %v", req.Error)
+				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("could not resolve program resources: %v", req.Error))
 			}
 			account, err := l.GetAccount(ctx, req.Account)
 			if err != nil {
@@ -44,11 +44,11 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 			meta := account.Metadata
 			entry, ok := meta[req.Key]
 			if !ok {
-				return nil, fmt.Errorf("missing key %v in metadata for account %v", req.Key, req.Account)
+				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
 			}
 			value, err := machine.NewValueFromTypedJSON(entry)
 			if err != nil {
-				return nil, fmt.Errorf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err)
+				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err))
 			}
 			req.Response <- *value
 		}
@@ -135,5 +135,6 @@ func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.
 			return nil, err
 		}
 	}
+
 	return &ret[0].Transaction, nil
 }
