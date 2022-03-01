@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"fmt"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
@@ -53,9 +52,9 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 
 		var driver storage.Driver
 		if cached {
-			driver = NewCachedDBDriver(logging.DefaultLogger(), flavor.String(), flavor, connString)
+			driver = NewCachedDBDriver(flavor.String(), flavor, connString)
 		} else {
-			driver = NewOpenCloseDBDriver(logging.DefaultLogger(), flavor.String(), flavor, connStringResolver)
+			driver = NewOpenCloseDBDriver(flavor.String(), flavor, connStringResolver)
 		}
 
 		return driver, nil

@@ -8,7 +8,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -92,7 +91,7 @@ func BenchmarkStore(b *testing.B) {
 					break
 				}
 
-				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, logging.DefaultLogger(), func(ctx context.Context) error {
+				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, func(ctx context.Context) error {
 					return db.Close()
 				})
 				assert.NoError(b, err)

@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/metric"
@@ -32,7 +34,9 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		options = append(options, fx.NopLogger)
 	}
 
-	options = append(options, logging.LogrusModule())
+	l := logrus.New()
+	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
+	sharedlogging.SetFactory(loggerFactory)
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
@@ -142,7 +146,6 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	options = append(options, routes.ProvideMiddlewares(func(params struct {
 		fx.In
 		TracerProvider trace.TracerProvider `optional:"true"`
-		Logger         logging.Logger
 	}) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)
 
@@ -155,7 +158,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		if viper.GetBool(otelTracesFlag) {
 			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(params.TracerProvider)))
 		}
-		res = append(res, middlewares.Log(params.Logger))
+		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
 		if viper.GetBool(otelTracesFlag) {
 			writer = ioutil.Discard

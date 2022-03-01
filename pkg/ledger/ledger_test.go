@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +27,6 @@ func with(f func(l *Ledger)) {
 	app := fx.New(
 		fx.NopLogger,
 		ledgertesting.StorageModule(),
-		logging.LogrusModule(),
 		fx.Provide(storage.NewDefaultFactory),
 		fx.Invoke(func(lc fx.Lifecycle, storageFactory storage.Factory) {
 			lc.Append(fx.Hook{

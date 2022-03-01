@@ -13,6 +13,8 @@ services:
       NUMARY_OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
       NUMARY_OTEL_TRACES_EXPORTER_JAEGER_INSECURE: "true"
       NUMARY_OTEL_METRICS: "false"
+    depends_on:
+      - jaeger
 
   jaeger:
     image: jaegertracing/all-in-one:1.31

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/ledger/pkg/logging"
+	"github.com/numary/go-libs/sharedlogging"
 	"net/http"
 	"strings"
 
@@ -35,14 +35,11 @@ func EncodeLink(errStr string) string {
 // ScriptController -
 type ScriptController struct {
 	BaseController
-	Logger logging.Logger
 }
 
 // NewScriptController -
-func NewScriptController(logger logging.Logger) ScriptController {
-	return ScriptController{
-		Logger: logger,
-	}
+func NewScriptController() ScriptController {
+	return ScriptController{}
 }
 
 func (ctl *ScriptController) PostScript(c *gin.Context) {
@@ -71,7 +68,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code = scriptError.Code
 			message = scriptError.Message
 		} else {
-			ctl.Logger.Error(c.Request.Context(), "internal errors executing script: %s", err)
+			sharedlogging.GetLogger(c.Request.Context()).Errorf("internal errors executing script: %s", err)
 		}
 		res.ErrorResponse = sharedapi.ErrorResponse{
 			ErrorCode:    code,

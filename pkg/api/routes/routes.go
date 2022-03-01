@@ -5,7 +5,6 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/logging"
 	"go.uber.org/fx"
 )
 
@@ -44,7 +43,6 @@ type Routes struct {
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
-	logger                logging.Logger
 }
 
 // NewRoutes -
@@ -59,7 +57,6 @@ func NewRoutes(
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
-	logger logging.Logger,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -72,7 +69,6 @@ func NewRoutes(
 		accountController:     accountController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
-		logger:                logger,
 	}
 }
 

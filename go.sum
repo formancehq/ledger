@@ -603,6 +603,8 @@ github.com/numary/go-libs v0.0.0-20220224130919-9d6ff19c1eb6 h1:YSu6sZOVwTsX2wH2
 github.com/numary/go-libs v0.0.0-20220224130919-9d6ff19c1eb6/go.mod h1:kp6/a0l1j6I/SXAVxKuQM8qNGNmKssXDsi84USBMkwM=
 github.com/numary/go-libs v0.0.0-20220224131631-02329283c5bd h1:xIu4Wk6uNmu22TbgrTHkjiVbqVZdlic5LvGJjUYzXcE=
 github.com/numary/go-libs v0.0.0-20220224131631-02329283c5bd/go.mod h1:kp6/a0l1j6I/SXAVxKuQM8qNGNmKssXDsi84USBMkwM=
+github.com/numary/go-libs v0.0.0-20220301123239-18e848add472 h1:X2/xAxFKRMLNAsvPazgtO8aw7ka3bIAnJW1ah1lRt2w=
+github.com/numary/go-libs v0.0.0-20220301123239-18e848add472/go.mod h1:PcMl7qlpi3hJDDgoamQm5KIVCIVCCv1onU3y2iDQh68=
 github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDYd6id1qeD2uv7JDlajuRZ0fvOnCeDZmDxk=
 github.com/numary/ledger v0.0.0-20211227131550-dc7b78f85b5b/go.mod h1:uovuDsK7Gs7duqKQ9PgaFulJnPTDftGdR/n3rBRzNIs=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=

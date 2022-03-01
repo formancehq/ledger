@@ -2,25 +2,22 @@ package middlewares
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/logging"
 )
 
 // LedgerMiddleware struct
 type LedgerMiddleware struct {
 	resolver *ledger.Resolver
-	logger   logging.Logger
 }
 
 // NewLedgerMiddleware
 func NewLedgerMiddleware(
 	resolver *ledger.Resolver,
-	logger logging.Logger,
 ) LedgerMiddleware {
 	return LedgerMiddleware{
 		resolver: resolver,
-		logger:   logger,
 	}
 }
 
@@ -41,7 +38,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		defer func() {
 			err := l.Close(c.Request.Context())
 			if err != nil {
-				m.logger.Warn(c.Request.Context(), "error closing ledger: %s", err)
+				sharedlogging.GetLogger(c.Request.Context()).Errorf("error closing ledger: %s", err)
 			}
 		}()
 		c.Set("ledger", l)
