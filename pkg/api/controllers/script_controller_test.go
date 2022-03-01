@@ -2,6 +2,7 @@ package controllers_test
 
 import (
 	"context"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
@@ -46,7 +47,7 @@ send [COIN 100] (
   destination = @users:001
 )`,
 			expectedResponse: controllers.ScriptResponse{
-				ErrorResponse: controllers.ErrorResponse{
+				ErrorResponse: sharedapi.ErrorResponse{
 					ErrorCode:    ledger.ScriptErrorInsufficientFund,
 					ErrorMessage: "account had insufficient funds",
 				},

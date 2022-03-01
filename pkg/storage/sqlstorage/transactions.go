@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/storage"
 	"math"
 	"sort"
@@ -13,10 +14,10 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (query.Cursor, error) {
+func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
-	c := query.Cursor{}
+	c := sharedapi.Cursor{}
 	results := make([]core.Transaction, 0)
 
 	in := sqlbuilder.NewSelectBuilder()
@@ -107,7 +108,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		transactions[txid] = t
 	}
 	if rows.Err() != nil {
-		return query.Cursor{}, s.error(rows.Err())
+		return sharedapi.Cursor{}, s.error(rows.Err())
 	}
 
 	for _, t := range transactions {
@@ -141,7 +142,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	return c, nil
 }
 
-func (s *Store) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
+func (s *Store) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
 	return s.findTransactions(ctx, s.db, q)
 }
 

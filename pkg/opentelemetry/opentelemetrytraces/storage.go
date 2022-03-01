@@ -3,6 +3,7 @@ package opentelemetrytraces
 import (
 	"context"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/opentelemetry"
@@ -73,7 +74,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context) (count int
 	return
 }
 
-func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query.Query) (q query.Cursor, err error) {
+func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
 	o.handle(ctx, "FindTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.FindTransactions(ctx, query)
 		return err
@@ -113,7 +114,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context) (count int64, 
 	return
 }
 
-func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Query) (q query.Cursor, err error) {
+func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
 	o.handle(ctx, "FindAccounts", func(ctx context.Context) error {
 		q, err = o.underlying.FindAccounts(ctx, query)
 		return err

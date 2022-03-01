@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
@@ -64,12 +65,12 @@ type Store interface {
 	LastMetaID(context.Context) (int64, error)
 	SaveTransactions(context.Context, []core.Transaction) (map[int]error, error)
 	CountTransactions(context.Context) (int64, error)
-	FindTransactions(context.Context, query.Query) (query.Cursor, error)
+	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, string) (core.Transaction, error)
 	AggregateBalances(context.Context, string) (map[string]int64, error)
 	AggregateVolumes(context.Context, string) (map[string]map[string]int64, error)
 	CountAccounts(context.Context) (int64, error)
-	FindAccounts(context.Context, query.Query) (query.Cursor, error)
+	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
 	SaveMeta(context.Context, int64, string, string, string, string, string) error
 	GetMeta(context.Context, string, string) (core.Metadata, error)
 	CountMeta(context.Context) (int64, error)
@@ -99,8 +100,8 @@ func (n noOpStore) CountTransactions(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) FindTransactions(ctx context.Context, q query.Query) (query.Cursor, error) {
-	return query.Cursor{}, nil
+func (n noOpStore) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+	return sharedapi.Cursor{}, nil
 }
 
 func (n noOpStore) GetTransaction(ctx context.Context, s string) (core.Transaction, error) {
@@ -119,8 +120,8 @@ func (n noOpStore) CountAccounts(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
-	return query.Cursor{}, nil
+func (n noOpStore) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+	return sharedapi.Cursor{}, nil
 }
 
 func (n noOpStore) SaveMeta(ctx context.Context, i int64, s string, s2 string, s3 string, s4 string, s5 string) error {

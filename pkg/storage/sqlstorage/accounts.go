@@ -2,6 +2,7 @@ package sqlstorage
 
 import (
 	"context"
+	"github.com/numary/go-libs/sharedapi"
 	"math"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -9,11 +10,11 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (query.Cursor, error) {
+func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
-	c := query.Cursor{}
+	c := sharedapi.Cursor{}
 	results := make([]core.Account, 0)
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -57,7 +58,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 		results = append(results, account)
 	}
 	if rows.Err() != nil {
-		return query.Cursor{}, s.error(rows.Err())
+		return sharedapi.Cursor{}, s.error(rows.Err())
 	}
 
 	c.PageSize = q.Limit - 1
@@ -74,6 +75,6 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	return c, nil
 }
 
-func (s *Store) FindAccounts(ctx context.Context, q query.Query) (query.Cursor, error) {
+func (s *Store) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
 	return s.findAccounts(ctx, s.db, q)
 }
