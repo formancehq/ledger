@@ -21,46 +21,48 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
+func Driver(logger logging.Logger) (storage.Driver, func(), error) {
+	switch StorageDriverName() {
+	case "sqlite":
+		id := uuid.New()
+		return sqlstorage.NewOpenCloseDBDriver(logger, "sqlite", sqlstorage.SQLite, func(name string) string {
+			return sqlstorage.SQLiteFileConnString(path.Join(
+				os.TempDir(),
+				fmt.Sprintf("%s_%s.db", id, name),
+			))
+		}), func() {}, nil
+	case "postgres":
+		pgServer, err := PostgresServer()
+		if err != nil {
+			return nil, nil, err
+		}
+		return sqlstorage.NewOpenCloseDBDriver(
+				logger,
+				"postgres",
+				sqlstorage.PostgreSQL,
+				func(name string) string {
+					return pgServer.ConnString()
+				},
+			), func() {
+				_ = pgServer.Close()
+			}, nil
+	}
+	return nil, nil, errors.New("not found driver")
+}
+
 func StorageModule() fx.Option {
 	return fx.Options(
 		fx.Provide(func(logger logging.Logger, lifecycle fx.Lifecycle) (storage.Driver, error) {
-			var driver storage.Driver
-			id := uuid.New()
-			switch StorageDriverName() {
-			case "sqlite":
-				driver = sqlstorage.NewOpenCloseDBDriver(logger, "sqlite", sqlstorage.SQLite, func(name string) string {
-					return sqlstorage.SQLiteFileConnString(path.Join(
-						os.TempDir(),
-						fmt.Sprintf("%s_%s.db", id, name),
-					))
-				})
-			case "postgres":
-				pgServer, err := PostgresServer()
-				if err != nil {
-					return nil, err
-				}
-				lifecycle.Append(fx.Hook{
-					OnStop: func(ctx context.Context) error {
-						return pgServer.Close()
-					},
-				})
-				driver = sqlstorage.NewOpenCloseDBDriver(
-					logger,
-					"postgres",
-					sqlstorage.PostgreSQL,
-					func(name string) string {
-						return pgServer.ConnString()
-					},
-				)
-			}
-			if driver == nil {
-				return nil, errors.New("not found driver")
+			driver, stopFn, err := Driver(logger)
+			if err != nil {
+				return nil, err
 			}
 			lifecycle.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					return driver.Initialize(ctx)
+				OnStart: driver.Initialize,
+				OnStop: func(ctx context.Context) error {
+					stopFn()
+					return driver.Close(ctx)
 				},
-				OnStop: driver.Close,
 			})
 			return driver, nil
 		}),

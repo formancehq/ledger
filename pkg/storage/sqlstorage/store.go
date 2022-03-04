@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"path"
 	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	_ "github.com/mattn/go-sqlite3"
@@ -60,46 +61,71 @@ func (s *Store) Name() string {
 	return s.ledger
 }
 
-func (s *Store) Initialize(ctx context.Context) error {
-	s.logger.Debug(ctx, "initializing sqlite db")
-
-	statements := make([]string, 0)
+func (s *Store) Initialize(ctx context.Context) (bool, error) {
+	s.logger.Debug(ctx, "initializing db")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.flavor.String()))
-
 	entries, err := migrations.ReadDir(migrationsDir)
 
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return s.error(err)
+		return false, s.error(err)
 	}
+	defer tx.Rollback()
 
+	modified := false
 	for _, m := range entries {
+
+		version := strings.TrimSuffix(m.Name(), ".sql")
+
+		sb := sqlbuilder.NewSelectBuilder()
+		sb.Select("version")
+		sb.From(s.table("migrations"))
+		sb.Where(sb.E("version", version))
+
+		sqlq, args := sb.BuildWithFlavor(s.flavor)
+		s.logger.Debug(ctx, sqlq, args)
+
+		// Does not use sql transaction because if the table does not exists, postgres will mark transaction as invalid
+		rows, err := s.db.QueryContext(ctx, sqlq, args...)
+		if err == nil && rows.Next() {
+			s.logger.Debug(ctx, "Version %s already up to date", m.Name())
+			continue
+		}
+		modified = true
+
 		s.logger.Debug(ctx, "running migrations %s", m.Name())
 
 		b, err := migrations.ReadFile(path.Join(migrationsDir, m.Name()))
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		plain := strings.ReplaceAll(string(b), "VAR_LEDGER_NAME", s.ledger)
 
-		statements = append(
-			statements,
-			strings.Split(plain, "--statement")...,
-		)
-	}
+		for i, statement := range strings.Split(plain, "--statement") {
+			s.logger.Debug(ctx, "running statement: %s", statement)
+			_, err = tx.ExecContext(ctx, statement)
+			if err != nil {
+				err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
+				s.logger.Error(ctx, "%s", err)
+				return false, err
+			}
+		}
 
-	for i, statement := range statements {
-		s.logger.Debug(ctx, "running statement: %s", statement)
-		_, err = s.db.ExecContext(ctx, statement)
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto(s.table("migrations"))
+		ib.Cols("version", "date")
+		ib.Values(version, time.Now())
+
+		sqlq, args = ib.BuildWithFlavor(s.flavor)
+		_, err = tx.ExecContext(ctx, sqlq, args...)
 		if err != nil {
-			err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
-			s.logger.Error(ctx, "%s", err)
-			return err
+			return false, s.error(err)
 		}
 	}
 
-	return nil
+	return modified, s.error(tx.Commit())
 }
 
 func (s *Store) Close(ctx context.Context) error {

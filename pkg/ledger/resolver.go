@@ -88,7 +88,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 	_, ok = r.initializedStores[name]
 	if !ok {
-		err = store.Initialize(ctx)
+		_, err = store.Initialize(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "initializing ledger store")
 		}

@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS transactions (
   UNIQUE("reference")
 );
 --statement
+CREATE TABLE IF NOT EXISTS migrations (
+  "version" varchar,
+  "date"    varchar,
+
+  UNIQUE ("version")
+);
+--statement
 CREATE TABLE IF NOT EXISTS postings (
   "id"          integer,
   "txid"        integer,

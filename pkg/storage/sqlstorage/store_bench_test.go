@@ -98,7 +98,7 @@ func BenchmarkStore(b *testing.B) {
 				assert.NoError(b, err)
 				defer store.Close(context.Background())
 
-				err = store.Initialize(context.Background())
+				_, err = store.Initialize(context.Background())
 				assert.NoError(b, err)
 
 				b.ResetTimer()

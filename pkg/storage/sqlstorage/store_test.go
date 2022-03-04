@@ -121,7 +121,7 @@ func TestStore(t *testing.T) {
 							assert.NoError(t, err)
 							defer store.Close(context.Background())
 
-							err = store.Initialize(context.Background())
+							_, err = store.Initialize(context.Background())
 							assert.NoError(t, err)
 
 							tf.fn(t, store.(*sqlstorage.Store))
@@ -586,4 +586,26 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	assert.Error(t, err)
 	assert.IsType(t, new(storage.Error), err)
 	assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
+}
+
+func TestInitializeStore(t *testing.T) {
+
+	driver, stopFn, err := ledgertesting.Driver(logging.DefaultLogger())
+	assert.NoError(t, err)
+	defer stopFn()
+	defer driver.Close(context.Background())
+
+	err = driver.Initialize(context.Background())
+	assert.NoError(t, err)
+
+	store, err := driver.NewStore("foo")
+	assert.NoError(t, err)
+
+	modified, err := store.Initialize(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, modified)
+
+	modified, err = store.Initialize(context.Background())
+	assert.NoError(t, err)
+	assert.False(t, modified)
 }

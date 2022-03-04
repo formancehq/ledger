@@ -76,7 +76,7 @@ type Store interface {
 	CountMeta(context.Context) (int64, error)
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 	SaveMapping(ctx context.Context, m core.Mapping) error
-	Initialize(context.Context) error
+	Initialize(context.Context) (bool, error)
 	Name() string
 	Close(context.Context) error
 }
@@ -136,8 +136,8 @@ func (n noOpStore) CountMeta(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) Initialize(ctx context.Context) error {
-	return nil
+func (n noOpStore) Initialize(ctx context.Context) (bool, error) {
+	return false, nil
 }
 
 func (n noOpStore) LoadMapping(context.Context) (*core.Mapping, error) {

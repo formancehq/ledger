@@ -20,7 +20,7 @@ func NewStorageInit() *cobra.Command {
 						return err
 					}
 
-					err = s.Initialize(context.Background())
+					_, err = s.Initialize(context.Background())
 					if err != nil {
 						return err
 					}
