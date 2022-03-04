@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
@@ -33,17 +32,9 @@ func WithLocker(locker Locker) ResolveOptionFn {
 	})
 }
 
-func WithLogger(logger logging.Logger) ResolveOptionFn {
-	return func(r *Resolver) error {
-		r.logger = logger
-		return nil
-	}
-}
-
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver(logging.DefaultLogger()))),
+	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
 	WithLocker(NewInMemoryLocker()),
-	WithLogger(logging.DefaultLogger()),
 }
 
 type Resolver struct {
@@ -51,7 +42,6 @@ type Resolver struct {
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
-	logger            logging.Logger
 }
 
 func NewResolver(options ...ResolverOption) *Resolver {
@@ -113,6 +103,5 @@ func ResolveModule() fx.Option {
 			fx.Annotate(NewResolver, fx.ParamTags(ResolverOptionsKey)),
 		),
 		ProvideResolverOption(WithStorageFactory),
-		ProvideResolverOption(WithLogger),
 	)
 }

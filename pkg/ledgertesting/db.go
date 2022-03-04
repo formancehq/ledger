@@ -3,7 +3,6 @@ package ledgertesting
 import (
 	"context"
 	"fmt"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -21,11 +20,11 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
-func Driver(logger logging.Logger) (storage.Driver, func(), error) {
+func Driver() (storage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
-		return sqlstorage.NewOpenCloseDBDriver(logger, "sqlite", sqlstorage.SQLite, func(name string) string {
+		return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {
 			return sqlstorage.SQLiteFileConnString(path.Join(
 				os.TempDir(),
 				fmt.Sprintf("%s_%s.db", id, name),
@@ -37,7 +36,6 @@ func Driver(logger logging.Logger) (storage.Driver, func(), error) {
 			return nil, nil, err
 		}
 		return sqlstorage.NewOpenCloseDBDriver(
-				logger,
 				"postgres",
 				sqlstorage.PostgreSQL,
 				func(name string) string {
@@ -52,8 +50,8 @@ func Driver(logger logging.Logger) (storage.Driver, func(), error) {
 
 func StorageModule() fx.Option {
 	return fx.Options(
-		fx.Provide(func(logger logging.Logger, lifecycle fx.Lifecycle) (storage.Driver, error) {
-			driver, stopFn, err := Driver(logger)
+		fx.Provide(func(lifecycle fx.Lifecycle) (storage.Driver, error) {
+			driver, stopFn, err := Driver()
 			if err != nil {
 				return nil, err
 			}

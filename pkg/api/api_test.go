@@ -10,7 +10,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +33,6 @@ func withNewModule(t *testing.T, options ...fx.Option) {
 		ledger.ResolveModule(),
 		storage.DefaultModule(),
 		ledgertesting.StorageModule(),
-		logging.LogrusModule(),
 		fx.NopLogger,
 	}, options...)
 	options = append(options, fx.Invoke(func() {

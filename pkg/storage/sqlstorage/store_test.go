@@ -7,7 +7,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/logging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -107,7 +106,6 @@ func TestStore(t *testing.T) {
 			app := fx.New(
 				ledgertesting.StorageModule(),
 				fx.Provide(storage.NewDefaultFactory),
-				logging.LogrusModule(),
 				fx.Invoke(func(storageFactory storage.Factory, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -590,7 +588,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 
 func TestInitializeStore(t *testing.T) {
 
-	driver, stopFn, err := ledgertesting.Driver(logging.DefaultLogger())
+	driver, stopFn, err := ledgertesting.Driver()
 	assert.NoError(t, err)
 	defer stopFn()
 	defer driver.Close(context.Background())

@@ -2,7 +2,7 @@ package config
 
 import (
 	"context"
-	"github.com/numary/ledger/pkg/logging"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
@@ -26,7 +26,7 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func Remember(ctx context.Context, logger logging.Logger, ledger string) {
+func Remember(ctx context.Context, ledger string) {
 	ledgers := viper.GetStringSlice("ledgers")
 
 	for _, v := range ledgers {
@@ -52,14 +52,13 @@ func Remember(ctx context.Context, logger logging.Logger, ledger string) {
 	if writeTo == "" {
 		_, err := os.Create(userConfigFile)
 		if err != nil {
-			logger.Error(ctx, "failed to create config file: ledger %s will not be remembered", ledger)
+			sharedlogging.GetLogger(ctx).Errorf("failed to create config file: ledger %s will not be remembered", ledger)
 		}
 	}
 
 	viper.Set("ledgers", append(ledgers, ledger))
 	err = viper.WriteConfig()
 	if err != nil {
-		logger.Error(ctx, "failed to write config: ledger %s will not be remembered",
-			ledger)
+		sharedlogging.GetLogger(ctx).Errorf("failed to write config: ledger %s will not be remembered", ledger)
 	}
 }

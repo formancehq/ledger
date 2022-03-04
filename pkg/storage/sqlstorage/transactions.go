@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
 	"math"
 	"sort"
@@ -320,7 +321,7 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.table("transactions")))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	s.logger.Debug(ctx, sqlq)
+	sharedlogging.GetLogger(ctx).Debug(sqlq)
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
