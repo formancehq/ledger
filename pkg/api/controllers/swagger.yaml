@@ -266,7 +266,7 @@ paths:
           description: Preview mode
           required: false
           schema:
-            type: string
+            type: boolean
       requestBody:
         description: transaction
         content:
