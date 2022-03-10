@@ -22,7 +22,6 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	sb.
 		Select("address", "metadata").
 		From(s.schema.Table("accounts")).
-		GroupBy("address").
 		OrderBy("address desc").
 		Limit(q.Limit)
 
@@ -36,6 +35,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	if err != nil {
 		return c, s.error(err)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		account := core.Account{}

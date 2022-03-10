@@ -3,12 +3,12 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/sirupsen/logrus"
 	"math"
 	"time"
 
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
@@ -20,8 +20,8 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Distinct()
-	sb.OrderBy("t.id desc")
-	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
+	sb.OrderBy("t.ord desc")
+	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings", "t.ord")
 	switch s.schema.Flavor() {
 	case sqlbuilder.PostgreSQL:
 		sb.From(s.schema.Table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
@@ -63,6 +63,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		var (
 			ref sql.NullString
 			ts  sql.NullString
+			ord int
 		)
 
 		tx := core.Transaction{}
@@ -72,6 +73,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 			&ref,
 			&tx.Metadata,
 			&tx.Postings,
+			&ord,
 		)
 		if err != nil {
 			return c, err

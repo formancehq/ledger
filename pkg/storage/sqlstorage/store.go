@@ -19,10 +19,11 @@ import (
 
 //go:embed migrations
 var migrations embed.FS
-var migrationsFs fs.ReadDirFS
+var MigrationsFs fs.FS
 
 func init() {
-	migrationsFs = migrations
+	// Just a trick to allow tests to override filesystem (dirty but it works)
+	MigrationsFs = migrations
 }
 
 type Store struct {
@@ -56,7 +57,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 	sharedlogging.GetLogger(ctx).Debug("initializing schema")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.schema.Flavor().String()))
-	entries, err := migrationsFs.ReadDir(migrationsDir)
+	entries, err := fs.ReadDir(MigrationsFs, migrationsDir)
 
 	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -80,8 +81,12 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		// Does not use sql transaction because if the table does not exists, postgres will mark transaction as invalid
 		rows, err := s.schema.QueryContext(ctx, sqlq, args...)
 		if err == nil && rows.Next() {
+			rows.Close()
 			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
 			continue
+		}
+		if rows != nil {
+			rows.Close()
 		}
 		modified = true
 

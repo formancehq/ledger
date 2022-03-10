@@ -392,6 +392,9 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	if !assert.True(t, cursor.HasMore) {
 		return
 	}
+	if !assert.EqualValues(t, 2, cursor.Total) {
+		return
+	}
 
 	cursor, err = store.FindTransactions(context.Background(), query.Query{
 		After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
