@@ -553,23 +553,37 @@ func TestInitializeStore(t *testing.T) {
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	driver, stopFn, err := ledgertesting.Driver()
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer stopFn()
 	defer driver.Close(context.Background())
 
 	err = driver.Initialize(context.Background())
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	modified, err := store.Initialize(context.Background())
-	assert.NoError(t, err)
-	assert.True(t, modified)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.True(t, modified) {
+
+	}
 
 	modified, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
-	assert.False(t, modified)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.False(t, modified) {
+		return
+	}
 }
 
 func testLastLog(t *testing.T, store *sqlstorage.Store) {

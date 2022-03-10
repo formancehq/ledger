@@ -43,26 +43,6 @@ func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
 	return s.countAccounts(ctx, s.schema)
 }
 
-func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
-	var count int64
-
-	sb := sqlbuilder.NewSelectBuilder()
-
-	sb.
-		Select("count(*)").
-		From(s.schema.Table("metadata"))
-
-	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-
-	q := exec.QueryRowContext(ctx, sqlq, args...)
-	err := q.Scan(&count)
-
-	return count, s.error(err)
-}
-
-func (s *Store) CountMeta(ctx context.Context) (int64, error) {
-	return s.countMeta(ctx, s.schema)
-}
 
 func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()

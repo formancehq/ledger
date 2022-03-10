@@ -103,6 +103,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	sb.OrderBy("id desc")
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
+	logrus.Debugln(sqlq)
 	rows, err := exec.QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
