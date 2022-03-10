@@ -1,6 +1,10 @@
 package core
 
-import "regexp"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"regexp"
+)
 
 type Posting struct {
 	Source      string `json:"source"`
@@ -21,6 +25,27 @@ func (ps Postings) Reverse() {
 		ps[i], ps[opp] = ps[opp], ps[i]
 		ps[i].Source, ps[i].Destination = ps[i].Destination, ps[i].Source
 		ps[opp].Source, ps[opp].Destination = ps[opp].Destination, ps[opp].Source
+	}
+}
+
+// Scan - Implement the database/sql scanner interface
+func (p *Postings) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	v, err := driver.String.ConvertValue(value)
+	if err != nil {
+		return err
+	}
+
+	*p = Postings{}
+	switch vv := v.(type) {
+	case []uint8:
+		return json.Unmarshal(vv, p)
+	case string:
+		return json.Unmarshal([]byte(vv), p)
+	default:
+		panic("not supported type")
 	}
 }
 

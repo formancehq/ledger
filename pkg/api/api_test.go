@@ -226,7 +226,9 @@ func TestCommitTransaction(t *testing.T) {
 				id := uuid.New()
 				doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
 					data, err := json.Marshal(tx)
-					assert.NoError(t, err)
+					if !assert.NoError(t, err) {
+						return nil
+					}
 
 					rec := httptest.NewRecorder()
 					req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
@@ -237,12 +239,15 @@ func TestCommitTransaction(t *testing.T) {
 				}
 				for i := 0; i < len(tc.transactions)-1; i++ {
 					rsp := doRequest(tc.transactions[i])
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+						return
+					}
 				}
 				rsp := doRequest(tc.transactions[len(tc.transactions)-1])
-				assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+				if !assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode) {
+					return
+				}
 			}))
-
 		})
 	}
 }

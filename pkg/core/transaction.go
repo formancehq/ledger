@@ -19,9 +19,8 @@ type TransactionData struct {
 
 type Transaction struct {
 	TransactionData
-	ID        int64  `json:"txid"`
+	ID        string `json:"txid"`
 	Timestamp string `json:"timestamp"`
-	Hash      string `json:"hash" swaggerignore:"true"`
 }
 
 func (t *Transaction) AppendPosting(p Posting) {
@@ -41,13 +40,19 @@ func (t *Transaction) Reverse() TransactionData {
 	return ret
 }
 
-func Hash(t1 *Transaction, t2 *Transaction) string {
+func Hash(t1, t2 interface{}) string {
 	b1, _ := json.Marshal(t1)
 	b2, _ := json.Marshal(t2)
 
 	h := sha256.New()
-	h.Write(b1)
-	h.Write(b2)
+	_, err := h.Write(b1)
+	if err != nil {
+		panic(err)
+	}
+	_, err = h.Write(b2)
+	if err != nil {
+		panic(err)
+	}
 
 	return fmt.Sprintf("%x", h.Sum(nil))
 }

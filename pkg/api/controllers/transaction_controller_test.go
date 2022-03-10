@@ -177,27 +177,44 @@ func TestGetTransaction(t *testing.T) {
 			},
 			Reference: "ref",
 		})
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 
-		rsp = internal.GetTransaction(api, 0)
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		txs := make([]core.Transaction, 0)
+		if !internal.DecodeSingleResponse(t, rsp.Body, &txs) {
+			return
+		}
+
+		rsp = internal.GetTransaction(api, txs[0].ID)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 
 		ret := core.Transaction{}
-		internal.DecodeSingleResponse(t, rsp.Body, &ret)
+		if !internal.DecodeSingleResponse(t, rsp.Body, &ret) {
+			return
+		}
 
-		assert.EqualValues(t, ret.Postings, core.Postings{
+		if !assert.EqualValues(t, ret.Postings, core.Postings{
 			{
 				Source:      "world",
 				Destination: "central_bank",
 				Amount:      1000,
 				Asset:       "USD",
 			},
-		})
-		assert.EqualValues(t, 0, ret.ID)
-		assert.EqualValues(t, core.Metadata{}, ret.Metadata)
-		assert.EqualValues(t, "ref", ret.Reference)
-		assert.NotEmpty(t, ret.Hash)
-		assert.NotEmpty(t, ret.Timestamp)
+		}) {
+			return
+		}
+		if !assert.EqualValues(t, core.Metadata{}, ret.Metadata) {
+			return
+		}
+		if !assert.EqualValues(t, "ref", ret.Reference) {
+			return
+		}
+		if !assert.NotEmpty(t, ret.Timestamp) {
+			return
+		}
 	})
 }
 
@@ -220,7 +237,7 @@ func TestPreviewTransaction(t *testing.T) {
 
 func TestNotFoundTransaction(t *testing.T) {
 	internal.RunTest(t, func(api *api.API) {
-		rsp := internal.GetTransaction(api, 0)
+		rsp := internal.GetTransaction(api, "xxx")
 		assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 	})
 }
@@ -277,24 +294,36 @@ func TestPostTransactionMetadata(t *testing.T) {
 				},
 			},
 		})
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 		tx := make([]core.Transaction, 0)
-		internal.DecodeSingleResponse(t, rsp.Body, &tx)
+		if !internal.DecodeSingleResponse(t, rsp.Body, &tx) {
+			return
+		}
 
 		rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		})
-		assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
+			return
+		}
 
-		rsp = internal.GetTransaction(api, 0)
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		rsp = internal.GetTransaction(api, tx[0].ID)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 
 		ret := core.Transaction{}
-		internal.DecodeSingleResponse(t, rsp.Body, &ret)
+		if !internal.DecodeSingleResponse(t, rsp.Body, &ret) {
+			return
+		}
 
-		assert.EqualValues(t, core.Metadata{
+		if !assert.EqualValues(t, core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
-		}, ret.Metadata)
+		}, ret.Metadata) {
+			return
+		}
 	})
 }
 

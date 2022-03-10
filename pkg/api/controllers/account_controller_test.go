@@ -59,20 +59,28 @@ func TestGetAccount(t *testing.T) {
 				},
 			},
 		})
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 
 		rsp = internal.PostAccountMetadata(t, h, "alice", core.Metadata{
 			"foo": json.RawMessage(`"bar"`),
 		})
-		assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
+			return
+		}
 
 		rsp = internal.GetAccount(h, "alice")
-		assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+			return
+		}
 
 		act := core.Account{}
-		internal.DecodeSingleResponse(t, rsp.Body, &act)
+		if !internal.DecodeSingleResponse(t, rsp.Body, &act) {
+			return
+		}
 
-		assert.EqualValues(t, core.Account{
+		if !assert.EqualValues(t, core.Account{
 			Address: "alice",
 			Type:    "",
 			Balances: map[string]int64{
@@ -80,12 +88,15 @@ func TestGetAccount(t *testing.T) {
 			},
 			Volumes: map[string]map[string]int64{
 				"USD": {
-					"input": 100,
+					"input":  100,
+					"output": 0,
 				},
 			},
 			Metadata: core.Metadata{
 				"foo": json.RawMessage(`"bar"`),
 			},
-		}, act)
+		}, act) {
+			return
+		}
 	})
 }

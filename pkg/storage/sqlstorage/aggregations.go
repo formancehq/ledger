@@ -29,10 +29,11 @@ func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error)
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("count(*)").
-		From(s.table("addresses")).
+		From(s.table("accounts")).
 		BuildWithFlavor(s.flavor)
 
 	sqlq, args := sb.Build()
+
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
@@ -64,17 +65,29 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 }
 
 func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
-	balances := map[string]int64{}
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.From(s.table("balances"))
+	sb.Select("asset", "amount")
+	sb.Where(sb.Equal("account", address))
 
-	volumes, err := s.aggregateVolumes(ctx, exec, address)
+	sql, args := sb.BuildWithFlavor(s.flavor)
+	rows, err := exec.QueryContext(ctx, sql, args...)
 	if err != nil {
-		return balances, s.error(err)
+		return nil, s.error(err)
 	}
 
-	for asset := range volumes {
-		balances[asset] = volumes[asset]["input"] - volumes[asset]["output"]
+	balances := make(map[string]int64)
+	for rows.Next() {
+		var (
+			asset  string
+			amount int64
+		)
+		err = rows.Scan(&asset, &amount)
+		if err != nil {
+			return nil, err
+		}
+		balances[asset] = amount
 	}
-
 	return balances, nil
 }
 
@@ -83,58 +96,35 @@ func (s *Store) AggregateBalances(ctx context.Context, address string) (map[stri
 }
 
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (map[string]map[string]int64, error) {
-	volumes := map[string]map[string]int64{}
-
-	agg1 := sqlbuilder.NewSelectBuilder()
-	agg1.
-		Select("asset", "'_out'", "sum(amount)").
-		From(s.table("postings")).Where(agg1.Equal("source", address)).
-		GroupBy("asset")
-
-	agg2 := sqlbuilder.NewSelectBuilder()
-	agg2.
-		Select("asset", "'_in'", "sum(amount)").
-		From(s.table("postings")).Where(agg2.Equal("destination", address)).
-		GroupBy("asset")
-
-	union := sqlbuilder.Union(agg1, agg2)
-
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("*")
-	sb.From(sb.BuilderAs(union, "assets"))
+	sb.Select("asset", "input", "output")
+	sb.From(s.table("volumes"))
+	sb.Where(sb.E("account", address))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	rows, err := exec.QueryContext(ctx, sqlq, args...)
-
+	sql, args := sb.BuildWithFlavor(s.flavor)
+	rows, err := exec.QueryContext(ctx, sql, args...)
 	if err != nil {
-		return volumes, s.error(err)
+		return nil, s.error(err)
 	}
 
+	volumes := make(map[string]map[string]int64)
 	for rows.Next() {
-		var row = struct {
+		var (
 			asset  string
-			t      string
-			amount int64
-		}{}
-
-		err := rows.Scan(&row.asset, &row.t, &row.amount)
-
+			input  int64
+			output int64
+		)
+		err = rows.Scan(&asset, &input, &output)
 		if err != nil {
-			return volumes, s.error(err)
+			return nil, s.error(err)
 		}
-
-		if _, ok := volumes[row.asset]; !ok {
-			volumes[row.asset] = map[string]int64{}
-		}
-
-		if row.t == "_out" {
-			volumes[row.asset]["output"] += row.amount
-		} else {
-			volumes[row.asset]["input"] += row.amount
+		volumes[asset] = map[string]int64{
+			"input":  input,
+			"output": output,
 		}
 	}
-	if rows.Err() != nil {
-		return nil, s.error(rows.Err())
+	if err := rows.Err(); err != nil {
+		return nil, s.error(err)
 	}
 
 	return volumes, nil

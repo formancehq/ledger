@@ -62,12 +62,16 @@ func BenchmarkStore(b *testing.B) {
 				fn:   testBenchmarkFindTransactions,
 			},
 			{
-				name: "LastTransaction",
-				fn:   testBenchmarkLastTransaction,
+				name: "LastLog",
+				fn:   testBenchmarkLastLog,
 			},
 			{
 				name: "AggregateVolumes",
 				fn:   testBenchmarkAggregateVolumes,
+			},
+			{
+				name: "SaveTransactions",
+				fn:   testBenchmarkSaveTransactions,
 			},
 		} {
 			b.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(b *testing.B) {
@@ -109,9 +113,9 @@ func BenchmarkStore(b *testing.B) {
 }
 
 func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
+	var log *core.Log
 	for i := 0; i < 1000; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -128,12 +132,12 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uuid.New(),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -148,11 +152,11 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 
 }
 
-func testBenchmarkLastTransaction(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
+func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
+	var log *core.Log
 	count := 1000
 	for i := 0; i < count; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -169,27 +173,27 @@ func testBenchmarkLastTransaction(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uuid.New(),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		tx, err := store.LastTransaction(context.Background())
+		lastLog, err := store.LastLog(context.Background())
 		assert.NoError(b, err)
-		assert.Equal(b, int64(count-1), tx.ID)
+		assert.Equal(b, int64(count-1), lastLog.ID)
 	}
 
 }
 
 func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
 	count := 1000
+	var log *core.Log
 	for i := 0; i < count; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -212,12 +216,12 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uuid.New(),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -225,4 +229,25 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 		assert.NoError(b, err)
 	}
 
+}
+
+func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
+	var log *core.Log
+	for n := 0; n < b.N; n++ {
+		*log = core.NewTransactionLog(log, core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: fmt.Sprintf("player%d", n),
+						Asset:       "USD",
+						Amount:      100,
+					},
+				},
+			},
+			ID: uuid.New(),
+		})
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
+	}
 }

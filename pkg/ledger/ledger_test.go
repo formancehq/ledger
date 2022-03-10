@@ -120,7 +120,6 @@ func TestTransaction(t *testing.T) {
 			}
 
 			_, _, err := l.Commit(context.Background(), batch)
-
 			if err != nil {
 				t.Error(err)
 			}
@@ -129,7 +128,6 @@ func TestTransaction(t *testing.T) {
 		}
 
 		world, err := l.GetAccount(context.Background(), "world")
-
 		if err != nil {
 			t.Error(err)
 		}
@@ -469,10 +467,10 @@ func TestTransactionMetadata(t *testing.T) {
 			t.Error(err)
 		}
 
-		l.SaveMeta(context.Background(), "transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+		l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		l.SaveMeta(context.Background(), "transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+		l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
 
@@ -614,7 +612,7 @@ func TestRevertTransaction(t *testing.T) {
 		}
 		originalBal := world.Balances["COIN"]
 
-		_, err = l.RevertTransaction(context.Background(), fmt.Sprint(txs[0].ID))
+		_, err = l.RevertTransaction(context.Background(), txs[0].ID)
 		if err != nil {
 			t.Fatal(err)
 		}
