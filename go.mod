@@ -42,6 +42,8 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
+	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
+	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211226235153-13a0add2f557 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
@@ -64,6 +66,7 @@ require (
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-chi/render v1.0.1 // indirect
 	github.com/go-logr/logr v1.2.2 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
@@ -150,13 +153,10 @@ require (
 require (
 	github.com/Shopify/sarama v1.32.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
-	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
-	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1
-	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/numary/go-libs v0.0.0-20220325080412-02604f34c81f
-	github.com/xdg-go/scram v1.1.1
+	github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d
+	github.com/xdg-go/scram v1.1.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
