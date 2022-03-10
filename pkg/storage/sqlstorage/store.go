@@ -14,10 +14,16 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	_ "github.com/mattn/go-sqlite3"
+	"io/fs"
 )
 
 //go:embed migrations
 var migrations embed.FS
+var migrationsFs fs.ReadDirFS
+
+func init() {
+	migrationsFs = migrations
+}
 
 type Store struct {
 	flavor  sqlbuilder.Flavor
@@ -63,7 +69,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 	sharedlogging.GetLogger(ctx).Debug("initializing db")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.flavor.String()))
-	entries, err := migrations.ReadDir(migrationsDir)
+	entries, err := migrationsFs.ReadDir(migrationsDir)
 
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
