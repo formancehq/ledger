@@ -23,7 +23,7 @@ func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
 func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("meta_key", "meta_value")
-	sb.From(s.table("metadata"))
+	sb.From(s.Table("metadata"))
 	sb.Where(
 		sb.And(
 			sb.Equal("meta_target_type", ty),
@@ -76,7 +76,7 @@ func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadat
 
 func (s *Store) saveMeta(ctx context.Context, exec executor, id int64, timestamp, targetType, targetID, key, value string) error {
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto(s.table("metadata"))
+	ib.InsertInto(s.Table("metadata"))
 	ib.Cols(
 		"meta_id",
 		"meta_target_type",

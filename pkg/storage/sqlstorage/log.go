@@ -7,6 +7,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"time"
 )
@@ -23,7 +24,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) (
 
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.Cols("id", "type", "hash", "date", "data")
-		ib.InsertInto(s.table("log"))
+		ib.InsertInto(s.Table("log"))
 		ib.Values(l.ID, l.Type, l.Hash, l.Date, string(data))
 
 		sql, args := ib.BuildWithFlavor(s.flavor)
@@ -59,7 +60,7 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) (map[int]error,
 func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.table("log"))
+	sb.From(s.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.OrderBy("id desc")
 	sb.Limit(1)
@@ -93,4 +94,54 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 
 func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	return s.lastLog(ctx, s.db)
+}
+
+func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.From(s.Table("log"))
+	sb.Select("id", "type", "hash", "date", "data")
+	sb.OrderBy("id desc")
+
+	sqlq, _ := sb.BuildWithFlavor(s.flavor)
+	logrus.Debugln(sqlq)
+	rows, err := exec.QueryContext(ctx, sqlq)
+	if err != nil {
+		return nil, s.error(err)
+	}
+	defer rows.Close()
+
+	ret := make([]core.Log, 0)
+	for rows.Next() {
+		l := core.Log{}
+		var (
+			ts   sql.NullString
+			data sql.NullString
+		)
+		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
+		t, err := time.Parse(time.RFC3339, ts.String)
+		if err != nil {
+			return nil, err
+		}
+		l.Date = t
+		l.Data, err = core.HydrateLog(l.Type, data.String)
+		if err != nil {
+			return nil, errors.Wrap(err, "hydrating log")
+		}
+		ret = append(ret, l)
+	}
+	if rows.Err() != nil {
+		return nil, s.error(rows.Err())
+	}
+
+	return ret, nil
+}
+
+func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
+	return s.logs(ctx, s.db)
 }

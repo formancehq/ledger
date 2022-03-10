@@ -20,11 +20,11 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Distinct()
-	sb.OrderBy("t.id desc")
-	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
+	sb.OrderBy("t.ord desc")
+	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings", "t.ord")
 	switch s.flavor {
 	case sqlbuilder.PostgreSQL:
-		sb.From(s.table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
+		sb.From(s.Table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
 	case sqlbuilder.SQLite:
 		sb.From("transactions t", "json_each(postings)")
 	}
@@ -63,6 +63,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		var (
 			ref sql.NullString
 			ts  sql.NullString
+			ord int
 		)
 
 		tx := core.Transaction{}
@@ -72,6 +73,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 			&ref,
 			&tx.Metadata,
 			&tx.Postings,
+			&ord,
 		)
 		if err != nil {
 			return c, err
@@ -118,7 +120,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 		"t.metadata",
 		"t.postings",
 	)
-	sb.From(sb.As(s.table("transactions"), "t"))
+	sb.From(sb.As(s.Table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)

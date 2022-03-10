@@ -16,7 +16,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("mapping").
-		From(s.table("mapping"))
+		From(s.Table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
@@ -61,7 +61,7 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 	}
 
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto(s.table("mapping"))
+	ib.InsertInto(s.Table("mapping"))
 	ib.Cols("mapping_id", "mapping")
 	ib.Values(mappingId, string(data))
 
@@ -74,7 +74,7 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
 		sqlq += " ON CONFLICT (mapping_id) DO UPDATE SET mapping = $2"
 	default:
-		ib.ReplaceInto(s.table("mapping"))
+		ib.ReplaceInto(s.Table("mapping"))
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
 	}
 

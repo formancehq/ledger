@@ -10,7 +10,7 @@ func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, er
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("count(*)")
-	sb.From(s.table("transactions"))
+	sb.From(s.Table("transactions"))
 
 	sqlq, args := sb.Build()
 
@@ -29,7 +29,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error)
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("count(*)").
-		From(s.table("accounts")).
+		From(s.Table("accounts")).
 		BuildWithFlavor(s.flavor)
 
 	sqlq, args := sb.Build()
@@ -50,7 +50,7 @@ func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
 
 	sb.
 		Select("count(*)").
-		From(s.table("metadata"))
+		From(s.Table("metadata"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
@@ -66,7 +66,7 @@ func (s *Store) CountMeta(ctx context.Context) (int64, error) {
 
 func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.table("balances"))
+	sb.From(s.Table("balances"))
 	sb.Select("asset", "amount")
 	sb.Where(sb.Equal("account", address))
 
@@ -98,7 +98,7 @@ func (s *Store) AggregateBalances(ctx context.Context, address string) (map[stri
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (map[string]map[string]int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
-	sb.From(s.table("volumes"))
+	sb.From(s.Table("volumes"))
 	sb.Where(sb.E("account", address))
 
 	sql, args := sb.BuildWithFlavor(s.flavor)

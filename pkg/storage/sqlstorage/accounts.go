@@ -21,7 +21,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("address", "metadata").
-		From(s.table("accounts")).
+		From(s.Table("accounts")).
 		Limit(q.Limit)
 
 	if q.After != "" {
@@ -77,7 +77,7 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (cor
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("address", "metadata").
-		From(s.table("accounts")).
+		From(s.Table("accounts")).
 		Where(sb.Equal("address", addr))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)

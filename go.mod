@@ -45,6 +45,5 @@ require (
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/numary/go-libs v0.0.0-20220301123239-18e848add472
-	github.com/spf13/afero v1.7.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )

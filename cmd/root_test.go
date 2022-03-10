@@ -117,8 +117,12 @@ func TestServer(t *testing.T) {
 					"amount": 100
 				}]
 			}`))
-			assert.NoError(t, err)
-			assert.Equal(t, http.StatusOK, res.StatusCode)
+			if !assert.NoError(t, err) {
+				return
+			}
+			if !assert.Equal(t, http.StatusOK, res.StatusCode) {
+				return
+			}
 		})
 	}
 

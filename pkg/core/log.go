@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+const SetMetadataType = "SET_METADATA"
+const NewTransactionType = "NEW_TRANSACTION"
+
 type Log struct {
 	ID   uint64      `json:"id"`
 	Type string      `json:"hash"`
@@ -20,7 +23,7 @@ func NewTransactionLog(previousLog *Log, tx Transaction) Log {
 	}
 	l := Log{
 		ID:   id,
-		Type: "NEW_TRANSACTION",
+		Type: NewTransactionType,
 		Date: time.Now(),
 		Data: tx,
 	}
@@ -41,7 +44,7 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 	}
 	l := Log{
 		ID:   id,
-		Type: "SET_METADATA",
+		Type: SetMetadataType,
 		Date: time.Now(),
 		Data: metadata,
 	}
@@ -51,14 +54,14 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 
 func HydrateLog(_type string, data string) (interface{}, error) {
 	switch _type {
-	case "NEW_TRANSACTION":
+	case NewTransactionType:
 		tx := Transaction{}
 		err := json.Unmarshal([]byte(data), &tx)
 		if err != nil {
 			return nil, err
 		}
 		return tx, nil
-	case "SET_METADATA":
+	case SetMetadataType:
 		sm := SetMetadata{}
 		err := json.Unmarshal([]byte(data), &sm)
 		if err != nil {

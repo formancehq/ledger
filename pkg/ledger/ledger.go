@@ -279,6 +279,9 @@ func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (
 	return balances, ret, err
 }
 
+// TODO: This is only used for testing
+// I think we should remove this and all related code
+// We don't need any testing logic in the business code.
 func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {
 	var tx core.Transaction
 

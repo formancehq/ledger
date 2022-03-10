@@ -72,6 +72,7 @@ type Store interface {
 
 	AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error)
 	LastLog(ctx context.Context) (*core.Log, error)
+	Logs(ctx context.Context) ([]core.Log, error)
 
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 	SaveMapping(ctx context.Context, m core.Mapping) error
@@ -82,6 +83,10 @@ type Store interface {
 
 // A no op store. Useful for testing.
 type noOpStore struct{}
+
+func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
+	return nil, nil
+}
 
 func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error) {
 	return nil, nil

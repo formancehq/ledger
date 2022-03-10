@@ -19,10 +19,11 @@ import (
 
 //go:embed migrations
 var migrations embed.FS
-var migrationsFs fs.ReadDirFS
+var MigrationsFs fs.FS
 
 func init() {
-	migrationsFs = migrations
+	// Just a trick to allow tests to override filesystem (dirty but it works)
+	MigrationsFs = migrations
 }
 
 type Store struct {
@@ -32,7 +33,7 @@ type Store struct {
 	onClose func(ctx context.Context) error
 }
 
-func (s *Store) table(name string) string {
+func (s *Store) Table(name string) string {
 	switch Flavor(s.flavor) {
 	case PostgreSQL:
 		return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
@@ -43,6 +44,10 @@ func (s *Store) table(name string) string {
 
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+func (s *Store) Flavor() sqlbuilder.Flavor {
+	return s.flavor
 }
 
 func (s *Store) error(err error) error {
@@ -69,7 +74,10 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 	sharedlogging.GetLogger(ctx).Debug("initializing db")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.flavor.String()))
-	entries, err := migrationsFs.ReadDir(migrationsDir)
+	entries, err := fs.ReadDir(MigrationsFs, migrationsDir)
+	if err != nil {
+		return false, err
+	}
 
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -84,7 +92,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("version")
-		sb.From(s.table("migrations"))
+		sb.From(s.Table("migrations"))
 		sb.Where(sb.E("version", version))
 
 		sqlq, args := sb.BuildWithFlavor(s.flavor)
@@ -111,6 +119,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 			sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
 			_, err = tx.ExecContext(ctx, statement)
 			if err != nil {
+				fmt.Println(statement)
 				err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
 				sharedlogging.GetLogger(ctx).Errorf("%s", err)
 				return false, err
@@ -118,7 +127,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("migrations"))
+		ib.InsertInto(s.Table("migrations"))
 		ib.Cols("version", "date")
 		ib.Values(version, time.Now())
 
