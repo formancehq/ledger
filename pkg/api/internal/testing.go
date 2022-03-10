@@ -32,18 +32,23 @@ func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(Encode(t, v))
 }
 
-func Decode(t *testing.T, reader io.Reader, v interface{}) {
+func Decode(t *testing.T, reader io.Reader, v interface{}) bool {
 	err := json.NewDecoder(reader).Decode(v)
-	assert.NoError(t, err)
+	return assert.NoError(t, err)
 }
 
-func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) {
+func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
 	res := Response{}
-	Decode(t, reader, &res)
-	Decode(t, bytes.NewBuffer(res.Data), v)
+	if !Decode(t, reader, &res) {
+		return false
+	}
+	if !Decode(t, bytes.NewBuffer(res.Data), v) {
+		return false
+	}
+	return true
 }
 
 func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
@@ -90,8 +95,8 @@ func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.Transact
 	return rec
 }
 
-func PostTransactionMetadata(t *testing.T, handler http.Handler, id int64, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/metadata", id), Buffer(t, m))
+func PostTransactionMetadata(t *testing.T, handler http.Handler, id string, m core.Metadata) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%s/metadata", id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -102,8 +107,8 @@ func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func GetTransaction(handler http.Handler, id int64) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
+func GetTransaction(handler http.Handler, id string) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%s", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }

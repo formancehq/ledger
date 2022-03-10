@@ -61,19 +61,18 @@ func IsTooManyClientError(err error) bool {
 }
 
 type Store interface {
-	LastTransaction(context.Context) (*core.Transaction, error)
-	LastMetaID(context.Context) (int64, error)
-	SaveTransactions(context.Context, []core.Transaction) (map[int]error, error)
 	CountTransactions(context.Context) (int64, error)
 	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, string) (core.Transaction, error)
+	GetAccount(context.Context, string) (core.Account, error)
 	AggregateBalances(context.Context, string) (map[string]int64, error)
 	AggregateVolumes(context.Context, string) (map[string]map[string]int64, error)
 	CountAccounts(context.Context) (int64, error)
 	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
-	SaveMeta(context.Context, int64, string, string, string, string, string) error
-	GetMeta(context.Context, string, string) (core.Metadata, error)
-	CountMeta(context.Context) (int64, error)
+
+	AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error)
+	LastLog(ctx context.Context) (*core.Log, error)
+
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 	SaveMapping(ctx context.Context, m core.Mapping) error
 	Initialize(context.Context) (bool, error)
@@ -84,16 +83,12 @@ type Store interface {
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
-func (n noOpStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error) {
 	return nil, nil
 }
 
 func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
 	return 0, nil
-}
-
-func (n noOpStore) SaveTransactions(ctx context.Context, transactions []core.Transaction) (map[int]error, error) {
-	return nil, nil
 }
 
 func (n noOpStore) CountTransactions(ctx context.Context) (int64, error) {
@@ -108,11 +103,19 @@ func (n noOpStore) GetTransaction(ctx context.Context, s string) (core.Transacti
 	return core.Transaction{}, nil
 }
 
+func (n noOpStore) GetAccount(ctx context.Context, s string) (core.Account, error) {
+	return core.Account{}, nil
+}
+
 func (n noOpStore) AggregateBalances(ctx context.Context, s string) (map[string]int64, error) {
 	return nil, nil
 }
 
 func (n noOpStore) AggregateVolumes(ctx context.Context, s string) (map[string]map[string]int64, error) {
+	return nil, nil
+}
+
+func (n noOpStore) LastLog(ctx context.Context) (*core.Log, error) {
 	return nil, nil
 }
 
@@ -122,10 +125,6 @@ func (n noOpStore) CountAccounts(ctx context.Context) (int64, error) {
 
 func (n noOpStore) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
 	return sharedapi.Cursor{}, nil
-}
-
-func (n noOpStore) SaveMeta(ctx context.Context, i int64, s string, s2 string, s3 string, s4 string, s5 string) error {
-	return nil
 }
 
 func (n noOpStore) GetMeta(ctx context.Context, s string, s2 string) (core.Metadata, error) {

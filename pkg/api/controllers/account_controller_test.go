@@ -89,6 +89,7 @@ func TestGetAccount(t *testing.T) {
 					Volumes: map[string]map[string]int64{
 						"USD": {
 							"input": 100,
+							"output": 0,
 						},
 					},
 					Metadata: core.Metadata{

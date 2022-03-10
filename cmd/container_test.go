@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/bus"
@@ -20,6 +21,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContainers(t *testing.T) {
@@ -237,6 +239,8 @@ func TestContainers(t *testing.T) {
 							case err := <-errCh:
 								return err
 							case <-messages:
+							case <-time.After(time.Second):
+								return errors.New("timeout")
 							}
 							return nil
 						},

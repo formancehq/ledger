@@ -12,6 +12,7 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"net/http"
@@ -187,7 +188,12 @@ func TestGetTransaction(t *testing.T) {
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.GetTransaction(api, 0)
+				tx := make([]core.Transaction, 0)
+				if !internal.DecodeSingleResponse(t, rsp.Body, &tx) {
+					return nil
+				}
+
+				rsp = internal.GetTransaction(api, tx[0].ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				ret := core.Transaction{}
@@ -204,7 +210,6 @@ func TestGetTransaction(t *testing.T) {
 				assert.EqualValues(t, 0, ret.ID)
 				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
 				assert.EqualValues(t, "ref", ret.Reference)
-				assert.NotEmpty(t, ret.Hash)
 				assert.NotEmpty(t, ret.Timestamp)
 				return nil
 			},
@@ -238,7 +243,7 @@ func TestNotFoundTransaction(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.GetTransaction(api, 0)
+				rsp := internal.GetTransaction(api, uuid.New())
 				assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 				return nil
 			},
@@ -314,7 +319,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 				})
 				assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.GetTransaction(api, 0)
+				rsp = internal.GetTransaction(api, tx[0].ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				ret := core.Transaction{}

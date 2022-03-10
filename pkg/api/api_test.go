@@ -246,7 +246,6 @@ func TestCommitTransaction(t *testing.T) {
 					},
 				})
 			}))
-
 		})
 	}
 }

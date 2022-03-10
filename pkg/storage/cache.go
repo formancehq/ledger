@@ -8,52 +8,30 @@ import (
 
 type cachedStateStorage struct {
 	Store
-	lastTransaction *core.Transaction
-	lastMetaId      *int64
+	lastLog *core.Log
 }
 
-func (s *cachedStateStorage) LastTransaction(ctx context.Context) (*core.Transaction, error) {
-	if s.lastTransaction != nil {
-		return s.lastTransaction, nil
-	}
-	var err error
-	s.lastTransaction, err = s.Store.LastTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return s.lastTransaction, nil
-}
-
-func (s *cachedStateStorage) LastMetaID(ctx context.Context) (int64, error) {
-	if s.lastMetaId != nil {
-		return *s.lastMetaId, nil
-	}
-	lastMetaID, err := s.Store.LastMetaID(ctx)
-	if err != nil {
-		return 0, err
-	}
-	s.lastMetaId = &lastMetaID
-	return lastMetaID, nil
-}
-
-func (s *cachedStateStorage) SaveTransactions(ctx context.Context, txs []core.Transaction) (map[int]error, error) {
-	ret, err := s.Store.SaveTransactions(ctx, txs)
+func (s *cachedStateStorage) AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error) {
+	ret, err := s.Store.AppendLog(ctx, log...)
 	if err != nil {
 		return ret, err
 	}
-	if len(txs) > 0 && len(ret) == 0 {
-		s.lastTransaction = &txs[len(txs)-1]
+	if len(log) > 0 && len(ret) == 0 {
+		s.lastLog = &log[len(log)-1]
 	}
 	return ret, nil
 }
 
-func (s *cachedStateStorage) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
-	err := s.Store.SaveMeta(ctx, id, timestamp, targetType, targetID, key, value)
-	if err != nil {
-		return err
+func (s *cachedStateStorage) LastLog(ctx context.Context) (*core.Log, error) {
+	if s.lastLog != nil {
+		return s.lastLog, nil
 	}
-	s.lastMetaId = &id
-	return nil
+	lastLog, err := s.Store.LastLog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.lastLog = lastLog
+	return lastLog, nil
 }
 
 func NewCachedStateStorage(underlying Store) *cachedStateStorage {
