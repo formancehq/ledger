@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"path"
 	"strings"
@@ -132,3 +133,5 @@ func (s *Store) Close(ctx context.Context) error {
 	}
 	return nil
 }
+
+var _ storage.Store = &Store{}

@@ -56,6 +56,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	if err != nil {
 		return c, s.error(err)
 	}
+	defer rows.Close()
 
 	transactions := make([]core.Transaction, 0)
 
@@ -122,12 +123,14 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 	)
 	sb.From(sb.As(s.schema.Table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
+	sb.OrderBy("t.ord DESC")
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return tx, s.error(err)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var (

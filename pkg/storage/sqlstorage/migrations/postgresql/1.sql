@@ -126,19 +126,19 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".accounts
 );
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-ADD COLUMN "postings" jsonb;
+    ADD COLUMN "postings" jsonb;
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-ADD COLUMN "metadata" jsonb DEFAULT '{}';
+    ADD COLUMN "metadata" jsonb DEFAULT '{}';
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-ADD COLUMN ord BIGINT; -- Allow to keep ordering
+    ADD COLUMN ord BIGINT; -- Allow to keep ordering
 --statement
 UPDATE "VAR_LEDGER_NAME".transactions
 SET ord = id;
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-ALTER COLUMN id TYPE varchar(36);
+    ALTER COLUMN id TYPE varchar(36);
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".log
 (
@@ -173,12 +173,12 @@ CREATE SEQUENCE "VAR_LEDGER_NAME".log_seq START WITH 0 MINVALUE 0;
 INSERT INTO "VAR_LEDGER_NAME".log(id, type, date, data, hash)
 SELECT nextval('"VAR_LEDGER_NAME".log_seq'), v.type, v.timestamp::timestamp with time zone, v.data, ''
 FROM (
-     SELECT 0 as ord, ord as ord2, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone, ('{"txid": "' || id || '", "postings": ' || postings::varchar || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}')::jsonb as data
-     FROM "VAR_LEDGER_NAME".transactions
-     UNION ALL
-     SELECT meta_id as ord, 0 as ord2, 'SET_METADATA' as type, timestamp::timestamp with time zone, ('{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}')::jsonb as data
-     FROM "VAR_LEDGER_NAME".metadata
- ) v
+         SELECT 0 as ord, ord as ord2, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone, ('{"txid": "' || id || '", "postings": ' || postings::varchar || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}')::jsonb as data
+         FROM "VAR_LEDGER_NAME".transactions
+         UNION ALL
+         SELECT meta_id as ord, 0 as ord2, 'SET_METADATA' as type, timestamp::timestamp with time zone, ('{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}')::jsonb as data
+         FROM "VAR_LEDGER_NAME".metadata
+     ) v
 ORDER BY v.timestamp ASC, v.ord ASC, v.ord2 ASC;
 -- statement
 DROP SEQUENCE "VAR_LEDGER_NAME".log_seq;
@@ -187,12 +187,12 @@ UPDATE "VAR_LEDGER_NAME".transactions
 SET metadata = (
     SELECT ('{' || COALESCE(STRING_AGG('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ','), '') || '}')::jsonb
     FROM (
-         SELECT DISTINCT ON (meta_key)
-             meta_id, meta_key, meta_value
-         FROM "VAR_LEDGER_NAME".metadata
-         WHERE meta_target_id = transactions.id
-         ORDER BY meta_key, meta_id DESC
-     ) v
+             SELECT DISTINCT ON (meta_key)
+                 meta_id, meta_key, meta_value
+             FROM "VAR_LEDGER_NAME".metadata
+             WHERE meta_target_id = transactions.id
+             ORDER BY meta_key, meta_id DESC
+         ) v
 );
 --statement
 INSERT INTO "VAR_LEDGER_NAME".accounts(address) SELECT * FROM "VAR_LEDGER_NAME".addresses;
@@ -201,12 +201,12 @@ UPDATE "VAR_LEDGER_NAME".accounts
 SET metadata = (
     SELECT ('{' || string_agg('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ',') || '}')::jsonb
     FROM (
-         SELECT distinct on (meta_key)
-             meta_id, meta_key, meta_value
-         FROM "VAR_LEDGER_NAME".metadata
-         WHERE meta_target_id = accounts.address
-         ORDER BY meta_key, meta_id DESC
-     ) v
+             SELECT distinct on (meta_key)
+                 meta_id, meta_key, meta_value
+             FROM "VAR_LEDGER_NAME".metadata
+             WHERE meta_target_id = accounts.address
+             ORDER BY meta_key, meta_id DESC
+         ) v
 );
 --statement
 DROP TRIGGER IF EXISTS balances_changed ON "VAR_LEDGER_NAME".volumes;

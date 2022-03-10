@@ -151,27 +151,25 @@ func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 			Reference: "foo",
 		},
 	}
-	log := core.NewTransactionLog(nil, tx)
-	_, err := store.AppendLog(context.Background(), log)
+	log1 := core.NewTransactionLog(nil, tx)
+	_, err := store.AppendLog(context.Background(), log1)
 	assert.NoError(t, err)
 
-	tx.ID = uuid.New()
-	ret, err := store.AppendLog(context.Background(), core.NewTransactionLog(&log, tx))
-	if !assert.Error(t, err) {
-		return
-	}
-	if !assert.Equal(t, storage.ErrAborted, err) {
-		return
-	}
-	if !assert.Len(t, ret, 1) {
-		return
-	}
-	if !assert.IsType(t, &storage.Error{}, ret[0]) {
-		return
-	}
-	if !assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code) {
-		return
-	}
+	log2 := core.NewTransactionLog(&log1, core.Transaction{
+		ID: uuid.New(),
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{},
+			},
+			Reference: "foo",
+		},
+	})
+	ret, err := store.AppendLog(context.Background(), log2)
+	assert.Error(t, err)
+	assert.Equal(t, storage.ErrAborted, err)
+	assert.Len(t, ret, 1)
+	assert.IsType(t, &storage.Error{}, ret[0])
+	assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code)
 }
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
