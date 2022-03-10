@@ -37,6 +37,17 @@ require (
 )
 
 require (
+	github.com/Shopify/sarama v1.32.0
+	github.com/ThreeDotsLabs/watermill v1.1.1
+	github.com/davecgh/go-spew v1.1.1
+	github.com/go-redis/redis/v8 v8.11.4
+	github.com/go-redis/redismock/v8 v8.0.6
+	github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d
+	github.com/xdg-go/scram v1.1.1
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+)
+
+require (
 	cloud.google.com/go v0.99.0 // indirect
 	cloud.google.com/go/storage v1.18.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
@@ -148,15 +159,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.66.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-)
-
-require (
-	github.com/Shopify/sarama v1.32.0
-	github.com/ThreeDotsLabs/watermill v1.1.1
-	github.com/davecgh/go-spew v1.1.1
-	github.com/go-redis/redis/v8 v8.11.4
-	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d
-	github.com/xdg-go/scram v1.1.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
