@@ -67,13 +67,13 @@ SET postings = (
 INSERT INTO log(type, date, data, hash)
 SELECT v.type, v.timestamp, v.data, ''
 FROM (
-     SELECT 'NEW_TRANSACTION' as type, timestamp, '{"txid": "' || id || '", "postings": ' || postings || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}' as data
+     SELECT 0 as ord, ord as ord2, 'NEW_TRANSACTION' as type, timestamp, '{"txid": "' || id || '", "postings": ' || postings || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}' as data
      FROM transactions
      UNION ALL
-     SELECT 'SET_METADATA' as type, timestamp, '{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN json_valid(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}' as data
+     SELECT meta_id as ord, 0 as ord2, 'SET_METADATA' as type, timestamp, '{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN json_valid(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}' as data
      FROM metadata
  ) v
-ORDER BY v.timestamp;
+ORDER BY v.timestamp ASC, v.ord ASC, v.ord2 ASC;
 --statement
 ALTER TABLE log RENAME TO log2;
 --statement
