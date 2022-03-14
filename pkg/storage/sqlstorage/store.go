@@ -102,8 +102,10 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		rows, err := s.db.QueryContext(ctx, sqlq, args...)
 		if err == nil && rows.Next() {
 			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
+			rows.Close()
 			continue
 		}
+		rows.Close()
 		modified = true
 
 		sharedlogging.GetLogger(ctx).Debugf("running migrations %s", m.Name())
