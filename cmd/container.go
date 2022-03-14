@@ -43,6 +43,9 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	}
 
 	l := logrus.New()
+	if v.GetBool(debugFlag) {
+		l.Level = logrus.DebugLevel
+	}
 	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
 	sharedlogging.SetFactory(loggerFactory)
 
