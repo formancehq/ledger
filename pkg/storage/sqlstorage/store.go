@@ -105,7 +105,9 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 			rows.Close()
 			continue
 		}
-		rows.Close()
+		if rows != nil {
+			rows.Close()
+		}
 		modified = true
 
 		sharedlogging.GetLogger(ctx).Debugf("running migrations %s", m.Name())
@@ -121,7 +123,6 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 			sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
 			_, err = tx.ExecContext(ctx, statement)
 			if err != nil {
-				fmt.Println(statement)
 				err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
 				sharedlogging.GetLogger(ctx).Errorf("%s", err)
 				return false, err
