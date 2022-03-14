@@ -83,6 +83,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		if err == nil && rows.Next() {
 			rows.Close()
 			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
+			rows.Close()
 			continue
 		}
 		if rows != nil {
