@@ -3,7 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -19,7 +19,7 @@ func TestServer(t *testing.T) {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 
-	pgServer, err := ledgertesting.PostgresServer()
+	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(t, err)
 	defer pgServer.Close()
 

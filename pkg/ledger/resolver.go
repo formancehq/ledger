@@ -3,7 +3,6 @@ package ledger
 import (
 	"context"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"sync"
@@ -33,7 +32,6 @@ func WithLocker(locker Locker) ResolveOptionFn {
 }
 
 var DefaultResolverOptions = []ResolverOption{
-	WithStorageFactory(storage.NewDefaultFactory(sqlstorage.NewInMemorySQLiteDriver())),
 	WithLocker(NewInMemoryLocker()),
 }
 
@@ -44,7 +42,7 @@ type Resolver struct {
 	initializedStores map[string]struct{}
 }
 
-func NewResolver(options ...ResolverOption) *Resolver {
+func NewResolver(storageFactory storage.Factory, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
 		initializedStores: map[string]struct{}{},
@@ -100,7 +98,7 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 func ResolveModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(NewResolver, fx.ParamTags(ResolverOptionsKey)),
+			fx.Annotate(NewResolver, fx.ParamTags("", ResolverOptionsKey)),
 		),
 		ProvideResolverOption(WithStorageFactory),
 	)

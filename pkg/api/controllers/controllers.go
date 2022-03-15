@@ -1,40 +1,44 @@
 package controllers
 
 import (
+	"github.com/numary/ledger/pkg/health"
 	"go.uber.org/fx"
 )
 
 const (
-	VersionKey       = `name:"_apiVersion"`
-	StorageDriverKey = `name:"_apiStorageDriver"`
-	LedgerListerKey  = `name:"_apiLedgerLister"`
+	versionKey       = `name:"_apiVersion"`
+	storageDriverKey = `name:"_apiStorageDriver"`
+	ledgerListerKey  = `name:"_apiLedgerLister"`
 )
 
 func ProvideVersion(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(VersionKey)),
+		fx.Annotate(provider, fx.ResultTags(versionKey)),
 	)
 }
 
 func ProvideStorageDriver(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(StorageDriverKey)),
+		fx.Annotate(provider, fx.ResultTags(storageDriverKey)),
 	)
 }
 
 func ProvideLedgerLister(provider interface{}) fx.Option {
 	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(LedgerListerKey)),
+		fx.Annotate(provider, fx.ResultTags(ledgerListerKey)),
 	)
 }
 
 var Module = fx.Options(
 	fx.Provide(
-		fx.Annotate(NewConfigController, fx.ParamTags(VersionKey, StorageDriverKey, LedgerListerKey)),
+		fx.Annotate(NewConfigController, fx.ParamTags(versionKey, storageDriverKey, ledgerListerKey)),
 	),
 	fx.Provide(NewLedgerController),
 	fx.Provide(NewScriptController),
 	fx.Provide(NewAccountController),
 	fx.Provide(NewTransactionController),
 	fx.Provide(NewMappingController),
+	fx.Provide(
+		fx.Annotate(NewHealthController, fx.ParamTags(health.HealthCheckKey)),
+	),
 )

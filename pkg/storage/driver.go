@@ -9,4 +9,5 @@ type Driver interface {
 	NewStore(name string) (Store, error)
 	Close(ctx context.Context) error
 	Name() string
+	Check(ctx context.Context) error
 }
