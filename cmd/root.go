@@ -28,6 +28,8 @@ const (
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
 	lockStrategyRedisDurationFlag        = "lock-strategy-redis-duration"
 	lockStrategyRedisRetryFlag           = "lock-strategy-redis-retry"
+	lockStrategyRedisTLSEnabledFlag      = "lock-strategy-redis-tls-enabled"
+	lockStrategyRedisTLSInsecureFlag     = "lock-strategy-redis-tls-insecure"
 	otelTracesFlag                       = "otel-traces"
 	otelTracesBatchFlag                  = "otel-traces-batch"
 	otelTracesExporterFlag               = "otel-traces-exporter"
@@ -126,6 +128,8 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
 	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
 	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
+	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
+	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")

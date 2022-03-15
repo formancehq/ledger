@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -90,10 +91,18 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	case "none":
 		options = append(options, ledger.NoLockModule())
 	case "redis":
+		var tlsConfig *tls.Config
+		if viper.GetBool(lockStrategyRedisTLSEnabledFlag) {
+			tlsConfig = &tls.Config{}
+			if viper.GetBool(lockStrategyRedisTLSInsecureFlag) {
+				tlsConfig.InsecureSkipVerify = true
+			}
+		}
 		options = append(options, redis.Module(redis.Config{
 			Url:          v.GetString(lockStrategyRedisUrlFlag),
 			LockDuration: v.GetDuration(lockStrategyRedisDurationFlag),
 			LockRetry:    v.GetDuration(lockStrategyRedisRetryFlag),
+			TLSConfig:    tlsConfig,
 		}))
 	}
 

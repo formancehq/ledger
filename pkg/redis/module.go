@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"crypto/tls"
 	"github.com/go-redis/redis/v8"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
@@ -18,6 +19,7 @@ type Config struct {
 	Url          string
 	LockDuration time.Duration
 	LockRetry    time.Duration
+	TLSConfig    *tls.Config
 }
 
 func Module(cfg Config) fx.Option {
@@ -33,6 +35,7 @@ func Module(cfg Config) fx.Option {
 			if err != nil {
 				return nil, err
 			}
+			options.TLSConfig = cfg.TLSConfig
 			return redis.NewClient(options), nil
 		}),
 		ledger.ProvideResolverOption(func(redisClient Client) ledger.ResolverOption {
