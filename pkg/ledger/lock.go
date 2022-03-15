@@ -10,6 +10,15 @@ type Unlock func(ctx context.Context)
 type Locker interface {
 	Lock(ctx context.Context, name string) (Unlock, error)
 }
+type LockerFn func(ctx context.Context, name string) (Unlock, error)
+
+func (fn LockerFn) Lock(ctx context.Context, name string) (Unlock, error) {
+	return fn(ctx, name)
+}
+
+var NoOpLocker = LockerFn(func(ctx context.Context, name string) (Unlock, error) {
+	return func(ctx context.Context) {}, nil
+})
 
 type InMemoryLocker struct {
 	globalLock sync.RWMutex

@@ -40,6 +40,8 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-redis/redis/v8 v8.11.4
+	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/numary/go-libs v0.0.0-20220301123239-18e848add472
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )

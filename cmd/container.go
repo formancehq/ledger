@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
+	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
@@ -80,6 +81,19 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 					Insecure: v.GetBool(otelMetricsExporterOTLPInsecureFlag),
 				}
 			}(),
+		}))
+	}
+
+	switch v.GetString(lockStrategyFlag) {
+	case "memory":
+		options = append(options, ledger.MemoryLockModule())
+	case "none":
+		options = append(options, ledger.NoLockModule())
+	case "redis":
+		options = append(options, redis.Module(redis.Config{
+			Url:          v.GetString(lockStrategyRedisUrlFlag),
+			LockDuration: v.GetDuration(lockStrategyRedisDurationFlag),
+			LockRetry:    v.GetDuration(lockStrategyRedisRetryFlag),
 		}))
 	}
 

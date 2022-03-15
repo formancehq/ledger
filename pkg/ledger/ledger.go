@@ -34,8 +34,9 @@ var DefaultContracts = []core.Contract{
 
 type Ledger struct {
 	locker Locker
-	name   string
-	store  storage.Store
+	// TODO: We could remove this field since it is present in store
+	name  string
+	store storage.Store
 }
 
 func NewLedger(name string, store storage.Store, locker Locker) (*Ledger, error) {
@@ -202,7 +203,7 @@ txLoop:
 func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to acquire lock")
+		return nil, nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
@@ -244,7 +245,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to acquire lock")
+		return nil, nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
@@ -359,7 +360,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m core.Metadata) error {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return errors.Wrap(err, "unable to acquire lock")
+		return NewLockError(err)
 	}
 	defer unlock(ctx)
 

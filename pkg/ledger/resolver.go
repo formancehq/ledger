@@ -105,3 +105,19 @@ func ResolveModule() fx.Option {
 		ProvideResolverOption(WithStorageFactory),
 	)
 }
+
+func MemoryLockModule() fx.Option {
+	return fx.Options(
+		ProvideResolverOption(func() ResolverOption {
+			return WithLocker(NewInMemoryLocker())
+		}),
+	)
+}
+
+func NoLockModule() fx.Option {
+	return fx.Options(
+		ProvideResolverOption(func() ResolverOption {
+			return WithLocker(NoOpLocker)
+		}),
+	)
+}
