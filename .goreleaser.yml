@@ -2,6 +2,8 @@ project_name: numary
 env:
   - GO111MODULE=on
   - GOPROXY=https://proxy.golang.org
+flags:
+  - -tags=json1
 before:
   hooks:
     - go mod download
