@@ -44,7 +44,7 @@ func with(f func(l *Ledger)) {
 					if err != nil {
 						return err
 					}
-					l, err := NewLedger(name, store, NewInMemoryLocker())
+					l, err := NewLedger(name, store, NewInMemoryLocker(), &noOpMonitor{})
 					if err != nil {
 						panic(err)
 					}

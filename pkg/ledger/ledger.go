@@ -33,17 +33,19 @@ var DefaultContracts = []core.Contract{
 }
 
 type Ledger struct {
-	locker Locker
+	locker  Locker
 	// TODO: We could remove this field since it is present in store
-	name  string
-	store storage.Store
+	name    string
+	store   storage.Store
+	monitor Monitor
 }
 
-func NewLedger(name string, store storage.Store, locker Locker) (*Ledger, error) {
+func NewLedger(name string, store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
 	return &Ledger{
-		store:  store,
-		name:   name,
-		locker: locker,
+		store:   store,
+		name:    name,
+		locker:  locker,
+		monitor: monitor,
 	}, nil
 }
 
@@ -239,6 +241,9 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 			return nil, nil, errors.Wrap(err, "committing transactions")
 		}
 	}
+
+	l.monitor.CommittedTransactions(ctx, l.name, ret)
+
 	return balances, ret, nil
 }
 
@@ -289,7 +294,12 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	return l.store.SaveMapping(ctx, mapping)
+	err := l.store.SaveMapping(ctx, mapping)
+	if err != nil {
+		return err
+	}
+	l.monitor.UpdatedMapping(ctx, l.name, mapping)
+	return nil
 }
 
 func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
@@ -314,8 +324,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transa
 	switch err {
 	case ErrCommitError:
 		return nil, ret[0].Err
+	case nil:
+		l.monitor.RevertedTransaction(ctx, l.name, tx, ret[0].Transaction)
+		return &ret[0].Transaction, nil
 	default:
-		return &ret[0].Transaction, err
+		return nil, err
 	}
 }
 
@@ -393,10 +406,11 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 			key,
 			string(value),
 		)
-
 		if err != nil {
 			return err
 		}
+
+		l.monitor.SavedMetadata(ctx, l.name, targetType, targetID, m)
 	}
 	return nil
 }
