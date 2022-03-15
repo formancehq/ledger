@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
@@ -34,7 +35,8 @@ func with(f func(l *Ledger)) {
 					defer func() {
 						close(done)
 					}()
-					store, err := storageFactory.GetStore("test")
+					name := uuid.New()
+					store, err := storageFactory.GetStore(name)
 					if err != nil {
 						return err
 					}
@@ -42,7 +44,7 @@ func with(f func(l *Ledger)) {
 					if err != nil {
 						return err
 					}
-					l, err := NewLedger("test", store, NewInMemoryLocker())
+					l, err := NewLedger(name, store, NewInMemoryLocker())
 					if err != nil {
 						panic(err)
 					}

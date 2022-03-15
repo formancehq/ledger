@@ -138,3 +138,26 @@ func NewScriptError(code string, message string) *ScriptError {
 		Message: message,
 	}
 }
+
+type LockError struct {
+	Err error
+}
+
+func (e LockError) Error() string {
+	return e.Err.Error()
+}
+
+func (e LockError) Is(err error) bool {
+	_, ok := err.(*LockError)
+	return ok
+}
+
+func IsLockError(err error) bool {
+	return errors.Is(err, &LockError{})
+}
+
+func NewLockError(err error) *LockError {
+	return &LockError{
+		Err: err,
+	}
+}

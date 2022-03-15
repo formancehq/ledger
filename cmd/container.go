@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
+	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
@@ -80,6 +82,27 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 					Insecure: v.GetBool(otelMetricsExporterOTLPInsecureFlag),
 				}
 			}(),
+		}))
+	}
+
+	switch v.GetString(lockStrategyFlag) {
+	case "memory":
+		options = append(options, ledger.MemoryLockModule())
+	case "none":
+		options = append(options, ledger.NoLockModule())
+	case "redis":
+		var tlsConfig *tls.Config
+		if viper.GetBool(lockStrategyRedisTLSEnabledFlag) {
+			tlsConfig = &tls.Config{}
+			if viper.GetBool(lockStrategyRedisTLSInsecureFlag) {
+				tlsConfig.InsecureSkipVerify = true
+			}
+		}
+		options = append(options, redis.Module(redis.Config{
+			Url:          v.GetString(lockStrategyRedisUrlFlag),
+			LockDuration: v.GetDuration(lockStrategyRedisDurationFlag),
+			LockRetry:    v.GetDuration(lockStrategyRedisRetryFlag),
+			TLSConfig:    tlsConfig,
 		}))
 	}
 

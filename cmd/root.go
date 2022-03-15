@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/numary/ledger/pkg/redis"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -23,6 +24,12 @@ const (
 	uiHttpBindAddressFlag                = "ui.http.bind_address"
 	ledgersFlag                          = "ledgers"
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
+	lockStrategyFlag                     = "lock-strategy"
+	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
+	lockStrategyRedisDurationFlag        = "lock-strategy-redis-duration"
+	lockStrategyRedisRetryFlag           = "lock-strategy-redis-retry"
+	lockStrategyRedisTLSEnabledFlag      = "lock-strategy-redis-tls-enabled"
+	lockStrategyRedisTLSInsecureFlag     = "lock-strategy-redis-tls-insecure"
 	otelTracesFlag                       = "otel-traces"
 	otelTracesBatchFlag                  = "otel-traces-batch"
 	otelTracesExporterFlag               = "otel-traces-exporter"
@@ -117,6 +124,12 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(otelMetricsExporterOTLPModeFlag, "grpc", "OpenTelemetry metrics OTLP exporter mode (grpc|http)")
 	root.PersistentFlags().String(otelMetricsExporterOTLPEndpointFlag, "", "OpenTelemetry metrics grpc endpoint")
 	root.PersistentFlags().Bool(otelMetricsExporterOTLPInsecureFlag, false, "OpenTelemetry metrics grpc insecure")
+	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
+	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
+	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
+	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
+	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
+	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")

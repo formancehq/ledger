@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"context"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pborman/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -143,6 +145,38 @@ func TestContainers(t *testing.T) {
 				}),
 			},
 		},
+		{
+			name: "default-with-lock-strategy-memory",
+			init: func(v *viper.Viper) {
+				v.Set(lockStrategyFlag, "redis")
+			},
+		},
+		{
+			name: "default-with-lock-strategy-none",
+			init: func(v *viper.Viper) {
+				v.Set(lockStrategyFlag, "none")
+			},
+		},
+		{
+			name: "default-with-lock-strategy-redis",
+			init: func(v *viper.Viper) {
+				v.Set(lockStrategyFlag, "redis")
+				v.Set(lockStrategyRedisUrlFlag, "redis://redis:6789")
+			},
+			options: []fx.Option{
+				fx.Invoke(func(resolver *ledger.Resolver) error {
+					l, err := resolver.GetLedger(context.Background(), uuid.New())
+					if err != nil {
+						return err
+					}
+					_, _, err = l.Commit(context.Background(), nil)
+					if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
+						return err
+					}
+					return nil
+				}),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run := make(chan struct{}, 1)
@@ -155,6 +189,9 @@ func TestContainers(t *testing.T) {
 				}),
 			)
 			v := viper.New()
+			// Default options
+			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
+			v.Set(storageDirFlag, os.TempDir())
 			tc.init(v)
 			app := NewContainer(v, options...)
 

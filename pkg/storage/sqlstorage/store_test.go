@@ -596,7 +596,7 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	assert.NoError(t, err)
 
-	store, err := driver.NewStore("foo")
+	store, err := driver.NewStore(uuid.New())
 	assert.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())
