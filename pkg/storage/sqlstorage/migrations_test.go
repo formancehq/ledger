@@ -127,7 +127,7 @@ func compareMetadata(t *testing.T, m1, m2 core.Metadata) bool {
 	return assert.EqualValues(t, map1, map2)
 }
 
-var now = time.Now().Round(time.Second)
+var now = time.Now().Round(time.Second).UTC()
 
 var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 	"0.sql": func(t *testing.T, store *sqlstorage.Store) {
