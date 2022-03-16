@@ -12,6 +12,7 @@ import (
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
+	"github.com/numary/ledger/pkg/bus/kafkabus"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
@@ -31,6 +32,8 @@ import (
 	"os"
 )
 
+const ServiceName = "ledger"
+
 func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 	if !v.GetBool(debugFlag) {
@@ -42,11 +45,14 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	sharedlogging.SetFactory(loggerFactory)
 
 	options = append(options, bus.Module())
+	if v.GetBool(eventBusKafkaEnabledFlag) {
+		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(eventBusKafkaBrokerFlag)...))
+	}
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
 		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.ModuleConfig{
-			ServiceName: "ledger",
+			ServiceName: ServiceName,
 			Version:     Version,
 			Batch:       v.GetBool(otelTracesBatchFlag),
 			Exporter:    v.GetString(otelTracesExporterFlag),
@@ -180,7 +186,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 		res = append(res, cors.New(cc))
 		if viper.GetBool(otelTracesFlag) {
-			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(tp)))
+			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr

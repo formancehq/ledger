@@ -36,8 +36,16 @@ func NewServerStart() *cobra.Command {
 					return nil
 				}),
 			)
-			go app.Start(context.Background())
+			errCh := make(chan error, 1)
+			go func() {
+				err := app.Start(context.Background())
+				if err != nil {
+					errCh <- err
+				}
+			}()
 			select {
+			case err := <-errCh:
+				return err
 			case <-cmd.Context().Done():
 				return app.Stop(context.Background())
 			case <-app.Done():

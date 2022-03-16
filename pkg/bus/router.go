@@ -8,8 +8,7 @@ import (
 	"time"
 )
 
-func NewRouter() *message.Router {
-	logger := watermill.NopLogger{} // TODO: Implements logger over sharedlogging
+func NewRouter(logger watermill.LoggerAdapter) *message.Router {
 	router, err := message.NewRouter(message.RouterConfig{}, logger)
 	if err != nil {
 		panic(err)
