@@ -11,7 +11,7 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
       ALLOW_PLAINTEXT_LISTENER: yes
     depends_on:
@@ -26,7 +26,15 @@ services:
       service: ledger
     depends_on:
       - postgres
+      - kafka
+    image: golang:1.16-alpine
+    entrypoint: go run main.go server start
+    volumes:
+      - ../..:/src
+    working_dir: /src
     environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"
       NUMARY_EVENT_BUS_KAFKA_ENABLED: "true"
-      NUMARY_EVENT_BUS_KAFKA_BROKER: "kafka:9002"
+      NUMARY_EVENT_BUS_KAFKA_BROKER: "kafka:9092"
       NUMARY_EVENT_BUS_TOPIC: "*:default" # Send all to 'default' topic

@@ -54,6 +54,7 @@ type Resolver struct {
 func NewResolver(storageFactory storage.Factory, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
+		storageFactory:    storageFactory,
 		initializedStores: map[string]struct{}{},
 	}
 	for _, opt := range options {

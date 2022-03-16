@@ -10,7 +10,7 @@ import (
 
 func NewSaramaConfig(clientId string) *sarama.Config {
 	config := sarama.NewConfig()
-	config.Version = sarama.MinVersion
+	config.Version = sarama.V1_0_0_0
 	config.Consumer.Return.Errors = true
 	config.Producer.Return.Successes = true
 	config.ClientID = clientId

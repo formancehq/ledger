@@ -14,7 +14,15 @@ services:
       service: ledger
     depends_on:
       - postgres
+      - otlp-exporter
+    image: golang:1.16-alpine
+    entrypoint: go run main.go server start
+    volumes:
+      - ../..:/src
+    working_dir: /src
     environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"
       NUMARY_OTEL_TRACES: "true"
       NUMARY_OTEL_TRACES_EXPORTER: otlp
       NUMARY_OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
