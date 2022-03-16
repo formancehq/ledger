@@ -35,6 +35,7 @@ func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...f
 type Routes struct {
 	resolver              *ledger.Resolver
 	ledgerMiddleware      middlewares.LedgerMiddleware
+	healthController      controllers.HealthController
 	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
@@ -57,6 +58,7 @@ func NewRoutes(
 	accountController controllers.AccountController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
+	healthController controllers.HealthController,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -69,6 +71,7 @@ func NewRoutes(
 		accountController:     accountController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
+		healthController:      healthController,
 	}
 }
 
@@ -79,6 +82,7 @@ func (r *Routes) Engine() *gin.Engine {
 	// Default Middlewares
 	engine.Use(r.globalMiddlewares...)
 
+	engine.GET("/_health", r.healthController.Check)
 	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
 	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)
 

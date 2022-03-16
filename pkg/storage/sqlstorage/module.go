@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"fmt"
+	"github.com/numary/ledger/pkg/health"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
@@ -58,6 +59,9 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		}
 
 		return driver, nil
+	}))
+	options = append(options, health.ProvideHealthCheck(func(driver storage.Driver) health.NamedCheck {
+		return health.NewNamedCheck(driver.Name(), health.CheckFn(driver.Check))
 	}))
 	options = append(options, fx.Invoke(func(driver storage.Driver, lifecycle fx.Lifecycle) error {
 		err := driver.Initialize(context.Background())

@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
-	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ func BenchmarkStore(b *testing.B) {
 		logrus.StandardLogger().Level = logrus.DebugLevel
 	}
 
-	pgServer, err := ledgertesting.PostgresServer()
+	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(b, err)
 	defer pgServer.Close()
 

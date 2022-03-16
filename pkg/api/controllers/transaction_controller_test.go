@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
@@ -311,7 +312,7 @@ func TestTooManyClient(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Grab all potential connections
-		for i := 0; i < ledgertesting.MaxConnections; i++ {
+		for i := 0; i < pgtesting.MaxConnections; i++ {
 			tx, err := store.(*sqlstorage.Store).DB().BeginTx(context.Background(), &sql.TxOptions{})
 			assert.NoError(t, err)
 			defer tx.Rollback()

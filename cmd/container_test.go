@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
+	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -21,7 +21,7 @@ import (
 
 func TestContainers(t *testing.T) {
 
-	pgServer, err := ledgertesting.PostgresServer()
+	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(t, err)
 	defer pgServer.Close()
 

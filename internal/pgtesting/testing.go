@@ -1,4 +1,4 @@
-package ledgertesting
+package pgtesting
 
 import (
 	"context"

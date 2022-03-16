@@ -3,6 +3,7 @@ package ledgertesting
 import (
 	"context"
 	"fmt"
+	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -31,7 +32,7 @@ func Driver() (storage.Driver, func(), error) {
 			))
 		}), func() {}, nil
 	case "postgres":
-		pgServer, err := PostgresServer()
+		pgServer, err := pgtesting.PostgresServer()
 		if err != nil {
 			return nil, nil, err
 		}

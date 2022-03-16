@@ -66,6 +66,10 @@ func (d *openCloseDBDriver) Close(ctx context.Context) error {
 	return nil
 }
 
+func (d *openCloseDBDriver) Check(ctx context.Context) error {
+	return nil
+}
+
 func NewOpenCloseDBDriver(name string, flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
 	return &openCloseDBDriver{
 		flavor:     flavor,
@@ -120,6 +124,13 @@ func (d *cachedDBDriver) Close(ctx context.Context) error {
 	err := d.db.Close()
 	d.db = nil
 	return err
+}
+
+func (d *cachedDBDriver) Check(ctx context.Context) error {
+	if d.db == nil {
+		return errors.New("driver not initialized")
+	}
+	return d.db.PingContext(ctx)
 }
 
 const SQLiteMemoryConnString = "file::memory:?cache=shared"
