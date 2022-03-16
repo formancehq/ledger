@@ -5,6 +5,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/ThreeDotsLabs/watermill/message/router/plugin"
+	"go.uber.org/fx"
 	"time"
 )
 
@@ -25,4 +26,10 @@ func NewRouter(logger watermill.LoggerAdapter) *message.Router {
 		middleware.Recoverer,
 	)
 	return router
+}
+
+func RouterModule() fx.Option {
+	return fx.Options(
+		fx.Provide(NewRouter),
+	)
 }

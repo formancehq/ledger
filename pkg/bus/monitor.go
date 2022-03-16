@@ -6,25 +6,24 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"go.uber.org/fx"
 	"time"
 )
 
-type eventType string
-
 const (
-	FallbackTopic                   = "NEW_EVENT"
-	CommittedTransactions eventType = "COMMITTED_TRANSACTIONS"
-	SavedMetadata         eventType = "SAVED_METADATA"
-	UpdatedMapping        eventType = "UPDATED_MAPPING"
-	RevertedTransaction   eventType = "REVERTED_TRANSACTION"
+	FallbackTopic                = "NEW_EVENT"
+	CommittedTransactions string = "COMMITTED_TRANSACTIONS"
+	SavedMetadata         string = "SAVED_METADATA"
+	UpdatedMapping        string = "UPDATED_MAPPING"
+	RevertedTransaction   string = "REVERTED_TRANSACTION"
 )
 
 type ledgerMonitor struct {
 	publisher message.Publisher
-	topics    map[eventType]string
+	topics    map[string]string
 }
 
-func (l *ledgerMonitor) publish(ctx context.Context, topic string, ledger string, et eventType, data interface{}) {
+func (l *ledgerMonitor) publish(ctx context.Context, topic string, ledger string, et string, data interface{}) {
 	err := l.publisher.Publish(topic, newMessage(ctx, baseEvent{
 		Date:    time.Now(),
 		Type:    et,
@@ -37,7 +36,7 @@ func (l *ledgerMonitor) publish(ctx context.Context, topic string, ledger string
 	}
 }
 
-func (l *ledgerMonitor) process(ctx context.Context, ledger string, event eventType, data interface{}) {
+func (l *ledgerMonitor) process(ctx context.Context, ledger string, event string, data interface{}) {
 	topic, ok := l.topics[event]
 	if ok {
 		l.publish(ctx, topic, ledger, event, data)
@@ -81,27 +80,53 @@ func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, r
 
 var _ ledger.Monitor = &ledgerMonitor{}
 
-type Option func(monitor *ledgerMonitor)
+type MonitorOption func(monitor *ledgerMonitor)
 
-func WithGlobalTopic(v string) Option {
+func WithLedgerMonitorGlobalTopic(v string) MonitorOption {
 	return func(monitor *ledgerMonitor) {
 		monitor.topics["*"] = v
 	}
 }
 
-func WithTopic(key eventType, v string) Option {
+func WithLedgerMonitorTopic(key string, v string) MonitorOption {
 	return func(monitor *ledgerMonitor) {
 		monitor.topics[key] = v
 	}
 }
 
-func NewLedgerMonitor(publisher message.Publisher, opts ...Option) *ledgerMonitor {
+func WithLedgerMonitorTopics(kv map[string]string) MonitorOption {
+	return func(monitor *ledgerMonitor) {
+		for k, v := range kv {
+			monitor.topics[k] = v
+		}
+	}
+}
+
+func NewLedgerMonitor(publisher message.Publisher, opts ...MonitorOption) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
-		topics:    map[eventType]string{},
+		topics:    map[string]string{},
 	}
 	for _, opt := range opts {
 		opt(m)
 	}
 	return m
+}
+
+func ProvideMonitorOption(constructor interface{}) fx.Option {
+	return fx.Provide(fx.Annotate(constructor, fx.ResultTags(`group:"monitorOptions"`)))
+}
+
+func LedgerMonitorModule() fx.Option {
+	return fx.Options(
+		fx.Provide(
+			fx.Annotate(
+				NewLedgerMonitor,
+				fx.ParamTags(``, `group:"monitorOptions"`),
+			),
+		),
+		ledger.ProvideResolverOption(func(monitor *ledgerMonitor) ledger.ResolveOptionFn {
+			return ledger.WithMonitor(monitor)
+		}),
+	)
 }

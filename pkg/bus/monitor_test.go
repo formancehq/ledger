@@ -22,7 +22,7 @@ func TestMonitor(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	m := NewLedgerMonitor(pubSub, WithGlobalTopic("testing"))
+	m := NewLedgerMonitor(pubSub, WithLedgerMonitorGlobalTopic("testing"))
 	go m.CommittedTransactions(context.Background(), uuid.New(), nil)
 
 	select {

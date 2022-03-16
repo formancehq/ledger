@@ -30,6 +30,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 )
 
 const ServiceName = "ledger"
@@ -44,7 +45,20 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
 	sharedlogging.SetFactory(loggerFactory)
 
+	topics := v.GetStringSlice(eventBusTopicFlag)
+	computedTopics := make(map[string]string)
+	for _, topic := range topics {
+		parts := strings.SplitN(topic, ":", 2)
+		if len(parts) != 2 {
+			panic("invalid topic flag")
+		}
+		computedTopics[parts[0]] = parts[1]
+	}
+
 	options = append(options, bus.Module())
+	options = append(options, bus.ProvideMonitorOption(func() bus.MonitorOption {
+		return bus.WithLedgerMonitorTopics(computedTopics)
+	}))
 	if v.GetBool(eventBusKafkaEnabledFlag) {
 		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(eventBusKafkaBrokerFlag)...))
 	}

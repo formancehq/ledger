@@ -46,6 +46,7 @@ const (
 	otelMetricsExporterOTLPInsecureFlag  = "otel-metrics-exporter-otlp-insecure"
 	eventBusKafkaEnabledFlag             = "event-bus-kafka-enabled"
 	eventBusKafkaBrokerFlag              = "event-bus-kafka-broker"
+	eventBusTopicFlag                    = "event-bus-topic"
 )
 
 var (
@@ -134,6 +135,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
 	root.PersistentFlags().Bool(eventBusKafkaEnabledFlag, false, "Use kafka as event bus")
 	root.PersistentFlags().StringSlice(eventBusKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
+	root.PersistentFlags().StringSlice(eventBusTopicFlag, []string{}, "Define mapping between internal event types and topics")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
