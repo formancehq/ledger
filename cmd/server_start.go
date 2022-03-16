@@ -38,7 +38,7 @@ func NewServerStart() *cobra.Command {
 			)
 			errCh := make(chan error, 1)
 			go func() {
-				err := app.Start(context.Background())
+				err := app.Start(cmd.Context())
 				if err != nil {
 					errCh <- err
 				}
