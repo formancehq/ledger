@@ -167,10 +167,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	)
 
 	// Api middlewares
-	options = append(options, routes.ProvideMiddlewares(func(params struct {
-		fx.In
-		TracerProvider trace.TracerProvider `optional:"true"`
-	}) []gin.HandlerFunc {
+	options = append(options, routes.ProvideMiddlewares(func(tp trace.TracerProvider) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)
 
 		cc := cors.DefaultConfig()
@@ -180,7 +177,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 		res = append(res, cors.New(cc))
 		if viper.GetBool(otelTracesFlag) {
-			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(params.TracerProvider)))
+			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(tp)))
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
@@ -197,9 +194,8 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 			}
 		}))
 		res = append(res, middlewares.Auth(viper.GetString(serverHttpBasicAuthFlag)))
-
 		return res
-	}))
+	}, fx.ParamTags(`optional:"true"`)))
 
 	return fx.New(options...)
 }

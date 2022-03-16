@@ -33,8 +33,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.3.0
 	go.opentelemetry.io/otel/sdk/metric v0.26.0
 	go.opentelemetry.io/otel/trace v1.4.1
-	go.uber.org/dig v1.13.0
-	go.uber.org/fx v1.16.0
+	go.uber.org/dig v1.14.0
+	go.uber.org/fx v1.17.0
 )
 
 require (
