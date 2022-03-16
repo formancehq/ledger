@@ -11,6 +11,7 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
+	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
@@ -39,6 +40,8 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	l := logrus.New()
 	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
 	sharedlogging.SetFactory(loggerFactory)
+
+	options = append(options, bus.Module())
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {

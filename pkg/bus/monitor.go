@@ -12,6 +12,7 @@ import (
 type eventType string
 
 const (
+	FallbackTopic                   = "NEW_EVENT"
 	CommittedTransactions eventType = "COMMITTED_TRANSACTIONS"
 	SavedMetadata         eventType = "SAVED_METADATA"
 	UpdatedMapping        eventType = "UPDATED_MAPPING"
@@ -47,7 +48,8 @@ func (l *ledgerMonitor) process(ctx context.Context, ledger string, event eventT
 		l.publish(ctx, topic, ledger, event, data)
 		return
 	}
-	sharedlogging.GetLogger(ctx).Errorf("no topic defined to send %s event", event)
+	l.publish(ctx, FallbackTopic, ledger, event, data)
+	return
 }
 
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, results []ledger.CommitTransactionResult) {

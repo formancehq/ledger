@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/numary/ledger/pkg/bus"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
@@ -172,6 +175,39 @@ func TestContainers(t *testing.T) {
 					_, _, err = l.Commit(context.Background(), nil)
 					if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
 						return err
+					}
+					return nil
+				}),
+			},
+		},
+		{
+			name: "event-bus",
+			init: func(v *viper.Viper) {},
+			options: []fx.Option{
+				fx.Invoke(func(subscriber message.Subscriber, resolver *ledger.Resolver) error {
+					ctx := context.Background()
+					messages, err := subscriber.Subscribe(ctx, bus.FallbackTopic)
+					if err != nil {
+						return err
+					}
+					name := uuid.New()
+					l, err := resolver.GetLedger(ctx, name)
+					if err != nil {
+						return err
+					}
+					errCh := make(chan error, 1)
+					go func() {
+						err := l.SaveMeta(ctx, core.MetaTargetTypeAccount, "world", core.Metadata{"foo": []byte(`"bar"`)})
+						if err != nil {
+							errCh <- err
+						}
+					}()
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case err := <-errCh:
+						return err
+					case <-messages:
 					}
 					return nil
 				}),

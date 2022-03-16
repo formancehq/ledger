@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"time"
 )
 
+// TODO: Inject OpenTracing context
 func newMessage(ctx context.Context, m interface{}) *message.Message {
+	spew.Dump(m)
 	data, err := json.Marshal(m)
 	if err != nil {
 		panic(err)
