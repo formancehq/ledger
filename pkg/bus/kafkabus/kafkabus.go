@@ -6,11 +6,14 @@ import (
 	"github.com/ThreeDotsLabs/watermill-kafka/v2/pkg/kafka"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"go.uber.org/fx"
+	"log"
+	"os"
 )
 
-func NewSaramaConfig(clientId string) *sarama.Config {
+func NewSaramaConfig(clientId string, version sarama.KafkaVersion) *sarama.Config {
+	sarama.Logger = log.New(os.Stdout, "sarama: ", log.LstdFlags)
 	config := sarama.NewConfig()
-	config.Version = sarama.V1_0_0_0
+	config.Version = version
 	config.Consumer.Return.Errors = true
 	config.Producer.Return.Successes = true
 	config.ClientID = clientId
@@ -37,7 +40,10 @@ func NewKafkaSubscriber(logger watermill.LoggerAdapter, config *sarama.Config, b
 
 func Module(clientId string, brokers ...string) fx.Option {
 	return fx.Options(
-		fx.Supply(NewSaramaConfig(clientId)),
+		fx.Supply(sarama.V1_0_0_0),
+		fx.Provide(func(version sarama.KafkaVersion) *sarama.Config {
+			return NewSaramaConfig(clientId, version)
+		}),
 		fx.Provide(func(logger watermill.LoggerAdapter, config *sarama.Config) (*kafka.Publisher, error) {
 			return NewKafkaPublisher(logger, config, brokers)
 		}),

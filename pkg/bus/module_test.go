@@ -30,6 +30,7 @@ func TestModuleKafka(t *testing.T) {
 	app := fxtest.New(t,
 		Module(),
 		kafkabus.Module("ledger", broker.Addr()),
+		fx.Replace(sarama.MinVersion),
 		fx.Invoke(func(p message.Publisher, s message.Subscriber) {
 			assert.IsType(t, &kafka.Publisher{}, p)
 			assert.IsType(t, &kafka.Subscriber{}, s)
