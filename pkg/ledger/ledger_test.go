@@ -246,7 +246,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	})
 }
 
-func TestTransactionExpectedBalances(t *testing.T) {
+func TestTransactionExpectedVolumes(t *testing.T) {
 	with(func(l *Ledger) {
 		batch := []core.TransactionData{
 			{
@@ -291,19 +291,31 @@ func TestTransactionExpectedBalances(t *testing.T) {
 			},
 		}
 
-		balances, _, err := l.Commit(context.Background(), batch)
-		assert.NoError(t, err)
+		volumes, _, err := l.Commit(context.Background(), batch)
+		if !assert.NoError(t, err) {
+			return
+		}
 
-		assert.EqualValues(t, balances, Balances{
-			"player": map[string]int64{
-				"USD": 100,
-				"EUR": 50,
+		if !assert.EqualValues(t, volumes, Volumes{
+			"player": map[string]map[string]int64{
+				"USD": {
+					"input":  100,
+					"output": 0,
+				},
+				"EUR": {
+					"input":  100,
+					"output": 50,
+				},
 			},
-			"player2": map[string]int64{
-				"EUR": 150,
+			"player2": map[string]map[string]int64{
+				"EUR": {
+					"input":  150,
+					"output": 0,
+				},
 			},
-		})
-
+		}) {
+			return
+		}
 	})
 }
 
