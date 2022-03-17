@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
@@ -184,9 +184,9 @@ func TestContainers(t *testing.T) {
 			name: "event-bus",
 			init: func(v *viper.Viper) {},
 			options: []fx.Option{
-				fx.Invoke(func(subscriber message.Subscriber, resolver *ledger.Resolver) error {
+				fx.Invoke(func(ch *gochannel.GoChannel, resolver *ledger.Resolver) error {
 					ctx := context.Background()
-					messages, err := subscriber.Subscribe(ctx, bus.FallbackTopic)
+					messages, err := ch.Subscribe(ctx, bus.FallbackTopic)
 					if err != nil {
 						return err
 					}

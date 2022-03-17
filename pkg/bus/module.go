@@ -17,14 +17,18 @@ func NewInternalPublisher(logger watermill.LoggerAdapter) *gochannel.GoChannel {
 }
 
 func DefaultPublisherModule() fx.Option {
-	return fx.Provide(fx.Annotate(NewInternalPublisher, fx.As(new(message.Publisher)), fx.As(new(message.Subscriber))))
+	return fx.Options(
+		fx.Provide(NewInternalPublisher),
+		fx.Provide(func(ch *gochannel.GoChannel) message.Publisher {
+			return ch
+		}),
+	)
 }
 
 func Module() fx.Option {
 	return fx.Options(
 		LedgerMonitorModule(),
 		LoggingModule(),
-		RouterModule(),
 		DefaultPublisherModule(),
 	)
 }
