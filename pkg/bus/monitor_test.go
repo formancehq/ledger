@@ -23,7 +23,7 @@ func TestMonitor(t *testing.T) {
 		return
 	}
 	m := NewLedgerMonitor(pubSub, WithLedgerMonitorGlobalTopic("testing"))
-	go m.CommittedTransactions(context.Background(), uuid.New(), nil)
+	go m.CommittedTransactions(context.Background(), uuid.New(), nil, nil)
 
 	select {
 	case m := <-messages:

@@ -28,6 +28,7 @@ type baseEvent struct {
 
 type committedTransactions struct {
 	Transactions []ledger.CommitTransactionResult `json:"transactions"`
+	Volumes      ledger.Volumes                   `json:"volumes"`
 }
 
 type savedMetadata struct {

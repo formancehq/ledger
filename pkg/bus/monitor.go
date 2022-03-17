@@ -51,9 +51,10 @@ func (l *ledgerMonitor) process(ctx context.Context, ledger string, event string
 	return
 }
 
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, results []ledger.CommitTransactionResult) {
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, results []ledger.CommitTransactionResult, volumes ledger.Volumes) {
 	l.process(ctx, ledger, CommittedTransactions, committedTransactions{
 		Transactions: results,
+		Volumes:      volumes,
 	})
 }
 

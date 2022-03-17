@@ -221,7 +221,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Volumes
 	}
 	defer unlock(ctx)
 
-	balances, ret, err := l.processTx(ctx, ts)
+	volumes, ret, err := l.processTx(ctx, ts)
 	if err != nil {
 		return nil, ret, err
 	}
@@ -254,9 +254,9 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Volumes
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.name, ret)
+	l.monitor.CommittedTransactions(ctx, l.name, ret, volumes)
 
-	return balances, ret, nil
+	return volumes, ret, nil
 }
 
 func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
