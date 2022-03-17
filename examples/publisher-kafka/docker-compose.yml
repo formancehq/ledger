@@ -35,6 +35,6 @@ services:
     environment:
       CGO_ENABLED: 0
       NUMARY_DEBUG: "true"
-      NUMARY_EVENT_BUS_KAFKA_ENABLED: "true"
-      NUMARY_EVENT_BUS_KAFKA_BROKER: "kafka:9092"
-      NUMARY_EVENT_BUS_TOPIC: "*:default" # Send all to 'default' topic
+      NUMARY_PUBLISHER_KAFKA_ENABLED: "true"
+      NUMARY_PUBLISHER_KAFKA_BROKER: "kafka:9092"
+      NUMARY_PUBLISHER_TOPIC_MAPPING: "*:default" # Send all to 'default' topic

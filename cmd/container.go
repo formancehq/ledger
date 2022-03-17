@@ -12,6 +12,7 @@ import (
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
+	"github.com/numary/ledger/pkg/bus/httpbus"
 	"github.com/numary/ledger/pkg/bus/kafkabus"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
@@ -45,22 +46,25 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
 	sharedlogging.SetFactory(loggerFactory)
 
-	topics := v.GetStringSlice(eventBusTopicFlag)
-	computedTopics := make(map[string]string)
+	topics := v.GetStringSlice(publisherTopicMappingFlag)
+	mapping := make(map[string]string)
 	for _, topic := range topics {
 		parts := strings.SplitN(topic, ":", 2)
 		if len(parts) != 2 {
 			panic("invalid topic flag")
 		}
-		computedTopics[parts[0]] = parts[1]
+		mapping[parts[0]] = parts[1]
 	}
 
 	options = append(options, bus.Module())
 	options = append(options, bus.ProvideMonitorOption(func() bus.MonitorOption {
-		return bus.WithLedgerMonitorTopics(computedTopics)
+		return bus.WithLedgerMonitorTopics(mapping)
 	}))
-	if v.GetBool(eventBusKafkaEnabledFlag) {
-		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(eventBusKafkaBrokerFlag)...))
+	switch {
+	case v.GetBool(publisherHttpEnabledFlag):
+		options = append(options, httpbus.Module())
+	case v.GetBool(publisherKafkaEnabledFlag):
+		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(publisherBusKafkaBrokerFlag)...))
 	}
 
 	// Handle OpenTelemetry

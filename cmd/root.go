@@ -44,9 +44,10 @@ const (
 	otelMetricsExporterOTLPModeFlag      = "otel-metrics-exporter-otlp-mode"
 	otelMetricsExporterOTLPEndpointFlag  = "otel-metrics-exporter-otlp-endpoint"
 	otelMetricsExporterOTLPInsecureFlag  = "otel-metrics-exporter-otlp-insecure"
-	eventBusKafkaEnabledFlag             = "event-bus-kafka-enabled"
-	eventBusKafkaBrokerFlag              = "event-bus-kafka-broker"
-	eventBusTopicFlag                    = "event-bus-topic"
+	publisherKafkaEnabledFlag            = "publisher-kafka-enabled"
+	publisherBusKafkaBrokerFlag          = "publisher-kafka-broker"
+	publisherTopicMappingFlag            = "publisher-topic-mapping"
+	publisherHttpEnabledFlag             = "publisher-http-enabled"
 )
 
 var (
@@ -133,9 +134,10 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
-	root.PersistentFlags().Bool(eventBusKafkaEnabledFlag, false, "Use kafka as event bus")
-	root.PersistentFlags().StringSlice(eventBusKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
-	root.PersistentFlags().StringSlice(eventBusTopicFlag, []string{}, "Define mapping between internal event types and topics")
+	root.PersistentFlags().Bool(publisherKafkaEnabledFlag, false, "Publish write events to kafka")
+	root.PersistentFlags().StringSlice(publisherBusKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
+	root.PersistentFlags().StringSlice(publisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
+	root.PersistentFlags().Bool(publisherHttpEnabledFlag, false, "Sent write event to http endpoint")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
