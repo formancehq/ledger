@@ -425,5 +425,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 	if err != nil {
 		return err
 	}
+
+	l.monitor.SavedMetadata(ctx, l.name, targetType, targetID, m)
 	return nil
 }
