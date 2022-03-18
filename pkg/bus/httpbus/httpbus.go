@@ -10,8 +10,15 @@ import (
 
 func NewPublisher(logger watermill.LoggerAdapter, httpClient *http.Client) (*wHttp.Publisher, error) {
 	return wHttp.NewPublisher(wHttp.PublisherConfig{
-		MarshalMessageFunc: wHttp.DefaultMarshalMessageFunc,
-		Client:             httpClient,
+		MarshalMessageFunc: func(url string, msg *message.Message) (*http.Request, error) {
+			req, err := wHttp.DefaultMarshalMessageFunc(url, msg)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Content-Type", "application/json")
+			return req, nil
+		},
+		Client: httpClient,
 	}, logger)
 }
 
