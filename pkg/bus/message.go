@@ -16,7 +16,9 @@ func newMessage(ctx context.Context, m interface{}) *message.Message {
 	if err != nil {
 		panic(err)
 	}
-	return message.NewMessage(uuid.New(), data)
+	msg := message.NewMessage(uuid.New(), data)
+	msg.SetContext(ctx)
+	return msg
 }
 
 type baseEvent struct {
