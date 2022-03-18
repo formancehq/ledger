@@ -16,7 +16,7 @@ services:
       service: ledger
     depends_on:
       - postgres
-      - echoer
+      - listener
     image: golang:1.16-alpine
     entrypoint: go run main.go server start
     volumes:
