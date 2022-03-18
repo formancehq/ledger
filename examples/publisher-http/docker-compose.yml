@@ -1,0 +1,29 @@
+---
+volumes:
+  postgres:
+services:
+  postgres:
+    extends:
+      file: ../../docker-compose.yml
+      service: postgres
+  listener:
+    image: caddy
+    volumes:
+    - ./Caddyfile:/etc/caddy/Caddyfile
+  ledger:
+    extends:
+      file: ../../docker-compose.yml
+      service: ledger
+    depends_on:
+      - postgres
+      - listener
+    image: golang:1.16-alpine
+    entrypoint: go run main.go server start
+    volumes:
+      - ../..:/src
+    working_dir: /src
+    environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"
+      NUMARY_PUBLISHER_HTTP_ENABLED: "true"
+      NUMARY_PUBLISHER_TOPIC_MAPPING: "*:http://listener:8080"

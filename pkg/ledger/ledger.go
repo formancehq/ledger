@@ -35,15 +35,17 @@ var DefaultContracts = []core.Contract{
 type Ledger struct {
 	locker Locker
 	// TODO: We could remove this field since it is present in store
-	name  string
-	store storage.Store
+	name    string
+	store   storage.Store
+	monitor Monitor
 }
 
-func NewLedger(name string, store storage.Store, locker Locker) (*Ledger, error) {
+func NewLedger(name string, store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
 	return &Ledger{
-		store:  store,
-		name:   name,
-		locker: locker,
+		store:   store,
+		name:    name,
+		locker:  locker,
+		monitor: monitor,
 	}, nil
 }
 
@@ -55,14 +57,14 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-type Balances map[string]map[string]int64
+type Volumes map[string]map[string]map[string]int64 // Account/Asset/"input"|"output"
 
 type CommitTransactionResult struct {
 	core.Transaction
 	Err *TransactionCommitError `json:"error,omitempty"`
 }
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
 	timestamp := time.Now().Format(time.RFC3339)
 
 	startId := int64(0)
@@ -86,7 +88,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Bala
 	contracts = append(contracts, DefaultContracts...)
 
 	ret := make([]CommitTransactionResult, 0)
-	aggregatedBalances := make(map[string]map[string]int64)
+	aggregatedVolumes := Volumes{}
 	hasError := false
 
 	txs := make([]core.Transaction, 0)
@@ -118,7 +120,7 @@ txLoop:
 			continue txLoop
 		}
 
-		rf := map[string]map[string]int64{}
+		rf := Volumes{}
 		for _, p := range ts[i].Postings {
 			if p.Amount < 0 {
 				commitError(NewTransactionCommitError(i, NewValidationError("negative amount")))
@@ -137,16 +139,22 @@ txLoop:
 				continue txLoop
 			}
 			if _, ok := rf[p.Source]; !ok {
-				rf[p.Source] = map[string]int64{}
+				rf[p.Source] = map[string]map[string]int64{}
+			}
+			if _, ok := rf[p.Source][p.Asset]; !ok {
+				rf[p.Source][p.Asset] = map[string]int64{"input": 0, "output": 0}
 			}
 
-			rf[p.Source][p.Asset] += p.Amount
+			rf[p.Source][p.Asset]["output"] += p.Amount
 
 			if _, ok := rf[p.Destination]; !ok {
-				rf[p.Destination] = map[string]int64{}
+				rf[p.Destination] = map[string]map[string]int64{}
+			}
+			if _, ok := rf[p.Destination][p.Asset]; !ok {
+				rf[p.Destination][p.Asset] = map[string]int64{"input": 0, "output": 0}
 			}
 
-			rf[p.Destination][p.Asset] -= p.Amount
+			rf[p.Destination][p.Asset]["input"] += p.Amount
 		}
 
 		for addr := range rf {
@@ -154,17 +162,22 @@ txLoop:
 				continue
 			}
 
-			balances, ok := aggregatedBalances[addr]
+			_, ok := aggregatedVolumes[addr]
 			if !ok {
-				balances, err = l.store.AggregateBalances(ctx, addr)
+				aggregatedVolumes[addr], err = l.store.AggregateVolumes(ctx, addr)
 				if err != nil {
 					return nil, nil, err
 				}
-				aggregatedBalances[addr] = balances
 			}
 
-			for asset, amount := range rf[addr] {
-				expectedBalance := balances[asset] - amount
+			for asset, volumes := range rf[addr] {
+				if _, ok := aggregatedVolumes[addr][asset]; !ok {
+					aggregatedVolumes[addr][asset] = map[string]int64{
+						"input":  0,
+						"output": 0,
+					}
+				}
+				expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
 				for _, contract := range contracts {
 					if contract.Match(addr) {
 						meta, err := l.store.GetMeta(ctx, "account", addr)
@@ -185,7 +198,8 @@ txLoop:
 						break
 					}
 				}
-				balances[asset] = expectedBalance
+				aggregatedVolumes[addr][asset]["input"] += volumes["input"]
+				aggregatedVolumes[addr][asset]["output"] += volumes["output"]
 			}
 		}
 		ret = append(ret, CommitTransactionResult{
@@ -197,17 +211,17 @@ txLoop:
 		return nil, ret, ErrCommitError
 	}
 
-	return aggregatedBalances, ret, nil
+	return aggregatedVolumes, ret, nil
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	balances, ret, err := l.processTx(ctx, ts)
+	volumes, ret, err := l.processTx(ctx, ts)
 	if err != nil {
 		return nil, ret, err
 	}
@@ -239,10 +253,13 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Balance
 			return nil, nil, errors.Wrap(err, "committing transactions")
 		}
 	}
-	return balances, ret, nil
+
+	l.monitor.CommittedTransactions(ctx, l.name, ret, volumes)
+
+	return volumes, ret, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Balances, []CommitTransactionResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
@@ -289,7 +306,12 @@ func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transactio
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	return l.store.SaveMapping(ctx, mapping)
+	err := l.store.SaveMapping(ctx, mapping)
+	if err != nil {
+		return err
+	}
+	l.monitor.UpdatedMapping(ctx, l.name, mapping)
+	return nil
 }
 
 func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
@@ -314,8 +336,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transa
 	switch err {
 	case ErrCommitError:
 		return nil, ret[0].Err
+	case nil:
+		l.monitor.RevertedTransaction(ctx, l.name, tx, ret[0].Transaction)
+		return &ret[0].Transaction, nil
 	default:
-		return &ret[0].Transaction, err
+		return nil, err
 	}
 }
 
@@ -393,10 +418,11 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 			key,
 			string(value),
 		)
-
 		if err != nil {
 			return err
 		}
+
+		l.monitor.SavedMetadata(ctx, l.name, targetType, targetID, m)
 	}
 	return nil
 }

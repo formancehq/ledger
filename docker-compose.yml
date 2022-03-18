@@ -27,22 +27,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      otlp-exporter:
-        condition: service_started
     ports:
       - "3068:3068"
     environment:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
-      NUMARY_OTEL_TRACES: "true"
-      NUMARY_OTEL_TRACES_EXPORTER: otlp
-      NUMARY_OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
-      NUMARY_OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
-      NUMARY_OTEL_METRICS: "true"
-      NUMARY_OTEL_METRICS_EXPORTER: otlp
-      NUMARY_OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
-      NUMARY_OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"
 
   control:
     image: "ghcr.io/numary/ledger:latest"
@@ -54,7 +44,3 @@ services:
       - "3078:3078"
     environment:
       NUMARY_UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"
-
-  otlp-exporter:
-    image: otel/opentelemetry-collector
-

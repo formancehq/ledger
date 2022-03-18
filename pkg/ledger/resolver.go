@@ -18,21 +18,29 @@ func (fn ResolveOptionFn) apply(r *Resolver) error {
 }
 
 func WithStorageFactory(factory storage.Factory) ResolveOptionFn {
-	return ResolveOptionFn(func(r *Resolver) error {
+	return func(r *Resolver) error {
 		r.storageFactory = factory
 		return nil
-	})
+	}
 }
 
 func WithLocker(locker Locker) ResolveOptionFn {
-	return ResolveOptionFn(func(r *Resolver) error {
+	return func(r *Resolver) error {
 		r.locker = locker
 		return nil
-	})
+	}
+}
+
+func WithMonitor(monitor Monitor) ResolveOptionFn {
+	return func(r *Resolver) error {
+		r.monitor = monitor
+		return nil
+	}
 }
 
 var DefaultResolverOptions = []ResolverOption{
 	WithLocker(NewInMemoryLocker()),
+	WithMonitor(&noOpMonitor{}),
 }
 
 type Resolver struct {
@@ -40,11 +48,13 @@ type Resolver struct {
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
+	monitor           Monitor
 }
 
 func NewResolver(storageFactory storage.Factory, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
+		storageFactory:    storageFactory,
 		initializedStores: map[string]struct{}{},
 	}
 	for _, opt := range options {
@@ -84,7 +94,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	}
 
 ret:
-	return NewLedger(name, store, r.locker)
+	return NewLedger(name, store, r.locker, r.monitor)
 }
 
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`

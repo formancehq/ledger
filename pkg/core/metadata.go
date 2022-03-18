@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 )
 
-const numaryNamespace = "com.numary"
-
-const revertKey = numaryNamespace + ".spec/state/reverts"
+const (
+	numaryNamespace           = "com.numary"
+	revertKey                 = numaryNamespace + ".spec/state/reverts"
+	MetaTargetTypeAccount     = "account"
+	MetaTargetTypeTransaction = "transaction"
+)
 
 type Metadata map[string]json.RawMessage
 

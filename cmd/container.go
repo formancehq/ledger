@@ -11,6 +11,9 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
+	"github.com/numary/ledger/pkg/bus"
+	"github.com/numary/ledger/pkg/bus/httpbus"
+	"github.com/numary/ledger/pkg/bus/kafkabus"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
@@ -28,7 +31,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 )
+
+const ServiceName = "ledger"
 
 func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
@@ -40,10 +46,31 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
 	sharedlogging.SetFactory(loggerFactory)
 
+	topics := v.GetStringSlice(publisherTopicMappingFlag)
+	mapping := make(map[string]string)
+	for _, topic := range topics {
+		parts := strings.SplitN(topic, ":", 2)
+		if len(parts) != 2 {
+			panic("invalid topic flag")
+		}
+		mapping[parts[0]] = parts[1]
+	}
+
+	options = append(options, bus.Module())
+	options = append(options, bus.ProvideMonitorOption(func() bus.MonitorOption {
+		return bus.WithLedgerMonitorTopics(mapping)
+	}))
+	switch {
+	case v.GetBool(publisherHttpEnabledFlag):
+		options = append(options, httpbus.Module())
+	case v.GetBool(publisherKafkaEnabledFlag):
+		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(publisherBusKafkaBrokerFlag)...))
+	}
+
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
 		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.ModuleConfig{
-			ServiceName: "ledger",
+			ServiceName: ServiceName,
 			Version:     Version,
 			Batch:       v.GetBool(otelTracesBatchFlag),
 			Exporter:    v.GetString(otelTracesExporterFlag),
@@ -177,7 +204,7 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 
 		res = append(res, cors.New(cc))
 		if viper.GetBool(otelTracesFlag) {
-			res = append(res, otelgin.Middleware("ledger", otelgin.WithTracerProvider(tp)))
+			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
