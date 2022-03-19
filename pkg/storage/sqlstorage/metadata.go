@@ -17,13 +17,13 @@ func (s *Store) lastMetaID(ctx context.Context, exec executor) (int64, error) {
 }
 
 func (s *Store) LastMetaID(ctx context.Context) (int64, error) {
-	return s.lastMetaID(ctx, s.db)
+	return s.lastMetaID(ctx, s.schema)
 }
 
 func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string) (core.Metadata, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("meta_key", "meta_value")
-	sb.From(s.table("metadata"))
+	sb.From(s.schema.Table("metadata"))
 	sb.Where(
 		sb.And(
 			sb.Equal("meta_target_type", ty),
@@ -71,12 +71,12 @@ func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string
 }
 
 func (s *Store) GetMeta(ctx context.Context, ty string, id string) (core.Metadata, error) {
-	return s.getMeta(ctx, s.db, ty, id)
+	return s.getMeta(ctx, s.schema, ty, id)
 }
 
 func (s *Store) saveMeta(ctx context.Context, exec executor, id int64, timestamp, targetType, targetID, key, value string) error {
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto(s.table("metadata"))
+	ib.InsertInto(s.schema.Table("metadata"))
 	ib.Cols(
 		"meta_id",
 		"meta_target_type",
@@ -98,7 +98,7 @@ func (s *Store) saveMeta(ctx context.Context, exec executor, id int64, timestamp
 }
 
 func (s *Store) SaveMeta(ctx context.Context, id int64, timestamp, targetType, targetID, key, value string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.schema.BeginTx(ctx, nil)
 	if err != nil {
 		return s.error(err)
 	}

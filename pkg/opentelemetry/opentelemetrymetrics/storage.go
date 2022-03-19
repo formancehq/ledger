@@ -65,7 +65,7 @@ type openTelemetryStorageFactory struct {
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *openTelemetryStorageFactory) GetStore(name string) (storage.Store, error) {
+func (o *openTelemetryStorageFactory) GetStore(ctx context.Context, name string) (storage.Store, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -77,7 +77,7 @@ func (o *openTelemetryStorageFactory) GetStore(name string) (storage.Store, erro
 	if err != nil {
 		return nil, errors.New("error creating meters")
 	}
-	store, err := o.underlying.GetStore(name)
+	store, err := o.underlying.GetStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}

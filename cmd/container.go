@@ -40,8 +40,9 @@ import (
 
 const ServiceName = "ledger"
 
-func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
+func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 
+	options := make([]fx.Option, 0)
 	if !v.GetBool(debugFlag) {
 		options = append(options, fx.NopLogger)
 	}
@@ -269,5 +270,5 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		return res
 	}, fx.ParamTags(`optional:"true"`)))
 
-	return fx.New(options...)
+	return fx.New(append(options, userOptions...)...)
 }

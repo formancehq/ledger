@@ -66,8 +66,8 @@ type CachedStorageFactory struct {
 	underlying Factory
 }
 
-func (f *CachedStorageFactory) GetStore(name string) (Store, error) {
-	store, err := f.underlying.GetStore(name)
+func (f *CachedStorageFactory) GetStore(ctx context.Context, name string) (Store, error) {
+	store, err := f.underlying.GetStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}

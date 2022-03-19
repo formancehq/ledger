@@ -15,7 +15,7 @@ func NewStorageInit() *cobra.Command {
 			NewContainer(
 				viper.GetViper(),
 				fx.Invoke(func(storageFactory storage.Factory) error {
-					s, err := storageFactory.GetStore("default")
+					s, err := storageFactory.GetStore(context.Background(), "default")
 					if err != nil {
 						return err
 					}

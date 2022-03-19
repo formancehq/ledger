@@ -36,7 +36,7 @@ func with(f func(l *Ledger)) {
 						close(done)
 					}()
 					name := uuid.New()
-					store, err := storageFactory.GetStore(name)
+					store, err := storageFactory.GetStore(context.Background(), name)
 					if err != nil {
 						return err
 					}

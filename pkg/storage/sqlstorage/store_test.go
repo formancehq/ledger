@@ -114,7 +114,7 @@ func TestStore(t *testing.T) {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, err := storageFactory.GetStore(ledger)
+							store, err := storageFactory.GetStore(ctx, ledger)
 							assert.NoError(t, err)
 
 							assert.NoError(t, err)
@@ -577,7 +577,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	}
 
 	for i := 0; i < pgtesting.MaxConnections; i++ {
-		tx, err := store.DB().BeginTx(context.Background(), nil)
+		tx, err := store.Schema().BeginTx(context.Background(), nil)
 		assert.NoError(t, err)
 		defer tx.Rollback()
 	}
@@ -597,7 +597,7 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	assert.NoError(t, err)
 
-	store, err := driver.NewStore(uuid.New())
+	store, err := driver.NewStore(context.Background(), uuid.New())
 	assert.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())

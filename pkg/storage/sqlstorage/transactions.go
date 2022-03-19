@@ -22,7 +22,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	results := make([]core.Transaction, 0)
 
 	in := sqlbuilder.NewSelectBuilder()
-	in.Select("txid").From(s.table("postings"))
+	in.Select("txid").From(s.schema.Table("postings"))
 	in.GroupBy("txid")
 	in.OrderBy("txid desc")
 	in.Limit(q.Limit)
@@ -55,9 +55,9 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		"p.amount",
 		"p.asset",
 	)
-	sb.From(sb.As(s.table("transactions"), "t"))
+	sb.From(sb.As(s.schema.Table("transactions"), "t"))
 	sb.Where(sb.In("t.id", in))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("t.id desc, p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
@@ -144,7 +144,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 }
 
 func (s *Store) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return s.findTransactions(ctx, s.db, q)
+	return s.findTransactions(ctx, s.schema, q)
 }
 
 func (s *Store) saveTransactions(ctx context.Context, exec executor, ts []core.Transaction) (map[int]error, error) {
@@ -166,7 +166,7 @@ txLoop:
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("transactions"))
+		ib.InsertInto(s.schema.Table("transactions"))
 		ib.Cols("id", "reference", "timestamp", "hash")
 		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
 
@@ -179,7 +179,7 @@ txLoop:
 
 		for i, p := range t.Postings {
 			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("postings"))
+			ib.InsertInto(s.schema.Table("postings"))
 			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
 			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
 
@@ -200,7 +200,7 @@ txLoop:
 
 		for key, value := range t.Metadata {
 			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("metadata"))
+			ib.InsertInto(s.schema.Table("metadata"))
 			ib.Cols("meta_id", "meta_target_type", "meta_target_id", "meta_key", "meta_value", "timestamp")
 			ib.Values(int(nextID), "transaction", fmt.Sprintf("%d", t.ID), key, string(value), t.Timestamp)
 
@@ -224,7 +224,7 @@ txLoop:
 
 func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (map[int]error, error) {
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.schema.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -246,9 +246,9 @@ func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (ma
 func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("t.id", "t.timestamp", "t.hash", "t.reference", "p.source", "p.destination", "p.amount", "p.asset")
-	sb.From(sb.As(s.table("transactions"), "t"))
+	sb.From(sb.As(s.schema.Table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
@@ -301,7 +301,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 }
 
 func (s *Store) GetTransaction(ctx context.Context, txId string) (tx core.Transaction, err error) {
-	return s.getTransaction(ctx, s.db, txId)
+	return s.getTransaction(ctx, s.schema, txId)
 }
 
 func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
@@ -316,9 +316,9 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 		"p.amount",
 		"p.asset",
 	)
-	sb.From(sb.As(s.table("transactions"), "t"))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
-	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.table("transactions")))
+	sb.From(sb.As(s.schema.Table("transactions"), "t"))
+	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
+	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.schema.Table("transactions")))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 	sharedlogging.GetLogger(ctx).Debug(sqlq)
@@ -366,5 +366,5 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 }
 
 func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
-	return s.lastTransaction(ctx, s.db)
+	return s.lastTransaction(ctx, s.schema)
 }

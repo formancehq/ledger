@@ -22,21 +22,12 @@ var migrations embed.FS
 type Store struct {
 	flavor  sqlbuilder.Flavor
 	ledger  string
-	db      *sql.DB
+	schema  *Schema
 	onClose func(ctx context.Context) error
 }
 
-func (s *Store) table(name string) string {
-	switch Flavor(s.flavor) {
-	case PostgreSQL:
-		return fmt.Sprintf(`"%s"."%s"`, s.ledger, name)
-	default:
-		return name
-	}
-}
-
-func (s *Store) DB() *sql.DB {
-	return s.db
+func (s *Store) Schema() *Schema {
+	return s.schema
 }
 
 func (s *Store) error(err error) error {
@@ -46,10 +37,10 @@ func (s *Store) error(err error) error {
 	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
-func NewStore(name string, flavor sqlbuilder.Flavor, db *sql.DB, onClose func(ctx context.Context) error) (*Store, error) {
+func NewStore(name string, flavor sqlbuilder.Flavor, schema *Schema, onClose func(ctx context.Context) error) (*Store, error) {
 	return &Store{
 		ledger:  name,
-		db:      db,
+		schema:  schema,
 		flavor:  flavor,
 		onClose: onClose,
 	}, nil
@@ -60,12 +51,12 @@ func (s *Store) Name() string {
 }
 
 func (s *Store) Initialize(ctx context.Context) (bool, error) {
-	sharedlogging.GetLogger(ctx).Debug("initializing db")
+	sharedlogging.GetLogger(ctx).Debug("initializing schema")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.flavor.String()))
 	entries, err := migrations.ReadDir(migrationsDir)
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return false, s.error(err)
 	}
@@ -78,14 +69,14 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("version")
-		sb.From(s.table("migrations"))
+		sb.From(s.schema.Table("migrations"))
 		sb.Where(sb.E("version", version))
 
 		sqlq, args := sb.BuildWithFlavor(s.flavor)
 		sharedlogging.GetLogger(ctx).Debug(sqlq, args)
 
 		// Does not use sql transaction because if the table does not exists, postgres will mark transaction as invalid
-		rows, err := s.db.QueryContext(ctx, sqlq, args...)
+		rows, err := s.schema.QueryContext(ctx, sqlq, args...)
 		if err == nil && rows.Next() {
 			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
 			continue
@@ -112,7 +103,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("migrations"))
+		ib.InsertInto(s.schema.Table("migrations"))
 		ib.Cols("version", "date")
 		ib.Values(version, time.Now())
 

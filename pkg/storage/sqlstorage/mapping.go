@@ -16,7 +16,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("mapping").
-		From(s.table("mapping"))
+		From(s.schema.Table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
@@ -50,7 +50,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 }
 
 func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
-	return s.loadMapping(ctx, s.db)
+	return s.loadMapping(ctx, s.schema)
 }
 
 func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
@@ -61,7 +61,7 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 	}
 
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto(s.table("mapping"))
+	ib.InsertInto(s.schema.Table("mapping"))
 	ib.Cols("mapping_id", "mapping")
 	ib.Values(mappingId, string(data))
 
@@ -74,7 +74,7 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
 		sqlq += " ON CONFLICT (mapping_id) DO UPDATE SET mapping = $2"
 	default:
-		ib.ReplaceInto(s.table("mapping"))
+		ib.ReplaceInto(s.schema.Table("mapping"))
 		sqlq, args = ib.BuildWithFlavor(s.flavor)
 	}
 
@@ -85,5 +85,5 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 }
 
 func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	return s.saveMapping(ctx, s.db, mapping)
+	return s.saveMapping(ctx, s.schema, mapping)
 }

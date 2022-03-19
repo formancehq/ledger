@@ -5,7 +5,7 @@ import (
 )
 
 type Factory interface {
-	GetStore(name string) (Store, error)
+	GetStore(ctx context.Context, name string) (Store, error)
 	Close(ctx context.Context) error
 }
 
@@ -13,8 +13,8 @@ type BuiltInFactory struct {
 	Driver Driver
 }
 
-func (f *BuiltInFactory) GetStore(name string) (Store, error) {
-	return f.Driver.NewStore(name)
+func (f *BuiltInFactory) GetStore(ctx context.Context, name string) (Store, error) {
+	return f.Driver.NewStore(ctx, name)
 }
 
 func (f *BuiltInFactory) Close(ctx context.Context) error {
@@ -27,7 +27,7 @@ func NewDefaultFactory(driver Driver) Factory {
 
 type noOpFactory struct{}
 
-func (f *noOpFactory) GetStore(name string) (Store, error) {
+func (f *noOpFactory) GetStore(ctx context.Context, name string) (Store, error) {
 	return nil, nil
 }
 

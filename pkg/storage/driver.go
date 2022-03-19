@@ -6,8 +6,7 @@ import (
 
 type Driver interface {
 	Initialize(ctx context.Context) error
-	NewStore(name string) (Store, error)
+	NewStore(ctx context.Context, name string) (Store, error)
 	Close(ctx context.Context) error
 	Name() string
-	Check(ctx context.Context) error
 }

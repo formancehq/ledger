@@ -188,8 +188,8 @@ type openTelemetryStorageFactory struct {
 	underlying storage.Factory
 }
 
-func (o openTelemetryStorageFactory) GetStore(name string) (storage.Store, error) {
-	store, err := o.underlying.GetStore(name)
+func (o openTelemetryStorageFactory) GetStore(ctx context.Context, name string) (storage.Store, error) {
+	store, err := o.underlying.GetStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}

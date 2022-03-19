@@ -308,12 +308,12 @@ func TestTooManyClient(t *testing.T) {
 			return
 		}
 
-		store, err := factory.GetStore("quickstart")
+		store, err := factory.GetStore(context.Background(), "quickstart")
 		assert.NoError(t, err)
 
 		// Grab all potential connections
 		for i := 0; i < pgtesting.MaxConnections; i++ {
-			tx, err := store.(*sqlstorage.Store).DB().BeginTx(context.Background(), &sql.TxOptions{})
+			tx, err := store.(*sqlstorage.Store).Schema().BeginTx(context.Background(), &sql.TxOptions{})
 			assert.NoError(t, err)
 			defer tx.Rollback()
 		}

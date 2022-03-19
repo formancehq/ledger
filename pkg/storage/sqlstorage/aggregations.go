@@ -10,7 +10,7 @@ func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, er
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("count(*)")
-	sb.From(s.table("transactions"))
+	sb.From(s.schema.Table("transactions"))
 
 	sqlq, args := sb.Build()
 
@@ -20,7 +20,7 @@ func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, er
 }
 
 func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
-	return s.countTransactions(ctx, s.db)
+	return s.countTransactions(ctx, s.schema)
 }
 
 func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error) {
@@ -29,7 +29,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error)
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("count(*)").
-		From(s.table("addresses")).
+		From(s.schema.Table("addresses")).
 		BuildWithFlavor(s.flavor)
 
 	sqlq, args := sb.Build()
@@ -39,7 +39,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error)
 }
 
 func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
-	return s.countAccounts(ctx, s.db)
+	return s.countAccounts(ctx, s.schema)
 }
 
 func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
@@ -49,7 +49,7 @@ func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
 
 	sb.
 		Select("count(*)").
-		From(s.table("metadata"))
+		From(s.schema.Table("metadata"))
 
 	sqlq, args := sb.BuildWithFlavor(s.flavor)
 
@@ -60,7 +60,7 @@ func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
 }
 
 func (s *Store) CountMeta(ctx context.Context) (int64, error) {
-	return s.countMeta(ctx, s.db)
+	return s.countMeta(ctx, s.schema)
 }
 
 func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
@@ -79,7 +79,7 @@ func (s *Store) aggregateBalances(ctx context.Context, exec executor, address st
 }
 
 func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
-	return s.aggregateBalances(ctx, s.db, address)
+	return s.aggregateBalances(ctx, s.schema, address)
 }
 
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (map[string]map[string]int64, error) {
@@ -88,13 +88,13 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	agg1 := sqlbuilder.NewSelectBuilder()
 	agg1.
 		Select("asset", "'_out'", "sum(amount)").
-		From(s.table("postings")).Where(agg1.Equal("source", address)).
+		From(s.schema.Table("postings")).Where(agg1.Equal("source", address)).
 		GroupBy("asset")
 
 	agg2 := sqlbuilder.NewSelectBuilder()
 	agg2.
 		Select("asset", "'_in'", "sum(amount)").
-		From(s.table("postings")).Where(agg2.Equal("destination", address)).
+		From(s.schema.Table("postings")).Where(agg2.Equal("destination", address)).
 		GroupBy("asset")
 
 	union := sqlbuilder.Union(agg1, agg2)
@@ -141,5 +141,5 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 }
 
 func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
-	return s.aggregateVolumes(ctx, s.db, address)
+	return s.aggregateVolumes(ctx, s.schema, address)
 }

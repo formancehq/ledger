@@ -98,7 +98,7 @@ func TestScriptControllerPreview(t *testing.T) {
 		res := controllers.ScriptResponse{}
 		internal.Decode(t, rec.Body, &res)
 
-		store, err := f.GetStore(ledger)
+		store, err := f.GetStore(context.Background(), ledger)
 		assert.NoError(t, err)
 
 		cursor, err := store.FindTransactions(context.Background(), query.Query{})

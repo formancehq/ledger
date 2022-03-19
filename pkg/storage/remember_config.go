@@ -25,8 +25,8 @@ type RememberConfigStorageFactory struct {
 	Factory
 }
 
-func (f *RememberConfigStorageFactory) GetStore(name string) (Store, error) {
-	store, err := f.Factory.GetStore(name)
+func (f *RememberConfigStorageFactory) GetStore(ctx context.Context, name string) (Store, error) {
+	store, err := f.Factory.GetStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}

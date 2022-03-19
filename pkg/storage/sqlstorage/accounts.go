@@ -20,7 +20,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("address").
-		From(s.table("addresses")).
+		From(s.schema.Table("addresses")).
 		GroupBy("address").
 		OrderBy("address desc").
 		Limit(q.Limit)
@@ -76,5 +76,5 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 }
 
 func (s *Store) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return s.findAccounts(ctx, s.db, q)
+	return s.findAccounts(ctx, s.schema, q)
 }

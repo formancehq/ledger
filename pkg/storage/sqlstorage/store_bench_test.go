@@ -2,7 +2,6 @@ package sqlstorage_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -13,9 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"os"
-	"path"
 	"testing"
-	"time"
 )
 
 func BenchmarkStore(b *testing.B) {
@@ -29,22 +26,26 @@ func BenchmarkStore(b *testing.B) {
 	defer pgServer.Close()
 
 	type driverConfig struct {
-		driver     string
-		connString sqlstorage.ConnStringResolver
-		flavor     sqlbuilder.Flavor
+		driver    string
+		dbFactory func() (sqlstorage.DB, error)
+		flavor    sqlbuilder.Flavor
 	}
 	var drivers = []driverConfig{
 		{
 			driver: "sqlite3",
-			connString: func(name string) string {
-				return sqlstorage.SQLiteFileConnString(path.Join(os.TempDir(), name))
+			dbFactory: func() (sqlstorage.DB, error) {
+				return sqlstorage.NewSQLiteDB(os.TempDir(), uuid.New()), nil
 			},
 			flavor: sqlbuilder.SQLite,
 		},
 		{
 			driver: "pgx",
-			connString: func(name string) string {
-				return pgServer.ConnString()
+			dbFactory: func() (sqlstorage.DB, error) {
+				db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
+				if err != nil {
+					return nil, err
+				}
+				return sqlstorage.NewPostgresDB(db), nil
 			},
 			flavor: sqlbuilder.PostgreSQL,
 		},
@@ -73,26 +74,18 @@ func BenchmarkStore(b *testing.B) {
 			b.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(b *testing.B) {
 				ledger := uuid.New()
 
-				db, err := sql.Open(driver.driver, driver.connString(ledger))
-				assert.NoError(b, err)
-
-				counter := 0
-				for {
-					err = db.Ping()
-					if err != nil {
-						if counter < 5 {
-							counter++
-							<-time.After(time.Second)
-							continue
-						}
-						assert.Fail(b, "timeout waiting database: %s", err)
-						return
-					}
-					break
+				db, err := driver.dbFactory()
+				if !assert.NoError(b, err) {
+					return
 				}
 
-				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, func(ctx context.Context) error {
-					return db.Close()
+				schema, err := db.Schema(context.Background(), uuid.New())
+				if !assert.NoError(b, err) {
+					return
+				}
+
+				store, err := sqlstorage.NewStore(ledger, driver.flavor, schema, func(ctx context.Context) error {
+					return db.Close(context.Background())
 				})
 				assert.NoError(b, err)
 				defer store.Close(context.Background())
