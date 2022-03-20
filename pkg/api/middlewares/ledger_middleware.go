@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -32,6 +33,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 
 		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
+			spew.Dump(err)
 			controllers.ResponseError(c, err)
 			return
 		}

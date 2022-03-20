@@ -5,7 +5,6 @@ import (
 	"context"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/pborman/uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"os"
@@ -14,10 +13,6 @@ import (
 )
 
 func TestServer(t *testing.T) {
-
-	if testing.Verbose() {
-		logrus.SetLevel(logrus.DebugLevel)
-	}
 
 	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(t, err)
@@ -68,7 +63,7 @@ func TestServer(t *testing.T) {
 				os.Setenv(e.key, e.value)
 				defer os.Setenv(e.key, oldValue)
 			}
-			args := []string{"server", "start", "--persist-config=false"}
+			args := []string{"server", "start", "--persist-config=false", "--debug"}
 			args = append(args, tc.args...)
 			root := NewRootCommand()
 			root.SetArgs(args)
@@ -117,8 +112,12 @@ func TestServer(t *testing.T) {
 					"amount": 100
 				}]
 			}`))
-			assert.NoError(t, err)
-			assert.Equal(t, http.StatusOK, res.StatusCode)
+			if !assert.NoError(t, err) {
+				return
+			}
+			if !assert.Equal(t, http.StatusOK, res.StatusCode) {
+				return
+			}
 		})
 	}
 

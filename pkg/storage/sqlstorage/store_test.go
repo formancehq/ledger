@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -115,13 +117,15 @@ func TestStore(t *testing.T) {
 							}()
 							ledger := uuid.New()
 							store, err := storageFactory.GetStore(ctx, ledger)
-							assert.NoError(t, err)
-
-							assert.NoError(t, err)
+							if err != nil {
+								return err
+							}
 							defer store.Close(context.Background())
 
 							_, err = store.Initialize(context.Background())
-							assert.NoError(t, err)
+							if err != nil {
+								return err
+							}
 
 							tf.fn(t, store.(*sqlstorage.Store))
 							return nil
@@ -588,6 +592,10 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 }
 
 func TestInitializeStore(t *testing.T) {
+
+	l := logrus.New()
+	l.Level = logrus.DebugLevel
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	driver, stopFn, err := ledgertesting.Driver()
 	assert.NoError(t, err)

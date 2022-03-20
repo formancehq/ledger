@@ -22,11 +22,11 @@ var migrations embed.FS
 type Store struct {
 	flavor  sqlbuilder.Flavor
 	ledger  string
-	schema  *Schema
+	schema  Schema
 	onClose func(ctx context.Context) error
 }
 
-func (s *Store) Schema() *Schema {
+func (s *Store) Schema() Schema {
 	return s.schema
 }
 
@@ -37,7 +37,7 @@ func (s *Store) error(err error) error {
 	return errorFromFlavor(Flavor(s.flavor), err)
 }
 
-func NewStore(name string, flavor sqlbuilder.Flavor, schema *Schema, onClose func(ctx context.Context) error) (*Store, error) {
+func NewStore(name string, flavor sqlbuilder.Flavor, schema Schema, onClose func(ctx context.Context) error) (*Store, error) {
 	return &Store{
 		ledger:  name,
 		schema:  schema,

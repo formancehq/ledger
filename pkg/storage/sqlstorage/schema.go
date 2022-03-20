@@ -4,31 +4,71 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/numary/go-libs/sharedlogging"
 	"path"
 )
 
-type Schema struct {
+type Schema interface {
+	executor
+	Initialize(ctx context.Context) error
+	Table(name string) string
+	Close(ctx context.Context) error
+	BeginTx(ctx context.Context, s *sql.TxOptions) (*sql.Tx, error)
+}
+
+type baseSchema struct {
 	*sql.DB
-	prefix  string
 	closeDb bool
+	name    string
 }
 
-func (s *Schema) Table(name string) string {
-	if s.prefix == "" {
-		return name
-	}
-	return fmt.Sprintf(`"%s".%s`, s.prefix, name)
+func (s *baseSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	sharedlogging.GetLogger(ctx).Debugf("QueryContext: %s %s", query, args)
+	return s.DB.QueryContext(ctx, query, args...)
 }
-
-func (s *Schema) Close(ctx context.Context) error {
+func (s *baseSchema) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	sharedlogging.GetLogger(ctx).Debugf("QueryRowContext: %s %s", query, args)
+	return s.DB.QueryRowContext(ctx, query, args...)
+}
+func (s *baseSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+	return s.DB.ExecContext(ctx, query, args...)
+}
+func (s *baseSchema) Close(ctx context.Context) error {
 	if s.closeDb {
 		return s.DB.Close()
 	}
 	return nil
 }
 
+func (s *baseSchema) Table(name string) string {
+	return name
+}
+
+func (s *baseSchema) Initialize(ctx context.Context) error {
+	return nil
+}
+
+type PGSchema struct {
+	baseSchema
+	prefix string
+}
+
+func (s *PGSchema) Table(name string) string {
+	return fmt.Sprintf(`"%s".%s`, s.prefix, name)
+}
+
+func (s *PGSchema) Initialize(ctx context.Context) error {
+	_, err := s.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS \"%s\"", s.name))
+	return err
+}
+
+type SQLiteSchema struct {
+	baseSchema
+}
+
 type DB interface {
-	Schema(ctx context.Context, name string) (*Schema, error)
+	Schema(ctx context.Context, name string) (Schema, error)
 	Close(ctx context.Context) error
 }
 
@@ -36,9 +76,12 @@ type postgresDB struct {
 	db *sql.DB
 }
 
-func (p *postgresDB) Schema(ctx context.Context, name string) (*Schema, error) {
-	return &Schema{
-		DB:     p.db,
+func (p *postgresDB) Schema(ctx context.Context, name string) (Schema, error) {
+	return &PGSchema{
+		baseSchema: baseSchema{
+			DB:   p.db,
+			name: name,
+		},
 		prefix: name,
 	}, nil
 }
@@ -58,7 +101,7 @@ type sqliteDB struct {
 	dbName    string
 }
 
-func (p *sqliteDB) Schema(ctx context.Context, name string) (*Schema, error) {
+func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
 	path := path.Join(
 		p.directory,
 		fmt.Sprintf("%s_%s.schema", p.dbName, name),
@@ -68,9 +111,12 @@ func (p *sqliteDB) Schema(ctx context.Context, name string) (*Schema, error) {
 		return nil, err
 	}
 
-	return &Schema{
-		DB:      db,
-		closeDb: true,
+	return &SQLiteSchema{
+		baseSchema: baseSchema{
+			name:    name,
+			DB:      db,
+			closeDb: true,
+		},
 	}, nil
 }
 

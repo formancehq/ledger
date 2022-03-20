@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -222,25 +223,30 @@ func TestCommitTransaction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			withNewModule(t, fx.Invoke(func(api *API) {
-				id := uuid.New()
-				doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
-					data, err := json.Marshal(tx)
-					assert.NoError(t, err)
+			withNewModule(t, fx.Invoke(func(lc fx.Lifecycle, api *API) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						id := uuid.New()
+						doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
+							data, err := json.Marshal(tx)
+							assert.NoError(t, err)
 
-					rec := httptest.NewRecorder()
-					req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
-					req.Header.Set("Content-Type", "application/json")
+							rec := httptest.NewRecorder()
+							req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
+							req.Header.Set("Content-Type", "application/json")
 
-					api.ServeHTTP(rec, req)
-					return rec
-				}
-				for i := 0; i < len(tc.transactions)-1; i++ {
-					rsp := doRequest(tc.transactions[i])
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				}
-				rsp := doRequest(tc.transactions[len(tc.transactions)-1])
-				assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+							api.ServeHTTP(rec, req)
+							return rec
+						}
+						for i := 0; i < len(tc.transactions)-1; i++ {
+							rsp := doRequest(tc.transactions[i])
+							assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						}
+						rsp := doRequest(tc.transactions[len(tc.transactions)-1])
+						assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+						return nil
+					},
+				})
 			}))
 
 		})

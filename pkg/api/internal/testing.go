@@ -183,12 +183,12 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}
 }
 
-func RunSubTest(t *testing.T, name string, fn interface{}, opts ...fx.Option) {
+func RunSubTest(t *testing.T, name string, opts ...fx.Option) {
 	t.Run(name, func(t *testing.T) {
-		RunTest(t, fn, opts...)
+		RunTest(t, opts...)
 	})
 }
 
-func RunTest(t *testing.T, fn interface{}, opts ...fx.Option) {
-	WithNewModule(t, append(opts, fx.Invoke(fn))...)
+func RunTest(t *testing.T, opts ...fx.Option) {
+	WithNewModule(t, opts...)
 }

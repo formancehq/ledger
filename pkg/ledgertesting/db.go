@@ -23,24 +23,20 @@ func Driver() (storage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
-		return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func() (sqlstorage.DB, error) {
-			return sqlstorage.NewSQLiteDB(os.TempDir(), id), nil
-		}), func() {}, nil
+		return sqlstorage.NewDriver("sqlite", sqlstorage.SQLite, sqlstorage.NewSQLiteDB(os.TempDir(), id)), func() {}, nil
 	case "postgres":
 		pgServer, err := pgtesting.PostgresServer()
 		if err != nil {
 			return nil, nil, err
 		}
-		return sqlstorage.NewOpenCloseDBDriver(
+		db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
+		if err != nil {
+			return nil, nil, err
+		}
+		return sqlstorage.NewDriver(
 				"postgres",
 				sqlstorage.PostgreSQL,
-				func() (sqlstorage.DB, error) {
-					db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
-					if err != nil {
-						return nil, err
-					}
-					return sqlstorage.NewPostgresDB(db), nil
-				},
+				sqlstorage.NewPostgresDB(db),
 			), func() {
 				_ = pgServer.Close()
 			}, nil
