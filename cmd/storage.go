@@ -187,3 +187,30 @@ func NewStorageScan() *cobra.Command {
 	}
 	return cmd
 }
+
+func NewStorageDelete() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:  "delete",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := NewContainer(
+				viper.GetViper(),
+				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							name := args[0]
+							err := storageDriver.DeleteStore(ctx, name)
+							if err != nil {
+								return err
+							}
+							fmt.Println("Storage deleted!")
+							return nil
+						},
+					})
+				}),
+			)
+			return app.Start(cmd.Context())
+		},
+	}
+	return cmd
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
+	"os"
 	"path"
 )
 
@@ -17,6 +18,7 @@ type Schema interface {
 	BeginTx(ctx context.Context, s *sql.TxOptions) (*sql.Tx, error)
 	Flavor() sqlbuilder.Flavor
 	Name() string
+	Delete(ctx context.Context) error
 }
 
 type baseSchema struct {
@@ -74,12 +76,26 @@ func (s *PGSchema) Flavor() sqlbuilder.Flavor {
 	return sqlbuilder.PostgreSQL
 }
 
+func (s *PGSchema) Delete(ctx context.Context) error {
+	_, err := s.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA \"%s\"", s.name))
+	return err
+}
+
 type SQLiteSchema struct {
 	baseSchema
+	file string
 }
 
 func (s SQLiteSchema) Flavor() sqlbuilder.Flavor {
 	return sqlbuilder.SQLite
+}
+
+func (s SQLiteSchema) Delete(ctx context.Context) error {
+	err := s.baseSchema.DB.Close()
+	if err != nil {
+		return err
+	}
+	return os.Remove(s.file)
 }
 
 type DB interface {
@@ -132,6 +148,7 @@ func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
 			DB:      db,
 			closeDb: true,
 		},
+		file: path,
 	}, nil
 }
 

@@ -116,6 +116,30 @@ func (s *Driver) Initialize(ctx context.Context) error {
 	return err
 }
 
+func (s *Driver) DeleteStore(ctx context.Context, name string) error {
+	if SystemSchema == name {
+		return errors.New("cannot delete system schema")
+	}
+	schema, err := s.db.Schema(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	err = schema.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	b := sqlbuilder.DeleteFrom(s.systemSchema.Table("ledgers"))
+	b = b.Where(b.E("ledger", name))
+	q, args := b.BuildWithFlavor(schema.Flavor())
+	_, err = s.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
 
 	if name == SystemSchema {
