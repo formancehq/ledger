@@ -25,12 +25,12 @@ type RememberConfigStorageDriver struct {
 	Driver
 }
 
-func (f *RememberConfigStorageDriver) NewStore(ctx context.Context, name string) (Store, error) {
-	store, err := f.Driver.NewStore(ctx, name)
+func (f *RememberConfigStorageDriver) NewStore(ctx context.Context, name string) (Store, bool, error) {
+	store, created, err := f.Driver.NewStore(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return NewRememberConfigStorage(store), nil
+	return NewRememberConfigStorage(store), created, nil
 }
 
 func NewRememberConfigStorageDriver(underlying Driver) *RememberConfigStorageDriver {

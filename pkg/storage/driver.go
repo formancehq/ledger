@@ -6,7 +6,7 @@ import (
 
 type Driver interface {
 	Initialize(ctx context.Context) error
-	NewStore(ctx context.Context, name string) (Store, error)
+	NewStore(ctx context.Context, name string) (Store, bool, error)
 	Close(ctx context.Context) error
 	List(ctx context.Context) ([]string, error)
 	Name() string
@@ -18,8 +18,8 @@ func (n noOpDriver) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpDriver) NewStore(ctx context.Context, name string) (Store, error) {
-	return nil, nil
+func (n noOpDriver) NewStore(ctx context.Context, name string) (Store, bool, error) {
+	return nil, false, nil
 }
 
 func (n noOpDriver) Close(ctx context.Context) error {

@@ -158,7 +158,7 @@ func TestContainers(t *testing.T) {
 				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver, storageFactory storage.Driver) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							store, err := storageFactory.NewStore(ctx, "testing")
+							store, _, err := storageFactory.NewStore(ctx, "testing")
 							if err != nil {
 								return err
 							}

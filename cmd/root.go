@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -77,9 +79,12 @@ func NewRootCommand() *cobra.Command {
 				return errors.Wrap(err, "creating storage directory")
 			}
 
+			l := logrus.New()
 			if viper.GetBool(debugFlag) {
-				logrus.StandardLogger().Level = logrus.DebugLevel
+				l.Level = logrus.DebugLevel
 			}
+			loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
+			sharedlogging.SetFactory(loggerFactory)
 			return nil
 		},
 	}
@@ -93,6 +98,7 @@ func NewRootCommand() *cobra.Command {
 	conf.AddCommand(NewConfigInit())
 	store := NewStorage()
 	store.AddCommand(NewStorageInit())
+	store.AddCommand(NewStorageList())
 
 	scriptExec := NewScriptExec()
 	scriptCheck := NewScriptCheck()

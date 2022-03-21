@@ -34,7 +34,7 @@ type driver struct {
 	systemSchema Schema
 }
 
-func (d *driver) register(ctx context.Context, ledger string) error {
+func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
 	q, args := sqlbuilder.
 		InsertInto(d.systemSchema.Table("ledgers")).
 		Cols("ledger", "addedAt").
@@ -42,8 +42,15 @@ func (d *driver) register(ctx context.Context, ledger string) error {
 		SQL("ON CONFLICT DO NOTHING").
 		BuildWithFlavor(sqlbuilder.Flavor(d.flavor))
 
-	_, err := d.systemSchema.ExecContext(ctx, q, args...)
-	return err
+	ret, err := d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := ret.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func (d *driver) List(ctx context.Context) ([]string, error) {
@@ -85,7 +92,7 @@ func (s *driver) Initialize(ctx context.Context) error {
 	}
 	q, args := sqlbuilder.
 		CreateTable(s.systemSchema.Table("ledgers")).
-		Define("ledger varchar(255), addedAt timestamp").
+		Define("ledger varchar(255) primary key, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(sqlbuilder.Flavor(s.flavor))
 
@@ -93,22 +100,26 @@ func (s *driver) Initialize(ctx context.Context) error {
 	return err
 }
 
-func (s *driver) NewStore(ctx context.Context, name string) (storage.Store, error) {
+func (s *driver) NewStore(ctx context.Context, name string) (storage.Store, bool, error) {
 	schema, err := s.db.Schema(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	err = s.register(ctx, name)
+	created, err := s.register(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	err = schema.Initialize(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return NewStore(name, sqlbuilder.Flavor(s.flavor), schema, func(ctx context.Context) error {
+	store, err := NewStore(name, sqlbuilder.Flavor(s.flavor), schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return store, created, nil
 }
 
 func (d *driver) Close(ctx context.Context) error {

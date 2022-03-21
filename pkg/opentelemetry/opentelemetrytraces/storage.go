@@ -188,12 +188,12 @@ type openTelemetryStorageDriver struct {
 	storage.Driver
 }
 
-func (o openTelemetryStorageDriver) NewStore(ctx context.Context, name string) (storage.Store, error) {
-	store, err := o.Driver.NewStore(ctx, name)
+func (o openTelemetryStorageDriver) NewStore(ctx context.Context, name string) (storage.Store, bool, error) {
+	store, created, err := o.Driver.NewStore(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return NewStorageDecorator(store), nil
+	return NewStorageDecorator(store), created, nil
 }
 
 func WrapStorageDriver(underlying storage.Driver) *openTelemetryStorageDriver {

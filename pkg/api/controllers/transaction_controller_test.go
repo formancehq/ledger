@@ -340,7 +340,7 @@ func TestTooManyClient(t *testing.T) {
 					return nil
 				}
 
-				store, err := driver.NewStore(context.Background(), "quickstart")
+				store, _, err := driver.NewStore(context.Background(), "quickstart")
 				assert.NoError(t, err)
 
 				// Grab all potential connections

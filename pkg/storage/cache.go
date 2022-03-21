@@ -66,12 +66,12 @@ type CachedStorageDriver struct {
 	Driver
 }
 
-func (f *CachedStorageDriver) NewStore(ctx context.Context, name string) (Store, error) {
-	store, err := f.Driver.NewStore(ctx, name)
+func (f *CachedStorageDriver) NewStore(ctx context.Context, name string) (Store, bool, error) {
+	store, created, err := f.Driver.NewStore(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return NewCachedStateStorage(store), nil
+	return NewCachedStateStorage(store), created, nil
 }
 
 func NewCachedStorageDriver(underlying Driver) *CachedStorageDriver {
