@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+	"os"
+	"strings"
 )
 
 func NewStorage() *cobra.Command {
@@ -25,10 +28,7 @@ func NewStorageInit() *cobra.Command {
 				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							name, err := cmd.Flags().GetString("name")
-							if err != nil {
-								return err
-							}
+							name := viper.GetString("name")
 							if name == "" {
 								return errors.New("name is empty")
 							}
@@ -57,6 +57,7 @@ func NewStorageInit() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("name", "default", "Ledger name")
+	viper.BindPFlags(cmd.Flags())
 	return cmd
 }
 
@@ -117,6 +118,66 @@ func NewStorageUpgrade() *cobra.Command {
 								fmt.Printf("Storage '%s' left in place\r\n", name)
 							}
 							return nil
+						},
+					})
+				}),
+			)
+			return app.Start(cmd.Context())
+		},
+	}
+	return cmd
+}
+
+func NewStorageScan() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "scan",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := NewContainer(
+				viper.GetViper(),
+				fx.Invoke(func(driver *sqlstorage.Driver, db sqlstorage.DB, lc fx.Lifecycle) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							switch viper.GetString(storageDriverFlag) {
+							case "sqlite":
+								files, err := os.ReadDir(viper.GetString(storageDirFlag))
+								if err != nil {
+									return err
+								}
+								for _, f := range files {
+									if !strings.HasSuffix(f.Name(), ".db") {
+										fmt.Println("Skip file " + f.Name())
+										continue
+									}
+									f := strings.TrimSuffix(f.Name(), ".db")
+									parts := strings.SplitN(f, "_", 2)
+									if len(parts) != 2 {
+										fmt.Println("Skip file " + f + ".db : Bad name")
+										continue
+									}
+									if parts[0] != viper.GetString(storageSQLiteDBNameFlag) {
+										fmt.Println("Skip file " + f + ".db : DB name not mathing")
+										continue
+									}
+									ledgerName := parts[1]
+									if ledgerName == sqlstorage.SystemSchema {
+										continue
+									}
+									fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
+									created, err := driver.Register(cmd.Context(), ledgerName)
+									if err != nil {
+										fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
+										continue
+									}
+									if created {
+										fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
+									} else {
+										fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
+									}
+								}
+								return nil
+							default:
+								return errors.New("Invalid storage driver: " + viper.GetString(storageDriverFlag))
+							}
 						},
 					})
 				}),

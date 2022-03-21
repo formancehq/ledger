@@ -99,6 +99,7 @@ func NewRootCommand() *cobra.Command {
 	store.AddCommand(NewStorageInit())
 	store.AddCommand(NewStorageList())
 	store.AddCommand(NewStorageUpgrade())
+	store.AddCommand(NewStorageScan())
 
 	scriptExec := NewScriptExec()
 	scriptCheck := NewScriptCheck()

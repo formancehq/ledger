@@ -41,22 +41,28 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		options = append(options, fx.Provide(func() (*sql.DB, error) {
 			return OpenSQLDB(PostgreSQL, cfg.PostgresConfig.ConnString)
 		}))
-		options = append(options, fx.Provide(func(db *sql.DB) (*driver, error) {
-			return NewDriver(PostgreSQL.String(), NewPostgresDB(db)), nil
+		options = append(options, fx.Provide(func(db *sql.DB) DB {
+			return NewPostgresDB(db)
 		}))
-		options = append(options, fx.Provide(func(driver *driver) storage.Driver {
-			return driver
+		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
+			return NewDriver(PostgreSQL.String(), db), nil
 		}))
 		options = append(options, health.ProvideHealthCheck(func(db *sql.DB) health.NamedCheck {
 			return health.NewNamedCheck(PostgreSQL.String(), health.CheckFn(db.PingContext))
 		}))
 	case SQLite:
-		options = append(options, fx.Provide(func() (storage.Driver, error) {
-			return NewDriver(SQLite.String(), NewSQLiteDB(cfg.SQLiteConfig.Dir, cfg.SQLiteConfig.DBName)), nil
+		options = append(options, fx.Provide(func() DB {
+			return NewSQLiteDB(cfg.SQLiteConfig.Dir, cfg.SQLiteConfig.DBName)
+		}))
+		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
+			return NewDriver(SQLite.String(), db), nil
 		}))
 	default:
 		panic("Unsupported driver: " + cfg.StorageDriver)
 	}
+	options = append(options, fx.Provide(func(driver *Driver) storage.Driver {
+		return driver
+	}))
 	options = append(options, fx.Invoke(func(driver storage.Driver, lifecycle fx.Lifecycle) error {
 		lifecycle.Append(fx.Hook{
 			OnStart: driver.Initialize,

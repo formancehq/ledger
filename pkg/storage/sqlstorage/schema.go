@@ -119,7 +119,7 @@ type sqliteDB struct {
 func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
 	path := path.Join(
 		p.directory,
-		fmt.Sprintf("%s_%s.schema", p.dbName, name),
+		fmt.Sprintf("%s_%s.db", p.dbName, name),
 	)
 	db, err := OpenSQLDB(SQLite, path)
 	if err != nil {

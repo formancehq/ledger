@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const SystemSchema = "_system"
+
 var sqlDrivers = map[Flavor]struct {
 	driverName string
 }{}
@@ -28,13 +30,13 @@ func init() {
 	UpdateSQLDriverMapping(PostgreSQL, "pgx")
 }
 
-type driver struct {
+type Driver struct {
 	name         string
 	db           DB
 	systemSchema Schema
 }
 
-func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
+func (d *Driver) Register(ctx context.Context, ledger string) (bool, error) {
 	q, args := sqlbuilder.
 		InsertInto(d.systemSchema.Table("ledgers")).
 		Cols("ledger", "addedAt").
@@ -53,7 +55,7 @@ func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
 	return affected > 0, nil
 }
 
-func (d *driver) exists(ctx context.Context, ledger string) (bool, error) {
+func (d *Driver) exists(ctx context.Context, ledger string) (bool, error) {
 	b := sqlbuilder.
 		Select("ledger").
 		From(d.systemSchema.Table("ledgers"))
@@ -67,7 +69,7 @@ func (d *driver) exists(ctx context.Context, ledger string) (bool, error) {
 	return true, nil
 }
 
-func (d *driver) List(ctx context.Context) ([]string, error) {
+func (d *Driver) List(ctx context.Context) ([]string, error) {
 	q, args := sqlbuilder.
 		Select("ledger").
 		From(d.systemSchema.Table("ledgers")).
@@ -90,13 +92,13 @@ func (d *driver) List(ctx context.Context) ([]string, error) {
 	return res, nil
 }
 
-func (s *driver) Name() string {
+func (s *Driver) Name() string {
 	return s.name
 }
 
-func (s *driver) Initialize(ctx context.Context) error {
+func (s *Driver) Initialize(ctx context.Context) error {
 	var err error
-	s.systemSchema, err = s.db.Schema(ctx, "_system")
+	s.systemSchema, err = s.db.Schema(ctx, SystemSchema)
 	if err != nil {
 		return err
 	}
@@ -114,7 +116,11 @@ func (s *driver) Initialize(ctx context.Context) error {
 	return err
 }
 
-func (s *driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+
+	if name == SystemSchema {
+		return nil, false, errors.New("reserved name")
+	}
 
 	exists, err := s.exists(ctx, name)
 	if err != nil {
@@ -128,14 +134,17 @@ func (s *driver) GetStore(ctx context.Context, name string, create bool) (storag
 	if err != nil {
 		return nil, false, err
 	}
-	created, err := s.register(ctx, name)
+
+	created, err := s.Register(ctx, name)
 	if err != nil {
 		return nil, false, err
 	}
+
 	err = schema.Initialize(ctx)
 	if err != nil {
 		return nil, false, err
 	}
+
 	store, err := NewStore(schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	})
@@ -145,7 +154,7 @@ func (s *driver) GetStore(ctx context.Context, name string, create bool) (storag
 	return store, created, nil
 }
 
-func (d *driver) Close(ctx context.Context) error {
+func (d *Driver) Close(ctx context.Context) error {
 	err := d.systemSchema.Close(ctx)
 	if err != nil {
 		return err
@@ -153,8 +162,8 @@ func (d *driver) Close(ctx context.Context) error {
 	return d.db.Close(ctx)
 }
 
-func NewDriver(name string, db DB) *driver {
-	return &driver{
+func NewDriver(name string, db DB) *Driver {
+	return &Driver{
 		db:   db,
 		name: name,
 	}
