@@ -17,9 +17,9 @@ func (fn ResolveOptionFn) apply(r *Resolver) error {
 	return fn(r)
 }
 
-func WithStorageFactory(factory storage.Factory) ResolveOptionFn {
+func WithStorageDriver(factory storage.Driver) ResolveOptionFn {
 	return func(r *Resolver) error {
-		r.storageFactory = factory
+		r.storageDriver = factory
 		return nil
 	}
 }
@@ -44,17 +44,17 @@ var DefaultResolverOptions = []ResolverOption{
 }
 
 type Resolver struct {
-	storageFactory    storage.Factory
+	storageDriver     storage.Driver
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
 	monitor           Monitor
 }
 
-func NewResolver(storageFactory storage.Factory, options ...ResolverOption) *Resolver {
+func NewResolver(storageFactory storage.Driver, options ...ResolverOption) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
-		storageFactory:    storageFactory,
+		storageDriver:     storageFactory,
 		initializedStores: map[string]struct{}{},
 	}
 	for _, opt := range options {
@@ -69,7 +69,7 @@ func NewResolver(storageFactory storage.Factory, options ...ResolverOption) *Res
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
 
-	store, err := r.storageFactory.GetStore(ctx, name)
+	store, err := r.storageDriver.NewStore(ctx, name)
 	if err != nil {
 		return nil, errors.Wrap(err, "retrieving ledger store")
 	}
@@ -110,7 +110,7 @@ func ResolveModule() fx.Option {
 		fx.Provide(
 			fx.Annotate(NewResolver, fx.ParamTags("", ResolverOptionsKey)),
 		),
-		ProvideResolverOption(WithStorageFactory),
+		ProvideResolverOption(WithStorageDriver),
 	)
 }
 

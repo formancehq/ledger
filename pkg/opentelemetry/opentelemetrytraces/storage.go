@@ -184,26 +184,20 @@ func NewStorageDecorator(underlying storage.Store) *openTelemetryStorage {
 	}
 }
 
-type openTelemetryStorageFactory struct {
-	underlying storage.Factory
+type openTelemetryStorageDriver struct {
+	storage.Driver
 }
 
-func (o openTelemetryStorageFactory) GetStore(ctx context.Context, name string) (storage.Store, error) {
-	store, err := o.underlying.GetStore(ctx, name)
+func (o openTelemetryStorageDriver) NewStore(ctx context.Context, name string) (storage.Store, error) {
+	store, err := o.Driver.NewStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	return NewStorageDecorator(store), nil
 }
 
-func (o openTelemetryStorageFactory) Close(ctx context.Context) error {
-	return o.underlying.Close(ctx)
-}
-
-var _ storage.Factory = &openTelemetryStorageFactory{}
-
-func WrapStorageFactory(underlying storage.Factory) *openTelemetryStorageFactory {
-	return &openTelemetryStorageFactory{
-		underlying: underlying,
+func WrapStorageDriver(underlying storage.Driver) *openTelemetryStorageDriver {
+	return &openTelemetryStorageDriver{
+		Driver: underlying,
 	}
 }

@@ -57,15 +57,15 @@ func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter, 
 	}
 }
 
-type openTelemetryStorageFactory struct {
-	underlying          storage.Factory
+type openTelemetryStorageDriver struct {
+	storage.Driver
 	meter               metric.Meter
 	transactionsCounter metric.Int64Counter
 	once                sync.Once
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *openTelemetryStorageFactory) GetStore(ctx context.Context, name string) (storage.Store, error) {
+func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string) (storage.Store, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -77,22 +77,20 @@ func (o *openTelemetryStorageFactory) GetStore(ctx context.Context, name string)
 	if err != nil {
 		return nil, errors.New("error creating meters")
 	}
-	store, err := o.underlying.GetStore(ctx, name)
+	store, err := o.Driver.NewStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	return NewStorageDecorator(store, o.transactionsCounter, o.revertsCounter), nil
 }
 
-func (o *openTelemetryStorageFactory) Close(ctx context.Context) error {
-	return o.underlying.Close(ctx)
+func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {
+	return o.Driver.Close(ctx)
 }
 
-var _ storage.Factory = &openTelemetryStorageFactory{}
-
-func WrapStorageFactory(underlying storage.Factory, mp metric.MeterProvider) *openTelemetryStorageFactory {
-	return &openTelemetryStorageFactory{
-		underlying: underlying,
-		meter:      mp.Meter(opentelemetry.StoreInstrumentationName),
+func WrapStorageDriver(underlying storage.Driver, mp metric.MeterProvider) *openTelemetryStorageDriver {
+	return &openTelemetryStorageDriver{
+		Driver: underlying,
+		meter:  mp.Meter(opentelemetry.StoreInstrumentationName),
 	}
 }

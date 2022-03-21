@@ -133,11 +133,11 @@ func TestContainers(t *testing.T) {
 			},
 		},
 		{
-			name: "default-with-opentelemetry-metrics-on-stdout",
+			name: "default-with-opentelemetry-metrics-on-noop",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otelMetricsFlag, true)
-				v.Set(otelMetricsExporterFlag, "stdout")
+				v.Set(otelMetricsExporterFlag, "noop")
 			},
 		},
 		{
@@ -155,10 +155,10 @@ func TestContainers(t *testing.T) {
 				v.Set(storagePostgresConnectionStringFlag, pgServer.ConnString())
 			},
 			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver, storageFactory storage.Factory) {
+				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver, storageFactory storage.Driver) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							store, err := storageFactory.GetStore(ctx, "testing")
+							store, err := storageFactory.NewStore(ctx, "testing")
 							if err != nil {
 								return err
 							}

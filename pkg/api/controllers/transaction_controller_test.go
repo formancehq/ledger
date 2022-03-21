@@ -330,7 +330,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 }
 
 func TestTooManyClient(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, factory storage.Factory) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				if ledgertesting.StorageDriverName() != "postgres" {
@@ -340,7 +340,7 @@ func TestTooManyClient(t *testing.T) {
 					return nil
 				}
 
-				store, err := factory.GetStore(context.Background(), "quickstart")
+				store, err := driver.NewStore(context.Background(), "quickstart")
 				assert.NoError(t, err)
 
 				// Grab all potential connections

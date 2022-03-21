@@ -10,7 +10,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -166,7 +165,6 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	options = append([]fx.Option{
 		module,
 		ledger.ResolveModule(),
-		storage.DefaultModule(),
 		ledgertesting.StorageModule(),
 		fx.NopLogger,
 	}, options...)

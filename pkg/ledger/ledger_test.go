@@ -28,15 +28,14 @@ func with(f func(l *Ledger)) {
 	app := fx.New(
 		fx.NopLogger,
 		ledgertesting.StorageModule(),
-		fx.Provide(storage.NewDefaultFactory),
-		fx.Invoke(func(lc fx.Lifecycle, storageFactory storage.Factory) {
+		fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					defer func() {
 						close(done)
 					}()
 					name := uuid.New()
-					store, err := storageFactory.GetStore(context.Background(), name)
+					store, err := storageDriver.NewStore(context.Background(), name)
 					if err != nil {
 						return err
 					}

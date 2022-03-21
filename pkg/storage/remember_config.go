@@ -21,22 +21,20 @@ func NewRememberConfigStorage(underlying Store) *rememberConfigStorage {
 	}
 }
 
-type RememberConfigStorageFactory struct {
-	Factory
+type RememberConfigStorageDriver struct {
+	Driver
 }
 
-func (f *RememberConfigStorageFactory) GetStore(ctx context.Context, name string) (Store, error) {
-	store, err := f.Factory.GetStore(ctx, name)
+func (f *RememberConfigStorageDriver) NewStore(ctx context.Context, name string) (Store, error) {
+	store, err := f.Driver.NewStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	return NewRememberConfigStorage(store), nil
 }
 
-func NewRememberConfigStorageFactory(underlying Factory) *RememberConfigStorageFactory {
-	return &RememberConfigStorageFactory{
-		Factory: underlying,
+func NewRememberConfigStorageDriver(underlying Driver) *RememberConfigStorageDriver {
+	return &RememberConfigStorageDriver{
+		Driver: underlying,
 	}
 }
-
-var _ Factory = &RememberConfigStorageFactory{}

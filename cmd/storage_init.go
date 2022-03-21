@@ -14,8 +14,8 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageFactory storage.Factory) error {
-					s, err := storageFactory.GetStore(context.Background(), "default")
+				fx.Invoke(func(storageDriver storage.Driver) error {
+					s, err := storageDriver.NewStore(context.Background(), "default")
 					if err != nil {
 						return err
 					}

@@ -62,26 +62,20 @@ func NewCachedStateStorage(underlying Store) *cachedStateStorage {
 	}
 }
 
-type CachedStorageFactory struct {
-	underlying Factory
+type CachedStorageDriver struct {
+	Driver
 }
 
-func (f *CachedStorageFactory) GetStore(ctx context.Context, name string) (Store, error) {
-	store, err := f.underlying.GetStore(ctx, name)
+func (f *CachedStorageDriver) NewStore(ctx context.Context, name string) (Store, error) {
+	store, err := f.Driver.NewStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	return NewCachedStateStorage(store), nil
 }
 
-func (f *CachedStorageFactory) Close(ctx context.Context) error {
-	return f.underlying.Close(ctx)
-}
-
-func NewCachedStorageFactory(underlying Factory) *CachedStorageFactory {
-	return &CachedStorageFactory{
-		underlying: underlying,
+func NewCachedStorageDriver(underlying Driver) *CachedStorageDriver {
+	return &CachedStorageDriver{
+		Driver: underlying,
 	}
 }
-
-var _ Factory = &CachedStorageFactory{}

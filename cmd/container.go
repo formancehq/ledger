@@ -28,7 +28,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/dig"
 	"go.uber.org/fx"
 	"io"
 	"io/ioutil"
@@ -208,28 +207,22 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		ledger.ResolveModule(),
 	)
 
-	// fx has issues about decorators feature. We will wait until released.
 	options = append(options,
-		fx.Provide(func(params struct {
-			dig.In
-			Driver        storage.Driver
-			MeterProvider metric.MeterProvider `optional:"true"`
-		}) storage.Factory {
-			f := storage.NewDefaultFactory(params.Driver)
+		fx.Decorate(fx.Annotate(func(driver storage.Driver, mp metric.MeterProvider) storage.Driver {
 			if v.GetBool(storageCacheFlag) {
-				f = storage.NewCachedStorageFactory(f)
+				driver = storage.NewCachedStorageDriver(driver)
 			}
 			if v.GetBool(persistConfigFlag) {
-				f = storage.NewRememberConfigStorageFactory(f)
+				driver = storage.NewRememberConfigStorageDriver(driver)
 			}
 			if v.GetBool(otelTracesFlag) {
-				f = opentelemetrytraces.WrapStorageFactory(f)
+				driver = opentelemetrytraces.WrapStorageDriver(driver)
 			}
 			if v.GetBool(otelMetricsFlag) {
-				f = opentelemetrymetrics.WrapStorageFactory(f, params.MeterProvider)
+				driver = opentelemetrymetrics.WrapStorageDriver(driver, mp)
 			}
-			return f
-		}),
+			return driver
+		}, fx.ParamTags(``, `optional:"true"`))),
 	)
 
 	// Api middlewares

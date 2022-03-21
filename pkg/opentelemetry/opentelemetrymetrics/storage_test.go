@@ -10,7 +10,7 @@ import (
 )
 
 func TestWrapStorageFactory(t *testing.T) {
-	f := WrapStorageFactory(storage.NoOpFactory(), global.GetMeterProvider())
+	f := WrapStorageDriver(storage.NoOpDriver(), global.GetMeterProvider())
 	store, err := f.GetStore(context.Background(), "bar")
 	assert.NoError(t, err)
 	assert.NotNil(t, store)

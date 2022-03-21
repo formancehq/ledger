@@ -84,7 +84,7 @@ send [COIN 100] (
 
 func TestScriptControllerPreview(t *testing.T) {
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, f storage.Factory) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				ledger := uuid.New()
@@ -106,7 +106,7 @@ func TestScriptControllerPreview(t *testing.T) {
 				res := controllers.ScriptResponse{}
 				internal.Decode(t, rec.Body, &res)
 
-				store, err := f.GetStore(context.Background(), ledger)
+				store, err := driver.NewStore(context.Background(), ledger)
 				assert.NoError(t, err)
 
 				cursor, err := store.FindTransactions(context.Background(), query.Query{})
