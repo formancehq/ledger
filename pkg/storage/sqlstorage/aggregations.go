@@ -30,7 +30,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error)
 	sb.
 		Select("count(*)").
 		From(s.schema.Table("addresses")).
-		BuildWithFlavor(s.flavor)
+		BuildWithFlavor(s.schema.Flavor())
 
 	sqlq, args := sb.Build()
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
@@ -51,7 +51,7 @@ func (s *Store) countMeta(ctx context.Context, exec executor) (int64, error) {
 		Select("count(*)").
 		From(s.schema.Table("metadata"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	q := exec.QueryRowContext(ctx, sqlq, args...)
 	err := q.Scan(&count)
@@ -103,7 +103,7 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	sb.Select("*")
 	sb.From(sb.BuilderAs(union, "assets"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 
 	if err != nil {

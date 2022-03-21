@@ -60,7 +60,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("t.id desc, p.id asc")
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
@@ -170,7 +170,7 @@ txLoop:
 		ib.Cols("id", "reference", "timestamp", "hash")
 		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
 
-		sqlq, args := ib.BuildWithFlavor(s.flavor)
+		sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 		_, err := exec.ExecContext(ctx, sqlq, args...)
 		if err != nil {
 			commitError(err)
@@ -183,7 +183,7 @@ txLoop:
 			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
 			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
 
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
+			sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 			_, err := exec.ExecContext(ctx, sqlq, args...)
 
 			if err != nil {
@@ -204,7 +204,7 @@ txLoop:
 			ib.Cols("meta_id", "meta_target_type", "meta_target_id", "meta_key", "meta_value", "timestamp")
 			ib.Values(int(nextID), "transaction", fmt.Sprintf("%d", t.ID), key, string(value), t.Timestamp)
 
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
+			sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 			_, err = exec.ExecContext(ctx, sqlq, args...)
 			if err != nil {
 				commitError(err)
@@ -251,7 +251,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
 	sb.OrderBy("p.id asc")
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return tx, s.error(err)
@@ -320,7 +320,7 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.schema.Table("postings"), "p"), "p.txid = t.id")
 	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.schema.Table("transactions")))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	sharedlogging.GetLogger(ctx).Debug(sqlq)
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {

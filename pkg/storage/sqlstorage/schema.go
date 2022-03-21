@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"path"
 )
@@ -14,12 +15,18 @@ type Schema interface {
 	Table(name string) string
 	Close(ctx context.Context) error
 	BeginTx(ctx context.Context, s *sql.TxOptions) (*sql.Tx, error)
+	Flavor() sqlbuilder.Flavor
+	Name() string
 }
 
 type baseSchema struct {
 	*sql.DB
 	closeDb bool
 	name    string
+}
+
+func (s *baseSchema) Name() string {
+	return s.name
 }
 
 func (s *baseSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
@@ -63,8 +70,16 @@ func (s *PGSchema) Initialize(ctx context.Context) error {
 	return err
 }
 
+func (s *PGSchema) Flavor() sqlbuilder.Flavor {
+	return sqlbuilder.PostgreSQL
+}
+
 type SQLiteSchema struct {
 	baseSchema
+}
+
+func (s SQLiteSchema) Flavor() sqlbuilder.Flavor {
+	return sqlbuilder.SQLite
 }
 
 type DB interface {

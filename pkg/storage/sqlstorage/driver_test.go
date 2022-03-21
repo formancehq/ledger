@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewDriver(t *testing.T) {
-	d := NewDriver("sqlite", SQLite, &sqliteDB{
+	d := NewDriver("sqlite", &sqliteDB{
 		directory: os.TempDir(),
 		dbName:    uuid.New(),
 	})

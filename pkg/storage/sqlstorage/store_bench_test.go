@@ -72,8 +72,6 @@ func BenchmarkStore(b *testing.B) {
 			},
 		} {
 			b.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(b *testing.B) {
-				ledger := uuid.New()
-
 				db, err := driver.dbFactory()
 				if !assert.NoError(b, err) {
 					return
@@ -84,7 +82,7 @@ func BenchmarkStore(b *testing.B) {
 					return
 				}
 
-				store, err := sqlstorage.NewStore(ledger, driver.flavor, schema, func(ctx context.Context) error {
+				store, err := sqlstorage.NewStore(schema, func(ctx context.Context) error {
 					return db.Close(context.Background())
 				})
 				assert.NoError(b, err)

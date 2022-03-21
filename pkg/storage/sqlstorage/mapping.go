@@ -18,7 +18,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 		Select("mapping").
 		From(s.schema.Table("mapping"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
@@ -69,13 +69,13 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq string
 		args []interface{}
 	)
-	switch s.flavor {
+	switch s.schema.Flavor() {
 	case sqlbuilder.Flavor(PostgreSQL):
-		sqlq, args = ib.BuildWithFlavor(s.flavor)
+		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 		sqlq += " ON CONFLICT (mapping_id) DO UPDATE SET mapping = $2"
 	default:
 		ib.ReplaceInto(s.schema.Table("mapping"))
-		sqlq, args = ib.BuildWithFlavor(s.flavor)
+		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
 
 	logrus.Debugln(sqlq, args)

@@ -29,7 +29,6 @@ func init() {
 
 type driver struct {
 	name         string
-	flavor       Flavor
 	db           DB
 	systemSchema Schema
 }
@@ -40,7 +39,7 @@ func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
 		Cols("ledger", "addedAt").
 		Values(ledger, time.Now()).
 		SQL("ON CONFLICT DO NOTHING").
-		BuildWithFlavor(sqlbuilder.Flavor(d.flavor))
+		BuildWithFlavor(sqlbuilder.Flavor(d.systemSchema.Flavor()))
 
 	ret, err := d.systemSchema.ExecContext(ctx, q, args...)
 	if err != nil {
@@ -57,7 +56,7 @@ func (d *driver) List(ctx context.Context) ([]string, error) {
 	q, args := sqlbuilder.
 		Select("ledger").
 		From(d.systemSchema.Table("ledgers")).
-		BuildWithFlavor(sqlbuilder.Flavor(d.flavor))
+		BuildWithFlavor(sqlbuilder.Flavor(d.systemSchema.Flavor()))
 	rows, err := d.systemSchema.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -94,7 +93,7 @@ func (s *driver) Initialize(ctx context.Context) error {
 		CreateTable(s.systemSchema.Table("ledgers")).
 		Define("ledger varchar(255) primary key, addedAt timestamp").
 		IfNotExists().
-		BuildWithFlavor(sqlbuilder.Flavor(s.flavor))
+		BuildWithFlavor(s.systemSchema.Flavor())
 
 	_, err = s.systemSchema.ExecContext(ctx, q, args...)
 	return err
@@ -113,7 +112,7 @@ func (s *driver) NewStore(ctx context.Context, name string) (storage.Store, bool
 	if err != nil {
 		return nil, false, err
 	}
-	store, err := NewStore(name, sqlbuilder.Flavor(s.flavor), schema, func(ctx context.Context) error {
+	store, err := NewStore(schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	})
 	if err != nil {
@@ -130,10 +129,9 @@ func (d *driver) Close(ctx context.Context) error {
 	return d.db.Close(ctx)
 }
 
-func NewDriver(name string, flavor Flavor, db DB) *driver {
+func NewDriver(name string, db DB) *driver {
 	return &driver{
-		db:     db,
-		name:   name,
-		flavor: flavor,
+		db:   db,
+		name: name,
 	}
 }

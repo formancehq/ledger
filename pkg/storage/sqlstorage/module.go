@@ -42,7 +42,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 			return OpenSQLDB(PostgreSQL, cfg.PostgresConfig.ConnString)
 		}))
 		options = append(options, fx.Provide(func(db *sql.DB) (*driver, error) {
-			return NewDriver(PostgreSQL.String(), PostgreSQL, NewPostgresDB(db)), nil
+			return NewDriver(PostgreSQL.String(), NewPostgresDB(db)), nil
 		}))
 		options = append(options, fx.Provide(func(driver *driver) storage.Driver {
 			return driver
@@ -52,7 +52,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		}))
 	case SQLite:
 		options = append(options, fx.Provide(func() (storage.Driver, error) {
-			return NewDriver(SQLite.String(), SQLite, NewSQLiteDB(cfg.SQLiteConfig.Dir, cfg.SQLiteConfig.DBName)), nil
+			return NewDriver(SQLite.String(), NewSQLiteDB(cfg.SQLiteConfig.Dir, cfg.SQLiteConfig.DBName)), nil
 		}))
 	default:
 		panic("Unsupported driver: " + cfg.StorageDriver)

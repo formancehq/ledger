@@ -32,7 +32,7 @@ func (s *Store) getMeta(ctx context.Context, exec executor, ty string, id string
 	)
 	sb.OrderBy("meta_id").Asc()
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
@@ -87,7 +87,7 @@ func (s *Store) saveMeta(ctx context.Context, exec executor, id int64, timestamp
 	)
 	ib.Values(id, targetType, targetID, key, value, timestamp)
 
-	sqlq, args := ib.BuildWithFlavor(s.flavor)
+	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 	logrus.Debugln(sqlq, args)
 
 	_, err := exec.ExecContext(ctx, sqlq, args...)

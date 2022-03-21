@@ -29,7 +29,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 		sb.Where(sb.LessThan("address", q.After))
 	}
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
