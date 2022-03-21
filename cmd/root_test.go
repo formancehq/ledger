@@ -63,7 +63,7 @@ func TestServer(t *testing.T) {
 				os.Setenv(e.key, e.value)
 				defer os.Setenv(e.key, oldValue)
 			}
-			args := []string{"server", "start", "--persist-config=false", "--debug"}
+			args := []string{"server", "start", "--debug"}
 			args = append(args, tc.args...)
 			root := NewRootCommand()
 			root.SetArgs(args)

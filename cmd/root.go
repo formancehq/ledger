@@ -21,7 +21,6 @@ const (
 	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag  = "storage.postgres.conn_string"
 	storageCacheFlag                     = "storage.cache"
-	persistConfigFlag                    = "persist-config"
 	serverHttpBindAddressFlag            = "server.http.bind_address"
 	uiHttpBindAddressFlag                = "ui.http.bind_address"
 	ledgersFlag                          = "ledgers"
@@ -125,7 +124,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
 	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
-	root.PersistentFlags().Bool(persistConfigFlag, true, "Persist config on disk")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
 	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")

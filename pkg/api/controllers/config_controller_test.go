@@ -3,8 +3,8 @@ package controllers_test
 import (
 	"context"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
-	"github.com/numary/ledger/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"net/http"
@@ -18,13 +18,13 @@ func TestGetInfo(t *testing.T) {
 				rsp := internal.GetInfo(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				info := config.ConfigInfo{}
+				info := controllers.ConfigInfo{}
 				internal.DecodeSingleResponse(t, rsp.Body, &info)
-				assert.EqualValues(t, config.ConfigInfo{
+				assert.EqualValues(t, controllers.ConfigInfo{
 					Server:  "numary-ledger",
 					Version: "latest",
-					Config: &config.Config{
-						LedgerStorage: &config.LedgerStorage{
+					Config: &controllers.Config{
+						LedgerStorage: &controllers.LedgerStorage{
 							Driver:  "sqlite",
 							Ledgers: []string{"quickstart"},
 						},

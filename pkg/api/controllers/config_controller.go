@@ -8,7 +8,6 @@ import (
 
 	_ "embed"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/config"
 )
 
 type LedgerLister interface {
@@ -18,6 +17,24 @@ type LedgerListerFn func(r *http.Request) []string
 
 func (fn LedgerListerFn) List(r *http.Request) []string {
 	return fn(r)
+}
+
+// ConfigInfo struct
+type ConfigInfo struct {
+	Server  string      `json:"server"`
+	Version interface{} `json:"version"`
+	Config  *Config     `json:"config"`
+}
+
+// Config struct
+type Config struct {
+	LedgerStorage *LedgerStorage `json:"storage"`
+}
+
+// LedgerStorage struct
+type LedgerStorage struct {
+	Driver  string   `json:"driver"`
+	Ledgers []string `json:"ledgers"`
 }
 
 // ConfigController -
@@ -41,11 +58,11 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	ctl.response(
 		c,
 		http.StatusOK,
-		config.ConfigInfo{
+		ConfigInfo{
 			Server:  "numary-ledger",
 			Version: ctl.Version,
-			Config: &config.Config{
-				LedgerStorage: &config.LedgerStorage{
+			Config: &Config{
+				LedgerStorage: &LedgerStorage{
 					Driver:  ctl.StorageDriver,
 					Ledgers: ctl.LedgerLister.List(c.Request),
 				},

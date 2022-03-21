@@ -212,9 +212,6 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 			if v.GetBool(storageCacheFlag) {
 				driver = storage.NewCachedStorageDriver(driver)
 			}
-			if v.GetBool(persistConfigFlag) {
-				driver = storage.NewRememberConfigStorageDriver(driver)
-			}
 			if v.GetBool(otelTracesFlag) {
 				driver = opentelemetrytraces.WrapStorageDriver(driver)
 			}
