@@ -6,7 +6,7 @@ import (
 
 type Driver interface {
 	Initialize(ctx context.Context) error
-	NewStore(ctx context.Context, name string) (Store, bool, error)
+	GetStore(ctx context.Context, name string, create bool) (Store, bool, error)
 	Close(ctx context.Context) error
 	List(ctx context.Context) ([]string, error)
 	Name() string
@@ -18,7 +18,7 @@ func (n noOpDriver) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpDriver) NewStore(ctx context.Context, name string) (Store, bool, error) {
+func (n noOpDriver) GetStore(ctx context.Context, name string, create bool) (Store, bool, error) {
 	return nil, false, nil
 }
 

@@ -35,7 +35,7 @@ func with(f func(l *Ledger)) {
 						close(done)
 					}()
 					name := uuid.New()
-					store, _, err := storageDriver.NewStore(context.Background(), name)
+					store, _, err := storageDriver.GetStore(context.Background(), name, true)
 					if err != nil {
 						return err
 					}

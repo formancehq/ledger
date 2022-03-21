@@ -2,6 +2,7 @@ package sqlstorage
 
 import (
 	"context"
+	"errors"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/storage"
 	"time"
@@ -39,7 +40,7 @@ func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
 		Cols("ledger", "addedAt").
 		Values(ledger, time.Now()).
 		SQL("ON CONFLICT DO NOTHING").
-		BuildWithFlavor(sqlbuilder.Flavor(d.systemSchema.Flavor()))
+		BuildWithFlavor(d.systemSchema.Flavor())
 
 	ret, err := d.systemSchema.ExecContext(ctx, q, args...)
 	if err != nil {
@@ -50,6 +51,20 @@ func (d *driver) register(ctx context.Context, ledger string) (bool, error) {
 		return false, err
 	}
 	return affected > 0, nil
+}
+
+func (d *driver) exists(ctx context.Context, ledger string) (bool, error) {
+	b := sqlbuilder.
+		Select("ledger").
+		From(d.systemSchema.Table("ledgers"))
+
+	q, args := b.Where(b.E("ledger", ledger)).BuildWithFlavor(d.systemSchema.Flavor())
+
+	ret := d.systemSchema.QueryRowContext(ctx, q, args...)
+	if ret.Err() != nil {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (d *driver) List(ctx context.Context) ([]string, error) {
@@ -99,7 +114,16 @@ func (s *driver) Initialize(ctx context.Context) error {
 	return err
 }
 
-func (s *driver) NewStore(ctx context.Context, name string) (storage.Store, bool, error) {
+func (s *driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+
+	exists, err := s.exists(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists && !create {
+		return nil, false, errors.New("not exists")
+	}
+
 	schema, err := s.db.Schema(ctx, name)
 	if err != nil {
 		return nil, false, err

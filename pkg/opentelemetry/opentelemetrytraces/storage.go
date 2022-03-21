@@ -188,8 +188,8 @@ type openTelemetryStorageDriver struct {
 	storage.Driver
 }
 
-func (o openTelemetryStorageDriver) NewStore(ctx context.Context, name string) (storage.Store, bool, error) {
-	store, created, err := o.Driver.NewStore(ctx, name)
+func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+	store, created, err := o.Driver.GetStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}

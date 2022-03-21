@@ -115,7 +115,7 @@ func TestStore(t *testing.T) {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, _, err := storageFactory.NewStore(ctx, ledger)
+							store, _, err := storageFactory.GetStore(ctx, ledger, true)
 							if err != nil {
 								return err
 							}
@@ -604,7 +604,7 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	assert.NoError(t, err)
 
-	store, _, err := driver.NewStore(context.Background(), uuid.New())
+	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
 	assert.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())

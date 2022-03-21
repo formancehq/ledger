@@ -19,7 +19,7 @@ func TestNewDriver(t *testing.T) {
 	}
 	defer d.Close(context.Background())
 
-	store, _, err := d.NewStore(context.Background(), "foo")
+	store, _, err := d.GetStore(context.Background(), "foo", true)
 	if !assert.NoError(t, err) {
 		return
 	}
