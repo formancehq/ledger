@@ -54,6 +54,8 @@ var (
 	Version   = "develop"
 	BuildDate = "-"
 	Commit    = "-"
+
+	replacer = strings.NewReplacer(".", "_", "-", "_")
 )
 
 func NewRootCommand() *cobra.Command {
@@ -97,6 +99,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(scriptCheck)
 	root.AddCommand(version)
 	root.AddCommand(stickersCmd)
+
+	root.AddCommand(NewDocCommand())
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -147,7 +151,7 @@ func NewRootCommand() *cobra.Command {
 	viper.ReadInConfig()
 
 	viper.SetEnvPrefix("numary")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+	viper.SetEnvKeyReplacer(replacer)
 	viper.AutomaticEnv()
 
 	return root
