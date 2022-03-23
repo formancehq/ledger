@@ -205,6 +205,13 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		res = append(res, cors.New(cc))
 		if viper.GetBool(otelTracesFlag) {
 			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
+		} else {
+			res = append(res, func(context *gin.Context) {
+				context.Next()
+				for _, err := range context.Errors {
+					sharedlogging.GetLogger(context.Request.Context()).Error(err)
+				}
+			})
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
