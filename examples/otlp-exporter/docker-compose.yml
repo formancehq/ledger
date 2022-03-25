@@ -15,7 +15,7 @@ services:
     depends_on:
       - postgres
       - otlp-exporter
-    image: golang:1.16-alpine
+    image: golang:1.18-alpine
     entrypoint: go run main.go server start
     volumes:
       - ../..:/src

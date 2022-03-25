@@ -1,4 +1,4 @@
-FROM golang:1.16-alpine as src-alpine
+FROM golang:1.18-alpine as src-alpine
 ARG VERSION=latest
 RUN apk add --no-cache git gcc build-base
 COPY . /app
