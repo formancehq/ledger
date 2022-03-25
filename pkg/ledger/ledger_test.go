@@ -297,6 +297,16 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		}
 
 		if !assert.EqualValues(t, volumes, Volumes{
+			"world": map[string]map[string]int64{
+				"USD": {
+					"input":  0,
+					"output": 100,
+				},
+				"EUR": {
+					"input":  0,
+					"output": 200,
+				},
+			},
 			"player": map[string]map[string]int64{
 				"USD": {
 					"input":  100,

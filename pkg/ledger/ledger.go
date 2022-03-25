@@ -158,9 +158,6 @@ txLoop:
 		}
 
 		for addr := range rf {
-			if addr == "world" {
-				continue
-			}
 
 			_, ok := aggregatedVolumes[addr]
 			if !ok {
@@ -177,25 +174,27 @@ txLoop:
 						"output": 0,
 					}
 				}
-				expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
-				for _, contract := range contracts {
-					if contract.Match(addr) {
-						meta, err := l.store.GetMeta(ctx, "account", addr)
-						if err != nil {
-							return nil, nil, err
+				if addr != "world" {
+					expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
+					for _, contract := range contracts {
+						if contract.Match(addr) {
+							meta, err := l.store.GetMeta(ctx, "account", addr)
+							if err != nil {
+								return nil, nil, err
+							}
+							ok := contract.Expr.Eval(core.EvalContext{
+								Variables: map[string]interface{}{
+									"balance": float64(expectedBalance),
+								},
+								Metadata: meta,
+								Asset:    asset,
+							})
+							if !ok {
+								commitError(NewTransactionCommitError(i, NewInsufficientFundError(asset)))
+								continue txLoop
+							}
+							break
 						}
-						ok := contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": float64(expectedBalance),
-							},
-							Metadata: meta,
-							Asset:    asset,
-						})
-						if !ok {
-							commitError(NewTransactionCommitError(i, NewInsufficientFundError(asset)))
-							continue txLoop
-						}
-						break
 					}
 				}
 				aggregatedVolumes[addr][asset]["input"] += volumes["input"]
