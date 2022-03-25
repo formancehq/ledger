@@ -3,17 +3,19 @@ package cmd
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/Shopify/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/numary/go-libs/sharedpublish"
+	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
+	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
-	"github.com/numary/ledger/pkg/bus/httpbus"
-	"github.com/numary/ledger/pkg/bus/kafkabus"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
@@ -22,6 +24,7 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/xdg-go/scram"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -29,6 +32,7 @@ import (
 	"go.uber.org/fx"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -56,15 +60,49 @@ func NewContainer(v *viper.Viper, options ...fx.Option) *fx.App {
 		mapping[parts[0]] = parts[1]
 	}
 
-	options = append(options, bus.Module())
+	options = append(options, sharedpublish.Module(), bus.LedgerMonitorModule())
 	options = append(options, bus.ProvideMonitorOption(func() bus.MonitorOption {
 		return bus.WithLedgerMonitorTopics(mapping)
 	}))
 	switch {
 	case v.GetBool(publisherHttpEnabledFlag):
-		options = append(options, httpbus.Module())
+		options = append(options, sharedpublishhttp.Module())
 	case v.GetBool(publisherKafkaEnabledFlag):
-		options = append(options, kafkabus.Module(ServiceName, v.GetStringSlice(publisherBusKafkaBrokerFlag)...))
+		sarama.Logger = log.New(os.Stdout, "[Sarama] ", log.LstdFlags)
+		options = append(options,
+			sharedpublishkafka.Module(ServiceName, v.GetStringSlice(publisherKafkaBrokerFlag)...),
+			sharedpublishkafka.ProvideSaramaOption(
+				sharedpublishkafka.WithConsumerReturnErrors(),
+				sharedpublishkafka.WithProducerReturnSuccess(),
+			),
+		)
+		if viper.GetBool(publisherKafkaTLSEnabled) {
+			options = append(options, sharedpublishkafka.ProvideSaramaOption(sharedpublishkafka.WithTLS()))
+		}
+		if viper.GetBool(publisherKafkaSASLEnabled) {
+			options = append(options, sharedpublishkafka.ProvideSaramaOption(
+				sharedpublishkafka.WithSASLEnabled(),
+				sharedpublishkafka.WithSASLCredentials(
+					viper.GetString(publisherKafkaSASLUsername),
+					viper.GetString(publisherKafkaSASLPassword),
+				),
+				sharedpublishkafka.WithSASLMechanism(sarama.SASLMechanism(viper.GetString(publisherKafkaSASLMechanism))),
+				sharedpublishkafka.WithSASLScramClient(func() sarama.SCRAMClient {
+					var fn scram.HashGeneratorFcn
+					switch viper.GetInt(publisherKafkaSASLScramSHASize) {
+					case 512:
+						fn = sharedpublishkafka.SHA512
+					case 256:
+						fn = sharedpublishkafka.SHA256
+					default:
+						panic("sha size not handled")
+					}
+					return &sharedpublishkafka.XDGSCRAMClient{
+						HashGeneratorFcn: fn,
+					}
+				}),
+			))
+		}
 	}
 
 	// Handle OpenTelemetry
