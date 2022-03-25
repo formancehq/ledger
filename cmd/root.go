@@ -45,7 +45,13 @@ const (
 	otelMetricsExporterOTLPEndpointFlag  = "otel-metrics-exporter-otlp-endpoint"
 	otelMetricsExporterOTLPInsecureFlag  = "otel-metrics-exporter-otlp-insecure"
 	publisherKafkaEnabledFlag            = "publisher-kafka-enabled"
-	publisherBusKafkaBrokerFlag          = "publisher-kafka-broker"
+	publisherKafkaBrokerFlag             = "publisher-kafka-broker"
+	publisherKafkaSASLEnabled            = "publisher-kafka-sasl-enabled"
+	publisherKafkaSASLUsername           = "publisher-kafka-sasl-username"
+	publisherKafkaSASLPassword           = "publisher-kafka-sasl-password"
+	publisherKafkaSASLMechanism          = "publisher-kafka-sasl-mechanism"
+	publisherKafkaSASLScramSHASize       = "publisher-kafka-sasl-scram-sha-size"
+	publisherKafkaTLSEnabled             = "publisher-kafka-tls-enabled"
 	publisherTopicMappingFlag            = "publisher-topic-mapping"
 	publisherHttpEnabledFlag             = "publisher-http-enabled"
 )
@@ -138,10 +144,17 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
+
 	root.PersistentFlags().Bool(publisherKafkaEnabledFlag, false, "Publish write events to kafka")
-	root.PersistentFlags().StringSlice(publisherBusKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
+	root.PersistentFlags().StringSlice(publisherKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
 	root.PersistentFlags().StringSlice(publisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
 	root.PersistentFlags().Bool(publisherHttpEnabledFlag, false, "Sent write event to http endpoint")
+	root.PersistentFlags().Bool(publisherKafkaSASLEnabled, false, "Enable SASL authentication on kafka publisher")
+	root.PersistentFlags().String(publisherKafkaSASLUsername, "", "SASL username")
+	root.PersistentFlags().String(publisherKafkaSASLPassword, "", "SASL password")
+	root.PersistentFlags().String(publisherKafkaSASLMechanism, "", "SASL authentication mechanism")
+	root.PersistentFlags().Int(publisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
+	root.PersistentFlags().Bool(publisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
 
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
