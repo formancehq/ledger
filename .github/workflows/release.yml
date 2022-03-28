@@ -93,6 +93,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/numary/ledger:latest,ghcr.io/numary/ledger:${{ github.event.release.tag_name }}
-          build-args:
+          build-args: |
             APP_SHA=${{ github.sha }}
             VERSION=${{ github.event.release.tag_name }}
