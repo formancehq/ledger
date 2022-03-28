@@ -58,14 +58,12 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-type Volumes map[string]map[string]map[string]int64 // Account/Asset/"input"|"output"
-
 type CommitTransactionResult struct {
 	core.Transaction
 	Err *TransactionCommitError `json:"error,omitempty"`
 }
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, []core.Log, error) {
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, []core.Log, error) {
 
 	timestamp := time.Now()
 
@@ -81,7 +79,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Volu
 	contracts = append(contracts, DefaultContracts...)
 
 	ret := make([]CommitTransactionResult, 0)
-	aggregatedVolumes := Volumes{}
+	aggregatedVolumes := core.AggregatedVolumes{}
 	hasError := false
 
 	lastLog, err := l.store.LastLog(ctx)
@@ -128,7 +126,7 @@ txLoop:
 			continue txLoop
 		}
 
-		rf := Volumes{}
+		rf := core.AggregatedVolumes{}
 		for _, p := range ts[i].Postings {
 			if p.Amount < 0 {
 				commitError(NewTransactionCommitError(i, NewValidationError("negative amount")))
@@ -233,7 +231,7 @@ txLoop:
 	return aggregatedVolumes, ret, logs, nil
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
@@ -278,7 +276,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (Volumes
 	return volumes, ret, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (Volumes, []CommitTransactionResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
@@ -376,14 +374,6 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 		return core.Account{}, err
 	}
 
-	balances, err := l.store.AggregateBalances(ctx, address)
-
-	if err != nil {
-		return account, err
-	}
-
-	account.Balances = balances
-
 	volumes, err := l.store.AggregateVolumes(ctx, address)
 
 	if err != nil {
@@ -391,6 +381,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 	}
 
 	account.Volumes = volumes
+	account.Balances = volumes.Balances()
 
 	return account, nil
 }

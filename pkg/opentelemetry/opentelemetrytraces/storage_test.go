@@ -35,10 +35,6 @@ func TestStore(t *testing.T) {
 			fn:   testCountAccounts,
 		},
 		{
-			name: "AggregateBalances",
-			fn:   testAggregateBalances,
-		},
-		{
 			name: "AggregateVolumes",
 			fn:   testAggregateVolumes,
 		},
@@ -85,11 +81,6 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 	_, err := store.CountAccounts(context.Background())
 	assert.NoError(t, err)
 
-}
-
-func testAggregateBalances(t *testing.T, store storage.Store) {
-	_, err := store.AggregateBalances(context.Background(), "central_bank")
-	assert.NoError(t, err)
 }
 
 func testAggregateVolumes(t *testing.T, store storage.Store) {

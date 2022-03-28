@@ -51,10 +51,6 @@ func TestStore(t *testing.T) {
 			fn:   testCountAccounts,
 		},
 		{
-			name: "AggregateBalances",
-			fn:   testAggregateBalances,
-		},
-		{
 			name: "AggregateVolumes",
 			fn:   testAggregateVolumes,
 		},
@@ -197,29 +193,6 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.EqualValues(t, 2, countAccounts) { // world + central_bank
 		return
 	}
-}
-
-func testAggregateBalances(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
-				},
-			},
-		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
-	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	assert.NoError(t, err)
-
-	balances, err := store.AggregateBalances(context.Background(), "central_bank")
-	assert.NoError(t, err)
-	assert.Len(t, balances, 1)
-	assert.EqualValues(t, 100, balances["USD"])
 }
 
 func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
@@ -510,8 +483,9 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
-	_, err := store.AppendLog(context.Background(), log1, log2)
+	ret, err := store.AppendLog(context.Background(), log1, log2)
 	if !assert.NoError(t, err) {
+		spew.Dump(ret)
 		return
 	}
 

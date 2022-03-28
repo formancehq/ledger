@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/core"
 )
 
 func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, error) {
@@ -43,39 +44,7 @@ func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
 	return s.countAccounts(ctx, s.schema)
 }
 
-
-func (s *Store) aggregateBalances(ctx context.Context, exec executor, address string) (map[string]int64, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.schema.Table("balances"))
-	sb.Select("asset", "amount")
-	sb.Where(sb.Equal("account", address))
-
-	sql, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sql, args...)
-	if err != nil {
-		return nil, s.error(err)
-	}
-
-	balances := make(map[string]int64)
-	for rows.Next() {
-		var (
-			asset  string
-			amount int64
-		)
-		err = rows.Scan(&asset, &amount)
-		if err != nil {
-			return nil, err
-		}
-		balances[asset] = amount
-	}
-	return balances, nil
-}
-
-func (s *Store) AggregateBalances(ctx context.Context, address string) (map[string]int64, error) {
-	return s.aggregateBalances(ctx, s.schema, address)
-}
-
-func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (map[string]map[string]int64, error) {
+func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
@@ -110,6 +79,6 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	return volumes, nil
 }
 
-func (s *Store) AggregateVolumes(ctx context.Context, address string) (map[string]map[string]int64, error) {
+func (s *Store) AggregateVolumes(ctx context.Context, address string) (core.Volumes, error) {
 	return s.aggregateVolumes(ctx, s.schema, address)
 }

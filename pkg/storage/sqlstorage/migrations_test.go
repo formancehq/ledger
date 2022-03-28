@@ -252,22 +252,12 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		if !assert.NoError(t, err) {
 			return
 		}
-		if !assert.Equal(t, map[string]map[string]int64{
+		if !assert.Equal(t, core.Volumes{
 			"USD": {
 				"input":  100,
 				"output": 1,
 			},
 		}, volumes) {
-			return
-		}
-
-		balances, err := store.AggregateBalances(context.Background(), "player1")
-		if !assert.NoError(t, err) {
-			return
-		}
-		if !assert.Equal(t, map[string]int64{
-			"USD": 99,
-		}, balances) {
 			return
 		}
 

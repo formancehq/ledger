@@ -65,8 +65,7 @@ type Store interface {
 	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
-	AggregateBalances(context.Context, string) (map[string]int64, error)
-	AggregateVolumes(context.Context, string) (map[string]map[string]int64, error)
+	AggregateVolumes(context.Context, string) (core.Volumes, error)
 	CountAccounts(context.Context) (int64, error)
 	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
 
@@ -112,11 +111,7 @@ func (n noOpStore) GetAccount(ctx context.Context, s string) (core.Account, erro
 	return core.Account{}, nil
 }
 
-func (n noOpStore) AggregateBalances(ctx context.Context, s string) (map[string]int64, error) {
-	return nil, nil
-}
-
-func (n noOpStore) AggregateVolumes(ctx context.Context, s string) (map[string]map[string]int64, error) {
+func (n noOpStore) AggregateVolumes(ctx context.Context, s string) (core.Volumes, error) {
 	return nil, nil
 }
 

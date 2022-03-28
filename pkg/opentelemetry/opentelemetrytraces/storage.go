@@ -95,17 +95,9 @@ func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx cor
 	return
 }
 
-func (o *openTelemetryStorage) AggregateBalances(ctx context.Context, s string) (balances map[string]int64, err error) {
-	o.handle(ctx, "AggregateBalances", func(ctx context.Context) error {
-		balances, err = o.underlying.AggregateBalances(ctx, s)
-		return err
-	})
-	return
-}
-
-func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (balances map[string]map[string]int64, err error) {
+func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
 	o.handle(ctx, "AggregateVolumes", func(ctx context.Context) error {
-		balances, err = o.underlying.AggregateVolumes(ctx, s)
+		volumes, err = o.underlying.AggregateVolumes(ctx, s)
 		return err
 	})
 	return

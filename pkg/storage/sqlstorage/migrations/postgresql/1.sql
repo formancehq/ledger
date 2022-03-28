@@ -13,57 +13,6 @@ $$
     LANGUAGE plpgsql
     IMMUTABLE;
 --statement
-CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".update_volumes()
-    RETURNS TRIGGER
-    LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-    p jsonb;
-BEGIN
-    FOR p IN (SELECT * FROM jsonb_array_elements(NEW.postings))
-        LOOP
-            INSERT INTO "VAR_LEDGER_NAME".volumes (account, asset, input, output)
-            VALUES (p ->> 'source', p ->> 'asset', 0, (p ->> 'amount')::bigint)
-            ON CONFLICT (account, asset) DO UPDATE SET output = (p ->> 'amount')::bigint + (
-                SELECT output
-                FROM "VAR_LEDGER_NAME".volumes
-                WHERE account = p ->> 'source'
-                  AND asset = p ->> 'asset'
-            );
-
-            INSERT INTO "VAR_LEDGER_NAME".volumes (account, asset, input, output)
-            VALUES (p ->> 'destination', p ->> 'asset', (p ->> 'amount')::bigint, 0)
-            ON CONFLICT (account, asset) DO UPDATE SET input = (p ->> 'amount')::bigint + (
-                SELECT input
-                FROM "VAR_LEDGER_NAME".volumes
-                WHERE account = p ->> 'destination'
-                  AND asset = p ->> 'asset'
-            );
-            INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
-            VALUES (p ->> 'source', '{}')
-            ON CONFLICT DO NOTHING;
-            INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
-            VALUES (p ->> 'destination', '{}')
-            ON CONFLICT DO NOTHING;
-        END LOOP;
-    RETURN NEW;
-END;
-$$;
---statement
-CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".update_balances()
-    RETURNS TRIGGER
-    LANGUAGE PLPGSQL
-AS
-$$
-BEGIN
-    INSERT INTO "VAR_LEDGER_NAME".balances (account, asset, amount)
-    VALUES (NEW.account, NEW.asset, NEW.input - NEW.output)
-    ON CONFLICT (account, asset) DO UPDATE SET amount = NEW.input - NEW.output;
-    RETURN NEW;
-END;
-$$;
---statement
 CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".handle_log_entry()
     RETURNS TRIGGER
     LANGUAGE PLPGSQL
@@ -107,15 +56,6 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".volumes
     UNIQUE ("account", "asset")
 );
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".balances
-(
-    "account" varchar,
-    "asset"   varchar,
-    "amount"  bigint,
-
-    UNIQUE ("account", "asset")
-);
---statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".accounts
 (
     "address"  varchar NOT NULL,
@@ -140,8 +80,6 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".log
 
     UNIQUE ("id")
 );
---statement
-CREATE INDEX IF NOT EXISTS balances_account ON "VAR_LEDGER_NAME".balances ("account");
 --statement
 CREATE INDEX IF NOT EXISTS volumes_account ON "VAR_LEDGER_NAME".volumes ("account");
 --statement
@@ -199,22 +137,6 @@ SET metadata = (
          ) v
 );
 --statement
-DROP TRIGGER IF EXISTS balances_changed ON "VAR_LEDGER_NAME".volumes;
---statement
-CREATE TRIGGER balances_changed
-    AFTER INSERT OR UPDATE
-    ON "VAR_LEDGER_NAME".volumes
-    FOR EACH ROW
-EXECUTE PROCEDURE "VAR_LEDGER_NAME".update_balances();
---statement
-DROP TRIGGER IF EXISTS volumes_changed ON "VAR_LEDGER_NAME".transactions;
---statement
-CREATE TRIGGER volumes_changed
-    AFTER INSERT
-    ON "VAR_LEDGER_NAME".transactions
-    FOR EACH ROW
-EXECUTE PROCEDURE "VAR_LEDGER_NAME".update_volumes();
---statement
 DROP TRIGGER IF EXISTS log_entry ON "VAR_LEDGER_NAME".log;
 --statement
 CREATE TRIGGER log_entry
@@ -233,3 +155,68 @@ SELECT source, asset, 0, SUM(amount)
 FROM "VAR_LEDGER_NAME".postings
 GROUP BY asset, source
 ON CONFLICT (account, asset) DO UPDATE SET output = volumes.output + excluded.output;
+--statement
+CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".compute_volumes() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    p record;
+BEGIN
+    FOR p IN (
+        SELECT
+                t.postings->>'source' as source,
+                t.postings->>'asset' as asset,
+                sum ((t.postings->>'amount')::bigint) as amount
+        FROM (
+                 SELECT jsonb_array_elements(((newtable.data::jsonb)->>'postings')::jsonb) as postings
+                 FROM newtable
+                WHERE newtable.type = 'NEW_TRANSACTION'
+             ) t
+        GROUP BY source, asset
+    ) LOOP
+            INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
+            VALUES (p.source, '{}')
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO "VAR_LEDGER_NAME".volumes (account, asset, input, output)
+            VALUES (p.source, p.asset, 0, p.amount::bigint)
+            ON CONFLICT (account, asset) DO UPDATE SET output = p.amount::bigint + (
+                SELECT output
+                FROM "VAR_LEDGER_NAME".volumes
+                WHERE account = p.source
+                  AND asset = p.asset
+            );
+        END LOOP;
+    FOR p IN (
+        SELECT
+                t.postings->>'destination' as destination,
+                t.postings->>'asset' as asset,
+                sum ((t.postings->>'amount')::bigint) as amount
+        FROM (
+                 SELECT jsonb_array_elements(((newtable.data::jsonb)->>'postings')::jsonb) as postings
+                 FROM newtable
+                 WHERE newtable.type = 'NEW_TRANSACTION'
+             ) t
+        GROUP BY destination, asset
+    ) LOOP
+            INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
+            VALUES (p.destination, '{}')
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO "VAR_LEDGER_NAME".volumes (account, asset, input, output)
+            VALUES (p.destination, p.asset, p.amount::bigint, 0)
+            ON CONFLICT (account, asset) DO UPDATE SET input = p.amount::bigint + (
+                SELECT input
+                FROM "VAR_LEDGER_NAME".volumes
+                WHERE account = p.destination
+                  AND asset = p.asset
+            );
+        END LOOP;
+    RETURN NULL;
+END
+$$;
+--statement
+CREATE TRIGGER volumes_changed
+AFTER INSERT
+ON "VAR_LEDGER_NAME".log
+REFERENCING NEW TABLE AS newtable
+FOR EACH STATEMENT
+EXECUTE PROCEDURE "VAR_LEDGER_NAME".compute_volumes();

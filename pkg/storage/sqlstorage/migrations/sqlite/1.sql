@@ -9,15 +9,6 @@ CREATE TABLE IF NOT EXISTS volumes
     UNIQUE ("account", "asset")
 );
 --statement
-CREATE TABLE IF NOT EXISTS balances
-(
-    "account" varchar,
-    "asset"   varchar,
-    "amount"  integer,
-
-    UNIQUE ("account", "asset")
-);
---statement
 CREATE TABLE IF NOT EXISTS accounts
 (
     "address"  varchar NOT NULL,
@@ -105,20 +96,6 @@ SET metadata = (
              ORDER BY meta_id DESC
          ) v
 );
---statement
-CREATE TRIGGER IF NOT EXISTS balances_created
-    AFTER INSERT
-          ON volumes
-BEGIN
-INSERT INTO balances('account', 'amount', 'asset') VALUES (new.account, new.input - new.output, new.asset);
-END;
---statement
-CREATE TRIGGER IF NOT EXISTS balances_updated
-    AFTER UPDATE
-              ON volumes
-BEGIN
-UPDATE balances SET amount = new.input - new.output WHERE account = new.account AND asset = new.asset;
-END;
 --statement
 CREATE TRIGGER IF NOT EXISTS new_transaction
     AFTER INSERT

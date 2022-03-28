@@ -293,7 +293,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			return
 		}
 
-		if !assert.EqualValues(t, volumes, Volumes{
+		if !assert.EqualValues(t, volumes, core.AggregatedVolumes{
 			"world": map[string]map[string]int64{
 				"USD": {
 					"input":  0,
