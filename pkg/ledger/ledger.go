@@ -93,6 +93,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Volu
 		lastLogId = lastLog.ID + 1
 	}
 
+	accounts := make(map[string]core.Account, 0)
 	txs := make([]core.Transaction, 0)
 	logs := make([]core.Log, 0)
 
@@ -185,11 +186,16 @@ txLoop:
 					expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
 					for _, contract := range contracts {
 						if contract.Match(addr) {
-							account, err := l.store.GetAccount(ctx, "account")
-							if err != nil {
-								return nil, nil, nil, err
+							account, ok := accounts[addr]
+							if !ok {
+								account, err = l.store.GetAccount(ctx, addr)
+								if err != nil {
+									return nil, nil, nil, err
+								}
+								accounts[addr] = account
 							}
-							ok := contract.Expr.Eval(core.EvalContext{
+
+							ok = contract.Expr.Eval(core.EvalContext{
 								Variables: map[string]interface{}{
 									"balance": float64(expectedBalance),
 								},
