@@ -216,13 +216,16 @@ txLoop:
 			Transaction: tx,
 		})
 		lastLogId++
-		logs = append(logs, core.Log{
+		newLog := core.Log{
 			ID:   lastLogId,
 			Type: "NEW_TRANSACTION",
 			Data: tx,
 			Hash: "",
 			Date: timestamp,
-		})
+		}
+		newLog.Hash = core.Hash(lastLog, newLog)
+		lastLog = &newLog
+		logs = append(logs, newLog)
 	}
 	if hasError {
 		return nil, ret, logs, ErrCommitError
