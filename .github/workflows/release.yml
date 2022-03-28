@@ -94,5 +94,5 @@ jobs:
           push: true
           tags: ghcr.io/numary/ledger:latest,ghcr.io/numary/ledger:${{ github.event.release.tag_name }}
           build-args:
-            APP_SHA: ${{ env.GITHUB_SHA }}
-            VERSION: ${{ github.event.release.tag_name }}
+            APP_SHA=${{ env.GITHUB_SHA }}
+            VERSION=${{ github.event.release.tag_name }}
