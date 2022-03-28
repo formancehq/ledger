@@ -86,10 +86,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	lastLogId := uint64(0)
-	if lastLog != nil {
-		lastLogId = lastLog.ID + 1
-	}
 
 	accounts := make(map[string]core.Account, 0)
 	txs := make([]core.Transaction, 0)
@@ -215,15 +211,7 @@ txLoop:
 		ret = append(ret, CommitTransactionResult{
 			Transaction: tx,
 		})
-		lastLogId++
-		newLog := core.Log{
-			ID:   lastLogId,
-			Type: "NEW_TRANSACTION",
-			Data: tx,
-			Hash: "",
-			Date: timestamp,
-		}
-		newLog.Hash = core.Hash(lastLog, newLog)
+		newLog := core.NewTransactionLog(lastLog, tx)
 		lastLog = &newLog
 		logs = append(logs, newLog)
 	}
