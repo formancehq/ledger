@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/pborman/uuid"
 	"strings"
 	"time"
 
@@ -97,6 +96,11 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (Volu
 	txs := make([]core.Transaction, 0)
 	logs := make([]core.Log, 0)
 
+	count, err := l.store.CountTransactions(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 txLoop:
 	for i := range ts {
 
@@ -104,8 +108,9 @@ txLoop:
 			TransactionData: ts[i],
 		}
 
-		tx.ID = uuid.New()
+		tx.ID = uint64(count)
 		tx.Timestamp = timestamp.Format(time.RFC3339)
+		count++
 
 		txs = append(txs, tx)
 
@@ -311,7 +316,7 @@ func (l *Ledger) FindTransactions(ctx context.Context, m ...query.QueryModifier)
 	return c, err
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id string) (core.Transaction, error) {
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 
 	return tx, err
@@ -330,7 +335,7 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transaction, error) {
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
@@ -384,7 +389,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 	return account, nil
 }
 
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m core.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return NewLockError(err)
@@ -425,7 +430,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 		return err
 	}
 
-	l.monitor.SavedMetadata(ctx, l.name, targetType, targetID, m)
+	l.monitor.SavedMetadata(ctx, l.name, targetType, fmt.Sprint(targetID), m)
 
 	return nil
 }

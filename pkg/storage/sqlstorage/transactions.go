@@ -20,8 +20,8 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Distinct()
-	sb.OrderBy("t.ord desc")
-	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings", "t.ord")
+	sb.OrderBy("t.id desc")
+	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
 	switch s.schema.Flavor() {
 	case sqlbuilder.PostgreSQL:
 		sb.From(s.schema.Table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
@@ -64,7 +64,6 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		var (
 			ref sql.NullString
 			ts  sql.NullString
-			ord int
 		)
 
 		tx := core.Transaction{}
@@ -74,7 +73,6 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 			&ref,
 			&tx.Metadata,
 			&tx.Postings,
-			&ord,
 		)
 		if err != nil {
 			return c, err
@@ -112,7 +110,7 @@ func (s *Store) FindTransactions(ctx context.Context, q query.Query) (sharedapi.
 	return s.findTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) (tx core.Transaction, err error) {
+func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select(
 		"t.id",
@@ -123,7 +121,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 	)
 	sb.From(sb.As(s.schema.Table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
-	sb.OrderBy("t.ord DESC")
+	sb.OrderBy("t.id DESC")
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -166,6 +164,6 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) 
 	return tx, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId string) (tx core.Transaction, err error) {
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transaction, err error) {
 	return s.getTransaction(ctx, s.schema, txId)
 }

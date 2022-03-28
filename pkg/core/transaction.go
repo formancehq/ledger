@@ -19,7 +19,7 @@ type TransactionData struct {
 
 type Transaction struct {
 	TransactionData
-	ID        string `json:"txid"`
+	ID        uint64 `json:"txid"`
 	Timestamp string `json:"timestamp"`
 }
 

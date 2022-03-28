@@ -460,7 +460,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		l.Commit(context.Background(), []core.TransactionData{{
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -470,18 +470,27 @@ func TestTransactionMetadata(t *testing.T) {
 				},
 			},
 		}})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		tx, err := l.GetLastTransaction(context.Background())
 		if err != nil {
 			t.Error(err)
 		}
 
-		l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
+		err = l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		tx, err = l.GetLastTransaction(context.Background())
 		if err != nil {
@@ -555,7 +564,7 @@ func TestGetTransaction(t *testing.T) {
 			t.Error(err)
 		}
 
-		tx, err := l.GetTransaction(context.Background(), fmt.Sprint(last.ID))
+		tx, err := l.GetTransaction(context.Background(), last.ID)
 		if err != nil {
 			t.Fatal(err)
 		}

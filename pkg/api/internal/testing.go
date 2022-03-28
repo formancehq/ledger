@@ -95,8 +95,8 @@ func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.Transact
 	return rec
 }
 
-func PostTransactionMetadata(t *testing.T, handler http.Handler, id string, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%s/metadata", id), Buffer(t, m))
+func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m core.Metadata) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/metadata", id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -107,8 +107,8 @@ func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func GetTransaction(handler http.Handler, id string) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%s", id), nil)
+func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }

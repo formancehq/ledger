@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -28,7 +28,6 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) (
 		ib.Values(l.ID, l.Type, l.Hash, l.Date, string(data))
 
 		sql, args := ib.BuildWithFlavor(s.schema.Flavor())
-		logrus.Debug(sql, args)
 		_, err = exec.ExecContext(ctx, sql, args...)
 		if err != nil {
 			hasError = true
@@ -66,7 +65,6 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	sb.Limit(1)
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	logrus.Debugln(sqlq)
 	row := exec.QueryRowContext(ctx, sqlq)
 	l := core.Log{}
 	var (
@@ -103,7 +101,6 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	sb.OrderBy("id desc")
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	logrus.Debugln(sqlq)
 	rows, err := exec.QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
@@ -117,6 +114,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 			ts   sql.NullString
 			data sql.NullString
 		)
+
 		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -124,6 +122,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 			}
 			return nil, err
 		}
+		fmt.Println(data.String)
 		t, err := time.Parse(time.RFC3339, ts.String)
 		if err != nil {
 			return nil, err

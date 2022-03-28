@@ -117,6 +117,6 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {
-	_, err := store.GetTransaction(context.Background(), "1")
+	_, err := store.GetTransaction(context.Background(), 1)
 	assert.NoError(t, err)
 }

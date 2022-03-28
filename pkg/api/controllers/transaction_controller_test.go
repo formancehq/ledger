@@ -12,7 +12,6 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"net/http"
@@ -243,7 +242,7 @@ func TestNotFoundTransaction(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.GetTransaction(api, uuid.New())
+				rsp := internal.GetTransaction(api, 0)
 				assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 				return nil
 			},

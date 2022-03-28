@@ -63,7 +63,7 @@ func IsTooManyClientError(err error) bool {
 type Store interface {
 	CountTransactions(context.Context) (int64, error)
 	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
-	GetTransaction(context.Context, string) (core.Transaction, error)
+	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
 	AggregateBalances(context.Context, string) (map[string]int64, error)
 	AggregateVolumes(context.Context, string) (map[string]map[string]int64, error)
@@ -104,7 +104,7 @@ func (n noOpStore) FindTransactions(ctx context.Context, q query.Query) (shareda
 	return sharedapi.Cursor{}, nil
 }
 
-func (n noOpStore) GetTransaction(ctx context.Context, s string) (core.Transaction, error) {
+func (n noOpStore) GetTransaction(ctx context.Context, s uint64) (core.Transaction, error) {
 	return core.Transaction{}, nil
 }
 

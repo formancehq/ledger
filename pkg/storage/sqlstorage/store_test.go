@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -125,7 +126,7 @@ func TestStore(t *testing.T) {
 
 func testSaveTransaction(t *testing.T, store *sqlstorage.Store) {
 	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{
-		ID: uuid.New(),
+		ID: 0,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -143,7 +144,7 @@ func testSaveTransaction(t *testing.T, store *sqlstorage.Store) {
 
 func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
+		ID: 0,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{},
@@ -156,7 +157,7 @@ func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 
 	log2 := core.NewTransactionLog(&log1, core.Transaction{
-		ID: uuid.New(),
+		ID: 1,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{},
@@ -174,7 +175,7 @@ func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
+		ID: 0,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -200,7 +201,6 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 
 func testAggregateBalances(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -224,7 +224,6 @@ func testAggregateBalances(t *testing.T, store *sqlstorage.Store) {
 
 func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -262,7 +261,6 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 
 func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -316,7 +314,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 
 func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -332,17 +329,23 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	assert.NoError(t, err)
+	ret, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	if !assert.NoError(t, err) {
+		spew.Dump(ret)
+		return
+	}
 
 	countTransactions, err := store.CountTransactions(context.Background())
-	assert.NoError(t, err)
-	assert.EqualValues(t, 1, countTransactions)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, countTransactions) {
+		return
+	}
 }
 
 func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	tx1 := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -357,7 +360,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	tx2 := core.Transaction{
-		ID: uuid.New(),
+		ID: 1,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -475,7 +478,6 @@ func testMapping(t *testing.T, store *sqlstorage.Store) {
 
 func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	tx1 := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -491,7 +493,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	tx2 := core.Transaction{
-		ID: uuid.New(),
+		ID: 1,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -509,7 +511,9 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	_, err := store.AppendLog(context.Background(), log1, log2)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
 	if !assert.NoError(t, err) {
@@ -588,7 +592,6 @@ func TestInitializeStore(t *testing.T) {
 
 func testLastLog(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
-		ID: uuid.New(),
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
 				{

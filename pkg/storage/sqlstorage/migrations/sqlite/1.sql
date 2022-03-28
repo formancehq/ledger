@@ -26,25 +26,6 @@ CREATE TABLE IF NOT EXISTS accounts
     UNIQUE ("address")
 );
 --statement
-CREATE TABLE transactions_v2 (
-                                 "id"        varchar(36) primary key,
-                                 "timestamp" varchar,
-                                 "reference" varchar,
-                                 "hash"      varchar,
-                                 "postings" varchar,
-                                 "metadata" varchar DEFAULT '{}',
-                                 "ord" integer,
-
-                                 UNIQUE("reference"),
-                                 UNIQUE("ord")
-);
---statement
-INSERT INTO transactions_v2 (id, timestamp, reference, hash, ord) SELECT id, timestamp, reference, hash, id from transactions;
---statement
-DROP TABLE transactions;
---statement
-ALTER TABLE transactions_v2 RENAME TO transactions;
---statement
 CREATE TABLE IF NOT EXISTS log
 (
     "id"   integer primary key autoincrement,
@@ -53,6 +34,12 @@ CREATE TABLE IF NOT EXISTS log
     "date" date,
     "data" varchar
 );
+--statement
+ALTER TABLE transactions
+ADD COLUMN postings varchar;
+--statement
+ALTER TABLE transactions
+ADD COLUMN metadata varchar;
 --statement
 UPDATE transactions
 SET postings = (
@@ -67,13 +54,13 @@ SET postings = (
 INSERT INTO log(type, date, data, hash)
 SELECT v.type, v.timestamp, v.data, ''
 FROM (
-     SELECT 0 as ord, ord as ord2, 'NEW_TRANSACTION' as type, timestamp, '{"txid": "' || id || '", "postings": ' || postings || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}' as data
+     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp, '{"txid": ' || id || ', "postings": ' || postings || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}' as data
      FROM transactions
      UNION ALL
-     SELECT meta_id as ord, 0 as ord2, 'SET_METADATA' as type, timestamp, '{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN json_valid(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}' as data
+     SELECT 10000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp, '{"targetType": "' || UPPER(meta_target_type) || '", "targetId": ' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ', "metadata": {"' || meta_key || '": ' || CASE WHEN json_valid(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}' as data
      FROM metadata
  ) v
-ORDER BY v.timestamp ASC, v.ord ASC, v.ord2 ASC;
+ORDER BY v.timestamp ASC, v.ord ASC;
 --statement
 ALTER TABLE log RENAME TO log2;
 --statement
@@ -169,7 +156,7 @@ CREATE TRIGGER IF NOT EXISTS new_log_transaction
           ON log
               WHEN new.type = 'NEW_TRANSACTION'
 BEGIN
-INSERT INTO transactions (id, reference, timestamp, postings, metadata, ord)
+INSERT INTO transactions (id, reference, timestamp, postings, metadata)
 VALUES (json_extract(new.data, '$.txid'),
         CASE
             WHEN json_extract(new.data, '$.reference') = '' THEN NULL
@@ -178,8 +165,7 @@ VALUES (json_extract(new.data, '$.txid'),
         json_extract(new.data, '$.postings'),
         CASE
             WHEN json_extract(new.data, '$.metadata') IS NULL THEN '{}'
-            ELSE json_extract(new.data, '$.metadata') END,
-        (SELECT COUNT(*)+1 FROM transactions));
+            ELSE json_extract(new.data, '$.metadata') END);
 END;
 --statement
 CREATE TRIGGER IF NOT EXISTS new_log_set_metadata_on_transaction

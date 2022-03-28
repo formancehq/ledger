@@ -71,21 +71,20 @@ AS
 $$
 BEGIN
     if NEW.type = 'NEW_TRANSACTION' THEN
-        INSERT INTO "VAR_LEDGER_NAME".transactions(id, timestamp, reference, postings, metadata, ord)
-        VALUES ((NEW.data ->> 'txid')::varchar,
+        INSERT INTO "VAR_LEDGER_NAME".transactions(id, timestamp, reference, postings, metadata)
+        VALUES ((NEW.data ->> 'txid')::bigint,
                 (NEW.data ->> 'timestamp')::varchar,
                 CASE
                     WHEN (NEW.data ->> 'reference')::varchar = '' THEN NULL
                     ELSE (NEW.data ->> 'reference')::varchar END,
                 (NEW.data ->> 'postings')::jsonb,
-                CASE WHEN (NEW.data ->> 'metadata')::jsonb IS NULL THEN '{}' ELSE (NEW.data ->> 'metadata')::jsonb END,
-                (SELECT count(*)+1 FROM "VAR_LEDGER_NAME".transactions));
+                CASE WHEN (NEW.data ->> 'metadata')::jsonb IS NULL THEN '{}' ELSE (NEW.data ->> 'metadata')::jsonb END);
     END IF;
     if NEW.type = 'SET_METADATA' THEN
         if NEW.data ->> 'targetType' = 'TRANSACTION' THEN
             UPDATE "VAR_LEDGER_NAME".transactions
             SET metadata = metadata || (NEW.data ->> 'metadata')::jsonb
-            WHERE id = (NEW.data ->> 'targetId')::varchar;
+            WHERE id = (NEW.data ->> 'targetId')::bigint;
         END IF;
         if NEW.data ->> 'targetType' = 'ACCOUNT' THEN
             INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
@@ -131,15 +130,6 @@ ALTER TABLE "VAR_LEDGER_NAME".transactions
 ALTER TABLE "VAR_LEDGER_NAME".transactions
     ADD COLUMN "metadata" jsonb DEFAULT '{}';
 --statement
-ALTER TABLE "VAR_LEDGER_NAME".transactions
-    ADD COLUMN ord BIGINT; -- Allow to keep ordering
---statement
-UPDATE "VAR_LEDGER_NAME".transactions
-SET ord = id;
---statement
-ALTER TABLE "VAR_LEDGER_NAME".transactions
-    ALTER COLUMN id TYPE varchar(36);
---statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".log
 (
     "id"   bigint,
@@ -163,7 +153,7 @@ SET postings = (
                     '","amount": ' || amount || '}' as j,
                     txid
              FROM "VAR_LEDGER_NAME".postings
-             WHERE txid::VARCHAR = transactions.id
+             WHERE txid::bigint = transactions.id
              ORDER BY txid DESC
          ) v
 );
@@ -173,13 +163,13 @@ CREATE SEQUENCE "VAR_LEDGER_NAME".log_seq START WITH 0 MINVALUE 0;
 INSERT INTO "VAR_LEDGER_NAME".log(id, type, date, data, hash)
 SELECT nextval('"VAR_LEDGER_NAME".log_seq'), v.type, v.timestamp::timestamp with time zone, v.data, ''
 FROM (
-         SELECT 0 as ord, ord as ord2, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone, ('{"txid": "' || id || '", "postings": ' || postings::varchar || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}')::jsonb as data
-         FROM "VAR_LEDGER_NAME".transactions
-         UNION ALL
-         SELECT meta_id as ord, 0 as ord2, 'SET_METADATA' as type, timestamp::timestamp with time zone, ('{"targetType": "' || UPPER(meta_target_type) || '", "targetId": "' || meta_target_id || '", "metadata": {"' || meta_key || '": ' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}')::jsonb as data
-         FROM "VAR_LEDGER_NAME".metadata
-     ) v
-ORDER BY v.timestamp ASC, v.ord ASC, v.ord2 ASC;
+     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone, ('{"txid": ' || id || ', "postings": ' || postings::varchar || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}')::jsonb as data
+     FROM "VAR_LEDGER_NAME".transactions
+     UNION ALL
+     SELECT 100000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp::timestamp with time zone, ('{"targetType": "' || UPPER(meta_target_type) || '", "targetId": ' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ', "metadata": {"' || meta_key || '": ' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}')::jsonb as data
+     FROM "VAR_LEDGER_NAME".metadata
+ ) v
+ORDER BY v.timestamp ASC, v.ord ASC;
 -- statement
 DROP SEQUENCE "VAR_LEDGER_NAME".log_seq;
 --statement
@@ -190,7 +180,7 @@ SET metadata = (
              SELECT DISTINCT ON (meta_key)
                  meta_id, meta_key, meta_value
              FROM "VAR_LEDGER_NAME".metadata
-             WHERE meta_target_id = transactions.id
+             WHERE meta_target_type = 'transaction' AND meta_target_id::bigint = transactions.id
              ORDER BY meta_key, meta_id DESC
          ) v
 );

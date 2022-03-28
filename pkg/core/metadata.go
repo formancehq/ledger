@@ -15,8 +15,8 @@ const (
 
 type Metadata map[string]json.RawMessage
 
-func (m Metadata) MarkReverts(txID string) {
-	m[revertKey] = json.RawMessage(fmt.Sprintf(`"%s"`, txID))
+func (m Metadata) MarkReverts(txID uint64) {
+	m[revertKey] = json.RawMessage(fmt.Sprintf(`"%d"`, txID))
 }
 
 func (m Metadata) IsReverted() bool {

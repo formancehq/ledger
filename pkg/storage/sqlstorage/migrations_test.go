@@ -21,15 +21,7 @@ import (
 	"time"
 )
 
-type TransactionV0 struct {
-	Postings  core.Postings `json:"postings"`
-	Reference string        `json:"reference"`
-	Metadata  core.Metadata `json:"metadata" swaggertype:"object"`
-	ID        int           `json:"txid"`
-	Timestamp string        `json:"timestamp"`
-}
-
-var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx TransactionV0) bool {
+var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Transaction) bool {
 	sqlx, args := sqlbuilder.NewInsertBuilder().
 		InsertInto(store.Schema().Table("transactions")).
 		Cols("id", "timestamp", "hash", "reference").
@@ -131,27 +123,29 @@ var now = time.Now().Round(time.Second)
 
 var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 	"0.sql": func(t *testing.T, store *sqlstorage.Store) {
-		tx1 := TransactionV0{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "player1",
-					Amount:      100,
-					Asset:       "USD",
+		tx1 := core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player1",
+						Amount:      100,
+						Asset:       "USD",
+					},
+					{
+						Source:      "world",
+						Destination: "player2",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
-				{
-					Source:      "world",
-					Destination: "player2",
-					Amount:      100,
-					Asset:       "USD",
+				Metadata: core.Metadata{
+					"players": json.RawMessage(`["player1", "player2"]`),
 				},
-			},
-			Metadata: core.Metadata{
-				"players": json.RawMessage(`["player1", "player2"]`),
+				Reference: "tx1",
 			},
 			ID:        0,
 			Timestamp: now.Format(time.RFC3339),
-			Reference: "tx1",
 		}
 		if !v0CreateTransaction(t, store, tx1) {
 			return
@@ -171,17 +165,19 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		tx2 := TransactionV0{
-			Postings: []core.Posting{
-				{
-					Source:      "player1",
-					Destination: "shop",
-					Amount:      1,
-					Asset:       "USD",
+		tx2 := core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "player1",
+						Destination: "shop",
+						Amount:      1,
+						Asset:       "USD",
+					},
 				},
+				Reference: "tx2",
 			},
 			ID:        1,
-			Reference: "tx2",
 			Timestamp: now.Add(2 * time.Second).Format(time.RFC3339),
 		}
 		if !v0CreateTransaction(t, store, tx2) {
@@ -196,7 +192,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}
 		assert.EqualValues(t, 2, count)
 
-		tx, err := store.GetTransaction(context.Background(), "0")
+		tx, err := store.GetTransaction(context.Background(), 0)
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -232,7 +228,6 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			TransactionData: core.TransactionData{
 				Reference: "tx1",
 			},
-			ID:        "0",
 			Timestamp: now.Format(time.RFC3339),
 		}, tx) {
 			return
@@ -317,7 +312,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						Metadata:  core.Metadata{},
 						Reference: "tx2",
 					},
-					ID:        "1",
+					ID:        1,
 					Timestamp: now.Add(2 * time.Second).Format(time.RFC3339),
 				},
 				Date: now.Add(2 * time.Second),
@@ -351,7 +346,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Type: core.SetMetadataType,
 				Data: core.SetMetadata{
 					TargetType: "TRANSACTION",
-					TargetID:   "0",
+					TargetID:   uint64(0),
 					Metadata: core.Metadata{
 						"startedAt": json.RawMessage(fmt.Sprintf(`"%s"`, now.Format(time.RFC3339))),
 					},
@@ -363,7 +358,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Type: core.SetMetadataType,
 				Data: core.SetMetadata{
 					TargetType: "TRANSACTION",
-					TargetID:   "0",
+					TargetID:   uint64(0),
 					Metadata: core.Metadata{
 						"info": json.RawMessage(`"Init game"`),
 					},
@@ -375,7 +370,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Type: core.SetMetadataType,
 				Data: core.SetMetadata{
 					TargetType: "TRANSACTION",
-					TargetID:   "0",
+					TargetID:   uint64(0),
 					Metadata: core.Metadata{
 						"players": json.RawMessage(`["player1", "player2"]`),
 					},
@@ -404,7 +399,6 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						Metadata:  core.Metadata{},
 						Reference: "tx1",
 					},
-					ID:        "0",
 					Timestamp: now.Format(time.RFC3339),
 				},
 				Date: now,
@@ -412,7 +406,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}
 
 		for i := 0; i < len(expectedLogs); i++ {
-			if !assert.Equal(t, expectedLogs[i], logs[i]) {
+			if !assert.EqualValues(t, expectedLogs[i], logs[i]) {
 				return
 			}
 		}

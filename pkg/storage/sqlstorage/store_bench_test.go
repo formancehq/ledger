@@ -123,7 +123,7 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: uuid.New(),
+			ID: uint64(i),
 		}
 		*log = core.NewTransactionLog(log, tx)
 		_, err := store.AppendLog(context.Background(), *log)
@@ -164,7 +164,7 @@ func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: uuid.New(),
+			ID: uint64(i),
 		}
 		*log = core.NewTransactionLog(log, tx)
 		_, err := store.AppendLog(context.Background(), *log)
@@ -207,7 +207,7 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: uuid.New(),
+			ID: uint64(i),
 		}
 		*log = core.NewTransactionLog(log, tx)
 		_, err := store.AppendLog(context.Background(), *log)
@@ -236,7 +236,7 @@ func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: uuid.New(),
+			ID: uint64(n),
 		})
 		_, err := store.AppendLog(context.Background(), *log)
 		assert.NoError(b, err)

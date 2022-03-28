@@ -2,6 +2,8 @@ package core
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,9 +34,42 @@ func NewTransactionLog(previousLog *Log, tx Transaction) Log {
 }
 
 type SetMetadata struct {
-	TargetType string   `json:"targetType"`
-	TargetID   string   `json:"targetId"`
-	Metadata   Metadata `json:"metadata"`
+	TargetType string      `json:"targetType"`
+	TargetID   interface{} `json:"targetId"`
+	Metadata   Metadata    `json:"metadata"`
+}
+
+func (s *SetMetadata) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string          `json:"targetType"`
+		TargetID   json.RawMessage `json:"targetId"`
+		Metadata   Metadata        `json:"metadata"`
+	}
+	x := X{}
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+	var id interface{}
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		id = ""
+		err = json.Unmarshal(x.TargetID, &id)
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+	default:
+		panic("unknown type")
+	}
+	if err != nil {
+		return err
+	}
+
+	*s = SetMetadata{
+		TargetType: x.TargetType,
+		TargetID:   id,
+		Metadata:   x.Metadata,
+	}
+	return nil
 }
 
 func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
