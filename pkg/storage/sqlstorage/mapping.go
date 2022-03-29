@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/sirupsen/logrus"
 )
 
 // We have only one mapping for a ledger, so hardcode the id
@@ -77,8 +76,6 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		ib.ReplaceInto(s.schema.Table("mapping"))
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
-
-	logrus.Debugln(sqlq, args)
 
 	_, err = exec.ExecContext(ctx, sqlq, args...)
 	return s.error(err)

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/sirupsen/logrus"
 	"math"
 	"time"
 
@@ -51,7 +50,6 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		sb.Where(sb.E("reference", q.Params["reference"]))
 	}
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	logrus.Debugln(sqlq, args)
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return c, s.error(err)

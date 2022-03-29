@@ -4,12 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/mattn/go-sqlite3"
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"path"
@@ -19,27 +16,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"io/fs"
 )
-
-func init() {
-	sql.Register("sqlite3-custom", &sqlite3.SQLiteDriver{
-		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			return conn.RegisterFunc("hash_log", func(v1, v2 string) string {
-				m1 := make(map[string]interface{})
-				m2 := make(map[string]interface{})
-				err := json.Unmarshal([]byte(v1), &m1)
-				if err != nil {
-					panic(err)
-				}
-				err = json.Unmarshal([]byte(v2), &m2)
-				if err != nil {
-					panic(err)
-				}
-				return core.Hash(m1, m2)
-			}, false)
-		},
-	})
-	UpdateSQLDriverMapping(SQLite, "sqlite3-custom")
-}
 
 //go:embed migrations
 var migrations embed.FS
