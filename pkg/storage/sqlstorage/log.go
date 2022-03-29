@@ -3,8 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
+	json "github.com/gibson042/canonicaljson-go"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
@@ -25,7 +24,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) (
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.Cols("id", "type", "hash", "date", "data")
 		ib.InsertInto(s.schema.Table("log"))
-		ib.Values(l.ID, l.Type, l.Hash, l.Date, string(data))
+		ib.Values(l.ID, l.Type, l.Hash, l.Date.Format(time.RFC3339Nano), string(data))
 
 		sql, args := ib.BuildWithFlavor(s.schema.Flavor())
 		_, err = exec.ExecContext(ctx, sql, args...)
@@ -78,7 +77,7 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 		}
 		return nil, err
 	}
-	t, err := time.Parse(time.RFC3339, ts.String)
+	t, err := time.Parse(time.RFC3339Nano, ts.String)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +121,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 			}
 			return nil, err
 		}
-		fmt.Println(data.String)
-		t, err := time.Parse(time.RFC3339, ts.String)
+		t, err := time.Parse(time.RFC3339Nano, ts.String)
 		if err != nil {
 			return nil, err
 		}

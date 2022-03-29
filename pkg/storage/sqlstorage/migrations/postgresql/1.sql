@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".log
     "type" varchar,
     "hash" varchar,
     "date" timestamp with time zone,
-    "data" json,
+    "data" jsonb,
 
     UNIQUE ("id")
 );
@@ -85,10 +85,14 @@ CREATE INDEX IF NOT EXISTS volumes_account ON "VAR_LEDGER_NAME".volumes ("accoun
 --statement
 UPDATE "VAR_LEDGER_NAME".transactions
 SET postings = (
-    SELECT ('[' || string_agg(v.j, ',') || ']')::jsonb
+    SELECT ('[' || string_agg(v.j, ',') || ']')::json
     FROM (
-             SELECT '{"source":"' || source || '", "destination":"' || destination || '", "asset":"' || asset ||
-                    '","amount": ' || amount || '}' as j,
+             SELECT '{' ||
+                    '"amount":' || amount || ',' ||
+                    '"asset":"' || asset || '",' ||
+                    '"destination":"' || destination || '",' ||
+                    '"source":"' || source || '"' ||
+                    '}' as j,
                     txid
              FROM "VAR_LEDGER_NAME".postings
              WHERE txid::bigint = transactions.id
@@ -99,12 +103,12 @@ SET postings = (
 CREATE SEQUENCE "VAR_LEDGER_NAME".log_seq START WITH 0 MINVALUE 0;
 --statement
 INSERT INTO "VAR_LEDGER_NAME".log(id, type, date, data, hash)
-SELECT nextval('"VAR_LEDGER_NAME".log_seq'), v.type, v.timestamp::timestamp with time zone, v.data, ''
+SELECT nextval('"VAR_LEDGER_NAME".log_seq'), v.type, v.timestamp::timestamp with time zone, v.data::json, ''
 FROM (
-     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone, ('{"txid": ' || id || ', "postings": ' || postings::varchar || ', "metadata": {}, "timestamp": "' || timestamp || '", "reference": "' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '"}')::jsonb as data
+     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone::varchar, '{"metadata":{},"postings":' || postings::varchar || ',"reference":"' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '","timestamp":"' || timestamp || '","txid":' || id || '}' as data
      FROM "VAR_LEDGER_NAME".transactions
      UNION ALL
-     SELECT 100000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp::timestamp with time zone, ('{"targetType": "' || UPPER(meta_target_type) || '", "targetId": ' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ', "metadata": {"' || meta_key || '": ' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '}}')::jsonb as data
+     SELECT 100000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp::timestamp with time zone::varchar, '{"metadata":{"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '},"targetId":' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ',"targetType":"' || UPPER(meta_target_type) || '"}' as data
      FROM "VAR_LEDGER_NAME".metadata
  ) v
 ORDER BY v.timestamp ASC, v.ord ASC;
@@ -113,7 +117,7 @@ DROP SEQUENCE "VAR_LEDGER_NAME".log_seq;
 --statement
 UPDATE "VAR_LEDGER_NAME".transactions
 SET metadata = (
-    SELECT ('{' || COALESCE(STRING_AGG('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ','), '') || '}')::jsonb
+    SELECT ('{' || COALESCE(STRING_AGG('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ','), '') || '}')::json
     FROM (
              SELECT DISTINCT ON (meta_key)
                  meta_id, meta_key, meta_value
@@ -127,7 +131,7 @@ INSERT INTO "VAR_LEDGER_NAME".accounts(address) SELECT * FROM "VAR_LEDGER_NAME".
 --statement
 UPDATE "VAR_LEDGER_NAME".accounts
 SET metadata = (
-    SELECT ('{' || string_agg('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ',') || '}')::jsonb
+    SELECT ('{' || string_agg('"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END, ',') || '}')::json
     FROM (
              SELECT distinct on (meta_key)
                  meta_id, meta_key, meta_value
@@ -220,3 +224,69 @@ ON "VAR_LEDGER_NAME".log
 REFERENCING NEW TABLE AS newtable
 FOR EACH STATEMENT
 EXECUTE PROCEDURE "VAR_LEDGER_NAME".compute_volumes();
+--statement
+CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".normaliz(v jsonb)
+    RETURNS text AS
+$BODY$
+DECLARE
+    r record;
+    t jsonb;
+BEGIN
+    if jsonb_typeof(v) = 'object' then
+        return (
+            SELECT COALESCE('{' || string_agg(keyValue, ',') || '}', '{}')
+            FROM (
+                     SELECT '"' || key || '":' || value as keyValue
+                     FROM (
+                              SELECT key, (CASE WHEN "VAR_LEDGER_NAME".is_valid_json((select v ->> key)) THEN (select "VAR_LEDGER_NAME".normaliz((select v ->> key)::jsonb)) ELSE '"' || (select v ->> key) || '"' END) as value
+                              FROM (
+                                       SELECT jsonb_object_keys(v) as key
+                                   ) t
+                              order by key
+                          ) t
+                 ) t
+        );
+    end if;
+    if jsonb_typeof(v) = 'array' then
+        return (
+            select COALESCE('[' || string_agg(items, ',') || ']', '[]')
+            from (
+                     select "VAR_LEDGER_NAME".normaliz(item) as items from jsonb_array_elements(v) item
+                 ) t
+        );
+    end if;
+    if jsonb_typeof(v) = 'string' then
+        return v::text;
+    end if;
+    if jsonb_typeof(v) = 'number' then
+        return v::bigint;
+    end if;
+    if jsonb_typeof(v) = 'boolean' then
+        return v::boolean;
+    end if;
+
+    return '';
+END
+$BODY$
+    LANGUAGE plpgsql;
+--statement
+CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".compute_hashes()
+    RETURNS void AS
+$BODY$
+DECLARE
+    r record;
+BEGIN
+    -- Create JSON object manually as it needs to be in canonical form
+    FOR r IN (select id, '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":' || to_json(date) || ',"hash":"","id":' || id || ',"type":"' || type || '"}' as canonical from "VAR_LEDGER_NAME".log)
+    LOOP
+        UPDATE "VAR_LEDGER_NAME".log set hash = (select encode(digest(
+             COALESCE((select '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":' || to_json(date) || ',"hash":"' || hash || '","id":' || id || ',"type":"' || type || '"}' from "VAR_LEDGER_NAME".log where id = r.id - 1), 'null') || r.canonical,
+             'sha256'
+        ), 'hex'))
+        WHERE id = r.id;
+    END LOOP;
+END
+$BODY$
+    LANGUAGE plpgsql;
+--statement
+SELECT "VAR_LEDGER_NAME".compute_hashes();

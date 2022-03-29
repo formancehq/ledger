@@ -575,6 +575,7 @@ func testLastLog(t *testing.T, store *sqlstorage.Store) {
 					Asset:       "USD",
 				},
 			},
+			Metadata: core.Metadata{},
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}

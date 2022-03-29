@@ -285,14 +285,20 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		newLog := core.NewSetMetadataLog(&logs[0], core.SetMetadata{
-			TargetType: core.MetaTargetTypeTransaction,
-			TargetID:   uint64(0),
-			Metadata: core.Metadata{
-				"after": json.RawMessage("\"migrate\""),
+		newLog := core.Log{
+			ID:   logs[0].ID + 1,
+			Type: core.SetMetadataType,
+			Data: core.SetMetadata{
+				TargetType: core.MetaTargetTypeTransaction,
+				TargetID:   uint64(0),
+				Metadata: core.Metadata{
+					"after": json.RawMessage("\"migrate\""),
+				},
 			},
-		})
-		newLog.Date = newLog.Date.Round(time.Second)
+			Hash: "",
+			Date: now.Add(2 * time.Second),
+		}
+		newLog.Hash = core.Hash(logs[0], newLog)
 		_, err = store.AppendLog(context.Background(), newLog)
 		if !assert.NoError(t, err) {
 			return
@@ -303,6 +309,11 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 		if !assert.Len(t, logs, 8) {
+			return
+		}
+
+		index, ok := core.CheckHash(logs...)
+		if !assert.Truef(t, ok, "error checking hash at index %d", index) {
 			return
 		}
 
@@ -417,7 +428,12 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			},
 		}
 
-		for i := 0; i < len(expectedLogs); i++ {
+		for i := len(expectedLogs) - 1; i > 0; i-- {
+			var previousLog *core.Log
+			if i < len(expectedLogs)-1 {
+				previousLog = &expectedLogs[i+1]
+			}
+			expectedLogs[i].Hash = core.Hash(previousLog, expectedLogs[i])
 			if !assert.EqualValues(t, expectedLogs[i], logs[i]) {
 				return
 			}

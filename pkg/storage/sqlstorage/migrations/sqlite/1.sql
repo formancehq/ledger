@@ -101,40 +101,40 @@ CREATE TRIGGER IF NOT EXISTS new_transaction
     AFTER INSERT
           ON transactions
 BEGIN
-INSERT OR IGNORE INTO accounts(address, metadata)
-SELECT json_extract(p.value, '$.source'), '{}'
-FROM json_each(new.postings) p;
+    INSERT OR IGNORE INTO accounts(address, metadata)
+    SELECT json_extract(p.value, '$.source'), '{}'
+    FROM json_each(new.postings) p;
 
-INSERT OR IGNORE INTO accounts(address, metadata)
-SELECT json_extract(p.value, '$.destination'), '{}'
-FROM json_each(new.postings) p;
+    INSERT OR IGNORE INTO accounts(address, metadata)
+    SELECT json_extract(p.value, '$.destination'), '{}'
+    FROM json_each(new.postings) p;
 
-INSERT INTO volumes (account, asset, input, output)
-SELECT json_extract(p.value, '$.source'),
-       json_extract(p.value, '$.asset'),
-       0,
-       json_extract(p.value, '$.amount')
-FROM json_each(new.postings) p
-WHERE true
-ON CONFLICT (account, asset) DO UPDATE SET output = output + excluded.output;
+    INSERT INTO volumes (account, asset, input, output)
+    SELECT json_extract(p.value, '$.source'),
+           json_extract(p.value, '$.asset'),
+           0,
+           json_extract(p.value, '$.amount')
+    FROM json_each(new.postings) p
+    WHERE true
+    ON CONFLICT (account, asset) DO UPDATE SET output = output + excluded.output;
 
-INSERT INTO volumes (account, asset, input, output)
-SELECT json_extract(p.value, '$.destination'),
-       json_extract(p.value, '$.asset'),
-       json_extract(p.value, '$.amount'),
-       0
-FROM json_each(new.postings) p
-WHERE true
-ON CONFLICT (account, asset) DO UPDATE SET input = input + excluded.input;
+    INSERT INTO volumes (account, asset, input, output)
+    SELECT json_extract(p.value, '$.destination'),
+           json_extract(p.value, '$.asset'),
+           json_extract(p.value, '$.amount'),
+           0
+    FROM json_each(new.postings) p
+    WHERE true
+    ON CONFLICT (account, asset) DO UPDATE SET input = input + excluded.input;
 END;
 --statement
 CREATE TRIGGER IF NOT EXISTS new_log_transaction
-    AFTER INSERT
-          ON log
-              WHEN new.type = 'NEW_TRANSACTION'
+AFTER INSERT
+ON log
+    WHEN new.type = 'NEW_TRANSACTION'
 BEGIN
-INSERT INTO transactions (id, reference, timestamp, postings, metadata)
-VALUES (json_extract(new.data, '$.txid'),
+    INSERT INTO transactions (id, reference, timestamp, postings, metadata)
+    VALUES (json_extract(new.data, '$.txid'),
         CASE
             WHEN json_extract(new.data, '$.reference') = '' THEN NULL
             ELSE json_extract(new.data, '$.reference') END,
@@ -146,23 +146,23 @@ VALUES (json_extract(new.data, '$.txid'),
 END;
 --statement
 CREATE TRIGGER IF NOT EXISTS new_log_set_metadata_on_transaction
-    AFTER INSERT
-          ON log
-              WHEN new.type = 'SET_METADATA' AND json_extract(new.data, '$.targetType') = 'TRANSACTION'
+AFTER INSERT
+ON log
+WHEN new.type = 'SET_METADATA' AND json_extract(new.data, '$.targetType') = 'TRANSACTION'
 BEGIN
-UPDATE transactions
-SET metadata = json_patch(metadata, json_extract(new.data, '$.metadata'))
-WHERE id = json_extract(new.data, '$.targetId');
+    UPDATE transactions
+    SET metadata = json_patch(metadata, json_extract(new.data, '$.metadata'))
+    WHERE id = json_extract(new.data, '$.targetId');
 END;
 --statement
 CREATE TRIGGER IF NOT EXISTS new_log_set_metadata_on_account
-    AFTER INSERT
-          ON log
-              WHEN new.type = 'SET_METADATA' AND json_extract(new.data, '$.targetType') = 'ACCOUNT'
+AFTER INSERT
+ON log
+WHEN new.type = 'SET_METADATA' AND json_extract(new.data, '$.targetType') = 'ACCOUNT'
 BEGIN
-INSERT INTO accounts(address, metadata)
-VALUES (json_extract(new.data, '$.targetId'), json_extract(new.data, '$.metadata'))
-ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata, excluded.metadata);
+    INSERT INTO accounts(address, metadata)
+    VALUES (json_extract(new.data, '$.targetId'), json_extract(new.data, '$.metadata'))
+    ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata, excluded.metadata);
 END;
 --statement
 INSERT INTO volumes (account, asset, input, output)
@@ -175,3 +175,9 @@ SELECT source, asset, 0, SUM(amount)
 FROM postings
 GROUP BY asset, source
 ON CONFLICT (account, asset) DO UPDATE SET output = output + excluded.output;
+--statement
+UPDATE log
+SET hash = hash_log(
+    coalesce((select '{"data":' || l2.data || ',"date":"' || date || '","hash":"' || l2.hash || '","id":' || l2.id || ',"type":"' || type || '"}' as data from log l2 where l2.id = log.id - 1), 'null'),
+    (select '{"data":' || l2.data || ',"date":"' || date || '","hash":"","id":' || l2.id || ',"type":"' || type || '"}' as data from log l2 where l2.id = log.id)
+);

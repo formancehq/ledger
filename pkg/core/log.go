@@ -1,7 +1,7 @@
 package core
 
 import (
-	"encoding/json"
+	json "github.com/gibson042/canonicaljson-go"
 	"strconv"
 	"strings"
 	"time"
@@ -10,15 +10,37 @@ import (
 const SetMetadataType = "SET_METADATA"
 const NewTransactionType = "NEW_TRANSACTION"
 
+type loggedTX Transaction
+
+func (m loggedTX) MarshalJSON() ([]byte, error) {
+	metadata := make(map[string]interface{})
+	for k, v := range m.Metadata {
+		var i interface{}
+		err := json.Unmarshal(v, &i)
+		if err != nil {
+			return nil, err
+		}
+		metadata[k] = i
+	}
+	return json.Marshal(struct {
+		Transaction
+		Metadata map[string]interface{} `json:"metadata"`
+	}{
+		Transaction: Transaction(m),
+		Metadata:    metadata,
+	})
+}
+
 type Log struct {
 	ID   uint64      `json:"id"`
-	Type string      `json:"hash"`
+	Type string      `json:"type"`
 	Data interface{} `json:"data"`
 	Hash string      `json:"hash"`
 	Date time.Time   `json:"date"`
 }
 
-func NewTransactionLog(previousLog *Log, tx Transaction) Log {
+func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time) Log {
+
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -26,11 +48,15 @@ func NewTransactionLog(previousLog *Log, tx Transaction) Log {
 	l := Log{
 		ID:   id,
 		Type: NewTransactionType,
-		Date: time.Now(),
-		Data: tx,
+		Date: time,
+		Data: loggedTX(tx),
 	}
 	l.Hash = Hash(previousLog, &l)
 	return l
+}
+
+func NewTransactionLog(previousLog *Log, tx Transaction) Log {
+	return NewTransactionLogWithDate(previousLog, tx, time.Now())
 }
 
 type SetMetadata struct {
