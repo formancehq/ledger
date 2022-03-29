@@ -40,6 +40,7 @@ require (
 	github.com/Shopify/sarama v1.32.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/davecgh/go-spew v1.1.1
+	github.com/gibson042/canonicaljson-go v1.0.3
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d
