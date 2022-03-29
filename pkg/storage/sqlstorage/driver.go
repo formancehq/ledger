@@ -97,12 +97,16 @@ func (s *Driver) Name() string {
 }
 
 func (s *Driver) Initialize(ctx context.Context) error {
-	var err error
+	err := s.db.Initialize(ctx)
+	if err != nil {
+		return err
+	}
 	s.systemSchema, err = s.db.Schema(ctx, SystemSchema)
 	if err != nil {
 		return err
 	}
 	err = s.systemSchema.Initialize(ctx)
+
 	if err != nil {
 		return err
 	}

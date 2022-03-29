@@ -99,12 +99,21 @@ func (s SQLiteSchema) Delete(ctx context.Context) error {
 }
 
 type DB interface {
+	Initialize(ctx context.Context) error
 	Schema(ctx context.Context, name string) (Schema, error)
 	Close(ctx context.Context) error
 }
 
 type postgresDB struct {
 	db *sql.DB
+}
+
+func (p *postgresDB) Initialize(ctx context.Context) error {
+	_, err := p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pgcrypto")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *postgresDB) Schema(ctx context.Context, name string) (Schema, error) {
@@ -130,6 +139,10 @@ func NewPostgresDB(db *sql.DB) *postgresDB {
 type sqliteDB struct {
 	directory string
 	dbName    string
+}
+
+func (p *sqliteDB) Initialize(ctx context.Context) error {
+	return nil
 }
 
 func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
