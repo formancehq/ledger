@@ -292,21 +292,26 @@ func TestMetadata(t *testing.T) {
 		}
 
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		l.SaveMeta(context.Background(), "account", "sales:042", core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
 			"seller": json.RawMessage(`{
 				"type":  "account",
 				"value": "users:053"
 			}`),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		l.SaveMeta(context.Background(), "account", "users:053", core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:053", core.Metadata{
 			"commission": json.RawMessage(`{
 				"type":  "portion",
 				"value": "15.5%"
 			}`),
 		})
-
 		if err != nil {
 			t.Error(err)
 			return

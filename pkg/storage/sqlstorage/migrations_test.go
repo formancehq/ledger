@@ -285,7 +285,29 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
+		newLog := core.NewSetMetadataLog(&logs[0], core.SetMetadata{
+			TargetType: core.MetaTargetTypeTransaction,
+			TargetID:   uint64(0),
+			Metadata: core.Metadata{
+				"after": json.RawMessage("\"migrate\""),
+			},
+		})
+		newLog.Date = newLog.Date.Round(time.Second)
+		_, err = store.AppendLog(context.Background(), newLog)
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		logs, err = store.Logs(context.Background())
+		if !assert.NoError(t, err) {
+			return
+		}
+		if !assert.Len(t, logs, 8) {
+			return
+		}
+
 		expectedLogs := []core.Log{
+			newLog,
 			{
 				ID:   6,
 				Type: core.NewTransactionType,

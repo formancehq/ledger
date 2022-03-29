@@ -14,11 +14,6 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-const (
-	targetTypeAccount     = "account"
-	targetTypeTransaction = "transaction"
-)
-
 var DefaultContracts = []core.Contract{
 	{
 		Expr: &core.ExprGte{
@@ -387,7 +382,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	if targetType == "" {
 		return NewValidationError("empty target type")
 	}
-	if targetType != targetTypeTransaction && targetType != targetTypeAccount {
+	if targetType != core.MetaTargetTypeTransaction && targetType != core.MetaTargetTypeAccount {
 		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if targetID == "" {

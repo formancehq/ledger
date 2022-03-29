@@ -390,12 +390,12 @@ func TestLast(t *testing.T) {
 func TestAccountMetadata(t *testing.T) {
 	with(func(l *Ledger) {
 
-		err := l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
 		assert.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
 		assert.NoError(t, err)
@@ -479,13 +479,13 @@ func TestTransactionMetadata(t *testing.T) {
 			t.Error(err)
 		}
 
-		err = l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = l.SaveMeta(context.Background(), "transaction", tx.ID, core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
 		if err != nil {

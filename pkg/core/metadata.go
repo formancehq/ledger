@@ -9,8 +9,8 @@ import (
 const (
 	numaryNamespace           = "com.numary"
 	revertKey                 = numaryNamespace + ".spec/state/reverts"
-	MetaTargetTypeAccount     = "account"
-	MetaTargetTypeTransaction = "transaction"
+	MetaTargetTypeAccount     = "ACCOUNT"
+	MetaTargetTypeTransaction = "TRANSACTION"
 )
 
 type Metadata map[string]json.RawMessage
