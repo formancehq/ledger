@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -159,12 +158,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	testingLedger = uuid.New()
 	module := api.Module(api.Config{
 		StorageDriver: "sqlite",
-		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
-			return []string{
-				"quickstart",
-			}
-		}),
-		Version: "latest",
+		Version:       "latest",
 	})
 	ch := make(chan struct{})
 	options = append([]fx.Option{

@@ -3,21 +3,13 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/numary/ledger/pkg/storage"
 	"gopkg.in/yaml.v3"
 	"net/http"
 
 	_ "embed"
 	"github.com/gin-gonic/gin"
 )
-
-type LedgerLister interface {
-	List(r *http.Request) []string
-}
-type LedgerListerFn func(r *http.Request) []string
-
-func (fn LedgerListerFn) List(r *http.Request) []string {
-	return fn(r)
-}
 
 // ConfigInfo struct
 type ConfigInfo struct {
@@ -41,20 +33,22 @@ type LedgerStorage struct {
 type ConfigController struct {
 	BaseController
 	Version       string
-	StorageDriver string
-	LedgerLister  LedgerLister
+	StorageDriver storage.Driver
 }
 
 // NewConfigController -
-func NewConfigController(version string, storageDriver string, lister LedgerLister) ConfigController {
+func NewConfigController(version string, storageDriver storage.Driver) ConfigController {
 	return ConfigController{
 		Version:       version,
 		StorageDriver: storageDriver,
-		LedgerLister:  lister,
 	}
 }
 
 func (ctl *ConfigController) GetInfo(c *gin.Context) {
+	ledgers, err := ctl.StorageDriver.List(c.Request.Context())
+	if err != nil {
+		panic(err)
+	}
 	ctl.response(
 		c,
 		http.StatusOK,
@@ -63,8 +57,8 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 			Version: ctl.Version,
 			Config: &Config{
 				LedgerStorage: &LedgerStorage{
-					Driver:  ctl.StorageDriver,
-					Ledgers: ctl.LedgerLister.List(c.Request),
+					Driver:  ctl.StorageDriver.Name(),
+					Ledgers: ledgers,
 				},
 			},
 		},

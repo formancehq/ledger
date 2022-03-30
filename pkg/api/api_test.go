@@ -23,10 +23,7 @@ import (
 func withNewModule(t *testing.T, options ...fx.Option) {
 	module := Module(Config{
 		StorageDriver: viper.GetString("sqlite"),
-		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
-			return []string{}
-		}),
-		Version: "latest",
+		Version:       "latest",
 	})
 	ch := make(chan struct{})
 	options = append([]fx.Option{

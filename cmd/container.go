@@ -12,7 +12,6 @@ import (
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
 	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
@@ -177,10 +176,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	// Handle api part
 	options = append(options, api.Module(api.Config{
 		StorageDriver: v.GetString(storageDriverFlag),
-		LedgerLister: controllers.LedgerListerFn(func(*http.Request) []string {
-			return v.GetStringSlice(ledgersFlag)
-		}),
-		Version: Version,
+		Version:       Version,
 	}))
 
 	// Handle storage driver

@@ -23,7 +23,6 @@ const (
 	storageCacheFlag                     = "storage.cache"
 	serverHttpBindAddressFlag            = "server.http.bind_address"
 	uiHttpBindAddressFlag                = "ui.http.bind_address"
-	ledgersFlag                          = "ledgers"
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
 	lockStrategyFlag                     = "lock-strategy"
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
@@ -129,7 +128,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
-	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
 	root.PersistentFlags().Bool(otelTracesBatchFlag, false, "Use OpenTelemetry batching")
