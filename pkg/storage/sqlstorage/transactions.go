@@ -83,7 +83,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		if err != nil {
 			return sharedapi.Cursor{}, err
 		}
-		tx.Timestamp = timestamp.Format(time.RFC3339)
+		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
 		transactions = append(transactions, tx)
 	}
 	if rows.Err() != nil {
@@ -152,7 +152,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 		if err != nil {
 			return tx, err
 		}
-		tx.Timestamp = t.Format(time.RFC3339)
+		tx.Timestamp = t.UTC().Format(time.RFC3339)
 		tx.Reference = ref.String
 	}
 	if rows.Err() != nil {

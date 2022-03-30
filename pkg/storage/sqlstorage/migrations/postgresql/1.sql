@@ -105,10 +105,10 @@ CREATE SEQUENCE "VAR_LEDGER_NAME".log_seq START WITH 0 MINVALUE 0;
 INSERT INTO "VAR_LEDGER_NAME".log(id, type, date, data, hash)
 SELECT nextval('"VAR_LEDGER_NAME".log_seq'), v.type, v.timestamp::timestamp with time zone, v.data::json, ''
 FROM (
-     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp::timestamp with time zone::varchar, '{"metadata":{},"postings":' || postings::varchar || ',"reference":"' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '","timestamp":"' || timestamp || '","txid":' || id || '}' as data
+     SELECT id as ord, 'NEW_TRANSACTION' as type, timestamp, '{"metadata":{},"postings":' || postings::varchar || ',"reference":"' || CASE WHEN reference IS NOT NULL THEN reference ELSE '' END || '","timestamp":"' || timestamp || '","txid":' || id || '}' as data
      FROM "VAR_LEDGER_NAME".transactions
      UNION ALL
-     SELECT 100000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp::timestamp with time zone::varchar, '{"metadata":{"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '},"targetId":' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ',"targetType":"' || UPPER(meta_target_type) || '"}' as data
+     SELECT 100000000000 + meta_id as ord, 'SET_METADATA' as type, timestamp, '{"metadata":{"' || meta_key || '":' || CASE WHEN "VAR_LEDGER_NAME".is_valid_json(meta_value) THEN meta_value ELSE '"' || meta_value || '"' END || '},"targetId":' || CASE WHEN meta_target_type = 'transaction' THEN meta_target_id ELSE ('"' || meta_target_id || '"') END || ',"targetType":"' || UPPER(meta_target_type) || '"}' as data
      FROM "VAR_LEDGER_NAME".metadata
  ) v
 ORDER BY v.timestamp ASC, v.ord ASC;
@@ -277,10 +277,10 @@ DECLARE
     r record;
 BEGIN
     -- Create JSON object manually as it needs to be in canonical form
-    FOR r IN (select id, '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":' || to_json(date) || ',"hash":"","id":' || id || ',"type":"' || type || '"}' as canonical from "VAR_LEDGER_NAME".log)
+    FOR r IN (select id, '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":"' || to_char (date at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '","hash":"","id":' || id || ',"type":"' || type || '"}' as canonical from "VAR_LEDGER_NAME".log)
     LOOP
         UPDATE "VAR_LEDGER_NAME".log set hash = (select encode(digest(
-             COALESCE((select '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":' || to_json(date) || ',"hash":"' || hash || '","id":' || id || ',"type":"' || type || '"}' from "VAR_LEDGER_NAME".log where id = r.id - 1), 'null') || r.canonical,
+             COALESCE((select '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":"' || to_char (date at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '","hash":"' || hash || '","id":' || id || ',"type":"' || type || '"}' from "VAR_LEDGER_NAME".log where id = r.id - 1), 'null') || r.canonical,
              'sha256'
         ), 'hex'))
         WHERE id = r.id;

@@ -56,7 +56,7 @@ func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time)
 }
 
 func NewTransactionLog(previousLog *Log, tx Transaction) Log {
-	return NewTransactionLogWithDate(previousLog, tx, time.Now())
+	return NewTransactionLogWithDate(previousLog, tx, time.Now().UTC())
 }
 
 type SetMetadata struct {

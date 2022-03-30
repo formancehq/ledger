@@ -463,7 +463,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 			Reference: "tx1",
 			Metadata:  map[string]json.RawMessage{},
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: time.Now().UTC().Round(time.Second).Format(time.RFC3339),
 	}
 	tx2 := core.Transaction{
 		ID: 1,
@@ -479,13 +479,12 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 			Reference: "tx2",
 			Metadata:  map[string]json.RawMessage{},
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: time.Now().UTC().Round(time.Second).Format(time.RFC3339),
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
-	ret, err := store.AppendLog(context.Background(), log1, log2)
+	_, err := store.AppendLog(context.Background(), log1, log2)
 	if !assert.NoError(t, err) {
-		spew.Dump(ret)
 		return
 	}
 

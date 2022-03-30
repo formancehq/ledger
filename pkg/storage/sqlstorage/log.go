@@ -81,7 +81,7 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	if err != nil {
 		return nil, err
 	}
-	l.Date = t
+	l.Date = t.UTC()
 	l.Data, err = core.HydrateLog(l.Type, data.String)
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 		if err != nil {
 			return nil, err
 		}
-		l.Date = t
+		l.Date = t.UTC()
 		l.Data, err = core.HydrateLog(l.Type, data.String)
 		if err != nil {
 			return nil, errors.Wrap(err, "hydrating log")

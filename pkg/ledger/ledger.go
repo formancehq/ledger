@@ -60,7 +60,7 @@ type CommitTransactionResult struct {
 
 func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, []core.Log, error) {
 
-	timestamp := time.Now()
+	timestamp := time.Now().UTC()
 
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
@@ -407,7 +407,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 			Metadata:   m,
 		},
 		Hash: "",
-		Date: time.Now(),
+		Date: time.Now().UTC(),
 	})
 	if err != nil {
 		return err
