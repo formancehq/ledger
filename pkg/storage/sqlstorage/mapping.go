@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 )
@@ -23,6 +24,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	if err != nil {
 		return nil, s.error(err)
 	}
+	defer rows.Close()
 	if !rows.Next() {
 		if rows.Err() != nil {
 			return nil, s.error(rows.Err())
@@ -77,7 +79,9 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
 
+	fmt.Println("exec")
 	_, err = exec.ExecContext(ctx, sqlq, args...)
+	fmt.Println("exec ok")
 	return s.error(err)
 }
 

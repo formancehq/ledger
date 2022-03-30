@@ -262,7 +262,8 @@ func TestContainers(t *testing.T) {
 			v := viper.New()
 			// Default options
 			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-			v.Set(storageDirFlag, os.TempDir())
+			v.Set(storageDirFlag, "/tmp")
+			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
 			app := NewContainer(v, options...)
 

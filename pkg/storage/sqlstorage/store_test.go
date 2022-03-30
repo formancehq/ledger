@@ -113,6 +113,7 @@ func TestStore(t *testing.T) {
 
 			select {
 			case <-time.After(5 * time.Second):
+				t.Fatal("timeout")
 			case <-done:
 			}
 		})
