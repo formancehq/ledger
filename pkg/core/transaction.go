@@ -64,7 +64,7 @@ func Hash(t1, t2 interface{}) string {
 }
 
 func CheckHash(logs ...Log) (int, bool) {
-	for i := len(logs) - 1; i > -0; i-- {
+	for i := len(logs) - 1; i >= 0; i-- {
 		var lastLog *Log
 		if i < len(logs)-1 {
 			lastLog = &logs[i+1]

@@ -389,26 +389,18 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return NewValidationError("empty target id")
 	}
 
-	lastId := uint64(0)
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
 		return err
 	}
-	if lastLog != nil {
-		lastId = lastLog.ID + 1
-	}
 
-	_, err = l.store.AppendLog(ctx, core.Log{
-		ID:   lastId,
-		Type: "SET_METADATA",
-		Data: core.SetMetadata{
-			TargetType: strings.ToUpper(targetType),
-			TargetID:   targetID,
-			Metadata:   m,
-		},
-		Hash: "",
-		Date: time.Now().UTC(),
+	log := core.NewSetMetadataLog(lastLog, core.SetMetadata{
+		TargetType: strings.ToUpper(targetType),
+		TargetID:   targetID,
+		Metadata:   m,
 	})
+
+	_, err = l.store.AppendLog(ctx, log)
 	if err != nil {
 		return err
 	}
