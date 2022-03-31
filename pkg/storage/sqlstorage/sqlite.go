@@ -8,7 +8,10 @@
 package sqlstorage
 
 import (
+	"database/sql"
+	"encoding/json"
 	"github.com/mattn/go-sqlite3"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
 
@@ -23,4 +26,22 @@ func init() {
 		}
 		return err
 	}
+	sql.Register("sqlite3-custom", &sqlite3.SQLiteDriver{
+		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+			return conn.RegisterFunc("hash_log", func(v1, v2 string) string {
+				m1 := make(map[string]interface{})
+				m2 := make(map[string]interface{})
+				err := json.Unmarshal([]byte(v1), &m1)
+				if err != nil {
+					panic(err)
+				}
+				err = json.Unmarshal([]byte(v2), &m2)
+				if err != nil {
+					panic(err)
+				}
+				return core.Hash(m1, m2)
+			}, true)
+		},
+	})
+	UpdateSQLDriverMapping(SQLite, "sqlite3-custom")
 }

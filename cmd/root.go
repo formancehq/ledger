@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -19,10 +21,8 @@ const (
 	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag  = "storage.postgres.conn_string"
 	storageCacheFlag                     = "storage.cache"
-	persistConfigFlag                    = "persist-config"
 	serverHttpBindAddressFlag            = "server.http.bind_address"
 	uiHttpBindAddressFlag                = "ui.http.bind_address"
-	ledgersFlag                          = "ledgers"
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
 	lockStrategyFlag                     = "lock-strategy"
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
@@ -77,9 +77,12 @@ func NewRootCommand() *cobra.Command {
 				return errors.Wrap(err, "creating storage directory")
 			}
 
+			l := logrus.New()
 			if viper.GetBool(debugFlag) {
-				logrus.StandardLogger().Level = logrus.DebugLevel
+				l.Level = logrus.DebugLevel
 			}
+			loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
+			sharedlogging.SetFactory(loggerFactory)
 			return nil
 		},
 	}
@@ -93,6 +96,10 @@ func NewRootCommand() *cobra.Command {
 	conf.AddCommand(NewConfigInit())
 	store := NewStorage()
 	store.AddCommand(NewStorageInit())
+	store.AddCommand(NewStorageList())
+	store.AddCommand(NewStorageUpgrade())
+	store.AddCommand(NewStorageScan())
+	store.AddCommand(NewStorageDelete())
 
 	scriptExec := NewScriptExec()
 	scriptCheck := NewScriptCheck()
@@ -119,10 +126,8 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
 	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
-	root.PersistentFlags().Bool(persistConfigFlag, true, "Persist config on disk")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
-	root.PersistentFlags().StringSlice(ledgersFlag, []string{"quickstart"}, "Ledgers")
 	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
 	root.PersistentFlags().Bool(otelTracesBatchFlag, false, "Use OpenTelemetry batching")

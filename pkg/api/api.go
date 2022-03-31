@@ -33,7 +33,6 @@ func NewAPI(
 
 type Config struct {
 	StorageDriver string
-	LedgerLister  controllers.LedgerLister
 	Version       string
 }
 
@@ -41,12 +40,6 @@ func Module(cfg Config) fx.Option {
 	return fx.Options(
 		controllers.ProvideVersion(func() string {
 			return cfg.Version
-		}),
-		controllers.ProvideStorageDriver(func() string {
-			return cfg.StorageDriver
-		}),
-		controllers.ProvideLedgerLister(func() controllers.LedgerLister {
-			return cfg.LedgerLister
 		}),
 		middlewares.Module,
 		routes.Module,

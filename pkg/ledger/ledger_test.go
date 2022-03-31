@@ -28,15 +28,14 @@ func with(f func(l *Ledger)) {
 	app := fx.New(
 		fx.NopLogger,
 		ledgertesting.StorageModule(),
-		fx.Provide(storage.NewDefaultFactory),
-		fx.Invoke(func(lc fx.Lifecycle, storageFactory storage.Factory) {
+		fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					defer func() {
 						close(done)
 					}()
 					name := uuid.New()
-					store, err := storageFactory.GetStore(name)
+					store, _, err := storageDriver.GetStore(context.Background(), name, true)
 					if err != nil {
 						return err
 					}
@@ -120,7 +119,6 @@ func TestTransaction(t *testing.T) {
 			}
 
 			_, _, err := l.Commit(context.Background(), batch)
-
 			if err != nil {
 				t.Error(err)
 			}
@@ -129,7 +127,6 @@ func TestTransaction(t *testing.T) {
 		}
 
 		world, err := l.GetAccount(context.Background(), "world")
-
 		if err != nil {
 			t.Error(err)
 		}
@@ -296,7 +293,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			return
 		}
 
-		if !assert.EqualValues(t, volumes, Volumes{
+		if !assert.EqualValues(t, volumes, core.AggregatedVolumes{
 			"world": map[string]map[string]int64{
 				"USD": {
 					"input":  0,
@@ -393,12 +390,12 @@ func TestLast(t *testing.T) {
 func TestAccountMetadata(t *testing.T) {
 	with(func(l *Ledger) {
 
-		err := l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
 		assert.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), "account", "users:001", core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
 		assert.NoError(t, err)
@@ -463,7 +460,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		l.Commit(context.Background(), []core.TransactionData{{
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -473,18 +470,27 @@ func TestTransactionMetadata(t *testing.T) {
 				},
 			},
 		}})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		tx, err := l.GetLastTransaction(context.Background())
 		if err != nil {
 			t.Error(err)
 		}
 
-		l.SaveMeta(context.Background(), "transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		l.SaveMeta(context.Background(), "transaction", fmt.Sprintf("%d", tx.ID), core.Metadata{
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		tx, err = l.GetLastTransaction(context.Background())
 		if err != nil {
@@ -558,7 +564,7 @@ func TestGetTransaction(t *testing.T) {
 			t.Error(err)
 		}
 
-		tx, err := l.GetTransaction(context.Background(), fmt.Sprint(last.ID))
+		tx, err := l.GetTransaction(context.Background(), last.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -624,12 +630,7 @@ func TestRevertTransaction(t *testing.T) {
 		}
 		originalBal := world.Balances["COIN"]
 
-		_, err = l.RevertTransaction(context.Background(), fmt.Sprint(txs[0].ID))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		revertTx, err := l.GetLastTransaction(context.Background())
+		revertTx, err := l.RevertTransaction(context.Background(), txs[0].ID)
 		if err != nil {
 			t.Fatal(err)
 		}

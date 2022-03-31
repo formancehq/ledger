@@ -3,9 +3,9 @@ package sqlstorage
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/sirupsen/logrus"
 )
 
 // We have only one mapping for a ledger, so hardcode the id
@@ -16,14 +16,15 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.
 		Select("mapping").
-		From(s.table("mapping"))
+		From(s.schema.Table("mapping"))
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
+	defer rows.Close()
 	if !rows.Next() {
 		if rows.Err() != nil {
 			return nil, s.error(rows.Err())
@@ -50,7 +51,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 }
 
 func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
-	return s.loadMapping(ctx, s.db)
+	return s.loadMapping(ctx, s.schema)
 }
 
 func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
@@ -61,7 +62,7 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 	}
 
 	ib := sqlbuilder.NewInsertBuilder()
-	ib.InsertInto(s.table("mapping"))
+	ib.InsertInto(s.schema.Table("mapping"))
 	ib.Cols("mapping_id", "mapping")
 	ib.Values(mappingId, string(data))
 
@@ -69,21 +70,21 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq string
 		args []interface{}
 	)
-	switch s.flavor {
+	switch s.schema.Flavor() {
 	case sqlbuilder.Flavor(PostgreSQL):
-		sqlq, args = ib.BuildWithFlavor(s.flavor)
+		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 		sqlq += " ON CONFLICT (mapping_id) DO UPDATE SET mapping = $2"
 	default:
-		ib.ReplaceInto(s.table("mapping"))
-		sqlq, args = ib.BuildWithFlavor(s.flavor)
+		ib.ReplaceInto(s.schema.Table("mapping"))
+		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
 
-	logrus.Debugln(sqlq, args)
-
+	fmt.Println("exec")
 	_, err = exec.ExecContext(ctx, sqlq, args...)
+	fmt.Println("exec ok")
 	return s.error(err)
 }
 
 func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	return s.saveMapping(ctx, s.db, mapping)
+	return s.saveMapping(ctx, s.schema, mapping)
 }

@@ -10,8 +10,8 @@ import (
 )
 
 func TestWrapStorageFactory(t *testing.T) {
-	f := WrapStorageFactory(storage.NoOpFactory(), global.GetMeterProvider())
-	store, err := f.GetStore("bar")
+	f := WrapStorageDriver(storage.NoOpDriver(), global.GetMeterProvider())
+	store, _, err := f.GetStore(context.Background(), "bar", true)
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)
@@ -29,8 +29,6 @@ func TestNewStorageDecorator(t *testing.T) {
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)
 
-	_, err = store.SaveTransactions(context.Background(), []core.Transaction{
-		{}, {}, {},
-	})
+	_, err = store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
 	assert.NoError(t, err)
 }

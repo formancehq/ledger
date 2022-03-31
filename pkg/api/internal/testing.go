@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -33,18 +31,23 @@ func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(Encode(t, v))
 }
 
-func Decode(t *testing.T, reader io.Reader, v interface{}) {
+func Decode(t *testing.T, reader io.Reader, v interface{}) bool {
 	err := json.NewDecoder(reader).Decode(v)
-	assert.NoError(t, err)
+	return assert.NoError(t, err)
 }
 
-func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) {
+func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
 	res := Response{}
-	Decode(t, reader, &res)
-	Decode(t, bytes.NewBuffer(res.Data), v)
+	if !Decode(t, reader, &res) {
+		return false
+	}
+	if !Decode(t, bytes.NewBuffer(res.Data), v) {
+		return false
+	}
+	return true
 }
 
 func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
@@ -91,7 +94,7 @@ func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.Transact
 	return rec
 }
 
-func PostTransactionMetadata(t *testing.T, handler http.Handler, id int64, m core.Metadata) *httptest.ResponseRecorder {
+func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m core.Metadata) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/metadata", id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -103,7 +106,7 @@ func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func GetTransaction(handler http.Handler, id int64) *httptest.ResponseRecorder {
+func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -155,18 +158,12 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	testingLedger = uuid.New()
 	module := api.Module(api.Config{
 		StorageDriver: "sqlite",
-		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
-			return []string{
-				"quickstart",
-			}
-		}),
-		Version: "latest",
+		Version:       "latest",
 	})
 	ch := make(chan struct{})
 	options = append([]fx.Option{
 		module,
 		ledger.ResolveModule(),
-		storage.DefaultModule(),
 		ledgertesting.StorageModule(),
 		fx.NopLogger,
 	}, options...)
@@ -183,12 +180,12 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}
 }
 
-func RunSubTest(t *testing.T, name string, fn interface{}, opts ...fx.Option) {
+func RunSubTest(t *testing.T, name string, opts ...fx.Option) {
 	t.Run(name, func(t *testing.T) {
-		RunTest(t, fn, opts...)
+		RunTest(t, opts...)
 	})
 }
 
-func RunTest(t *testing.T, fn interface{}, opts ...fx.Option) {
-	WithNewModule(t, append(opts, fx.Invoke(fn))...)
+func RunTest(t *testing.T, opts ...fx.Option) {
+	WithNewModule(t, opts...)
 }

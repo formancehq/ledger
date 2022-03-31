@@ -20,6 +20,8 @@ builds:
       - windows
     goarch:
       - amd64
+    flags:
+      - -tags=json1
   - binary: numary
     id: numary_linux
     ldflags:
@@ -33,6 +35,8 @@ builds:
       - linux
     goarch:
       - amd64
+    flags:
+      - -tags=json1
   - binary: numary
     id: numary_darwin
     ldflags:
@@ -49,6 +53,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -tags=json1
 
 archives:
   - id: "numary"

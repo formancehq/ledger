@@ -6,6 +6,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -72,7 +73,13 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), c.Param("txid"))
+	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), txId)
 	if err != nil {
 		ResponseError(c, err)
 		return
@@ -86,7 +93,13 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), c.Param("txid"))
+	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), txId)
 	if err != nil {
 		ResponseError(c, err)
 		return

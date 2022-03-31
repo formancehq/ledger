@@ -3,14 +3,11 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/storage"
-	"math"
-	"sort"
-
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
+	"math"
+	"time"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
@@ -19,352 +16,152 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	c := sharedapi.Cursor{}
-	results := make([]core.Transaction, 0)
-
-	in := sqlbuilder.NewSelectBuilder()
-	in.Select("txid").From(s.table("postings"))
-	in.GroupBy("txid")
-	in.OrderBy("txid desc")
-	in.Limit(q.Limit)
-
-	if q.After != "" {
-		in.Where(in.LessThan("txid", q.After))
-	}
-
-	if q.HasParam("account") {
-		in.Where(in.Or(
-			in.Equal("source", q.Params["account"]),
-			in.Equal("destination", q.Params["account"]),
-		))
-	}
-
-	if q.HasParam("reference") {
-		in.Where(
-			in.Equal("reference", q.Params["reference"]),
-		)
-	}
 
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select(
-		"t.id",
-		"t.timestamp",
-		"t.hash",
-		"t.reference",
-		"p.source",
-		"p.destination",
-		"p.amount",
-		"p.asset",
-	)
-	sb.From(sb.As(s.table("transactions"), "t"))
-	sb.Where(sb.In("t.id", in))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
-	sb.OrderBy("t.id desc, p.id asc")
+	sb.Distinct()
+	sb.OrderBy("t.id desc")
+	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
+	switch s.schema.Flavor() {
+	case sqlbuilder.PostgreSQL:
+		sb.From(s.schema.Table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
+	case sqlbuilder.SQLite:
+		sb.From("transactions t", "json_each(postings)")
+	}
+	if q.After != "" {
+		sb.Where(sb.LessThan("t.id", q.After))
+	}
+	sb.Limit(q.Limit)
+	if q.HasParam("account") {
+		switch s.schema.Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where(sb.Or(
+				sb.Equal("source", q.Params["account"]),
+				sb.Equal("destination", q.Params["account"]),
+			))
+		case sqlbuilder.SQLite:
+			sb.Where(sb.Or(
+				sb.Equal("json_extract(json_each.value, '$.source')", q.Params["account"]),
+				sb.Equal("json_extract(json_each.value, '$.destination')", q.Params["account"]),
+			))
+		}
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
-
+	}
+	if q.HasParam("reference") {
+		sb.Where(sb.E("reference", q.Params["reference"]))
+	}
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return c, s.error(err)
 	}
+	defer rows.Close()
 
-	transactions := map[int64]core.Transaction{}
+	transactions := make([]core.Transaction, 0)
 
 	for rows.Next() {
-		var txid int64
-		var ts string
-		var thash string
-		var ref sql.NullString
+		var (
+			ref sql.NullString
+			ts  sql.NullString
+		)
 
-		posting := core.Posting{}
-
+		tx := core.Transaction{}
 		err := rows.Scan(
-			&txid,
+			&tx.ID,
 			&ts,
-			&thash,
 			&ref,
-			&posting.Source,
-			&posting.Destination,
-			&posting.Amount,
-			&posting.Asset,
+			&tx.Metadata,
+			&tx.Postings,
 		)
 		if err != nil {
 			return c, err
 		}
-
-		if _, ok := transactions[txid]; !ok {
-			transactions[txid] = core.Transaction{
-				ID: txid,
-				TransactionData: core.TransactionData{
-					Postings:  []core.Posting{},
-					Reference: ref.String,
-					Metadata:  core.Metadata{},
-				},
-				Timestamp: ts,
-				Hash:      thash,
-			}
+		tx.Reference = ref.String
+		if tx.Metadata == nil {
+			tx.Metadata = core.Metadata{}
 		}
-
-		t := transactions[txid]
-		t.AppendPosting(posting)
-		transactions[txid] = t
+		timestamp, err := time.Parse(time.RFC3339, ts.String)
+		if err != nil {
+			return sharedapi.Cursor{}, err
+		}
+		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
+		transactions = append(transactions, tx)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor{}, s.error(rows.Err())
+		return sharedapi.Cursor{}, s.error(err)
 	}
-
-	for _, t := range transactions {
-		meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", t.ID))
-		if err != nil {
-			return c, s.error(err)
-		}
-		t.Metadata = meta
-
-		results = append(results, t)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].ID > results[j].ID
-	})
 
 	c.PageSize = q.Limit - 1
-
-	c.HasMore = len(results) == q.Limit
+	c.HasMore = len(transactions) == q.Limit
 	if c.HasMore {
-		results = results[:len(results)-1]
+		transactions = transactions[:len(transactions)-1]
 	}
-	c.Data = results
+	c.Data = transactions
 
-	total, err := s.countTransactions(ctx, exec)
-	if err != nil {
-		return c, err
-	}
+	// TODO: The count should match the query
+	total, _ := s.countTransactions(ctx, exec)
 	c.Total = total
 
 	return c, nil
 }
 
 func (s *Store) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return s.findTransactions(ctx, s.db, q)
+	return s.findTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) saveTransactions(ctx context.Context, exec executor, ts []core.Transaction) (map[int]error, error) {
-
-	ret := make(map[int]error)
-	hasError := false
-
-txLoop:
-	for i, t := range ts {
-		var ref *string
-
-		if t.Reference != "" {
-			ref = &t.Reference
-		}
-
-		commitError := func(err error) {
-			ret[i] = s.error(err)
-			hasError = true
-		}
-
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.table("transactions"))
-		ib.Cols("id", "reference", "timestamp", "hash")
-		ib.Values(t.ID, ref, t.Timestamp, t.Hash)
-
-		sqlq, args := ib.BuildWithFlavor(s.flavor)
-		_, err := exec.ExecContext(ctx, sqlq, args...)
-		if err != nil {
-			commitError(err)
-			continue txLoop
-		}
-
-		for i, p := range t.Postings {
-			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("postings"))
-			ib.Cols("id", "txid", "source", "destination", "amount", "asset")
-			ib.Values(i, t.ID, p.Source, p.Destination, p.Amount, p.Asset)
-
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
-			_, err := exec.ExecContext(ctx, sqlq, args...)
-
-			if err != nil {
-				commitError(err)
-				continue txLoop
-			}
-		}
-
-		nextID, err := s.countMeta(ctx, exec)
-		if err != nil {
-			commitError(err)
-			continue txLoop
-		}
-
-		for key, value := range t.Metadata {
-			ib := sqlbuilder.NewInsertBuilder()
-			ib.InsertInto(s.table("metadata"))
-			ib.Cols("meta_id", "meta_target_type", "meta_target_id", "meta_key", "meta_value", "timestamp")
-			ib.Values(int(nextID), "transaction", fmt.Sprintf("%d", t.ID), key, string(value), t.Timestamp)
-
-			sqlq, args := ib.BuildWithFlavor(s.flavor)
-			_, err = exec.ExecContext(ctx, sqlq, args...)
-			if err != nil {
-				commitError(err)
-				continue txLoop
-			}
-
-			nextID++
-		}
-	}
-
-	if hasError {
-		return ret, storage.ErrAborted
-	}
-
-	return ret, nil
-}
-
-func (s *Store) SaveTransactions(ctx context.Context, ts []core.Transaction) (map[int]error, error) {
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, s.error(err)
-	}
-
-	ret, err := s.saveTransactions(ctx, tx, ts)
-	if err != nil {
-		tx.Rollback()
-		return ret, err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return nil, err
-	}
-
-	return ret, nil
-}
-
-func (s *Store) getTransaction(ctx context.Context, exec executor, txid string) (tx core.Transaction, err error) {
+func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (tx core.Transaction, err error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("t.id", "t.timestamp", "t.hash", "t.reference", "p.source", "p.destination", "p.amount", "p.asset")
-	sb.From(sb.As(s.table("transactions"), "t"))
+	sb.Select(
+		"t.id",
+		"t.timestamp",
+		"t.reference",
+		"t.metadata",
+		"t.postings",
+	)
+	sb.From(sb.As(s.schema.Table("transactions"), "t"))
 	sb.Where(sb.Equal("t.id", txid))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
-	sb.OrderBy("p.id asc")
+	sb.OrderBy("t.id DESC")
 
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return tx, s.error(err)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
-		var txId int64
-		var ts string
-		var txHash string
-		var txRef sql.NullString
-
-		posting := core.Posting{}
+		var (
+			ref sql.NullString
+			ts  sql.NullString
+		)
 
 		err := rows.Scan(
-			&txId,
+			&tx.ID,
 			&ts,
-			&txHash,
-			&txRef,
-			&posting.Source,
-			&posting.Destination,
-			&posting.Amount,
-			&posting.Asset,
+			&ref,
+			&tx.Metadata,
+			&tx.Postings,
 		)
 		if err != nil {
 			return tx, err
 		}
 
-		tx.ID = txId
-		tx.Timestamp = ts
-		tx.Hash = txHash
-		tx.Metadata = core.Metadata{}
-		tx.Reference = txRef.String
-
-		tx.AppendPosting(posting)
+		if tx.Metadata == nil {
+			tx.Metadata = core.Metadata{}
+		}
+		t, err := time.Parse(time.RFC3339, ts.String)
+		if err != nil {
+			return tx, err
+		}
+		tx.Timestamp = t.UTC().Format(time.RFC3339)
+		tx.Reference = ref.String
 	}
 	if rows.Err() != nil {
 		return tx, s.error(rows.Err())
 	}
 
-	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
-	if err != nil {
-		return tx, err
-	}
-	tx.Metadata = meta
-
 	return tx, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId string) (tx core.Transaction, err error) {
-	return s.getTransaction(ctx, s.db, txId)
-}
-
-func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select(
-		"t.id",
-		"t.timestamp",
-		"t.hash",
-		"t.reference",
-		"p.source",
-		"p.destination",
-		"p.amount",
-		"p.asset",
-	)
-	sb.From(sb.As(s.table("transactions"), "t"))
-	sb.JoinWithOption(sqlbuilder.LeftJoin, sb.As(s.table("postings"), "p"), "p.txid = t.id")
-	sb.SQL(fmt.Sprintf("WHERE t.id = (select count(*) from %s) - 1", s.table("transactions")))
-
-	sqlq, args := sb.BuildWithFlavor(s.flavor)
-	sharedlogging.GetLogger(ctx).Debug(sqlq)
-	rows, err := exec.QueryContext(ctx, sqlq, args...)
-	if err != nil {
-		return nil, s.error(err)
-	}
-
-	tx := core.Transaction{}
-
-	for rows.Next() {
-		var ref sql.NullString
-		posting := core.Posting{}
-		err := rows.Scan(
-			&tx.ID,
-			&tx.Timestamp,
-			&tx.Hash,
-			&ref,
-			&posting.Source,
-			&posting.Destination,
-			&posting.Amount,
-			&posting.Asset,
-		)
-		if err != nil {
-			return nil, s.error(err)
-		}
-		tx.Reference = ref.String
-		tx.AppendPosting(posting)
-	}
-	if rows.Err() != nil {
-		return nil, s.error(rows.Err())
-	}
-
-	if len(tx.Postings) == 0 {
-		return nil, nil
-	}
-
-	meta, err := s.getMeta(ctx, exec, "transaction", fmt.Sprintf("%d", tx.ID))
-	if err != nil {
-		return nil, err
-	}
-	tx.Metadata = meta
-
-	return &tx, nil
-}
-
-func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
-	return s.lastTransaction(ctx, s.db)
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transaction, err error) {
+	return s.getTransaction(ctx, s.schema, txId)
 }

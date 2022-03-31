@@ -2,7 +2,6 @@ package ledgertesting
 
 import (
 	"context"
-	"fmt"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -10,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"os"
-	"path"
 )
 
 func StorageDriverName() string {
@@ -25,23 +23,19 @@ func Driver() (storage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
-		return sqlstorage.NewOpenCloseDBDriver("sqlite", sqlstorage.SQLite, func(name string) string {
-			return sqlstorage.SQLiteFileConnString(path.Join(
-				os.TempDir(),
-				fmt.Sprintf("%s_%s.db", id, name),
-			))
-		}), func() {}, nil
+		return sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id)), func() {}, nil
 	case "postgres":
 		pgServer, err := pgtesting.PostgresServer()
 		if err != nil {
 			return nil, nil, err
 		}
-		return sqlstorage.NewOpenCloseDBDriver(
+		db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
+		if err != nil {
+			return nil, nil, err
+		}
+		return sqlstorage.NewDriver(
 				"postgres",
-				sqlstorage.PostgreSQL,
-				func(name string) string {
-					return pgServer.ConnString()
-				},
+				sqlstorage.NewPostgresDB(db),
 			), func() {
 				_ = pgServer.Close()
 			}, nil

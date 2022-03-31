@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/health"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
@@ -72,25 +71,29 @@ func TestHealthController(t *testing.T) {
 		for _, p := range tc.healthChecksProvider {
 			options = append(options, health.ProvideHealthCheck(p))
 		}
+		options = append(options, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					rec := httptest.NewRecorder()
+					req := httptest.NewRequest("GET", "/_health", nil)
 
-		internal.RunSubTest(t, tc.name, func(h *api.API) {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/_health", nil)
+					h.ServeHTTP(rec, req)
 
-			h.ServeHTTP(rec, req)
-
-			if !assert.Equal(t, tc.expectedStatus, rec.Result().StatusCode) {
-				return
-			}
-			ret := make(map[string]string)
-			err := json.NewDecoder(rec.Result().Body).Decode(&ret)
-			if !assert.NoError(t, err) {
-				return
-			}
-			if !assert.Equal(t, tc.expectedResult, ret) {
-				return
-			}
-		}, options...)
+					if !assert.Equal(t, tc.expectedStatus, rec.Result().StatusCode) {
+						return nil
+					}
+					ret := make(map[string]string)
+					err := json.NewDecoder(rec.Result().Body).Decode(&ret)
+					if !assert.NoError(t, err) {
+						return nil
+					}
+					if !assert.Equal(t, tc.expectedResult, ret) {
+						return nil
+					}
+					return nil
+				},
+			})
+		}))
 	}
 
 }

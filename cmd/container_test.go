@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/bus"
@@ -20,12 +21,15 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContainers(t *testing.T) {
 
 	pgServer, err := pgtesting.PostgresServer()
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer pgServer.Close()
 
 	type testCase struct {
@@ -49,26 +53,31 @@ func TestContainers(t *testing.T) {
 				v.Set(otelTracesExporterFlag, "stdout")
 			},
 			options: []fx.Option{
-				fx.Invoke(fx.Annotate(func(t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
-					assert.Len(t, options, 2)
-					if os.Getenv("CI") == "true" { // runtime.FuncForPC does not returns same results locally or in the CI pipeline (probably related to inlining)
-						return
-					}
-					var (
-						foundWithResource bool
-						foundWithSyncer   bool
-					)
-					for _, opt := range options {
-						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithSyncer") {
-							foundWithSyncer = true
-						}
-						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
-							foundWithResource = true
-						}
-					}
-					assert.True(t, foundWithResource)
-					assert.True(t, foundWithSyncer)
-				}, fx.ParamTags(``, ``, opentelemetrytraces.TracerProviderOptionKey))),
+				fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							assert.Len(t, options, 2)
+							if os.Getenv("CI") == "true" { // runtime.FuncForPC does not return same results locally or in the CI pipeline (probably related to inlining)
+								return nil
+							}
+							var (
+								foundWithResource bool
+								foundWithSyncer   bool
+							)
+							for _, opt := range options {
+								if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithSyncer") {
+									foundWithSyncer = true
+								}
+								if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
+									foundWithResource = true
+								}
+							}
+							assert.True(t, foundWithResource)
+							assert.True(t, foundWithSyncer)
+							return nil
+						},
+					})
+				}, fx.ParamTags(``, ``, ``, opentelemetrytraces.TracerProviderOptionKey))),
 			},
 		},
 		{
@@ -80,26 +89,33 @@ func TestContainers(t *testing.T) {
 				v.Set(otelTracesBatchFlag, true)
 			},
 			options: []fx.Option{
-				fx.Invoke(fx.Annotate(func(t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
-					assert.Len(t, options, 2)
-					if os.Getenv("CI") == "true" { // runtime.FuncForPC does not returns same results locally or in the CI pipeline (probably related to inlining)
-						return
-					}
-					var (
-						foundWithResource bool
-						foundWithBatcher  bool
-					)
-					for _, opt := range options {
-						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithBatch") {
-							foundWithBatcher = true
-						}
-						if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
-							foundWithResource = true
-						}
-					}
-					assert.True(t, foundWithResource)
-					assert.True(t, foundWithBatcher)
-				}, fx.ParamTags(``, ``, opentelemetrytraces.TracerProviderOptionKey))),
+				fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							if !assert.Len(t, options, 2) {
+								return nil
+							}
+							if os.Getenv("CI") == "true" { // runtime.FuncForPC does not returns same results locally or in the CI pipeline (probably related to inlining)
+								return nil
+							}
+							var (
+								foundWithResource bool
+								foundWithBatcher  bool
+							)
+							for _, opt := range options {
+								if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithBatch") {
+									foundWithBatcher = true
+								}
+								if strings.Contains(runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name(), "trace.WithResource") {
+									foundWithResource = true
+								}
+							}
+							assert.True(t, foundWithResource)
+							assert.True(t, foundWithBatcher)
+							return nil
+						},
+					})
+				}, fx.ParamTags(``, ``, ``, opentelemetrytraces.TracerProviderOptionKey))),
 			},
 		},
 		{
@@ -119,11 +135,11 @@ func TestContainers(t *testing.T) {
 			},
 		},
 		{
-			name: "default-with-opentelemetry-metrics-on-stdout",
+			name: "default-with-opentelemetry-metrics-on-noop",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otelMetricsFlag, true)
-				v.Set(otelMetricsExporterFlag, "stdout")
+				v.Set(otelMetricsExporterFlag, "noop")
 			},
 		},
 		{
@@ -141,10 +157,20 @@ func TestContainers(t *testing.T) {
 				v.Set(storagePostgresConnectionStringFlag, pgServer.ConnString())
 			},
 			options: []fx.Option{
-				fx.Invoke(func(t *testing.T, storageFactory storage.Factory) {
-					store, err := storageFactory.GetStore("testing")
-					assert.NoError(t, err)
-					assert.NoError(t, store.Close(context.Background()))
+				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver, storageFactory storage.Driver) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							store, _, err := storageFactory.GetStore(ctx, "testing", true)
+							if err != nil {
+								return err
+							}
+							err = store.Close(ctx)
+							if err != nil {
+								return err
+							}
+							return nil
+						},
+					})
 				}),
 			},
 		},
@@ -167,16 +193,20 @@ func TestContainers(t *testing.T) {
 				v.Set(lockStrategyRedisUrlFlag, "redis://redis:6789")
 			},
 			options: []fx.Option{
-				fx.Invoke(func(resolver *ledger.Resolver) error {
-					l, err := resolver.GetLedger(context.Background(), uuid.New())
-					if err != nil {
-						return err
-					}
-					_, _, err = l.Commit(context.Background(), nil)
-					if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
-						return err
-					}
-					return nil
+				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							l, err := resolver.GetLedger(ctx, uuid.New())
+							if err != nil {
+								return err
+							}
+							_, _, err = l.Commit(ctx, nil)
+							if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
+								return err
+							}
+							return nil
+						},
+					})
 				}),
 			},
 		},
@@ -184,32 +214,37 @@ func TestContainers(t *testing.T) {
 			name: "event-bus",
 			init: func(v *viper.Viper) {},
 			options: []fx.Option{
-				fx.Invoke(func(ch *gochannel.GoChannel, resolver *ledger.Resolver) error {
-					ctx := context.Background()
-					messages, err := ch.Subscribe(ctx, bus.FallbackTopic)
-					if err != nil {
-						return err
-					}
-					name := uuid.New()
-					l, err := resolver.GetLedger(ctx, name)
-					if err != nil {
-						return err
-					}
-					errCh := make(chan error, 1)
-					go func() {
-						err := l.SaveMeta(ctx, core.MetaTargetTypeAccount, "world", core.Metadata{"foo": []byte(`"bar"`)})
-						if err != nil {
-							errCh <- err
-						}
-					}()
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case err := <-errCh:
-						return err
-					case <-messages:
-					}
-					return nil
+				fx.Invoke(func(lc fx.Lifecycle, ch *gochannel.GoChannel, resolver *ledger.Resolver) {
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							messages, err := ch.Subscribe(ctx, bus.FallbackTopic)
+							if err != nil {
+								return err
+							}
+							name := uuid.New()
+							l, err := resolver.GetLedger(ctx, name)
+							if err != nil {
+								return err
+							}
+							errCh := make(chan error, 1)
+							go func() {
+								err := l.SaveMeta(ctx, core.MetaTargetTypeAccount, "world", core.Metadata{"foo": []byte(`"bar"`)})
+								if err != nil {
+									errCh <- err
+								}
+							}()
+							select {
+							case <-ctx.Done():
+								return ctx.Err()
+							case err := <-errCh:
+								return err
+							case <-messages:
+							case <-time.After(time.Second):
+								return errors.New("timeout")
+							}
+							return nil
+						},
+					})
 				}),
 			},
 		},
@@ -227,7 +262,8 @@ func TestContainers(t *testing.T) {
 			v := viper.New()
 			// Default options
 			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-			v.Set(storageDirFlag, os.TempDir())
+			v.Set(storageDirFlag, "/tmp")
+			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
 			app := NewContainer(v, options...)
 

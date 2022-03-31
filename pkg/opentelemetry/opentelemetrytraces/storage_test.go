@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
 func TestStore(t *testing.T) {
@@ -24,36 +23,20 @@ func TestStore(t *testing.T) {
 
 	for _, tf := range []testingFunction{
 		{
-			name: "SaveTransactions",
-			fn:   testSaveTransaction,
+			name: "AppendLog",
+			fn:   testAppendLog,
 		},
 		{
-			name: "SaveMeta",
-			fn:   testSaveMeta,
-		},
-		{
-			name: "LastTransaction",
-			fn:   testLastTransaction,
-		},
-		{
-			name: "LastMetaID",
-			fn:   testLastMetaID,
+			name: "LastLog",
+			fn:   testLastLog,
 		},
 		{
 			name: "CountAccounts",
 			fn:   testCountAccounts,
 		},
 		{
-			name: "AggregateBalances",
-			fn:   testAggregateBalances,
-		},
-		{
 			name: "AggregateVolumes",
 			fn:   testAggregateVolumes,
-		},
-		{
-			name: "CountMeta",
-			fn:   testCountMeta,
 		},
 		{
 			name: "FindAccounts",
@@ -66,10 +49,6 @@ func TestStore(t *testing.T) {
 		{
 			name: "FindTransactions",
 			fn:   testFindTransactions,
-		},
-		{
-			name: "GetMeta",
-			fn:   testGetMeta,
 		},
 		{
 			name: "GetTransaction",
@@ -88,31 +67,13 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func testSaveTransaction(t *testing.T, store storage.Store) {
-	txs := make([]core.Transaction, 0)
-	_, err := store.SaveTransactions(context.Background(), txs)
+func testAppendLog(t *testing.T, store storage.Store) {
+	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
 	assert.NoError(t, err)
 }
 
-func testSaveMeta(t *testing.T, store storage.Store) {
-	err := store.SaveMeta(context.Background(), 1, time.Now().Format(time.RFC3339),
-		"transaction", "1", "firstname", "\"YYY\"")
-	assert.NoError(t, err)
-}
-
-func testGetMeta(t *testing.T, store storage.Store) {
-	_, err := store.GetMeta(context.TODO(), "transaction", "1")
-	assert.NoError(t, err)
-}
-
-func testLastTransaction(t *testing.T, store storage.Store) {
-	_, err := store.LastTransaction(context.Background())
-	assert.NoError(t, err)
-
-}
-
-func testLastMetaID(t *testing.T, store storage.Store) {
-	_, err := store.LastMetaID(context.Background())
+func testLastLog(t *testing.T, store storage.Store) {
+	_, err := store.LastLog(context.Background())
 	assert.NoError(t, err)
 }
 
@@ -120,11 +81,6 @@ func testCountAccounts(t *testing.T, store storage.Store) {
 	_, err := store.CountAccounts(context.Background())
 	assert.NoError(t, err)
 
-}
-
-func testAggregateBalances(t *testing.T, store storage.Store) {
-	_, err := store.AggregateBalances(context.Background(), "central_bank")
-	assert.NoError(t, err)
 }
 
 func testAggregateVolumes(t *testing.T, store storage.Store) {
@@ -136,11 +92,6 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 	_, err := store.FindAccounts(context.Background(), query.Query{
 		Limit: 1,
 	})
-	assert.NoError(t, err)
-}
-
-func testCountMeta(t *testing.T, store storage.Store) {
-	_, err := store.CountMeta(context.Background())
 	assert.NoError(t, err)
 }
 
@@ -157,6 +108,6 @@ func testFindTransactions(t *testing.T, store storage.Store) {
 }
 
 func testGetTransaction(t *testing.T, store storage.Store) {
-	_, err := store.GetTransaction(context.Background(), "1")
+	_, err := store.GetTransaction(context.Background(), 1)
 	assert.NoError(t, err)
 }

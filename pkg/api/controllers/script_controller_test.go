@@ -7,6 +7,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
+	"go.uber.org/fx"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -57,52 +58,62 @@ send [COIN 100] (
 	}
 
 	for _, c := range cases {
-		internal.RunSubTest(t, c.name, func(h *api.API) {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
-				Plain: c.script,
-			}))
-			req.Header.Set("Content-Type", "application/json")
+		internal.RunSubTest(t, c.name, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					rec := httptest.NewRecorder()
+					req := httptest.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
+						Plain: c.script,
+					}))
+					req.Header.Set("Content-Type", "application/json")
 
-			h.ServeHTTP(rec, req)
+					h.ServeHTTP(rec, req)
 
-			assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
-			res := controllers.ScriptResponse{}
-			internal.Decode(t, rec.Body, &res)
+					assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rec.Body, &res)
 
-			res.Transaction = nil
-			assert.EqualValues(t, c.expectedResponse, res)
-		})
+					res.Transaction = nil
+					assert.EqualValues(t, c.expectedResponse, res)
+					return nil
+				},
+			})
+		}))
 	}
 }
 
 func TestScriptControllerPreview(t *testing.T) {
 
-	internal.RunTest(t, func(h *api.API, f storage.Factory) {
-		ledger := uuid.New()
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/"+ledger+"/script", internal.Buffer(t, core.Script{
-			Plain: `send [COIN 100] (
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				ledger := uuid.New()
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest("POST", "/"+ledger+"/script", internal.Buffer(t, core.Script{
+					Plain: `send [COIN 100] (
   source = @world
   destination = @centralbank
 )`,
-		}))
-		req.Header.Set("Content-Type", "application/json")
-		values := url.Values{}
-		values.Set("preview", "yes")
-		req.URL.RawQuery = values.Encode()
+				}))
+				req.Header.Set("Content-Type", "application/json")
+				values := url.Values{}
+				values.Set("preview", "yes")
+				req.URL.RawQuery = values.Encode()
 
-		h.ServeHTTP(rec, req)
+				h.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
-		res := controllers.ScriptResponse{}
-		internal.Decode(t, rec.Body, &res)
+				assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
+				res := controllers.ScriptResponse{}
+				internal.Decode(t, rec.Body, &res)
 
-		store, err := f.GetStore(ledger)
-		assert.NoError(t, err)
+				store, _, err := driver.GetStore(context.Background(), ledger, true)
+				assert.NoError(t, err)
 
-		cursor, err := store.FindTransactions(context.Background(), query.Query{})
-		assert.NoError(t, err)
-		assert.Len(t, cursor.Data, 0)
-	})
+				cursor, err := store.FindTransactions(context.Background(), query.Query{})
+				assert.NoError(t, err)
+				assert.Len(t, cursor.Data, 0)
+				return nil
+			},
+		})
+	}))
 }

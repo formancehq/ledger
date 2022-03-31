@@ -2,12 +2,13 @@ package sqlstorage
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
+	"errors"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
+	"time"
 )
+
+const SystemSchema = "_system"
 
 var sqlDrivers = map[Flavor]struct {
 	driverName string
@@ -29,127 +30,169 @@ func init() {
 	UpdateSQLDriverMapping(PostgreSQL, "pgx")
 }
 
-type ConnStringResolver func(name string) string
-
-// openCloseDBDriver is a driver which connect on the database each time the NewStore() method is called.
-// Therefore, the provided store is configured to close the *sql.DB instance when the Close() method of the store is called.
-// It is suitable for databases engines like SQLite
-type openCloseDBDriver struct {
-	name       string
-	connString ConnStringResolver
-	flavor     Flavor
+type Driver struct {
+	name         string
+	db           DB
+	systemSchema Schema
 }
 
-func (d *openCloseDBDriver) Name() string {
-	return d.name
-}
+func (d *Driver) Register(ctx context.Context, ledger string) (bool, error) {
+	q, args := sqlbuilder.
+		InsertInto(d.systemSchema.Table("ledgers")).
+		Cols("ledger", "addedAt").
+		Values(ledger, time.Now()).
+		SQL("ON CONFLICT DO NOTHING").
+		BuildWithFlavor(d.systemSchema.Flavor())
 
-func (d *openCloseDBDriver) Initialize(ctx context.Context) error {
-	return nil
-}
-
-func (d *openCloseDBDriver) NewStore(name string) (storage.Store, error) {
-	cfg, ok := sqlDrivers[d.flavor]
-	if !ok {
-		return nil, fmt.Errorf("unsupported flavor %s", d.flavor)
+	ret, err := d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return false, err
 	}
-	db, err := sql.Open(cfg.driverName, d.connString(name))
+	affected, err := ret.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
+func (d *Driver) exists(ctx context.Context, ledger string) (bool, error) {
+	b := sqlbuilder.
+		Select("ledger").
+		From(d.systemSchema.Table("ledgers"))
+
+	q, args := b.Where(b.E("ledger", ledger)).BuildWithFlavor(d.systemSchema.Flavor())
+
+	ret := d.systemSchema.QueryRowContext(ctx, q, args...)
+	if ret.Err() != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (d *Driver) List(ctx context.Context) ([]string, error) {
+	q, args := sqlbuilder.
+		Select("ledger").
+		From(d.systemSchema.Table("ledgers")).
+		BuildWithFlavor(sqlbuilder.Flavor(d.systemSchema.Flavor()))
+	rows, err := d.systemSchema.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
-	return NewStore(name, sqlbuilder.Flavor(d.flavor), db, func(ctx context.Context) error {
-		return db.Close()
-	})
-}
+	defer rows.Close()
 
-func (d *openCloseDBDriver) Close(ctx context.Context) error {
-	return nil
-}
-
-func (d *openCloseDBDriver) Check(ctx context.Context) error {
-	return nil
-}
-
-func NewOpenCloseDBDriver(name string, flavor Flavor, connString ConnStringResolver) *openCloseDBDriver {
-	return &openCloseDBDriver{
-		flavor:     flavor,
-		connString: connString,
-		name:       name,
+	res := make([]string, 0)
+	for rows.Next() {
+		var ledger string
+		err := rows.Scan(&ledger)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, ledger)
 	}
+	return res, nil
 }
 
-// cachedDBDriver is a driver which connect on a database and keep the connection open until closed
-// it suitable for databases engines like PostgreSQL or MySQL
-// Therefore, the NewStore() method return stores backed with the same underlying *sql.DB instance.
-type cachedDBDriver struct {
-	name   string
-	where  string
-	db     *sql.DB
-	flavor Flavor
-}
-
-func (s *cachedDBDriver) Name() string {
+func (s *Driver) Name() string {
 	return s.name
 }
 
-func (s *cachedDBDriver) Initialize(ctx context.Context) error {
-
-	if s.db != nil {
-		return errors.New("database already initialized")
-	}
-
-	cfg, ok := sqlDrivers[s.flavor]
-	if !ok {
-		return errors.New("unknown flavor")
-	}
-
-	db, err := sql.Open(cfg.driverName, s.where)
+func (s *Driver) Initialize(ctx context.Context) error {
+	err := s.db.Initialize(ctx)
 	if err != nil {
 		return err
 	}
-	s.db = db
-	return nil
-}
-
-func (s *cachedDBDriver) NewStore(name string) (storage.Store, error) {
-	return NewStore(name, sqlbuilder.Flavor(s.flavor), s.db, func(ctx context.Context) error {
-		return nil
-	})
-}
-
-func (d *cachedDBDriver) Close(ctx context.Context) error {
-	if d.db == nil {
-		return nil
+	s.systemSchema, err = s.db.Schema(ctx, SystemSchema)
+	if err != nil {
+		return err
 	}
-	err := d.db.Close()
-	d.db = nil
+	err = s.systemSchema.Initialize(ctx)
+
+	if err != nil {
+		return err
+	}
+	q, args := sqlbuilder.
+		CreateTable(s.systemSchema.Table("ledgers")).
+		Define("ledger varchar(255) primary key, addedAt timestamp").
+		IfNotExists().
+		BuildWithFlavor(s.systemSchema.Flavor())
+
+	_, err = s.systemSchema.ExecContext(ctx, q, args...)
 	return err
 }
 
-func (d *cachedDBDriver) Check(ctx context.Context) error {
-	if d.db == nil {
-		return errors.New("driver not initialized")
+func (s *Driver) DeleteStore(ctx context.Context, name string) error {
+	if SystemSchema == name {
+		return errors.New("cannot delete system schema")
 	}
-	return d.db.PingContext(ctx)
-}
-
-const SQLiteMemoryConnString = "file::memory:?cache=shared"
-
-func SQLiteFileConnString(path string) string {
-	return fmt.Sprintf(
-		"file:%s?_journal=WAL",
-		path,
-	)
-}
-
-func NewCachedDBDriver(name string, flavor Flavor, where string) *cachedDBDriver {
-	return &cachedDBDriver{
-		where:  where,
-		name:   name,
-		flavor: flavor,
+	schema, err := s.db.Schema(ctx, name)
+	if err != nil {
+		return err
 	}
+
+	err = schema.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	b := sqlbuilder.DeleteFrom(s.systemSchema.Table("ledgers"))
+	b = b.Where(b.E("ledger", name))
+	q, args := b.BuildWithFlavor(schema.Flavor())
+	_, err = s.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func NewInMemorySQLiteDriver() *cachedDBDriver {
-	return NewCachedDBDriver("sqlite", SQLite, SQLiteMemoryConnString)
+func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+
+	if name == SystemSchema {
+		return nil, false, errors.New("reserved name")
+	}
+
+	exists, err := s.exists(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists && !create {
+		return nil, false, errors.New("not exists")
+	}
+
+	schema, err := s.db.Schema(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+
+	created, err := s.Register(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+
+	err = schema.Initialize(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+
+	store, err := NewStore(schema, func(ctx context.Context) error {
+		return schema.Close(context.Background())
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return store, created, nil
+}
+
+func (d *Driver) Close(ctx context.Context) error {
+	err := d.systemSchema.Close(ctx)
+	if err != nil {
+		return err
+	}
+	return d.db.Close(ctx)
+}
+
+func NewDriver(name string, db DB) *Driver {
+	return &Driver{
+		db:   db,
+		name: name,
+	}
 }

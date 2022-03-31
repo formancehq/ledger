@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -10,7 +11,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -23,16 +23,12 @@ import (
 func withNewModule(t *testing.T, options ...fx.Option) {
 	module := Module(Config{
 		StorageDriver: viper.GetString("sqlite"),
-		LedgerLister: controllers.LedgerListerFn(func(r *http.Request) []string {
-			return []string{}
-		}),
-		Version: "latest",
+		Version:       "latest",
 	})
 	ch := make(chan struct{})
 	options = append([]fx.Option{
 		module,
 		ledger.ResolveModule(),
-		storage.DefaultModule(),
 		ledgertesting.StorageModule(),
 		fx.NopLogger,
 	}, options...)
@@ -222,27 +218,31 @@ func TestCommitTransaction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			withNewModule(t, fx.Invoke(func(api *API) {
-				id := uuid.New()
-				doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
-					data, err := json.Marshal(tx)
-					assert.NoError(t, err)
+			withNewModule(t, fx.Invoke(func(lc fx.Lifecycle, api *API) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						id := uuid.New()
+						doRequest := func(tx core.TransactionData) *httptest.ResponseRecorder {
+							data, err := json.Marshal(tx)
+							assert.NoError(t, err)
 
-					rec := httptest.NewRecorder()
-					req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
-					req.Header.Set("Content-Type", "application/json")
+							rec := httptest.NewRecorder()
+							req := httptest.NewRequest(http.MethodPost, "/"+id+"/transactions", bytes.NewBuffer(data))
+							req.Header.Set("Content-Type", "application/json")
 
-					api.ServeHTTP(rec, req)
-					return rec
-				}
-				for i := 0; i < len(tc.transactions)-1; i++ {
-					rsp := doRequest(tc.transactions[i])
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				}
-				rsp := doRequest(tc.transactions[len(tc.transactions)-1])
-				assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+							api.ServeHTTP(rec, req)
+							return rec
+						}
+						for i := 0; i < len(tc.transactions)-1; i++ {
+							rsp := doRequest(tc.transactions[i])
+							assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						}
+						rsp := doRequest(tc.transactions[len(tc.transactions)-1])
+						assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+						return nil
+					},
+				})
 			}))
-
 		})
 	}
 }

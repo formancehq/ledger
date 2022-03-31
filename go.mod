@@ -33,8 +33,19 @@ require (
 	go.opentelemetry.io/otel/sdk v1.5.0
 	go.opentelemetry.io/otel/sdk/metric v0.27.0
 	go.opentelemetry.io/otel/trace v1.5.0
-	go.uber.org/dig v1.14.1
 	go.uber.org/fx v1.17.1
+)
+
+require (
+	github.com/Shopify/sarama v1.32.0
+	github.com/ThreeDotsLabs/watermill v1.1.1
+	github.com/davecgh/go-spew v1.1.1
+	github.com/gibson042/canonicaljson-go v1.0.3
+	github.com/go-redis/redis/v8 v8.11.4
+	github.com/go-redis/redismock/v8 v8.0.6
+	github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d
+	github.com/xdg-go/scram v1.1.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
 require (
@@ -43,6 +54,8 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
+	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
+	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211226235153-13a0add2f557 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
@@ -65,6 +78,7 @@ require (
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-chi/render v1.0.1 // indirect
 	github.com/go-logr/logr v1.2.2 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
@@ -130,6 +144,7 @@ require (
 	go.opentelemetry.io/otel/internal/metric v0.27.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.12.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
+	go.uber.org/dig v1.14.1 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
@@ -145,18 +160,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.66.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-)
-
-require (
-	github.com/Shopify/sarama v1.32.0
-	github.com/ThreeDotsLabs/watermill v1.1.1
-	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
-	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-redis/redis/v8 v8.11.4
-	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/numary/go-libs v0.0.0-20220325080412-02604f34c81f
-	github.com/xdg-go/scram v1.1.1
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )

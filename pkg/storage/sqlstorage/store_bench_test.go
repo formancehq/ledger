@@ -2,7 +2,6 @@ package sqlstorage_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -13,9 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"os"
-	"path"
 	"testing"
-	"time"
 )
 
 func BenchmarkStore(b *testing.B) {
@@ -29,22 +26,26 @@ func BenchmarkStore(b *testing.B) {
 	defer pgServer.Close()
 
 	type driverConfig struct {
-		driver     string
-		connString sqlstorage.ConnStringResolver
-		flavor     sqlbuilder.Flavor
+		driver    string
+		dbFactory func() (sqlstorage.DB, error)
+		flavor    sqlbuilder.Flavor
 	}
 	var drivers = []driverConfig{
 		{
 			driver: "sqlite3",
-			connString: func(name string) string {
-				return sqlstorage.SQLiteFileConnString(path.Join(os.TempDir(), name))
+			dbFactory: func() (sqlstorage.DB, error) {
+				return sqlstorage.NewSQLiteDB(os.TempDir(), uuid.New()), nil
 			},
 			flavor: sqlbuilder.SQLite,
 		},
 		{
 			driver: "pgx",
-			connString: func(name string) string {
-				return pgServer.ConnString()
+			dbFactory: func() (sqlstorage.DB, error) {
+				db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
+				if err != nil {
+					return nil, err
+				}
+				return sqlstorage.NewPostgresDB(db), nil
 			},
 			flavor: sqlbuilder.PostgreSQL,
 		},
@@ -62,37 +63,31 @@ func BenchmarkStore(b *testing.B) {
 				fn:   testBenchmarkFindTransactions,
 			},
 			{
-				name: "LastTransaction",
-				fn:   testBenchmarkLastTransaction,
+				name: "LastLog",
+				fn:   testBenchmarkLastLog,
 			},
 			{
 				name: "AggregateVolumes",
 				fn:   testBenchmarkAggregateVolumes,
 			},
+			{
+				name: "SaveTransactions",
+				fn:   testBenchmarkSaveTransactions,
+			},
 		} {
 			b.Run(fmt.Sprintf("%s/%s", driver.driver, tf.name), func(b *testing.B) {
-				ledger := uuid.New()
-
-				db, err := sql.Open(driver.driver, driver.connString(ledger))
-				assert.NoError(b, err)
-
-				counter := 0
-				for {
-					err = db.Ping()
-					if err != nil {
-						if counter < 5 {
-							counter++
-							<-time.After(time.Second)
-							continue
-						}
-						assert.Fail(b, "timeout waiting database: %s", err)
-						return
-					}
-					break
+				db, err := driver.dbFactory()
+				if !assert.NoError(b, err) {
+					return
 				}
 
-				store, err := sqlstorage.NewStore(ledger, driver.flavor, db, func(ctx context.Context) error {
-					return db.Close()
+				schema, err := db.Schema(context.Background(), uuid.New())
+				if !assert.NoError(b, err) {
+					return
+				}
+
+				store, err := sqlstorage.NewStore(schema, func(ctx context.Context) error {
+					return db.Close(context.Background())
 				})
 				assert.NoError(b, err)
 				defer store.Close(context.Background())
@@ -109,9 +104,9 @@ func BenchmarkStore(b *testing.B) {
 }
 
 func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
+	var log *core.Log
 	for i := 0; i < 1000; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -128,12 +123,12 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uint64(i),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -148,11 +143,11 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 
 }
 
-func testBenchmarkLastTransaction(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
+func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
+	var log *core.Log
 	count := 1000
 	for i := 0; i < count; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -169,27 +164,27 @@ func testBenchmarkLastTransaction(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uint64(i),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		tx, err := store.LastTransaction(context.Background())
+		lastLog, err := store.LastLog(context.Background())
 		assert.NoError(b, err)
-		assert.Equal(b, int64(count-1), tx.ID)
+		assert.Equal(b, int64(count-1), lastLog.ID)
 	}
 
 }
 
 func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
-	datas := make([]core.Transaction, 0)
 	count := 1000
+	var log *core.Log
 	for i := 0; i < count; i++ {
-		datas = append(datas, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -212,12 +207,12 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 					},
 				},
 			},
-			ID: int64(i),
-		})
+			ID: uint64(i),
+		}
+		*log = core.NewTransactionLog(log, tx)
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
 	}
-
-	_, err := store.SaveTransactions(context.Background(), datas)
-	assert.NoError(b, err)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -225,4 +220,25 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 		assert.NoError(b, err)
 	}
 
+}
+
+func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
+	var log *core.Log
+	for n := 0; n < b.N; n++ {
+		*log = core.NewTransactionLog(log, core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: fmt.Sprintf("player%d", n),
+						Asset:       "USD",
+						Amount:      100,
+					},
+				},
+			},
+			ID: uint64(n),
+		})
+		_, err := store.AppendLog(context.Background(), *log)
+		assert.NoError(b, err)
+	}
 }

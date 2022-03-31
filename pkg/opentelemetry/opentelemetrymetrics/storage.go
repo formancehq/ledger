@@ -24,23 +24,27 @@ type storageDecorator struct {
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *storageDecorator) SaveTransactions(ctx context.Context, transactions []core.Transaction) (map[int]error, error) {
-	ret, err := o.Store.SaveTransactions(ctx, transactions)
+func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) (map[int]error, error) {
+	ret, err := o.Store.AppendLog(ctx, logs...)
 	if err != nil {
 		return ret, err
 	}
 	add := 0
 	reverts := 0
-	for _, transaction := range transactions {
-		if transaction.Metadata == nil {
+	for _, log := range logs {
+		switch tx := log.Data.(type) {
+		case core.Transaction:
+			if tx.Metadata == nil {
+				add++
+				continue
+			}
+			if tx.Metadata.IsReverted() {
+				reverts++
+				continue
+			}
 			add++
-			continue
 		}
-		if transaction.Metadata.IsReverted() {
-			reverts++
-			continue
-		}
-		add++
+
 	}
 	o.transactionsCounter.Add(context.Background(), int64(add))
 	o.revertsCounter.Add(context.Background(), int64(reverts))
@@ -57,15 +61,15 @@ func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter, 
 	}
 }
 
-type openTelemetryStorageFactory struct {
-	underlying          storage.Factory
+type openTelemetryStorageDriver struct {
+	storage.Driver
 	meter               metric.Meter
 	transactionsCounter metric.Int64Counter
 	once                sync.Once
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *openTelemetryStorageFactory) GetStore(name string) (storage.Store, error) {
+func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -75,24 +79,22 @@ func (o *openTelemetryStorageFactory) GetStore(name string) (storage.Store, erro
 		o.revertsCounter, err = revertsCounter(o.meter)
 	})
 	if err != nil {
-		return nil, errors.New("error creating meters")
+		return nil, false, errors.New("error creating meters")
 	}
-	store, err := o.underlying.GetStore(name)
+	store, created, err := o.Driver.GetStore(ctx, name, create)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return NewStorageDecorator(store, o.transactionsCounter, o.revertsCounter), nil
+	return NewStorageDecorator(store, o.transactionsCounter, o.revertsCounter), created, nil
 }
 
-func (o *openTelemetryStorageFactory) Close(ctx context.Context) error {
-	return o.underlying.Close(ctx)
+func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {
+	return o.Driver.Close(ctx)
 }
 
-var _ storage.Factory = &openTelemetryStorageFactory{}
-
-func WrapStorageFactory(underlying storage.Factory, mp metric.MeterProvider) *openTelemetryStorageFactory {
-	return &openTelemetryStorageFactory{
-		underlying: underlying,
-		meter:      mp.Meter(opentelemetry.StoreInstrumentationName),
+func WrapStorageDriver(underlying storage.Driver, mp metric.MeterProvider) *openTelemetryStorageDriver {
+	return &openTelemetryStorageDriver{
+		Driver: underlying,
+		meter:  mp.Meter(opentelemetry.StoreInstrumentationName),
 	}
 }

@@ -6,9 +6,7 @@ import (
 )
 
 const (
-	versionKey       = `name:"_apiVersion"`
-	storageDriverKey = `name:"_apiStorageDriver"`
-	ledgerListerKey  = `name:"_apiLedgerLister"`
+	versionKey = `name:"_apiVersion"`
 )
 
 func ProvideVersion(provider interface{}) fx.Option {
@@ -17,21 +15,9 @@ func ProvideVersion(provider interface{}) fx.Option {
 	)
 }
 
-func ProvideStorageDriver(provider interface{}) fx.Option {
-	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(storageDriverKey)),
-	)
-}
-
-func ProvideLedgerLister(provider interface{}) fx.Option {
-	return fx.Provide(
-		fx.Annotate(provider, fx.ResultTags(ledgerListerKey)),
-	)
-}
-
 var Module = fx.Options(
 	fx.Provide(
-		fx.Annotate(NewConfigController, fx.ParamTags(versionKey, storageDriverKey, ledgerListerKey)),
+		fx.Annotate(NewConfigController, fx.ParamTags(versionKey)),
 	),
 	fx.Provide(NewLedgerController),
 	fx.Provide(NewScriptController),
