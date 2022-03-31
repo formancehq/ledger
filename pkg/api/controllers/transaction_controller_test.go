@@ -327,6 +327,11 @@ func TestPostTransactionMetadata(t *testing.T) {
 				assert.EqualValues(t, core.Metadata{
 					"foo": json.RawMessage(`"bar"`),
 				}, ret.Metadata)
+
+				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
+					"foo": json.RawMessage(`"baz"`),
+				})
+				assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 				return nil
 			},
 		})

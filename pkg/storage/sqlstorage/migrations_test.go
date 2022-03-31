@@ -428,12 +428,13 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			},
 		}
 
-		for i := len(expectedLogs) - 1; i > 0; i-- {
+		for i := len(expectedLogs) - 1; i >= 0; i-- {
 			var previousLog *core.Log
 			if i < len(expectedLogs)-1 {
 				previousLog = &expectedLogs[i+1]
 			}
 			logs[i].Date = logs[i].Date.UTC()
+			expectedLogs[i].Hash = ""
 			expectedLogs[i].Hash = core.Hash(previousLog, expectedLogs[i])
 			if !assert.EqualValues(t, expectedLogs[i], logs[i]) {
 				return

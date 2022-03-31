@@ -113,7 +113,13 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	var m core.Metadata
 	c.ShouldBind(&m)
 
-	err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeTransaction, c.Param("txid"), m)
+	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	err = l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeTransaction, txId, m)
 	if err != nil {
 		ResponseError(c, err)
 		return
