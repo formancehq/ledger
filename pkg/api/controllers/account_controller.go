@@ -62,12 +62,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	err := l.(*ledger.Ledger).SaveMeta(
-		c.Request.Context(),
-		"account",
-		addr,
-		m,
-	)
+	err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeAccount, addr, m)
 	if err != nil {
 		ResponseError(c, err)
 		return
