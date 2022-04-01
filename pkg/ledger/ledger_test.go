@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"go.uber.org/fx"
@@ -635,15 +634,36 @@ func TestRevertTransaction(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectedPosting := core.Posting{
-			Source:      "payments:001",
-			Destination: "world",
-			Amount:      100,
-			Asset:       "COIN",
+		if !assert.Equal(t, core.Postings{
+			{
+				Source:      "payments:001",
+				Destination: "world",
+				Amount:      100,
+				Asset:       "COIN",
+			},
+		}, revertTx.TransactionData.Postings) {
+			return
 		}
 
-		if diff := cmp.Diff(revertTx.Postings[0], expectedPosting); diff != "" {
-			t.Errorf("RevertTransaction() reverted posting mismatch (-want +got):\n%s", diff)
+		if !assert.EqualValues(t, fmt.Sprintf(`"%d"`, txs[0].ID), string(revertTx.Metadata[core.RevertMetadataSpecKey()])) {
+			return
+		}
+
+		tx, err := l.GetTransaction(context.Background(), txs[0].ID)
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		v := core.RevertedMetadataSpecValue{}
+		err = json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v)
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		if !assert.Equal(t, core.RevertedMetadataSpecValue{
+			By: fmt.Sprint(revertTx.ID),
+		}, v) {
+			return
 		}
 
 		world, err = l.GetAccount(context.Background(), "world")

@@ -17,17 +17,7 @@ type TransactionData struct {
 	Metadata  Metadata `json:"metadata" swaggertype:"object"`
 }
 
-type Transaction struct {
-	TransactionData
-	ID        uint64 `json:"txid"`
-	Timestamp string `json:"timestamp"`
-}
-
-func (t *Transaction) AppendPosting(p Posting) {
-	t.Postings = append(t.Postings, p)
-}
-
-func (t *Transaction) Reverse() TransactionData {
+func (t *TransactionData) Reverse() TransactionData {
 	postings := t.Postings
 	postings.Reverse()
 
@@ -38,6 +28,16 @@ func (t *Transaction) Reverse() TransactionData {
 		ret.Reference = "revert_" + t.Reference
 	}
 	return ret
+}
+
+type Transaction struct {
+	TransactionData
+	ID        uint64 `json:"txid"`
+	Timestamp string `json:"timestamp"`
+}
+
+func (t *Transaction) AppendPosting(p Posting) {
+	t.Postings = append(t.Postings, p)
 }
 
 func Hash(t1, t2 interface{}) string {
