@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/numary/go-libs/sharedapi"
 	"math"
+	"strings"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
@@ -17,13 +18,26 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 	sb.
 		From(s.schema.Table("accounts"))
 
+	for k, metaValue := range p {
+		if !strings.HasPrefix(k, "metadata.") {
+			continue
+		}
+		metaKey := strings.TrimPrefix(k, "metadata.")
+		arg := sb.Args.Add(metaValue)
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("jsonb_extract_path_text(metadata, '" + strings.Join(strings.Split(metaKey, "."), `', '`) + "') = " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("cast(json_extract(metadata, '$." + metaKey + "') as text) = " + arg)
+		}
+	}
 	if address, ok := p["address"]; ok {
 		arg := sb.Args.Add("^" + address.(string) + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
-			sb.SQL("WHERE address ~* " + arg)
+			sb.Where("address ~* " + arg)
 		case sqlbuilder.SQLite:
-			sb.SQL("WHERE address REGEXP " + arg)
+			sb.Where("address REGEXP " + arg)
 		}
 	}
 

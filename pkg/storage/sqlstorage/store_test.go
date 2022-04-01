@@ -236,32 +236,36 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
-				},
-				{
-					Source:      "central_bank",
-					Destination: "order:1",
-					Amount:      1,
-					Asset:       "USD",
-				},
-				{
-					Source:      "central_bank",
-					Destination: "order:2",
-					Amount:      1,
-					Asset:       "USD",
-				},
-			},
+	account1 := core.NewSetMetadataLog(nil, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "world",
+		Metadata: core.Metadata{
+			"foo": json.RawMessage(`"bar"`),
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
-	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	})
+	account2 := core.NewSetMetadataLog(&account1, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "bank",
+		Metadata: core.Metadata{
+			"hello": json.RawMessage(`"world"`),
+		},
+	})
+	account3 := core.NewSetMetadataLog(&account2, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "order:1",
+		Metadata: core.Metadata{
+			"hello": json.RawMessage(`"world"`),
+		},
+	})
+	account4 := core.NewSetMetadataLog(&account3, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "order:2",
+		Metadata: core.Metadata{
+			"number": json.RawMessage(`3`),
+		},
+	})
+
+	_, err := store.AppendLog(context.Background(), account1, account2, account3, account4)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -318,6 +322,44 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		return
 	}
 	if !assert.Equal(t, 10, accounts.PageSize) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata.foo": `bar`,
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata.number": "3",
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
 		return
 	}
 }
