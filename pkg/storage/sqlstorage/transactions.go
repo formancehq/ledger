@@ -12,14 +12,10 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
-
-	c := sharedapi.Cursor{}
+func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
 
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Distinct()
-	sb.OrderBy("t.id desc")
+	sb.GroupBy("t.id", "t.postings", "t.metadata", "t.timestamp", "t.reference")
 	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
 	switch s.schema.Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -27,28 +23,38 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	case sqlbuilder.SQLite:
 		sb.From("transactions t", "json_each(postings)")
 	}
+	if account, ok := p["account"]; ok {
+		switch s.schema.Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where(sb.Or(
+				sb.Equal("source", account.(string)),
+				sb.Equal("destination", account.(string)),
+			))
+		case sqlbuilder.SQLite:
+			sb.Where(sb.Or(
+				sb.Equal("json_extract(json_each.value, '$.source')", account.(string)),
+				sb.Equal("json_extract(json_each.value, '$.destination')", account.(string)),
+			))
+		}
+	}
+	if ref, ok := p["reference"]; ok {
+		sb.Where(sb.E("reference", ref.(string)))
+	}
+	return sb
+}
+
+func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+
+	c := sharedapi.Cursor{}
+
+	sb := s.transactionsQuery(q.Params)
+	sb.OrderBy("t.id desc")
 	if q.After != "" {
 		sb.Where(sb.LessThan("t.id", q.After))
 	}
 	sb.Limit(q.Limit)
-	if q.HasParam("account") {
-		switch s.schema.Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where(sb.Or(
-				sb.Equal("source", q.Params["account"]),
-				sb.Equal("destination", q.Params["account"]),
-			))
-		case sqlbuilder.SQLite:
-			sb.Where(sb.Or(
-				sb.Equal("json_extract(json_each.value, '$.source')", q.Params["account"]),
-				sb.Equal("json_extract(json_each.value, '$.destination')", q.Params["account"]),
-			))
-		}
 
-	}
-	if q.HasParam("reference") {
-		sb.Where(sb.E("reference", q.Params["reference"]))
-	}
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
@@ -97,8 +103,10 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	}
 	c.Data = transactions
 
-	// TODO: The count should match the query
-	total, _ := s.countTransactions(ctx, exec)
+	total, err := s.countTransactions(ctx, exec, q.Params)
+	if err != nil {
+		return c, err
+	}
 	c.Total = total
 
 	return c, nil

@@ -2,26 +2,25 @@ package sqlstorage
 
 import (
 	"context"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 )
 
-func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, error) {
+func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (int64, error) {
 	var count int64
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("count(*)")
-	sb.From(s.schema.Table("transactions"))
+	tq := s.transactionsQuery(params)
+	sqlq, args := tq.BuildWithFlavor(s.schema.Flavor())
+	query := fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, sqlq)
 
-	sqlq, args := sb.Build()
-
-	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err := exec.QueryRowContext(ctx, query, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
 func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
-	return s.countTransactions(ctx, s.schema)
+	return s.countTransactions(ctx, s.schema, map[string]interface{}{})
 }
 
 func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (int64, error) {

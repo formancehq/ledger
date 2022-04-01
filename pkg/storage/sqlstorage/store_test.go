@@ -394,6 +394,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	cursor, err := store.FindTransactions(context.Background(), query.Query{
 		Limit: 1,
 	})
+	spew.Dump(cursor)
 	if !assert.NoError(t, err) {
 		return
 	}
