@@ -24,24 +24,17 @@ func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
 	return s.countTransactions(ctx, s.schema)
 }
 
-func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error) {
+func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (int64, error) {
 	var count int64
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.
-		Select("count(*)").
-		From(s.schema.Table("accounts")).
-		BuildWithFlavor(s.schema.Flavor())
-
-	sqlq, args := sb.Build()
-
+	sqlq, args := s.accountsQuery(p).Select("count(*)").BuildWithFlavor(s.schema.Flavor())
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
 func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
-	return s.countAccounts(ctx, s.schema)
+	return s.countAccounts(ctx, s.schema, map[string]interface{}{})
 }
 
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {

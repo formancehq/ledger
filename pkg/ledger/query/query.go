@@ -1,7 +1,7 @@
 package query
 
 const (
-	DEFAULT_LIMIT = 15
+	DefaultLimit = 15
 )
 
 type Query struct {
@@ -10,11 +10,11 @@ type Query struct {
 	Params map[string]interface{}
 }
 
-type QueryModifier func(*Query)
+type Modifier func(*Query)
 
-func New(qms ...[]QueryModifier) Query {
+func New(qms ...[]Modifier) Query {
 	q := Query{
-		Limit:  DEFAULT_LIMIT,
+		Limit:  DefaultLimit,
 		Params: map[string]interface{}{},
 	}
 
@@ -25,13 +25,13 @@ func New(qms ...[]QueryModifier) Query {
 	return q
 }
 
-func (q *Query) Apply(modifiers []QueryModifier) {
+func (q *Query) Apply(modifiers []Modifier) {
 	for _, m := range modifiers {
 		m(q)
 	}
 }
 
-func (q *Query) Modify(modifier QueryModifier) {
+func (q *Query) Modify(modifier Modifier) {
 	modifier(q)
 }
 

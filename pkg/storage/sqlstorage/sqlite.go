@@ -13,6 +13,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
+	"regexp"
 )
 
 func init() {
@@ -28,7 +29,7 @@ func init() {
 	}
 	sql.Register("sqlite3-custom", &sqlite3.SQLiteDriver{
 		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			return conn.RegisterFunc("hash_log", func(v1, v2 string) string {
+			err := conn.RegisterFunc("hash_log", func(v1, v2 string) string {
 				m1 := make(map[string]interface{})
 				m2 := make(map[string]interface{})
 				err := json.Unmarshal([]byte(v1), &m1)
@@ -41,6 +42,14 @@ func init() {
 				}
 				return core.Hash(m1, m2)
 			}, true)
+			if err != nil {
+				return err
+			}
+			err = conn.RegisterFunc("regexp", func(re, s string) (bool, error) {
+				b, e := regexp.MatchString(re, s)
+				return b, e
+			}, true)
+			return err
 		},
 	})
 	UpdateSQLDriverMapping(SQLite, "sqlite3-custom")

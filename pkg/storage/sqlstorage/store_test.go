@@ -24,9 +24,11 @@ import (
 
 func TestStore(t *testing.T) {
 
+	l := logrus.New()
 	if testing.Verbose() {
-		logrus.StandardLogger().Level = logrus.DebugLevel
+		l.Level = logrus.DebugLevel
 	}
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	type testingFunction struct {
 		name string
@@ -243,6 +245,18 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 					Amount:      100,
 					Asset:       "USD",
 				},
+				{
+					Source:      "central_bank",
+					Destination: "order:1",
+					Amount:      1,
+					Asset:       "USD",
+				},
+				{
+					Source:      "central_bank",
+					Destination: "order:2",
+					Amount:      1,
+					Asset:       "USD",
+				},
 			},
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
@@ -258,7 +272,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.EqualValues(t, 2, accounts.Total) {
+	if !assert.EqualValues(t, 4, accounts.Total) {
 		return
 	}
 	if !assert.True(t, accounts.HasMore) {
@@ -275,13 +289,35 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
+	if !assert.EqualValues(t, 4, accounts.Total) {
+		return
+	}
+	if !assert.True(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Equal(t, 1, accounts.PageSize) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"address": ".*der.*",
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
 	if !assert.EqualValues(t, 2, accounts.Total) {
 		return
 	}
 	if !assert.False(t, accounts.HasMore) {
 		return
 	}
-	if !assert.Equal(t, 1, accounts.PageSize) {
+	if !assert.Len(t, accounts.Data, 2) {
+		return
+	}
+	if !assert.Equal(t, 10, accounts.PageSize) {
 		return
 	}
 }

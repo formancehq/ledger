@@ -11,6 +11,25 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
+func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.
+		From(s.schema.Table("accounts"))
+
+	if address, ok := p["address"]; ok {
+		arg := sb.Args.Add("^" + address.(string) + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.SQL("WHERE address ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.SQL("WHERE address REGEXP " + arg)
+		}
+	}
+
+	return sb
+}
+
 func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
@@ -18,12 +37,10 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	c := sharedapi.Cursor{}
 	results := make([]core.Account, 0)
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.
+	sb := s.accountsQuery(q.Params).
 		Select("address", "metadata").
-		From(s.schema.Table("accounts")).
-		OrderBy("address desc").
-		Limit(q.Limit)
+		Limit(q.Limit).
+		OrderBy("address desc")
 
 	if q.After != "" {
 		sb.Where(sb.LessThan("address", q.After))
@@ -65,7 +82,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	}
 	c.Data = results
 
-	total, _ := s.CountAccounts(ctx)
+	total, _ := s.countAccounts(ctx, exec, q.Params)
 	c.Total = total
 
 	return c, nil
