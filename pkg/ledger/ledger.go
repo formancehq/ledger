@@ -334,7 +334,30 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(tx.ID)
-	_, ret, err := l.Commit(ctx, []core.TransactionData{rt})
+
+	unlock, err := l.locker.Lock(ctx, l.name)
+	if err != nil {
+		return nil, NewLockError(err)
+	}
+	defer unlock(ctx)
+
+	_, ret, logs, err := l.processTx(ctx, []core.TransactionData{rt})
+	if err != nil {
+		return nil, err
+	}
+
+	logs = append(logs, core.NewSetMetadataLog(&logs[len(logs)-1], core.SetMetadata{
+		TargetType: core.MetaTargetTypeTransaction,
+		TargetID:   id,
+		Metadata:   core.RevertedMetadata(ret[0].ID),
+	}))
+
+	txs := make([]core.Transaction, 0)
+	for _, v := range ret {
+		txs = append(txs, v.Transaction)
+	}
+
+	_, err = l.store.AppendLog(ctx, logs...)
 	switch err {
 	case ErrCommitError:
 		return &ret[0].Transaction, ret[0].Err
