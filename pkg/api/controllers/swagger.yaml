@@ -37,6 +37,21 @@ paths:
           description: pagination cursor, will return accounts after given address (in descending order)
           schema:
             type: string
+        - name: address
+          in: query
+          description: account address
+          required: false
+          schema:
+            type: string
+        - name: metadata
+          in: query
+          description: account address
+          required: false
+          style: deepObject
+          schema:
+            type: object
+            additionalProperties:
+              type: string
       responses:
         "200":
           description: OK

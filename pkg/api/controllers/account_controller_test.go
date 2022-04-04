@@ -128,6 +128,18 @@ func TestGetAccounts(t *testing.T) {
 				if !assert.Len(t, cursor.Data, 1) {
 					return nil
 				}
+
+				rsp = internal.GetAccounts(h, url.Values{
+					"metadata[unknown]": []string{"key"},
+				})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+				if !assert.EqualValues(t, 0, cursor.Total) {
+					return nil
+				}
 				return nil
 			},
 		})
