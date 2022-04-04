@@ -92,14 +92,16 @@ func TestServer(t *testing.T) {
 			timeout := 5 * time.Second
 			delay := 200 * time.Millisecond
 			for {
-				_, err := http.DefaultClient.Get("http://localhost:3068/_info")
-				if err != nil {
+				rsp, err := http.DefaultClient.Get("http://localhost:3068/_info")
+				if err != nil || rsp.StatusCode != http.StatusOK {
 					if counter*delay < timeout {
 						counter++
 						<-time.After(delay)
 						continue
 					}
-					assert.FailNow(t, err.Error())
+					if assert.FailNow(t, err.Error()) {
+						return
+					}
 				}
 				break
 			}

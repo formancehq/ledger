@@ -16,24 +16,24 @@ func NewServerStart() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(h *api.API) error {
-					listener, err := net.Listen("tcp", viper.GetString(serverHttpBindAddressFlag))
-					if err != nil {
-						return err
-					}
-
-					go http.Serve(listener, h)
-					go func() {
-						select {
-						case <-cmd.Context().Done():
-						}
-						err := listener.Close()
-						if err != nil {
-							panic(err)
-						}
-					}()
-
-					return nil
+				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+					var (
+						err      error
+						listener net.Listener
+					)
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							listener, err = net.Listen("tcp", viper.GetString(serverHttpBindAddressFlag))
+							if err != nil {
+								return err
+							}
+							go http.Serve(listener, h)
+							return nil
+						},
+						OnStop: func(ctx context.Context) error {
+							return listener.Close()
+						},
+					})
 				}),
 			)
 			errCh := make(chan error, 1)

@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"time"
@@ -99,6 +100,11 @@ func (s *Driver) Name() string {
 }
 
 func (s *Driver) Initialize(ctx context.Context) error {
+
+	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", s.name)
+
+	<-time.After(2 * time.Second)
+
 	err := s.db.Initialize(ctx)
 	if err != nil {
 		return err
