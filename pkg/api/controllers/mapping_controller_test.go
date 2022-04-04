@@ -27,14 +27,20 @@ func TestMapping(t *testing.T) {
 					},
 				}
 				rsp := internal.SaveMapping(t, h, m)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 
 				rsp = internal.LoadMapping(h)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 				m2 := core.Mapping{}
 				internal.DecodeSingleResponse(t, rsp.Body, &m2)
 
-				assert.EqualValues(t, m, m2)
+				if !assert.EqualValues(t, m, m2) {
+					return nil
+				}
 				return nil
 			},
 		})

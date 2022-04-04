@@ -3,13 +3,12 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"github.com/numary/go-libs/sharedapi"
-	"math"
-	"strings"
-
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"math"
+	"strings"
 )
 
 func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
@@ -18,20 +17,14 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 	sb.
 		From(s.schema.Table("accounts"))
 
-	for k, metaValue := range p {
-		if !strings.HasPrefix(k, "metadata.") {
-			continue
-		}
-		metaKey := strings.TrimPrefix(k, "metadata.")
-		arg := sb.Args.Add(metaValue)
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("jsonb_extract_path_text(metadata, '" + strings.Join(strings.Split(metaKey, "."), `', '`) + "') = " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("cast(json_extract(metadata, '$." + metaKey + "') as text) = " + arg)
+	if metadata, ok := p["metadata"]; ok {
+		for k, metaValue := range metadata.(map[string]string) {
+			arg := sb.Args.Add(metaValue)
+			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
+			sb.Where(s.schema.Table("meta_compare(metadata, " + arg + ", '" + strings.Join(strings.Split(k, "."), "', '") + "')"))
 		}
 	}
-	if address, ok := p["address"]; ok {
+	if address, ok := p["address"]; ok && address.(string) != "" {
 		arg := sb.Args.Add("^" + address.(string) + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:

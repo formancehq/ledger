@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -27,7 +28,9 @@ func TestGetAccounts(t *testing.T) {
 						},
 					},
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 
 				rsp = internal.PostTransaction(t, h, core.TransactionData{
 					Postings: core.Postings{
@@ -39,14 +42,92 @@ func TestGetAccounts(t *testing.T) {
 						},
 					},
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 
-				rsp = internal.GetAccounts(h)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				rsp = internal.PostAccountMetadata(t, h, "bob", core.Metadata{
+					"roles":     json.RawMessage(`"admin"`),
+					"accountId": json.RawMessage("3"),
+					"enabled":   json.RawMessage(`"true"`),
+					"a":         json.RawMessage(`{"nested": {"key": "hello"}}`),
+				})
+				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				rsp = internal.GetAccounts(h, url.Values{})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 
 				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				assert.EqualValues(t, 3, cursor.Total)
-				assert.Len(t, cursor.Data, 3)
+				if !assert.EqualValues(t, 3, cursor.Total) {
+					return nil
+				}
+				if !assert.Len(t, cursor.Data, 3) {
+					return nil
+				}
+
+				rsp = internal.GetAccounts(h, url.Values{
+					"metadata[roles]": []string{"admin"},
+				})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+				if !assert.EqualValues(t, 1, cursor.Total) {
+					return nil
+				}
+				if !assert.Len(t, cursor.Data, 1) {
+					return nil
+				}
+
+				rsp = internal.GetAccounts(h, url.Values{
+					"metadata[accountId]": []string{"3"},
+				})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+				if !assert.EqualValues(t, 1, cursor.Total) {
+					return nil
+				}
+				if !assert.Len(t, cursor.Data, 1) {
+					return nil
+				}
+
+				rsp = internal.GetAccounts(h, url.Values{
+					"metadata[enabled]": []string{"true"},
+				})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+				if !assert.EqualValues(t, 1, cursor.Total) {
+					return nil
+				}
+				if !assert.Len(t, cursor.Data, 1) {
+					return nil
+				}
+
+				rsp = internal.GetAccounts(h, url.Values{
+					"metadata[a.nested.key]": []string{"hello"},
+				})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+
+				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+				if !assert.EqualValues(t, 1, cursor.Total) {
+					return nil
+				}
+				if !assert.Len(t, cursor.Data, 1) {
+					return nil
+				}
 				return nil
 			},
 		})
@@ -88,7 +169,7 @@ func TestGetAccount(t *testing.T) {
 					},
 					Volumes: map[string]map[string]int64{
 						"USD": {
-							"input": 100,
+							"input":  100,
 							"output": 0,
 						},
 					},

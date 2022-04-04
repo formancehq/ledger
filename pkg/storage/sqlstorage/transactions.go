@@ -23,7 +23,7 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 	case sqlbuilder.SQLite:
 		sb.From("transactions t", "json_each(postings)")
 	}
-	if account, ok := p["account"]; ok {
+	if account, ok := p["account"]; ok && account.(string) != "" {
 		switch s.schema.Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where(sb.Or(
@@ -37,7 +37,7 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 			))
 		}
 	}
-	if ref, ok := p["reference"]; ok {
+	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
 		sb.Where(sb.E("reference", ref.(string)))
 	}
 	return sb

@@ -2,19 +2,24 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/pborman/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"testing"
 )
@@ -112,8 +117,9 @@ func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder 
 	return rec
 }
 
-func GetAccounts(handler http.Handler) *httptest.ResponseRecorder {
+func GetAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/accounts", nil)
+	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -155,6 +161,13 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func WithNewModule(t *testing.T, options ...fx.Option) {
+
+	l := logrus.New()
+	if testing.Verbose() {
+		l.Level = logrus.DebugLevel
+	}
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+
 	testingLedger = uuid.New()
 	module := api.Module(api.Config{
 		StorageDriver: "sqlite",
@@ -167,16 +180,26 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		ledgertesting.StorageModule(),
 		fx.NopLogger,
 	}, options...)
-	options = append(options, fx.Invoke(func() {
-		close(ch)
+	options = append(options, fx.Invoke(func(lc fx.Lifecycle) {
+		lc.Append(fx.Hook{
+			OnStop: func(ctx context.Context) error {
+				close(ch)
+				return nil
+			},
+		})
 	}))
 
 	app := fx.New(options...)
+	if !assert.NoError(t, app.Start(context.Background())) {
+		return
+	}
 
 	select {
 	case <-ch:
 	default:
-		assert.Fail(t, app.Err().Error())
+		if app.Err() != nil {
+			assert.Fail(t, app.Err().Error())
+		}
 	}
 }
 

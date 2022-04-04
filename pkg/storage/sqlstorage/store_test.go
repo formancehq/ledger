@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -261,7 +260,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		TargetType: core.MetaTargetTypeAccount,
 		TargetID:   "order:2",
 		Metadata: core.Metadata{
-			"number": json.RawMessage(`3`),
+			"number":  json.RawMessage(`3`),
+			"boolean": json.RawMessage(`true`),
+			"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
 		},
 	})
 
@@ -328,7 +329,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
-			"metadata.foo": `bar`,
+			"metadata": map[string]string{
+				"foo": "bar",
+			},
 		},
 	})
 	if !assert.NoError(t, err) {
@@ -347,7 +350,51 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
-			"metadata.number": "3",
+			"metadata": map[string]string{
+				"number": "3",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"boolean": "true",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"a.super.nested.key": "hello",
+			},
 		},
 	})
 	if !assert.NoError(t, err) {
@@ -381,9 +428,8 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	ret, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	if !assert.NoError(t, err) {
-		spew.Dump(ret)
 		return
 	}
 
@@ -436,7 +482,6 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	cursor, err := store.FindTransactions(context.Background(), query.Query{
 		Limit: 1,
 	})
-	spew.Dump(cursor)
 	if !assert.NoError(t, err) {
 		return
 	}

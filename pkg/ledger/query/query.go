@@ -57,6 +57,12 @@ func After(v string) func(*Query) {
 	}
 }
 
+func Address(v string) func(*Query) {
+	return func(q *Query) {
+		q.Params["address"] = v
+	}
+}
+
 func Account(v string) func(*Query) {
 	return func(q *Query) {
 		q.Params["account"] = v

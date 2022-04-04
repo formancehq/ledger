@@ -309,29 +309,39 @@ func TestPostTransactionMetadata(t *testing.T) {
 						},
 					},
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 				tx := make([]core.Transaction, 0)
 				internal.DecodeSingleResponse(t, rsp.Body, &tx)
 
 				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
 					"foo": json.RawMessage(`"bar"`),
 				})
-				assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
+					return nil
+				}
 
 				rsp = internal.GetTransaction(api, tx[0].ID)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
 
 				ret := core.Transaction{}
 				internal.DecodeSingleResponse(t, rsp.Body, &ret)
 
-				assert.EqualValues(t, core.Metadata{
+				if !assert.EqualValues(t, core.Metadata{
 					"foo": json.RawMessage(`"bar"`),
-				}, ret.Metadata)
+				}, ret.Metadata) {
+					return nil
+				}
 
 				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
 					"foo": json.RawMessage(`"baz"`),
 				})
-				assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
+					return nil
+				}
 				return nil
 			},
 		})

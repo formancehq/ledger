@@ -47,6 +47,7 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	if err != nil {
 		return nil, s.error(err)
 	}
+	defer rows.Close()
 
 	volumes := make(map[string]map[string]int64)
 	for rows.Next() {

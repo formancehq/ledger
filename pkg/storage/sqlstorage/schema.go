@@ -81,6 +81,22 @@ func (s *PGSchema) Delete(ctx context.Context) error {
 	return err
 }
 
+func (s *PGSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	rows, err := s.baseSchema.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errorFromFlavor(PostgreSQL, err)
+	}
+	return rows, nil
+}
+
+func (s *PGSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	ret, err := s.baseSchema.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, errorFromFlavor(PostgreSQL, err)
+	}
+	return ret, nil
+}
+
 type SQLiteSchema struct {
 	baseSchema
 	file string
@@ -96,6 +112,22 @@ func (s SQLiteSchema) Delete(ctx context.Context) error {
 		return err
 	}
 	return os.Remove(s.file)
+}
+
+func (s *SQLiteSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	rows, err := s.baseSchema.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errorFromFlavor(SQLite, err)
+	}
+	return rows, nil
+}
+
+func (s *SQLiteSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	ret, err := s.baseSchema.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, errorFromFlavor(SQLite, err)
+	}
+	return ret, nil
 }
 
 type DB interface {
