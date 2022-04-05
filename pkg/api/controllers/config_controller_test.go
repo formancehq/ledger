@@ -21,6 +21,7 @@ func TestGetInfo(t *testing.T) {
 
 				info := controllers.ConfigInfo{}
 				internal.DecodeSingleResponse(t, rsp.Body, &info)
+				info.Config.LedgerStorage.Ledgers = []string{}
 				assert.EqualValues(t, controllers.ConfigInfo{
 					Server:  "numary-ledger",
 					Version: "latest",
