@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -24,9 +23,11 @@ import (
 
 func TestStore(t *testing.T) {
 
+	l := logrus.New()
 	if testing.Verbose() {
-		logrus.StandardLogger().Level = logrus.DebugLevel
+		l.Level = logrus.DebugLevel
 	}
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	type testingFunction struct {
 		name string
@@ -234,20 +235,38 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
-				},
-			},
+	account1 := core.NewSetMetadataLog(nil, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "world",
+		Metadata: core.Metadata{
+			"foo": json.RawMessage(`"bar"`),
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
-	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	})
+	account2 := core.NewSetMetadataLog(&account1, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "bank",
+		Metadata: core.Metadata{
+			"hello": json.RawMessage(`"world"`),
+		},
+	})
+	account3 := core.NewSetMetadataLog(&account2, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "order:1",
+		Metadata: core.Metadata{
+			"hello": json.RawMessage(`"world"`),
+		},
+	})
+	account4 := core.NewSetMetadataLog(&account3, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "order:2",
+		Metadata: core.Metadata{
+			"number":  json.RawMessage(`3`),
+			"boolean": json.RawMessage(`true`),
+			"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
+		},
+	})
+
+	_, err := store.AppendLog(context.Background(), account1, account2, account3, account4)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -258,7 +277,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.EqualValues(t, 2, accounts.Total) {
+	if !assert.EqualValues(t, 4, accounts.Total) {
 		return
 	}
 	if !assert.True(t, accounts.HasMore) {
@@ -275,13 +294,119 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
+	if !assert.EqualValues(t, 4, accounts.Total) {
+		return
+	}
+	if !assert.True(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Equal(t, 1, accounts.PageSize) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"address": ".*der.*",
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
 	if !assert.EqualValues(t, 2, accounts.Total) {
 		return
 	}
 	if !assert.False(t, accounts.HasMore) {
 		return
 	}
-	if !assert.Equal(t, 1, accounts.PageSize) {
+	if !assert.Len(t, accounts.Data, 2) {
+		return
+	}
+	if !assert.Equal(t, 10, accounts.PageSize) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"foo": "bar",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"number": "3",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"boolean": "true",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
+		return
+	}
+
+	accounts, err = store.FindAccounts(context.Background(), query.Query{
+		Limit: 10,
+		Params: map[string]interface{}{
+			"metadata": map[string]string{
+				"a.super.nested.key": "hello",
+			},
+		},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.EqualValues(t, 1, accounts.Total) {
+		return
+	}
+	if !assert.False(t, accounts.HasMore) {
+		return
+	}
+	if !assert.Len(t, accounts.Data, 1) {
 		return
 	}
 }
@@ -303,9 +428,8 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	ret, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	if !assert.NoError(t, err) {
-		spew.Dump(ret)
 		return
 	}
 

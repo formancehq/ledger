@@ -2,9 +2,10 @@ package sqlstorage
 
 import (
 	"context"
-	"errors"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -66,6 +67,8 @@ func (d *Driver) exists(ctx context.Context, ledger string) (bool, error) {
 	if ret.Err() != nil {
 		return false, nil
 	}
+	var t string
+	_ = ret.Scan(&t) // Trigger close
 	return true, nil
 }
 
@@ -73,7 +76,7 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 	q, args := sqlbuilder.
 		Select("ledger").
 		From(d.systemSchema.Table("ledgers")).
-		BuildWithFlavor(sqlbuilder.Flavor(d.systemSchema.Flavor()))
+		BuildWithFlavor(d.systemSchema.Flavor())
 	rows, err := d.systemSchema.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -97,6 +100,11 @@ func (s *Driver) Name() string {
 }
 
 func (s *Driver) Initialize(ctx context.Context) error {
+
+	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", s.name)
+
+	<-time.After(2 * time.Second)
+
 	err := s.db.Initialize(ctx)
 	if err != nil {
 		return err
@@ -152,7 +160,7 @@ func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 
 	exists, err := s.exists(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return nil, false, errors.Wrap(err, "checking ledger existence")
 	}
 	if !exists && !create {
 		return nil, false, errors.New("not exists")
@@ -160,12 +168,12 @@ func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 
 	schema, err := s.db.Schema(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return nil, false, errors.Wrap(err, "opening schema")
 	}
 
 	created, err := s.Register(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return nil, false, errors.Wrap(err, "registering ledger")
 	}
 
 	err = schema.Initialize(ctx)

@@ -22,9 +22,14 @@ func NewAccountController() AccountController {
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	cursor, err := l.(*ledger.Ledger).FindAccounts(
 		c.Request.Context(),
 		query.After(c.Query("after")),
+		query.Address(c.Query("address")),
+		func(q *query.Query) {
+			q.Params["metadata"] = c.QueryMap("metadata")
+		},
 	)
 	if err != nil {
 		ResponseError(c, err)

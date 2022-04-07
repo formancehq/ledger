@@ -25,7 +25,7 @@ func (s *PGServer) Close() error {
 	return s.close()
 }
 
-const MaxConnections = 2
+const MaxConnections = 3
 
 func PostgresServer() (*PGServer, error) {
 

@@ -2,46 +2,38 @@ package sqlstorage
 
 import (
 	"context"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 )
 
-func (s *Store) countTransactions(ctx context.Context, exec executor) (int64, error) {
+func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (int64, error) {
 	var count int64
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("count(*)")
-	sb.From(s.schema.Table("transactions"))
+	tq := s.transactionsQuery(params)
+	sqlq, args := tq.BuildWithFlavor(s.schema.Flavor())
+	query := fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, sqlq)
 
-	sqlq, args := sb.Build()
-
-	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err := exec.QueryRowContext(ctx, query, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
 func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
-	return s.countTransactions(ctx, s.schema)
+	return s.countTransactions(ctx, s.schema, map[string]interface{}{})
 }
 
-func (s *Store) countAccounts(ctx context.Context, exec executor) (int64, error) {
+func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (int64, error) {
 	var count int64
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.
-		Select("count(*)").
-		From(s.schema.Table("accounts")).
-		BuildWithFlavor(s.schema.Flavor())
-
-	sqlq, args := sb.Build()
-
+	sqlq, args := s.accountsQuery(p).Select("count(*)").BuildWithFlavor(s.schema.Flavor())
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
 func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
-	return s.countAccounts(ctx, s.schema)
+	return s.countAccounts(ctx, s.schema, map[string]interface{}{})
 }
 
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
@@ -55,6 +47,7 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	if err != nil {
 		return nil, s.error(err)
 	}
+	defer rows.Close()
 
 	volumes := make(map[string]map[string]int64)
 	for rows.Next() {

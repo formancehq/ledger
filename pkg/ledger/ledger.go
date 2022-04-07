@@ -299,7 +299,7 @@ func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, erro
 	return tx, nil
 }
 
-func (l *Ledger) FindTransactions(ctx context.Context, m ...query.QueryModifier) (sharedapi.Cursor, error) {
+func (l *Ledger) FindTransactions(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
 	c, err := l.store.FindTransactions(ctx, q)
 
@@ -369,7 +369,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}
 }
 
-func (l *Ledger) FindAccounts(ctx context.Context, m ...query.QueryModifier) (sharedapi.Cursor, error) {
+func (l *Ledger) FindAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
 
 	c, err := l.store.FindAccounts(ctx, q)

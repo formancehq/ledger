@@ -35,5 +35,5 @@ func TestNewDriver(t *testing.T) {
 	if !assert.NotNil(t, err) {
 		return
 	}
-	assert.Equal(t, "sql: database is closed", err.Error())
+	assert.Equal(t, "sql: database is closed [UNKNOWN]", err.Error())
 }

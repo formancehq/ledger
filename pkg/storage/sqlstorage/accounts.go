@@ -3,13 +3,39 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"github.com/numary/go-libs/sharedapi"
-	"math"
-
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"math"
+	"strings"
 )
+
+func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.
+		From(s.schema.Table("accounts"))
+
+	if metadata, ok := p["metadata"]; ok {
+		for k, metaValue := range metadata.(map[string]string) {
+			arg := sb.Args.Add(metaValue)
+			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
+			sb.Where(s.schema.Table("meta_compare(metadata, " + arg + ", '" + strings.Join(strings.Split(k, "."), "', '") + "')"))
+		}
+	}
+	if address, ok := p["address"]; ok && address.(string) != "" {
+		arg := sb.Args.Add("^" + address.(string) + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("address ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("address REGEXP " + arg)
+		}
+	}
+
+	return sb
+}
 
 func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	// We fetch an additional account to know if we have more documents
@@ -18,12 +44,10 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	c := sharedapi.Cursor{}
 	results := make([]core.Account, 0)
 
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.
+	sb := s.accountsQuery(q.Params).
 		Select("address", "metadata").
-		From(s.schema.Table("accounts")).
-		OrderBy("address desc").
-		Limit(q.Limit)
+		Limit(q.Limit).
+		OrderBy("address desc")
 
 	if q.After != "" {
 		sb.Where(sb.LessThan("address", q.After))
@@ -65,7 +89,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	}
 	c.Data = results
 
-	total, _ := s.CountAccounts(ctx)
+	total, _ := s.countAccounts(ctx, exec, q.Params)
 	c.Total = total
 
 	return c, nil
