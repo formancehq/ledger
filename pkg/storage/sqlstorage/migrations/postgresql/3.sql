@@ -1,6 +1,8 @@
 --statement
 CREATE INDEX IF NOT EXISTS account_address ON "VAR_LEDGER_NAME".accounts ("address");
 --statement
+CREATE INDEX IF NOT EXISTS log_id ON "VAR_LEDGER_NAME".log ("id");
+--statement
 CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".use_account(postings jsonb, account varchar)
     RETURNS BOOLEAN
 AS
