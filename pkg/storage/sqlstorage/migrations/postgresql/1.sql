@@ -65,10 +65,10 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".accounts
 );
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-    ADD COLUMN "postings" jsonb;
+ADD COLUMN "postings" jsonb;
 --statement
 ALTER TABLE "VAR_LEDGER_NAME".transactions
-    ADD COLUMN "metadata" jsonb DEFAULT '{}';
+ADD COLUMN "metadata" jsonb DEFAULT '{}';
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".log
 (
