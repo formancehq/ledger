@@ -288,7 +288,6 @@ func TestGetTransactions(t *testing.T) {
 
 				assert.Len(t, cursor.Data, 2)
 				assert.False(t, cursor.HasMore)
-				assert.EqualValues(t, 2, cursor.Total)
 				return nil
 			},
 		})

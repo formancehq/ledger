@@ -53,12 +53,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-type CommitTransactionResult struct {
-	core.Transaction
-	Err *TransactionCommitError `json:"error,omitempty"`
-}
-
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, []core.Log, error) {
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, []core.Log, error) {
 
 	timestamp := time.Now().UTC()
 
@@ -73,9 +68,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 	}
 	contracts = append(contracts, DefaultContracts...)
 
-	ret := make([]CommitTransactionResult, 0)
+	ret := make([]core.Transaction, 0)
 	aggregatedVolumes := core.AggregatedVolumes{}
-	hasError := false
 
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
@@ -95,7 +89,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 		nextTxId = lastTx.ID + 1
 	}
 
-txLoop:
 	for i := range ts {
 
 		tx := core.Transaction{
@@ -108,36 +101,23 @@ txLoop:
 
 		txs = append(txs, tx)
 
-		commitError := func(err *TransactionCommitError) {
-			ret = append(ret, CommitTransactionResult{
-				Transaction: tx,
-				Err:         err,
-			})
-			hasError = true
-		}
-
 		if len(ts[i].Postings) == 0 {
-			commitError(NewTransactionCommitError(i, NewValidationError("transaction has no postings")))
-			continue txLoop
+			return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
 		rf := core.AggregatedVolumes{}
 		for _, p := range ts[i].Postings {
 			if p.Amount < 0 {
-				commitError(NewTransactionCommitError(i, NewValidationError("negative amount")))
-				continue txLoop
+				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
-				commitError(NewTransactionCommitError(i, NewValidationError("invalid source address")))
-				continue txLoop
+				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid source address"))
 			}
 			if !core.ValidateAddress(p.Destination) {
-				commitError(NewTransactionCommitError(i, NewValidationError("invalid destination address")))
-				continue txLoop
+				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
 			}
 			if !core.AssetIsValid(p.Asset) {
-				commitError(NewTransactionCommitError(i, NewValidationError("invalid asset")))
-				continue txLoop
+				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
 			if _, ok := rf[p.Source]; !ok {
 				rf[p.Source] = map[string]map[string]int64{}
@@ -196,8 +176,7 @@ txLoop:
 								Asset:    asset,
 							})
 							if !ok {
-								commitError(NewTransactionCommitError(i, NewInsufficientFundError(asset)))
-								continue txLoop
+								return nil, nil, nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 							}
 							break
 						}
@@ -207,66 +186,43 @@ txLoop:
 				aggregatedVolumes[addr][asset]["output"] += volumes["output"]
 			}
 		}
-		ret = append(ret, CommitTransactionResult{
-			Transaction: tx,
-		})
+		ret = append(ret, tx)
 		newLog := core.NewTransactionLog(lastLog, tx)
 		lastLog = &newLog
 		logs = append(logs, newLog)
-	}
-	if hasError {
-		return nil, ret, logs, ErrCommitError
 	}
 
 	return aggregatedVolumes, ret, logs, nil
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	volumes, ret, logs, err := l.processTx(ctx, ts)
+	volumes, txs, logs, err := l.processTx(ctx, ts)
 	if err != nil {
-		return nil, ret, err
+		return nil, nil, err
 	}
 
-	txs := make([]core.Transaction, 0)
-	for _, v := range ret {
-		txs = append(txs, v.Transaction)
-	}
-
-	commitErrors, err := l.store.AppendLog(ctx, logs...)
+	err = l.store.AppendLog(ctx, logs...)
 	if err != nil {
-		switch err {
-		case storage.ErrAborted:
-			for ind, err := range commitErrors {
-				switch eerr := err.(type) {
-				case *storage.Error:
-					switch eerr.Code {
-					case storage.ConstraintFailed:
-						ret[ind].Err = NewTransactionCommitError(ind, NewConflictError(ts[ind].Reference))
-					default:
-						return nil, nil, err
-					}
-				default:
-					return nil, nil, err
-				}
-			}
-			return nil, ret, ErrCommitError
+		switch {
+		case storage.IsErrorCode(err, storage.ConstraintFailed):
+			return nil, nil, NewConflictError()
 		default:
-			return nil, nil, errors.Wrap(err, "committing transactions")
+			return nil, nil, err
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.name, ret, volumes)
+	l.monitor.CommittedTransactions(ctx, l.name, txs, volumes)
 
-	return volumes, ret, nil
+	return volumes, txs, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []CommitTransactionResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
 		return nil, nil, NewLockError(err)
@@ -345,7 +301,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}
 	defer unlock(ctx)
 
-	_, ret, logs, err := l.processTx(ctx, []core.TransactionData{rt})
+	_, txs, logs, err := l.processTx(ctx, []core.TransactionData{rt})
 	if err != nil {
 		return nil, err
 	}
@@ -353,24 +309,15 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	logs = append(logs, core.NewSetMetadataLog(&logs[len(logs)-1], core.SetMetadata{
 		TargetType: core.MetaTargetTypeTransaction,
 		TargetID:   id,
-		Metadata:   core.RevertedMetadata(ret[0].ID),
+		Metadata:   core.RevertedMetadata(txs[0].ID),
 	}))
 
-	txs := make([]core.Transaction, 0)
-	for _, v := range ret {
-		txs = append(txs, v.Transaction)
+	err = l.store.AppendLog(ctx, logs...)
+	if err != nil {
+		return nil, err
 	}
-
-	_, err = l.store.AppendLog(ctx, logs...)
-	switch err {
-	case ErrCommitError:
-		return &ret[0].Transaction, ret[0].Err
-	case nil:
-		l.monitor.RevertedTransaction(ctx, l.name, tx, ret[0].Transaction)
-		return &ret[0].Transaction, err
-	default:
-		return &ret[0].Transaction, err
-	}
+	l.monitor.RevertedTransaction(ctx, l.name, tx, txs[0])
+	return &txs[0], nil
 }
 
 func (l *Ledger) FindAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
@@ -427,7 +374,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		Metadata:   m,
 	})
 
-	_, err = l.store.AppendLog(ctx, log)
+	err = l.store.AppendLog(ctx, log)
 	if err != nil {
 		return err
 	}

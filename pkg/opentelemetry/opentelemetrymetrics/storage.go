@@ -24,10 +24,10 @@ type storageDecorator struct {
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) (map[int]error, error) {
-	ret, err := o.Store.AppendLog(ctx, logs...)
+func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) error {
+	err := o.Store.AppendLog(ctx, logs...)
 	if err != nil {
-		return ret, err
+		return err
 	}
 	add := 0
 	reverts := 0
@@ -48,7 +48,7 @@ func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) (map
 	}
 	o.transactionsCounter.Add(context.Background(), int64(add))
 	o.revertsCounter.Add(context.Background(), int64(reverts))
-	return ret, nil
+	return nil
 }
 
 var _ storage.Store = &storageDecorator{}

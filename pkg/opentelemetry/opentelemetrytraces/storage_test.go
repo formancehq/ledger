@@ -68,7 +68,7 @@ func TestStore(t *testing.T) {
 }
 
 func testAppendLog(t *testing.T, store storage.Store) {
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
 	assert.NoError(t, err)
 }
 

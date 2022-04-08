@@ -55,9 +55,9 @@ func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err er
 	return
 }
 
-func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) (ret map[int]error, err error) {
+func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) (err error) {
 	o.handle(ctx, "AppendLog", func(ctx context.Context) error {
-		ret, err = o.underlying.AppendLog(ctx, logs...)
+		err = o.underlying.AppendLog(ctx, logs...)
 		return err
 	})
 	return

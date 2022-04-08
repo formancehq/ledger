@@ -17,8 +17,6 @@ const (
 	Unknown          Code = "UNKNOWN"
 )
 
-var ErrAborted = errors.New("aborted transactions")
-
 type Error struct {
 	Code          Code
 	OriginalError error
@@ -70,7 +68,7 @@ type Store interface {
 	CountAccounts(context.Context) (int64, error)
 	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
 
-	AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error)
+	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
 	Logs(ctx context.Context) ([]core.Log, error)
 
@@ -92,8 +90,8 @@ func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return nil, nil
 }
 
-func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error) {
-	return nil, nil
+func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) error {
+	return nil
 }
 
 func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {

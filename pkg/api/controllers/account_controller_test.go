@@ -62,9 +62,6 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 3, cursor.Total) {
-					return nil
-				}
 				if !assert.Len(t, cursor.Data, 3) {
 					return nil
 				}
@@ -77,9 +74,6 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 1, cursor.Total) {
-					return nil
-				}
 				if !assert.Len(t, cursor.Data, 1) {
 					return nil
 				}
@@ -92,9 +86,6 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 1, cursor.Total) {
-					return nil
-				}
 				if !assert.Len(t, cursor.Data, 1) {
 					return nil
 				}
@@ -107,9 +98,6 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 1, cursor.Total) {
-					return nil
-				}
 				if !assert.Len(t, cursor.Data, 1) {
 					return nil
 				}
@@ -122,9 +110,6 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 1, cursor.Total) {
-					return nil
-				}
 				if !assert.Len(t, cursor.Data, 1) {
 					return nil
 				}
@@ -137,7 +122,7 @@ func TestGetAccounts(t *testing.T) {
 				}
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.EqualValues(t, 0, cursor.Total) {
+				if !assert.Len(t, cursor.Data, 0) {
 					return nil
 				}
 				return nil

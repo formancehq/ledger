@@ -11,15 +11,15 @@ type cachedStateStorage struct {
 	lastLog *core.Log
 }
 
-func (s *cachedStateStorage) AppendLog(ctx context.Context, log ...core.Log) (map[int]error, error) {
-	ret, err := s.Store.AppendLog(ctx, log...)
+func (s *cachedStateStorage) AppendLog(ctx context.Context, log ...core.Log) error {
+	err := s.Store.AppendLog(ctx, log...)
 	if err != nil {
-		return ret, err
+		return err
 	}
-	if len(log) > 0 && len(ret) == 0 {
+	if len(log) > 0 {
 		s.lastLog = &log[len(log)-1]
 	}
-	return ret, nil
+	return nil
 }
 
 func (s *cachedStateStorage) LastLog(ctx context.Context) (*core.Log, error) {

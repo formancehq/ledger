@@ -55,13 +55,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	_, result, err := fn(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
-		switch err {
-		case ledger.ErrCommitError:
-			tx := result[0]
-			ResponseError(c, tx.Err)
-		default:
-			ResponseError(c, err)
-		}
+		ResponseError(c, err)
 		return
 	}
 	status := http.StatusOK
@@ -136,35 +130,11 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	_, ret, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
+	_, txs, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
 	if err != nil {
-		switch err {
-		case ledger.ErrCommitError:
-			type TransactionError struct {
-				core.Transaction
-				ErrorCode    string `json:"errorCode,omitempty"`
-				ErrorMessage string `json:"errorMessage,omitempty"`
-			}
-			results := make([]TransactionError, 0)
-			for _, tx := range ret {
-				v := TransactionError{
-					Transaction: tx.Transaction,
-				}
-				if tx.Err != nil {
-					var status int
-					status, v.ErrorCode = coreErrorToErrorCode(tx.Err)
-					if status < 500 {
-						v.ErrorMessage = tx.Err.Error()
-					}
-				}
-				results = append(results, v)
-			}
-			ctl.response(c, http.StatusBadRequest, results)
-		default:
-			ResponseError(c, err)
-		}
+		ResponseError(c, err)
 		return
 	}
 
-	ctl.response(c, http.StatusOK, ret)
+	ctl.response(c, http.StatusOK, txs)
 }
