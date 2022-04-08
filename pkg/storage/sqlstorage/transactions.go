@@ -173,3 +173,42 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transaction, err error) {
 	return s.getTransaction(ctx, s.schema, txId)
 }
+
+func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.From(s.schema.Table("transactions"))
+	sb.OrderBy("id DESC")
+	sb.Limit(1)
+
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+	row := exec.QueryRowContext(ctx, sqlq, args...)
+	if row.Err() != nil {
+		return nil, s.error(row.Err())
+	}
+	var (
+		ref sql.NullString
+		ts  sql.NullString
+	)
+
+	tx := core.Transaction{}
+	err := row.Scan(
+		&tx.ID,
+		&ts,
+		&ref,
+		&tx.Metadata,
+		&tx.Postings,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &tx, nil
+}
+
+func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+	return s.lastTransaction(ctx, s.schema)
+}
