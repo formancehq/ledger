@@ -15,27 +15,11 @@ import (
 func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
 
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.GroupBy("t.id", "t.postings", "t.metadata", "t.timestamp", "t.reference")
 	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
-	switch s.schema.Flavor() {
-	case sqlbuilder.PostgreSQL:
-		sb.From(s.schema.Table("transactions")+" t", "jsonb_to_recordset(t.postings) as postings(source varchar, destination varchar, asset varchar, amount bigint)")
-	case sqlbuilder.SQLite:
-		sb.From("transactions t", "json_each(postings)")
-	}
+	sb.From(s.schema.Table("transactions") + " t")
 	if account, ok := p["account"]; ok && account.(string) != "" {
-		switch s.schema.Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where(sb.Or(
-				sb.Equal("source", account.(string)),
-				sb.Equal("destination", account.(string)),
-			))
-		case sqlbuilder.SQLite:
-			sb.Where(sb.Or(
-				sb.Equal("json_extract(json_each.value, '$.source')", account.(string)),
-				sb.Equal("json_extract(json_each.value, '$.destination')", account.(string)),
-			))
-		}
+		arg := sb.Args.Add(account.(string))
+		sb.Where(s.schema.Table("use_account") + "(t.postings, " + arg + ")")
 	}
 	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
 		sb.Where(sb.E("reference", ref.(string)))
