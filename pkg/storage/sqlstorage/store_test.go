@@ -522,6 +522,9 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	if !assert.Equal(t, 1, cursor.PageSize) {
 		return
 	}
+	if !assert.Len(t, cursor.Data, 1) {
+		return
+	}
 	if !assert.False(t, cursor.HasMore) {
 		return
 	}

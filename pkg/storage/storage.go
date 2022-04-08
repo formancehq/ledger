@@ -61,6 +61,7 @@ func IsTooManyClientError(err error) bool {
 }
 
 type Store interface {
+	LastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context) (int64, error)
 	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
@@ -82,6 +83,10 @@ type Store interface {
 
 // A no op store. Useful for testing.
 type noOpStore struct{}
+
+func (n noOpStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+	return &core.Transaction{}, nil
+}
 
 func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return nil, nil

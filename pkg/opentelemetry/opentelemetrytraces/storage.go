@@ -39,6 +39,14 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 	return err
 }
 
+func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
+	o.handle(ctx, "LastTransaction", func(ctx context.Context) error {
+		ret, err = o.underlying.LastTransaction(ctx)
+		return err
+	})
+	return
+}
+
 func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err error) {
 	o.handle(ctx, "Logs", func(ctx context.Context) error {
 		ret, err = o.underlying.Logs(ctx)

@@ -86,9 +86,13 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 	txs := make([]core.Transaction, 0)
 	logs := make([]core.Log, 0)
 
-	count, err := l.store.CountTransactions(ctx)
+	nextTxId := uint64(0)
+	lastTx, err := l.store.LastTransaction(ctx)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if lastTx != nil {
+		nextTxId = lastTx.ID + 1
 	}
 
 txLoop:
@@ -98,9 +102,9 @@ txLoop:
 			TransactionData: ts[i],
 		}
 
-		tx.ID = uint64(count)
+		tx.ID = nextTxId
 		tx.Timestamp = timestamp.Format(time.RFC3339)
-		count++
+		nextTxId++
 
 		txs = append(txs, tx)
 
