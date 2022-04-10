@@ -78,7 +78,7 @@ func testLastLog(t *testing.T, store storage.Store) {
 }
 
 func testCountAccounts(t *testing.T, store storage.Store) {
-	_, err := store.CountAccounts(context.Background())
+	_, err := store.CountAccounts(context.Background(), query.Query{})
 	assert.NoError(t, err)
 
 }
@@ -96,7 +96,7 @@ func testFindAccounts(t *testing.T, store storage.Store) {
 }
 
 func testCountTransactions(t *testing.T, store storage.Store) {
-	_, err := store.CountTransactions(context.Background())
+	_, err := store.CountTransactions(context.Background(), query.Query{})
 	assert.NoError(t, err)
 }
 

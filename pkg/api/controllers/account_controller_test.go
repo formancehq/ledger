@@ -56,6 +56,14 @@ func TestGetAccounts(t *testing.T) {
 					return nil
 				}
 
+				rsp = internal.CountAccounts(h, url.Values{})
+				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
+					return nil
+				}
+				if !assert.Equal(t, "3", rsp.Header().Get("Count")) {
+					return nil
+				}
+
 				rsp = internal.GetAccounts(h, url.Values{})
 				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
 					return nil

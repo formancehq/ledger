@@ -20,6 +20,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConfigInfoResponse'
   /{ledger}/accounts:
+    head:
+      summary: Count accounts
+      operationId: countAccounts
+      tags:
+      - accounts
+      parameters:
+      - name: ledger
+        in: path
+        description: ledger
+        required: true
+        schema:
+          type: string
+      - name: after
+        in: query
+        description: pagination cursor, will return accounts after given address (in descending order)
+        schema:
+          type: string
+      - name: address
+        in: query
+        description: account address
+        required: false
+        schema:
+          type: string
+      - name: metadata
+        in: query
+        description: metadata
+        required: false
+        style: deepObject
+        schema:
+          type: object
+          additionalProperties:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Count:
+              schema:
+                type: integer
     get:
       summary: List all accounts
       operationId: listAccounts
@@ -224,6 +263,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/StatsResponse'
   /{ledger}/transactions:
+    head:
+      tags:
+      - transactions
+      summary: Count transactions
+      description: Count transactions mathing given criteria
+      operationId: countTransactions
+      parameters:
+      - name: ledger
+        in: path
+        description: ledger
+        required: true
+        schema:
+          type: string
+      - name: after
+        in: query
+        description: pagination cursor, will return transactions after given txid
+          (in descending order)
+        schema:
+          type: string
+      - name: reference
+        in: query
+        description: find transactions by reference field
+        schema:
+          type: string
+      - name: account
+        in: query
+        description: find transactions with postings involving given account, either
+          as source or destination
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Count:
+              schema:
+                type: integer
     get:
       tags:
         - transactions

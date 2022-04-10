@@ -188,7 +188,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 		return
 	}
 
-	countAccounts, err := store.CountAccounts(context.Background())
+	countAccounts, err := store.CountAccounts(context.Background(), query.Query{})
 	if !assert.EqualValues(t, 2, countAccounts) { // world + central_bank
 		return
 	}
@@ -409,7 +409,7 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		return
 	}
 
-	countTransactions, err := store.CountTransactions(context.Background())
+	countTransactions, err := store.CountTransactions(context.Background(), query.Query{})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -612,7 +612,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		defer tx.Rollback()
 	}
-	_, err := store.CountTransactions(context.Background())
+	_, err := store.CountTransactions(context.Background(), query.Query{})
 	if !assert.Error(t, err) {
 		return
 	}

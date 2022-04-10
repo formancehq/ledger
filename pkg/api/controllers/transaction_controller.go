@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -18,6 +19,21 @@ type TransactionController struct {
 // NewTransactionController -
 func NewTransactionController() TransactionController {
 	return TransactionController{}
+}
+
+func (ctl *TransactionController) CountTransactions(c *gin.Context) {
+	l, _ := c.Get("ledger")
+	count, err := l.(*ledger.Ledger).CountTransactions(
+		c.Request.Context(),
+		query.After(c.Query("after")),
+		query.Reference(c.Query("reference")),
+		query.Account(c.Query("account")),
+	)
+	if err != nil {
+		ResponseError(c, err)
+		return
+	}
+	c.Header("Count", fmt.Sprint(count))
 }
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {

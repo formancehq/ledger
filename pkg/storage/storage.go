@@ -60,12 +60,12 @@ func IsTooManyClientError(err error) bool {
 
 type Store interface {
 	LastTransaction(ctx context.Context) (*core.Transaction, error)
-	CountTransactions(context.Context) (int64, error)
+	CountTransactions(context.Context, query.Query) (uint64, error)
 	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
 	AggregateVolumes(context.Context, string) (core.Volumes, error)
-	CountAccounts(context.Context) (int64, error)
+	CountAccounts(context.Context, query.Query) (uint64, error)
 	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
 
 	AppendLog(ctx context.Context, log ...core.Log) error
@@ -98,7 +98,7 @@ func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) CountTransactions(ctx context.Context) (int64, error) {
+func (n noOpStore) CountTransactions(ctx context.Context, q query.Query) (uint64, error) {
 	return 0, nil
 }
 
@@ -122,7 +122,7 @@ func (n noOpStore) LastLog(ctx context.Context) (*core.Log, error) {
 	return nil, nil
 }
 
-func (n noOpStore) CountAccounts(ctx context.Context) (int64, error) {
+func (n noOpStore) CountAccounts(ctx context.Context, q query.Query) (uint64, error) {
 	return 0, nil
 }
 

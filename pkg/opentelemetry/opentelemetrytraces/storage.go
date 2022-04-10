@@ -71,9 +71,9 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 	return
 }
 
-func (o *openTelemetryStorage) CountTransactions(ctx context.Context) (count int64, err error) {
+func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Query) (count uint64, err error) {
 	o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
-		count, err = o.underlying.CountTransactions(ctx)
+		count, err = o.underlying.CountTransactions(ctx, q)
 		return err
 	})
 	return
@@ -111,9 +111,9 @@ func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (
 	return
 }
 
-func (o *openTelemetryStorage) CountAccounts(ctx context.Context) (count int64, err error) {
+func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Query) (count uint64, err error) {
 	o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
-		count, err = o.underlying.CountAccounts(ctx)
+		count, err = o.underlying.CountAccounts(ctx, q)
 		return err
 	})
 	return

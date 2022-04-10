@@ -266,6 +266,13 @@ func (l *Ledger) FindTransactions(ctx context.Context, m ...query.Modifier) (sha
 	return c, err
 }
 
+func (l *Ledger) CountTransactions(ctx context.Context, m ...query.Modifier) (uint64, error) {
+	q := query.New(m)
+	c, err := l.store.CountTransactions(ctx, q)
+
+	return c, err
+}
+
 func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 
@@ -318,6 +325,14 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}
 	l.monitor.RevertedTransaction(ctx, l.name, tx, txs[0])
 	return &txs[0], nil
+}
+
+func (l *Ledger) CountAccounts(ctx context.Context, m ...query.Modifier) (uint64, error) {
+	q := query.New(m)
+
+	count, err := l.store.CountAccounts(ctx, q)
+
+	return count, err
 }
 
 func (l *Ledger) FindAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {

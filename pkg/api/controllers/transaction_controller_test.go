@@ -281,6 +281,10 @@ func TestGetTransactions(t *testing.T) {
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
+				rsp = internal.CountTransactions(api)
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				assert.Equal(t, "2", rsp.Header().Get("Count"))
+
 				rsp = internal.GetTransactions(api)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 

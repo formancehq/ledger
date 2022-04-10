@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (int64, error) {
-	var count int64
+func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (uint64, error) {
+	var count uint64
 
 	tq := s.transactionsQuery(params)
 	sqlq, args := tq.BuildWithFlavor(s.schema.Flavor())
@@ -19,12 +20,12 @@ func (s *Store) countTransactions(ctx context.Context, exec executor, params map
 	return count, s.error(err)
 }
 
-func (s *Store) CountTransactions(ctx context.Context) (int64, error) {
-	return s.countTransactions(ctx, s.schema, map[string]interface{}{})
+func (s *Store) CountTransactions(ctx context.Context, q query.Query) (uint64, error) {
+	return s.countTransactions(ctx, s.schema, q.Params)
 }
 
-func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (int64, error) {
-	var count int64
+func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (uint64, error) {
+	var count uint64
 
 	sqlq, args := s.accountsQuery(p).Select("count(*)").BuildWithFlavor(s.schema.Flavor())
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
@@ -32,8 +33,8 @@ func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]i
 	return count, s.error(err)
 }
 
-func (s *Store) CountAccounts(ctx context.Context) (int64, error) {
-	return s.countAccounts(ctx, s.schema, map[string]interface{}{})
+func (s *Store) CountAccounts(ctx context.Context, q query.Query) (uint64, error) {
+	return s.countAccounts(ctx, s.schema, q.Params)
 }
 
 func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {

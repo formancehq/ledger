@@ -89,9 +89,6 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	}
 	c.Data = results
 
-	total, _ := s.countAccounts(ctx, exec, q.Params)
-	c.Total = total
-
 	return c, nil
 }
 

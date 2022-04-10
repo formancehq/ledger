@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"errors"
+	"fmt"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -18,6 +19,24 @@ type AccountController struct {
 // NewAccountController -
 func NewAccountController() AccountController {
 	return AccountController{}
+}
+
+func (ctl *AccountController) CountAccounts(c *gin.Context) {
+	l, _ := c.Get("ledger")
+
+	count, err := l.(*ledger.Ledger).CountAccounts(
+		c.Request.Context(),
+		query.After(c.Query("after")),
+		query.Address(c.Query("address")),
+		func(q *query.Query) {
+			q.Params["metadata"] = c.QueryMap("metadata")
+		},
+	)
+	if err != nil {
+		ResponseError(c, err)
+		return
+	}
+	c.Header("Count", fmt.Sprint(count))
 }
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
