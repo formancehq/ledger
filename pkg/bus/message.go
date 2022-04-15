@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"time"
 )
@@ -29,8 +28,8 @@ type baseEvent struct {
 }
 
 type committedTransactions struct {
-	Transactions []ledger.CommitTransactionResult `json:"transactions"`
-	Volumes      core.AggregatedVolumes           `json:"volumes"`
+	Transactions []core.Transaction     `json:"transactions"`
+	Volumes      core.AggregatedVolumes `json:"volumes"`
 }
 
 type savedMetadata struct {

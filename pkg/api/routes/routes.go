@@ -96,6 +96,7 @@ func (r *Routes) Engine() *gin.Engine {
 
 		// TransactionController
 		ledger.GET("/transactions", r.transactionController.GetTransactions)
+		ledger.HEAD("/transactions", r.transactionController.CountTransactions)
 		ledger.POST("/transactions", r.transactionController.PostTransaction)
 		ledger.POST("/transactions/batch", r.transactionController.PostTransactionsBatch)
 		ledger.GET("/transactions/:txid", r.transactionController.GetTransaction)
@@ -104,6 +105,7 @@ func (r *Routes) Engine() *gin.Engine {
 
 		// AccountController
 		ledger.GET("/accounts", r.accountController.GetAccounts)
+		ledger.HEAD("/accounts", r.accountController.CountAccounts)
 		ledger.GET("/accounts/:address", r.accountController.GetAccount)
 		ledger.POST("/accounts/:address/metadata", r.accountController.PostAccountMetadata)
 

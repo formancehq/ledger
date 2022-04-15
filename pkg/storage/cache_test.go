@@ -11,13 +11,13 @@ type noOpStorage struct {
 	Store
 }
 
-func (noOpStorage) AppendLog(context.Context, ...core.Log) (map[int]error, error) {
-	return nil, nil
+func (noOpStorage) AppendLog(context.Context, ...core.Log) error {
+	return nil
 }
 
 func TestCacheState(t *testing.T) {
 	s := NewCachedStateStorage(noOpStorage{})
-	_, err := s.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
+	err := s.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
 	assert.NoError(t, err)
 
 	lastLog, err := s.LastLog(context.Background())

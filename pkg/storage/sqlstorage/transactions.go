@@ -87,12 +87,6 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	}
 	c.Data = transactions
 
-	total, err := s.countTransactions(ctx, exec, q.Params)
-	if err != nil {
-		return c, err
-	}
-	c.Total = total
-
 	return c, nil
 }
 

@@ -5,8 +5,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var ErrCommitError = errors.New("commit error")
-
 type TransactionCommitError struct {
 	TXIndex int   `json:"index"`
 	Err     error `json:"error"`
@@ -82,12 +80,10 @@ func IsValidationError(err error) bool {
 	return errors.Is(err, &ValidationError{})
 }
 
-type ConflictError struct {
-	Reference string
-}
+type ConflictError struct{}
 
 func (e ConflictError) Error() string {
-	return fmt.Sprintf("conflict error on reference '%s'", e.Reference)
+	return fmt.Sprintf("conflict error on reference")
 }
 
 func (e ConflictError) Is(err error) bool {
@@ -95,10 +91,8 @@ func (e ConflictError) Is(err error) bool {
 	return ok
 }
 
-func NewConflictError(ref string) *ConflictError {
-	return &ConflictError{
-		Reference: ref,
-	}
+func NewConflictError() *ConflictError {
+	return &ConflictError{}
 }
 
 func IsConflictError(err error) bool {

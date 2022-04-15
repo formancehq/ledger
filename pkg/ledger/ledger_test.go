@@ -178,16 +178,10 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 			},
 		}
 
-		_, result, err := l.Commit(context.Background(), batch)
+		_, _, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
-		assert.Equal(t, ErrCommitError, err)
-		assert.Len(t, result, 3)
-		assert.Nil(t, result[0].Err)
-		assert.Nil(t, result[2].Err)
-		assert.NotNil(t, result[1].Err)
-		assert.IsType(t, new(TransactionCommitError), result[1].Err)
-		assert.Equal(t, 1, result[1].Err.TXIndex)
-		assert.IsType(t, new(InsufficientFundError), result[1].Err.Err)
+		assert.IsType(t, new(TransactionCommitError), err)
+		assert.IsType(t, new(InsufficientFundError), errors.Unwrap(err))
 	})
 }
 
@@ -229,16 +223,9 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 			},
 		}
 
-		_, result, err := l.Commit(context.Background(), batch)
+		_, _, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
-		assert.Equal(t, ErrCommitError, err)
-		assert.Len(t, result, 3)
-		assert.Nil(t, result[0].Err)
-		assert.Nil(t, result[1].Err)
-		assert.NotNil(t, result[2].Err)
-		assert.IsType(t, new(TransactionCommitError), result[2].Err)
-		assert.Equal(t, 2, result[2].Err.TXIndex)
-		assert.IsType(t, new(ConflictError), result[2].Err.Err)
+		assert.IsType(t, new(ConflictError), err)
 	})
 }
 

@@ -123,7 +123,7 @@ func TestStore(t *testing.T) {
 }
 
 func testSaveTransaction(t *testing.T, store *sqlstorage.Store) {
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{
 		ID: 0,
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
@@ -151,7 +151,7 @@ func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 		},
 	}
 	log1 := core.NewTransactionLog(nil, tx)
-	_, err := store.AppendLog(context.Background(), log1)
+	err := store.AppendLog(context.Background(), log1)
 	assert.NoError(t, err)
 
 	log2 := core.NewTransactionLog(&log1, core.Transaction{
@@ -163,12 +163,9 @@ func testDuplicatedTransaction(t *testing.T, store *sqlstorage.Store) {
 			Reference: "foo",
 		},
 	})
-	ret, err := store.AppendLog(context.Background(), log2)
+	err = store.AppendLog(context.Background(), log2)
 	assert.Error(t, err)
-	assert.Equal(t, storage.ErrAborted, err)
-	assert.Len(t, ret, 1)
-	assert.IsType(t, &storage.Error{}, ret[0])
-	assert.Equal(t, storage.ConstraintFailed, ret[0].(*storage.Error).Code)
+	assert.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
 }
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
@@ -186,12 +183,12 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	if !assert.NoError(t, err) {
 		return
 	}
 
-	countAccounts, err := store.CountAccounts(context.Background())
+	countAccounts, err := store.CountAccounts(context.Background(), query.Query{})
 	if !assert.EqualValues(t, 2, countAccounts) { // world + central_bank
 		return
 	}
@@ -211,7 +208,7 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -266,7 +263,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 
-	_, err := store.AppendLog(context.Background(), account1, account2, account3, account4)
+	err := store.AppendLog(context.Background(), account1, account2, account3, account4)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -275,9 +272,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		Limit: 1,
 	})
 	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.EqualValues(t, 4, accounts.Total) {
 		return
 	}
 	if !assert.True(t, accounts.HasMore) {
@@ -294,9 +288,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.EqualValues(t, 4, accounts.Total) {
-		return
-	}
 	if !assert.True(t, accounts.HasMore) {
 		return
 	}
@@ -311,9 +302,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.EqualValues(t, 2, accounts.Total) {
 		return
 	}
 	if !assert.False(t, accounts.HasMore) {
@@ -337,9 +325,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.EqualValues(t, 1, accounts.Total) {
-		return
-	}
 	if !assert.False(t, accounts.HasMore) {
 		return
 	}
@@ -356,9 +341,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.EqualValues(t, 1, accounts.Total) {
 		return
 	}
 	if !assert.False(t, accounts.HasMore) {
@@ -379,9 +361,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.EqualValues(t, 1, accounts.Total) {
-		return
-	}
 	if !assert.False(t, accounts.HasMore) {
 		return
 	}
@@ -398,9 +377,6 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.EqualValues(t, 1, accounts.Total) {
 		return
 	}
 	if !assert.False(t, accounts.HasMore) {
@@ -428,12 +404,12 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
-	_, err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	if !assert.NoError(t, err) {
 		return
 	}
 
-	countTransactions, err := store.CountTransactions(context.Background())
+	countTransactions, err := store.CountTransactions(context.Background(), query.Query{})
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -474,7 +450,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
-	_, err := store.AppendLog(context.Background(), log1, log2)
+	err := store.AppendLog(context.Background(), log1, log2)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -489,9 +465,6 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		return
 	}
 	if !assert.True(t, cursor.HasMore) {
-		return
-	}
-	if !assert.EqualValues(t, 2, cursor.Total) {
 		return
 	}
 
@@ -611,7 +584,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
-	_, err := store.AppendLog(context.Background(), log1, log2)
+	err := store.AppendLog(context.Background(), log1, log2)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -639,7 +612,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		defer tx.Rollback()
 	}
-	_, err := store.CountTransactions(context.Background())
+	_, err := store.CountTransactions(context.Background(), query.Query{})
 	if !assert.Error(t, err) {
 		return
 	}
@@ -707,7 +680,7 @@ func testLastLog(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	log := core.NewTransactionLog(nil, tx)
-	_, err := store.AppendLog(context.Background(), log)
+	err := store.AppendLog(context.Background(), log)
 	if !assert.NoError(t, err) {
 		return
 	}

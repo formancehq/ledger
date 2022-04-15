@@ -105,6 +105,12 @@ func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m co
 	return rec
 }
 
+func CountTransactions(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodHead, "/"+testingLedger+"/transactions", nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/transactions", nil)
 	handler.ServeHTTP(rec, req)
@@ -113,6 +119,13 @@ func GetTransactions(handler http.Handler) *httptest.ResponseRecorder {
 
 func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func CountAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodHead, "/"+testingLedger+"/accounts", nil)
+	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }

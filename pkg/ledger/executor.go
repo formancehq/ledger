@@ -108,16 +108,11 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transac
 		return nil, err
 	}
 
-	_, ret, err := l.Commit(ctx, []core.TransactionData{*t})
+	_, txs, err := l.Commit(ctx, []core.TransactionData{*t})
 	if err != nil {
-		switch err {
-		case ErrCommitError:
-			return &ret[0].Transaction, ret[0].Err
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
-	return &ret[0].Transaction, nil
+	return &txs[0], nil
 }
 
 func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.Transaction, error) {
@@ -128,13 +123,8 @@ func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.
 
 	_, ret, err := l.CommitPreview(ctx, []core.TransactionData{*t})
 	if err != nil {
-		switch err {
-		case ErrCommitError:
-			return &ret[0].Transaction, ret[0].Err
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
 
-	return &ret[0].Transaction, nil
+	return &ret[0], nil
 }

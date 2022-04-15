@@ -1,22 +1,25 @@
 package ledger
 
-import "context"
+import (
+	"context"
+	"github.com/numary/ledger/pkg/ledger/query"
+)
 
 type Stats struct {
-	Transactions int64 `json:"transactions"`
-	Accounts     int64 `json:"accounts"`
+	Transactions uint64 `json:"transactions"`
+	Accounts     uint64 `json:"accounts"`
 }
 
 func (l *Ledger) Stats(ctx context.Context) (Stats, error) {
 	var stats Stats
 
-	tt, err := l.store.CountTransactions(ctx)
+	tt, err := l.store.CountTransactions(ctx, query.Query{})
 
 	if err != nil {
 		return stats, err
 	}
 
-	ta, err := l.store.CountAccounts(ctx)
+	ta, err := l.store.CountAccounts(ctx, query.Query{})
 
 	if err != nil {
 		return stats, err
