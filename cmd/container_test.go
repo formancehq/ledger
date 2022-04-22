@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
+	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -77,7 +77,7 @@ func TestContainers(t *testing.T) {
 							return nil
 						},
 					})
-				}, fx.ParamTags(``, ``, ``, opentelemetrytraces.TracerProviderOptionKey))),
+				}, fx.ParamTags(``, ``, ``, sharedotlptraces.TracerProviderOptionKey))),
 			},
 		},
 		{
@@ -115,7 +115,7 @@ func TestContainers(t *testing.T) {
 							return nil
 						},
 					})
-				}, fx.ParamTags(``, ``, ``, opentelemetrytraces.TracerProviderOptionKey))),
+				}, fx.ParamTags(``, ``, ``, sharedotlptraces.TracerProviderOptionKey))),
 			},
 		},
 		{

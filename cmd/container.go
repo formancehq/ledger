@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/numary/go-libs/sharedotlp/sharedotlpmetrics"
+	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
@@ -109,26 +111,24 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 
 	// Handle OpenTelemetry
 	if v.GetBool(otelTracesFlag) {
-		options = append(options, opentelemetrytraces.TracesModule(opentelemetrytraces.ModuleConfig{
-			ServiceName: ServiceName,
-			Version:     Version,
-			Batch:       v.GetBool(otelTracesBatchFlag),
-			Exporter:    v.GetString(otelTracesExporterFlag),
-			JaegerConfig: func() *opentelemetrytraces.JaegerConfig {
-				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.JaegerExporter {
+		options = append(options, sharedotlptraces.TracesModule(sharedotlptraces.ModuleConfig{
+			Batch:    v.GetBool(otelTracesBatchFlag),
+			Exporter: v.GetString(otelTracesExporterFlag),
+			JaegerConfig: func() *sharedotlptraces.JaegerConfig {
+				if v.GetString(otelTracesExporterFlag) != sharedotlptraces.JaegerExporter {
 					return nil
 				}
-				return &opentelemetrytraces.JaegerConfig{
+				return &sharedotlptraces.JaegerConfig{
 					Endpoint: v.GetString(otelTracesExporterJaegerEndpointFlag),
 					User:     v.GetString(otelTracesExporterJaegerUserFlag),
 					Password: v.GetString(otelTracesExporterJaegerPasswordFlag),
 				}
 			}(),
-			OTLPConfig: func() *opentelemetrytraces.OTLPConfig {
-				if v.GetString(otelTracesExporterFlag) != opentelemetrytraces.OTLPExporter {
+			OTLPConfig: func() *sharedotlptraces.OTLPConfig {
+				if v.GetString(otelTracesExporterFlag) != sharedotlptraces.OTLPExporter {
 					return nil
 				}
-				return &opentelemetrytraces.OTLPConfig{
+				return &sharedotlptraces.OTLPConfig{
 					Mode:     v.GetString(otelTracesExporterOTLPModeFlag),
 					Endpoint: v.GetString(otelTracesExporterOTLPEndpointFlag),
 					Insecure: v.GetBool(otelTracesExporterOTLPInsecureFlag),
@@ -137,13 +137,13 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}))
 	}
 	if v.GetBool(otelMetricsFlag) {
-		options = append(options, opentelemetrymetrics.MetricsModule(opentelemetrymetrics.MetricsModuleConfig{
+		options = append(options, sharedotlpmetrics.MetricsModule(sharedotlpmetrics.MetricsModuleConfig{
 			Exporter: v.GetString(otelMetricsExporterFlag),
-			OTLPConfig: func() *opentelemetrymetrics.OTLPMetricsConfig {
-				if v.GetString(otelMetricsExporterFlag) != opentelemetrymetrics.OTLPMetricsExporter {
+			OTLPConfig: func() *sharedotlpmetrics.OTLPMetricsConfig {
+				if v.GetString(otelMetricsExporterFlag) != sharedotlpmetrics.OTLPMetricsExporter {
 					return nil
 				}
-				return &opentelemetrymetrics.OTLPMetricsConfig{
+				return &sharedotlpmetrics.OTLPMetricsConfig{
 					Mode:     v.GetString(otelMetricsExporterOTLPModeFlag),
 					Endpoint: v.GetString(otelMetricsExporterOTLPEndpointFlag),
 					Insecure: v.GetBool(otelMetricsExporterOTLPInsecureFlag),

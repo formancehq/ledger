@@ -697,6 +697,8 @@ github.com/numary/go-libs v0.0.0-20220325080412-02604f34c81f h1:eeqeJgc0BhJ1vjRx
 github.com/numary/go-libs v0.0.0-20220325080412-02604f34c81f/go.mod h1:Ko0TOXuzUP7hP70Vj+E8xRU0BBqxHKeh/He/r8xqmNY=
 github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d h1:9liBLU1oViJz9B3dAdSSIxbUaYA9vns1gxSClcTJmjY=
 github.com/numary/go-libs v0.0.0-20220325095600-77c50f13215d/go.mod h1:Ko0TOXuzUP7hP70Vj+E8xRU0BBqxHKeh/He/r8xqmNY=
+github.com/numary/go-libs v0.0.0-20220421111437-7c311b956456 h1:LXyf/KcN++yvqhv3PpHuJ+y0Ngl9BGrHBuQFyfATtAA=
+github.com/numary/go-libs v0.0.0-20220421111437-7c311b956456/go.mod h1:6tDsBoFNhjhfN3/G7JFmv5B2GIfuzTNhA2QrdnwOCew=
 github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDYd6id1qeD2uv7JDlajuRZ0fvOnCeDZmDxk=
 github.com/numary/ledger v0.0.0-20211227131550-dc7b78f85b5b/go.mod h1:uovuDsK7Gs7duqKQ9PgaFulJnPTDftGdR/n3rBRzNIs=
 github.com/numary/ledger v1.2.1/go.mod h1:dCGgCTrHvVfl4YKMKY0oq3bQexsEU/mhGHM9qRrNjJ0=
