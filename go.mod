@@ -3,7 +3,6 @@ module github.com/numary/ledger
 go 1.18
 
 require (
-	github.com/XSAM/otelsql v0.12.0
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/google/go-cmp v0.5.7
@@ -21,17 +20,17 @@ require (
 	github.com/stretchr/testify v1.7.0
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.28.0
 	go.opentelemetry.io/otel v1.5.0
-	go.opentelemetry.io/otel/exporters/jaeger v1.5.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.27.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.27.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.27.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.5.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.5.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.5.0
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.5.0
+	go.opentelemetry.io/otel/exporters/jaeger v1.5.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.27.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.5.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.5.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.5.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.5.0 // indirect
 	go.opentelemetry.io/otel/metric v0.27.0
 	go.opentelemetry.io/otel/sdk v1.5.0
-	go.opentelemetry.io/otel/sdk/metric v0.27.0
+	go.opentelemetry.io/otel/sdk/metric v0.27.0 // indirect
 	go.opentelemetry.io/otel/trace v1.5.0
 	go.uber.org/fx v1.17.1
 )
@@ -39,11 +38,11 @@ require (
 require (
 	github.com/Shopify/sarama v1.32.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
-	github.com/davecgh/go-spew v1.1.1
+	github.com/buger/jsonparser v1.1.1
 	github.com/gibson042/canonicaljson-go v1.0.3
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/numary/go-libs v0.0.0-20220421111437-7c311b956456
+	github.com/numary/go-libs v0.0.0-20220422182305-6598727372a6
 	github.com/xdg-go/scram v1.1.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
@@ -57,18 +56,20 @@ require (
 	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
 	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211226235153-13a0add2f557 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cncf/udpa/go v0.0.0-20210930031921-04548b0d99d4 // indirect
 	github.com/cncf/xds/go v0.0.0-20211216145620-d92e9ce0af51 // indirect
 	github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dgraph-io/ristretto v0.1.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/docker/cli v20.10.11+incompatible // indirect
 	github.com/docker/docker v20.10.7+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/eapache/go-resiliency v1.2.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
@@ -84,6 +85,8 @@ require (
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
