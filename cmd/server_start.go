@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"context"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"go.uber.org/fx"
 	"net"
 	"net/http"
@@ -14,6 +18,21 @@ func NewServerStart() *cobra.Command {
 	return &cobra.Command{
 		Use: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			l := logrus.New()
+			if viper.GetBool(debugFlag) {
+				l.Level = logrus.DebugLevel
+			}
+			if viper.GetBool(otelTracesFlag) {
+				l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
+					logrus.PanicLevel,
+					logrus.FatalLevel,
+					logrus.ErrorLevel,
+					logrus.WarnLevel,
+				)))
+			}
+			loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
+			sharedlogging.SetFactory(loggerFactory)
+
 			app := NewContainer(
 				viper.GetViper(),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
