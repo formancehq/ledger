@@ -6,6 +6,8 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/oauth2/oauth2introspect"
+	"github.com/numary/go-libs/sharedauth"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/go-libs/sharedotlp/sharedotlpmetrics"
@@ -222,6 +224,41 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	)
 
 	// Api middlewares
+	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {
+		res := make([]gin.HandlerFunc, 0)
+
+		methods := make([]sharedauth.Method, 0)
+		if basicAuth := viper.GetStringSlice(authBasicCredentialsFlag); len(basicAuth) > 0 &&
+			(!viper.IsSet(authBasicEnabledFlag) || viper.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
+			credentials := make(map[string]string)
+			for _, kv := range basicAuth {
+				parts := strings.SplitN(kv, ":", 2)
+				credentials[parts[0]] = parts[1]
+			}
+			methods = append(methods, sharedauth.NewHTTPBasicMethod(credentials))
+		}
+		if viper.GetBool(authBearerEnabledFlag) {
+			methods = append(methods, sharedauth.NewHttpBearerMethod(
+				oauth2introspect.NewIntrospecter(viper.GetString(authBearerIntrospectUrlFlag)),
+				viper.GetBool(authBearerAudiencesWildcardFlag),
+				viper.GetStringSlice(authBearerAudienceFlag)...,
+			))
+		}
+		if len(methods) > 0 {
+			res = append(res, func(c *gin.Context) {
+				handled := false
+				sharedauth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					handled = true
+					c.Next()
+				})).ServeHTTP(c.Writer, c.Request)
+				if !handled {
+					c.Abort()
+				}
+			})
+		}
+		return res
+	}, fx.ParamTags(`optional:"true"`)))
+
 	options = append(options, routes.ProvideMiddlewares(func(tp trace.TracerProvider) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)
 
@@ -255,7 +292,6 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
 			}
 		}))
-		res = append(res, middlewares.Auth(viper.GetString(serverHttpBasicAuthFlag)))
 		return res
 	}, fx.ParamTags(`optional:"true"`)))
 

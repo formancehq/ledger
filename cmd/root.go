@@ -15,14 +15,15 @@ import (
 )
 
 const (
-	debugFlag                            = "debug"
-	storageDirFlag                       = "storage.dir"
-	storageDriverFlag                    = "storage.driver"
-	storageSQLiteDBNameFlag              = "storage.sqlite.db_name"
-	storagePostgresConnectionStringFlag  = "storage.postgres.conn_string"
-	storageCacheFlag                     = "storage.cache"
-	serverHttpBindAddressFlag            = "server.http.bind_address"
-	uiHttpBindAddressFlag                = "ui.http.bind_address"
+	debugFlag                           = "debug"
+	storageDirFlag                      = "storage.dir"
+	storageDriverFlag                   = "storage.driver"
+	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
+	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
+	storageCacheFlag                    = "storage.cache"
+	serverHttpBindAddressFlag           = "server.http.bind_address"
+	uiHttpBindAddressFlag               = "ui.http.bind_address"
+	// Deprecated
 	serverHttpBasicAuthFlag              = "server.http.basic_auth"
 	lockStrategyFlag                     = "lock-strategy"
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
@@ -54,6 +55,12 @@ const (
 	publisherKafkaTLSEnabled             = "publisher-kafka-tls-enabled"
 	publisherTopicMappingFlag            = "publisher-topic-mapping"
 	publisherHttpEnabledFlag             = "publisher-http-enabled"
+	authBasicEnabledFlag                 = "auth-basic-enabled"
+	authBasicCredentialsFlag             = "auth-basic-credentials"
+	authBearerEnabledFlag                = "auth-bearer-enabled"
+	authBearerIntrospectUrlFlag          = "auth-bearer-introspect-url"
+	authBearerAudienceFlag               = "auth-bearer-audience"
+	authBearerAudiencesWildcardFlag      = "auth-bearer-audiences-wildcard"
 )
 
 var (
@@ -149,7 +156,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
-
 	root.PersistentFlags().Bool(publisherKafkaEnabledFlag, false, "Publish write events to kafka")
 	root.PersistentFlags().StringSlice(publisherKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
 	root.PersistentFlags().StringSlice(publisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
@@ -160,7 +166,14 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(publisherKafkaSASLMechanism, "", "SASL authentication mechanism")
 	root.PersistentFlags().Int(publisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
 	root.PersistentFlags().Bool(publisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
+	root.PersistentFlags().Bool(authBasicEnabledFlag, false, "Enable basic auth")
+	root.PersistentFlags().StringSlice(authBasicCredentialsFlag, []string{}, "HTTP basic auth credentials (<username>:<password>)")
+	root.PersistentFlags().Bool(authBearerEnabledFlag, false, "Enable bearer auth")
+	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
+	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
+	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
 
+	viper.RegisterAlias(serverHttpBasicAuthFlag, authBasicCredentialsFlag)
 	viper.BindPFlags(root.PersistentFlags())
 	viper.SetConfigName("numary")
 	viper.SetConfigType("yaml")

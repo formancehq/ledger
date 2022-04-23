@@ -1,0 +1,26 @@
+---
+volumes:
+  postgres:
+services:
+  postgres:
+    extends:
+      file: ../../docker-compose.yml
+      service: postgres
+  ledger:
+    extends:
+      file: ../../docker-compose.yml
+      service: ledger
+    depends_on:
+      - postgres
+    image: golang:1.18-alpine
+    entrypoint: go run main.go server start
+    volumes:
+      - ../..:/src
+    ports:
+    - 3068:3068
+    working_dir: /src
+    environment:
+      CGO_ENABLED: 0
+      NUMARY_DEBUG: "true"
+      NUMARY_AUTH_BASIC_ENABLED: "true"
+      NUMARY_AUTH_BASIC_CREDENTIALS: "user:password"
