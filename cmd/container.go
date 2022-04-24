@@ -67,9 +67,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	options = append(options, sharedpublish.Module(), bus.LedgerMonitorModule())
-	options = append(options, bus.ProvideMonitorOption(func() bus.MonitorOption {
-		return bus.WithLedgerMonitorTopics(mapping)
-	}))
+	options = append(options, sharedpublish.TopicMapperPublisherModule(mapping))
+
 	switch {
 	case v.GetBool(publisherHttpEnabledFlag):
 		options = append(options, sharedpublishhttp.Module())

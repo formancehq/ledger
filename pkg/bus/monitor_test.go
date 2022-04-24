@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
+	"github.com/numary/go-libs/sharedpublish"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -22,7 +23,10 @@ func TestMonitor(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	m := NewLedgerMonitor(pubSub, WithLedgerMonitorGlobalTopic("testing"))
+	p := sharedpublish.NewTopicMapperPublisher(pubSub, map[string]string{
+		"*": "testing",
+	})
+	m := NewLedgerMonitor(p)
 	go m.CommittedTransactions(context.Background(), uuid.New(), nil, nil)
 
 	select {

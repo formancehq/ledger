@@ -217,12 +217,14 @@ func TestContainers(t *testing.T) {
 				fx.Invoke(func(lc fx.Lifecycle, ch *gochannel.GoChannel, resolver *ledger.Resolver) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							messages, err := ch.Subscribe(ctx, bus.FallbackTopic)
+							messages, err := ch.Subscribe(ctx, bus.SavedMetadata)
 							if err != nil {
 								return err
 							}
+
 							name := uuid.New()
 							l, err := resolver.GetLedger(ctx, name)
+
 							if err != nil {
 								return err
 							}
@@ -233,6 +235,7 @@ func TestContainers(t *testing.T) {
 									errCh <- err
 								}
 							}()
+
 							select {
 							case <-ctx.Done():
 								return ctx.Err()
