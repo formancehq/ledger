@@ -2,8 +2,8 @@ package bus
 
 import (
 	"context"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	FallbackTopic                = "NEW_EVENT"
 	CommittedTransactions string = "COMMITTED_TRANSACTIONS"
 	SavedMetadata         string = "SAVED_METADATA"
 	UpdatedMapping        string = "UPDATED_MAPPING"
@@ -19,47 +18,31 @@ const (
 )
 
 type ledgerMonitor struct {
-	publisher message.Publisher
-	topics    map[string]string
+	publisher *sharedpublish.TopicMapperPublisher
 }
 
-func (l *ledgerMonitor) publish(ctx context.Context, topic string, ledger string, et string, data interface{}) {
-	err := l.publisher.Publish(topic, newMessage(ctx, baseEvent{
+func (l *ledgerMonitor) publish(ctx context.Context, ledger string, et string, data interface{}) {
+	err := l.publisher.Publish(ctx, et, baseEvent{
 		Date:    time.Now(),
 		Type:    et,
 		Payload: data,
 		Ledger:  ledger,
-	}))
+	})
 	if err != nil {
 		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
 		return
 	}
 }
 
-func (l *ledgerMonitor) process(ctx context.Context, ledger string, event string, data interface{}) {
-	topic, ok := l.topics[event]
-	if ok {
-		l.publish(ctx, topic, ledger, event, data)
-		return
-	}
-	topic, ok = l.topics["*"]
-	if ok {
-		l.publish(ctx, topic, ledger, event, data)
-		return
-	}
-	l.publish(ctx, FallbackTopic, ledger, event, data)
-	return
-}
-
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, results []core.Transaction, volumes core.AggregatedVolumes) {
-	l.process(ctx, ledger, CommittedTransactions, committedTransactions{
+	l.publish(ctx, ledger, CommittedTransactions, committedTransactions{
 		Transactions: results,
 		Volumes:      volumes,
 	})
 }
 
 func (l ledgerMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {
-	l.process(ctx, ledger, SavedMetadata, savedMetadata{
+	l.publish(ctx, ledger, SavedMetadata, savedMetadata{
 		TargetType: targetType,
 		TargetID:   id,
 		Metadata:   metadata,
@@ -67,13 +50,13 @@ func (l ledgerMonitor) SavedMetadata(ctx context.Context, ledger string, targetT
 }
 
 func (l ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	l.process(ctx, ledger, UpdatedMapping, updatedMapping{
+	l.publish(ctx, ledger, UpdatedMapping, updatedMapping{
 		Mapping: mapping,
 	})
 }
 
 func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted core.Transaction, revert core.Transaction) {
-	l.process(ctx, ledger, RevertedTransaction, revertedTransaction{
+	l.publish(ctx, ledger, RevertedTransaction, revertedTransaction{
 		RevertedTransaction: reverted,
 		RevertTransaction:   revert,
 	})
@@ -81,41 +64,11 @@ func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, r
 
 var _ ledger.Monitor = &ledgerMonitor{}
 
-type MonitorOption func(monitor *ledgerMonitor)
-
-func WithLedgerMonitorGlobalTopic(v string) MonitorOption {
-	return func(monitor *ledgerMonitor) {
-		monitor.topics["*"] = v
-	}
-}
-
-func WithLedgerMonitorTopic(key string, v string) MonitorOption {
-	return func(monitor *ledgerMonitor) {
-		monitor.topics[key] = v
-	}
-}
-
-func WithLedgerMonitorTopics(kv map[string]string) MonitorOption {
-	return func(monitor *ledgerMonitor) {
-		for k, v := range kv {
-			monitor.topics[k] = v
-		}
-	}
-}
-
-func NewLedgerMonitor(publisher message.Publisher, opts ...MonitorOption) *ledgerMonitor {
+func NewLedgerMonitor(publisher *sharedpublish.TopicMapperPublisher) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
-		topics:    map[string]string{},
-	}
-	for _, opt := range opts {
-		opt(m)
 	}
 	return m
-}
-
-func ProvideMonitorOption(constructor interface{}) fx.Option {
-	return fx.Provide(fx.Annotate(constructor, fx.ResultTags(`group:"monitorOptions"`)))
 }
 
 func LedgerMonitorModule() fx.Option {

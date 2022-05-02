@@ -689,6 +689,8 @@ github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OS
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/numary/go-libs v0.0.0-20220422182305-6598727372a6 h1:KozADR0nMPNpg/u13FYOU5DzIRWMPZF1biFBaxAtHHA=
 github.com/numary/go-libs v0.0.0-20220422182305-6598727372a6/go.mod h1:Kdz30gnijNv6cdZyB64ipJsa9gm9hFEu8XMGULwogc8=
+github.com/numary/go-libs v0.0.0-20220424155450-f2a5122cde41 h1:zFaCXPmstdDxn3BYdlejrFrEmBzvbEM7Jq3YwGRQzHQ=
+github.com/numary/go-libs v0.0.0-20220424155450-f2a5122cde41/go.mod h1:7StJNTZ3QbU2uBWpOeryPaHD6xMYUN8AWXWTjP67kv0=
 github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDYd6id1qeD2uv7JDlajuRZ0fvOnCeDZmDxk=
 github.com/numary/ledger v0.0.0-20211227131550-dc7b78f85b5b/go.mod h1:uovuDsK7Gs7duqKQ9PgaFulJnPTDftGdR/n3rBRzNIs=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=

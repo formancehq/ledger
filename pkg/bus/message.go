@@ -1,24 +1,9 @@
 package bus
 
 import (
-	"context"
-	"encoding/json"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/pborman/uuid"
 	"time"
 )
-
-// TODO: Inject OpenTracing context
-func newMessage(ctx context.Context, m interface{}) *message.Message {
-	data, err := json.Marshal(m)
-	if err != nil {
-		panic(err)
-	}
-	msg := message.NewMessage(uuid.New(), data)
-	msg.SetContext(ctx)
-	return msg
-}
 
 type baseEvent struct {
 	Date    time.Time   `json:"date"`
