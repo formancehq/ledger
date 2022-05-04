@@ -448,9 +448,25 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
+	tx3 := core.Transaction{
+		ID: 2,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "central_bank",
+					Destination: "users:1",
+					Amount:      1,
+					Asset:       "USD",
+				},
+			},
+			Reference: "tx3",
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
-	err := store.AppendLog(context.Background(), log1, log2)
+	log3 := core.NewTransactionLog(&log2, tx3)
+	err := store.AppendLog(context.Background(), log1, log2, log3)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -478,7 +494,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	if !assert.Equal(t, 1, cursor.PageSize) {
 		return
 	}
-	if !assert.False(t, cursor.HasMore) {
+	if !assert.True(t, cursor.HasMore) {
 		return
 	}
 
@@ -502,6 +518,43 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		return
 	}
 
+	cursor, err = store.FindTransactions(context.Background(), query.Query{
+		Params: map[string]interface{}{
+			"source": "central_bank",
+		},
+		Limit: 10,
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Equal(t, 10, cursor.PageSize) {
+		return
+	}
+	if !assert.Len(t, cursor.Data, 1) {
+		return
+	}
+	if !assert.False(t, cursor.HasMore) {
+		return
+	}
+
+	cursor, err = store.FindTransactions(context.Background(), query.Query{
+		Params: map[string]interface{}{
+			"destination": "users:1",
+		},
+		Limit: 10,
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Equal(t, 10, cursor.PageSize) {
+		return
+	}
+	if !assert.Len(t, cursor.Data, 1) {
+		return
+	}
+	if !assert.False(t, cursor.HasMore) {
+		return
+	}
 }
 
 func testMapping(t *testing.T, store *sqlstorage.Store) {
