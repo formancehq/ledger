@@ -71,6 +71,35 @@ func init() {
 			if err != nil {
 				return err
 			}
+			err = conn.RegisterFunc("use_account_as_source", func(v string, act string) (bool, error) {
+				postings := core.Postings{}
+				err := json.Unmarshal([]byte(v), &postings)
+				if err != nil {
+					return false, nil
+				}
+				for _, p := range postings {
+					if p.Source == act {
+						return true, nil
+					}
+				}
+				return false, nil
+			}, true)
+			err = conn.RegisterFunc("use_account_as_destination", func(v string, act string) (bool, error) {
+				postings := core.Postings{}
+				err := json.Unmarshal([]byte(v), &postings)
+				if err != nil {
+					return false, nil
+				}
+				for _, p := range postings {
+					if p.Destination == act {
+						return true, nil
+					}
+				}
+				return false, nil
+			}, true)
+			if err != nil {
+				return err
+			}
 			err = conn.RegisterFunc("meta_compare", func(metadata string, value string, key ...string) bool {
 				bytes, dataType, _, err := jsonparser.Get([]byte(metadata), key...)
 				if err != nil {

@@ -21,6 +21,14 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 		arg := sb.Args.Add(account.(string))
 		sb.Where(s.schema.Table("use_account") + "(t.postings, " + arg + ")")
 	}
+	if source, ok := p["source"]; ok && source.(string) != "" {
+		arg := sb.Args.Add(source.(string))
+		sb.Where(s.schema.Table("use_account_as_source") + "(t.postings, " + arg + ")")
+	}
+	if destination, ok := p["destination"]; ok && destination.(string) != "" {
+		arg := sb.Args.Add(destination.(string))
+		sb.Where(s.schema.Table("use_account_as_destination") + "(t.postings, " + arg + ")")
+	}
 	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
 		sb.Where(sb.E("reference", ref.(string)))
 	}
