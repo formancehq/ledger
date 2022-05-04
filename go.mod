@@ -57,6 +57,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
 	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211226235153-13a0add2f557 // indirect
+	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -133,11 +134,16 @@ require (
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/segmentio/backo-go v1.0.0 // indirect
+	github.com/segmentio/go-snakecase v0.0.0-20160726192916-45c439a7815b // indirect
+	github.com/segmentio/go-tableize v1.0.1-0.20160728214455-e912c9fa0f24 // indirect
+	github.com/segmentio/objects-go v1.1.0 // indirect
 	github.com/spf13/afero v1.7.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
+	github.com/tj/go-sync v0.0.0-20160119181431-8448302468e8 // indirect
 	github.com/ugorji/go/codec v1.2.6 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.1.12 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
@@ -145,6 +151,7 @@ require (
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
+	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.5.0 // indirect
 	go.opentelemetry.io/otel/internal/metric v0.27.0 // indirect
@@ -165,5 +172,7 @@ require (
 	google.golang.org/grpc v1.45.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.66.2 // indirect
+	gopkg.in/segmentio/analytics-go.v3 v3.1.0 // indirect
+	gopkg.in/validator.v2 v2.0.0-20160201165114-3e4f037f12a1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

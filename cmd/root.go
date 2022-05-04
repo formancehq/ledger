@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 const (
@@ -58,12 +59,18 @@ const (
 	authBearerIntrospectUrlFlag          = "auth-bearer-introspect-url"
 	authBearerAudienceFlag               = "auth-bearer-audience"
 	authBearerAudiencesWildcardFlag      = "auth-bearer-audiences-wildcard"
+
+	segmentEnabledFlag       = "segment-enabled"
+	segmentWriteKey          = "segment-write-key"
+	segmentApplicationId     = "segment-application-id"
+	segmentHeartbeatInterval = "segment-heartbeat-interval"
 )
 
 var (
-	Version   = "develop"
-	BuildDate = "-"
-	Commit    = "-"
+	Version                = "develop"
+	BuildDate              = "-"
+	Commit                 = "-"
+	DefaultSegmentWriteKey = ""
 
 	replacer = strings.NewReplacer(".", "_", "-", "_")
 )
@@ -162,6 +169,10 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
 	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
 	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
+	root.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
+	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
+	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
+	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
 
 	viper.RegisterAlias(serverHttpBasicAuthFlag, authBasicCredentialsFlag)
 	viper.BindPFlags(root.PersistentFlags())
