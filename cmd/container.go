@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/Shopify/sarama"
@@ -15,6 +16,7 @@ import (
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
+	"github.com/numary/ledger/pkg/analytics"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -25,6 +27,7 @@ import (
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/xdg-go/scram"
@@ -66,6 +69,22 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		mapping[parts[0]] = parts[1]
 	}
 
+	if v.GetBool(segmentEnabledFlag) {
+		applicationId := viper.GetString(segmentApplicationId)
+		if applicationId == "" {
+			applicationId = uuid.New()
+		}
+		writeKey := viper.GetString(segmentWriteKey)
+		interval := viper.GetDuration(segmentHeartbeatInterval)
+		if writeKey == "" {
+			sharedlogging.GetLogger(context.Background()).Error("Segment enabled but no write key provided")
+		} else if interval == 0 {
+			sharedlogging.GetLogger(context.Background()).Error("Segment heartbeat interval is 0")
+		} else {
+			options = append(options, analytics.NewHeartbeatModule(applicationId, Version, writeKey, interval))
+		}
+	}
+
 	options = append(options, sharedpublish.Module(), bus.LedgerMonitorModule())
 	options = append(options, sharedpublish.TopicMapperPublisherModule(mapping))
 
@@ -81,20 +100,20 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				sharedpublishkafka.WithProducerReturnSuccess(),
 			),
 		)
-		if viper.GetBool(publisherKafkaTLSEnabled) {
+		if v.GetBool(publisherKafkaTLSEnabled) {
 			options = append(options, sharedpublishkafka.ProvideSaramaOption(sharedpublishkafka.WithTLS()))
 		}
-		if viper.GetBool(publisherKafkaSASLEnabled) {
+		if v.GetBool(publisherKafkaSASLEnabled) {
 			options = append(options, sharedpublishkafka.ProvideSaramaOption(
 				sharedpublishkafka.WithSASLEnabled(),
 				sharedpublishkafka.WithSASLCredentials(
-					viper.GetString(publisherKafkaSASLUsername),
-					viper.GetString(publisherKafkaSASLPassword),
+					v.GetString(publisherKafkaSASLUsername),
+					v.GetString(publisherKafkaSASLPassword),
 				),
-				sharedpublishkafka.WithSASLMechanism(sarama.SASLMechanism(viper.GetString(publisherKafkaSASLMechanism))),
+				sharedpublishkafka.WithSASLMechanism(sarama.SASLMechanism(v.GetString(publisherKafkaSASLMechanism))),
 				sharedpublishkafka.WithSASLScramClient(func() sarama.SCRAMClient {
 					var fn scram.HashGeneratorFcn
-					switch viper.GetInt(publisherKafkaSASLScramSHASize) {
+					switch v.GetInt(publisherKafkaSASLScramSHASize) {
 					case 512:
 						fn = sharedpublishkafka.SHA512
 					case 256:
@@ -160,9 +179,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		options = append(options, ledger.NoLockModule())
 	case "redis":
 		var tlsConfig *tls.Config
-		if viper.GetBool(lockStrategyRedisTLSEnabledFlag) {
+		if v.GetBool(lockStrategyRedisTLSEnabledFlag) {
 			tlsConfig = &tls.Config{}
-			if viper.GetBool(lockStrategyRedisTLSInsecureFlag) {
+			if v.GetBool(lockStrategyRedisTLSInsecureFlag) {
 				tlsConfig.InsecureSkipVerify = true
 			}
 		}
@@ -227,8 +246,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res := make([]gin.HandlerFunc, 0)
 
 		methods := make([]sharedauth.Method, 0)
-		if basicAuth := viper.GetStringSlice(authBasicCredentialsFlag); len(basicAuth) > 0 &&
-			(!viper.IsSet(authBasicEnabledFlag) || viper.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
+		if basicAuth := v.GetStringSlice(authBasicCredentialsFlag); len(basicAuth) > 0 &&
+			(!v.IsSet(authBasicEnabledFlag) || v.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
 			credentials := make(map[string]string)
 			for _, kv := range basicAuth {
 				parts := strings.SplitN(kv, ":", 2)
@@ -236,11 +255,11 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 			}
 			methods = append(methods, sharedauth.NewHTTPBasicMethod(credentials))
 		}
-		if viper.GetBool(authBearerEnabledFlag) {
+		if v.GetBool(authBearerEnabledFlag) {
 			methods = append(methods, sharedauth.NewHttpBearerMethod(
-				oauth2introspect.NewIntrospecter(viper.GetString(authBearerIntrospectUrlFlag)),
-				viper.GetBool(authBearerAudiencesWildcardFlag),
-				viper.GetStringSlice(authBearerAudienceFlag)...,
+				oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
+				v.GetBool(authBearerAudiencesWildcardFlag),
+				v.GetStringSlice(authBearerAudienceFlag)...,
 			))
 		}
 		if len(methods) > 0 {
@@ -267,7 +286,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		cc.AddAllowHeaders("authorization")
 
 		res = append(res, cors.New(cc))
-		if viper.GetBool(otelTracesFlag) {
+		if v.GetBool(otelTracesFlag) {
 			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
 		} else {
 			res = append(res, func(context *gin.Context) {
@@ -279,7 +298,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
-		if viper.GetBool(otelTracesFlag) {
+		if v.GetBool(otelTracesFlag) {
 			writer = ioutil.Discard
 			res = append(res, opentelemetrytraces.Middleware())
 		}
