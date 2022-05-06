@@ -340,6 +340,16 @@ paths:
             as source or destination
           schema:
             type: string
+        - name: source
+          in: query
+          description: find transactions with postings involving given account at source
+          schema:
+            type: string
+        - name: destination
+          in: query
+          description: find transactions with postings involving given account at destination
+          schema:
+            type: string
       responses:
         "200":
           description: OK
