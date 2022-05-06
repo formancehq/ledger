@@ -13,6 +13,7 @@ builds:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
       - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
     env:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc
@@ -28,6 +29,7 @@ builds:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
       - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -extldflags "-static"
     env:
       - CGO_ENABLED=1
@@ -43,6 +45,7 @@ builds:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
       - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -s
     env:
       - CGO_ENABLED=1

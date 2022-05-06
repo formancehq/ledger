@@ -67,6 +67,7 @@ jobs:
           args: build --parallelism 4 --rm-dist --skip-validate --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
   build_docker:
     name: 'Build & Publish Docker'
     runs-on: ubuntu-latest
