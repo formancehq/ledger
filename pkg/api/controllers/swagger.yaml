@@ -52,6 +52,7 @@ paths:
           type: object
           additionalProperties:
             type: string
+          properties: {}
       responses:
         "200":
           description: OK
@@ -91,6 +92,7 @@ paths:
             type: object
             additionalProperties:
               type: string
+            properties: { }
       responses:
         "200":
           description: OK
