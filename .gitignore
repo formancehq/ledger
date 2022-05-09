@@ -7,4 +7,5 @@ cmd/control/*
 .idea
 vendor
 sdk/swagger.yaml
+sdk/swagger.yaml-e
 sdk/sdks
