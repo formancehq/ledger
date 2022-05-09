@@ -110,3 +110,39 @@ jobs:
             APP_SHA=${{ github.sha }}
             VERSION=${{ github.event.release.tag_name }}
             SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+  sdk:
+    name: 'Generate SDK'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./sdk/
+    strategy:
+      matrix:
+        sdk: [ go, php, python, typescript-node ]
+    needs:
+      - build_docker
+      - build_binary
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          repository: numary/ledger-sdk-${{ matrix.sdk }}
+          path: sdks/${{ matrix.sdk }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Install Task
+        uses: arduino/setup-task@v1
+      - name: Launch Generate
+        run: task generate VERSION=${{ github.event.release.tag_name }}  -- ${{ matrix.sdk }}
+      - uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Upgrade Release to ${{ github.event.release.tag_name }}
+          tagging_message: ${{ github.event.release.tag_name }}
+          repository: ./sdk/sdks/${{ matrix.sdk }}
+          commit_user_name: NumaryBot
+          commit_user_email: support@numary.com%

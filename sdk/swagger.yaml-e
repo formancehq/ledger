@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.0.1
 info:
   title: Ledger API
   contact: {}
@@ -9,7 +9,8 @@ paths:
     get:
       tags:
         - server
-      summary: Show server information.
+      summary: Server Info
+      description: Show server informations
       operationId: getInfo
       responses:
         "200":
@@ -18,36 +19,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfigInfoResponse'
-
   /{ledger}/accounts:
     head:
-      summary: Count the accounts from a ledger.
+      summary: Count accounts
       operationId: countAccounts
       tags:
       - accounts
       parameters:
       - name: ledger
         in: path
-        description: Name of the ledger.
+        description: ledger
         required: true
         schema:
           type: string
-          example: ledger001
-      - name: address
+      - name: after
         in: query
-        description: Filter accounts by address pattern (regular expression placed between ^ and $).
+        description: pagination cursor, will return accounts after given address (in descending order)
         schema:
           type: string
-          example: users:.+
+      - name: address
+        in: query
+        description: account address
+        required: false
+        schema:
+          type: string
       - name: metadata
         in: query
-        description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+        description: metadata
+        required: false
         style: deepObject
-        explode: true
         schema:
           type: object
+          additionalProperties:
+            type: string
           properties: {}
-        example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
           description: OK
@@ -56,116 +61,90 @@ paths:
               schema:
                 type: integer
     get:
-      summary: List accounts from a ledger.
-      description: List accounts from a ledger, sorted by address in descending order.
+      summary: List all accounts
       operationId: listAccounts
       tags:
         - accounts
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: after
           in: query
-          description: Pagination cursor, will return accounts after given address, in descending order.
+          description: pagination cursor, will return accounts after given address (in descending order)
           schema:
             type: string
-            example: users:003
         - name: address
           in: query
-          description: Filter accounts by address pattern (regular expression placed between ^ and $).
+          description: account address
+          required: false
           schema:
             type: string
-            example: users:.+
         - name: metadata
           in: query
-          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: account address
+          required: false
           style: deepObject
-          explode: true
           schema:
             type: object
-            properties: {}
-          example: metadata[key]=value1&metadata[a.nested.key]=value2
+            additionalProperties:
+              type: string
+            properties: { }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - properties:
-                          data:
-                            items:
-                              $ref: '#/components/schemas/Account'
-                            type: array
-                        type: object
-                        required:
-                          - data
-
-  /{ledger}/accounts/{address}:
+                $ref: '#/components/schemas/AccountCursorResponse'
+  /{ledger}/accounts/{accountId}:
     get:
-      summary: Get account by its address.
+      summary: Get account by address
       operationId: getAccount
       tags:
         - accounts
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
-        - name: address
+        - name: accountId
           in: path
-          description: Exact address of the account.
+          description: accountId
           required: true
           schema:
             type: string
-            example: users:001
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                properties:
-                  data:
-                    $ref: '#/components/schemas/AccountWithVolumesAndBalances'
-                type: object
-                required:
-                  - data
-
-  /{ledger}/accounts/{address}/metadata:
+                $ref: '#/components/schemas/AccountResponse'
+  /{ledger}/accounts/{accountId}/metadata:
     post:
-      summary: Add metadata to an account.
+      summary: Add metadata to account
       operationId: addMetadataToAccount
       tags:
         - accounts
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
-        - name: address
+        - name: accountId
           in: path
-          description: Exact address of the account.
+          description: accountId
           required: true
           schema:
             type: string
-            example: users:001
       requestBody:
         description: metadata
         content:
@@ -179,21 +158,20 @@ paths:
         "400":
           description: ""
           content: {}
-
   /{ledger}/mapping:
     get:
       tags:
         - mapping
       operationId: getMapping
-      summary: Get the mapping of a ledger.
+      summary: Get mapping
+      description: Get ledger mapping
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
       responses:
         "200":
           description: OK
@@ -205,16 +183,17 @@ paths:
       tags:
         - mapping
       operationId: updateMapping
-      summary: Update the mapping of a ledger.
+      summary: Put mapping
+      description: Update ledger mapping
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
       requestBody:
+        description: mapping
         content:
           application/json:
             schema:
@@ -233,22 +212,22 @@ paths:
       tags:
         - script
       operationId: runScript
-      summary: Execute a Numscript.
+      summary: Execute Numscript
+      description: Execute a Numscript and create the transaction if any
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: preview
           in: query
-          description: Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.
+          description: Preview mode
           schema:
             type: boolean
-            example: true
       requestBody:
+        description: script
         content:
           application/json:
             schema:
@@ -274,11 +253,10 @@ paths:
       parameters:
         - name: ledger
           in: path
-          description: name of the ledger
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
       responses:
         "200":
           description: OK
@@ -286,46 +264,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatsResponse'
-
   /{ledger}/transactions:
     head:
       tags:
       - transactions
-      summary: Count the transactions from a ledger.
+      summary: Count transactions
+      description: Count transactions mathing given criteria
       operationId: countTransactions
       parameters:
       - name: ledger
         in: path
-        description: Name of the ledger.
+        description: ledger
         required: true
         schema:
           type: string
-          example: ledger001
+      - name: after
+        in: query
+        description: pagination cursor, will return transactions after given txid
+          (in descending order)
+        schema:
+          type: string
       - name: reference
         in: query
-        description: Filter transactions by reference field.
+        description: find transactions by reference field
         schema:
           type: string
-          example: ref:001
       - name: account
         in: query
-        description: Filter transactions with postings involving given account, either
-          as source or destination.
+        description: find transactions with postings involving given account, either
+          as source or destination
         schema:
           type: string
-          example: users:001
       - name: source
         in: query
-        description: Filter transactions with postings involving given account at source.
+        description: find transactions with postings involving given account at source
         schema:
           type: string
-          example: users:001
       - name: destination
         in: query
-        description: Filter transactions with postings involving given account at destination.
+        description: find transactions with postings involving given account at destination
         schema:
           type: string
-          example: users:001
       responses:
         "200":
           description: OK
@@ -336,62 +315,41 @@ paths:
     get:
       tags:
         - transactions
-      summary: List transactions from a ledger.
-      description: List transactions from a ledger, sorted by txid in descending order.
+      summary: Get all Transactions
+      description: Get all ledger transactions
       operationId: listTransactions
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: after
           in: query
-          description: Pagination cursor, will return transactions after given txid
-            (in descending order).
+          description: pagination cursor, will return transactions after given txid
+            (in descending order)
           schema:
             type: string
-            example: 1234
         - name: reference
           in: query
-          description: Find transactions by reference field.
+          description: find transactions by reference field
           schema:
             type: string
-            example: ref:001
         - name: account
           in: query
-          description: Find transactions with postings involving given account, either
-            as source or destination.
+          description: find transactions with postings involving given account, either
+            as source or destination
           schema:
             type: string
-            example: users:001
         - name: source
           in: query
-          description: Find transactions with postings involving given account at source.
+          description: find transactions with postings involving given account at source
           schema:
             type: string
-            example: users:001
         - name: destination
           in: query
-          description: Find transactions with postings involving given account at destination.
-          schema:
-            type: string
-            example: users:001
-        - name: start_time
-          in: query
-          description: |-
-            Filter transactions that occurred after this timestamp.
-            The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).
-          schema:
-            type: string
-            example:
-        - name: end_time
-          in: query
-          description: |-
-            Filter transactions that occurred before this timestamp.
-            The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
+          description: find transactions with postings involving given account at destination
           schema:
             type: string
       responses:
@@ -400,41 +358,30 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - type: object
-                        properties:
-                          data:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/Transaction'
-                        required:
-                          - data
+                $ref: '#/components/schemas/TransactionCursorResponse'
     post:
       tags:
         - transactions
-      summary: Create a new transaction to a ledger.
+      summary: Create Transaction
       operationId: createTransaction
+      description: |-
+        Create a new ledger transaction
+        Commit a new transaction to the ledger
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: preview
           in: query
-          description: Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.
+          description: Preview mode
+          required: false
           schema:
             type: boolean
-            example: true
       requestBody:
+        description: transaction
         content:
           application/json:
             schema:
@@ -470,23 +417,22 @@ paths:
     get:
       tags:
         - transactions
-      summary: Get transaction from a ledger by its ID.
+      summary: Get Transaction
+      description: Get transaction by transaction id
       operationId: getTransaction
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: txid
           in: path
-          description: Transaction ID.
+          description: txid
           required: true
           schema:
             type: integer
-            example: 1234
       responses:
         "200":
           description: OK
@@ -500,28 +446,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
   /{ledger}/transactions/{txid}/metadata:
     post:
       tags:
         - transactions
-      summary: Set the metadata of a transaction by its ID.
+      summary: Set Transaction Metadata
       operationId: addMetadataOnTransaction
+      description: Set a new metadata to a ledger transaction by transaction id
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: txid
           in: path
-          description: Transaction ID.
+          description: txid
           required: true
           schema:
             type: integer
-            example: 1234
       requestBody:
         description: metadata
         content:
@@ -532,28 +476,26 @@ paths:
         "204":
           description: Empty response
           content: {}
-
   /{ledger}/transactions/{txid}/revert:
     post:
       tags:
         - transactions
       operationId: revertTransaction
-      summary: Revert a ledger transaction by its ID.
+      summary: Revert Transaction
+      description: Revert a ledger transaction by transaction id
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
         - name: txid
           in: path
-          description: Transaction ID.
+          description: txid
           required: true
           schema:
             type: integer
-            example: 1234
       responses:
         "200":
           description: OK
@@ -561,22 +503,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-
   /{ledger}/transactions/batch:
     post:
       tags:
         - transactions
-      summary: Create a new batch of transactions to a ledger.
+      summary: Create Transactions Batch
       operationId: CreateTransactions
+      description: |-
+        Create a new ledger transactions batch
+        Commit a batch of new transactions to the ledger
       parameters:
         - name: ledger
           in: path
-          description: Name of the ledger.
+          description: ledger
           required: true
           schema:
             type: string
-            example: ledger001
       requestBody:
+        description: transactions
         content:
           application/json:
             schema:
@@ -588,19 +532,7 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - type: object
-                    properties:
-                      cursor:
-                        $ref: '#/components/schemas/Cursor'
-                  - properties:
-                      data:
-                        items:
-                          $ref: '#/components/schemas/Transaction'
-                        type: array
-                    type: object
-                    required:
-                      - data
+                $ref: '#/components/schemas/TransactionListResponse'
         "400":
           description: Commit error
           content:
@@ -608,7 +540,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         "409":
-          description: Conflict
+          description: Confict
           content:
             application/json:
               schema:
@@ -634,7 +566,6 @@ components:
       type: object
       nullable: true
       additionalProperties: {}
-      example: { admin: true, a: { nested: { key: value}} }
     ConfigInfo:
       type: object
       properties:
@@ -660,6 +591,11 @@ components:
       required:
         - driver
         - ledgers
+    CursorResponse:
+      type: object
+      properties:
+        cursor:
+          $ref: '#/components/schemas/Cursor'
     ScriptResult:
       type: object
       properties:
@@ -684,47 +620,29 @@ components:
         address:
           type: string
           example: users:001
-        type:
-          type: string
-          example: virtual
-        metadata:
-          type: object
-          properties: {}
-          example: { admin: true, a: { nested: { key: value}} }
-    AccountWithVolumesAndBalances:
-      type: object
-      required:
-        - address
-      properties:
-        address:
-          type: string
-          example: users:001
-        type:
-          type: string
-          example: virtual
-        metadata:
-          type: object
-          properties: {}
-          example: { admin: true, a: { nested: { key: value}} }
-        volumes:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
-          example: { COIN: { input: 100, output: 0 } }
         balances:
           type: object
           additionalProperties:
             type: integer
           example:
             COIN: 100
+        metadata:
+          type: object
+          properties: {}
+        type:
+          type: string
+          example: virtual
+        volumes:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
     Contract:
       type: object
       properties:
         account:
           type: string
-          example: users:001
         expr:
           type: object
       required:
@@ -745,16 +663,12 @@ components:
       properties:
         amount:
           type: integer
-          example: 100
         asset:
           type: string
-          example: COIN
         destination:
           type: string
-          example: users:002
         source:
           type: string
-          example: users:001
       required:
         - amount
         - asset
@@ -765,29 +679,22 @@ components:
       properties:
         plain:
           type: string
-          example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
         vars:
           type: object
           properties: {}
-          example: {
-            "vars": {
-              "user": "users:042"
-            }
-          }
       required:
         - plain
     Transaction:
       type: object
       properties:
+        metadata:
+          $ref: '#/components/schemas/Metadata'
         postings:
           type: array
           items:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
-          example: ref:001
-        metadata:
-          $ref: '#/components/schemas/Metadata'
         timestamp:
           type: string
           format: date-time
@@ -800,15 +707,15 @@ components:
     TransactionData:
       type: object
       properties:
+        metadata:
+          type: object
+          properties: {}
         postings:
           type: array
           items:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
-          example: ref:001
-        metadata:
-          $ref: '#/components/schemas/Metadata'
       required:
         - postings
     Transactions:
@@ -833,15 +740,69 @@ components:
     Cursor:
       type: object
       required:
-        - page_size
         - has_more
+        - page_size
+        - remaining_results
+        - total
       properties:
-        page_size:
-          type: integer
-          example: 1
         has_more:
           type: boolean
-          example: false
+        next:
+          type: string
+        page_size:
+          type: integer
+        previous:
+          type: string
+        remaining_results:
+          type: integer
+        total:
+          type: integer
+    AccountCursor:
+      allOf:
+        - $ref: '#/components/schemas/Cursor'
+        - properties:
+            data:
+              items:
+                $ref: '#/components/schemas/Account'
+              type: array
+          type: object
+          required:
+            - data
+    AccountCursorResponse:
+      required:
+        - cursor
+      properties:
+        cursor:
+          $ref: '#/components/schemas/AccountCursor'
+    TransactionCursor:
+      allOf:
+      - $ref: '#/components/schemas/Cursor'
+      - type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '#/components/schemas/Transaction'
+        required:
+          - data
+    TransactionCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          $ref: '#/components/schemas/TransactionCursor'
+    TransactionListResponse:
+      allOf:
+        - $ref: '#/components/schemas/CursorResponse'
+        - properties:
+            data:
+              items:
+                $ref: '#/components/schemas/Transaction'
+              type: array
+          type: object
+          required:
+            - data
     CreateTransactionResponse:
       type: object
       properties:
@@ -851,6 +812,13 @@ components:
           type: array
       required:
         - data
+    AccountResponse:
+        properties:
+          data:
+            $ref: '#/components/schemas/Account'
+        type: object
+        required:
+          - data
     TransactionResponse:
       properties:
         data:
@@ -894,4 +862,3 @@ components:
           $ref: '#/components/schemas/ErrorCode'
         error_message:
           type: string
-          example: internal error
