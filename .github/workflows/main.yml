@@ -128,7 +128,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          repository: numary/ledger-sdk-${{ matrix.sdk }}
+          repository: numary/numary-sdk-${{ matrix.sdk }}
           path: sdks/${{ matrix.sdk }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
