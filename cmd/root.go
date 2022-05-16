@@ -59,6 +59,7 @@ const (
 	authBearerIntrospectUrlFlag          = "auth-bearer-introspect-url"
 	authBearerAudienceFlag               = "auth-bearer-audience"
 	authBearerAudiencesWildcardFlag      = "auth-bearer-audiences-wildcard"
+	authBearerUseScopesFlag              = "auth-bearer-use-scopes"
 
 	segmentEnabledFlag       = "segment-enabled"
 	segmentWriteKey          = "segment-write-key"
@@ -169,6 +170,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
 	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
 	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
+	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
 	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
 	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")

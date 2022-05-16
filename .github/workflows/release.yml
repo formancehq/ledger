@@ -110,3 +110,4 @@ jobs:
             APP_SHA=${{ github.sha }}
             VERSION=${{ github.event.release.tag_name }}
             SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - name:
