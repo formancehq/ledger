@@ -1,5 +1,28 @@
+all: test
+
+BINARY_NAME=numary
+PKG=./...
+
+build:
+	go build -o $(BINARY_NAME)
+
+install: build
+	cp $(BINARY_NAME) $(shell go env GOPATH)/bin
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+		| sh -s -- -b $(shell go env GOPATH)/bin v1.45.2
+
+lint:
+	golangci-lint run -v $(PKG)
+
 test:
-	go test -v -coverprofile=coverage.out -coverpkg=./... ./...
+	go test -v -tags json1 -coverpkg=$(PKG) -coverprofile=coverage.out -covermode=atomic $(PKG) \
+		| sed ''/PASS/s//$(shell printf "\033[32mPASS\033[0m")/'' \
+		| sed ''/FAIL/s//$(shell printf "\033[31mFAIL\033[0m")/'' \
+		| sed ''/RUN/s//$(shell printf "\033[34mRUN\033[0m")/''
 
 bench:
-	go test -bench=. -run=^a ./...
+	go test -tags json1 -bench=. -run=^a $(PKG)
+
+clean:
+	go clean
+	rm -f $(shell pwd)/$(BINARY_NAME)
