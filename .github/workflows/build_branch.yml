@@ -33,3 +33,4 @@ jobs:
         build-args: |
           APP_SHA=${{ github.sha }}
           VERSION=${{ github.sha }}
+          SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
