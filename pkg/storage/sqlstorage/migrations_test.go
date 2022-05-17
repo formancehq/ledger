@@ -89,10 +89,7 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 		Values(count+1, targetType, targetId, key, string(value), timestamp).
 		BuildWithFlavor(store.Schema().Flavor())
 	_, err := store.Schema().ExecContext(context.Background(), sqlx, args...)
-	if !assert.NoError(t, err) {
-		return false
-	}
-	return true
+	return assert.NoError(t, err)
 }
 
 /** Postgres and SQLite doesn't have the same behavior regardings json processing

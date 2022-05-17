@@ -76,7 +76,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 	}
 
 	accounts := make(map[string]core.Account, 0)
-	txs := make([]core.Transaction, 0)
 	logs := make([]core.Log, 0)
 
 	nextTxId := uint64(0)
@@ -89,16 +88,12 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 	}
 
 	for i := range ts {
-
 		tx := core.Transaction{
 			TransactionData: ts[i],
+			ID:              nextTxId,
+			Timestamp:       timestamp.Format(time.RFC3339),
 		}
-
-		tx.ID = nextTxId
-		tx.Timestamp = timestamp.Format(time.RFC3339)
 		nextTxId++
-
-		txs = append(txs, tx)
 
 		if len(ts[i].Postings) == 0 {
 			return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))

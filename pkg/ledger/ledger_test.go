@@ -62,9 +62,7 @@ func with(f func(l *Ledger)) {
 		}
 	}()
 
-	select {
-	case <-done:
-	}
+	<-done
 	if app.Err() != nil {
 		panic(app.Err())
 	}

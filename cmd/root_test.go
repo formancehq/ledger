@@ -88,9 +88,7 @@ func TestServer(t *testing.T) {
 			terminated := make(chan struct{})
 
 			defer func() {
-				select {
-				case <-terminated:
-				}
+				<-terminated
 			}()
 
 			ctx, cancel := context.WithCancel(context.Background())
