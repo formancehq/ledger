@@ -197,6 +197,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	options = append(options, api.Module(api.Config{
 		StorageDriver: v.GetString(storageDriverFlag),
 		Version:       Version,
+		UseScopes:     viper.GetBool(authBearerUseScopesFlag),
 	}))
 
 	// Handle storage driver
@@ -248,18 +249,23 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		methods := make([]sharedauth.Method, 0)
 		if basicAuth := v.GetStringSlice(authBasicCredentialsFlag); len(basicAuth) > 0 &&
 			(!v.IsSet(authBasicEnabledFlag) || v.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
-			credentials := make(map[string]string)
+			credentials := sharedauth.Credentials{}
 			for _, kv := range basicAuth {
 				parts := strings.SplitN(kv, ":", 2)
-				credentials[parts[0]] = parts[1]
+				credentials[parts[0]] = sharedauth.Credential{
+					Password: parts[1],
+					Scopes:   routes.AllScopes,
+				}
 			}
 			methods = append(methods, sharedauth.NewHTTPBasicMethod(credentials))
 		}
 		if v.GetBool(authBearerEnabledFlag) {
 			methods = append(methods, sharedauth.NewHttpBearerMethod(
-				oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
-				v.GetBool(authBearerAudiencesWildcardFlag),
-				v.GetStringSlice(authBearerAudienceFlag)...,
+				sharedauth.NewIntrospectionValidator(
+					oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
+					v.GetBool(authBearerAudiencesWildcardFlag),
+					v.GetStringSlice(authBearerAudienceFlag)...,
+				),
 			))
 		}
 		if len(methods) > 0 {
@@ -267,6 +273,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				handled := false
 				sharedauth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handled = true
+					// The middleware replace the context of the request to include the agent
+					// We have to forward it to gin
+					c.Request = r
 					c.Next()
 				})).ServeHTTP(c.Writer, c.Request)
 				if !handled {
