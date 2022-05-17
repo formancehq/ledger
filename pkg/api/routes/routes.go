@@ -110,6 +110,7 @@ func (r *Routes) wrapWithScopes(handler gin.HandlerFunc, scopes ...string) gin.H
 	return func(context *gin.Context) {
 		ok := false
 		sharedauth.NeedOneOfScopes(scopes...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			context.Request = r
 			ok = true
 		})).ServeHTTP(context.Writer, context.Request)
 		if !ok {

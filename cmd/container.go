@@ -274,6 +274,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				handled := false
 				sharedauth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handled = true
+					// The middleware replace the context of the request to include the agent
+					// We have to forward it to gin
+					c.Request = r
 					c.Next()
 				})).ServeHTTP(c.Writer, c.Request)
 				if !handled {
