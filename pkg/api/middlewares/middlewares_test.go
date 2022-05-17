@@ -2,15 +2,16 @@ package middlewares_test
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 func TestAdditionalGlobalMiddleware(t *testing.T) {
@@ -18,7 +19,9 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					context.AbortWithError(418, errors.New(""))
+					if err := context.AbortWithError(418, errors.New("")); err != nil {
+						panic(err)
+					}
 				},
 			}
 		}),
@@ -37,7 +40,9 @@ func TestAdditionalPerLedgerMiddleware(t *testing.T) {
 		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					context.AbortWithError(418, errors.New(""))
+					if err := context.AbortWithError(418, errors.New("")); err != nil {
+						panic(err)
+					}
 				},
 			}
 		}),

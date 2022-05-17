@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/health"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 func TestHealthController(t *testing.T) {
@@ -66,12 +67,7 @@ func TestHealthController(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-
-		options := make([]fx.Option, 0)
-		for _, p := range tc.healthChecksProvider {
-			options = append(options, health.ProvideHealthCheck(p))
-		}
-		options = append(options, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+		fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					rec := httptest.NewRecorder()
@@ -93,7 +89,6 @@ func TestHealthController(t *testing.T) {
 					return nil
 				},
 			})
-		}))
+		})
 	}
-
 }

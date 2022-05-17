@@ -1,10 +1,11 @@
 package controllers
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/health"
 	"net/http"
 	"sync"
+
+	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/health"
 )
 
 type HealthController struct {

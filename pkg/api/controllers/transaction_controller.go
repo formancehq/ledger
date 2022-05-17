@@ -2,13 +2,14 @@ package controllers
 
 import (
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 // TransactionController -
@@ -64,7 +65,9 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	var t core.TransactionData
-	c.ShouldBind(&t)
+	if err := c.ShouldBind(&t); err != nil {
+		panic(err)
+	}
 
 	fn := l.(*ledger.Ledger).Commit
 	if preview {
@@ -123,7 +126,9 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var m core.Metadata
-	c.ShouldBind(&m)
+	if err := c.ShouldBind(&m); err != nil {
+		panic(err)
+	}
 
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {

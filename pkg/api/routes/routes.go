@@ -1,13 +1,14 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedauth"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
-	"net/http"
 )
 
 const GlobalMiddlewaresKey = `name:"_routesGlobalMiddlewares" optional:"true"`
@@ -131,32 +132,32 @@ func (r *Routes) Engine() *gin.Engine {
 	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)
 
-	ledger := engine.Group("/:ledger", append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
+	router := engine.Group("/:ledger", append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
 	{
 		// LedgerController
-		ledger.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
+		router.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
 
 		// TransactionController
-		ledger.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
-		ledger.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
-		ledger.POST("/transactions", r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite))
-		ledger.POST("/transactions/batch", r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
-		ledger.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
-		ledger.POST("/transactions/:txid/revert", r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
-		ledger.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
+		router.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
+		router.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
+		router.POST("/transactions", r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite))
+		router.POST("/transactions/batch", r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
+		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/revert", r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
 
 		// AccountController
-		ledger.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-		ledger.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-		ledger.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
-		ledger.POST("/accounts/:address/metadata", r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
+		router.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
+		router.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
+		router.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
+		router.POST("/accounts/:address/metadata", r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
 
 		// MappingController
-		ledger.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
-		ledger.PUT("/mapping", r.wrapWithScopes(r.mappingController.PutMapping, ScopeMappingWrite))
+		router.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
+		router.PUT("/mapping", r.wrapWithScopes(r.mappingController.PutMapping, ScopeMappingWrite))
 
 		// ScriptController
-		ledger.POST("/script", r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
+		router.POST("/script", r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
 	}
 
 	return engine

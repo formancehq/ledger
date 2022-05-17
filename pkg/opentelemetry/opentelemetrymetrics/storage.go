@@ -3,11 +3,12 @@ package opentelemetrymetrics
 import (
 	"context"
 	"errors"
+	"sync"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel/metric"
-	"sync"
 )
 
 func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {

@@ -2,17 +2,17 @@ package controllers
 
 import (
 	"context"
-	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
 	"net/http"
 	"reflect"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
-// Controllers struct
+// BaseController -
 type BaseController struct{}
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
@@ -68,7 +68,9 @@ func ErrorCode(c *gin.Context) string {
 }
 
 func ResponseError(c *gin.Context, err error) {
-	c.Error(err)
+	if parsedErr := c.Error(err); parsedErr != nil {
+		panic(parsedErr)
+	}
 	status, code := coreErrorToErrorCode(err)
 	c.Set(errorCodeKey, code)
 

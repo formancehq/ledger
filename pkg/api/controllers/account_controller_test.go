@@ -3,14 +3,15 @@ package controllers_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/url"
+	"testing"
+
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"net/url"
-	"testing"
 )
 
 func TestGetAccounts(t *testing.T) {

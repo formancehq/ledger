@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+
 	"github.com/pkg/errors"
 )
 
@@ -28,10 +29,6 @@ func NewTransactionCommitError(txIndex int, err error) *TransactionCommitError {
 		TXIndex: txIndex,
 		Err:     err,
 	}
-}
-
-func IsTransactionCommitError(err error) bool {
-	return errors.Is(err, &TransactionCommitError{})
 }
 
 type InsufficientFundError struct {

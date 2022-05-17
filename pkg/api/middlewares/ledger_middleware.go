@@ -12,7 +12,7 @@ type LedgerMiddleware struct {
 	resolver *ledger.Resolver
 }
 
-// NewLedgerMiddleware
+// NewLedgerMiddleware -
 func NewLedgerMiddleware(
 	resolver *ledger.Resolver,
 ) LedgerMiddleware {
@@ -21,7 +21,7 @@ func NewLedgerMiddleware(
 	}
 }
 
-// LedgerMiddleware
+// LedgerMiddleware -
 func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("ledger")

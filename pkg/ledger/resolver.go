@@ -2,10 +2,11 @@ package ledger
 
 import (
 	"context"
+	"sync"
+
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
-	"sync"
 )
 
 type ResolverOption interface {

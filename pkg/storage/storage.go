@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -23,14 +24,14 @@ type Error struct {
 }
 
 func (e Error) Is(err error) bool {
-	eerr, ok := err.(*Error)
+	storageErr, ok := err.(*Error)
 	if !ok {
 		return false
 	}
-	if eerr.Code == "" {
+	if storageErr.Code == "" {
 		return true
 	}
-	return eerr.Code == e.Code
+	return storageErr.Code == e.Code
 }
 
 func (e Error) Error() string {
@@ -52,10 +53,6 @@ func IsErrorCode(err error, code Code) bool {
 	return errors.Is(err, &Error{
 		Code: code,
 	})
-}
-
-func IsTooManyClientError(err error) bool {
-	return IsErrorCode(err, TooManyClient)
 }
 
 type Store interface {

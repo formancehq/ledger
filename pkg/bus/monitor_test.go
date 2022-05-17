@@ -2,13 +2,14 @@ package bus
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestMonitor(t *testing.T) {

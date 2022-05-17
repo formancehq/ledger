@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"fmt"
+
 	json "github.com/gibson042/canonicaljson-go"
 )
 

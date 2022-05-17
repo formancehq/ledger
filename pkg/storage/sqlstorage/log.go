@@ -4,17 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
+
 	json "github.com/gibson042/canonicaljson-go"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/pkg/errors"
-	"time"
 )
 
 func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) error {
 	var (
-		sql  string
-		args []interface{}
+		query string
+		args  []interface{}
 	)
 
 	switch s.Schema().Flavor() {
@@ -30,12 +31,12 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 
 			ib.Values(l.ID, l.Type, l.Hash, l.Date.Format(time.RFC3339Nano), string(data))
 		}
-		sql, args = ib.BuildWithFlavor(s.schema.Flavor())
+		query, args = ib.BuildWithFlavor(s.schema.Flavor())
 	case sqlbuilder.PostgreSQL:
 
 		ids := make([]uint64, len(log))
 		types := make([]string, len(log))
-		hashs := make([]string, len(log))
+		hashes := make([]string, len(log))
 		dates := make([]time.Time, len(log))
 		datas := make([][]byte, len(log))
 
@@ -47,18 +48,20 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 
 			ids[i] = l.ID
 			types[i] = l.Type
-			hashs[i] = l.Hash
+			hashes[i] = l.Hash
 			dates[i] = l.Date
 			datas[i] = data
 		}
 
-		sql = fmt.Sprintf(`INSERT INTO "%s".log (id, type, hash, date, data) (SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[], $4::timestamptz[], $5::jsonb[]))`, s.schema.Name())
+		query = fmt.Sprintf(
+			`INSERT INTO "%s".log (id, type, hash, date, data) (SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[], $4::timestamptz[], $5::jsonb[]))`,
+			s.schema.Name())
 		args = []interface{}{
-			ids, types, hashs, dates, datas,
+			ids, types, hashes, dates, datas,
 		}
 	}
 
-	_, err := exec.ExecContext(ctx, sql, args...)
+	_, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
@@ -70,7 +73,11 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 	if err != nil {
 		return s.error(err)
 	}
-	defer tx.Rollback()
+	defer func(tx *sql.Tx) {
+		if err := tx.Rollback(); err != nil {
+			panic(err)
+		}
+	}(tx)
 
 	err = s.appendLog(ctx, tx, logs...)
 	if err != nil {
@@ -133,7 +140,11 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	if err != nil {
 		return nil, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	ret := make([]core.Log, 0)
 	for rows.Next() {

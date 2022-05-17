@@ -3,20 +3,26 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"github.com/numary/ledger/internal/pgtesting"
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestServer(t *testing.T) {
 
 	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(t, err)
-	defer pgServer.Close()
+	defer func(pgServer *pgtesting.PGServer) {
+		err := pgServer.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(pgServer)
 
 	type env struct {
 		key   string
@@ -60,8 +66,16 @@ func TestServer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, e := range tc.env {
 				oldValue := os.Getenv(e.key)
-				os.Setenv(e.key, e.value)
-				defer os.Setenv(e.key, oldValue)
+				err := os.Setenv(e.key, e.value)
+				if err != nil {
+					panic(err)
+				}
+				defer func(key, value string) {
+					err := os.Setenv(key, value)
+					if err != nil {
+						panic(err)
+					}
+				}(e.key, oldValue)
 			}
 			args := []string{"server", "start", "--debug"}
 			args = append(args, tc.args...)

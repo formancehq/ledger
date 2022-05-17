@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
 	"os"
 	"path"
+
+	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedlogging"
 )
 
 type Schema interface {
@@ -178,11 +179,11 @@ func (p *sqliteDB) Initialize(ctx context.Context) error {
 }
 
 func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
-	path := path.Join(
+	dataSourceName := path.Join(
 		p.directory,
 		fmt.Sprintf("%s_%s.db", p.dbName, name),
 	)
-	db, err := OpenSQLDB(SQLite, path)
+	db, err := OpenSQLDB(SQLite, dataSourceName)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +194,7 @@ func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
 			DB:      db,
 			closeDb: true,
 		},
-		file: path,
+		file: dataSourceName,
 	}, nil
 }
 

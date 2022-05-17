@@ -3,6 +3,7 @@ package opentelemetrytraces
 import (
 	"context"
 	"fmt"
+
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -40,98 +41,134 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 }
 
 func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
-	o.handle(ctx, "LastTransaction", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "LastTransaction", func(ctx context.Context) error {
 		ret, err = o.underlying.LastTransaction(ctx)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err error) {
-	o.handle(ctx, "Logs", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "Logs", func(ctx context.Context) error {
 		ret, err = o.underlying.Logs(ctx)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) (err error) {
-	o.handle(ctx, "AppendLog", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "AppendLog", func(ctx context.Context) error {
 		err = o.underlying.AppendLog(ctx, logs...)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err error) {
-	o.handle(ctx, "LastLog", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "LastLog", func(ctx context.Context) error {
 		l, err = o.underlying.LastLog(ctx)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Query) (count uint64, err error) {
-	o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
 		count, err = o.underlying.CountTransactions(ctx, q)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
-	o.handle(ctx, "FindTransactions", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "FindTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.FindTransactions(ctx, query)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s uint64) (tx core.Transaction, err error) {
-	o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
 		tx, err = o.underlying.GetTransaction(ctx, s)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx core.Account, err error) {
-	o.handle(ctx, "GetAccount", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "GetAccount", func(ctx context.Context) error {
 		tx, err = o.underlying.GetAccount(ctx, s)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
-	o.handle(ctx, "AggregateVolumes", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "AggregateVolumes", func(ctx context.Context) error {
 		volumes, err = o.underlying.AggregateVolumes(ctx, s)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Query) (count uint64, err error) {
-	o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx, q)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
-	o.handle(ctx, "FindAccounts", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "FindAccounts", func(ctx context.Context) error {
 		q, err = o.underlying.FindAccounts(ctx, query)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
 func (o *openTelemetryStorage) LoadMapping(ctx context.Context) (m *core.Mapping, err error) {
-	o.handle(ctx, "FindContracts", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "FindContracts", func(ctx context.Context) error {
 		m, err = o.underlying.LoadMapping(ctx)
 		return err
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 
@@ -142,10 +179,13 @@ func (o *openTelemetryStorage) SaveMapping(ctx context.Context, mapping core.Map
 }
 
 func (o *openTelemetryStorage) Initialize(ctx context.Context) (ret bool, err error) {
-	o.handle(ctx, "Initialize", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "Initialize", func(ctx context.Context) error {
 		ret, err = o.underlying.Initialize(ctx)
 		return nil
 	})
+	if handlingErr != nil {
+		panic(handlingErr)
+	}
 	return
 }
 

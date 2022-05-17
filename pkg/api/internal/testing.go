@@ -5,6 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"reflect"
+	"testing"
+
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
@@ -16,12 +23,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"reflect"
-	"testing"
 )
 
 var testingLedger string

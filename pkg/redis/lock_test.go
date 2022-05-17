@@ -3,10 +3,11 @@ package redis
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redismock/v8"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/go-redis/redismock/v8"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLock(t *testing.T) {

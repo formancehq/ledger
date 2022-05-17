@@ -1,8 +1,9 @@
 package bus
 
 import (
-	"github.com/numary/ledger/pkg/core"
 	"time"
+
+	"github.com/numary/ledger/pkg/core"
 )
 
 type baseEvent struct {

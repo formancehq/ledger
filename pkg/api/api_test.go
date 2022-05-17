@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -15,9 +19,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 func withNewModule(t *testing.T, options ...fx.Option) {
@@ -49,7 +50,9 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					context.AbortWithError(418, errors.New(""))
+					if err := context.AbortWithError(418, errors.New("")); err != nil {
+						panic(err)
+					}
 				},
 			}
 		}),
@@ -68,7 +71,9 @@ func TestAdditionalPerLedgerMiddleware(t *testing.T) {
 		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					context.AbortWithError(418, errors.New(""))
+					if err := context.AbortWithError(418, errors.New("")); err != nil {
+						panic(err)
+					}
 				},
 			}
 		}),

@@ -2,11 +2,13 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
+	"time"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"time"
 )
 
 const SystemSchema = "_system"
@@ -19,10 +21,6 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 	cfg := sqlDrivers[flavor]
 	cfg.driverName = name
 	sqlDrivers[flavor] = cfg
-}
-
-func SQLDriverName(f Flavor) string {
-	return sqlDrivers[f].driverName
 }
 
 func init() {
@@ -81,7 +79,12 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	res := make([]string, 0)
 	for rows.Next() {

@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/numary/ledger/pkg/redis"
-	"github.com/pkg/errors"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"os"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/numary/ledger/pkg/redis"
+	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -177,12 +178,18 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
 
 	viper.RegisterAlias(serverHttpBasicAuthFlag, authBasicCredentialsFlag)
-	viper.BindPFlags(root.PersistentFlags())
+	err = viper.BindPFlags(root.PersistentFlags())
+	if err != nil {
+		panic(err)
+	}
 	viper.SetConfigName("numary")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("$HOME/.numary")
 	viper.AddConfigPath("/etc/numary")
-	viper.ReadInConfig()
+	err = viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	viper.SetEnvPrefix("numary")
 	viper.SetEnvKeyReplacer(replacer)
@@ -193,7 +200,10 @@ func NewRootCommand() *cobra.Command {
 
 func Execute() {
 	if err := NewRootCommand().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, err := fmt.Fprintln(os.Stderr, err)
+		if err != nil {
+			panic(err)
+		}
 		os.Exit(1)
 	}
 }

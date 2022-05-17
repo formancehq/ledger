@@ -2,7 +2,9 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -12,10 +14,9 @@ func (s *Store) countTransactions(ctx context.Context, exec executor, params map
 	var count uint64
 
 	tq := s.transactionsQuery(params)
-	sqlq, args := tq.BuildWithFlavor(s.schema.Flavor())
-	query := fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, sqlq)
-
-	err := exec.QueryRowContext(ctx, query, args...).Scan(&count)
+	q, args := tq.BuildWithFlavor(s.schema.Flavor())
+	q = fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, q)
+	err := exec.QueryRowContext(ctx, q, args...).Scan(&count)
 
 	return count, s.error(err)
 }
@@ -43,12 +44,17 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	sb.From(s.schema.Table("volumes"))
 	sb.Where(sb.E("account", address))
 
-	sql, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sql, args...)
+	q, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := exec.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	volumes := make(map[string]map[string]int64)
 	for rows.Next() {

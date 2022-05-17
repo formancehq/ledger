@@ -2,11 +2,12 @@ package analytics
 
 import (
 	"context"
+	"time"
+
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/pborman/uuid"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
-	"time"
 )
 
 type heartbeat struct {
@@ -40,7 +41,6 @@ func (m *heartbeat) Run(ctx context.Context) error {
 			enqueue()
 		}
 	}
-	return nil
 }
 
 func (m *heartbeat) Stop(ctx context.Context) error {

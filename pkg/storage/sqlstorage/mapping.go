@@ -2,7 +2,9 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 )
@@ -23,7 +25,12 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	if err != nil {
 		return nil, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
+
 	if !rows.Next() {
 		if rows.Err() != nil {
 			return nil, s.error(rows.Err())
@@ -31,10 +38,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 		return nil, nil
 	}
 
-	var (
-		mappingString string
-	)
-
+	var mappingString string
 	err = rows.Scan(&mappingString)
 	if err != nil {
 		return nil, err

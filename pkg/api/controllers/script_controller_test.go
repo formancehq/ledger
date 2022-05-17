@@ -2,22 +2,22 @@ package controllers_test
 
 import (
 	"context"
-	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledger/query"
-	"github.com/numary/ledger/pkg/storage"
-	"github.com/pborman/uuid"
-	"go.uber.org/fx"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/fx"
 )
 
 func TestScriptController(t *testing.T) {
@@ -87,9 +87,9 @@ func TestScriptControllerPreview(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				ledger := uuid.New()
+				l := uuid.New()
 				rec := httptest.NewRecorder()
-				req := httptest.NewRequest("POST", "/"+ledger+"/script", internal.Buffer(t, core.Script{
+				req := httptest.NewRequest("POST", "/"+l+"/script", internal.Buffer(t, core.Script{
 					Plain: `send [COIN 100] (
   source = @world
   destination = @centralbank
@@ -106,7 +106,7 @@ func TestScriptControllerPreview(t *testing.T) {
 				res := controllers.ScriptResponse{}
 				internal.Decode(t, rec.Body, &res)
 
-				store, _, err := driver.GetStore(context.Background(), ledger, true)
+				store, _, err := driver.GetStore(context.Background(), l, true)
 				assert.NoError(t, err)
 
 				cursor, err := store.FindTransactions(context.Background(), query.Query{})

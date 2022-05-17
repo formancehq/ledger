@@ -2,10 +2,11 @@ package sqlstorage
 
 import (
 	"context"
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
+
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewDriver(t *testing.T) {
@@ -14,26 +15,23 @@ func TestNewDriver(t *testing.T) {
 		dbName:    uuid.New(),
 	})
 	err := d.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer d.Close(context.Background())
+	assert.NoError(t, err)
+
+	defer func(d *Driver, ctx context.Context) {
+		if err := d.Close(ctx); err != nil {
+			panic(err)
+		}
+	}(d, context.Background())
 
 	store, _, err := d.GetStore(context.Background(), "foo", true)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	_, err = store.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
-	store.Close(context.Background())
+	assert.NoError(t, store.Close(context.Background()))
 
 	_, err = store.(*Store).schema.QueryContext(context.Background(), "select * from transactions")
-	if !assert.NotNil(t, err) {
-		return
-	}
+	assert.Error(t, err)
 	assert.Equal(t, "sql: database is closed [UNKNOWN]", err.Error())
 }

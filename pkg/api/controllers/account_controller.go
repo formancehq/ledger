@@ -3,12 +3,12 @@ package controllers
 import (
 	"errors"
 	"fmt"
-	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger/query"
 )
 
 // AccountController -
@@ -78,7 +78,9 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 	var m core.Metadata
-	c.ShouldBind(&m)
+	if err := c.ShouldBind(&m); err != nil {
+		panic(err)
+	}
 
 	addr := c.Param("address")
 	if !core.ValidateAddress(addr) {

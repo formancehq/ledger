@@ -2,6 +2,7 @@ package sqlstorage
 
 import (
 	"database/sql"
+
 	"github.com/numary/ledger/pkg/health"
 	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"

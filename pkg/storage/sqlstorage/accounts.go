@@ -3,12 +3,13 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"math"
+	"strings"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
-	"math"
-	"strings"
 )
 
 func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
@@ -59,7 +60,12 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	if err != nil {
 		return c, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	for rows.Next() {
 		account := core.Account{}

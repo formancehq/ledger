@@ -3,6 +3,9 @@ package sqlstorage_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"testing"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/core"
@@ -11,8 +14,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
+	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkStore(b *testing.B) {
@@ -23,7 +25,9 @@ func BenchmarkStore(b *testing.B) {
 
 	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(b, err)
-	defer pgServer.Close()
+	defer func(pgServer *pgtesting.PGServer) {
+		require.NoError(b, pgServer.Close())
+	}(pgServer)
 
 	type driverConfig struct {
 		driver    string
@@ -90,7 +94,9 @@ func BenchmarkStore(b *testing.B) {
 					return db.Close(context.Background())
 				})
 				assert.NoError(b, err)
-				defer store.Close(context.Background())
+				defer func(store *sqlstorage.Store, ctx context.Context) {
+					require.NoError(b, store.Close(ctx))
+				}(store, context.Background())
 
 				_, err = store.Initialize(context.Background())
 				assert.NoError(b, err)

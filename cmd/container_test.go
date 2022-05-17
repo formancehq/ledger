@@ -3,6 +3,13 @@ package cmd
 import (
 	"context"
 	"errors"
+	"os"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -14,23 +21,22 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/fx"
-	"os"
-	"reflect"
-	"runtime"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestContainers(t *testing.T) {
-
 	pgServer, err := pgtesting.PostgresServer()
 	if !assert.NoError(t, err) {
 		return
 	}
-	defer pgServer.Close()
+	defer func(pgServer *pgtesting.PGServer) {
+		err := pgServer.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(pgServer)
 
 	type testCase struct {
 		name    string
@@ -270,11 +276,10 @@ func TestContainers(t *testing.T) {
 			tc.init(v)
 			app := NewContainer(v, options...)
 
-			err := app.Start(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer app.Stop(context.Background())
+			require.NoError(t, app.Start(context.Background()))
+			defer func(app *fx.App, ctx context.Context) {
+				require.NoError(t, app.Stop(ctx))
+			}(app, context.Background())
 
 			select {
 			case <-run:

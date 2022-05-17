@@ -5,13 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
-	"os"
-	"strings"
 )
 
 func NewStorage() *cobra.Command {
@@ -58,7 +59,10 @@ func NewStorageInit() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("name", "default", "Ledger name")
-	viper.BindPFlags(cmd.Flags())
+	err := viper.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
 	return cmd
 }
 
@@ -151,7 +155,12 @@ func NewStorageScan() *cobra.Command {
 							if err != nil {
 								return err
 							}
-							defer rows.Close()
+							defer func(rows *sql.Rows) {
+								err := rows.Close()
+								if err != nil {
+									panic(err)
+								}
+							}(rows)
 							for rows.Next() {
 								var ledgerName string
 								err := rows.Scan(&ledgerName)
