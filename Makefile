@@ -2,6 +2,7 @@ BINARY_NAME=numary
 PKG=./...
 NUMARY_STORAGE_DRIVER="postgres"
 NUMARY_STORAGE_POSTGRES_CONN_STRING="postgresql://ledger:ledger@127.0.0.1/ledger"
+ENABLED_LINTERS=gofmt,gci
 
 all: lint test
 
@@ -14,7 +15,7 @@ install: build
 		| sh -s -- -b $(shell go env GOPATH)/bin v1.45.2
 
 lint:
-	golangci-lint run -v $(PKG)
+	golangci-lint run -v -E $(ENABLED_LINTERS) $(PKG)
 
 test: test-sqlite test-postgres
 
