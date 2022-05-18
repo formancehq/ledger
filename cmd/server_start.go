@@ -48,10 +48,7 @@ func NewServerStart() *cobra.Command {
 								return err
 							}
 							go func() {
-								httpErr := http.Serve(listener, h)
-								if httpErr != nil {
-									panic(httpErr)
-								}
+								_ = http.Serve(listener, h)
 							}()
 							return nil
 						},

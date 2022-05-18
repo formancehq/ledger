@@ -179,11 +179,11 @@ func (p *sqliteDB) Initialize(ctx context.Context) error {
 }
 
 func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
-	dataSourceName := path.Join(
+	file := path.Join(
 		p.directory,
 		fmt.Sprintf("%s_%s.db", p.dbName, name),
 	)
-	db, err := OpenSQLDB(SQLite, dataSourceName)
+	db, err := OpenSQLDB(SQLite, file)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
 			DB:      db,
 			closeDb: true,
 		},
-		file: dataSourceName,
+		file: file,
 	}, nil
 }
 

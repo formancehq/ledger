@@ -68,9 +68,7 @@ func ErrorCode(c *gin.Context) string {
 }
 
 func ResponseError(c *gin.Context, err error) {
-	if parsedErr := c.Error(err); parsedErr != nil {
-		panic(parsedErr)
-	}
+	_ = c.Error(err)
 	status, code := coreErrorToErrorCode(err)
 	c.Set(errorCodeKey, code)
 

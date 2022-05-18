@@ -74,20 +74,17 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 		return s.error(err)
 	}
 	defer func(tx *sql.Tx) {
-		if err := tx.Rollback(); err != nil {
-			panic(err)
-		}
+		_ = tx.Rollback()
 	}(tx)
 
-	err = s.appendLog(ctx, tx, logs...)
-	if err != nil {
+	if err := s.appendLog(ctx, tx, logs...); err != nil {
 		return err
 	}
 
-	err = tx.Commit()
-	if err != nil {
+	if err := tx.Commit(); err != nil {
 		return s.error(err)
 	}
+
 	return nil
 }
 

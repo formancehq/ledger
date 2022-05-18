@@ -178,17 +178,17 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
 
 	viper.RegisterAlias(serverHttpBasicAuthFlag, authBasicCredentialsFlag)
-	err = viper.BindPFlags(root.PersistentFlags())
-	if err != nil {
+
+	if err = viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)
 	}
+
 	viper.SetConfigName("numary")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("$HOME/.numary")
 	viper.AddConfigPath("/etc/numary")
-	err = viper.ReadInConfig()
-	if err != nil {
-		panic(err)
+	if err = viper.ReadInConfig(); err != nil {
+		fmt.Printf("loading config file: %s\n", err)
 	}
 
 	viper.SetEnvPrefix("numary")
@@ -200,8 +200,7 @@ func NewRootCommand() *cobra.Command {
 
 func Execute() {
 	if err := NewRootCommand().Execute(); err != nil {
-		_, err := fmt.Fprintln(os.Stderr, err)
-		if err != nil {
+		if _, err := fmt.Fprintln(os.Stderr, err); err != nil {
 			panic(err)
 		}
 		os.Exit(1)

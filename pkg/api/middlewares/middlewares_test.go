@@ -19,9 +19,7 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					if err := context.AbortWithError(418, errors.New("")); err != nil {
-						panic(err)
-					}
+					_ = context.AbortWithError(418, errors.New(""))
 				},
 			}
 		}),
@@ -40,9 +38,7 @@ func TestAdditionalPerLedgerMiddleware(t *testing.T) {
 		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
-					if err := context.AbortWithError(418, errors.New("")); err != nil {
-						panic(err)
-					}
+					_ = context.AbortWithError(418, errors.New(""))
 				},
 			}
 		}),

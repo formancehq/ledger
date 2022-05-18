@@ -400,16 +400,19 @@ func TestAccountMetadata(t *testing.T) {
 
 			accounts, ok := cursor.Data.([]core.Account)
 			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))
-
 			require.True(t, len(accounts) > 0, "no accounts returned by find")
 
-			meta, ok := accounts[0].Metadata["a random metadata"]
-			require.True(t, ok)
-
-			var value string
-			require.NoError(t, json.Unmarshal(meta, &value))
-			assert.Equalf(t, value, "new value",
-				"metadata entry did not match in find: expected \"new value\", got %v", value)
+			metaFound := false
+			for _, acc := range accounts {
+				if meta, ok := acc.Metadata["a random metadata"]; ok {
+					metaFound = true
+					var value string
+					require.NoError(t, json.Unmarshal(meta, &value))
+					assert.Equalf(t, value, "new value",
+						"metadata entry did not match in find: expected \"new value\", got %v", value)
+				}
+			}
+			assert.True(t, metaFound)
 		}
 	})
 }
@@ -532,7 +535,7 @@ func TestFindTransactions(t *testing.T) {
 		txs, ok := res.Data.([]core.Transaction)
 		require.True(t, ok)
 
-		assert.Equal(t, "test_find_transaction", txs[0].Postings[0].Destination)
+		assert.Equal(t, "test_find_transactions", txs[0].Postings[0].Destination)
 	})
 }
 

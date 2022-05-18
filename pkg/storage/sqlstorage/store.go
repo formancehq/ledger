@@ -67,9 +67,7 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		return false, s.error(err)
 	}
 	defer func(tx *sql.Tx) {
-		if err := tx.Rollback(); err != nil {
-			panic(err)
-		}
+		_ = tx.Rollback()
 	}(tx)
 
 	modified := false

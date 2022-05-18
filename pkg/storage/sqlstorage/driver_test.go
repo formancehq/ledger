@@ -14,13 +14,11 @@ func TestNewDriver(t *testing.T) {
 		directory: os.TempDir(),
 		dbName:    uuid.New(),
 	})
-	err := d.Initialize(context.Background())
-	assert.NoError(t, err)
+
+	assert.NoError(t, d.Initialize(context.Background()))
 
 	defer func(d *Driver, ctx context.Context) {
-		if err := d.Close(ctx); err != nil {
-			panic(err)
-		}
+		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
 
 	store, _, err := d.GetStore(context.Background(), "foo", true)
