@@ -52,8 +52,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		return c, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
@@ -125,8 +124,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 		return tx, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)

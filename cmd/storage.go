@@ -59,8 +59,7 @@ func NewStorageInit() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("name", "default", "Ledger name")
-	err := viper.BindPFlags(cmd.Flags())
-	if err != nil {
+	if err := viper.BindPFlags(cmd.Flags()); err != nil {
 		panic(err)
 	}
 	return cmd
@@ -156,8 +155,7 @@ func NewStorageScan() *cobra.Command {
 								return err
 							}
 							defer func(rows *sql.Rows) {
-								err := rows.Close()
-								if err != nil {
+								if err := rows.Close(); err != nil {
 									panic(err)
 								}
 							}(rows)

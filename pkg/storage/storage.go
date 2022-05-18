@@ -55,6 +55,10 @@ func IsErrorCode(err error, code Code) bool {
 	})
 }
 
+func IsTooManyClientError(err error) bool {
+	return IsErrorCode(err, TooManyClient)
+}
+
 type Store interface {
 	LastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context, query.Query) (uint64, error)

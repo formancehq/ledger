@@ -359,12 +359,12 @@ func TestAccountMetadata(t *testing.T) {
 		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		{
 			acc, err := l.GetAccount(context.Background(), "users:001")
@@ -393,10 +393,10 @@ func TestAccountMetadata(t *testing.T) {
 					},
 				},
 			})
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			cursor, err := l.FindAccounts(context.Background(), query.Account("users:001"))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			accounts, ok := cursor.Data.([]core.Account)
 			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))

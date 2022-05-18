@@ -23,6 +23,10 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 	sqlDrivers[flavor] = cfg
 }
 
+func SQLDriverName(f Flavor) string {
+	return sqlDrivers[f].driverName
+}
+
 func init() {
 	// Default mapping for app driver/sql driver
 	UpdateSQLDriverMapping(SQLite, "sqlite3")
@@ -80,8 +84,7 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
@@ -89,8 +92,7 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 	res := make([]string, 0)
 	for rows.Next() {
 		var ledger string
-		err := rows.Scan(&ledger)
-		if err != nil {
+		if err := rows.Scan(&ledger); err != nil {
 			return nil, err
 		}
 		res = append(res, ledger)

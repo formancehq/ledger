@@ -1,5 +1,9 @@
 package core
 
+const (
+	WORLD = "world"
+)
+
 type Balances map[string]int64
 type Volumes map[string]map[string]int64
 

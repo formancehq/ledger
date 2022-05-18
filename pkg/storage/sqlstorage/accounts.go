@@ -61,8 +61,7 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 		return c, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)

@@ -18,8 +18,7 @@ func TestServer(t *testing.T) {
 	pgServer, err := pgtesting.PostgresServer()
 	assert.NoError(t, err)
 	defer func(pgServer *pgtesting.PGServer) {
-		err := pgServer.Close()
-		if err != nil {
+		if err := pgServer.Close(); err != nil {
 			panic(err)
 		}
 	}(pgServer)
@@ -66,13 +65,11 @@ func TestServer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, e := range tc.env {
 				oldValue := os.Getenv(e.key)
-				err := os.Setenv(e.key, e.value)
-				if err != nil {
+				if err := os.Setenv(e.key, e.value); err != nil {
 					panic(err)
 				}
 				defer func(key, value string) {
-					err := os.Setenv(key, value)
-					if err != nil {
+					if err := os.Setenv(key, value); err != nil {
 						panic(err)
 					}
 				}(e.key, oldValue)
@@ -95,8 +92,7 @@ func TestServer(t *testing.T) {
 			defer cancel()
 
 			go func() {
-				err := root.ExecuteContext(ctx)
-				assert.NoError(t, err)
+				assert.NoError(t, root.ExecuteContext(ctx))
 				close(terminated)
 			}()
 

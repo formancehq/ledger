@@ -37,8 +37,7 @@ var stickersCmd = &cobra.Command{
 
 		fmt.Printf("You found a very special sub-command...\n\n")
 		fmt.Printf("Hit Enter to continue\n\n")
-		_, err := fmt.Scanln()
-		if err != nil {
+		if _, err := fmt.Scanln(); err != nil {
 			panic(err)
 		}
 		open(url)

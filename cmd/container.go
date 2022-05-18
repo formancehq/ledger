@@ -315,15 +315,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
 			switch eerr := err.(type) {
 			case error:
-				ginErr := c.AbortWithError(http.StatusInternalServerError, eerr)
-				if ginErr != nil {
-					panic(ginErr)
-				}
+				_ = c.AbortWithError(http.StatusInternalServerError, eerr)
 			default:
-				ginErr := c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
-				if ginErr != nil {
-					panic(ginErr)
-				}
+				_ = c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
 			}
 		}))
 		return res

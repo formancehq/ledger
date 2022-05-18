@@ -93,8 +93,7 @@ func NewScriptExec() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool(previewFlag, false, "Preview mode (does not save transactions)")
-	err := viper.BindPFlags(cmd.Flags())
-	if err != nil {
+	if err := viper.BindPFlags(cmd.Flags()); err != nil {
 		panic(err)
 	}
 	return cmd

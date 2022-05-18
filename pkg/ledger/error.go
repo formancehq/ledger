@@ -31,6 +31,10 @@ func NewTransactionCommitError(txIndex int, err error) *TransactionCommitError {
 	}
 }
 
+func IsTransactionCommitError(err error) bool {
+	return errors.Is(err, &TransactionCommitError{})
+}
+
 type InsufficientFundError struct {
 	Asset string
 }

@@ -115,9 +115,9 @@ func TestStore(t *testing.T) {
 			go func() {
 				require.NoError(t, app.Start(context.Background()))
 			}()
-			go func() {
-				require.NoError(t, app.Stop(context.Background()))
-			}()
+			defer func(app *fx.App, ctx context.Context) {
+				require.NoError(t, app.Stop(ctx))
+			}(app, context.Background())
 
 			select {
 			case <-time.After(5 * time.Second):

@@ -59,8 +59,7 @@ func TestStore(t *testing.T) {
 		t.Run(tf.name, func(t *testing.T) {
 			store := NewStorageDecorator(storage.NoOpStore())
 			defer func(store *openTelemetryStorage, ctx context.Context) {
-				err := store.Close(ctx)
-				if err != nil {
+				if err := store.Close(ctx); err != nil {
 					panic(err)
 				}
 			}(store, context.Background())

@@ -48,7 +48,8 @@ func NewServerStart() *cobra.Command {
 								return err
 							}
 							go func() {
-								_ = http.Serve(listener, h)
+								httpErr := http.Serve(listener, h)
+								sharedlogging.Errorf("http.Serve: %s", httpErr)
 							}()
 							return nil
 						},
