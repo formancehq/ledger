@@ -47,7 +47,7 @@ jobs:
           name: control-dist
           path: cmd/control/
       - name: run tests
-        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic -race ./...
+        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
       - name: Upload coverage to Codecov
         run: bash <(curl -s https://codecov.io/bash)
   Test_postgres:
@@ -90,7 +90,7 @@ jobs:
           name: control-dist
           path: cmd/control/
       - name: run tests
-        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic -race ./...
+        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
         env:
           NUMARY_STORAGE_DRIVER: "postgres"
           NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
