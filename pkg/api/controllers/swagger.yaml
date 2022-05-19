@@ -269,7 +269,7 @@ paths:
       tags:
       - transactions
       summary: Count transactions
-      description: Count transactions mathing given criteria
+      description: Count transactions matching given criteria
       operationId: countTransactions
       parameters:
       - name: ledger
@@ -315,8 +315,8 @@ paths:
     get:
       tags:
         - transactions
-      summary: Get all Transactions
-      description: Get all ledger transactions
+      summary: Get a list of transactions from the ledger
+      description: Get a list of transactions from the ledger
       operationId: listTransactions
       parameters:
         - name: ledger
@@ -327,31 +327,46 @@ paths:
             type: string
         - name: after
           in: query
-          description: pagination cursor, will return transactions after given txid
-            (in descending order)
+          description: Pagination cursor, will return transactions after given txid
+            (in descending order).
           schema:
             type: string
         - name: reference
           in: query
-          description: find transactions by reference field
+          description: Find transactions by reference field.
           schema:
             type: string
         - name: account
           in: query
-          description: find transactions with postings involving given account, either
-            as source or destination
+          description: Find transactions with postings involving given account, either
+            as source or destination.
           schema:
             type: string
         - name: source
           in: query
-          description: find transactions with postings involving given account at source
+          description: Find transactions with postings involving given account at source.
           schema:
             type: string
         - name: destination
           in: query
-          description: find transactions with postings involving given account at destination
+          description: Find transactions with postings involving given account at destination.
           schema:
             type: string
+        - name: from
+          in: query
+          description: Filter transactions that occurred after a RFC3339 timestamp.
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: Filter transactions that occurred before a RFC3339 timestamp.
+          schema:
+            type: string
+        - name: useMetadataTimestamp
+          in: query
+          description: Attempt to use com.numary.spec/timestamp metadata values (RFC3339 format) to filter transactions, to override native transactions timestamps.
+          schema:
+            type: boolean
       responses:
         "200":
           description: OK
