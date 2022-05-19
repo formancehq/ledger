@@ -24,6 +24,7 @@ func NewTransactionController() TransactionController {
 
 func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
 		query.After(c.Query("after")),
@@ -39,6 +40,7 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	cursor, err := l.(*ledger.Ledger).FindTransactions(
 		c.Request.Context(),
 		query.After(c.Query("after")),
@@ -51,11 +53,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		cursor,
-	)
+	ctl.response(c, http.StatusOK, cursor)
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -88,6 +86,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -108,6 +107,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
