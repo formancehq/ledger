@@ -3,10 +3,11 @@ package redis
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redismock/v8"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/go-redis/redismock/v8"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLock(t *testing.T) {
@@ -21,28 +22,29 @@ func TestLock(t *testing.T) {
 	duration := 5 * time.Second
 	l := NewLock(clusterClient, duration, 100*time.Millisecond)
 
+	ctx := context.Background()
 	clusterMock.ExpectSetNX(lockKey("quickstart"), "0", duration).SetVal(true)
-	ok, unlock, err := l.tryLock(context.Background(), "quickstart")
+	ok, unlock, err := l.tryLock(ctx, "quickstart")
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	clusterMock.ExpectSetNX(lockKey("quickstart"), "1", duration).SetVal(false)
-	ok, _, err = l.tryLock(nil, "quickstart")
+	ok, _, err = l.tryLock(ctx, "quickstart")
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
 	clusterMock.ExpectSetNX(lockKey("another"), "2", duration).SetVal(true)
-	ok, _, err = l.tryLock(nil, "another")
+	ok, _, err = l.tryLock(ctx, "another")
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	clusterMock.ExpectGet(lockKey("quickstart")).SetVal("0")
 	clusterMock.ExpectDel(lockKey("quickstart")).SetVal(0)
 
-	unlock(context.Background())
+	unlock(ctx)
 
 	clusterMock.ExpectSetNX(lockKey("quickstart"), "3", duration).SetVal(true)
-	ok, _, err = l.tryLock(nil, "quickstart")
+	ok, _, err = l.tryLock(ctx, "quickstart")
 	assert.True(t, ok)
 	assert.NoError(t, err)
 

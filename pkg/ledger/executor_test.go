@@ -3,30 +3,24 @@ package ledger
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
 	machine "github.com/numary/machine/core"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func assertBalance(t *testing.T, l *Ledger, account string, asset string, amount int64) {
+func assertBalance(t *testing.T, l *Ledger, account, asset string, amount int64) {
 	user, err := l.GetAccount(context.Background(), account)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	if b := user.Balances[asset]; b != amount {
-		t.Fatalf(
-			"wrong %v balance for account %v, expected: %d got: %d",
-			asset,
-			account,
-			amount,
-			b,
-		)
-	}
+	require.NoError(t, err)
+
+	b := user.Balances[asset]
+	assert.Equalf(t, amount, b,
+		"wrong %v balance for account %v, expected: %d got: %d",
+		asset, account,
+		amount, b,
+	)
 }
 
 func TestNoScript(t *testing.T) {
@@ -58,13 +52,9 @@ func TestTransactionInvalidScript(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
+		assert.Error(t, err, "script was invalid yet the transaction was committed")
 
-		if err == nil {
-			t.Error(errors.New(
-				"script was invalid yet the transaction was committed",
-			))
-		}
-		l.Close(context.Background())
+		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
@@ -75,19 +65,18 @@ func TestTransactionFail(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
+		assert.Error(t, err, "script failed yet the transaction was committed")
 
-		if err == nil {
-			t.Error(errors.New(
-				"script failed yet the transaction was commited",
-			))
-		}
-		l.Close(context.Background())
+		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
 func TestSend(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
+
 		script := core.Script{
 			Plain: `send [USD/2 99] (
 				source=@world
@@ -96,11 +85,7 @@ func TestSend(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		require.NoError(t, err)
 
 		assertBalance(t, l, "user:001", "USD/2", 99)
 	})
@@ -109,30 +94,29 @@ func TestSend(t *testing.T) {
 func TestNoVariables(t *testing.T) {
 	with(func(l *Ledger) {
 		var script core.Script
-		json.Unmarshal(
+		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
 				"vars": {}
 			}`),
 			&script)
+		require.NoError(t, err)
 
-		_, err := l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), script)
+		assert.Error(t, err, "variables were not provided but the transaction was committed")
 
-		if err == nil {
-			t.Error(errors.New(
-				"variables were not provided but the transaction was committed",
-			))
-		}
-		l.Close(context.Background())
+		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
 func TestVariables(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		var script core.Script
-		json.Unmarshal(
+		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
 				"vars": {
@@ -140,34 +124,27 @@ func TestVariables(t *testing.T) {
 				}
 			}`),
 			&script)
+		require.NoError(t, err)
 
-		_, err := l.Execute(context.Background(), script)
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		_, err = l.Execute(context.Background(), script)
+		require.NoError(t, err)
 
 		user, err := l.GetAccount(context.Background(), "user:042")
+		require.NoError(t, err)
 
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		if b := user.Balances["CAD/2"]; b != 42 {
-			t.Error(fmt.Sprintf(
-				"wrong CAD/2 balance for account user:042, expected: %d got: %d",
-				42,
-				b,
-			))
-		}
+		b := user.Balances["CAD/2"]
+		assert.Equalf(t, int64(42), b,
+			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
+			42, b,
+		)
 	})
 }
 
 func TestEnoughFunds(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		tx := core.TransactionData{
 			Postings: []core.Posting{
@@ -181,11 +158,7 @@ func TestEnoughFunds(t *testing.T) {
 		}
 
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		require.NoError(t, err)
 
 		var script core.Script
 		err = json.Unmarshal(
@@ -193,23 +166,18 @@ func TestEnoughFunds(t *testing.T) {
 				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
 			}`),
 			&script)
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		require.NoError(t, err)
 
 		_, err = l.Execute(context.Background(), script)
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		assert.NoError(t, err)
 	})
 }
 
 func TestNotEnoughFunds(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		tx := core.TransactionData{
 			Postings: []core.Posting{
@@ -223,31 +191,26 @@ func TestNotEnoughFunds(t *testing.T) {
 		}
 
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
-
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		require.NoError(t, err)
 
 		var script core.Script
-		json.Unmarshal(
+		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
 			}`),
 			&script)
+		require.NoError(t, err)
 
 		_, err = l.Execute(context.Background(), script)
-
-		if err == nil {
-			t.Error("error wasn't supposed to be nil")
-			return
-		}
+		assert.Error(t, err, "error wasn't supposed to be nil")
 	})
 }
 
 func TestMissingMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		plain := `
 			vars {
@@ -269,16 +232,15 @@ func TestMissingMetadata(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
-
-		if err == nil {
-			t.Fatalf("expected an error because of missing metadata")
-		}
+		assert.Error(t, err, "expected an error because of missing metadata")
 	})
 }
 
 func TestMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		tx := core.TransactionData{
 			Postings: []core.Posting{
@@ -292,9 +254,7 @@ func TestMetadata(t *testing.T) {
 		}
 
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
 			"seller": json.RawMessage(`{
@@ -302,9 +262,7 @@ func TestMetadata(t *testing.T) {
 				"value": "users:053"
 			}`),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:053", core.Metadata{
 			"commission": json.RawMessage(`{
@@ -312,10 +270,7 @@ func TestMetadata(t *testing.T) {
 				"value": "15.5%"
 			}`),
 		})
-		if err != nil {
-			t.Error(err)
-			return
-		}
+		require.NoError(t, err)
 
 		plain := `
 			vars {
@@ -332,9 +287,7 @@ func TestMetadata(t *testing.T) {
 				}
 			)
 		`
-		if err != nil {
-			t.Fatalf("did not expect error: %v", err)
-		}
+		require.NoError(t, err)
 
 		script := core.Script{
 			Plain: plain,
@@ -344,10 +297,7 @@ func TestMetadata(t *testing.T) {
 		}
 
 		_, err = l.Execute(context.Background(), script)
-
-		if err != nil {
-			t.Fatalf("execution error: %v", err)
-		}
+		require.NoError(t, err)
 
 		assertBalance(t, l, "sales:042", "COIN", 0)
 
@@ -359,7 +309,9 @@ func TestMetadata(t *testing.T) {
 
 func TestSetTxMeta(t *testing.T) {
 	with(func(l *Ledger) {
-		defer l.Close(context.Background())
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
 
 		plain := `
 			vars {
@@ -382,30 +334,19 @@ func TestSetTxMeta(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
-
-		if err != nil {
-			t.Fatalf("execution error: %v", err)
-		}
+		require.NoError(t, err)
 
 		assertBalance(t, l, "user:042", "COIN", 10)
 
 		tx, err := l.GetLastTransaction(context.Background())
-
-		if err != nil {
-			t.Fatalf("could not get last transaction: %v", err)
-		}
+		require.NoError(t, err)
 
 		value, err := machine.NewValueFromTypedJSON(tx.Metadata["test_meta"])
+		require.NoError(t, err)
 
-		if err != nil {
-			t.Fatalf("tx metadata was invalid: %v", err)
-		}
-
-		if !machine.ValueEquals(*value, machine.Monetary{
+		assert.True(t, machine.ValueEquals(*value, machine.Monetary{
 			Asset:  "COIN",
 			Amount: 10,
-		}) {
-			t.Fatalf("tx metadata was not the expected value")
-		}
+		}))
 	})
 }

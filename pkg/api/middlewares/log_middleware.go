@@ -1,16 +1,17 @@
 package middlewares
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedlogging"
-	"time"
 )
 
 func Log() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		latency := time.Now().Sub(start)
+		latency := time.Since(start)
 		sharedlogging.GetLogger(c.Request.Context()).WithFields(map[string]interface{}{
 			"status":     c.Writer.Status(),
 			"method":     c.Request.Method,

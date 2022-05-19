@@ -3,10 +3,11 @@ package pgtesting
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v4"
-	"github.com/ory/dockertest/v3"
 	"os"
 	"time"
+
+	"github.com/jackc/pgx/v4"
+	"github.com/ory/dockertest/v3"
 )
 
 type PGServer struct {

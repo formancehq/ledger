@@ -4,6 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
+	"os"
+	"testing"
+
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -14,9 +18,6 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"os"
-	"testing"
 )
 
 func TestCommitTransaction(t *testing.T) {
@@ -369,7 +370,11 @@ func TestTooManyClient(t *testing.T) {
 				for i := 0; i < pgtesting.MaxConnections; i++ {
 					tx, err := store.(*sqlstorage.Store).Schema().BeginTx(context.Background(), &sql.TxOptions{})
 					assert.NoError(t, err)
-					defer tx.Rollback()
+					defer func(tx *sql.Tx) {
+						if err := tx.Rollback(); err != nil {
+							panic(err)
+						}
+					}(tx)
 				}
 
 				rsp := internal.GetTransactions(api)

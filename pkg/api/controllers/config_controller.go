@@ -2,13 +2,13 @@ package controllers
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
-	"github.com/numary/ledger/pkg/storage"
-	"gopkg.in/yaml.v3"
 	"net/http"
 
-	_ "embed"
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/storage"
+	"gopkg.in/yaml.v3"
 )
 
 // ConfigInfo struct

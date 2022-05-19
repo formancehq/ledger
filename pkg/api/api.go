@@ -2,12 +2,12 @@ package api
 
 import (
 	_ "embed"
-	"github.com/numary/ledger/pkg/api/controllers"
-	"github.com/numary/ledger/pkg/api/middlewares"
-	"github.com/numary/ledger/pkg/api/routes"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/middlewares"
+	"github.com/numary/ledger/pkg/api/routes"
 	"go.uber.org/fx"
 )
 

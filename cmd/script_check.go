@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
+
 	"github.com/numary/machine/script/compiler"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"io/ioutil"
 )
 
 func NewScriptCheck() *cobra.Command {

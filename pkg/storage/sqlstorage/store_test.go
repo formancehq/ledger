@@ -2,8 +2,13 @@ package sqlstorage_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -15,14 +20,11 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"os"
-	"testing"
-	"time"
 )
 
 func TestStore(t *testing.T) {
-
 	l := logrus.New()
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
@@ -81,7 +83,6 @@ func TestStore(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
-
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.StorageModule(),
@@ -96,7 +97,9 @@ func TestStore(t *testing.T) {
 							if err != nil {
 								return err
 							}
-							defer store.Close(context.Background())
+							defer func(store storage.Store, ctx context.Context) {
+								require.NoError(t, store.Close(ctx))
+							}(store, context.Background())
 
 							_, err = store.Initialize(context.Background())
 							if err != nil {
@@ -109,8 +112,12 @@ func TestStore(t *testing.T) {
 					})
 				}),
 			)
-			go app.Start(context.Background())
-			defer app.Stop(context.Background())
+			go func() {
+				require.NoError(t, app.Start(context.Background()))
+			}()
+			defer func(app *fx.App, ctx context.Context) {
+				require.NoError(t, app.Stop(ctx))
+			}(app, context.Background())
 
 			select {
 			case <-time.After(5 * time.Second):
@@ -184,14 +191,11 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	countAccounts, err := store.CountAccounts(context.Background(), query.Query{})
-	if !assert.EqualValues(t, 2, countAccounts) { // world + central_bank
-		return
-	}
+	assert.NoError(t, err)
+	assert.EqualValues(t, 2, countAccounts) // world + central_bank
 }
 
 func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
@@ -209,26 +213,14 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	volumes, err := store.AggregateVolumes(context.Background(), "central_bank")
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Len(t, volumes, 1) {
-		return
-	}
-	if !assert.Len(t, volumes["USD"], 2) {
-		return
-	}
-	if !assert.EqualValues(t, 100, volumes["USD"]["input"]) {
-		return
-	}
-	if !assert.EqualValues(t, 0, volumes["USD"]["output"]) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Len(t, volumes, 1)
+	assert.Len(t, volumes["USD"], 2)
+	assert.EqualValues(t, 100, volumes["USD"]["input"])
+	assert.EqualValues(t, 0, volumes["USD"]["output"])
 }
 
 func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
@@ -264,36 +256,22 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	})
 
 	err := store.AppendLog(context.Background(), account1, account2, account3, account4)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	accounts, err := store.FindAccounts(context.Background(), query.Query{
 		Limit: 1,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.True(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Equal(t, 1, accounts.PageSize) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.True(t, accounts.HasMore)
+	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 1,
 		After: accounts.Data.([]core.Account)[0].Address,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.True(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Equal(t, 1, accounts.PageSize) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.True(t, accounts.HasMore)
+	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
@@ -301,18 +279,10 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 			"address": ".*der.*",
 		},
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Len(t, accounts.Data, 2) {
-		return
-	}
-	if !assert.Equal(t, 10, accounts.PageSize) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, accounts.HasMore)
+	assert.Len(t, accounts.Data, 2)
+	assert.Equal(t, 10, accounts.PageSize)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
@@ -322,15 +292,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 			},
 		},
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Len(t, accounts.Data, 1) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, accounts.HasMore)
+	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
@@ -340,15 +304,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 			},
 		},
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Len(t, accounts.Data, 1) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, accounts.HasMore)
+	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
@@ -358,15 +316,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 			},
 		},
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Len(t, accounts.Data, 1) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, accounts.HasMore)
+	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.FindAccounts(context.Background(), query.Query{
 		Limit: 10,
@@ -376,15 +328,9 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 			},
 		},
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, accounts.HasMore) {
-		return
-	}
-	if !assert.Len(t, accounts.Data, 1) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, accounts.HasMore)
+	assert.Len(t, accounts.Data, 1)
 }
 
 func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
@@ -405,17 +351,11 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	countTransactions, err := store.CountTransactions(context.Background(), query.Query{})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.EqualValues(t, 1, countTransactions) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, countTransactions)
 }
 
 func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
@@ -467,36 +407,22 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	log2 := core.NewTransactionLog(&log1, tx2)
 	log3 := core.NewTransactionLog(&log2, tx3)
 	err := store.AppendLog(context.Background(), log1, log2, log3)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	cursor, err := store.FindTransactions(context.Background(), query.Query{
 		Limit: 1,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, 1, cursor.PageSize) {
-		return
-	}
-	if !assert.True(t, cursor.HasMore) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 1, cursor.PageSize)
+	assert.True(t, cursor.HasMore)
 
 	cursor, err = store.FindTransactions(context.Background(), query.Query{
 		After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
 		Limit: 1,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, 1, cursor.PageSize) {
-		return
-	}
-	if !assert.True(t, cursor.HasMore) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 1, cursor.PageSize)
+	assert.True(t, cursor.HasMore)
 
 	cursor, err = store.FindTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
@@ -505,18 +431,10 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Limit: 1,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, 1, cursor.PageSize) {
-		return
-	}
-	if !assert.Len(t, cursor.Data, 1) {
-		return
-	}
-	if !assert.False(t, cursor.HasMore) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 1, cursor.PageSize)
+	assert.Len(t, cursor.Data, 1)
+	assert.False(t, cursor.HasMore)
 
 	cursor, err = store.FindTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
@@ -524,18 +442,10 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Limit: 10,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, 10, cursor.PageSize) {
-		return
-	}
-	if !assert.Len(t, cursor.Data, 1) {
-		return
-	}
-	if !assert.False(t, cursor.HasMore) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 10, cursor.PageSize)
+	assert.Len(t, cursor.Data, 1)
+	assert.False(t, cursor.HasMore)
 
 	cursor, err = store.FindTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
@@ -543,22 +453,13 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 		},
 		Limit: 10,
 	})
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, 10, cursor.PageSize) {
-		return
-	}
-	if !assert.Len(t, cursor.Data, 1) {
-		return
-	}
-	if !assert.False(t, cursor.HasMore) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 10, cursor.PageSize)
+	assert.Len(t, cursor.Data, 1)
+	assert.False(t, cursor.HasMore)
 }
 
 func testMapping(t *testing.T, store *sqlstorage.Store) {
-
 	m := core.Mapping{
 		Contracts: []core.Contract{
 			{
@@ -571,36 +472,22 @@ func testMapping(t *testing.T, store *sqlstorage.Store) {
 		},
 	}
 	err := store.SaveMapping(context.Background(), m)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	mapping, err := store.LoadMapping(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Len(t, mapping.Contracts, 1) {
-		return
-	}
-	if !assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0]) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 1)
+	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
 
 	m2 := core.Mapping{
 		Contracts: []core.Contract{},
 	}
 	err = store.SaveMapping(context.Background(), m2)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	mapping, err = store.LoadMapping(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Len(t, mapping.Contracts, 0) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
@@ -638,21 +525,14 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	err := store.AppendLog(context.Background(), log1, log2)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.Equal(t, tx1, tx) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, tx1, tx)
 }
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
-
 	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
 		return
 	}
@@ -663,58 +543,42 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	for i := 0; i < pgtesting.MaxConnections; i++ {
 		tx, err := store.Schema().BeginTx(context.Background(), nil)
 		assert.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *sql.Tx) {
+			require.NoError(t, tx.Rollback())
+		}(tx)
 	}
+
 	_, err := store.CountTransactions(context.Background(), query.Query{})
-	if !assert.Error(t, err) {
-		return
-	}
-	if !assert.IsType(t, new(storage.Error), err) {
-		return
-	}
-	if !assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code) {
-		return
-	}
+	assert.Error(t, err)
+	assert.IsType(t, new(storage.Error), err)
+	assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
 }
 
 func TestInitializeStore(t *testing.T) {
-
 	l := logrus.New()
 	l.Level = logrus.DebugLevel
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	driver, stopFn, err := ledgertesting.Driver()
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 	defer stopFn()
-	defer driver.Close(context.Background())
+	defer func(driver storage.Driver, ctx context.Context) {
+		require.NoError(t, driver.Close(ctx))
+	}(driver, context.Background())
 
 	err = driver.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.True(t, modified) {
-
-	}
+	assert.NoError(t, err)
+	assert.True(t, modified)
 
 	modified, err = store.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.False(t, modified) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.False(t, modified)
 }
 
 func testLastLog(t *testing.T, store *sqlstorage.Store) {
@@ -734,18 +598,10 @@ func testLastLog(t *testing.T, store *sqlstorage.Store) {
 	}
 	log := core.NewTransactionLog(nil, tx)
 	err := store.AppendLog(context.Background(), log)
-	if !assert.NoError(t, err) {
-		return
-	}
+	assert.NoError(t, err)
 
 	lastLog, err := store.LastLog(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
-	if !assert.NotNil(t, lastLog) {
-		return
-	}
-	if !assert.EqualValues(t, tx, lastLog.Data) {
-		return
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, lastLog)
+	assert.EqualValues(t, tx, lastLog.Data)
 }

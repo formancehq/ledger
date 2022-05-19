@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/numary/ledger/pkg/api/controllers"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -93,6 +93,8 @@ func NewScriptExec() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool(previewFlag, false, "Preview mode (does not save transactions)")
-	viper.BindPFlags(cmd.Flags())
+	if err := viper.BindPFlags(cmd.Flags()); err != nil {
+		panic(err)
+	}
 	return cmd
 }

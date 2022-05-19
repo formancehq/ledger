@@ -2,8 +2,15 @@ package sqlstorage_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"testing"
+	"testing/fstest"
+	"time"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
@@ -14,11 +21,6 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"strings"
-	"testing"
-	"testing/fstest"
-	"time"
 )
 
 var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Transaction) bool {
@@ -67,7 +69,11 @@ func v0CountMetadata(t *testing.T, store *sqlstorage.Store) (int, bool) {
 	if !assert.NoError(t, err) {
 		return 0, false
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
 	return count, true
 }
 
@@ -83,10 +89,7 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 		Values(count+1, targetType, targetId, key, string(value), timestamp).
 		BuildWithFlavor(store.Schema().Flavor())
 	_, err := store.Schema().ExecContext(context.Background(), sqlx, args...)
-	if !assert.NoError(t, err) {
-		return false
-	}
-	return true
+	return assert.NoError(t, err)
 }
 
 /** Postgres and SQLite doesn't have the same behavior regardings json processing
@@ -452,11 +455,11 @@ func TestMigrates(t *testing.T) {
 		sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 	}
 
-	driver, close, err := ledgertesting.Driver()
+	driver, closeFunc, err := ledgertesting.Driver()
 	if !assert.NoError(t, err) {
 		return
 	}
-	defer close()
+	defer closeFunc()
 
 	err = driver.Initialize(context.Background())
 	if !assert.NoError(t, err) {

@@ -2,12 +2,13 @@ package bus
 
 import (
 	"context"
+	"time"
+
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
-	"time"
 )
 
 const (

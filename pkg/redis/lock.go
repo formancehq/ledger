@@ -4,11 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
-	"time"
 )
 
 type BoolCmd = redis.BoolCmd

@@ -4,6 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/Shopify/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -35,12 +42,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
-	"io"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"os"
-	"strings"
 )
 
 const ServiceName = "ledger"
@@ -314,9 +315,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
 			switch eerr := err.(type) {
 			case error:
-				c.AbortWithError(http.StatusInternalServerError, eerr)
+				_ = c.AbortWithError(http.StatusInternalServerError, eerr)
 			default:
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
+				_ = c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%s", err))
 			}
 		}))
 		return res

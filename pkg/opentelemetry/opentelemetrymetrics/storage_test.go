@@ -2,11 +2,12 @@ package opentelemetrymetrics
 
 import (
 	"context"
+	"testing"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric/global"
-	"testing"
 )
 
 func TestWrapStorageFactory(t *testing.T) {

@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"os/exec"
 	"runtime"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +37,9 @@ var stickersCmd = &cobra.Command{
 
 		fmt.Printf("You found a very special sub-command...\n\n")
 		fmt.Printf("Hit Enter to continue\n\n")
-		fmt.Scanln()
+		if _, err := fmt.Scanln(); err != nil {
+			panic(err)
+		}
 		open(url)
 	},
 }

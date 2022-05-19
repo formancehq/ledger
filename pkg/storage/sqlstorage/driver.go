@@ -2,11 +2,13 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
+	"time"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"time"
 )
 
 const SystemSchema = "_system"
@@ -81,13 +83,16 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	res := make([]string, 0)
 	for rows.Next() {
 		var ledger string
-		err := rows.Scan(&ledger)
-		if err != nil {
+		if err := rows.Scan(&ledger); err != nil {
 			return nil, err
 		}
 		res = append(res, ledger)
@@ -95,44 +100,41 @@ func (d *Driver) List(ctx context.Context) ([]string, error) {
 	return res, nil
 }
 
-func (s *Driver) Name() string {
-	return s.name
+func (d *Driver) Name() string {
+	return d.name
 }
 
-func (s *Driver) Initialize(ctx context.Context) error {
+func (d *Driver) Initialize(ctx context.Context) (err error) {
+	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
-	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", s.name)
-
-	<-time.After(2 * time.Second)
-
-	err := s.db.Initialize(ctx)
-	if err != nil {
-		return err
+	if err = d.db.Initialize(ctx); err != nil {
+		return
 	}
-	s.systemSchema, err = s.db.Schema(ctx, SystemSchema)
-	if err != nil {
-		return err
-	}
-	err = s.systemSchema.Initialize(ctx)
 
+	d.systemSchema, err = d.db.Schema(ctx, SystemSchema)
 	if err != nil {
-		return err
+		return
 	}
+
+	if err = d.systemSchema.Initialize(ctx); err != nil {
+		return
+	}
+
 	q, args := sqlbuilder.
-		CreateTable(s.systemSchema.Table("ledgers")).
+		CreateTable(d.systemSchema.Table("ledgers")).
 		Define("ledger varchar(255) primary key, addedAt timestamp").
 		IfNotExists().
-		BuildWithFlavor(s.systemSchema.Flavor())
+		BuildWithFlavor(d.systemSchema.Flavor())
 
-	_, err = s.systemSchema.ExecContext(ctx, q, args...)
-	return err
+	_, err = d.systemSchema.ExecContext(ctx, q, args...)
+	return
 }
 
-func (s *Driver) DeleteStore(ctx context.Context, name string) error {
+func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 	if SystemSchema == name {
 		return errors.New("cannot delete system schema")
 	}
-	schema, err := s.db.Schema(ctx, name)
+	schema, err := d.db.Schema(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -142,23 +144,23 @@ func (s *Driver) DeleteStore(ctx context.Context, name string) error {
 		return err
 	}
 
-	b := sqlbuilder.DeleteFrom(s.systemSchema.Table("ledgers"))
+	b := sqlbuilder.DeleteFrom(d.systemSchema.Table("ledgers"))
 	b = b.Where(b.E("ledger", name))
 	q, args := b.BuildWithFlavor(schema.Flavor())
-	_, err = s.systemSchema.ExecContext(ctx, q, args...)
+	_, err = d.systemSchema.ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
 
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
 
-	exists, err := s.exists(ctx, name)
+	exists, err := d.exists(ctx, name)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "checking ledger existence")
 	}
@@ -166,12 +168,12 @@ func (s *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 		return nil, false, errors.New("not exists")
 	}
 
-	schema, err := s.db.Schema(ctx, name)
+	schema, err := d.db.Schema(ctx, name)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "opening schema")
 	}
 
-	created, err := s.Register(ctx, name)
+	created, err := d.Register(ctx, name)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "registering ledger")
 	}

@@ -3,17 +3,16 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedapi"
 	"math"
 	"time"
 
+	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
 func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
-
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
 	sb.From(s.schema.Table("transactions") + " t")
@@ -52,7 +51,11 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	if err != nil {
 		return c, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	transactions := make([]core.Transaction, 0)
 
@@ -120,7 +123,11 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 	if err != nil {
 		return tx, s.error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
 
 	for rows.Next() {
 		var (

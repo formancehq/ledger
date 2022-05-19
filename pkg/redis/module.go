@@ -2,10 +2,11 @@ package redis
 
 import (
 	"crypto/tls"
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
-	"time"
 )
 
 const (

@@ -2,12 +2,13 @@ package opentelemetrytraces
 
 import (
 	"context"
+	"testing"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestStore(t *testing.T) {
@@ -57,7 +58,11 @@ func TestStore(t *testing.T) {
 	} {
 		t.Run(tf.name, func(t *testing.T) {
 			store := NewStorageDecorator(storage.NoOpStore())
-			defer store.Close(context.Background())
+			defer func(store *openTelemetryStorage, ctx context.Context) {
+				if err := store.Close(ctx); err != nil {
+					panic(err)
+				}
+			}(store, context.Background())
 
 			_, err := store.Initialize(context.Background())
 			assert.NoError(t, err)

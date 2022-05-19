@@ -112,6 +112,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transac
 	if err != nil {
 		return nil, err
 	}
+
 	return &txs[0], nil
 }
 

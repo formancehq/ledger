@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+
 	"github.com/pkg/errors"
 )
 
@@ -83,7 +84,7 @@ func IsValidationError(err error) bool {
 type ConflictError struct{}
 
 func (e ConflictError) Error() string {
-	return fmt.Sprintf("conflict error on reference")
+	return "conflict error on reference"
 }
 
 func (e ConflictError) Is(err error) bool {

@@ -10,13 +10,13 @@ package sqlstorage
 import (
 	"database/sql"
 	"encoding/json"
+	"regexp"
+	"strconv"
+
 	"github.com/buger/jsonparser"
-	_ "github.com/buger/jsonparser"
 	"github.com/mattn/go-sqlite3"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
-	"regexp"
-	"strconv"
 )
 
 func init() {
@@ -84,6 +84,9 @@ func init() {
 				}
 				return false, nil
 			}, true)
+			if err != nil {
+				return err
+			}
 			err = conn.RegisterFunc("use_account_as_destination", func(v string, act string) (bool, error) {
 				postings := core.Postings{}
 				err := json.Unmarshal([]byte(v), &postings)
@@ -137,7 +140,6 @@ func init() {
 				default:
 					return false
 				}
-				return false
 			}, true)
 			return err
 		},

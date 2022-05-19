@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"context"
+	"net"
+	"net/http"
+
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
@@ -10,8 +13,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"go.uber.org/fx"
-	"net"
-	"net/http"
 )
 
 func NewServerStart() *cobra.Command {
@@ -46,7 +47,10 @@ func NewServerStart() *cobra.Command {
 							if err != nil {
 								return err
 							}
-							go http.Serve(listener, h)
+							go func() {
+								httpErr := http.Serve(listener, h)
+								sharedlogging.Errorf("http.Serve: %s", httpErr)
+							}()
 							return nil
 						},
 						OnStop: func(ctx context.Context) error {

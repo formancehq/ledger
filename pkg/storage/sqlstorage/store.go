@@ -5,16 +5,16 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
+	"io/fs"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/huandu/go-sqlbuilder"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"io/fs"
+	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 //go:embed migrations
@@ -58,12 +58,17 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.schema.Flavor().String()))
 	entries, err := fs.ReadDir(MigrationsFs, migrationsDir)
+	if err != nil {
+		return false, err
+	}
 
 	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return false, s.error(err)
 	}
-	defer tx.Rollback()
+	defer func(tx *sql.Tx) {
+		_ = tx.Rollback()
+	}(tx)
 
 	modified := false
 	for _, m := range entries {
@@ -81,13 +86,16 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		// Does not use sql transaction because if the table does not exists, postgres will mark transaction as invalid
 		rows, err := s.schema.QueryContext(ctx, sqlq, args...)
 		if err == nil && rows.Next() {
-			rows.Close()
+			if err := rows.Close(); err != nil {
+				return false, err
+			}
 			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
-			rows.Close()
 			continue
 		}
 		if rows != nil {
-			rows.Close()
+			if err := rows.Close(); err != nil {
+				return false, err
+			}
 		}
 		modified = true
 

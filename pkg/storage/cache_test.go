@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
+	"testing"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 type noOpStorage struct {

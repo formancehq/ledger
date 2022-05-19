@@ -6,11 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/storage"
-	"github.com/pborman/uuid"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"reflect"
@@ -19,6 +14,12 @@ import (
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -55,24 +56,27 @@ func with(f func(l *Ledger)) {
 			})
 		}),
 	)
-	go app.Start(context.Background())
+	go func() {
+		if err := app.Start(context.Background()); err != nil {
+			panic(err)
+		}
+	}()
 
-	select {
-	case <-done:
-	}
+	<-done
 	if app.Err() != nil {
 		panic(app.Err())
 	}
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
-	app.Stop(ctx)
 
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+	defer cancel()
+
+	if err := app.Stop(ctx); err != nil {
+		panic(err)
+	}
 }
 
 func TestMain(m *testing.M) {
-
-	var (
-		code int
-	)
+	var code int
 	defer func() {
 		os.Exit(code) // os.Exit don't care about defer so defer the os.Exit allow us to execute other defer
 	}()
@@ -118,28 +122,21 @@ func TestTransaction(t *testing.T) {
 			}
 
 			_, _, err := l.Commit(context.Background(), batch)
-			if err != nil {
-				t.Error(err)
-			}
+			require.NoError(t, err)
 
 			batch = []core.TransactionData{}
 		}
 
 		world, err := l.GetAccount(context.Background(), "world")
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		expected := int64(-1 * total)
-		if b := world.Balances["GEM"]; b != expected {
-			t.Error(fmt.Sprintf(
-				"wrong GEM balance for account world, expected: %d got: %d",
-				expected,
-				b,
-			))
-		}
+		b := world.Balances["GEM"]
+		assert.Equalf(t, expected, b,
+			"wrong GEM balance for account world, expected: %d got: %d",
+			expected, b)
 
-		l.Close(context.Background())
+		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
@@ -275,11 +272,9 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		}
 
 		volumes, _, err := l.Commit(context.Background(), batch)
-		if !assert.NoError(t, err) {
-			return
-		}
+		assert.NoError(t, err)
 
-		if !assert.EqualValues(t, volumes, core.AggregatedVolumes{
+		assert.EqualValues(t, volumes, core.AggregatedVolumes{
 			"world": map[string]map[string]int64{
 				"USD": {
 					"input":  0,
@@ -306,9 +301,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					"output": 0,
 				},
 			},
-		}) {
-			return
-		}
+		})
 	})
 }
 
@@ -326,12 +319,8 @@ func TestBalance(t *testing.T) {
 				},
 			},
 		})
-
-		if err == nil {
-			t.Error(errors.New(
-				"balance was insufficient yet the transation was commited",
-			))
-		}
+		assert.Error(t, err,
+			"balance was insufficient yet the transaction was committed")
 	})
 }
 
@@ -350,26 +339,17 @@ func TestReference(t *testing.T) {
 		}
 
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
-
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		_, _, err = l.Commit(context.Background(), []core.TransactionData{tx})
-
-		if err == nil {
-			t.Fail()
-		}
+		assert.Error(t, err)
 	})
 }
 
 func TestLast(t *testing.T) {
 	with(func(l *Ledger) {
 		_, err := l.GetLastTransaction(context.Background())
-
-		if err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, err)
 	})
 }
 
@@ -388,19 +368,15 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			acc, err := l.GetAccount(context.Background(), "users:001")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
-			if meta, ok := acc.Metadata["a random metadata"]; ok {
-				var value string
-				err := json.Unmarshal(meta, &value)
-				assert.NoError(t, err)
+			meta, ok := acc.Metadata["a random metadata"]
+			require.True(t, ok)
 
-				if value != "new value" {
-					t.Fatalf("metadata entry did not match in get: expected \"new value\", got %v", value)
-				}
-			}
+			var value string
+			require.NoError(t, json.Unmarshal(meta, &value))
+			assert.Equalf(t, value, "new value",
+				"metadata entry did not match in get: expected \"new value\", got %v", value)
 		}
 
 		{
@@ -423,23 +399,20 @@ func TestAccountMetadata(t *testing.T) {
 			assert.NoError(t, err)
 
 			accounts, ok := cursor.Data.([]core.Account)
-			if !ok {
-				t.Fatalf("wrong cursor type: %v", reflect.TypeOf(cursor.Data))
-			}
-			if len(accounts) == 0 {
-				t.Fatal("no accounts returned by find")
-			}
+			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))
+			require.True(t, len(accounts) > 0, "no accounts returned by find")
 
-			if meta, ok := accounts[0].Metadata["a random metadata"]; ok {
-				var value string
-				err := json.Unmarshal(meta, &value)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if value != "new value" {
-					t.Fatalf("metadata entry did not match in find: expected \"new value\", got %v", value)
+			metaFound := false
+			for _, acc := range accounts {
+				if meta, ok := acc.Metadata["a random metadata"]; ok {
+					metaFound = true
+					var value string
+					require.NoError(t, json.Unmarshal(meta, &value))
+					assert.Equalf(t, value, "new value",
+						"metadata entry did not match in find: expected \"new value\", got %v", value)
 				}
 			}
+			assert.True(t, metaFound)
 		}
 	})
 }
@@ -456,50 +429,37 @@ func TestTransactionMetadata(t *testing.T) {
 				},
 			},
 		}})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		tx, err := l.GetLastTransaction(context.Background())
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": json.RawMessage(`"new value"`),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		tx, err = l.GetLastTransaction(context.Background())
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
-		if meta, ok := tx.Metadata["a random metadata"]; ok {
-			var value string
-			err := json.Unmarshal(meta, &value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if value != "new value" {
-				t.Fatalf("metadata entry did not match: expected \"new value\", got %v", value)
-			}
-		}
+		meta, ok := tx.Metadata["a random metadata"]
+		assert.True(t, ok)
+
+		var value string
+		assert.NoError(t, json.Unmarshal(meta, &value))
+		assert.Equalf(t, value, "new value",
+			"metadata entry did not match: expected \"new value\", got %v", value)
 	})
 }
 
 func TestSaveTransactionMetadata(t *testing.T) {
 	with(func(l *Ledger) {
-
-		l.Commit(context.Background(), []core.TransactionData{{
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -512,28 +472,25 @@ func TestSaveTransactionMetadata(t *testing.T) {
 				"a metadata": json.RawMessage(`"a value"`),
 			},
 		}})
+		require.NoError(t, err)
 
 		tx, err := l.GetLastTransaction(context.Background())
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
-		if meta, ok := tx.Metadata["a metadata"]; ok {
-			var value string
-			err := json.Unmarshal(meta, &value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if value != "a value" {
-				t.Fatalf("metadata entry did not match: expected \"a value\", got %v", value)
-			}
-		}
+		meta, ok := tx.Metadata["a metadata"]
+		require.True(t, ok)
+
+		var value string
+		require.NoError(t, json.Unmarshal(meta, &value))
+
+		assert.Equalf(t, value, "a value",
+			"metadata entry did not match: expected \"a value\", got %v", value)
 	})
 }
 
 func TestGetTransaction(t *testing.T) {
 	with(func(l *Ledger) {
-		l.Commit(context.Background(), []core.TransactionData{{
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "bar",
 			Postings: []core.Posting{
 				{
@@ -544,20 +501,15 @@ func TestGetTransaction(t *testing.T) {
 				},
 			},
 		}})
+		require.NoError(t, err)
 
 		last, err := l.GetLastTransaction(context.Background())
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		tx, err := l.GetTransaction(context.Background(), last.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
-		if !reflect.DeepEqual(tx, last) {
-			t.Fail()
-		}
+		assert.True(t, reflect.DeepEqual(tx, last))
 	})
 }
 
@@ -574,19 +526,16 @@ func TestFindTransactions(t *testing.T) {
 			},
 		}
 
-		l.Commit(context.Background(), []core.TransactionData{tx})
+		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		require.NoError(t, err)
 
 		res, err := l.FindTransactions(context.Background())
+		require.NoError(t, err)
 
-		if err != nil {
-			t.Error(err)
-		}
+		txs, ok := res.Data.([]core.Transaction)
+		require.True(t, ok)
 
-		txs := res.Data.([]core.Transaction)
-
-		if txs[0].Postings[0].Destination != "test_find_transactions" {
-			t.Error()
-		}
+		assert.Equal(t, "test_find_transactions", txs[0].Postings[0].Destination)
 	})
 }
 
@@ -605,64 +554,45 @@ func TestRevertTransaction(t *testing.T) {
 				},
 			},
 		}})
-
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		world, err := l.GetAccount(context.Background(), "world")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		originalBal := world.Balances["COIN"]
 
 		revertTx, err := l.RevertTransaction(context.Background(), txs[0].ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
-		if !assert.Equal(t, core.Postings{
+		assert.Equal(t, core.Postings{
 			{
 				Source:      "payments:001",
 				Destination: "world",
 				Amount:      100,
 				Asset:       "COIN",
 			},
-		}, revertTx.TransactionData.Postings) {
-			return
-		}
+		}, revertTx.TransactionData.Postings)
 
-		if !assert.EqualValues(t, fmt.Sprintf(`"%d"`, txs[0].ID), string(revertTx.Metadata[core.RevertMetadataSpecKey()])) {
-			return
-		}
+		assert.EqualValues(t, fmt.Sprintf(`"%d"`, txs[0].ID),
+			string(revertTx.Metadata[core.RevertMetadataSpecKey()]))
 
 		tx, err := l.GetTransaction(context.Background(), txs[0].ID)
-		if !assert.NoError(t, err) {
-			return
-		}
+		assert.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
-		err = json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v)
-		if !assert.NoError(t, err) {
-			return
-		}
+		assert.NoError(t, json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v))
 
-		if !assert.Equal(t, core.RevertedMetadataSpecValue{
+		assert.Equal(t, core.RevertedMetadataSpecValue{
 			By: fmt.Sprint(revertTx.ID),
-		}, v) {
-			return
-		}
+		}, v)
 
 		world, err = l.GetAccount(context.Background(), "world")
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 
 		newBal := world.Balances["COIN"]
 		expectedBal := originalBal + revertAmt
-		if newBal != expectedBal {
-			t.Fatalf("COIN world balances expected %d, got %d", expectedBal, newBal)
-		}
+		assert.Equalf(t, expectedBal, newBal,
+			"COIN world balances expected %d, got %d", expectedBal, newBal)
 	})
 }
 
@@ -682,7 +612,8 @@ func BenchmarkTransaction1(b *testing.B) {
 				},
 			})
 
-			l.Commit(context.Background(), txs)
+			_, _, err := l.Commit(context.Background(), txs)
+			require.NoError(b, err)
 		}
 	})
 }
@@ -706,7 +637,8 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					})
 				}
 
-				l.Commit(context.Background(), txs)
+				_, _, err := l.Commit(context.Background(), txs)
+				require.NoError(b, err)
 			}
 		}
 	})
@@ -715,7 +647,8 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 func BenchmarkGetAccount(b *testing.B) {
 	with(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
-			l.GetAccount(context.Background(), "users:013")
+			_, err := l.GetAccount(context.Background(), "users:013")
+			require.NoError(b, err)
 		}
 	})
 }
@@ -723,7 +656,8 @@ func BenchmarkGetAccount(b *testing.B) {
 func BenchmarkFindTransactions(b *testing.B) {
 	with(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
-			l.FindTransactions(context.Background())
+			_, err := l.FindTransactions(context.Background())
+			require.NoError(b, err)
 		}
 	})
 }

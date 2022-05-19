@@ -3,18 +3,18 @@ package controllers_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/url"
+	"testing"
+
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"net/url"
-	"testing"
 )
 
 func TestGetAccounts(t *testing.T) {
-
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -28,9 +28,7 @@ func TestGetAccounts(t *testing.T) {
 						},
 					},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				rsp = internal.PostTransaction(t, h, core.TransactionData{
 					Postings: core.Postings{
@@ -42,9 +40,7 @@ func TestGetAccounts(t *testing.T) {
 						},
 					},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				rsp = internal.PostAccountMetadata(t, h, "bob", core.Metadata{
 					"roles":     json.RawMessage(`"admin"`),
@@ -52,87 +48,58 @@ func TestGetAccounts(t *testing.T) {
 					"enabled":   json.RawMessage(`"true"`),
 					"a":         json.RawMessage(`{"nested": {"key": "hello"}}`),
 				})
-				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
 				rsp = internal.CountAccounts(h, url.Values{})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
-				if !assert.Equal(t, "3", rsp.Header().Get("Count")) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				assert.Equal(t, "3", rsp.Header().Get("Count"))
 
 				rsp = internal.GetAccounts(h, url.Values{})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 3) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 3)
 
 				rsp = internal.GetAccounts(h, url.Values{
 					"metadata[roles]": []string{"admin"},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 1) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 1)
 
 				rsp = internal.GetAccounts(h, url.Values{
 					"metadata[accountId]": []string{"3"},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 1) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 1)
 
 				rsp = internal.GetAccounts(h, url.Values{
 					"metadata[enabled]": []string{"true"},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 1) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 1)
 
 				rsp = internal.GetAccounts(h, url.Values{
 					"metadata[a.nested.key]": []string{"hello"},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 1) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 1)
 
 				rsp = internal.GetAccounts(h, url.Values{
 					"metadata[unknown]": []string{"key"},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				cursor = internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				if !assert.Len(t, cursor.Data, 0) {
-					return nil
-				}
+				assert.Len(t, cursor.Data, 0)
+
 				return nil
 			},
 		})
@@ -182,6 +149,7 @@ func TestGetAccount(t *testing.T) {
 						"foo": json.RawMessage(`"bar"`),
 					},
 				}, act)
+
 				return nil
 			},
 		})

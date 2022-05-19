@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"runtime"
 
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -53,6 +54,7 @@ var UICmd = &cobra.Command{
 		openuri(addr)
 		fmt.Printf("Numary control is live on http://%s\n", addr)
 
-		http.ListenAndServe(addr, nil)
+		httpErr := http.ListenAndServe(addr, nil)
+		sharedlogging.Errorf("http.ListenAndServe: %s", httpErr)
 	},
 }

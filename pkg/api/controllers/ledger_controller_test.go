@@ -2,14 +2,15 @@ package controllers_test
 
 import (
 	"context"
+	"net/http"
+	"testing"
+
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
-	"net/http"
-	"testing"
 )
 
 func TestGetStats(t *testing.T) {

@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 

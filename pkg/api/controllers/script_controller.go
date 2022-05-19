@@ -4,12 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/go-libs/sharedlogging"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 )
@@ -46,7 +46,9 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var script core.Script
-	c.ShouldBind(&script)
+	if err := c.ShouldBind(&script); err != nil {
+		panic(err)
+	}
 
 	value, ok := c.GetQuery("preview")
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
