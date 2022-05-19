@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/opentelemetry"
@@ -46,7 +47,7 @@ func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (ret *core.T
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry LastTransaction: %s", handlingErr)
 	}
 	return
 }
@@ -57,7 +58,7 @@ func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err er
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry Logs: %s", handlingErr)
 	}
 	return
 }
@@ -68,7 +69,7 @@ func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) 
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry AppendLogs: %s", handlingErr)
 	}
 	return
 }
@@ -79,7 +80,7 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry LastLogs: %s", handlingErr)
 	}
 	return
 }
@@ -90,7 +91,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Qu
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry CountTransactions: %s", handlingErr)
 	}
 	return
 }
@@ -101,7 +102,7 @@ func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry FindTransactions: %s", handlingErr)
 	}
 	return
 }
@@ -112,7 +113,7 @@ func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s uint64) (tx
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry GetTransaction: %s", handlingErr)
 	}
 	return
 }
@@ -123,7 +124,7 @@ func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx cor
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry GetAccount: %s", handlingErr)
 	}
 	return
 }
@@ -134,7 +135,7 @@ func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry AggregateVolumes: %s", handlingErr)
 	}
 	return
 }
@@ -145,7 +146,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Query)
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry CountAccounts: %s", handlingErr)
 	}
 	return
 }
@@ -156,7 +157,7 @@ func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Que
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry FindAccounts: %s", handlingErr)
 	}
 	return
 }
@@ -167,7 +168,7 @@ func (o *openTelemetryStorage) LoadMapping(ctx context.Context) (m *core.Mapping
 		return err
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry LoadMapping: %s", handlingErr)
 	}
 	return
 }
@@ -184,7 +185,7 @@ func (o *openTelemetryStorage) Initialize(ctx context.Context) (ret bool, err er
 		return nil
 	})
 	if handlingErr != nil {
-		panic(handlingErr)
+		sharedlogging.Errorf("opentelemetry Initialize: %s", handlingErr)
 	}
 	return
 }

@@ -105,10 +105,7 @@ func (d *Driver) Name() string {
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
-
 	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
-
-	<-time.After(2 * time.Second)
 
 	if err = d.db.Initialize(ctx); err != nil {
 		return

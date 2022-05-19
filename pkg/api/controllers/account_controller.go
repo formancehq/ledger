@@ -22,9 +22,21 @@ func NewAccountController() AccountController {
 }
 
 func (ctl *AccountController) CountAccounts(c *gin.Context) {
-	l, _ := c.Get("ledger")
+	ledgerValue, exists := c.Get("ledger")
+	if !exists {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: "missing ledger key"})
+		return
+	}
 
-	count, err := l.(*ledger.Ledger).CountAccounts(
+	l, ok := ledgerValue.(*ledger.Ledger)
+	if !ok {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: fmt.Sprintf("invalid value type for ledger key: %T", ledgerValue)})
+		return
+	}
+
+	count, err := l.CountAccounts(
 		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Address(c.Query("address")),
@@ -36,13 +48,26 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	c.Header("Count", fmt.Sprint(count))
 }
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
-	l, _ := c.Get("ledger")
+	ledgerValue, exists := c.Get("ledger")
+	if !exists {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: "missing ledger key"})
+		return
+	}
 
-	cursor, err := l.(*ledger.Ledger).FindAccounts(
+	l, ok := ledgerValue.(*ledger.Ledger)
+	if !ok {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: fmt.Sprintf("invalid value type for ledger key: %T", ledgerValue)})
+		return
+	}
+
+	cursor, err := l.FindAccounts(
 		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Address(c.Query("address")),
@@ -54,32 +79,52 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		cursor,
-	)
+
+	ctl.response(c, http.StatusOK, cursor)
 }
 
 func (ctl *AccountController) GetAccount(c *gin.Context) {
-	l, _ := c.Get("ledger")
-	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
+	ledgerValue, exists := c.Get("ledger")
+	if !exists {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: "missing ledger key"})
+		return
+	}
+
+	l, ok := ledgerValue.(*ledger.Ledger)
+	if !ok {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: fmt.Sprintf("invalid value type for ledger key: %T", ledgerValue)})
+		return
+	}
+
+	acc, err := l.GetAccount(c.Request.Context(), c.Param("address"))
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		acc,
-	)
+
+	ctl.response(c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
-	l, _ := c.Get("ledger")
+	ledgerValue, exists := c.Get("ledger")
+	if !exists {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: "missing ledger key"})
+		return
+	}
+
+	l, ok := ledgerValue.(*ledger.Ledger)
+	if !ok {
+		ResponseError(c, &ledger.ValidationError{
+			Msg: fmt.Sprintf("invalid value type for ledger key: %T", ledgerValue)})
+		return
+	}
+
 	var m core.Metadata
-	if err := c.ShouldBind(&m); err != nil {
-		panic(err)
+	if err := c.Bind(&m); err != nil {
+		return
 	}
 
 	addr := c.Param("address")
@@ -88,10 +133,10 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeAccount, addr, m)
-	if err != nil {
+	if err := l.SaveMeta(c.Request.Context(), core.MetaTargetTypeAccount, addr, m); err != nil {
 		ResponseError(c, err)
 		return
 	}
+
 	ctl.noContent(c)
 }

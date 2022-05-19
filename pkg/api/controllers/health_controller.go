@@ -12,21 +12,23 @@ type HealthController struct {
 	Checks []health.NamedCheck
 }
 
+type result struct {
+	Check health.NamedCheck
+	Err   error
+}
+
 func (ctrl *HealthController) Check(c *gin.Context) {
 	w := sync.WaitGroup{}
 	w.Add(len(ctrl.Checks))
-	type R struct {
-		Check health.NamedCheck
-		Err   error
-	}
-	results := make(chan R, len(ctrl.Checks))
+
+	results := make(chan result, len(ctrl.Checks))
 	for _, ch := range ctrl.Checks {
 		go func(ch health.NamedCheck) {
 			defer w.Done()
 			select {
 			case <-c.Request.Context().Done():
 				return
-			case results <- R{
+			case results <- result{
 				Check: ch,
 				Err:   ch.Do(c.Request.Context()),
 			}:
@@ -35,6 +37,7 @@ func (ctrl *HealthController) Check(c *gin.Context) {
 	}
 	w.Wait()
 	close(results)
+
 	response := map[string]string{}
 	hasError := false
 	for r := range results {
@@ -45,11 +48,12 @@ func (ctrl *HealthController) Check(c *gin.Context) {
 			response[r.Check.Name()] = "OK"
 		}
 	}
-	status := http.StatusOK
+
 	if hasError {
-		status = http.StatusInternalServerError
+		c.JSON(http.StatusInternalServerError, response)
+	} else {
+		c.JSON(http.StatusOK, response)
 	}
-	c.JSON(status, response)
 }
 
 func NewHealthController(checks []health.NamedCheck) HealthController {

@@ -175,7 +175,6 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func WithNewModule(t *testing.T, options ...fx.Option) {
-
 	l := logrus.New()
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
@@ -204,9 +203,7 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	}))
 
 	app := fx.New(options...)
-	if !assert.NoError(t, app.Start(context.Background())) {
-		return
-	}
+	assert.NoError(t, app.Start(context.Background()))
 
 	select {
 	case <-ch:
