@@ -11,12 +11,10 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-// AccountController -
 type AccountController struct {
 	BaseController
 }
 
-// NewAccountController -
 func NewAccountController() AccountController {
 	return AccountController{}
 }
@@ -26,11 +24,8 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountAccounts(
 		c.Request.Context(),
-		query.After(c.Query("after")),
 		query.Address(c.Query("address")),
-		func(q *query.Query) {
-			q.Params["metadata"] = c.QueryMap("metadata")
-		},
+		query.Metadata(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -43,13 +38,11 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	cursor, err := l.(*ledger.Ledger).FindAccounts(
+	cursor, err := l.(*ledger.Ledger).GetAccounts(
 		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Address(c.Query("address")),
-		func(q *query.Query) {
-			q.Params["metadata"] = c.QueryMap("metadata")
-		},
+		query.Metadata(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -62,7 +55,9 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
+	acc, err := l.(*ledger.Ledger).GetAccount(
+		c.Request.Context(),
+		c.Param("address"))
 	if err != nil {
 		ResponseError(c, err)
 		return
@@ -75,7 +70,8 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var m core.Metadata
-	if err := c.Bind(&m); err != nil {
+	if err := c.ShouldBindJSON(&m); err != nil {
+		ResponseError(c, err)
 		return
 	}
 

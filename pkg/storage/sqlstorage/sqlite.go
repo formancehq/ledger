@@ -19,6 +19,10 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
+const (
+	SQLCustomFuncMetaCompare = "meta_compare"
+)
+
 func init() {
 	errorHandlers[SQLite] = func(err error) error {
 		eerr, ok := err.(sqlite3.Error)
@@ -103,7 +107,7 @@ func init() {
 			if err != nil {
 				return err
 			}
-			err = conn.RegisterFunc("meta_compare", func(metadata string, value string, key ...string) bool {
+			err = conn.RegisterFunc(SQLCustomFuncMetaCompare, func(metadata string, value string, key ...string) bool {
 				bytes, dataType, _, err := jsonparser.Get([]byte(metadata), key...)
 				if err != nil {
 					return false

@@ -60,14 +60,14 @@ func IsTooManyClientError(err error) bool {
 }
 
 type Store interface {
-	LastTransaction(ctx context.Context) (*core.Transaction, error)
+	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context, query.Query) (uint64, error)
-	FindTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
+	GetTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
 	AggregateVolumes(context.Context, string) (core.Volumes, error)
 	CountAccounts(context.Context, query.Query) (uint64, error)
-	FindAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
+	GetAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
 
 	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
@@ -83,7 +83,7 @@ type Store interface {
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
-func (n noOpStore) LastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
 	return &core.Transaction{}, nil
 }
 
@@ -103,7 +103,7 @@ func (n noOpStore) CountTransactions(ctx context.Context, q query.Query) (uint64
 	return 0, nil
 }
 
-func (n noOpStore) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (n noOpStore) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
 	return sharedapi.Cursor{}, nil
 }
 
@@ -127,7 +127,7 @@ func (n noOpStore) CountAccounts(ctx context.Context, q query.Query) (uint64, er
 	return 0, nil
 }
 
-func (n noOpStore) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (n noOpStore) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
 	return sharedapi.Cursor{}, nil
 }
 

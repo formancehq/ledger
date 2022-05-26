@@ -21,7 +21,6 @@ import (
 )
 
 func TestScriptController(t *testing.T) {
-
 	type testCase struct {
 		name             string
 		script           string
@@ -83,7 +82,6 @@ send [COIN 100] (
 }
 
 func TestScriptControllerPreview(t *testing.T) {
-
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -109,7 +107,7 @@ func TestScriptControllerPreview(t *testing.T) {
 				store, _, err := driver.GetStore(context.Background(), l, true)
 				assert.NoError(t, err)
 
-				cursor, err := store.FindTransactions(context.Background(), query.Query{})
+				cursor, err := store.GetTransactions(context.Background(), query.Query{})
 				assert.NoError(t, err)
 				assert.Len(t, cursor.Data, 0)
 				return nil

@@ -32,12 +32,10 @@ func EncodeLink(errStr string) string {
 	return fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
 }
 
-// ScriptController -
 type ScriptController struct {
 	BaseController
 }
 
-// NewScriptController -
 func NewScriptController() ScriptController {
 	return ScriptController{}
 }
@@ -46,7 +44,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var script core.Script
-	if err := c.ShouldBind(&script); err != nil {
+	if err := c.ShouldBindJSON(&script); err != nil {
 		panic(err)
 	}
 

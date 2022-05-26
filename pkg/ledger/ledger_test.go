@@ -346,13 +346,6 @@ func TestReference(t *testing.T) {
 	})
 }
 
-func TestLast(t *testing.T) {
-	with(func(l *Ledger) {
-		_, err := l.GetLastTransaction(context.Background())
-		assert.NoError(t, err)
-	})
-}
-
 func TestAccountMetadata(t *testing.T) {
 	with(func(l *Ledger) {
 
@@ -380,7 +373,7 @@ func TestAccountMetadata(t *testing.T) {
 		}
 
 		{
-			// We have to create at least one transaction to retrieve an account from FindAccounts store method
+			// We have to create at least one transaction to retrieve an account from GetAccounts store method
 			_, _, err := l.Commit(context.Background(), []core.TransactionData{
 				{
 					Postings: core.Postings{
@@ -395,12 +388,12 @@ func TestAccountMetadata(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			cursor, err := l.FindAccounts(context.Background(), query.Account("users:001"))
+			cursor, err := l.GetAccounts(context.Background(), query.Account("users:001"))
 			assert.NoError(t, err)
 
 			accounts, ok := cursor.Data.([]core.Account)
 			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))
-			require.True(t, len(accounts) > 0, "no accounts returned by find")
+			require.True(t, len(accounts) > 0, "no accounts returned by get accounts")
 
 			metaFound := false
 			for _, acc := range accounts {
@@ -431,7 +424,7 @@ func TestTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.GetLastTransaction(context.Background())
+		tx, err := l.store.GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
@@ -444,7 +437,7 @@ func TestTransactionMetadata(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		tx, err = l.GetLastTransaction(context.Background())
+		tx, err = l.store.GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a random metadata"]
@@ -474,7 +467,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.GetLastTransaction(context.Background())
+		tx, err := l.store.GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a metadata"]
@@ -503,23 +496,23 @@ func TestGetTransaction(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		last, err := l.GetLastTransaction(context.Background())
+		last, err := l.store.GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		tx, err := l.GetTransaction(context.Background(), last.ID)
 		require.NoError(t, err)
 
-		assert.True(t, reflect.DeepEqual(tx, last))
+		assert.True(t, reflect.DeepEqual(tx, *last))
 	})
 }
 
-func TestFindTransactions(t *testing.T) {
+func TestGetTransactions(t *testing.T) {
 	with(func(l *Ledger) {
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
-					Destination: "test_find_transactions",
+					Destination: "test_get_transactions",
 					Amount:      100,
 					Asset:       "COIN",
 				},
@@ -529,13 +522,13 @@ func TestFindTransactions(t *testing.T) {
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
-		res, err := l.FindTransactions(context.Background())
+		res, err := l.GetTransactions(context.Background())
 		require.NoError(t, err)
 
 		txs, ok := res.Data.([]core.Transaction)
 		require.True(t, ok)
 
-		assert.Equal(t, "test_find_transactions", txs[0].Postings[0].Destination)
+		assert.Equal(t, "test_get_transactions", txs[0].Postings[0].Destination)
 	})
 }
 
@@ -653,10 +646,10 @@ func BenchmarkGetAccount(b *testing.B) {
 	})
 }
 
-func BenchmarkFindTransactions(b *testing.B) {
+func BenchmarkGetTransactions(b *testing.B) {
 	with(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
-			_, err := l.FindTransactions(context.Background())
+			_, err := l.GetTransactions(context.Background())
 			require.NoError(b, err)
 		}
 	})

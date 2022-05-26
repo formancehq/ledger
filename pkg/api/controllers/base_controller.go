@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// BaseController -
 type BaseController struct{}
 
 func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {

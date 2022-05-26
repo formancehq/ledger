@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 
@@ -17,17 +18,18 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestCommitTransaction(t *testing.T) {
-
 	type testCase struct {
 		name               string
 		transactions       []core.TransactionData
 		expectedStatusCode int
 		expectedErrorCode  string
 	}
+
 	testCases := []testCase{
 		{
 			name:               "nominal",
@@ -264,8 +266,9 @@ func TestGetTransactions(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
+					Reference: "ref:001",
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				rsp = internal.PostTransaction(t, api, core.TransactionData{
 					Postings: core.Postings{
@@ -279,20 +282,59 @@ func TestGetTransactions(t *testing.T) {
 					Metadata: map[string]json.RawMessage{
 						"foo": json.RawMessage(`"bar"`),
 					},
+					Reference: "ref:002",
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				rsp = internal.CountTransactions(api, url.Values{})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, "2", rsp.Header().Get("Count"))
+
+				type GetTransactionsCursor struct {
+					PageSize int                `json:"page_size,omitempty"`
+					HasMore  bool               `json:"has_more"`
+					Previous string             `json:"previous,omitempty"`
+					Next     string             `json:"next,omitempty"`
+					Data     []core.Transaction `json:"data"`
+				}
+
+				type getTransactionsResponse struct {
+					Cursor *GetTransactionsCursor `json:"cursor,omitempty"`
+				}
+
+				rsp = internal.GetTransactions(api, url.Values{})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp := getTransactionsResponse{}
+
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// 2 transactions: txid 1 and txid 0
+				assert.Len(t, resp.Cursor.Data, 2)
+				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(1))
+				assert.Equal(t, resp.Cursor.Data[1].ID, uint64(0))
+				assert.False(t, resp.Cursor.HasMore)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"after": []string{"1"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				// 1 transaction: txid 0
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				assert.Len(t, resp.Cursor.Data, 1)
+				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
+				assert.False(t, resp.Cursor.HasMore)
 
-				rsp = internal.CountTransactions(api)
+				rsp = internal.GetTransactions(api, url.Values{
+					"reference": []string{"ref:001"},
+				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				assert.Equal(t, "2", rsp.Header().Get("Count"))
+				resp = getTransactionsResponse{}
+				// 1 transaction: txid 0
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				assert.Len(t, resp.Cursor.Data, 1)
+				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
+				assert.False(t, resp.Cursor.HasMore)
 
-				rsp = internal.GetTransactions(api)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Transaction{})
-
-				assert.Len(t, cursor.Data, 2)
-				assert.False(t, cursor.HasMore)
 				return nil
 			},
 		})
@@ -377,7 +419,7 @@ func TestTooManyClient(t *testing.T) {
 					}(tx)
 				}
 
-				rsp := internal.GetTransactions(api)
+				rsp := internal.GetTransactions(api, url.Values{})
 				assert.Equal(t, http.StatusServiceUnavailable, rsp.Result().StatusCode)
 				return nil
 			},

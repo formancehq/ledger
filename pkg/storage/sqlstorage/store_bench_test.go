@@ -63,8 +63,8 @@ func BenchmarkStore(b *testing.B) {
 	for _, driver := range drivers {
 		for _, tf := range []testingFunction{
 			{
-				name: "FindTransactions",
-				fn:   testBenchmarkFindTransactions,
+				name: "GetTransactions",
+				fn:   testBenchmarkGetTransactions,
 			},
 			{
 				name: "LastLog",
@@ -109,7 +109,7 @@ func BenchmarkStore(b *testing.B) {
 	}
 }
 
-func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
+func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 	var log *core.Log
 	for i := 0; i < 1000; i++ {
 		tx := core.Transaction{
@@ -138,7 +138,7 @@ func testBenchmarkFindTransactions(b *testing.B, store *sqlstorage.Store) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		txs, err := store.FindTransactions(context.Background(), query.Query{
+		txs, err := store.GetTransactions(context.Background(), query.Query{
 			Limit: 100,
 		})
 		assert.NoError(b, err)

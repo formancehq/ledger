@@ -86,3 +86,9 @@ func Reference(v string) func(*Query) {
 		q.Params["reference"] = v
 	}
 }
+
+func Metadata(v map[string]string) func(*Query) {
+	return func(q *Query) {
+		q.Params["metadata"] = v
+	}
+}

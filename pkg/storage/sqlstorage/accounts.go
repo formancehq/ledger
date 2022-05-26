@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"math"
 	"strings"
 
@@ -13,18 +14,20 @@ import (
 )
 
 func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
-
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.
-		From(s.schema.Table("accounts"))
+	sb.From(s.schema.Table("accounts"))
 
 	if metadata, ok := p["metadata"]; ok {
-		for k, metaValue := range metadata.(map[string]string) {
-			arg := sb.Args.Add(metaValue)
+		for key, value := range metadata.(map[string]string) {
+			arg := sb.Args.Add(value)
 			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
-			sb.Where(s.schema.Table("meta_compare(metadata, " + arg + ", '" + strings.Join(strings.Split(k, "."), "', '") + "')"))
+			sb.Where(s.schema.Table(
+				fmt.Sprintf("%s(metadata, %s, '%s')",
+					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
+			))
 		}
 	}
+
 	if address, ok := p["address"]; ok && address.(string) != "" {
 		arg := sb.Args.Add("^" + address.(string) + "$")
 		switch s.Schema().Flavor() {
@@ -38,7 +41,7 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 	return sb
 }
 
-func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
@@ -55,7 +58,6 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return c, s.error(err)
@@ -68,18 +70,10 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 
 	for rows.Next() {
 		account := core.Account{}
-		var (
-			addr sql.NullString
-			m    sql.NullString
-		)
-		err := rows.Scan(&addr, &m)
-		if err != nil {
+		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
 			return c, err
 		}
-		err = rows.Scan(&account.Address, &account.Metadata)
-		if err != nil {
-			return c, err
-		}
+
 		results = append(results, account)
 	}
 	if rows.Err() != nil {
@@ -97,20 +91,21 @@ func (s *Store) findAccounts(ctx context.Context, exec executor, q query.Query) 
 	return c, nil
 }
 
-func (s *Store) FindAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return s.findAccounts(ctx, s.schema, q)
+func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+	return s.getAccounts(ctx, s.schema, q)
 }
 
 func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (core.Account, error) {
-
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.
-		Select("address", "metadata").
+	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
 		Where(sb.Equal("address", addr))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq, args...)
+	if err := row.Err(); err != nil {
+		return core.Account{}, err
+	}
 
 	account := core.Account{}
 	err := row.Scan(&account.Address, &account.Metadata)

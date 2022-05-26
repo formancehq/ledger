@@ -56,7 +56,6 @@ var AllScopes = []string{
 	ScopesStatsRead,
 }
 
-// Routes -
 type Routes struct {
 	resolver              *ledger.Resolver
 	ledgerMiddleware      middlewares.LedgerMiddleware
@@ -72,7 +71,6 @@ type Routes struct {
 	useScopes             UseScopes
 }
 
-// NewRoutes -
 func NewRoutes(
 	globalMiddlewares []gin.HandlerFunc,
 	perLedgerMiddlewares []gin.HandlerFunc,
@@ -119,24 +117,27 @@ func (r *Routes) wrapWithScopes(handler gin.HandlerFunc, scopes ...string) gin.H
 	}
 }
 
-// Engine -
 func (r *Routes) Engine() *gin.Engine {
 	engine := gin.New()
 
-	// Default Middlewares
 	engine.Use(r.globalMiddlewares...)
 
 	engine.GET("/_health", r.healthController.Check)
 	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
 	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)
 
-	// API Routes
 	engine.GET("/_info", r.configController.GetInfo)
 
 	router := engine.Group("/:ledger", append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
 	{
 		// LedgerController
 		router.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
+
+		// AccountController
+		router.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
+		router.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
+		router.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
+		router.POST("/accounts/:address/metadata", r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
 
 		// TransactionController
 		router.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
@@ -146,12 +147,6 @@ func (r *Routes) Engine() *gin.Engine {
 		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/revert", r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
-
-		// AccountController
-		router.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-		router.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-		router.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
-		router.POST("/accounts/:address/metadata", r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
 
 		// MappingController
 		router.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
