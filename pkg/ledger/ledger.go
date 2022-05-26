@@ -45,41 +45,25 @@ func NewLedger(name string, store storage.Store, locker Locker, monitor Monitor)
 }
 
 func (l *Ledger) Close(ctx context.Context) error {
-	err := l.store.Close(ctx)
-	if err != nil {
+	if err := l.store.Close(ctx); err != nil {
 		return errors.Wrap(err, "closing store")
 	}
 	return nil
 }
 
 func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, []core.Log, error) {
-
-	timestamp := time.Now().UTC()
-
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "loading mapping")
 	}
-
-	contracts := make([]core.Contract, 0)
-	if mapping != nil {
-		contracts = append(contracts, mapping.Contracts...)
-	}
-	contracts = append(contracts, DefaultContracts...)
-
-	ret := make([]core.Transaction, 0)
-	aggregatedVolumes := core.AggregatedVolumes{}
 
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	accounts := make(map[string]core.Account, 0)
-	logs := make([]core.Log, 0)
-
-	nextTxId := uint64(0)
-	lastTx, err := l.store.LastTransaction(ctx)
+	var nextTxId uint64
+	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -87,20 +71,23 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 		nextTxId = lastTx.ID + 1
 	}
 
-	for i := range ts {
-		tx := core.Transaction{
-			TransactionData: ts[i],
-			ID:              nextTxId,
-			Timestamp:       timestamp.Format(time.RFC3339),
-		}
-		nextTxId++
+	txs := make([]core.Transaction, 0)
+	aggregatedVolumes := core.AggregatedVolumes{}
+	accounts := make(map[string]core.Account, 0)
+	logs := make([]core.Log, 0)
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
+	}
+	contracts = append(contracts, DefaultContracts...)
 
-		if len(ts[i].Postings) == 0 {
+	for i, t := range ts {
+		if len(t.Postings) == 0 {
 			return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
 		rf := core.AggregatedVolumes{}
-		for _, p := range ts[i].Postings {
+		for _, p := range t.Postings {
 			if p.Amount < 0 {
 				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
@@ -133,9 +120,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 		}
 
 		for addr := range rf {
-
-			_, ok := aggregatedVolumes[addr]
-			if !ok {
+			if _, ok := aggregatedVolumes[addr]; !ok {
 				aggregatedVolumes[addr], err = l.store.AggregateVolumes(ctx, addr)
 				if err != nil {
 					return nil, nil, nil, err
@@ -144,10 +129,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 
 			for asset, volumes := range rf[addr] {
 				if _, ok := aggregatedVolumes[addr][asset]; !ok {
-					aggregatedVolumes[addr][asset] = map[string]int64{
-						"input":  0,
-						"output": 0,
-					}
+					aggregatedVolumes[addr][asset] = map[string]int64{"input": 0, "output": 0}
 				}
 				if addr != "world" {
 					expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
@@ -162,14 +144,13 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 								accounts[addr] = account
 							}
 
-							ok = contract.Expr.Eval(core.EvalContext{
+							if ok = contract.Expr.Eval(core.EvalContext{
 								Variables: map[string]interface{}{
 									"balance": float64(expectedBalance),
 								},
 								Metadata: account.Metadata,
 								Asset:    asset,
-							})
-							if !ok {
+							}); !ok {
 								return nil, nil, nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 							}
 							break
@@ -180,13 +161,20 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 				aggregatedVolumes[addr][asset]["output"] += volumes["output"]
 			}
 		}
-		ret = append(ret, tx)
+
+		tx := core.Transaction{
+			TransactionData: t,
+			ID:              nextTxId,
+			Timestamp:       time.Now().UTC().Format(time.RFC3339),
+		}
+		txs = append(txs, tx)
 		newLog := core.NewTransactionLog(lastLog, tx)
 		lastLog = &newLog
 		logs = append(logs, newLog)
+		nextTxId++
 	}
 
-	return aggregatedVolumes, ret, logs, nil
+	return aggregatedVolumes, txs, logs, nil
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, error) {
@@ -201,8 +189,7 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.Ag
 		return nil, nil, err
 	}
 
-	err = l.store.AppendLog(ctx, logs...)
-	if err != nil {
+	if err = l.store.AppendLog(ctx, logs...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, nil, NewConflictError()
@@ -223,54 +210,22 @@ func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (
 	}
 	defer unlock(ctx)
 
-	balances, ret, _, err := l.processTx(ctx, ts)
-	return balances, ret, err
+	volumes, txs, _, err := l.processTx(ctx, ts)
+	return volumes, txs, err
 }
 
-// TODO: This is only used for testing
-// I think we should remove this and all related code
-// We don't need any testing logic in the business code.
-func (l *Ledger) GetLastTransaction(ctx context.Context) (core.Transaction, error) {
-	var tx core.Transaction
-
-	q := query.New()
-	q.Modify(query.Limit(1))
-
-	c, err := l.store.FindTransactions(ctx, q)
-
-	if err != nil {
-		return tx, err
-	}
-
-	txs := (c.Data).([]core.Transaction)
-
-	if len(txs) == 0 {
-		return tx, nil
-	}
-
-	tx = txs[0]
-
-	return tx, nil
-}
-
-func (l *Ledger) FindTransactions(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
+func (l *Ledger) GetTransactions(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
-	c, err := l.store.FindTransactions(ctx, q)
-
-	return c, err
+	return l.store.GetTransactions(ctx, q)
 }
 
 func (l *Ledger) CountTransactions(ctx context.Context, m ...query.Modifier) (uint64, error) {
 	q := query.New(m)
-	c, err := l.store.CountTransactions(ctx, q)
-
-	return c, err
+	return l.store.CountTransactions(ctx, q)
 }
 
 func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
-	tx, err := l.store.GetTransaction(ctx, id)
-
-	return tx, err
+	return l.store.GetTransaction(ctx, id)
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
@@ -323,18 +278,12 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 
 func (l *Ledger) CountAccounts(ctx context.Context, m ...query.Modifier) (uint64, error) {
 	q := query.New(m)
-
-	count, err := l.store.CountAccounts(ctx, q)
-
-	return count, err
+	return l.store.CountAccounts(ctx, q)
 }
 
-func (l *Ledger) FindAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
+func (l *Ledger) GetAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor, error) {
 	q := query.New(m)
-
-	c, err := l.store.FindAccounts(ctx, q)
-
-	return c, err
+	return l.store.GetAccounts(ctx, q)
 }
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
@@ -344,7 +293,6 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 	}
 
 	volumes, err := l.store.AggregateVolumes(ctx, address)
-
 	if err != nil {
 		return account, err
 	}

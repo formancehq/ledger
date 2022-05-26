@@ -7,12 +7,10 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-// LedgerMiddleware struct
 type LedgerMiddleware struct {
 	resolver *ledger.Resolver
 }
 
-// NewLedgerMiddleware -
 func NewLedgerMiddleware(
 	resolver *ledger.Resolver,
 ) LedgerMiddleware {
@@ -21,7 +19,6 @@ func NewLedgerMiddleware(
 	}
 }
 
-// LedgerMiddleware -
 func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("ledger")

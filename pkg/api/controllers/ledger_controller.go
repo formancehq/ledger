@@ -7,12 +7,10 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-// LedgerController -
 type LedgerController struct {
 	BaseController
 }
 
-// NewLedgerController -
 func NewLedgerController() LedgerController {
 	return LedgerController{}
 }

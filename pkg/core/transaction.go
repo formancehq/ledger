@@ -7,7 +7,6 @@ import (
 	json "github.com/gibson042/canonicaljson-go"
 )
 
-// Transactions struct
 type Transactions struct {
 	Transactions []TransactionData `json:"transactions" binding:"required,dive"`
 }

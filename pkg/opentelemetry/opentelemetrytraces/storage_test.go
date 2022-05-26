@@ -40,16 +40,16 @@ func TestStore(t *testing.T) {
 			fn:   testAggregateVolumes,
 		},
 		{
-			name: "FindAccounts",
-			fn:   testFindAccounts,
+			name: "GetAccounts",
+			fn:   testGetAccounts,
 		},
 		{
 			name: "CountTransactions",
 			fn:   testCountTransactions,
 		},
 		{
-			name: "FindTransactions",
-			fn:   testFindTransactions,
+			name: "GetTransactions",
+			fn:   testGetTransactions,
 		},
 		{
 			name: "GetTransaction",
@@ -93,8 +93,8 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 	assert.NoError(t, err)
 }
 
-func testFindAccounts(t *testing.T, store storage.Store) {
-	_, err := store.FindAccounts(context.Background(), query.Query{
+func testGetAccounts(t *testing.T, store storage.Store) {
+	_, err := store.GetAccounts(context.Background(), query.Query{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
@@ -105,8 +105,8 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 	assert.NoError(t, err)
 }
 
-func testFindTransactions(t *testing.T, store storage.Store) {
-	_, err := store.FindTransactions(context.Background(), query.Query{
+func testGetTransactions(t *testing.T, store storage.Store) {
+	_, err := store.GetTransactions(context.Background(), query.Query{
 		Limit: 1,
 	})
 	assert.NoError(t, err)

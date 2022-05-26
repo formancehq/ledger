@@ -12,23 +12,23 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-// TransactionController -
 type TransactionController struct {
 	BaseController
 }
 
-// NewTransactionController -
 func NewTransactionController() TransactionController {
 	return TransactionController{}
 }
 
 func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
-		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
 		query.Account(c.Query("account")),
+		query.Source(c.Query("source")),
+		query.Destination(c.Query("destination")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -39,7 +39,8 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	cursor, err := l.(*ledger.Ledger).FindTransactions(
+
+	cursor, err := l.(*ledger.Ledger).GetTransactions(
 		c.Request.Context(),
 		query.After(c.Query("after")),
 		query.Reference(c.Query("reference")),
@@ -51,11 +52,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		cursor,
-	)
+	ctl.response(c, http.StatusOK, cursor)
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -65,7 +62,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	var t core.TransactionData
-	if err := c.ShouldBind(&t); err != nil {
+	if err := c.ShouldBindJSON(&t); err != nil {
 		panic(err)
 	}
 
@@ -79,15 +76,18 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	status := http.StatusOK
 	if preview {
 		status = http.StatusNotModified
 	}
+
 	ctl.response(c, status, result)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -108,6 +108,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
+
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -126,7 +127,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var m core.Metadata
-	if err := c.ShouldBind(&m); err != nil {
+	if err := c.ShouldBindJSON(&m); err != nil {
 		panic(err)
 	}
 
@@ -147,13 +148,13 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var transactions core.Transactions
-	if err := c.ShouldBindJSON(&transactions); err != nil {
+	var t core.Transactions
+	if err := c.ShouldBindJSON(&t); err != nil {
 		ResponseError(c, err)
 		return
 	}
 
-	_, txs, err := l.(*ledger.Ledger).Commit(c.Request.Context(), transactions.Transactions)
+	_, txs, err := l.(*ledger.Ledger).Commit(c.Request.Context(), t.Transactions)
 	if err != nil {
 		ResponseError(c, err)
 		return
