@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
@@ -40,6 +41,22 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var from, to time.Time
+	var err error
+	if c.Query("from") != "" {
+		from, err = time.Parse(time.RFC3339Nano, c.Query("from"))
+		if err != nil {
+			ResponseError(c, err)
+		}
+	}
+
+	if c.Query("to") != "" {
+		to, err = time.Parse(time.RFC3339Nano, c.Query("to"))
+		if err != nil {
+			ResponseError(c, err)
+		}
+	}
+
 	cursor, err := l.(*ledger.Ledger).GetTransactions(
 		c.Request.Context(),
 		query.After(c.Query("after")),
@@ -47,6 +64,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		query.Account(c.Query("account")),
 		query.Source(c.Query("source")),
 		query.Destination(c.Query("destination")),
+		query.From(from.UTC()),
+		query.To(to.UTC()),
 	)
 	if err != nil {
 		ResponseError(c, err)

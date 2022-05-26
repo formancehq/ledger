@@ -359,6 +359,8 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
+	startTime := time.Now().Truncate(time.Second).UTC()
+
 	tx1 := core.Transaction{
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
@@ -371,7 +373,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx1",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: startTime.Add(-3 * time.Hour).Format(time.RFC3339),
 	}
 	tx2 := core.Transaction{
 		ID: 1,
@@ -386,7 +388,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx2",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: startTime.Add(-2 * time.Hour).Format(time.RFC3339),
 	}
 	tx3 := core.Transaction{
 		ID: 2,
@@ -401,7 +403,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx3",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: startTime.Add(-1 * time.Hour).Format(time.RFC3339),
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
@@ -455,6 +457,17 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 10, cursor.PageSize)
+	assert.Len(t, cursor.Data, 1)
+	assert.False(t, cursor.HasMore)
+
+	cursor, err = store.GetTransactions(context.Background(), query.Query{
+		From:  startTime.Add(-2 * time.Hour),
+		To:    startTime.Add(-1 * time.Hour),
+		Limit: 10,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 10, cursor.PageSize)
+	// Should have only tx2, as From is inclusive and To exclusive.
 	assert.Len(t, cursor.Data, 1)
 	assert.False(t, cursor.HasMore)
 }

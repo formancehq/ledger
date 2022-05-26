@@ -40,7 +40,13 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
 	if q.After != "" {
-		sb.Where(sb.LessThan("t.id", q.After))
+		sb.Where(sb.L("t.id", q.After))
+	}
+	if !q.From.IsZero() {
+		sb.Where(sb.GE("t.timestamp", q.From.Format(time.RFC3339)))
+	}
+	if !q.To.IsZero() {
+		sb.Where(sb.L("t.timestamp", q.To.Format(time.RFC3339)))
 	}
 	sb.Limit(q.Limit)
 

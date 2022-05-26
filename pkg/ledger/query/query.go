@@ -1,5 +1,7 @@
 package query
 
+import "time"
+
 const (
 	DefaultLimit = 15
 )
@@ -7,6 +9,8 @@ const (
 type Query struct {
 	Limit  int
 	After  string
+	From   time.Time
+	To     time.Time
 	Params map[string]interface{}
 }
 
@@ -54,6 +58,18 @@ func Limit(n int) func(*Query) {
 func After(v string) func(*Query) {
 	return func(q *Query) {
 		q.After = v
+	}
+}
+
+func From(v time.Time) func(*Query) {
+	return func(q *Query) {
+		q.From = v
+	}
+}
+
+func To(v time.Time) func(*Query) {
+	return func(q *Query) {
+		q.To = v
 	}
 }
 
