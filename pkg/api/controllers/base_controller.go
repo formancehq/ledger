@@ -4,11 +4,9 @@ import (
 	"context"
 	"net/http"
 	"reflect"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -54,8 +52,6 @@ func coreErrorToErrorCode(err error) (int, string) {
 	case ledger.IsInsufficientFundError(err):
 		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
-		return http.StatusBadRequest, ErrValidation
-	case strings.HasPrefix(err.Error(), querystrings.ErrInvalidQueryValue):
 		return http.StatusBadRequest, ErrValidation
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled

@@ -1,17 +1,17 @@
 package query
 
-import "time"
+import (
+	"time"
+)
 
 const (
 	DefaultLimit = 15
 )
 
 type Query struct {
-	Limit     int
-	After     string
-	StartTime time.Time
-	EndTime   time.Time
-	Params    map[string]interface{}
+	Limit  int
+	After  string
+	Params map[string]interface{}
 }
 
 type Modifier func(*Query)
@@ -63,13 +63,13 @@ func After(v string) func(*Query) {
 
 func StartTime(v time.Time) func(*Query) {
 	return func(q *Query) {
-		q.StartTime = v
+		q.Params["start_time"] = v
 	}
 }
 
 func EndTime(v time.Time) func(*Query) {
 	return func(q *Query) {
-		q.EndTime = v
+		q.Params["end_time"] = v
 	}
 }
 

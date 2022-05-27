@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -44,20 +43,18 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 
 	var startTime, endTime time.Time
 	var err error
-	if c.Query(querystrings.KeyStartTime) != "" {
-		startTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyStartTime))
+	if c.Query("start_time") != "" {
+		startTime, err = time.Parse(time.RFC3339, c.Query("start_time"))
 		if err != nil {
-			ResponseError(c, fmt.Errorf("%s %q: %w",
-				querystrings.ErrInvalidQueryValue, querystrings.KeyStartTime, err))
+			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
 			return
 		}
 	}
 
-	if c.Query(querystrings.KeyEndTime) != "" {
-		endTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyEndTime))
+	if c.Query("end_time") != "" {
+		endTime, err = time.Parse(time.RFC3339, c.Query("end_time"))
 		if err != nil {
-			ResponseError(c, fmt.Errorf("%s %q: %w",
-				querystrings.ErrInvalidQueryValue, querystrings.KeyEndTime, err))
+			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
 			return
 		}
 	}
@@ -69,8 +66,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		query.Account(c.Query("account")),
 		query.Source(c.Query("source")),
 		query.Destination(c.Query("destination")),
-		query.StartTime(startTime.UTC()),
-		query.EndTime(endTime.UTC()),
+		query.StartTime(startTime),
+		query.EndTime(endTime),
 	)
 	if err != nil {
 		ResponseError(c, err)

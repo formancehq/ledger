@@ -13,7 +13,6 @@ import (
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
-	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -358,8 +357,8 @@ func TestGetTransactions(t *testing.T) {
 				assert.False(t, resp.Cursor.HasMore)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					querystrings.KeyStartTime: []string{tx1Timestamp},
-					querystrings.KeyEndTime:   []string{tx2Timestamp},
+					"start_time": []string{tx1Timestamp},
+					"end_time":   []string{tx2Timestamp},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp = getTransactionsResponse{}
@@ -368,7 +367,7 @@ func TestGetTransactions(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					querystrings.KeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+					"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp = getTransactionsResponse{}
@@ -377,7 +376,7 @@ func TestGetTransactions(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 0)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					querystrings.KeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+					"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp = getTransactionsResponse{}
@@ -386,12 +385,12 @@ func TestGetTransactions(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 3)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					querystrings.KeyStartTime: []string{"invalid time"},
+					"start_time": []string{"invalid time"},
 				})
 				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					querystrings.KeyEndTime: []string{"invalid time"},
+					"end_time": []string{"invalid time"},
 				})
 				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
