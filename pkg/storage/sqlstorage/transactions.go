@@ -42,11 +42,11 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 	if q.After != "" {
 		sb.Where(sb.L("t.id", q.After))
 	}
-	if !q.From.IsZero() {
-		sb.Where(sb.GE("t.timestamp", q.From.Format(time.RFC3339)))
+	if !q.StartTime.IsZero() {
+		sb.Where(sb.GE("t.timestamp", q.StartTime.Format(time.RFC3339)))
 	}
-	if !q.To.IsZero() {
-		sb.Where(sb.L("t.timestamp", q.To.Format(time.RFC3339)))
+	if !q.EndTime.IsZero() {
+		sb.Where(sb.L("t.timestamp", q.EndTime.Format(time.RFC3339)))
 	}
 	sb.Limit(q.Limit)
 

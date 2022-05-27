@@ -7,11 +7,11 @@ const (
 )
 
 type Query struct {
-	Limit  int
-	After  string
-	From   time.Time
-	To     time.Time
-	Params map[string]interface{}
+	Limit     int
+	After     string
+	StartTime time.Time
+	EndTime   time.Time
+	Params    map[string]interface{}
 }
 
 type Modifier func(*Query)
@@ -61,15 +61,15 @@ func After(v string) func(*Query) {
 	}
 }
 
-func From(v time.Time) func(*Query) {
+func StartTime(v time.Time) func(*Query) {
 	return func(q *Query) {
-		q.From = v
+		q.StartTime = v
 	}
 }
 
-func To(v time.Time) func(*Query) {
+func EndTime(v time.Time) func(*Query) {
 	return func(q *Query) {
-		q.To = v
+		q.EndTime = v
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -324,14 +325,15 @@ func TestGetTransactions(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp := getTransactionsResponse{}
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 2 transactions: txid 1 and txid 0
+				// all transactions
 				assert.Len(t, resp.Cursor.Data, 3)
 				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(2))
-				tx2Timestamp := resp.Cursor.Data[0].Timestamp
 				assert.Equal(t, resp.Cursor.Data[1].ID, uint64(1))
-				tx1Timestamp := resp.Cursor.Data[1].Timestamp
 				assert.Equal(t, resp.Cursor.Data[2].ID, uint64(0))
 				assert.False(t, resp.Cursor.HasMore)
+
+				tx1Timestamp := resp.Cursor.Data[1].Timestamp
+				tx2Timestamp := resp.Cursor.Data[0].Timestamp
 
 				rsp = internal.GetTransactions(api, url.Values{
 					"after": []string{"1"},
@@ -356,8 +358,8 @@ func TestGetTransactions(t *testing.T) {
 				assert.False(t, resp.Cursor.HasMore)
 
 				rsp = internal.GetTransactions(api, url.Values{
-					"from": []string{tx1Timestamp},
-					"to":   []string{tx2Timestamp},
+					querystrings.KeyStartTime: []string{tx1Timestamp},
+					querystrings.KeyEndTime:   []string{tx2Timestamp},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp = getTransactionsResponse{}
@@ -365,6 +367,23 @@ func TestGetTransactions(t *testing.T) {
 				// 1 transaction: txid 1
 				assert.Len(t, resp.Cursor.Data, 1)
 
+				rsp = internal.GetTransactions(api, url.Values{
+					querystrings.KeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// no transaction
+				assert.Len(t, resp.Cursor.Data, 0)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					querystrings.KeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// all transactions
+				assert.Len(t, resp.Cursor.Data, 3)
 				return nil
 			},
 		})

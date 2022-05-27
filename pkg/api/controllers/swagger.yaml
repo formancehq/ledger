@@ -379,14 +379,19 @@ paths:
           schema:
             type: string
             example: users:001
-        - name: from
+        - name: start_time
           in: query
-          description: Filter transactions that occurred after a RFC3339 timestamp.
+          description: |-
+            Filter transactions that occurred after this timestamp.
+            The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).
           schema:
             type: string
-        - name: to
+            example:
+        - name: end_time
           in: query
-          description: Filter transactions that occurred before a RFC3339 timestamp.
+          description: |-
+            Filter transactions that occurred before this timestamp.
+            The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
           schema:
             type: string
       responses:

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
@@ -41,17 +42,17 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var from, to time.Time
+	var startTime, endTime time.Time
 	var err error
-	if c.Query("from") != "" {
-		from, err = time.Parse(time.RFC3339Nano, c.Query("from"))
+	if c.Query(querystrings.KeyStartTime) != "" {
+		startTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyStartTime))
 		if err != nil {
 			ResponseError(c, err)
 		}
 	}
 
-	if c.Query("to") != "" {
-		to, err = time.Parse(time.RFC3339Nano, c.Query("to"))
+	if c.Query(querystrings.KeyEndTime) != "" {
+		endTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyEndTime))
 		if err != nil {
 			ResponseError(c, err)
 		}
@@ -64,8 +65,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		query.Account(c.Query("account")),
 		query.Source(c.Query("source")),
 		query.Destination(c.Query("destination")),
-		query.From(from.UTC()),
-		query.To(to.UTC()),
+		query.StartTime(startTime.UTC()),
+		query.EndTime(endTime.UTC()),
 	)
 	if err != nil {
 		ResponseError(c, err)
