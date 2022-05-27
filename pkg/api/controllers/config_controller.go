@@ -11,32 +11,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigInfo struct
 type ConfigInfo struct {
 	Server  string      `json:"server"`
 	Version interface{} `json:"version"`
 	Config  *Config     `json:"config"`
 }
 
-// Config struct
 type Config struct {
 	LedgerStorage *LedgerStorage `json:"storage"`
 }
 
-// LedgerStorage struct
 type LedgerStorage struct {
 	Driver  string   `json:"driver"`
 	Ledgers []string `json:"ledgers"`
 }
 
-// ConfigController -
 type ConfigController struct {
 	BaseController
 	Version       string
 	StorageDriver storage.Driver
 }
 
-// NewConfigController -
 func NewConfigController(version string, storageDriver storage.Driver) ConfigController {
 	return ConfigController{
 		Version:       version,

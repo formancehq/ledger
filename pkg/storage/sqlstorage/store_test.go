@@ -58,16 +58,16 @@ func TestStore(t *testing.T) {
 			fn:   testAggregateVolumes,
 		},
 		{
-			name: "FindAccounts",
-			fn:   testFindAccounts,
+			name: "GetAccounts",
+			fn:   testGetAccounts,
 		},
 		{
 			name: "CountTransactions",
 			fn:   testCountTransactions,
 		},
 		{
-			name: "FindTransactions",
-			fn:   testFindTransactions,
+			name: "GetTransactions",
+			fn:   testGetTransactions,
 		},
 		{
 			name: "GetTransaction",
@@ -223,7 +223,7 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	assert.EqualValues(t, 0, volumes["USD"]["output"])
 }
 
-func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
+func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	account1 := core.NewSetMetadataLog(nil, core.SetMetadata{
 		TargetType: core.MetaTargetTypeAccount,
 		TargetID:   "world",
@@ -258,14 +258,14 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), account1, account2, account3, account4)
 	assert.NoError(t, err)
 
-	accounts, err := store.FindAccounts(context.Background(), query.Query{
+	accounts, err := store.GetAccounts(context.Background(), query.Query{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
 	assert.True(t, accounts.HasMore)
 	assert.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 1,
 		After: accounts.Data.([]core.Account)[0].Address,
 	})
@@ -273,7 +273,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.True(t, accounts.HasMore)
 	assert.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"address": ".*der.*",
@@ -284,7 +284,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 2)
 	assert.Equal(t, 10, accounts.PageSize)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -296,7 +296,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -308,7 +308,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -320,7 +320,7 @@ func testFindAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.FindAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -358,7 +358,7 @@ func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
 	assert.EqualValues(t, 1, countTransactions)
 }
 
-func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
+func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 	tx1 := core.Transaction{
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
@@ -409,14 +409,14 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), log1, log2, log3)
 	assert.NoError(t, err)
 
-	cursor, err := store.FindTransactions(context.Background(), query.Query{
+	cursor, err := store.GetTransactions(context.Background(), query.Query{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, cursor.PageSize)
 	assert.True(t, cursor.HasMore)
 
-	cursor, err = store.FindTransactions(context.Background(), query.Query{
+	cursor, err = store.GetTransactions(context.Background(), query.Query{
 		After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
 		Limit: 1,
 	})
@@ -424,7 +424,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	assert.Equal(t, 1, cursor.PageSize)
 	assert.True(t, cursor.HasMore)
 
-	cursor, err = store.FindTransactions(context.Background(), query.Query{
+	cursor, err = store.GetTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
 			"account":   "world",
 			"reference": "tx1",
@@ -436,7 +436,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, cursor.Data, 1)
 	assert.False(t, cursor.HasMore)
 
-	cursor, err = store.FindTransactions(context.Background(), query.Query{
+	cursor, err = store.GetTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
 			"source": "central_bank",
 		},
@@ -447,7 +447,7 @@ func testFindTransactions(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, cursor.Data, 1)
 	assert.False(t, cursor.HasMore)
 
-	cursor, err = store.FindTransactions(context.Background(), query.Query{
+	cursor, err = store.GetTransactions(context.Background(), query.Query{
 		Params: map[string]interface{}{
 			"destination": "users:1",
 		},

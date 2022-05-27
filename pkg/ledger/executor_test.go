@@ -338,10 +338,10 @@ func TestSetTxMeta(t *testing.T) {
 
 		assertBalance(t, l, "user:042", "COIN", 10)
 
-		tx, err := l.GetLastTransaction(context.Background())
+		last, err := l.store.GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
-		value, err := machine.NewValueFromTypedJSON(tx.Metadata["test_meta"])
+		value, err := machine.NewValueFromTypedJSON(last.Metadata["test_meta"])
 		require.NoError(t, err)
 
 		assert.True(t, machine.ValueEquals(*value, machine.Monetary{

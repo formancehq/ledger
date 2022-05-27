@@ -34,10 +34,8 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 	return sb
 }
 
-func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
-
-	c := sharedapi.Cursor{}
 
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
@@ -49,7 +47,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return c, s.error(err)
+		return sharedapi.Cursor{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -57,7 +55,7 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		}
 	}(rows)
 
-	transactions := make([]core.Transaction, 0)
+	txs := make([]core.Transaction, 0)
 
 	for rows.Next() {
 		var (
@@ -66,15 +64,14 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 		)
 
 		tx := core.Transaction{}
-		err := rows.Scan(
+		if err := rows.Scan(
 			&tx.ID,
 			&ts,
 			&ref,
 			&tx.Metadata,
 			&tx.Postings,
-		)
-		if err != nil {
-			return c, err
+		); err != nil {
+			return sharedapi.Cursor{}, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
@@ -85,80 +82,71 @@ func (s *Store) findTransactions(ctx context.Context, exec executor, q query.Que
 			return sharedapi.Cursor{}, err
 		}
 		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
-		transactions = append(transactions, tx)
+		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
 		return sharedapi.Cursor{}, s.error(err)
 	}
 
-	c.PageSize = q.Limit - 1
-	c.HasMore = len(transactions) == q.Limit
-	if c.HasMore {
-		transactions = transactions[:len(transactions)-1]
+	hasMore := false
+	if len(txs) == q.Limit {
+		hasMore = true
+		txs = txs[:len(txs)-1]
 	}
-	c.Data = transactions
 
-	return c, nil
+	return sharedapi.Cursor{
+		PageSize: q.Limit - 1,
+		HasMore:  hasMore,
+		Data:     txs,
+	}, nil
 }
 
-func (s *Store) FindTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return s.findTransactions(ctx, s.schema, q)
+func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+	return s.getTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (tx core.Transaction, err error) {
+func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select(
-		"t.id",
-		"t.timestamp",
-		"t.reference",
-		"t.metadata",
-		"t.postings",
-	)
-	sb.From(sb.As(s.schema.Table("transactions"), "t"))
-	sb.Where(sb.Equal("t.id", txid))
-	sb.OrderBy("t.id DESC")
+	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.From(s.schema.Table("transactions"))
+	sb.Where(sb.Equal("id", txid))
+	sb.OrderBy("id DESC")
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sqlq, args...)
+	row := exec.QueryRowContext(ctx, sqlq, args...)
+	if row.Err() != nil {
+		return core.Transaction{}, s.error(row.Err())
+	}
+
+	var (
+		ref sql.NullString
+		ts  sql.NullString
+		tx  core.Transaction
+	)
+
+	err := row.Scan(
+		&tx.ID,
+		&ts,
+		&ref,
+		&tx.Metadata,
+		&tx.Postings,
+	)
 	if err != nil {
-		return tx, s.error(err)
+		if err == sql.ErrNoRows {
+			return core.Transaction{}, nil
+		}
+		return core.Transaction{}, err
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
 
-	for rows.Next() {
-		var (
-			ref sql.NullString
-			ts  sql.NullString
-		)
-
-		err := rows.Scan(
-			&tx.ID,
-			&ts,
-			&ref,
-			&tx.Metadata,
-			&tx.Postings,
-		)
-		if err != nil {
-			return tx, err
-		}
-
-		if tx.Metadata == nil {
-			tx.Metadata = core.Metadata{}
-		}
-		t, err := time.Parse(time.RFC3339, ts.String)
-		if err != nil {
-			return tx, err
-		}
-		tx.Timestamp = t.UTC().Format(time.RFC3339)
-		tx.Reference = ref.String
+	if tx.Metadata == nil {
+		tx.Metadata = core.Metadata{}
 	}
-	if rows.Err() != nil {
-		return tx, s.error(rows.Err())
+	t, err := time.Parse(time.RFC3339, ts.String)
+	if err != nil {
+		return core.Transaction{}, err
 	}
+	tx.Timestamp = t.UTC().Format(time.RFC3339)
+	tx.Reference = ref.String
 
 	return tx, nil
 }
@@ -167,7 +155,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transa
 	return s.getTransaction(ctx, s.schema, txId)
 }
 
-func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
+func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings")
 	sb.From(s.schema.Table("transactions"))
@@ -179,12 +167,13 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 	if row.Err() != nil {
 		return nil, s.error(row.Err())
 	}
+
 	var (
 		ref sql.NullString
 		ts  sql.NullString
+		tx  core.Transaction
 	)
 
-	tx := core.Transaction{}
 	err := row.Scan(
 		&tx.ID,
 		&ts,
@@ -199,9 +188,19 @@ func (s *Store) lastTransaction(ctx context.Context, exec executor) (*core.Trans
 		return nil, err
 	}
 
+	if tx.Metadata == nil {
+		tx.Metadata = core.Metadata{}
+	}
+	t, err := time.Parse(time.RFC3339, ts.String)
+	if err != nil {
+		return nil, err
+	}
+	tx.Timestamp = t.UTC().Format(time.RFC3339)
+	tx.Reference = ref.String
+
 	return &tx, nil
 }
 
-func (s *Store) LastTransaction(ctx context.Context) (*core.Transaction, error) {
-	return s.lastTransaction(ctx, s.schema)
+func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
+	return s.getLastTransaction(ctx, s.schema)
 }

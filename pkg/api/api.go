@@ -11,7 +11,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// API struct
 type API struct {
 	handler *gin.Engine
 }
@@ -20,10 +19,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.handler.ServeHTTP(w, r)
 }
 
-// NewAPI
-func NewAPI(
-	routes *routes.Routes,
-) *API {
+func NewAPI(routes *routes.Routes) *API {
 	gin.SetMode(gin.ReleaseMode)
 	h := &API{
 		handler: routes.Engine(),

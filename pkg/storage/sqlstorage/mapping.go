@@ -13,44 +13,26 @@ import (
 const mappingId = "0000"
 
 func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, error) {
-
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.
-		Select("mapping").
-		From(s.schema.Table("mapping"))
+	sb.Select("mapping").From(s.schema.Table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-
-	rows, err := exec.QueryContext(ctx, sqlq, args...)
-	if err != nil {
-		return nil, s.error(err)
-	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
-
-	if !rows.Next() {
-		if rows.Err() != nil {
-			return nil, s.error(rows.Err())
-		}
-		return nil, nil
-	}
+	row := exec.QueryRowContext(ctx, sqlq, args...)
 
 	var mappingString string
-	err = rows.Scan(&mappingString)
-	if err != nil {
+	if err := row.Scan(&mappingString); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 
-	m := &core.Mapping{}
-	err = json.Unmarshal([]byte(mappingString), m)
-	if err != nil {
+	m := core.Mapping{}
+	if err := json.Unmarshal([]byte(mappingString), &m); err != nil {
 		return nil, err
 	}
 
-	return m, nil
+	return &m, nil
 }
 
 func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
@@ -58,7 +40,6 @@ func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 }
 
 func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
-
 	data, err := json.Marshal(mapping)
 	if err != nil {
 		return err

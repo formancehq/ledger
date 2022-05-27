@@ -41,13 +41,13 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 	return err
 }
 
-func (o *openTelemetryStorage) LastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
-	handlingErr := o.handle(ctx, "LastTransaction", func(ctx context.Context) error {
-		ret, err = o.underlying.LastTransaction(ctx)
+func (o *openTelemetryStorage) GetLastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
+	handlingErr := o.handle(ctx, "GetLastTransaction", func(ctx context.Context) error {
+		ret, err = o.underlying.GetLastTransaction(ctx)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry LastTransaction: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetLastTransaction: %s", handlingErr)
 	}
 	return
 }
@@ -96,13 +96,13 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Qu
 	return
 }
 
-func (o *openTelemetryStorage) FindTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
-	handlingErr := o.handle(ctx, "FindTransactions", func(ctx context.Context) error {
-		q, err = o.underlying.FindTransactions(ctx, query)
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
+	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
+		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry FindTransactions: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetTransactions: %s", handlingErr)
 	}
 	return
 }
@@ -151,13 +151,13 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Query)
 	return
 }
 
-func (o *openTelemetryStorage) FindAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
-	handlingErr := o.handle(ctx, "FindAccounts", func(ctx context.Context) error {
-		q, err = o.underlying.FindAccounts(ctx, query)
+func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
+	handlingErr := o.handle(ctx, "GetAccounts", func(ctx context.Context) error {
+		q, err = o.underlying.GetAccounts(ctx, query)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry FindAccounts: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetAccounts: %s", handlingErr)
 	}
 	return
 }

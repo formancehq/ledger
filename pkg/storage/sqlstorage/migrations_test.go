@@ -264,7 +264,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		txs, err := store.FindTransactions(context.Background(), query.Query{
+		txs, err := store.GetTransactions(context.Background(), query.Query{
 			Limit: 100,
 		})
 		if !assert.NoError(t, err) {
