@@ -384,6 +384,17 @@ func TestGetTransactions(t *testing.T) {
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
 				// all transactions
 				assert.Len(t, resp.Cursor.Data, 3)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					querystrings.KeyStartTime: []string{"invalid time"},
+				})
+				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					querystrings.KeyEndTime: []string{"invalid time"},
+				})
+				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
 				return nil
 			},
 		})

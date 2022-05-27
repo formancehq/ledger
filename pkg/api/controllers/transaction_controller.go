@@ -47,14 +47,18 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	if c.Query(querystrings.KeyStartTime) != "" {
 		startTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyStartTime))
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, fmt.Errorf("%s %q: %w",
+				querystrings.ErrInvalidQueryValue, querystrings.KeyStartTime, err))
+			return
 		}
 	}
 
 	if c.Query(querystrings.KeyEndTime) != "" {
 		endTime, err = time.Parse(time.RFC3339, c.Query(querystrings.KeyEndTime))
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, fmt.Errorf("%s %q: %w",
+				querystrings.ErrInvalidQueryValue, querystrings.KeyEndTime, err))
+			return
 		}
 	}
 

@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"context"
+	"github.com/numary/ledger/pkg/api/controllers/querystrings"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
@@ -53,6 +55,8 @@ func coreErrorToErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
 		return http.StatusBadRequest, ErrValidation
+	case strings.HasPrefix(err.Error(), querystrings.ErrInvalidQueryValue):
+		return http.StatusBadRequest, ErrValidation
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled
 	case storage.IsError(err):
@@ -76,7 +80,7 @@ func ResponseError(c *gin.Context, err error) {
 			ErrorCode:    code,
 			ErrorMessage: err.Error(),
 		})
-		return
+	} else {
+		c.AbortWithStatus(status)
 	}
-	c.AbortWithStatus(status)
 }
