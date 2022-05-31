@@ -92,10 +92,10 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 	return assert.NoError(t, err)
 }
 
-/** Postgres and SQLite doesn't have the same behavior regardings json processing
+/** Postgres and SQLite doesn't have the same behavior regarding json processing
 Postgres will clean the json and keep a space after semicolons.
 Sqlite will clean the json and minify it.
-So we can't directy compare metadata.
+So we can't directly compare metadata.
 compareMetadata convert metadata to map[string]interface{} which can be compared.
 */
 func compareMetadata(t *testing.T, m1, m2 core.Metadata) bool {
@@ -455,7 +455,7 @@ func TestMigrates(t *testing.T) {
 		sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 	}
 
-	driver, closeFunc, err := ledgertesting.Driver()
+	driver, closeFunc, err := ledgertesting.StorageDriver()
 	if !assert.NoError(t, err) {
 		return
 	}

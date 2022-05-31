@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -54,7 +55,7 @@ func (s *Store) Name() string {
 }
 
 func (s *Store) Initialize(ctx context.Context) (bool, error) {
-	sharedlogging.GetLogger(ctx).Debug("initializing schema")
+	sharedlogging.GetLogger(ctx).Debug("Initialize store")
 
 	migrationsDir := fmt.Sprintf("migrations/%s", strings.ToLower(s.schema.Flavor().String()))
 	entries, err := fs.ReadDir(MigrationsFs, migrationsDir)
@@ -62,17 +63,8 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return false, s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(tx)
-
 	modified := false
 	for _, m := range entries {
-
 		version := strings.TrimSuffix(m.Name(), ".sql")
 
 		sb := sqlbuilder.NewSelectBuilder()
@@ -80,22 +72,16 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		sb.From(s.schema.Table("migrations"))
 		sb.Where(sb.E("version", version))
 
+		// Does not use sql transaction because if the table does not exist, postgres will mark transaction as invalid
 		sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-		sharedlogging.GetLogger(ctx).Debug(sqlq, args)
-
-		// Does not use sql transaction because if the table does not exists, postgres will mark transaction as invalid
-		rows, err := s.schema.QueryContext(ctx, sqlq, args...)
-		if err == nil && rows.Next() {
-			if err := rows.Close(); err != nil {
-				return false, err
-			}
-			sharedlogging.GetLogger(ctx).Debugf("Version %s already up to date", m.Name())
-			continue
+		row := s.schema.QueryRowContext(ctx, sqlq, args...)
+		var v string
+		if err = row.Scan(&v); err != nil {
+			sharedlogging.GetLogger(ctx).Debugf("%s", err)
 		}
-		if rows != nil {
-			if err := rows.Close(); err != nil {
-				return false, err
-			}
+		if v != "" {
+			sharedlogging.GetLogger(ctx).Debugf("version %s already up to date", m.Name())
+			continue
 		}
 		modified = true
 
@@ -103,42 +89,59 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 
 		b, err := migrations.ReadFile(path.Join(migrationsDir, m.Name()))
 		if err != nil {
+			sharedlogging.GetLogger(ctx).Errorf("%s", err)
 			return false, err
 		}
 
 		plain := strings.ReplaceAll(string(b), "VAR_LEDGER_NAME", s.schema.Name())
+		r := regexp.MustCompile(`[\n\t\s]+`)
+		plain = r.ReplaceAllString(plain, " ")
 
-		for i, statement := range strings.Split(plain, "--statement") {
-			sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
-			_, err = tx.ExecContext(ctx, statement)
-			if err != nil {
-				err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
-				sharedlogging.GetLogger(ctx).Errorf("%s", err)
-				return false, err
+		tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
+		if err != nil {
+			return false, s.error(err)
+		}
+
+		for i, statement := range strings.Split(plain, "--statement ") {
+			if statement != "" {
+				sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
+				if _, err = tx.ExecContext(ctx, statement); err != nil {
+					err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
+					if rbErr := tx.Rollback(); rbErr != nil {
+						err = errors.Wrapf(s.error(err), "failed to rollback the transaction: %v", rbErr)
+					}
+					sharedlogging.GetLogger(ctx).Errorf("%s", err)
+					return false, s.error(err)
+				}
 			}
 		}
 
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto(s.schema.Table("migrations"))
 		ib.Cols("version", "date")
-		ib.Values(version, time.Now())
-
+		ib.Values(version, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
-		_, err = tx.ExecContext(ctx, sqlq, args...)
-		if err != nil {
+		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				err = errors.Wrapf(s.error(err),
+					"failed to insert migration version %q and failed to rollback the transaction: %v", version, rbErr)
+			}
+			sharedlogging.GetLogger(ctx).Errorf("%s", err)
+			return false, s.error(err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			err = errors.Wrapf(s.error(err), "failed to commit transaction")
+			sharedlogging.GetLogger(ctx).Errorf("%s", err)
 			return false, s.error(err)
 		}
 	}
 
-	return modified, s.error(tx.Commit())
+	return modified, nil
 }
 
 func (s *Store) Close(ctx context.Context) error {
-	err := s.onClose(ctx)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.onClose(ctx)
 }
 
 var _ storage.Store = &Store{}

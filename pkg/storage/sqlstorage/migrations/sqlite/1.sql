@@ -55,10 +55,10 @@ ORDER BY v.timestamp ASC, v.ord ASC;
 --statement
 ALTER TABLE log RENAME TO log2;
 --statement
--- Remove autoincrement on log table by renaming to log2, recreating the log table without the autoincrement, copy data from log2 to log, then removing log2
+/* Remove autoincrement on log table by renaming to log2, recreating the log table without the autoincrement, copy data from log2 to log, then removing log2 */
 CREATE TABLE log
 (
-    "id"   integer primary key, -- without auto increment
+    "id"   integer primary key, /* without auto increment */
     "type" varchar,
     "hash" varchar,
     "date" date,

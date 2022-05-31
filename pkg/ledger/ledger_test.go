@@ -27,7 +27,7 @@ func with(f func(l *Ledger)) {
 	done := make(chan struct{})
 	app := fx.New(
 		fx.NopLogger,
-		ledgertesting.StorageModule(),
+		ledgertesting.ProvideStorageDriver(),
 		fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {

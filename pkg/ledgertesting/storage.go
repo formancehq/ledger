@@ -20,7 +20,7 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
-func Driver() (storage.Driver, func(), error) {
+func StorageDriver() (storage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
@@ -44,21 +44,19 @@ func Driver() (storage.Driver, func(), error) {
 	return nil, nil, errors.New("not found driver")
 }
 
-func StorageModule() fx.Option {
-	return fx.Options(
-		fx.Provide(func(lifecycle fx.Lifecycle) (storage.Driver, error) {
-			driver, stopFn, err := Driver()
-			if err != nil {
-				return nil, err
-			}
-			lifecycle.Append(fx.Hook{
-				OnStart: driver.Initialize,
-				OnStop: func(ctx context.Context) error {
-					stopFn()
-					return driver.Close(ctx)
-				},
-			})
-			return driver, nil
-		}),
-	)
+func ProvideStorageDriver() fx.Option {
+	return fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
+		driver, stopFn, err := StorageDriver()
+		if err != nil {
+			return nil, err
+		}
+		lc.Append(fx.Hook{
+			OnStart: driver.Initialize,
+			OnStop: func(ctx context.Context) error {
+				stopFn()
+				return driver.Close(ctx)
+			},
+		})
+		return driver, nil
+	})
 }

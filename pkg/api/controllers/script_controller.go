@@ -51,6 +51,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	value, ok := c.GetQuery("preview")
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
+	fmt.Printf("PREVIEW: %v\n", preview)
 	fn := l.(*ledger.Ledger).Execute
 	if preview {
 		fn = l.(*ledger.Ledger).ExecutePreview

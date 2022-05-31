@@ -19,9 +19,11 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -46,29 +48,32 @@ func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
+
 	res := Response{}
 	if !Decode(t, reader, &res) {
 		return false
 	}
+
 	if !Decode(t, bytes.NewBuffer(res.Data), v) {
 		return false
 	}
+
 	return true
 }
 
 func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
-	type Cursor struct {
-		sharedapi.Cursor
-		Data []json.RawMessage `json:"data"`
-	}
 	type Response struct {
 		Cursor json.RawMessage `json:"cursor"`
 	}
 	res := Response{}
 	Decode(t, reader, &res)
 
-	cursor := &Cursor{}
-	Decode(t, bytes.NewBuffer(res.Cursor), cursor)
+	type Cursor struct {
+		sharedapi.Cursor
+		Data []json.RawMessage `json:"data"`
+	}
+	cursor := Cursor{}
+	Decode(t, bytes.NewBuffer(res.Cursor), &cursor)
 
 	items := make([]interface{}, 0)
 	for _, d := range cursor.Data {
@@ -176,7 +181,21 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func WithNewModule(t *testing.T, options ...fx.Option) {
+func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/script", Buffer(t, s))
+	req.URL.RawQuery = query.Encode()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func GetStore(t *testing.T, ctx context.Context, driver storage.Driver) storage.Store {
+	fmt.Printf("DRIVER: %s\n", driver.Name())
+	store, _, err := driver.GetStore(ctx, testingLedger, true)
+	require.NoError(t, err)
+	return store
+}
+
+func RunTest(t *testing.T, options ...fx.Option) {
 	l := logrus.New()
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
@@ -184,25 +203,24 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	testingLedger = uuid.New()
-	module := api.Module(api.Config{
-		StorageDriver: "sqlite",
-		Version:       "latest",
-	})
 	ch := make(chan struct{})
+
 	options = append([]fx.Option{
-		module,
+		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest"}),
 		ledger.ResolveModule(),
-		ledgertesting.StorageModule(),
+		ledgertesting.ProvideStorageDriver(),
 		fx.NopLogger,
 	}, options...)
-	options = append(options, fx.Invoke(func(lc fx.Lifecycle) {
-		lc.Append(fx.Hook{
-			OnStop: func(ctx context.Context) error {
-				close(ch)
-				return nil
-			},
-		})
-	}))
+
+	options = append(options,
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					close(ch)
+					return nil
+				},
+			})
+		}))
 
 	app := fx.New(options...)
 	assert.NoError(t, app.Start(context.Background()))
@@ -220,8 +238,4 @@ func RunSubTest(t *testing.T, name string, opts ...fx.Option) {
 	t.Run(name, func(t *testing.T) {
 		RunTest(t, opts...)
 	})
-}
-
-func RunTest(t *testing.T, opts ...fx.Option) {
-	WithNewModule(t, opts...)
 }

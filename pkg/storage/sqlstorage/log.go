@@ -33,7 +33,6 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
 	case sqlbuilder.PostgreSQL:
-
 		ids := make([]uint64, len(log))
 		types := make([]string, len(log))
 		hashes := make([]string, len(log))
@@ -45,7 +44,6 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 			if err != nil {
 				panic(err)
 			}
-
 			ids[i] = l.ID
 			types[i] = l.Type
 			hashes[i] = l.Hash
@@ -77,11 +75,11 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 		_ = tx.Rollback()
 	}(tx)
 
-	if err := s.appendLog(ctx, tx, logs...); err != nil {
+	if err = s.appendLog(ctx, tx, logs...); err != nil {
 		return err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return s.error(err)
 	}
 
@@ -89,6 +87,11 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 }
 
 func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
+	var (
+		l    core.Log
+		ts   sql.NullString
+		data sql.NullString
+	)
 
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
@@ -98,27 +101,24 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq)
-	l := core.Log{}
-	var (
-		ts   sql.NullString
-		data sql.NullString
-	)
-	err := row.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data)
-	if err != nil {
+	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
+
 	t, err := time.Parse(time.RFC3339Nano, ts.String)
 	if err != nil {
 		return nil, err
 	}
 	l.Date = t.UTC()
+
 	l.Data, err = core.HydrateLog(l.Type, data.String)
 	if err != nil {
 		return nil, err
 	}
+
 	return &l, nil
 }
 

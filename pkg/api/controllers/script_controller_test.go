@@ -2,8 +2,9 @@ package controllers_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -15,37 +16,41 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 )
 
-func TestScriptController(t *testing.T) {
+func TestPostScript(t *testing.T) {
 	type testCase struct {
 		name             string
 		script           string
 		expectedResponse controllers.ScriptResponse
 	}
 
-	cases := []testCase{
+	script1 := `
+	send [COIN 100] (
+	  source = @world
+	  destination = @centralbank
+	)
+	send [COIN 100] (
+	  source = @centralbank
+	  destination = @users:001
+	)`
+
+	script2 := `
+	send [COIN 100] (
+	  source = @centralbank
+	  destination = @users:001
+	)`
+
+	testCases := []testCase{
 		{
-			name: "nominal",
-			script: `send [COIN 100] (
-  source = @world
-  destination = @centralbank
-)
-send [COIN 100] (
-  source = @centralbank
-  destination = @users:001
-)`,
+			name:   "nominal",
+			script: script1,
 		},
 		{
-			name: "failure",
-			script: `
-send [COIN 100] (
-  source = @centralbank
-  destination = @users:001
-)`,
+			name:   "failure",
+			script: script2,
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
 					ErrorCode:    ledger.ScriptErrorInsufficientFund,
@@ -56,24 +61,20 @@ send [COIN 100] (
 		},
 	}
 
-	for _, c := range cases {
-		internal.RunSubTest(t, c.name, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+	for _, tc := range testCases {
+		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					rec := httptest.NewRecorder()
-					req := httptest.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
-						Plain: c.script,
-					}))
-					req.Header.Set("Content-Type", "application/json")
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain: tc.script,
+					}, url.Values{})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					h.ServeHTTP(rec, req)
-
-					assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
 					res := controllers.ScriptResponse{}
-					internal.Decode(t, rec.Body, &res)
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
 
 					res.Transaction = nil
-					assert.EqualValues(t, c.expectedResponse, res)
+					assert.EqualValues(t, tc.expectedResponse, res)
 					return nil
 				},
 			})
@@ -81,34 +82,35 @@ send [COIN 100] (
 	}
 }
 
-func TestScriptControllerPreview(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
+func TestPostScriptPreview(t *testing.T) {
+	script := `
+	send [COIN 100] (
+	  source = @world
+	  destination = @centralbank
+	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				l := uuid.New()
-				rec := httptest.NewRecorder()
-				req := httptest.NewRequest("POST", "/"+l+"/script", internal.Buffer(t, core.Script{
-					Plain: `send [COIN 100] (
-  source = @world
-  destination = @centralbank
-)`,
-				}))
-				req.Header.Set("Content-Type", "application/json")
 				values := url.Values{}
-				values.Set("preview", "yes")
-				req.URL.RawQuery = values.Encode()
+				values.Set("preview", "false")
 
-				h.ServeHTTP(rec, req)
+				rsp := internal.PostScript(t, api, core.Script{
+					Plain: script,
+				}, values)
 
-				assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				res := controllers.ScriptResponse{}
-				internal.Decode(t, rec.Body, &res)
+				internal.Decode(t, rsp.Body, &res)
+				fmt.Printf("res: %+v\n", res)
+				fmt.Printf("res: %+v\n", res.Transaction)
 
-				store, _, err := driver.GetStore(context.Background(), l, true)
+				fmt.Printf("GET STORE\n")
+				store := internal.GetStore(t, ctx, driver)
+				fmt.Printf("GET STORE\n")
+				cursor, err := store.GetTransactions(ctx, query.Query{})
 				assert.NoError(t, err)
-
-				cursor, err := store.GetTransactions(context.Background(), query.Query{})
-				assert.NoError(t, err)
+				fmt.Printf("CURSOR: %+v\n", cursor.Data)
 				assert.Len(t, cursor.Data, 0)
 				return nil
 			},
