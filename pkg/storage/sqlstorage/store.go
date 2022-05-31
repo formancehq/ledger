@@ -63,6 +63,14 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
+	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return false, s.error(err)
+	}
+	defer func(tx *sql.Tx) {
+		_ = tx.Rollback()
+	}(tx)
+
 	modified := false
 	for _, m := range entries {
 		version := strings.TrimSuffix(m.Name(), ".sql")
@@ -97,19 +105,11 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		r := regexp.MustCompile(`[\n\t\s]+`)
 		plain = r.ReplaceAllString(plain, " ")
 
-		tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
-		if err != nil {
-			return false, s.error(err)
-		}
-
 		for i, statement := range strings.Split(plain, "--statement ") {
 			if statement != "" {
 				sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
 				if _, err = tx.ExecContext(ctx, statement); err != nil {
 					err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
-					if rbErr := tx.Rollback(); rbErr != nil {
-						err = errors.Wrapf(s.error(err), "failed to rollback the transaction: %v", rbErr)
-					}
 					sharedlogging.GetLogger(ctx).Errorf("%s", err)
 					return false, s.error(err)
 				}
@@ -122,22 +122,12 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		ib.Values(version, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				err = errors.Wrapf(s.error(err),
-					"failed to insert migration version %q and failed to rollback the transaction: %v", version, rbErr)
-			}
-			sharedlogging.GetLogger(ctx).Errorf("%s", err)
-			return false, s.error(err)
-		}
-
-		if err = tx.Commit(); err != nil {
-			err = errors.Wrapf(s.error(err), "failed to commit transaction")
-			sharedlogging.GetLogger(ctx).Errorf("%s", err)
+			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", version, err)
 			return false, s.error(err)
 		}
 	}
 
-	return modified, nil
+	return modified, s.error(tx.Commit())
 }
 
 func (s *Store) Close(ctx context.Context) error {

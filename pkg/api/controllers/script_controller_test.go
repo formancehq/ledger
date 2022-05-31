@@ -106,7 +106,7 @@ func TestPostScriptPreview(t *testing.T) {
 				fmt.Printf("res: %+v\n", res.Transaction)
 
 				fmt.Printf("GET STORE\n")
-				store := internal.GetStore(t, ctx, driver)
+				store := internal.GetStore(t, driver, ctx)
 				fmt.Printf("GET STORE\n")
 				cursor, err := store.GetTransactions(ctx, query.Query{})
 				assert.NoError(t, err)
