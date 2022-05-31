@@ -14,7 +14,7 @@ $$
     LANGUAGE plpgsql
     IMMUTABLE;
 --statement
-CREATE OR REPLACE FUNCTION meta_compare(metadata jsonb, value bool, variadic path TEXT[])
+CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".meta_compare(metadata jsonb, value bool, variadic path TEXT[])
     RETURNS BOOLEAN
 AS
 $$
