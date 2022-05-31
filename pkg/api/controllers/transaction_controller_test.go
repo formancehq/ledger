@@ -255,56 +255,65 @@ func TestNotFoundTransaction(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      1000,
-							Asset:       "USD",
+				now := time.Now().UTC()
+				tx1 := core.Transaction{
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      1000,
+								Asset:       "USD",
+							},
 						},
+						Reference: "ref:001",
 					},
-					Reference: "ref:001",
-				})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				time.Sleep(time.Second)
-
-				rsp = internal.PostTransaction(t, api, core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      1000,
-							Asset:       "USD",
+					Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
+				}
+				tx2 := core.Transaction{
+					ID: 1,
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      1000,
+								Asset:       "USD",
+							},
 						},
-					},
-					Metadata: map[string]json.RawMessage{
-						"foo": json.RawMessage(`"bar"`),
-					},
-					Reference: "ref:002",
-				})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				time.Sleep(time.Second)
-
-				rsp = internal.PostTransaction(t, api, core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "central_bank",
-							Destination: "alice",
-							Amount:      10,
-							Asset:       "USD",
+						Metadata: map[string]json.RawMessage{
+							"foo": json.RawMessage(`"bar"`),
 						},
+						Reference: "ref:002",
 					},
-					Reference: "ref:003",
-				})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				}
+				tx3 := core.Transaction{
+					ID: 2,
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "central_bank",
+								Destination: "alice",
+								Amount:      10,
+								Asset:       "USD",
+							},
+						},
+						Reference: "ref:003",
+					},
+					Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				}
+				log1 := core.NewTransactionLog(nil, tx1)
+				log2 := core.NewTransactionLog(&log1, tx2)
+				log3 := core.NewTransactionLog(&log2, tx3)
+				store := internal.GetStore(t, driver, ctx)
+				err := store.AppendLog(context.Background(), log1, log2, log3)
+				require.NoError(t, err)
 
-				rsp = internal.CountTransactions(api, url.Values{})
+				rsp := internal.CountTransactions(api, url.Values{})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				require.Equal(t, "3", rsp.Header().Get("Count"))
 

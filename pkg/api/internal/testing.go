@@ -19,9 +19,11 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -176,6 +178,12 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
+func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.Store {
+	store, _, err := driver.GetStore(ctx, testingLedger, true)
+	require.NoError(t, err)
+	return store
+}
+
 func WithNewModule(t *testing.T, options ...fx.Option) {
 	l := logrus.New()
 	if testing.Verbose() {
@@ -193,6 +201,22 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		module,
 		ledger.ResolveModule(),
 		ledgertesting.StorageModule(),
+		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					store, _, err := driver.GetStore(ctx, testingLedger, true)
+					if err != nil {
+						return err
+					}
+					defer func(store storage.Store, ctx context.Context) {
+						require.NoError(t, store.Close(ctx))
+					}(store, context.Background())
+
+					_, err = store.Initialize(context.Background())
+					return err
+				},
+			})
+		}),
 		fx.NopLogger,
 	}, options...)
 	options = append(options, fx.Invoke(func(lc fx.Lifecycle) {

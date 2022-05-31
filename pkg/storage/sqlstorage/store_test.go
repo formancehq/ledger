@@ -82,14 +82,14 @@ func TestStore(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.StorageModule(),
-				fx.Invoke(func(storageFactory storage.Driver, lc fx.Lifecycle) {
+				fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							defer func() {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, _, err := storageFactory.GetStore(ctx, ledger, true)
+							store, _, err := driver.GetStore(ctx, ledger, true)
 							if err != nil {
 								return err
 							}
