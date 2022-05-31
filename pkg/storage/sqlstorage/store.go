@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -107,12 +108,16 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		}
 
 		plain := strings.ReplaceAll(string(b), "VAR_LEDGER_NAME", s.schema.Name())
+		r := regexp.MustCompile(`[\n\t\s]+`)
+		plain = r.ReplaceAllString(plain, " ")
 
 		for i, statement := range strings.Split(plain, "--statement") {
+			statement = strings.TrimSpace(statement)
 			sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
 			_, err = tx.ExecContext(ctx, statement)
 			if err != nil {
 				err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
+				err = errors.Wrapf(s.error(err), "statement: %s", statement)
 				sharedlogging.GetLogger(ctx).Errorf("%s", err)
 				return false, err
 			}
