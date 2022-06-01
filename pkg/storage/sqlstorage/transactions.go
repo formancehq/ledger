@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"math"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -35,14 +34,13 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 }
 
 func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
-
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
 	if q.After != "" {
 		sb.Where(sb.LessThan("t.id", q.After))
 	}
 	sb.Limit(q.Limit)
+	sb.Offset(q.Offset)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
