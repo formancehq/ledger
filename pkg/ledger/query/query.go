@@ -1,5 +1,9 @@
 package query
 
+import (
+	"time"
+)
+
 const (
 	DefaultLimit = 15
 )
@@ -49,6 +53,18 @@ func (q *Query) HasParam(name string) bool {
 func After(v string) func(*Query) {
 	return func(q *Query) {
 		q.After = v
+	}
+}
+
+func StartTime(v time.Time) func(*Query) {
+	return func(q *Query) {
+		q.Params["start_time"] = v
+	}
+}
+
+func EndTime(v time.Time) func(*Query) {
+	return func(q *Query) {
+		q.Params["end_time"] = v
 	}
 }
 

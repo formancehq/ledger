@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
@@ -41,12 +42,29 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var startTime, endTime time.Time
+	var err error
+	if c.Query("start_time") != "" {
+		startTime, err = time.Parse(time.RFC3339, c.Query("start_time"))
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+			return
+		}
+	}
+
+	if c.Query("end_time") != "" {
+		endTime, err = time.Parse(time.RFC3339, c.Query("end_time"))
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+			return
+		}
+	}
+
 	var maxResult uint64
 	if c.Query("max_result") != "" {
-		var err error
 		maxResult, err = strconv.ParseUint(c.Query("max_result"), 10, 64)
 		if err != nil {
-			c.AbortWithStatus(http.StatusBadRequest)
+			ResponseError(c, ledger.NewValidationError("invalid query value 'max_result'"))
 			return
 		}
 	}
@@ -58,6 +76,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		query.Account(c.Query("account")),
 		query.Source(c.Query("source")),
 		query.Destination(c.Query("destination")),
+		query.StartTime(startTime),
+		query.EndTime(endTime),
 		query.PaginationToken(c.Query("pagination_token")),
 		query.MaxResult(maxResult),
 	)

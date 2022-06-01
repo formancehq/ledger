@@ -30,6 +30,12 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
 		sb.Where(sb.E("reference", ref.(string)))
 	}
+	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
+		sb.Where(sb.GE("t.timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
+	}
+	if endTime, ok := p["end_time"]; ok && !endTime.(time.Time).IsZero() {
+		sb.Where(sb.L("t.timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
+	}
 	return sb
 }
 
@@ -37,7 +43,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
 	if q.After != "" {
-		sb.Where(sb.LessThan("t.id", q.After))
+		sb.Where(sb.L("t.id", q.After))
 	}
 	sb.Limit(q.Limit)
 	sb.Offset(q.Offset)

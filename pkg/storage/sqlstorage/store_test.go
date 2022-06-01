@@ -62,12 +62,8 @@ func TestStore(t *testing.T) {
 			fn:   testGetAccounts,
 		},
 		{
-			name: "CountTransactions",
-			fn:   testCountTransactions,
-		},
-		{
-			name: "GetTransactions",
-			fn:   testGetTransactions,
+			name: "Transactions",
+			fn:   testTransactions,
 		},
 		{
 			name: "GetTransaction",
@@ -85,15 +81,15 @@ func TestStore(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
-				ledgertesting.StorageModule(),
-				fx.Invoke(func(storageFactory storage.Driver, lc fx.Lifecycle) {
+				ledgertesting.ProvideStorageDriver(),
+				fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							defer func() {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, _, err := storageFactory.GetStore(ctx, ledger, true)
+							store, _, err := driver.GetStore(ctx, ledger, true)
 							if err != nil {
 								return err
 							}
@@ -333,32 +329,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 1)
 }
 
-func testCountTransactions(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
-				},
-			},
-			Metadata: map[string]json.RawMessage{
-				"lastname": json.RawMessage(`"XXX"`),
-			},
-		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
-	}
-	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
-	assert.NoError(t, err)
-
-	countTransactions, err := store.CountTransactions(context.Background(), query.Query{})
-	assert.NoError(t, err)
-	assert.EqualValues(t, 1, countTransactions)
-}
-
-func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
+func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	tx1 := core.Transaction{
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
@@ -371,7 +342,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx1",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
 	}
 	tx2 := core.Transaction{
 		ID: 1,
@@ -386,7 +357,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx2",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
 	}
 	tx3 := core.Transaction{
 		ID: 2,
@@ -401,7 +372,7 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "tx3",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
 	}
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
@@ -409,54 +380,100 @@ func testGetTransactions(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), log1, log2, log3)
 	assert.NoError(t, err)
 
-	cursor, err := store.GetTransactions(context.Background(), query.Query{
-		Limit: 1,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, cursor.PageSize)
-	assert.True(t, cursor.HasMore)
+	t.Run("Count", func(t *testing.T) {
+		count, err := store.CountTransactions(context.Background(), query.Query{})
+		assert.NoError(t, err)
+		// Should get all the transactions
+		assert.EqualValues(t, 3, count)
 
-	cursor, err = store.GetTransactions(context.Background(), query.Query{
-		After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
-		Limit: 1,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, cursor.PageSize)
-	assert.True(t, cursor.HasMore)
+		count, err = store.CountTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"account": "world",
+			},
+		})
+		assert.NoError(t, err)
+		// Should get the two first transactions involving the 'world' account.
+		assert.EqualValues(t, 2, count)
 
-	cursor, err = store.GetTransactions(context.Background(), query.Query{
-		Params: map[string]interface{}{
-			"account":   "world",
-			"reference": "tx1",
-		},
-		Limit: 1,
+		count, err = store.CountTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"start_time": now.Add(-2 * time.Hour),
+				"end_time":   now.Add(-1 * time.Hour),
+			},
+		})
+		assert.NoError(t, err)
+		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
+		assert.EqualValues(t, 1, count)
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, 1, cursor.PageSize)
-	assert.Len(t, cursor.Data, 1)
-	assert.False(t, cursor.HasMore)
 
-	cursor, err = store.GetTransactions(context.Background(), query.Query{
-		Params: map[string]interface{}{
-			"source": "central_bank",
-		},
-		Limit: 10,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 10, cursor.PageSize)
-	assert.Len(t, cursor.Data, 1)
-	assert.False(t, cursor.HasMore)
+	t.Run("Get", func(t *testing.T) {
+		cursor, err := store.GetTransactions(context.Background(), query.Query{
+			Limit: 1,
+		})
+		assert.NoError(t, err)
+		// Should get only the first transaction and the 'HasMore' bool set to true.
+		assert.Equal(t, 1, cursor.PageSize)
+		assert.True(t, cursor.HasMore)
 
-	cursor, err = store.GetTransactions(context.Background(), query.Query{
-		Params: map[string]interface{}{
-			"destination": "users:1",
-		},
-		Limit: 10,
+		cursor, err = store.GetTransactions(context.Background(), query.Query{
+			After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
+			Limit: 1,
+		})
+		assert.NoError(t, err)
+		// Should get only the second transaction and the 'HasMore' bool set to true.
+		assert.Equal(t, 1, cursor.PageSize)
+		assert.True(t, cursor.HasMore)
+
+		cursor, err = store.GetTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"account":   "world",
+				"reference": "tx1",
+			},
+			Limit: 1,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, cursor.PageSize)
+		// Should get only the first transaction and the 'HasMore' bool set to false.
+		assert.Len(t, cursor.Data, 1)
+		assert.False(t, cursor.HasMore)
+
+		cursor, err = store.GetTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"source": "central_bank",
+			},
+			Limit: 10,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		// Should get only the third transaction and the 'HasMore' bool set to false.
+		assert.Len(t, cursor.Data, 1)
+		assert.False(t, cursor.HasMore)
+
+		cursor, err = store.GetTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"destination": "users:1",
+			},
+			Limit: 10,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		// Should get only the third transaction and the 'HasMore' bool set to false.
+		assert.Len(t, cursor.Data, 1)
+		assert.False(t, cursor.HasMore)
+
+		cursor, err = store.GetTransactions(context.Background(), query.Query{
+			Params: map[string]interface{}{
+				"start_time": now.Add(-2 * time.Hour),
+				"end_time":   now.Add(-1 * time.Hour),
+			},
+			Limit: 10,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
+		assert.Len(t, cursor.Data, 1)
+		assert.False(t, cursor.HasMore)
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, 10, cursor.PageSize)
-	assert.Len(t, cursor.Data, 1)
-	assert.False(t, cursor.HasMore)
 }
 
 func testMapping(t *testing.T, store *sqlstorage.Store) {
@@ -559,7 +576,7 @@ func TestInitializeStore(t *testing.T) {
 	l.Level = logrus.DebugLevel
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
-	driver, stopFn, err := ledgertesting.Driver()
+	driver, stopFn, err := ledgertesting.StorageDriver()
 	assert.NoError(t, err)
 	defer stopFn()
 	defer func(driver storage.Driver, ctx context.Context) {

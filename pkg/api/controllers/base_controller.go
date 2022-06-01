@@ -76,7 +76,7 @@ func ResponseError(c *gin.Context, err error) {
 			ErrorCode:    code,
 			ErrorMessage: err.Error(),
 		})
-		return
+	} else {
+		c.AbortWithStatus(status)
 	}
-	c.AbortWithStatus(status)
 }

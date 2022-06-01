@@ -1,6 +1,5 @@
 BINARY_NAME=numary
 PKG=./...
-COVERAGE_FILE=coverage.out
 NUMARY_STORAGE_DRIVER="postgres"
 NUMARY_STORAGE_POSTGRES_CONN_STRING="postgresql://ledger:ledger@127.0.0.1/ledger"
 FAILFAST=-failfast
@@ -23,9 +22,14 @@ lint:
 	golangci-lint run -v -E $(ENABLED_LINTERS) --fix $(PKG)
 
 test: test-sqlite test-postgres
+	@go tool cover -html=coverage-sqlite.out -o coverage-sqlite.html
+	@go tool cover -html=coverage-postgres.out -o coverage-postgres.html
+	@echo "To open the html coverage file, use one of the following commands:"
+	@echo "open coverage-sqlite.html or coverage-postgres.html on mac"
+	@echo "xdg-open coverage-sqlite.html or coverage-postgres.html on linux"
 
 test-sqlite:
-	go test -tags json1 -v $(FAILFAST) -coverpkg $(PKG) -coverprofile $(COVERAGE_FILE) -covermode atomic -run $(RUN) -timeout $(TIMEOUT) $(PKG) \
+	go test -tags json1 -v $(FAILFAST) -coverpkg $(PKG) -coverprofile coverage-sqlite.out -covermode atomic -run $(RUN) -timeout $(TIMEOUT) $(PKG) \
 		| sed ''/PASS/s//$(shell printf "\033[32mPASS\033[0m")/'' \
 		| sed ''/FAIL/s//$(shell printf "\033[31mFAIL\033[0m")/'' \
 		| sed ''/RUN/s//$(shell printf "\033[34mRUN\033[0m")/''
@@ -33,7 +37,7 @@ test-sqlite:
 test-postgres: postgres
 	NUMARY_STORAGE_DRIVER=$(NUMARY_STORAGE_DRIVER) \
 	NUMARY_STORAGE_POSTGRES_CONN_STRING=$(NUMARY_STORAGE_POSTGRES_CONN_STRING) \
-	go test -tags json1 -v $(FAILFAST) -coverpkg $(PKG) -coverprofile $(COVERAGE_FILE) -covermode atomic -run $(RUN) -timeout $(TIMEOUT) $(PKG) \
+	go test -tags json1 -v $(FAILFAST) -coverpkg $(PKG) -coverprofile coverage-postgres.out -covermode atomic -run $(RUN) -timeout $(TIMEOUT) $(PKG) \
 		| sed ''/PASS/s//$(shell printf "\033[32mPASS\033[0m")/'' \
 		| sed ''/FAIL/s//$(shell printf "\033[31mFAIL\033[0m")/'' \
 		| sed ''/RUN/s//$(shell printf "\033[34mRUN\033[0m")/''

@@ -276,7 +276,7 @@ $BODY$
 DECLARE
     r record;
 BEGIN
-    -- Create JSON object manually as it needs to be in canonical form
+    /* Create JSON object manually as it needs to be in canonical form */
     FOR r IN (select id, '{"data":' || "VAR_LEDGER_NAME".normaliz(data::jsonb) || ',"date":"' || to_char (date at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '","hash":"","id":' || id || ',"type":"' || type || '"}' as canonical from "VAR_LEDGER_NAME".log)
     LOOP
         UPDATE "VAR_LEDGER_NAME".log set hash = (select encode(digest(
