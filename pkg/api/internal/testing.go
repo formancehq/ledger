@@ -59,18 +59,18 @@ func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
 }
 
 func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
-	type Cursor struct {
-		sharedapi.Cursor
-		Data []json.RawMessage `json:"data"`
-	}
 	type Response struct {
 		Cursor json.RawMessage `json:"cursor"`
 	}
 	res := Response{}
 	Decode(t, reader, &res)
 
-	cursor := &Cursor{}
-	Decode(t, bytes.NewBuffer(res.Cursor), cursor)
+	type Cursor struct {
+		sharedapi.Cursor
+		Data []json.RawMessage `json:"data"`
+	}
+	cursor := Cursor{}
+	Decode(t, bytes.NewBuffer(res.Cursor), &cursor)
 
 	items := make([]interface{}, 0)
 	for _, d := range cursor.Data {
@@ -178,13 +178,20 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
+func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/script", Buffer(t, s))
+	req.URL.RawQuery = query.Encode()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.Store {
 	store, _, err := driver.GetStore(ctx, testingLedger, true)
 	require.NoError(t, err)
 	return store
 }
 
-func WithNewModule(t *testing.T, options ...fx.Option) {
+func RunTest(t *testing.T, options ...fx.Option) {
 	l := logrus.New()
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
@@ -192,15 +199,12 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	testingLedger = uuid.New()
-	module := api.Module(api.Config{
-		StorageDriver: "sqlite",
-		Version:       "latest",
-	})
 	ch := make(chan struct{})
+
 	options = append([]fx.Option{
-		module,
+		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest"}),
 		ledger.ResolveModule(),
-		ledgertesting.StorageModule(),
+		ledgertesting.ProvideStorageDriver(),
 		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
@@ -219,14 +223,16 @@ func WithNewModule(t *testing.T, options ...fx.Option) {
 		}),
 		fx.NopLogger,
 	}, options...)
-	options = append(options, fx.Invoke(func(lc fx.Lifecycle) {
-		lc.Append(fx.Hook{
-			OnStop: func(ctx context.Context) error {
-				close(ch)
-				return nil
-			},
-		})
-	}))
+
+	options = append(options,
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					close(ch)
+					return nil
+				},
+			})
+		}))
 
 	app := fx.New(options...)
 	assert.NoError(t, app.Start(context.Background()))
@@ -244,8 +250,4 @@ func RunSubTest(t *testing.T, name string, opts ...fx.Option) {
 	t.Run(name, func(t *testing.T) {
 		RunTest(t, opts...)
 	})
-}
-
-func RunTest(t *testing.T, opts ...fx.Option) {
-	WithNewModule(t, opts...)
 }

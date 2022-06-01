@@ -155,7 +155,6 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 }
 
 func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
-
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -178,8 +177,7 @@ func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 		return nil, false, errors.Wrap(err, "registering ledger")
 	}
 
-	err = schema.Initialize(ctx)
-	if err != nil {
+	if err = schema.Initialize(ctx); err != nil {
 		return nil, false, err
 	}
 

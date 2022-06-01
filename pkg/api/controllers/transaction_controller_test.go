@@ -23,7 +23,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func TestCommitTransaction(t *testing.T) {
+func TestPostTransactions(t *testing.T) {
 	type testCase struct {
 		name               string
 		transactions       []core.TransactionData
@@ -189,12 +189,10 @@ func TestGetTransaction(t *testing.T) {
 					},
 					Reference: "ref",
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				tx := make([]core.Transaction, 0)
-				if !internal.DecodeSingleResponse(t, rsp.Body, &tx) {
-					return nil
-				}
+				internal.DecodeSingleResponse(t, rsp.Body, &tx)
 
 				rsp = internal.GetTransaction(api, tx[0].ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)

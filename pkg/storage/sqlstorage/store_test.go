@@ -81,7 +81,7 @@ func TestStore(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
-				ledgertesting.StorageModule(),
+				ledgertesting.ProvideStorageDriver(),
 				fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -576,7 +576,7 @@ func TestInitializeStore(t *testing.T) {
 	l.Level = logrus.DebugLevel
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
-	driver, stopFn, err := ledgertesting.Driver()
+	driver, stopFn, err := ledgertesting.StorageDriver()
 	assert.NoError(t, err)
 	defer stopFn()
 	defer func(driver storage.Driver, ctx context.Context) {
