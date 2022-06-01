@@ -106,10 +106,12 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		plain = r.ReplaceAllString(plain, " ")
 
 		for i, statement := range strings.Split(plain, "--statement ") {
+			statement = strings.TrimSpace(statement)
 			if statement != "" {
 				sharedlogging.GetLogger(ctx).Debugf("running statement: %s", statement)
 				if _, err = tx.ExecContext(ctx, statement); err != nil {
 					err = errors.Wrapf(s.error(err), "failed to run statement %d", i)
+					err = errors.Wrapf(s.error(err), "statement: %s", statement)
 					sharedlogging.GetLogger(ctx).Errorf("%s", err)
 					return false, s.error(err)
 				}

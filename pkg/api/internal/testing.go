@@ -48,16 +48,13 @@ func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
 	type Response struct {
 		Data json.RawMessage `json:"data"`
 	}
-
 	res := Response{}
 	if !Decode(t, reader, &res) {
 		return false
 	}
-
 	if !Decode(t, bytes.NewBuffer(res.Data), v) {
 		return false
 	}
-
 	return true
 }
 

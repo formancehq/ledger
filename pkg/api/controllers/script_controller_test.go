@@ -3,7 +3,6 @@ package controllers_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -93,7 +92,7 @@ func TestPostScriptPreview(t *testing.T) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				values := url.Values{}
-				values.Set("preview", "false")
+				values.Set("preview", "true")
 
 				rsp := internal.PostScript(t, api, core.Script{
 					Plain: script,
@@ -102,15 +101,10 @@ func TestPostScriptPreview(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				res := controllers.ScriptResponse{}
 				internal.Decode(t, rsp.Body, &res)
-				fmt.Printf("res: %+v\n", res)
-				fmt.Printf("res: %+v\n", res.Transaction)
 
-				fmt.Printf("GET STORE\n")
 				store := internal.GetStore(t, driver, ctx)
-				fmt.Printf("GET STORE\n")
-				cursor, err := store.GetTransactions(ctx, query.Query{})
+				cursor, err := store.GetTransactions(ctx, query.New())
 				assert.NoError(t, err)
-				fmt.Printf("CURSOR: %+v\n", cursor.Data)
 				assert.Len(t, cursor.Data, 0)
 				return nil
 			},

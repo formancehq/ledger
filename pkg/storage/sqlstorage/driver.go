@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -156,7 +155,6 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 }
 
 func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
-	fmt.Printf("GET STORE NAME: %s\n", name)
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -168,7 +166,6 @@ func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 	if !exists && !create {
 		return nil, false, errors.New("not exists")
 	}
-	fmt.Printf("GET STORE EXISTS\n")
 
 	schema, err := d.db.Schema(ctx, name)
 	if err != nil {
