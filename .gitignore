@@ -1,5 +1,5 @@
 numary
-coverage.out
+coverage*
 /dist/
 cmd/control/*
 !cmd/control/gitkeep

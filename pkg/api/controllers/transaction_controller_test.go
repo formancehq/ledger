@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
@@ -22,7 +23,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func TestCommitTransaction(t *testing.T) {
+func TestPostTransactions(t *testing.T) {
 	type testCase struct {
 		name               string
 		transactions       []core.TransactionData
@@ -188,12 +189,10 @@ func TestGetTransaction(t *testing.T) {
 					},
 					Reference: "ref",
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				tx := make([]core.Transaction, 0)
-				if !internal.DecodeSingleResponse(t, rsp.Body, &tx) {
-					return nil
-				}
+				internal.DecodeSingleResponse(t, rsp.Body, &tx)
 
 				rsp = internal.GetTransaction(api, tx[0].ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -254,41 +253,67 @@ func TestNotFoundTransaction(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      1000,
-							Asset:       "USD",
+				now := time.Now().UTC()
+				tx1 := core.Transaction{
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      1000,
+								Asset:       "USD",
+							},
 						},
+						Reference: "ref:001",
 					},
-					Reference: "ref:001",
-				})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				rsp = internal.PostTransaction(t, api, core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      1000,
-							Asset:       "USD",
+					Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
+				}
+				tx2 := core.Transaction{
+					ID: 1,
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      1000,
+								Asset:       "USD",
+							},
 						},
+						Metadata: map[string]json.RawMessage{
+							"foo": json.RawMessage(`"bar"`),
+						},
+						Reference: "ref:002",
 					},
-					Metadata: map[string]json.RawMessage{
-						"foo": json.RawMessage(`"bar"`),
+					Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
+				}
+				tx3 := core.Transaction{
+					ID: 2,
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "central_bank",
+								Destination: "alice",
+								Amount:      10,
+								Asset:       "USD",
+							},
+						},
+						Reference: "ref:003",
 					},
-					Reference: "ref:002",
-				})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
+				}
+				log1 := core.NewTransactionLog(nil, tx1)
+				log2 := core.NewTransactionLog(&log1, tx2)
+				log3 := core.NewTransactionLog(&log2, tx3)
+				store := internal.GetStore(t, driver, ctx)
+				err := store.AppendLog(context.Background(), log1, log2, log3)
+				require.NoError(t, err)
 
-				rsp = internal.CountTransactions(api, url.Values{})
+				rsp := internal.CountTransactions(api, url.Values{})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				require.Equal(t, "2", rsp.Header().Get("Count"))
+				require.Equal(t, "3", rsp.Header().Get("Count"))
 
 				type GetTransactionsCursor struct {
 					PageSize int                `json:"page_size,omitempty"`
@@ -305,13 +330,16 @@ func TestGetTransactions(t *testing.T) {
 				rsp = internal.GetTransactions(api, url.Values{})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp := getTransactionsResponse{}
-
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 2 transactions: txid 1 and txid 0
-				assert.Len(t, resp.Cursor.Data, 2)
-				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(1))
-				assert.Equal(t, resp.Cursor.Data[1].ID, uint64(0))
+				// all transactions
+				assert.Len(t, resp.Cursor.Data, 3)
+				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(2))
+				assert.Equal(t, resp.Cursor.Data[1].ID, uint64(1))
+				assert.Equal(t, resp.Cursor.Data[2].ID, uint64(0))
 				assert.False(t, resp.Cursor.HasMore)
+
+				tx1Timestamp := resp.Cursor.Data[1].Timestamp
+				tx2Timestamp := resp.Cursor.Data[0].Timestamp
 
 				rsp = internal.GetTransactions(api, url.Values{
 					"after": []string{"1"},
@@ -334,6 +362,44 @@ func TestGetTransactions(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
 				assert.False(t, resp.Cursor.HasMore)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"start_time": []string{tx1Timestamp},
+					"end_time":   []string{tx2Timestamp},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// 1 transaction: txid 1
+				assert.Len(t, resp.Cursor.Data, 1)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// no transaction
+				assert.Len(t, resp.Cursor.Data, 0)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				resp = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+				// all transactions
+				assert.Len(t, resp.Cursor.Data, 3)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"start_time": []string{"invalid time"},
+				})
+				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+				rsp = internal.GetTransactions(api, url.Values{
+					"end_time": []string{"invalid time"},
+				})
+				assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
 				return nil
 			},

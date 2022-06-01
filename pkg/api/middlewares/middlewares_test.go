@@ -15,7 +15,7 @@ import (
 )
 
 func TestAdditionalGlobalMiddleware(t *testing.T) {
-	internal.WithNewModule(t,
+	internal.RunTest(t,
 		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
@@ -34,7 +34,7 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 }
 
 func TestAdditionalPerLedgerMiddleware(t *testing.T) {
-	internal.WithNewModule(t,
+	internal.RunTest(t,
 		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
 			return []gin.HandlerFunc{
 				func(context *gin.Context) {
