@@ -84,7 +84,17 @@
       "contributions": [
         "userTesting"
       ]
+    },
+    {
+      "login": "antoinegelloz",
+      "name": "Antoine Gelloz",
+      "avatar_url": "https://avatars.githubusercontent.com/u/42968436?v=4",
+      "profile": "https://www.linkedin.com/in/antoinegelloz/",
+      "contributions": [
+        "code"
+      ]
     }
   ],
-  "contributorsPerLine": 7
+  "contributorsPerLine": 7,
+  "skipCi": true
 }
