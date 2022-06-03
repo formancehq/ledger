@@ -19,10 +19,6 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-const (
-	SQLCustomFuncMetaCompare = "meta_compare"
-)
-
 func init() {
 	errorHandlers[SQLite] = func(err error) error {
 		eerr, ok := err.(sqlite3.Error)
