@@ -3,7 +3,6 @@ package controllers_test
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -60,8 +59,7 @@ send [COIN 100] (
 		internal.RunSubTest(t, c.name, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					rec := httptest.NewRecorder()
-					req := httptest.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
+					req, rec := internal.NewRequest("POST", "/"+uuid.New()+"/script", internal.Buffer(t, core.Script{
 						Plain: c.script,
 					}))
 					req.Header.Set("Content-Type", "application/json")
@@ -86,8 +84,7 @@ func TestScriptControllerPreview(t *testing.T) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				l := uuid.New()
-				rec := httptest.NewRecorder()
-				req := httptest.NewRequest("POST", "/"+l+"/script", internal.Buffer(t, core.Script{
+				req, rec := internal.NewRequest("POST", "/"+l+"/script", internal.Buffer(t, core.Script{
 					Plain: `send [COIN 100] (
   source = @world
   destination = @centralbank
