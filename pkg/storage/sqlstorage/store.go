@@ -18,6 +18,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	SQLCustomFuncMetaCompare = "meta_compare"
+)
+
 //go:embed migrations
 var migrations embed.FS
 var MigrationsFs fs.FS
