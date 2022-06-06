@@ -99,11 +99,6 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        - name: max_result
-          in: query
-          description: |- 
-            Enables you to configure the number of accounts returned per response page.
-            There is a default max_results of 15 and a maximum max_results of 10 000.
       responses:
         "200":
           description: OK
@@ -417,11 +412,6 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        - name: max_result
-          in: query
-          description: |-
-            Enables you to configure the number of transactions returned per response page.
-            There is a default max_results of 15 and a maximum max_results of 10 000.
       responses:
         "200":
           description: OK

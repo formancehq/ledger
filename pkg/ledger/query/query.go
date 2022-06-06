@@ -10,7 +10,6 @@ const (
 
 type Query struct {
 	Limit  int
-	Offset int
 	After  string
 	Params map[string]interface{}
 }
@@ -101,19 +100,5 @@ func Reference(v string) func(*Query) {
 func Metadata(v map[string]string) func(*Query) {
 	return func(q *Query) {
 		q.Params["metadata"] = v
-	}
-}
-
-func PaginationToken(v string) func(*Query) {
-	return func(q *Query) {
-		q.Params["pagination_token"] = v
-	}
-}
-
-func MaxResult(v uint64) func(*Query) {
-	return func(q *Query) {
-		if v > 0 {
-			q.Limit = int(v)
-		}
 	}
 }

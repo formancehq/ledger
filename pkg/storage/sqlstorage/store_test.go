@@ -258,7 +258,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		Limit: 1,
 	})
 	assert.NoError(t, err)
-	assert.True(t, accounts.HasMore)
 	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
@@ -266,7 +265,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		After: accounts.Data.([]core.Account)[0].Address,
 	})
 	assert.NoError(t, err)
-	assert.True(t, accounts.HasMore)
 	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
@@ -276,7 +274,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 2)
 	assert.Equal(t, 10, accounts.PageSize)
 
@@ -289,7 +286,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
@@ -301,7 +297,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
@@ -313,7 +308,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
@@ -325,7 +319,6 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.False(t, accounts.HasMore)
 	assert.Len(t, accounts.Data, 1)
 }
 
@@ -413,7 +406,6 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		// Should get only the first transaction and the 'HasMore' bool set to true.
 		assert.Equal(t, 1, cursor.PageSize)
-		assert.True(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
 			After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
@@ -422,7 +414,6 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		// Should get only the second transaction and the 'HasMore' bool set to true.
 		assert.Equal(t, 1, cursor.PageSize)
-		assert.True(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
 			Params: map[string]interface{}{
@@ -435,7 +426,6 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, 1, cursor.PageSize)
 		// Should get only the first transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
-		assert.False(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
 			Params: map[string]interface{}{
@@ -444,10 +434,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, 1, cursor.PageSize)
 		// Should get only the third transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
-		assert.False(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
 			Params: map[string]interface{}{
@@ -456,10 +445,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, 1, cursor.PageSize)
 		// Should get only the third transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
-		assert.False(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
 			Params: map[string]interface{}{
@@ -469,10 +457,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, 1, cursor.PageSize)
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		assert.Len(t, cursor.Data, 1)
-		assert.False(t, cursor.HasMore)
 	})
 }
 

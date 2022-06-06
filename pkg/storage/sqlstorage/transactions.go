@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"math"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -40,13 +41,14 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 }
 
 func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
 	if q.After != "" {
 		sb.Where(sb.L("t.id", q.After))
 	}
 	sb.Limit(q.Limit)
-	sb.Offset(q.Offset)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -92,15 +94,27 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		return sharedapi.Cursor{}, s.error(err)
 	}
 
-	hasMore := false
+	previous := ""
+	if q.After != "" && len(txs) > 0 {
+		previous, err = tokenMarshal(PaginationToken{txs[0].ID + query.DefaultLimit + 1})
+		if err != nil {
+			return sharedapi.Cursor{}, s.error(err)
+		}
+	}
+
+	next := ""
 	if len(txs) == q.Limit {
-		hasMore = true
 		txs = txs[:len(txs)-1]
+		next, err = tokenMarshal(PaginationToken{txs[len(txs)-1].ID})
+		if err != nil {
+			return sharedapi.Cursor{}, s.error(err)
+		}
 	}
 
 	return sharedapi.Cursor{
-		PageSize: q.Limit - 1,
-		HasMore:  hasMore,
+		PageSize: len(txs),
+		Previous: previous,
+		Next:     next,
 		Data:     txs,
 	}, nil
 }
