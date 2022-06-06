@@ -15,11 +15,23 @@ import (
 	"go.uber.org/fx"
 )
 
+type GetAccountsCursor struct {
+	PageSize int            `json:"page_size,omitempty"`
+	HasMore  bool           `json:"has_more"`
+	Previous string         `json:"previous,omitempty"`
+	Next     string         `json:"next,omitempty"`
+	Data     []core.Account `json:"data"`
+}
+
+type getAccountsResponse struct {
+	Cursor *GetAccountsCursor `json:"cursor,omitempty"`
+}
+
 func TestGetAccounts(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, h, core.TransactionData{
+				rsp := internal.PostTransaction(t, api, core.TransactionData{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -31,7 +43,7 @@ func TestGetAccounts(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, h, core.TransactionData{
+				rsp = internal.PostTransaction(t, api, core.TransactionData{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -43,7 +55,7 @@ func TestGetAccounts(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, h, "bob", core.Metadata{
+				rsp = internal.PostAccountMetadata(t, api, "bob", core.Metadata{
 					"roles":     json.RawMessage(`"admin"`),
 					"accountId": json.RawMessage("3"),
 					"enabled":   json.RawMessage(`"true"`),
@@ -51,23 +63,11 @@ func TestGetAccounts(t *testing.T) {
 				})
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.CountAccounts(h, url.Values{})
+				rsp = internal.CountAccounts(api, url.Values{})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				require.Equal(t, "3", rsp.Header().Get("Count"))
 
-				type GetAccountsCursor struct {
-					PageSize int            `json:"page_size,omitempty"`
-					HasMore  bool           `json:"has_more"`
-					Previous string         `json:"previous,omitempty"`
-					Next     string         `json:"next,omitempty"`
-					Data     []core.Account `json:"data"`
-				}
-
-				type getAccountsResponse struct {
-					Cursor *GetAccountsCursor `json:"cursor,omitempty"`
-				}
-
-				rsp = internal.GetAccounts(h, url.Values{})
+				rsp = internal.GetAccounts(api, url.Values{})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp := getAccountsResponse{}
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
@@ -77,7 +77,7 @@ func TestGetAccounts(t *testing.T) {
 				assert.Equal(t, resp.Cursor.Data[1].Address, "bob")
 				assert.Equal(t, resp.Cursor.Data[2].Address, "alice")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"metadata[roles]": []string{"admin"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -87,7 +87,7 @@ func TestGetAccounts(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"metadata[accountId]": []string{"3"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -97,7 +97,7 @@ func TestGetAccounts(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"metadata[enabled]": []string{"true"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -107,7 +107,7 @@ func TestGetAccounts(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"metadata[a.nested.key]": []string{"hello"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -117,14 +117,14 @@ func TestGetAccounts(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"metadata[unknown]": []string{"key"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
 				assert.Len(t, cursor.Data, 0)
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"after": []string{"bob"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -134,7 +134,7 @@ func TestGetAccounts(t *testing.T) {
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].Address, "alice")
 
-				rsp = internal.GetAccounts(h, url.Values{
+				rsp = internal.GetAccounts(api, url.Values{
 					"address": []string{"b.b"},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)

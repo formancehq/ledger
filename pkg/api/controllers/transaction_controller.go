@@ -13,7 +13,6 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
 type TransactionController struct {
@@ -70,7 +69,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
-		t := sqlstorage.PaginationToken{}
+		t := TransactionsPaginationToken{}
 		if err = json.Unmarshal(res, &t); err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
@@ -94,6 +93,18 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	}
 
 	ctl.response(c, http.StatusOK, cursor)
+}
+
+type TransactionsPaginationToken struct {
+	ID uint64 `json:"txid"`
+}
+
+func TransactionsTokenMarshal(i interface{}) (string, error) {
+	raw, err := json.Marshal(i)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {

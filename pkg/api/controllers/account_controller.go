@@ -1,14 +1,18 @@
 package controllers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
 type AccountController struct {
@@ -38,9 +42,24 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	after := c.Query("after")
+	if c.Query("pagination_token") != "" {
+		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			return
+		}
+		t := sqlstorage.PaginationToken{}
+		if err = json.Unmarshal(res, &t); err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			return
+		}
+		after = strconv.FormatUint(t.ID, 10)
+	}
+
 	cursor, err := l.(*ledger.Ledger).GetAccounts(
 		c.Request.Context(),
-		query.After(c.Query("after")),
+		query.After(after),
 		query.Address(c.Query("address")),
 		query.Metadata(c.QueryMap("metadata")),
 	)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
@@ -42,25 +42,29 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 }
 
 func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	// We fetch an additional account to know if we have more documents
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+	accounts := make([]core.Account, 0)
 
-	c := sharedapi.Cursor{}
-	results := make([]core.Account, 0)
+	if q.Limit < 0 {
+		return sharedapi.Cursor{Data: accounts}, nil
+	}
+
+	// We fetch an additional account to know if there is more
+	q.Limit += 1
+
+	spew.Dump(q)
 
 	sb := s.accountsQuery(q.Params).
 		Select("address", "metadata").
-		Limit(q.Limit).
 		OrderBy("address desc")
-
 	if q.After != "" {
-		sb.Where(sb.LessThan("address", q.After))
+		sb.Where(sb.L("address", q.After))
 	}
+	sb.Limit(q.Limit)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return c, s.error(err)
+		return sharedapi.Cursor{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -71,24 +75,38 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (
 	for rows.Next() {
 		account := core.Account{}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return c, err
+			return sharedapi.Cursor{}, err
 		}
 
-		results = append(results, account)
+		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return c, rows.Err()
+		return sharedapi.Cursor{}, rows.Err()
 	}
 
-	c.PageSize = q.Limit - 1
-
-	c.HasMore = len(results) == q.Limit
-	if c.HasMore {
-		results = results[:len(results)-1]
+	previous := ""
+	if q.After != "" && len(accounts) > 0 {
+		previous, err = tokenMarshal(PaginationToken{})
+		if err != nil {
+			return sharedapi.Cursor{}, s.error(err)
+		}
 	}
-	c.Data = results
 
-	return c, nil
+	next := ""
+	if len(accounts) == q.Limit {
+		accounts = accounts[:len(accounts)-1]
+		next, err = tokenMarshal(PaginationToken{})
+		if err != nil {
+			return sharedapi.Cursor{}, s.error(err)
+		}
+	}
+
+	return sharedapi.Cursor{
+		PageSize: len(accounts),
+		Previous: previous,
+		Next:     next,
+		Data:     accounts,
+	}, nil
 }
 
 func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {

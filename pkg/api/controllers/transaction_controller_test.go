@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
@@ -17,7 +15,6 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -408,107 +405,6 @@ func TestGetTransactions(t *testing.T) {
 			},
 		})
 	}))
-}
-
-var maxTxsPages = 3
-var maxAdditionalTxs = 2
-
-func TestGetTransactionsPagination(t *testing.T) {
-	for txsPages := 0; txsPages <= maxTxsPages; txsPages++ {
-		for additionalTxs := 0; additionalTxs <= maxAdditionalTxs; additionalTxs++ {
-			t.Run(fmt.Sprintf("%d-pages-%d-additional", txsPages, additionalTxs), func(t *testing.T) {
-				internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							var rsp *httptest.ResponseRecorder
-							numTxs := txsPages*query.DefaultLimit + additionalTxs
-							for i := 0; i < numTxs; i++ {
-								rsp = internal.PostTransaction(t, api, core.TransactionData{
-									Postings: core.Postings{
-										{
-											Source:      "world",
-											Destination: "alice",
-											Amount:      10,
-											Asset:       "USD",
-										},
-									},
-									Reference: fmt.Sprintf("ref:%d", i),
-								})
-								require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
-							}
-
-							rsp = internal.CountTransactions(api, url.Values{})
-							require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-							require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
-
-							paginationToken := ""
-							resp := getTransactionsResponse{}
-							for i := 0; i < txsPages; i++ {
-								rsp = internal.GetTransactions(api, url.Values{
-									"pagination_token": []string{paginationToken},
-								})
-								assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-								resp = getTransactionsResponse{}
-								assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-								assert.Len(t, resp.Cursor.Data, query.DefaultLimit)
-
-								// First txid of the page
-								assert.Equal(t,
-									uint64((txsPages-i)*query.DefaultLimit+additionalTxs-1), resp.Cursor.Data[0].ID)
-
-								// Last txid of the page
-								assert.Equal(t,
-									uint64((txsPages-i-1)*query.DefaultLimit+additionalTxs), resp.Cursor.Data[len(resp.Cursor.Data)-1].ID)
-
-								paginationToken = resp.Cursor.Next
-							}
-
-							if additionalTxs > 0 {
-								rsp = internal.GetTransactions(api, url.Values{
-									"pagination_token": []string{paginationToken},
-								})
-								assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-								resp = getTransactionsResponse{}
-								assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-								assert.Len(t, resp.Cursor.Data, additionalTxs)
-
-								// First txid of the last page
-								assert.Equal(t,
-									uint64(additionalTxs-1), resp.Cursor.Data[0].ID)
-
-								// Last txid of the last page
-								assert.Equal(t,
-									uint64(0), resp.Cursor.Data[len(resp.Cursor.Data)-1].ID)
-							}
-
-							if txsPages > 0 {
-								for i := 0; i < txsPages; i++ {
-									paginationToken = resp.Cursor.Previous
-									rsp = internal.GetTransactions(api, url.Values{
-										"pagination_token": []string{paginationToken},
-									})
-									assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-									resp = getTransactionsResponse{}
-									assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-									assert.Len(t, resp.Cursor.Data, query.DefaultLimit)
-								}
-
-								// First txid of the first page
-								assert.Equal(t,
-									uint64(txsPages*query.DefaultLimit+additionalTxs-1), resp.Cursor.Data[0].ID)
-
-								// Last txid of the first page
-								assert.Equal(t,
-									uint64((txsPages-1)*query.DefaultLimit+additionalTxs), resp.Cursor.Data[len(resp.Cursor.Data)-1].ID)
-							}
-
-							return nil
-						},
-					})
-				}))
-			})
-		}
-	}
 }
 
 func TestPostTransactionMetadata(t *testing.T) {

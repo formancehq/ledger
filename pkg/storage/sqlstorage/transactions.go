@@ -3,7 +3,8 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"math"
+	"encoding/base64"
+	"encoding/json"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -41,7 +42,14 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 }
 
 func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+	txs := make([]core.Transaction, 0)
+
+	if q.Limit <= 0 {
+		return sharedapi.Cursor{Data: txs}, nil
+	}
+
+	// We fetch an additional transaction to know if there is more
+	q.Limit += 1
 
 	sb := s.transactionsQuery(q.Params)
 	sb.OrderBy("t.id desc")
@@ -60,8 +68,6 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 			panic(err)
 		}
 	}(rows)
-
-	txs := make([]core.Transaction, 0)
 
 	for rows.Next() {
 		var (
@@ -117,6 +123,18 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		Next:     next,
 		Data:     txs,
 	}, nil
+}
+
+type PaginationToken struct {
+	ID uint64 `json:"txid"`
+}
+
+func tokenMarshal(i interface{}) (string, error) {
+	raw, err := json.Marshal(i)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
