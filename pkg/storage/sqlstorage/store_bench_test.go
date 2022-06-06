@@ -9,7 +9,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -138,7 +138,7 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		txs, err := store.GetTransactions(context.Background(), query.Transactions{
+		txs, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
 			Limit: 100,
 		})
 		assert.NoError(b, err)

@@ -12,7 +12,7 @@ import (
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -41,7 +41,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 	return func(ctx context.Context) error {
 		var rsp *httptest.ResponseRecorder
 
-		numTxs := txsPages*query.DefaultLimit + additionalTxs
+		numTxs := txsPages*storage.QueryDefaultLimit + additionalTxs
 		for i := 0; i < numTxs; i++ {
 			rsp = internal.PostTransaction(t, api, core.TransactionData{
 				Postings: core.Postings{
@@ -72,15 +72,15 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
-				assert.Len(t, cursor.Data, query.DefaultLimit)
+				assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
 
 				// First txid of the page
 				assert.Equal(t,
-					uint64((txsPages-i)*query.DefaultLimit+additionalTxs-1), cursor.Data[0].ID)
+					uint64((txsPages-i)*storage.QueryDefaultLimit+additionalTxs-1), cursor.Data[0].ID)
 
 				// Last txid of the page
 				assert.Equal(t,
-					uint64((txsPages-i-1)*query.DefaultLimit+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
+					uint64((txsPages-i-1)*storage.QueryDefaultLimit+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
 
 				paginationToken = cursor.Next
 			}
@@ -111,16 +111,16 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
-					assert.Len(t, cursor.Data, query.DefaultLimit)
+					assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
 				}
 
 				// First txid of the first page
 				assert.Equal(t,
-					uint64(txsPages*query.DefaultLimit+additionalTxs-1), cursor.Data[0].ID)
+					uint64(txsPages*storage.QueryDefaultLimit+additionalTxs-1), cursor.Data[0].ID)
 
 				// Last txid of the first page
 				assert.Equal(t,
-					uint64((txsPages-1)*query.DefaultLimit+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
+					uint64((txsPages-1)*storage.QueryDefaultLimit+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
 			}
 		})
 
@@ -143,7 +143,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
-				assert.Len(t, cursor.Data, query.DefaultLimit)
+				assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
 
 				// First account of the page
 				if i == 0 {
@@ -151,13 +151,13 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 						cursor.Data[0].Address)
 				} else {
 					assert.Equal(t,
-						fmt.Sprintf("accounts:%06d", (txsPages-i)*query.DefaultLimit+additionalTxs),
+						fmt.Sprintf("accounts:%06d", (txsPages-i)*storage.QueryDefaultLimit+additionalTxs),
 						cursor.Data[0].Address)
 				}
 
 				// Last account of the page
 				assert.Equal(t,
-					fmt.Sprintf("accounts:%06d", (txsPages-i-1)*query.DefaultLimit+additionalTxs+1),
+					fmt.Sprintf("accounts:%06d", (txsPages-i-1)*storage.QueryDefaultLimit+additionalTxs+1),
 					cursor.Data[len(cursor.Data)-1].Address)
 
 				paginationToken = cursor.Next
@@ -196,7 +196,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 					cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
-					assert.Len(t, cursor.Data, query.DefaultLimit)
+					assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
 				}
 
 				// First account of the first page
@@ -205,7 +205,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 
 				// Last account of the first page
 				assert.Equal(t,
-					fmt.Sprintf("accounts:%06d", (txsPages-1)*query.DefaultLimit+additionalTxs+1),
+					fmt.Sprintf("accounts:%06d", (txsPages-1)*storage.QueryDefaultLimit+additionalTxs+1),
 					cursor.Data[len(cursor.Data)-1].Address)
 			}
 		})

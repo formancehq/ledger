@@ -90,6 +90,20 @@ paths:
             type: object
             properties: {}
           example: metadata[key]=value1&metadata[a.nested.key]=value2
+        - name: balance
+          in: query
+          description: Filter accounts by their balance (default operator is gte)
+          schema:
+            type: integer
+            format: int64
+            example: 2400
+        - name: balance_operator
+          in: query
+          description: Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, or equal
+          schema:
+            type: string
+            enum: [gte, lte, gt, lt, e]
+            example: gte
         - name: pagination_token
           in: query
           description: |- 
@@ -840,7 +854,6 @@ components:
       required:
         - accounts
         - transactions
-
     Cursor:
       type: object
       required:
@@ -865,7 +878,6 @@ components:
           type: array
       required:
         - data
-
     TransactionResponse:
       properties:
         data:

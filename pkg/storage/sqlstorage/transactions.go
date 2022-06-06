@@ -10,7 +10,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
@@ -50,7 +50,7 @@ func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.Se
 	return sb, t
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
+func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	txs := make([]core.Transaction, 0)
 
 	if q.Limit == 0 {
@@ -112,7 +112,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 
 	var previous, next string
 	if q.AfterTxID > 0 && len(txs) > 0 {
-		t.AfterTxID = txs[0].ID + query.DefaultLimit + 1
+		t.AfterTxID = txs[0].ID + storage.QueryDefaultLimit + 1
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
@@ -138,7 +138,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 	}, nil
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 
