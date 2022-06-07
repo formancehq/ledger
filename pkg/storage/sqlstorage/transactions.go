@@ -13,50 +13,57 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
+	t := TxsPaginationToken{}
+
 	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
 	sb.From(s.schema.Table("transactions") + " t")
 	if account, ok := p["account"]; ok && account.(string) != "" {
 		arg := sb.Args.Add(account.(string))
 		sb.Where(s.schema.Table("use_account") + "(t.postings, " + arg + ")")
+		t.AccountFilter = account.(string)
 	}
 	if source, ok := p["source"]; ok && source.(string) != "" {
 		arg := sb.Args.Add(source.(string))
 		sb.Where(s.schema.Table("use_account_as_source") + "(t.postings, " + arg + ")")
+		t.SourceFilter = source.(string)
 	}
 	if destination, ok := p["destination"]; ok && destination.(string) != "" {
 		arg := sb.Args.Add(destination.(string))
 		sb.Where(s.schema.Table("use_account_as_destination") + "(t.postings, " + arg + ")")
+		t.DestinationFilter = destination.(string)
 	}
-	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
-		sb.Where(sb.E("reference", ref.(string)))
+	if reference, ok := p["reference"]; ok && reference.(string) != "" {
+		sb.Where(sb.E("reference", reference.(string)))
+		t.ReferenceFilter = reference.(string)
 	}
 	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
 		sb.Where(sb.GE("t.timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
+		t.StartTime = startTime.(time.Time)
 	}
 	if endTime, ok := p["end_time"]; ok && !endTime.(time.Time).IsZero() {
 		sb.Where(sb.L("t.timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
+		t.EndTime = endTime.(time.Time)
 	}
-	return sb
+
+	return sb, t
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor, error) {
 	txs := make([]core.Transaction, 0)
 
 	if q.Limit <= 0 {
 		return sharedapi.Cursor{Data: txs}, nil
 	}
 
-	// We fetch an additional transaction to know if there is more
-	q.Limit += 1
-
-	sb := s.transactionsQuery(q.Params)
-	sb.OrderBy("t.id desc")
-	if q.After != "" {
-		sb.Where(sb.L("t.id", q.After))
+	sb, t := s.buildTransactionsQuery(q.Params)
+	if q.AfterTxID != 0 {
+		sb.Where(sb.L("t.id", q.AfterTxID))
 	}
-	sb.Limit(q.Limit)
+	sb.OrderBy("t.id desc")
+	// We fetch an additional transaction to know if there is more
+	sb.Limit(int(q.Limit) + 1)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -100,21 +107,24 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		return sharedapi.Cursor{}, s.error(err)
 	}
 
-	previous := ""
-	if q.After != "" && len(txs) > 0 {
-		previous, err = tokenMarshal(PaginationToken{txs[0].ID + query.DefaultLimit + 1})
+	var previous, next string
+	if q.AfterTxID > 0 && len(txs) > 0 {
+		t.AfterTxID = txs[0].ID + query.DefaultLimit + 1
+		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor{}, s.error(err)
 		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	next := ""
-	if len(txs) == q.Limit {
+	if len(txs) == int(q.Limit)+1 {
 		txs = txs[:len(txs)-1]
-		next, err = tokenMarshal(PaginationToken{txs[len(txs)-1].ID})
+		t.AfterTxID = txs[len(txs)-1].ID
+		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor{}, s.error(err)
 		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
 	return sharedapi.Cursor{
@@ -125,19 +135,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 	}, nil
 }
 
-type PaginationToken struct {
-	ID uint64 `json:"txid"`
-}
-
-func tokenMarshal(i interface{}) (string, error) {
-	raw, err := json.Marshal(i)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
-func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor, error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 

@@ -254,7 +254,6 @@ func TestNotFoundTransaction(t *testing.T) {
 
 type GetTransactionsCursor struct {
 	PageSize int                `json:"page_size,omitempty"`
-	HasMore  bool               `json:"has_more"`
 	Previous string             `json:"previous,omitempty"`
 	Next     string             `json:"next,omitempty"`
 	Data     []core.Transaction `json:"data"`
@@ -336,7 +335,6 @@ func TestGetTransactions(t *testing.T) {
 				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(2))
 				assert.Equal(t, resp.Cursor.Data[1].ID, uint64(1))
 				assert.Equal(t, resp.Cursor.Data[2].ID, uint64(0))
-				assert.False(t, resp.Cursor.HasMore)
 
 				tx1Timestamp := resp.Cursor.Data[1].Timestamp
 				tx2Timestamp := resp.Cursor.Data[0].Timestamp
@@ -350,7 +348,6 @@ func TestGetTransactions(t *testing.T) {
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
-				assert.False(t, resp.Cursor.HasMore)
 
 				rsp = internal.GetTransactions(api, url.Values{
 					"reference": []string{"ref:001"},
@@ -361,7 +358,6 @@ func TestGetTransactions(t *testing.T) {
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
 				assert.Len(t, resp.Cursor.Data, 1)
 				assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
-				assert.False(t, resp.Cursor.HasMore)
 
 				rsp = internal.GetTransactions(api, url.Values{
 					"start_time": []string{tx1Timestamp},

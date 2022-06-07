@@ -3,19 +3,32 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
+	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
+
+	if address, ok := p["address"]; ok && address.(string) != "" {
+		arg := sb.Args.Add("^" + address.(string) + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("address ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("address REGEXP " + arg)
+		}
+		t.AddressRegexpFilter = address.(string)
+	}
 
 	if metadata, ok := p["metadata"]; ok {
 		for key, value := range metadata.(map[string]string) {
@@ -26,40 +39,32 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
 			))
 		}
+		t.MetadataFilter = metadata.(map[string]string)
 	}
 
-	if address, ok := p["address"]; ok && address.(string) != "" {
-		arg := sb.Args.Add("^" + address.(string) + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("address ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("address REGEXP " + arg)
-		}
-	}
-
-	return sb
+	return sb, t
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor, error) {
 	accounts := make([]core.Account, 0)
 
-	if q.Limit < 0 {
+	if q.Limit == 0 {
 		return sharedapi.Cursor{Data: accounts}, nil
 	}
 
-	// We fetch an additional account to know if there is more
-	q.Limit += 1
+	sb, t := s.buildAccountsQuery(q.Params)
+	sb.Select("address", "metadata")
+	sb.OrderBy("address desc")
 
-	spew.Dump(q)
-
-	sb := s.accountsQuery(q.Params).
-		Select("address", "metadata").
-		OrderBy("address desc")
-	if q.After != "" {
-		sb.Where(sb.L("address", q.After))
+	if q.AfterAddress != "" {
+		sb.Where(sb.L("address", q.AfterAddress))
+		t.AfterAddress = q.AfterAddress
 	}
-	sb.Limit(q.Limit)
+
+	// We fetch an additional account to know if there is more
+	sb.Limit(int(q.Limit) + 1)
+	t.Limit = q.Limit
+	sb.Offset(int(q.Offset))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -84,21 +89,24 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (
 		return sharedapi.Cursor{}, rows.Err()
 	}
 
-	previous := ""
-	if q.After != "" && len(accounts) > 0 {
-		previous, err = tokenMarshal(PaginationToken{})
+	var previous, next string
+	if q.Offset-q.Limit > 0 {
+		t.Offset = q.Offset - q.Limit
+		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor{}, s.error(err)
 		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	next := ""
-	if len(accounts) == q.Limit {
+	if len(accounts) == int(q.Limit)+1 {
 		accounts = accounts[:len(accounts)-1]
-		next, err = tokenMarshal(PaginationToken{})
+		t.Offset = q.Offset + q.Limit
+		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor{}, s.error(err)
 		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
 	return sharedapi.Cursor{
@@ -109,7 +117,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (
 	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor, error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 
@@ -126,8 +134,7 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (cor
 	}
 
 	account := core.Account{}
-	err := row.Scan(&account.Address, &account.Metadata)
-	if err != nil {
+	if err := row.Scan(&account.Address, &account.Metadata); err != nil {
 		if err == sql.ErrNoRows {
 			return core.Account{}, nil
 		}

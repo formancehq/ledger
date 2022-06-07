@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
@@ -28,8 +27,8 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountAccounts(
 		c.Request.Context(),
-		query.Address(c.Query("address")),
-		query.Metadata(c.QueryMap("metadata")),
+		query.SetAddressRegexpFilter(c.Query("address")),
+		query.SetMetadataFilter(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -41,27 +40,50 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
+	paginationToken := c.Query("pagination_token")
+	afterAddress := c.Query("after")
+	addressRegexpFilter := c.Query("address")
+	metadataFilter := c.QueryMap("metadata")
 
-	after := c.Query("after")
-	if c.Query("pagination_token") != "" {
-		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
+	if paginationToken != "" {
+		if afterAddress != "" || addressRegexpFilter != "" || len(metadataFilter) != 0 {
+			ResponseError(c, ledger.NewValidationError(
+				"no other query params can be set with 'pagination_token'"))
+			return
+		}
+
+		res, err := base64.RawURLEncoding.DecodeString(paginationToken)
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
-		t := sqlstorage.PaginationToken{}
+		t := sqlstorage.AccPaginationToken{}
 		if err = json.Unmarshal(res, &t); err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
-		after = strconv.FormatUint(t.ID, 10)
+
+		cursor, err := l.(*ledger.Ledger).GetAccounts(
+			c.Request.Context(),
+			query.SetOffset(t.Offset),
+			query.SetAfterAddress(t.AfterAddress),
+			query.SetAddressRegexpFilter(t.AddressRegexpFilter),
+			query.SetMetadataFilter(t.MetadataFilter),
+		)
+		if err != nil {
+			ResponseError(c, err)
+			return
+		}
+
+		ctl.response(c, http.StatusOK, cursor)
+		return
 	}
 
 	cursor, err := l.(*ledger.Ledger).GetAccounts(
 		c.Request.Context(),
-		query.After(after),
-		query.Address(c.Query("address")),
-		query.Metadata(c.QueryMap("metadata")),
+		query.SetAfterAddress(afterAddress),
+		query.SetAddressRegexpFilter(addressRegexpFilter),
+		query.SetMetadataFilter(metadataFilter),
 	)
 	if err != nil {
 		ResponseError(c, err)

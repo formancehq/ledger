@@ -189,7 +189,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	assert.NoError(t, err)
 
-	countAccounts, err := store.CountAccounts(context.Background(), query.Query{})
+	countAccounts, err := store.CountAccounts(context.Background(), query.Accounts{})
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2, countAccounts) // world + central_bank
 }
@@ -254,20 +254,20 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), account1, account2, account3, account4)
 	assert.NoError(t, err)
 
-	accounts, err := store.GetAccounts(context.Background(), query.Query{
+	accounts, err := store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
-		Limit: 1,
-		After: accounts.Data.([]core.Account)[0].Address,
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
+		Limit:        1,
+		AfterAddress: accounts.Data.([]core.Account)[0].Address,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"address": ".*der.*",
@@ -275,9 +275,9 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	})
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 2)
-	assert.Equal(t, 10, accounts.PageSize)
+	assert.Equal(t, 2, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -288,7 +288,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -299,7 +299,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -310,7 +310,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), query.Query{
+	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 10,
 		Params: map[string]interface{}{
 			"metadata": map[string]string{
@@ -374,12 +374,12 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 
 	t.Run("Count", func(t *testing.T) {
-		count, err := store.CountTransactions(context.Background(), query.Query{})
+		count, err := store.CountTransactions(context.Background(), query.Transactions{})
 		assert.NoError(t, err)
 		// Should get all the transactions
 		assert.EqualValues(t, 3, count)
 
-		count, err = store.CountTransactions(context.Background(), query.Query{
+		count, err = store.CountTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"account": "world",
 			},
@@ -388,7 +388,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get the two first transactions involving the 'world' account.
 		assert.EqualValues(t, 2, count)
 
-		count, err = store.CountTransactions(context.Background(), query.Query{
+		count, err = store.CountTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"start_time": now.Add(-2 * time.Hour),
 				"end_time":   now.Add(-1 * time.Hour),
@@ -400,22 +400,22 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
-		cursor, err := store.GetTransactions(context.Background(), query.Query{
+		cursor, err := store.GetTransactions(context.Background(), query.Transactions{
 			Limit: 1,
 		})
 		assert.NoError(t, err)
 		// Should get only the first transaction and the 'HasMore' bool set to true.
 		assert.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), query.Query{
-			After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
-			Limit: 1,
+		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
+			AfterTxID: cursor.Data.([]core.Transaction)[0].ID,
+			Limit:     1,
 		})
 		assert.NoError(t, err)
 		// Should get only the second transaction and the 'HasMore' bool set to true.
 		assert.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), query.Query{
+		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"account":   "world",
 				"reference": "tx1",
@@ -427,7 +427,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the first transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), query.Query{
+		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"source": "central_bank",
 			},
@@ -438,7 +438,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), query.Query{
+		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"destination": "users:1",
 			},
@@ -449,7 +449,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction and the 'HasMore' bool set to false.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), query.Query{
+		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
 			Params: map[string]interface{}{
 				"start_time": now.Add(-2 * time.Hour),
 				"end_time":   now.Add(-1 * time.Hour),
@@ -552,7 +552,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 		}(tx)
 	}
 
-	_, err := store.CountTransactions(context.Background(), query.Query{})
+	_, err := store.CountTransactions(context.Background(), query.Transactions{})
 	assert.Error(t, err)
 	assert.IsType(t, new(storage.Error), err)
 	assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)

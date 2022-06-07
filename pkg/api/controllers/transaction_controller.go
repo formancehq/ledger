@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
 type TransactionController struct {
@@ -28,10 +29,10 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
-		query.Reference(c.Query("reference")),
-		query.Account(c.Query("account")),
-		query.Source(c.Query("source")),
-		query.Destination(c.Query("destination")),
+		query.SetReferenceFilter(c.Query("reference")),
+		query.SetAccountFilter(c.Query("account")),
+		query.SetSourceFilter(c.Query("source")),
+		query.SetDestinationFilter(c.Query("destination")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -43,49 +44,87 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
+	paginationToken := c.Query("pagination_token")
+	afterTxID := c.Query("after")
+	referenceFilter := c.Query("reference")
+	accountFilter := c.Query("account")
+	sourceFilter := c.Query("source")
+	destinationFilter := c.Query("destination")
+	startTime := c.Query("start_time")
+	endTime := c.Query("end_time")
 
-	var startTime, endTime time.Time
+	if paginationToken != "" {
+		if afterTxID != "" || referenceFilter != "" || accountFilter != "" ||
+			sourceFilter != "" || destinationFilter != "" || startTime != "" || endTime != "" {
+			ResponseError(c, ledger.NewValidationError(
+				"no other query params can be set with 'pagination_token'"))
+			return
+		}
+		res, err := base64.RawURLEncoding.DecodeString(paginationToken)
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			return
+		}
+		t := sqlstorage.TxsPaginationToken{}
+		if err = json.Unmarshal(res, &t); err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			return
+		}
+
+		cursor, err := l.(*ledger.Ledger).GetTransactions(
+			c.Request.Context(),
+			query.SetAfterTxID(t.AfterTxID),
+			query.SetReferenceFilter(t.ReferenceFilter),
+			query.SetAccountFilter(t.AccountFilter),
+			query.SetSourceFilter(t.SourceFilter),
+			query.SetDestinationFilter(t.DestinationFilter),
+			query.SetStartTime(t.StartTime),
+			query.SetEndTime(t.EndTime),
+		)
+		if err != nil {
+			ResponseError(c, err)
+		} else {
+			ctl.response(c, http.StatusOK, cursor)
+		}
+		return
+	}
+
+	var afterTxIDParsed uint64
 	var err error
-	if c.Query("start_time") != "" {
-		startTime, err = time.Parse(time.RFC3339, c.Query("start_time"))
+	if afterTxID != "" {
+		afterTxIDParsed, err = strconv.ParseUint(afterTxID, 10, 64)
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+			return
+		}
+	}
+
+	var startTimeParsed, endTimeParsed time.Time
+	if startTime != "" {
+		startTimeParsed, err = time.Parse(time.RFC3339, startTime)
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
 			return
 		}
 	}
 
-	if c.Query("end_time") != "" {
-		endTime, err = time.Parse(time.RFC3339, c.Query("end_time"))
+	if endTime != "" {
+		endTimeParsed, err = time.Parse(time.RFC3339, endTime)
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
 			return
 		}
 	}
 
-	after := c.Query("after")
-	if c.Query("pagination_token") != "" {
-		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
-			return
-		}
-		t := TransactionsPaginationToken{}
-		if err = json.Unmarshal(res, &t); err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
-			return
-		}
-		after = strconv.FormatUint(t.ID, 10)
-	}
-
 	cursor, err := l.(*ledger.Ledger).GetTransactions(
 		c.Request.Context(),
-		query.After(after),
-		query.Reference(c.Query("reference")),
-		query.Account(c.Query("account")),
-		query.Source(c.Query("source")),
-		query.Destination(c.Query("destination")),
-		query.StartTime(startTime),
-		query.EndTime(endTime),
+		query.SetAfterTxID(afterTxIDParsed),
+		query.SetReferenceFilter(referenceFilter),
+		query.SetAccountFilter(accountFilter),
+		query.SetSourceFilter(sourceFilter),
+		query.SetDestinationFilter(destinationFilter),
+		query.SetStartTime(startTimeParsed),
+		query.SetEndTime(endTimeParsed),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -93,18 +132,6 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	}
 
 	ctl.response(c, http.StatusOK, cursor)
-}
-
-type TransactionsPaginationToken struct {
-	ID uint64 `json:"txid"`
-}
-
-func TransactionsTokenMarshal(i interface{}) (string, error) {
-	raw, err := json.Marshal(i)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
