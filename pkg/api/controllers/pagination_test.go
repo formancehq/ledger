@@ -55,58 +55,16 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 			require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
 		}
 
-		// TRANSACTIONS
+		t.Run("transactions", func(t *testing.T) {
+			rsp = internal.CountTransactions(api, url.Values{})
+			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+			require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
 
-		rsp = internal.CountTransactions(api, url.Values{})
-		require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-		require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
+			paginationToken := ""
+			rt := getTransactionsResponse{}
 
-		paginationToken := ""
-		rt := getTransactionsResponse{}
-
-		// MOVING FORWARD
-		for i := 0; i < txsPages; i++ {
-			rsp = internal.GetTransactions(api, url.Values{
-				"pagination_token": []string{paginationToken},
-			})
-			assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-			rt = getTransactionsResponse{}
-			assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &rt))
-			assert.Len(t, rt.Cursor.Data, query.DefaultLimit)
-
-			// First txid of the page
-			assert.Equal(t,
-				uint64((txsPages-i)*query.DefaultLimit+additionalTxs-1), rt.Cursor.Data[0].ID)
-
-			// Last txid of the page
-			assert.Equal(t,
-				uint64((txsPages-i-1)*query.DefaultLimit+additionalTxs), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
-
-			paginationToken = rt.Cursor.Next
-		}
-
-		if additionalTxs > 0 {
-			rsp = internal.GetTransactions(api, url.Values{
-				"pagination_token": []string{paginationToken},
-			})
-			assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-			rt = getTransactionsResponse{}
-			assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &rt))
-			assert.Len(t, rt.Cursor.Data, additionalTxs)
-
-			// First txid of the last page
-			assert.Equal(t,
-				uint64(additionalTxs-1), rt.Cursor.Data[0].ID)
-
-			// Last txid of the last page
-			assert.Equal(t,
-				uint64(0), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
-		}
-
-		// MOVING BACKWARD
-		if txsPages > 0 {
+			// MOVING FORWARD
 			for i := 0; i < txsPages; i++ {
-				paginationToken = rt.Cursor.Previous
 				rsp = internal.GetTransactions(api, url.Values{
 					"pagination_token": []string{paginationToken},
 				})
@@ -114,105 +72,147 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				rt = getTransactionsResponse{}
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &rt))
 				assert.Len(t, rt.Cursor.Data, query.DefaultLimit)
-			}
 
-			// First txid of the first page
-			assert.Equal(t,
-				uint64(txsPages*query.DefaultLimit+additionalTxs-1), rt.Cursor.Data[0].ID)
-
-			// Last txid of the first page
-			assert.Equal(t,
-				uint64((txsPages-1)*query.DefaultLimit+additionalTxs), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
-		}
-
-		// ACCOUNTS
-
-		numAcc := 0
-		if numTxs > 0 {
-			numAcc = numTxs + 1 // + world account
-		}
-		rsp = internal.CountAccounts(api, url.Values{})
-		require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-		require.Equal(t, fmt.Sprintf("%d", numAcc), rsp.Header().Get("Count"))
-
-		paginationToken = ""
-		ra := getAccountsResponse{}
-
-		// MOVING FORWARD
-		for i := 0; i < txsPages; i++ {
-			rsp = internal.GetAccounts(api, url.Values{
-				"pagination_token": []string{paginationToken},
-			})
-			assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-			ra = getAccountsResponse{}
-			assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &ra))
-			assert.Len(t, ra.Cursor.Data, query.DefaultLimit)
-
-			// First account of the page
-			if i == 0 {
-				assert.Equal(t, "world",
-					ra.Cursor.Data[0].Address)
-			} else {
+				// First txid of the page
 				assert.Equal(t,
-					fmt.Sprintf("accounts:%06d", (txsPages-i)*query.DefaultLimit+additionalTxs),
-					ra.Cursor.Data[0].Address)
-			}
+					uint64((txsPages-i)*query.DefaultLimit+additionalTxs-1), rt.Cursor.Data[0].ID)
 
-			// Last account of the page
-			assert.Equal(t,
-				fmt.Sprintf("accounts:%06d", (txsPages-i-1)*query.DefaultLimit+additionalTxs+1),
-				ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
-
-			paginationToken = ra.Cursor.Next
-		}
-
-		if additionalTxs > 0 {
-			rsp = internal.GetAccounts(api, url.Values{
-				"pagination_token": []string{paginationToken},
-			})
-			assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-			ra = getAccountsResponse{}
-			assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &ra))
-			assert.Len(t, ra.Cursor.Data, additionalTxs+1)
-
-			// First account of the last page
-			if txsPages == 0 {
-				assert.Equal(t, "world",
-					ra.Cursor.Data[0].Address)
-			} else {
+				// Last txid of the page
 				assert.Equal(t,
-					fmt.Sprintf("accounts:%06d", additionalTxs),
-					ra.Cursor.Data[0].Address)
+					uint64((txsPages-i-1)*query.DefaultLimit+additionalTxs), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
+
+				paginationToken = rt.Cursor.Next
 			}
 
-			// Last account of the last page
-			assert.Equal(t,
-				fmt.Sprintf("accounts:%06d", 0),
-				ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
-		}
+			if additionalTxs > 0 {
+				rsp = internal.GetTransactions(api, url.Values{
+					"pagination_token": []string{paginationToken},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				rt = getTransactionsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &rt))
+				assert.Len(t, rt.Cursor.Data, additionalTxs)
 
-		// MOVING BACKWARD
-		if txsPages > 0 {
+				// First txid of the last page
+				assert.Equal(t,
+					uint64(additionalTxs-1), rt.Cursor.Data[0].ID)
+
+				// Last txid of the last page
+				assert.Equal(t,
+					uint64(0), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
+			}
+
+			// MOVING BACKWARD
+			if txsPages > 0 {
+				for i := 0; i < txsPages; i++ {
+					paginationToken = rt.Cursor.Previous
+					rsp = internal.GetTransactions(api, url.Values{
+						"pagination_token": []string{paginationToken},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					rt = getTransactionsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &rt))
+					assert.Len(t, rt.Cursor.Data, query.DefaultLimit)
+				}
+
+				// First txid of the first page
+				assert.Equal(t,
+					uint64(txsPages*query.DefaultLimit+additionalTxs-1), rt.Cursor.Data[0].ID)
+
+				// Last txid of the first page
+				assert.Equal(t,
+					uint64((txsPages-1)*query.DefaultLimit+additionalTxs), rt.Cursor.Data[len(rt.Cursor.Data)-1].ID)
+			}
+		})
+
+		t.Run("accounts", func(t *testing.T) {
+			numAcc := 0
+			if numTxs > 0 {
+				numAcc = numTxs + 1 // + world account
+			}
+			rsp = internal.CountAccounts(api, url.Values{})
+			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+			require.Equal(t, fmt.Sprintf("%d", numAcc), rsp.Header().Get("Count"))
+
+			paginationToken := ""
+			ra := getAccountsResponse{}
+
+			// MOVING FORWARD
 			for i := 0; i < txsPages; i++ {
-				paginationToken = ra.Cursor.Previous
+				rsp = internal.GetAccounts(api, url.Values{
+					"pagination_token": []string{paginationToken},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				ra = getAccountsResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &ra))
+				assert.Len(t, ra.Cursor.Data, query.DefaultLimit)
+
+				// First account of the page
+				if i == 0 {
+					assert.Equal(t, "world",
+						ra.Cursor.Data[0].Address)
+				} else {
+					assert.Equal(t,
+						fmt.Sprintf("accounts:%06d", (txsPages-i)*query.DefaultLimit+additionalTxs),
+						ra.Cursor.Data[0].Address)
+				}
+
+				// Last account of the page
+				assert.Equal(t,
+					fmt.Sprintf("accounts:%06d", (txsPages-i-1)*query.DefaultLimit+additionalTxs+1),
+					ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
+
+				paginationToken = ra.Cursor.Next
+			}
+
+			if additionalTxs > 0 {
 				rsp = internal.GetAccounts(api, url.Values{
 					"pagination_token": []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				ra = getAccountsResponse{}
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &ra))
-				assert.Len(t, ra.Cursor.Data, query.DefaultLimit)
+				assert.Len(t, ra.Cursor.Data, additionalTxs+1)
+
+				// First account of the last page
+				if txsPages == 0 {
+					assert.Equal(t, "world",
+						ra.Cursor.Data[0].Address)
+				} else {
+					assert.Equal(t,
+						fmt.Sprintf("accounts:%06d", additionalTxs),
+						ra.Cursor.Data[0].Address)
+				}
+
+				// Last account of the last page
+				assert.Equal(t,
+					fmt.Sprintf("accounts:%06d", 0),
+					ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
 			}
 
-			// First account of the first page
-			assert.Equal(t, "world",
-				ra.Cursor.Data[0].Address)
+			// MOVING BACKWARD
+			if txsPages > 0 {
+				for i := 0; i < txsPages; i++ {
+					paginationToken = ra.Cursor.Previous
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{paginationToken},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+					ra = getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &ra))
+					assert.Len(t, ra.Cursor.Data, query.DefaultLimit)
+				}
 
-			// Last account of the first page
-			assert.Equal(t,
-				fmt.Sprintf("accounts:%06d", (txsPages-1)*query.DefaultLimit+additionalTxs+1),
-				ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
-		}
+				// First account of the first page
+				assert.Equal(t, "world",
+					ra.Cursor.Data[0].Address)
+
+				// Last account of the first page
+				assert.Equal(t,
+					fmt.Sprintf("accounts:%06d", (txsPages-1)*query.DefaultLimit+additionalTxs+1),
+					ra.Cursor.Data[len(ra.Cursor.Data)-1].Address)
+			}
+		})
 
 		return nil
 	}

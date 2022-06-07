@@ -53,6 +53,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	startTime := c.Query("start_time")
 	endTime := c.Query("end_time")
 
+	fmt.Printf("TOK:%s\n", paginationToken)
 	if paginationToken != "" {
 		if afterTxID != "" || referenceFilter != "" || accountFilter != "" ||
 			sourceFilter != "" || destinationFilter != "" || startTime != "" || endTime != "" {
