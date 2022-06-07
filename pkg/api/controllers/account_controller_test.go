@@ -68,82 +68,98 @@ func TestGetAccounts(t *testing.T) {
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				require.Equal(t, "3", rsp.Header().Get("Count"))
 
-				rsp = internal.GetAccounts(api, url.Values{})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp := getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 3 accounts: world, bob, alice
-				assert.Len(t, resp.Cursor.Data, 3)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "world")
-				assert.Equal(t, resp.Cursor.Data[1].Address, "bob")
-				assert.Equal(t, resp.Cursor.Data[2].Address, "alice")
-
-				rsp = internal.GetAccounts(api, url.Values{
-					"metadata[roles]": []string{"admin"},
+				t.Run("all", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 3 accounts: world, bob, alice
+					assert.Len(t, resp.Cursor.Data, 3)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "world")
+					assert.Equal(t, resp.Cursor.Data[1].Address, "bob")
+					assert.Equal(t, resp.Cursor.Data[2].Address, "alice")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: bob
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"metadata[accountId]": []string{"3"},
+				t.Run("meta roles", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"metadata[roles]": []string{"admin"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: bob
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: bob
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"metadata[enabled]": []string{"true"},
+				t.Run("meta accountId", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"metadata[accountId]": []string{"3"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: bob
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: bob
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"metadata[a.nested.key]": []string{"hello"},
+				t.Run("meta enabled", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"metadata[enabled]": []string{"true"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: bob
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: bob
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"metadata[unknown]": []string{"key"},
+				t.Run("meta nested", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"metadata[a.nested.key]": []string{"hello"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: bob
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
-				assert.Len(t, cursor.Data, 0)
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"after": []string{"bob"},
+				t.Run("meta unknown", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"metadata[unknown]": []string{"key"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+					assert.Len(t, cursor.Data, 0)
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: alice
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "alice")
 
-				rsp = internal.GetAccounts(api, url.Values{
-					"address": []string{"b.b"},
+				t.Run("after", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"after": []string{"bob"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: alice
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "alice")
 				})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp = getAccountsResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-				// 1 accounts: bob
-				assert.Len(t, resp.Cursor.Data, 1)
-				assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+
+				t.Run("address", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"address": []string{"b.b"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: bob
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+				})
 
 				to := sqlstorage.AccPaginationToken{}
 				raw, err := json.Marshal(to)
