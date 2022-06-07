@@ -446,13 +446,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionResponse'
+                $ref: '#/components/schemas/TransactionsResponse'
         "304":
           description: Not modified (when preview is enabled)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionResponse'
+                $ref: '#/components/schemas/TransactionsResponse'
         "400":
           description: Commit error
           content:

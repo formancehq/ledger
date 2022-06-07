@@ -47,15 +47,15 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		return sharedapi.Cursor{Data: accounts}, nil
 	}
 
-	sb := s.buildAccountsQuery(q.Params).
-		Select("address", "metadata").
-		OrderBy("address desc")
+	sb := s.buildAccountsQuery(q.Params)
+	sb.Select("address", "metadata")
+	sb.OrderBy("address desc")
 
 	if q.AfterAddress != "" {
-		sb.Where(sb.LessThan("address", q.AfterAddress))
+		sb.Where(sb.L("address", q.AfterAddress))
 	}
 
-	// We fetch an additional account to know if we have more documents
+	// We fetch an additional account to know if there is more
 	sb.Limit(int(q.Limit + 1))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())

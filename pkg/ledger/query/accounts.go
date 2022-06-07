@@ -6,7 +6,7 @@ type Accounts struct {
 	Params       map[string]interface{}
 }
 
-type AccModifier func(accounts *Accounts)
+type AccModifier func(*Accounts)
 
 func NewAccounts(qms ...[]AccModifier) Accounts {
 	q := Accounts{
