@@ -17,7 +17,6 @@ import (
 
 type GetAccountsCursor struct {
 	PageSize int            `json:"page_size,omitempty"`
-	HasMore  bool           `json:"has_more"`
 	Previous string         `json:"previous,omitempty"`
 	Next     string         `json:"next,omitempty"`
 	Data     []core.Account `json:"data"`

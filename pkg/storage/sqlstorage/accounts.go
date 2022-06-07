@@ -62,7 +62,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 	}
 
 	// We fetch an additional account to know if there is more
-	sb.Limit(int(q.Limit) + 1)
+	sb.Limit(int(q.Limit + 1))
 	t.Limit = q.Limit
 	sb.Offset(int(q.Offset))
 
@@ -99,7 +99,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(accounts) == int(q.Limit)+1 {
+	if len(accounts) == int(q.Limit+1) {
 		accounts = accounts[:len(accounts)-1]
 		t.Offset = q.Offset + q.Limit
 		raw, err := json.Marshal(t)

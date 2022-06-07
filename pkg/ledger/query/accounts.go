@@ -1,8 +1,8 @@
 package query
 
 type Accounts struct {
-	Limit        uint64
-	Offset       uint64
+	Limit        uint
+	Offset       uint
 	AfterAddress string
 	Params       map[string]interface{}
 }
@@ -28,23 +28,19 @@ func (q *Accounts) Apply(modifiers []AccModifier) {
 	}
 }
 
-func (q *Accounts) Modify(modifier AccModifier) {
-	modifier(q)
-}
-
-func SetOffset(v uint64) func(accounts *Accounts) {
+func SetOffset(v uint) func(accounts *Accounts) {
 	return func(q *Accounts) {
 		q.Offset = v
 	}
 }
 
-func SetAfterAddress(v string) func(accounts *Accounts) {
+func SetAfterAddress(v string) func(*Accounts) {
 	return func(q *Accounts) {
 		q.AfterAddress = v
 	}
 }
 
-func SetAddressRegexpFilter(v string) func(accounts *Accounts) {
+func SetAddressRegexpFilter(v string) func(*Accounts) {
 	return func(q *Accounts) {
 		if v != "" {
 			q.Params["address"] = v
@@ -52,7 +48,7 @@ func SetAddressRegexpFilter(v string) func(accounts *Accounts) {
 	}
 }
 
-func SetMetadataFilter(v map[string]string) func(accounts *Accounts) {
+func SetMetadataFilter(v map[string]string) func(*Accounts) {
 	return func(q *Accounts) {
 		if len(v) > 0 {
 			q.Params["metadata"] = v

@@ -13,8 +13,8 @@ type TxsPaginationToken struct {
 }
 
 type AccPaginationToken struct {
-	Limit               uint64            `json:"limit"`
-	Offset              uint64            `json:"offset"`
+	Limit               uint              `json:"limit"`
+	Offset              uint              `json:"offset"`
 	AfterAddress        string            `json:"after,omitempty"`
 	AddressRegexpFilter string            `json:"address,omitempty"`
 	MetadataFilter      map[string]string `json:"metadata,omitempty"`

@@ -35,7 +35,7 @@ func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.Se
 		t.DestinationFilter = destination.(string)
 	}
 	if reference, ok := p["reference"]; ok && reference.(string) != "" {
-		sb.Where(sb.E("reference", reference.(string)))
+		sb.Where(sb.E("t.reference", reference.(string)))
 		t.ReferenceFilter = reference.(string)
 	}
 	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
@@ -53,17 +53,18 @@ func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.Se
 func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor, error) {
 	txs := make([]core.Transaction, 0)
 
-	if q.Limit <= 0 {
+	if q.Limit == 0 {
 		return sharedapi.Cursor{Data: txs}, nil
 	}
 
 	sb, t := s.buildTransactionsQuery(q.Params)
-	if q.AfterTxID != 0 {
+	sb.OrderBy("t.id desc")
+	if q.AfterTxID > 0 {
 		sb.Where(sb.L("t.id", q.AfterTxID))
 	}
-	sb.OrderBy("t.id desc")
-	// We fetch an additional transaction to know if there is more
-	sb.Limit(int(q.Limit) + 1)
+
+	// We fetch an additional transaction to know if there are more
+	sb.Limit(int(q.Limit + 1))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -117,7 +118,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(txs) == int(q.Limit)+1 {
+	if len(txs) == int(q.Limit+1) {
 		txs = txs[:len(txs)-1]
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)

@@ -10,12 +10,17 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt"
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedauth"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -87,6 +92,15 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, body)
 	req.Header.Set("Content-Type", "application/json")
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"scope": strings.Join(routes.AllScopes, " "),
+	})
+	signed, err := token.SignedString([]byte("0000000000000000"))
+	if err != nil {
+		panic(err)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signed))
 	return req, rec
 }
 
@@ -202,7 +216,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 	ch := make(chan struct{})
 
 	options = append([]fx.Option{
-		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest"}),
+		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest", UseScopes: true}),
 		ledger.ResolveModule(),
 		ledgertesting.ProvideStorageDriver(),
 		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
@@ -214,7 +228,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 					}
 					defer func(store storage.Store, ctx context.Context) {
 						require.NoError(t, store.Close(ctx))
-					}(store, context.Background())
+					}(store, ctx)
 
 					_, err = store.Initialize(context.Background())
 					return err
@@ -223,6 +237,26 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		}),
 		fx.NopLogger,
 	}, options...)
+
+	options = append(options, routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
+		return []gin.HandlerFunc{
+			func(c *gin.Context) {
+				handled := false
+				sharedauth.Middleware(sharedauth.NewHttpBearerMethod(
+					sharedauth.NoOpValidator,
+				))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					handled = true
+					// The middleware replace the context of the request to include the agent
+					// We have to forward it to gin
+					c.Request = r
+					c.Next()
+				})).ServeHTTP(c.Writer, c.Request)
+				if !handled {
+					c.Abort()
+				}
+			},
+		}
+	}, fx.ParamTags(`optional:"true"`)))
 
 	options = append(options,
 		fx.Invoke(func(lc fx.Lifecycle) {
@@ -235,6 +269,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		}))
 
 	app := fx.New(options...)
+
 	assert.NoError(t, app.Start(context.Background()))
 
 	select {

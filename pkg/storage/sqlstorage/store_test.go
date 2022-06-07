@@ -404,7 +404,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 1,
 		})
 		assert.NoError(t, err)
-		// Should get only the first transaction and the 'HasMore' bool set to true.
+		// Should get only the first transaction.
 		assert.Equal(t, 1, cursor.PageSize)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
@@ -412,7 +412,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit:     1,
 		})
 		assert.NoError(t, err)
-		// Should get only the second transaction and the 'HasMore' bool set to true.
+		// Should get only the second transaction.
 		assert.Equal(t, 1, cursor.PageSize)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
@@ -424,7 +424,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
-		// Should get only the first transaction and the 'HasMore' bool set to false.
+		// Should get only the first transaction.
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
@@ -435,7 +435,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
-		// Should get only the third transaction and the 'HasMore' bool set to false.
+		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
@@ -446,7 +446,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
-		// Should get only the third transaction and the 'HasMore' bool set to false.
+		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{

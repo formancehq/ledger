@@ -9,7 +9,7 @@ const (
 )
 
 type Transactions struct {
-	Limit     uint64
+	Limit     uint
 	AfterTxID uint64
 	Params    map[string]interface{}
 }

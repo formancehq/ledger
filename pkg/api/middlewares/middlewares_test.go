@@ -32,22 +32,3 @@ func TestAdditionalGlobalMiddleware(t *testing.T) {
 		}),
 	)
 }
-
-func TestAdditionalPerLedgerMiddleware(t *testing.T) {
-	internal.RunTest(t,
-		routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
-			return []gin.HandlerFunc{
-				func(context *gin.Context) {
-					_ = context.AbortWithError(418, errors.New(""))
-				},
-			}
-		}),
-		fx.Invoke(func(api *api.API) {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/XXX/transactions", nil)
-
-			api.ServeHTTP(rec, req)
-			assert.Equal(t, 418, rec.Code)
-		}),
-	)
-}

@@ -861,6 +861,7 @@ components:
           type: array
       required:
         - data
+
     TransactionResponse:
       properties:
         data:
