@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -13,9 +12,19 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildAccountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("accounts"))
+
+	if address, ok := p["address"]; ok && address.(string) != "" {
+		arg := sb.Args.Add("^" + address.(string) + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("address ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("address REGEXP " + arg)
+		}
+	}
 
 	if metadata, ok := p["metadata"]; ok {
 		for key, value := range metadata.(map[string]string) {
@@ -28,39 +37,31 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 		}
 	}
 
-	if address, ok := p["address"]; ok && address.(string) != "" {
-		arg := sb.Args.Add("^" + address.(string) + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("address ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("address REGEXP " + arg)
-		}
-	}
-
 	return sb
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	// We fetch an additional account to know if we have more documents
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor, error) {
+	accounts := make([]core.Account, 0)
 
-	c := sharedapi.Cursor{}
-	results := make([]core.Account, 0)
+	if q.Limit == 0 {
+		return sharedapi.Cursor{Data: accounts}, nil
+	}
 
-	sb := s.accountsQuery(q.Params).
+	sb := s.buildAccountsQuery(q.Params).
 		Select("address", "metadata").
-		Limit(q.Limit).
 		OrderBy("address desc")
 
-	if q.After != "" {
-		sb.Where(sb.LessThan("address", q.After))
+	if q.AfterAddress != "" {
+		sb.Where(sb.LessThan("address", q.AfterAddress))
 	}
+
+	// We fetch an additional account to know if we have more documents
+	sb.Limit(int(q.Limit + 1))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return c, s.error(err)
+		return sharedapi.Cursor{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -71,27 +72,26 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (
 	for rows.Next() {
 		account := core.Account{}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return c, err
+			return sharedapi.Cursor{}, err
 		}
 
-		results = append(results, account)
+		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return c, rows.Err()
+		return sharedapi.Cursor{}, rows.Err()
 	}
 
-	c.PageSize = q.Limit - 1
-
-	c.HasMore = len(results) == q.Limit
-	if c.HasMore {
-		results = results[:len(results)-1]
+	if len(accounts) == int(q.Limit+1) {
+		accounts = accounts[:len(accounts)-1]
 	}
-	c.Data = results
 
-	return c, nil
+	return sharedapi.Cursor{
+		PageSize: len(accounts),
+		Data:     accounts,
+	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor, error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 
@@ -108,8 +108,7 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (cor
 	}
 
 	account := core.Account{}
-	err := row.Scan(&account.Address, &account.Metadata)
-	if err != nil {
+	if err := row.Scan(&account.Address, &account.Metadata); err != nil {
 		if err == sql.ErrNoRows {
 			return core.Account{}, nil
 		}

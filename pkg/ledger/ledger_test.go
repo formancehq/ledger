@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
@@ -388,24 +387,16 @@ func TestAccountMetadata(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			cursor, err := l.GetAccounts(context.Background(), query.Account("users:001"))
+			acc, err := l.GetAccount(context.Background(), "users:001")
 			assert.NoError(t, err)
+			require.True(t, acc.Address == "users:001", "no account returned by get account")
 
-			accounts, ok := cursor.Data.([]core.Account)
-			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))
-			require.True(t, len(accounts) > 0, "no accounts returned by get accounts")
-
-			metaFound := false
-			for _, acc := range accounts {
-				if meta, ok := acc.Metadata["a random metadata"]; ok {
-					metaFound = true
-					var value string
-					require.NoError(t, json.Unmarshal(meta, &value))
-					assert.Equalf(t, value, "new value",
-						"metadata entry did not match in find: expected \"new value\", got %v", value)
-				}
-			}
-			assert.True(t, metaFound)
+			meta, ok := acc.Metadata["a random metadata"]
+			assert.True(t, ok)
+			var value string
+			require.NoError(t, json.Unmarshal(meta, &value))
+			assert.Equalf(t, value, "new value",
+				"metadata entry did not match in find: expected \"new value\", got %v", value)
 		}
 	})
 }

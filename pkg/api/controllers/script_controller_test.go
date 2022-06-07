@@ -103,7 +103,7 @@ func TestPostScriptPreview(t *testing.T) {
 				internal.Decode(t, rsp.Body, &res)
 
 				store := internal.GetStore(t, driver, ctx)
-				cursor, err := store.GetTransactions(ctx, query.New())
+				cursor, err := store.GetTransactions(ctx, query.NewTransactions())
 				assert.NoError(t, err)
 				assert.Len(t, cursor.Data, 0)
 				return nil
