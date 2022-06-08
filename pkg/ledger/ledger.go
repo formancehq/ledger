@@ -123,7 +123,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 
 		for addr := range rf {
 			if _, ok := aggregatedVolumes[addr]; !ok {
-				aggregatedVolumes[addr], err = l.store.AggregateVolumes(ctx, addr)
+				aggregatedVolumes[addr], err = l.store.GetAccountVolumes(ctx, addr)
 				if err != nil {
 					return nil, nil, nil, err
 				}
@@ -296,7 +296,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 		return core.Account{}, err
 	}
 
-	volumes, err := l.store.AggregateVolumes(ctx, address)
+	volumes, err := l.store.GetAccountVolumes(ctx, address)
 	if err != nil {
 		return account, err
 	}

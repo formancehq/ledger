@@ -80,6 +80,6 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	return volumes, nil
 }
 
-func (s *Store) AggregateVolumes(ctx context.Context, address string) (core.Volumes, error) {
+func (s *Store) GetAccountVolumes(ctx context.Context, address string) (core.Volumes, error) {
 	return s.aggregateVolumes(ctx, s.schema, address)
 }

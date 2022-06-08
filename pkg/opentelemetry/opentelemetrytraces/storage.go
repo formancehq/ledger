@@ -129,13 +129,13 @@ func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx cor
 	return
 }
 
-func (o *openTelemetryStorage) AggregateVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
-	handlingErr := o.handle(ctx, "AggregateVolumes", func(ctx context.Context) error {
-		volumes, err = o.underlying.AggregateVolumes(ctx, s)
+func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
+	handlingErr := o.handle(ctx, "GetAccountVolumes", func(ctx context.Context) error {
+		volumes, err = o.underlying.GetAccountVolumes(ctx, s)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry AggregateVolumes: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetAccountVolumes: %s", handlingErr)
 	}
 	return
 }

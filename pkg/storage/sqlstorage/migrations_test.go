@@ -251,7 +251,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		volumes, err := store.AggregateVolumes(context.Background(), "player1")
+		volumes, err := store.GetAccountVolumes(context.Background(), "player1")
 		if !assert.NoError(t, err) {
 			return
 		}
