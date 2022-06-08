@@ -1,0 +1,38 @@
+version: '3'
+
+tasks:
+  update:
+    cmds:
+      - pip install -r requirements.txt
+
+  start-ledger:
+    cmds:
+      - >
+        docker run -d
+        --name ledger
+        --rm
+        -e NUMARY_SERVER_HTTP_BIND_ADDRESS=0.0.0.0:3068
+        -p 3068:3068
+        ghcr.io/numary/ledger:v{{appVersion}}
+
+  stop-ledger:
+    cmds:
+      - docker stop ledger
+
+  test:
+    desc: Test client code
+    deps:
+      - update
+    cmds:
+      - task: start-ledger
+      - defer:
+          task: stop-ledger
+      - ./venv/bin/python -m unittest
+
+  build:
+    desc: Publish Package
+    cmds:
+        - pip install twine
+        - python setup.py sdist bdist_wheel
+        - twine check dist/*
+
