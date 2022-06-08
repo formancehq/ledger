@@ -8,9 +8,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-type MappingController struct {
-	BaseController
-}
+type MappingController struct{}
 
 func NewMappingController() MappingController {
 	return MappingController{}
@@ -31,7 +29,7 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, mapping)
+	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
 }
 
 func (ctl *MappingController) GetMapping(c *gin.Context) {
@@ -42,5 +40,5 @@ func (ctl *MappingController) GetMapping(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, mapping)
+	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
 }

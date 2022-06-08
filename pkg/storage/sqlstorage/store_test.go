@@ -263,7 +263,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), query.Query{
 		Limit: 1,
-		After: accounts.Data.([]core.Account)[0].Address,
+		After: accounts.Data[0].Address,
 	})
 	assert.NoError(t, err)
 	assert.True(t, accounts.HasMore)
@@ -416,7 +416,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.True(t, cursor.HasMore)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Query{
-			After: fmt.Sprint(cursor.Data.([]core.Transaction)[0].ID),
+			After: fmt.Sprint(cursor.Data[0].ID),
 			Limit: 1,
 		})
 		assert.NoError(t, err)

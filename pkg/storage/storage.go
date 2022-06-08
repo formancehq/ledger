@@ -62,12 +62,12 @@ func IsTooManyClientError(err error) bool {
 type Store interface {
 	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context, query.Query) (uint64, error)
-	GetTransactions(context.Context, query.Query) (sharedapi.Cursor, error)
+	GetTransactions(context.Context, query.Query) (sharedapi.Cursor[core.Transaction], error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
 	AggregateVolumes(context.Context, string) (core.Volumes, error)
 	CountAccounts(context.Context, query.Query) (uint64, error)
-	GetAccounts(context.Context, query.Query) (sharedapi.Cursor, error)
+	GetAccounts(context.Context, query.Query) (sharedapi.Cursor[core.Account], error)
 
 	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
@@ -103,8 +103,8 @@ func (n noOpStore) CountTransactions(ctx context.Context, q query.Query) (uint64
 	return 0, nil
 }
 
-func (n noOpStore) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return sharedapi.Cursor{}, nil
+func (n noOpStore) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Transaction], error) {
+	return sharedapi.Cursor[core.Transaction]{}, nil
 }
 
 func (n noOpStore) GetTransaction(ctx context.Context, s uint64) (core.Transaction, error) {
@@ -127,8 +127,8 @@ func (n noOpStore) CountAccounts(ctx context.Context, q query.Query) (uint64, er
 	return 0, nil
 }
 
-func (n noOpStore) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
-	return sharedapi.Cursor{}, nil
+func (n noOpStore) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Account], error) {
+	return sharedapi.Cursor[core.Account]{}, nil
 }
 
 func (n noOpStore) GetMeta(ctx context.Context, s string, s2 string) (core.Metadata, error) {

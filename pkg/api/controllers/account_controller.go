@@ -11,9 +11,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-type AccountController struct {
-	BaseController
-}
+type AccountController struct{}
 
 func NewAccountController() AccountController {
 	return AccountController{}
@@ -49,7 +47,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, cursor)
+	respondWithCursor[core.Account](c, http.StatusOK, cursor)
 }
 
 func (ctl *AccountController) GetAccount(c *gin.Context) {
@@ -63,7 +61,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, acc)
+	respondWithData[core.Account](c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
@@ -86,5 +84,5 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	ctl.noContent(c)
+	respondWithNoContent(c)
 }

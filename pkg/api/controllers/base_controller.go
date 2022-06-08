@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"net/http"
-	"reflect"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
@@ -12,22 +11,20 @@ import (
 	"github.com/pkg/errors"
 )
 
-type BaseController struct{}
+func respondWithNoContent(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
 
-func (ctl *BaseController) response(c *gin.Context, status int, data interface{}) {
-	if data == nil {
-		c.Status(status)
-	}
-	if reflect.TypeOf(data) == reflect.TypeOf(sharedapi.Cursor{}) {
-		cursor := data.(sharedapi.Cursor)
-		c.JSON(status, sharedapi.BaseResponse{
-			Cursor: &cursor,
-		})
-	} else {
-		c.JSON(status, sharedapi.BaseResponse{
-			Data: data,
-		})
-	}
+func respondWithCursor[T any](c *gin.Context, status int, data sharedapi.Cursor[T]) {
+	c.JSON(status, sharedapi.BaseResponse[T]{
+		Cursor: &data,
+	})
+}
+
+func respondWithData[T any](c *gin.Context, status int, data T) {
+	c.JSON(status, sharedapi.BaseResponse[T]{
+		Data: data,
+	})
 }
 
 const (
@@ -40,10 +37,6 @@ const (
 
 	errorCodeKey = "_errorCode"
 )
-
-func (ctl *BaseController) noContent(c *gin.Context) {
-	c.Status(http.StatusNoContent)
-}
 
 func coreErrorToErrorCode(err error) (int, string) {
 	switch {

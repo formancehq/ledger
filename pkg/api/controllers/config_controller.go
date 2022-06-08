@@ -27,7 +27,6 @@ type LedgerStorage struct {
 }
 
 type ConfigController struct {
-	BaseController
 	Version       string
 	StorageDriver storage.Driver
 }
@@ -44,20 +43,16 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
-	ctl.response(
-		c,
-		http.StatusOK,
-		ConfigInfo{
-			Server:  "numary-ledger",
-			Version: ctl.Version,
-			Config: &Config{
-				LedgerStorage: &LedgerStorage{
-					Driver:  ctl.StorageDriver.Name(),
-					Ledgers: ledgers,
-				},
+	c.JSON(http.StatusOK, ConfigInfo{
+		Server:  "numary-ledger",
+		Version: ctl.Version,
+		Config: &Config{
+			LedgerStorage: &LedgerStorage{
+				Driver:  ctl.StorageDriver.Name(),
+				Ledgers: ledgers,
 			},
 		},
-	)
+	})
 }
 
 //go:embed swagger.yaml

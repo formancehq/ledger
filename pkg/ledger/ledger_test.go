@@ -391,8 +391,7 @@ func TestAccountMetadata(t *testing.T) {
 			cursor, err := l.GetAccounts(context.Background(), query.Account("users:001"))
 			assert.NoError(t, err)
 
-			accounts, ok := cursor.Data.([]core.Account)
-			require.Truef(t, ok, "wrong cursor type: %v", reflect.TypeOf(cursor.Data))
+			accounts := cursor.Data
 			require.True(t, len(accounts) > 0, "no accounts returned by get accounts")
 
 			metaFound := false
@@ -525,10 +524,7 @@ func TestGetTransactions(t *testing.T) {
 		res, err := l.GetTransactions(context.Background())
 		require.NoError(t, err)
 
-		txs, ok := res.Data.([]core.Transaction)
-		require.True(t, ok)
-
-		assert.Equal(t, "test_get_transactions", txs[0].Postings[0].Destination)
+		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
 	})
 }
 

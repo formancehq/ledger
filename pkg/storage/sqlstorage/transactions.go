@@ -40,7 +40,7 @@ func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBu
 	return sb
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor[core.Transaction], error) {
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
 	sb := s.transactionsQuery(q.Params)
@@ -53,7 +53,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor{}, s.error(err)
+		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -77,7 +77,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 			&tx.Metadata,
 			&tx.Postings,
 		); err != nil {
-			return sharedapi.Cursor{}, err
+			return sharedapi.Cursor[core.Transaction]{}, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
@@ -85,13 +85,13 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		}
 		timestamp, err := time.Parse(time.RFC3339, ts.String)
 		if err != nil {
-			return sharedapi.Cursor{}, err
+			return sharedapi.Cursor[core.Transaction]{}, err
 		}
 		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
 		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor{}, s.error(err)
+		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
 
 	hasMore := false
@@ -100,14 +100,14 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		txs = txs[:len(txs)-1]
 	}
 
-	return sharedapi.Cursor{
+	return sharedapi.Cursor[core.Transaction]{
 		PageSize: q.Limit - 1,
 		HasMore:  hasMore,
 		Data:     txs,
 	}, nil
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Transaction], error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 

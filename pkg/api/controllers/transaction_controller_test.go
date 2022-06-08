@@ -191,14 +191,12 @@ func TestGetTransaction(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				tx := make([]core.Transaction, 0)
-				internal.DecodeSingleResponse(t, rsp.Body, &tx)
+				tx, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 
 				rsp = internal.GetTransaction(api, tx[0].ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				ret := core.Transaction{}
-				internal.DecodeSingleResponse(t, rsp.Body, &ret)
+				ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
 
 				assert.EqualValues(t, ret.Postings, core.Postings{
 					{
@@ -424,8 +422,8 @@ func TestPostTransactionMetadata(t *testing.T) {
 				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
 					return nil
 				}
-				tx := make([]core.Transaction, 0)
-				internal.DecodeSingleResponse(t, rsp.Body, &tx)
+
+				tx, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 
 				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
 					"foo": json.RawMessage(`"bar"`),
@@ -439,8 +437,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 					return nil
 				}
 
-				ret := core.Transaction{}
-				internal.DecodeSingleResponse(t, rsp.Body, &ret)
+				ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
 
 				if !assert.EqualValues(t, core.Metadata{
 					"foo": json.RawMessage(`"bar"`),

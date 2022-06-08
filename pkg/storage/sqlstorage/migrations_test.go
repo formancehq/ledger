@@ -273,10 +273,10 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		if !assert.Len(t, txs.Data, 2) {
 			return
 		}
-		if !assert.EqualValues(t, "tx2", txs.Data.([]core.Transaction)[0].Reference) {
+		if !assert.EqualValues(t, "tx2", txs.Data[0].Reference) {
 			return
 		}
-		if !assert.EqualValues(t, "tx1", txs.Data.([]core.Transaction)[1].Reference) {
+		if !assert.EqualValues(t, "tx1", txs.Data[1].Reference) {
 			return
 		}
 

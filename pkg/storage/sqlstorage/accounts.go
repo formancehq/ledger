@@ -41,11 +41,11 @@ func (s *Store) accountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilde
 	return sb
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor[core.Account], error) {
 	// We fetch an additional account to know if we have more documents
 	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
 
-	c := sharedapi.Cursor{}
+	c := sharedapi.Cursor[core.Account]{}
 	results := make([]core.Account, 0)
 
 	sb := s.accountsQuery(q.Params).
@@ -91,7 +91,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Query) (
 	return c, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Account], error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 

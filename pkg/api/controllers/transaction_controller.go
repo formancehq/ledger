@@ -13,9 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-type TransactionController struct {
-	BaseController
-}
+type TransactionController struct{}
 
 func NewTransactionController() TransactionController {
 	return TransactionController{}
@@ -73,7 +71,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, cursor)
+	respondWithCursor[core.Transaction](c, http.StatusOK, cursor)
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -103,7 +101,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
-	ctl.response(c, status, result)
+	respondWithData[[]core.Transaction](c, status, result)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -124,7 +122,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	ctl.response(c, http.StatusOK, tx)
+	respondWithData[core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
@@ -141,7 +139,8 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.response(c, http.StatusOK, tx)
+
+	respondWithData[*core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
@@ -163,7 +162,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-	ctl.noContent(c)
+	respondWithNoContent(c)
 }
 
 func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
@@ -181,5 +180,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, txs)
+	respondWithData[[]core.Transaction](c, http.StatusOK, txs)
 }

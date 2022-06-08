@@ -96,7 +96,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Qu
 	return
 }
 
-func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query query.Query) (q sharedapi.Cursor[core.Transaction], err error) {
 	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
@@ -151,7 +151,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Query)
 	return
 }
 
-func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor, err error) {
+func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query query.Query) (q sharedapi.Cursor[core.Account], err error) {
 	handlingErr := o.handle(ctx, "GetAccounts", func(ctx context.Context) error {
 		q, err = o.underlying.GetAccounts(ctx, query)
 		return err
