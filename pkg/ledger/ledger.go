@@ -51,28 +51,36 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, []core.Log, error) {
+type CommitmentResult struct {
+	PreCommitVolumes      core.AggregatedVolumes
+	PostCommitVolumes     core.AggregatedVolumes
+	GeneratedTransactions []core.Transaction
+	GeneratedLogs         []core.Log
+}
+
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitmentResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "loading mapping")
+		return nil, errors.Wrap(err, "loading mapping")
 	}
 
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	var nextTxId uint64
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
 	}
 
-	txs := make([]core.Transaction, 0)
-	aggregatedVolumes := core.AggregatedVolumes{}
+	volumeAggregator := NewVolumeAggregator(l.store)
+
+	generatedTxs := make([]core.Transaction, 0)
 	accounts := make(map[string]core.Account, 0)
 	logs := make([]core.Log, 0)
 	contracts := make([]core.Contract, 0)
@@ -83,102 +91,83 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 
 	for i, t := range ts {
 		if len(t.Postings) == 0 {
-			return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
+			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
-		rf := core.AggregatedVolumes{}
+		txVolumeAggregator := volumeAggregator.NextTx()
+
 		for _, p := range t.Postings {
 			if p.Amount < 0 {
-				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
+				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
-				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid source address"))
+				return nil, NewTransactionCommitError(i, NewValidationError("invalid source address"))
 			}
 			if !core.ValidateAddress(p.Destination) {
-				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
+				return nil, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
 			}
 			if !core.AssetIsValid(p.Asset) {
-				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
+				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			if _, ok := rf[p.Source]; !ok {
-				rf[p.Source] = core.Volumes{}
+			err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
+			if err != nil {
+				return nil, NewTransactionCommitError(i, err)
 			}
-			if _, ok := rf[p.Source][p.Asset]; !ok {
-				rf[p.Source][p.Asset] = core.Volume{}
-			}
-			volume := rf[p.Source][p.Asset]
-			volume.Output += p.Amount
-			rf[p.Source][p.Asset] = volume
-
-			if _, ok := rf[p.Destination]; !ok {
-				rf[p.Destination] = core.Volumes{}
-			}
-			if _, ok := rf[p.Destination][p.Asset]; !ok {
-				rf[p.Destination][p.Asset] = core.Volume{}
-			}
-			volume = rf[p.Destination][p.Asset]
-			volume.Input += p.Amount
-			rf[p.Destination][p.Asset] = volume
 		}
 
-		for addr := range rf {
-			if _, ok := aggregatedVolumes[addr]; !ok {
-				aggregatedVolumes[addr], err = l.store.GetAccountVolumes(ctx, addr)
-				if err != nil {
-					return nil, nil, nil, err
+		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
+			for asset, volume := range volumes {
+				if addr == "world" {
+					continue
 				}
-			}
 
-			for asset, transfer := range rf[addr] {
-				if _, ok := aggregatedVolumes[addr][asset]; !ok {
-					aggregatedVolumes[addr][asset] = core.Volume{}
-				}
-				if addr != "world" {
-					expectedBalance := aggregatedVolumes[addr][asset].Input - aggregatedVolumes[addr][asset].Output + transfer.Input - transfer.Output
-					for _, contract := range contracts {
-						if contract.Match(addr) {
-							account, ok := accounts[addr]
-							if !ok {
-								account, err = l.store.GetAccount(ctx, addr)
-								if err != nil {
-									return nil, nil, nil, err
-								}
-								accounts[addr] = account
+				expectedBalance := volume.Balance()
+				for _, contract := range contracts {
+					if contract.Match(addr) {
+						account, ok := accounts[addr]
+						if !ok {
+							account, err = l.store.GetAccount(ctx, addr)
+							if err != nil {
+								return nil, err
 							}
-
-							if ok = contract.Expr.Eval(core.EvalContext{
-								Variables: map[string]interface{}{
-									"balance": float64(expectedBalance),
-								},
-								Metadata: account.Metadata,
-								Asset:    asset,
-							}); !ok {
-								return nil, nil, nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
-							}
-							break
+							accounts[addr] = account
 						}
+
+						if ok = contract.Expr.Eval(core.EvalContext{
+							Variables: map[string]interface{}{
+								"balance": float64(expectedBalance),
+							},
+							Metadata: account.Metadata,
+							Asset:    asset,
+						}); !ok {
+							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
+						}
+						break
 					}
 				}
-				volume := aggregatedVolumes[addr][asset]
-				volume.Input += transfer.Input
-				volume.Output += transfer.Output
-				aggregatedVolumes[addr][asset] = volume
 			}
 		}
 
 		tx := core.Transaction{
-			TransactionData: t,
-			ID:              nextTxId,
-			Timestamp:       time.Now().UTC().Format(time.RFC3339),
+			TransactionData:   t,
+			ID:                nextTxId,
+			Timestamp:         time.Now().UTC().Format(time.RFC3339),
+			PostCommitVolumes: txVolumeAggregator.PostCommitVolumes(),
+			PreCommitVolumes:  txVolumeAggregator.PreCommitVolumes(),
 		}
-		txs = append(txs, tx)
+		generatedTxs = append(generatedTxs, tx)
 		newLog := core.NewTransactionLog(lastLog, tx)
 		lastLog = &newLog
 		logs = append(logs, newLog)
 		nextTxId++
 	}
 
-	return aggregatedVolumes, txs, logs, nil
+	return &CommitmentResult{
+		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
+		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
+		GeneratedTransactions: generatedTxs,
+		GeneratedLogs:         logs,
+	}, nil
 }
 
 func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, error) {
@@ -188,12 +177,12 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.Ag
 	}
 	defer unlock(ctx)
 
-	volumes, txs, logs, err := l.processTx(ctx, ts)
+	result, err := l.processTx(ctx, ts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if err = l.store.AppendLog(ctx, logs...); err != nil {
+	if err = l.store.AppendLog(ctx, result.GeneratedLogs...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, nil, NewConflictError()
@@ -202,9 +191,9 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.Ag
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.name, txs, volumes)
+	l.monitor.CommittedTransactions(ctx, l.name, result)
 
-	return volumes, txs, nil
+	return result.PostCommitVolumes, result.GeneratedTransactions, nil
 }
 
 func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (core.AggregatedVolumes, []core.Transaction, error) {
@@ -214,8 +203,8 @@ func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (
 	}
 	defer unlock(ctx)
 
-	volumes, txs, _, err := l.processTx(ctx, ts)
-	return volumes, txs, err
+	result, err := l.processTx(ctx, ts)
+	return result.PostCommitVolumes, result.GeneratedTransactions, err
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, m ...query.TxModifier) (sharedapi.Cursor[core.Transaction], error) {
@@ -261,23 +250,24 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}
 	defer unlock(ctx)
 
-	_, txs, logs, err := l.processTx(ctx, []core.TransactionData{rt})
+	result, err := l.processTx(ctx, []core.TransactionData{rt})
 	if err != nil {
 		return nil, err
 	}
 
+	logs := result.GeneratedLogs
 	logs = append(logs, core.NewSetMetadataLog(&logs[len(logs)-1], core.SetMetadata{
 		TargetType: core.MetaTargetTypeTransaction,
 		TargetID:   id,
-		Metadata:   core.RevertedMetadata(txs[0].ID),
+		Metadata:   core.RevertedMetadata(result.GeneratedTransactions[0].ID),
 	}))
 
 	err = l.store.AppendLog(ctx, logs...)
 	if err != nil {
 		return nil, err
 	}
-	l.monitor.RevertedTransaction(ctx, l.name, tx, txs[0])
-	return &txs[0], nil
+	l.monitor.RevertedTransaction(ctx, l.name, tx, result.GeneratedTransactions[0])
+	return &result.GeneratedTransactions[0], nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, m ...query.AccModifier) (uint64, error) {

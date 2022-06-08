@@ -14,7 +14,7 @@ import (
 func (s *Store) buildTransactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
 	sb := sqlbuilder.NewSelectBuilder()
 
-	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	if account, ok := p["account"]; ok && account.(string) != "" {
 		arg := sb.Args.Add(account.(string))
@@ -81,6 +81,8 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 			&ref,
 			&tx.Metadata,
 			&tx.Postings,
+			&tx.PreCommitVolumes,
+			&tx.PostCommitVolumes,
 		); err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, err
 		}
@@ -115,7 +117,7 @@ func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (shar
 
 func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	sb.Where(sb.Equal("id", txid))
 	sb.OrderBy("id desc")
@@ -138,6 +140,8 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 		&ref,
 		&tx.Metadata,
 		&tx.Postings,
+		&tx.PreCommitVolumes,
+		&tx.PostCommitVolumes,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -165,7 +169,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transa
 
 func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	sb.OrderBy("id desc")
 	sb.Limit(1)
@@ -188,6 +192,8 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 		&ref,
 		&tx.Metadata,
 		&tx.Postings,
+		&tx.PreCommitVolumes,
+		&tx.PostCommitVolumes,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {

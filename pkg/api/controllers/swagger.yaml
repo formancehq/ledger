@@ -781,6 +781,10 @@ components:
           format: date-time
         txid:
           type: integer
+        preCommitVolumes:
+          $ref: '#/components/schemas/AggregatedVolumes'
+        postCommitVolumes:
+          $ref: '#/components/schemas/AggregatedVolumes'
       required:
         - postings
         - timestamp
@@ -864,6 +868,24 @@ components:
       type: object
       required:
         - data
+    Volume:
+      type: object
+      properties:
+        input:
+          type: number
+        output:
+          type: number
+      required:
+      - input
+      - output
+    Volumes:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/Volume'
+    AggregatedVolumes:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/Volumes'
     ErrorCode:
       type: string
       enum:

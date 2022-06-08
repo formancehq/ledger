@@ -191,25 +191,66 @@ func TestGetTransaction(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				tx, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+				txs, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+				tx := txs[0]
+				assert.EqualValues(t, core.AggregatedVolumes{
+					"world": core.Volumes{
+						"USD": {},
+					},
+					"central_bank": core.Volumes{
+						"USD": {},
+					},
+				}, tx.PreCommitVolumes)
+				assert.EqualValues(t, core.AggregatedVolumes{
+					"world": core.Volumes{
+						"USD": {
+							Output: 1000,
+						},
+					},
+					"central_bank": core.Volumes{
+						"USD": {
+							Input: 1000,
+						},
+					},
+				}, tx.PostCommitVolumes)
 
-				rsp = internal.GetTransaction(api, tx[0].ID)
+				rsp = internal.GetTransaction(api, tx.ID)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
 
-				assert.EqualValues(t, ret.Postings, core.Postings{
+				assert.EqualValues(t, core.Postings{
 					{
 						Source:      "world",
 						Destination: "central_bank",
 						Amount:      1000,
 						Asset:       "USD",
 					},
-				})
+				}, ret.Postings)
 				assert.EqualValues(t, 0, ret.ID)
 				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
 				assert.EqualValues(t, "ref", ret.Reference)
 				assert.NotEmpty(t, ret.Timestamp)
+				assert.EqualValues(t, core.AggregatedVolumes{
+					"world": core.Volumes{
+						"USD": {},
+					},
+					"central_bank": core.Volumes{
+						"USD": {},
+					},
+				}, ret.PreCommitVolumes)
+				assert.EqualValues(t, core.AggregatedVolumes{
+					"world": core.Volumes{
+						"USD": {
+							Output: 1000,
+						},
+					},
+					"central_bank": core.Volumes{
+						"USD": {
+							Input: 1000,
+						},
+					},
+				}, ret.PostCommitVolumes)
 				return nil
 			},
 		})

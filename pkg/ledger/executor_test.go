@@ -24,7 +24,7 @@ func assertBalance(t *testing.T, l *Ledger, account, asset string, amount int64)
 }
 
 func TestNoScript(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		script := core.Script{}
 
 		_, err := l.Execute(context.Background(), script)
@@ -34,7 +34,7 @@ func TestNoScript(t *testing.T) {
 }
 
 func TestCompilationError(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		script := core.Script{
 			Plain: "willnotcompile",
 		}
@@ -46,7 +46,7 @@ func TestCompilationError(t *testing.T) {
 }
 
 func TestTransactionInvalidScript(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		script := core.Script{
 			Plain: "this is not a valid script",
 		}
@@ -59,7 +59,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 }
 
 func TestTransactionFail(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		script := core.Script{
 			Plain: "fail",
 		}
@@ -72,7 +72,7 @@ func TestTransactionFail(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -92,7 +92,7 @@ func TestSend(t *testing.T) {
 }
 
 func TestNoVariables(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		var script core.Script
 		err := json.Unmarshal(
 			[]byte(`{
@@ -110,7 +110,7 @@ func TestNoVariables(t *testing.T) {
 }
 
 func TestVariables(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -141,7 +141,7 @@ func TestVariables(t *testing.T) {
 }
 
 func TestEnoughFunds(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -174,7 +174,7 @@ func TestEnoughFunds(t *testing.T) {
 }
 
 func TestNotEnoughFunds(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -207,7 +207,7 @@ func TestNotEnoughFunds(t *testing.T) {
 }
 
 func TestMissingMetadata(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -237,7 +237,7 @@ func TestMissingMetadata(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
@@ -308,7 +308,7 @@ func TestMetadata(t *testing.T) {
 }
 
 func TestSetTxMeta(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		defer func(l *Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())

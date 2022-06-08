@@ -22,39 +22,21 @@ import (
 	"go.uber.org/fx"
 )
 
-func with(f func(l *Ledger)) {
+func withContainer(options ...fx.Option) {
 	done := make(chan struct{})
-	app := fx.New(
+	opts := append([]fx.Option{
 		fx.NopLogger,
 		ledgertesting.ProvideStorageDriver(),
-		fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					defer func() {
-						close(done)
-					}()
-					name := uuid.New()
-					store, _, err := storageDriver.GetStore(context.Background(), name, true)
-					if err != nil {
-						return err
-					}
-					_, err = store.Initialize(context.Background())
-					if err != nil {
-						return err
-					}
-					l, err := NewLedger(name, store, NewInMemoryLocker(), &noOpMonitor{})
-					if err != nil {
-						panic(err)
-					}
-					lc.Append(fx.Hook{
-						OnStop: l.Close,
-					})
-					f(l)
-					return nil
-				},
-			})
-		}),
-	)
+	}, options...)
+	opts = append(opts, fx.Invoke(func(lc fx.Lifecycle) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				close(done)
+				return nil
+			},
+		})
+	}))
+	app := fx.New(opts...)
 	go func() {
 		if err := app.Start(context.Background()); err != nil {
 			panic(err)
@@ -74,6 +56,33 @@ func with(f func(l *Ledger)) {
 	}
 }
 
+func runOnLedger(f func(l *Ledger)) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				name := uuid.New()
+				store, _, err := storageDriver.GetStore(context.Background(), name, true)
+				if err != nil {
+					return err
+				}
+				_, err = store.Initialize(context.Background())
+				if err != nil {
+					return err
+				}
+				l, err := NewLedger(name, store, NewInMemoryLocker(), &noOpMonitor{})
+				if err != nil {
+					panic(err)
+				}
+				lc.Append(fx.Hook{
+					OnStop: l.Close,
+				})
+				f(l)
+				return nil
+			},
+		})
+	}))
+}
+
 func TestMain(m *testing.M) {
 	var code int
 	defer func() {
@@ -89,7 +98,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestTransaction(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		testsize := 1e4
 		total := 0
 		batch := []core.TransactionData{}
@@ -140,7 +149,7 @@ func TestTransaction(t *testing.T) {
 }
 
 func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		batch := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -182,7 +191,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 }
 
 func TestTransactionBatchWithConflictingReference(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		batch := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -226,7 +235,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 }
 
 func TestTransactionExpectedVolumes(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		batch := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -301,7 +310,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 }
 
 func TestBalance(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -320,7 +329,7 @@ func TestBalance(t *testing.T) {
 }
 
 func TestReference(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		tx := core.TransactionData{
 			Reference: "payment_processor_id_01",
 			Postings: []core.Posting{
@@ -342,7 +351,7 @@ func TestReference(t *testing.T) {
 }
 
 func TestAccountMetadata(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 
 		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": json.RawMessage(`"old value"`),
@@ -398,7 +407,7 @@ func TestAccountMetadata(t *testing.T) {
 }
 
 func TestTransactionMetadata(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
@@ -438,7 +447,7 @@ func TestTransactionMetadata(t *testing.T) {
 }
 
 func TestSaveTransactionMetadata(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
@@ -469,7 +478,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "bar",
 			Postings: []core.Posting{
@@ -494,7 +503,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -517,7 +526,7 @@ func TestGetTransactions(t *testing.T) {
 }
 
 func TestRevertTransaction(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		revertAmt := int64(100)
 
 		_, txs, err := l.Commit(context.Background(), []core.TransactionData{{
@@ -574,7 +583,7 @@ func TestRevertTransaction(t *testing.T) {
 }
 
 func BenchmarkTransaction1(b *testing.B) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
 			txs := []core.TransactionData{}
 
@@ -596,7 +605,7 @@ func BenchmarkTransaction1(b *testing.B) {
 }
 
 func BenchmarkTransaction_20_1k(b *testing.B) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		for n := 0; n < b.N; n++ {
 			for i := 0; i < 20; i++ {
 				txs := []core.TransactionData{}
@@ -622,7 +631,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 }
 
 func BenchmarkGetAccount(b *testing.B) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
 			_, err := l.GetAccount(context.Background(), "users:013")
 			require.NoError(b, err)
@@ -631,7 +640,7 @@ func BenchmarkGetAccount(b *testing.B) {
 }
 
 func BenchmarkGetTransactions(b *testing.B) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
 			_, err := l.GetTransactions(context.Background())
 			require.NoError(b, err)

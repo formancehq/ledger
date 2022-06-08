@@ -2,6 +2,7 @@ package bus
 
 import (
 	"context"
+	"github.com/numary/ledger/pkg/ledger"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestMonitor(t *testing.T) {
 		"*": "testing",
 	})
 	m := NewLedgerMonitor(p)
-	go m.CommittedTransactions(context.Background(), uuid.New(), nil, nil)
+	go m.CommittedTransactions(context.Background(), uuid.New(), &ledger.CommitmentResult{})
 
 	select {
 	case m := <-messages:
