@@ -140,6 +140,17 @@ func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) 
 	return
 }
 
+func (o *openTelemetryStorage) GetAccountVolume(ctx context.Context, account, asset string) (volume core.Volume, err error) {
+	handlingErr := o.handle(ctx, "GetAccountVolume", func(ctx context.Context) error {
+		volume, err = o.underlying.GetAccountVolume(ctx, account, asset)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry GetAccountVolumes: %s", handlingErr)
+	}
+	return
+}
+
 func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Accounts) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx, q)

@@ -39,7 +39,7 @@ func (s *Store) CountAccounts(ctx context.Context, q query.Accounts) (uint64, er
 	return s.countAccounts(ctx, s.schema, q.Params)
 }
 
-func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
+func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
@@ -81,5 +81,35 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 }
 
 func (s *Store) GetAccountVolumes(ctx context.Context, address string) (core.Volumes, error) {
-	return s.aggregateVolumes(ctx, s.schema, address)
+	return s.getAccountVolumes(ctx, s.schema, address)
+}
+
+func (s *Store) getAccountVolume(ctx context.Context, exec executor, address, asset string) (core.Volume, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("input", "output")
+	sb.From(s.schema.Table("volumes"))
+	sb.Where(sb.And(sb.E("account", address), sb.E("asset", asset)))
+
+	q, args := sb.BuildWithFlavor(s.schema.Flavor())
+	row := exec.QueryRowContext(ctx, q, args...)
+	if row.Err() != nil {
+		return core.Volume{}, s.error(row.Err())
+	}
+
+	var (
+		input  int64
+		output int64
+	)
+	err := row.Scan(&asset, &input, &output)
+	if err != nil {
+		return core.Volume{}, s.error(err)
+	}
+	return core.Volume{
+		Input:  input,
+		Output: output,
+	}, nil
+}
+
+func (s *Store) GetAccountVolume(ctx context.Context, address, asset string) (core.Volume, error) {
+	return s.getAccountVolume(ctx, s.schema, address, asset)
 }
