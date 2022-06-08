@@ -101,22 +101,24 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 				return nil, nil, nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
 			if _, ok := rf[p.Source]; !ok {
-				rf[p.Source] = map[string]map[string]int64{}
+				rf[p.Source] = core.Volumes{}
 			}
 			if _, ok := rf[p.Source][p.Asset]; !ok {
-				rf[p.Source][p.Asset] = map[string]int64{"input": 0, "output": 0}
+				rf[p.Source][p.Asset] = core.Volume{}
 			}
-
-			rf[p.Source][p.Asset]["output"] += p.Amount
+			volume := rf[p.Source][p.Asset]
+			volume.Output += p.Amount
+			rf[p.Source][p.Asset] = volume
 
 			if _, ok := rf[p.Destination]; !ok {
-				rf[p.Destination] = map[string]map[string]int64{}
+				rf[p.Destination] = core.Volumes{}
 			}
 			if _, ok := rf[p.Destination][p.Asset]; !ok {
-				rf[p.Destination][p.Asset] = map[string]int64{"input": 0, "output": 0}
+				rf[p.Destination][p.Asset] = core.Volume{}
 			}
-
-			rf[p.Destination][p.Asset]["input"] += p.Amount
+			volume = rf[p.Destination][p.Asset]
+			volume.Input += p.Amount
+			rf[p.Destination][p.Asset] = volume
 		}
 
 		for addr := range rf {
@@ -127,12 +129,12 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 				}
 			}
 
-			for asset, volumes := range rf[addr] {
+			for asset, transfer := range rf[addr] {
 				if _, ok := aggregatedVolumes[addr][asset]; !ok {
-					aggregatedVolumes[addr][asset] = map[string]int64{"input": 0, "output": 0}
+					aggregatedVolumes[addr][asset] = core.Volume{}
 				}
 				if addr != "world" {
-					expectedBalance := aggregatedVolumes[addr][asset]["input"] - aggregatedVolumes[addr][asset]["output"] + volumes["input"] - volumes["output"]
+					expectedBalance := aggregatedVolumes[addr][asset].Input - aggregatedVolumes[addr][asset].Output + transfer.Input - transfer.Output
 					for _, contract := range contracts {
 						if contract.Match(addr) {
 							account, ok := accounts[addr]
@@ -157,8 +159,10 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (core
 						}
 					}
 				}
-				aggregatedVolumes[addr][asset]["input"] += volumes["input"]
-				aggregatedVolumes[addr][asset]["output"] += volumes["output"]
+				volume := aggregatedVolumes[addr][asset]
+				volume.Input += transfer.Input
+				volume.Output += transfer.Output
+				aggregatedVolumes[addr][asset] = volume
 			}
 		}
 

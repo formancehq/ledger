@@ -274,30 +274,26 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, volumes, core.AggregatedVolumes{
-			"world": map[string]map[string]int64{
+			"world": core.Volumes{
 				"USD": {
-					"input":  0,
-					"output": 100,
+					Output: 100,
 				},
 				"EUR": {
-					"input":  0,
-					"output": 200,
+					Output: 200,
 				},
 			},
-			"player": map[string]map[string]int64{
+			"player": core.Volumes{
 				"USD": {
-					"input":  100,
-					"output": 0,
+					Input: 100,
 				},
 				"EUR": {
-					"input":  100,
-					"output": 50,
+					Input:  100,
+					Output: 50,
 				},
 			},
-			"player2": map[string]map[string]int64{
+			"player2": core.Volumes{
 				"EUR": {
-					"input":  150,
-					"output": 0,
+					Input: 150,
 				},
 			},
 		})

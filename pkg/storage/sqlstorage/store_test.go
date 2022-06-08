@@ -214,9 +214,8 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	volumes, err := store.AggregateVolumes(context.Background(), "central_bank")
 	assert.NoError(t, err)
 	assert.Len(t, volumes, 1)
-	assert.Len(t, volumes["USD"], 2)
-	assert.EqualValues(t, 100, volumes["USD"]["input"])
-	assert.EqualValues(t, 0, volumes["USD"]["output"])
+	assert.EqualValues(t, 100, volumes["USD"].Input)
+	assert.EqualValues(t, 0, volumes["USD"].Output)
 }
 
 func testGetAccounts(t *testing.T, store *sqlstorage.Store) {

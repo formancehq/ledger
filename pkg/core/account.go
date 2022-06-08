@@ -4,13 +4,18 @@ const (
 	WORLD = "world"
 )
 
+type Volume struct {
+	Input  int64 `json:"input"`
+	Output int64 `json:"output"`
+}
+
 type Balances map[string]int64
-type Volumes map[string]map[string]int64
+type Volumes map[string]Volume
 
 func (v Volumes) Balances() Balances {
 	balances := Balances{}
 	for asset, vv := range v {
-		balances[asset] = vv["input"] - vv["output"]
+		balances[asset] = vv.Input - vv.Output
 	}
 	return balances
 }

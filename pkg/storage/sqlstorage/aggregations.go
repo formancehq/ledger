@@ -57,7 +57,7 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 		}
 	}(rows)
 
-	volumes := make(map[string]map[string]int64)
+	volumes := core.Volumes{}
 	for rows.Next() {
 		var (
 			asset  string
@@ -68,9 +68,9 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 		if err != nil {
 			return nil, s.error(err)
 		}
-		volumes[asset] = map[string]int64{
-			"input":  input,
-			"output": output,
+		volumes[asset] = core.Volume{
+			Input:  input,
+			Output: output,
 		}
 	}
 	if err := rows.Err(); err != nil {
