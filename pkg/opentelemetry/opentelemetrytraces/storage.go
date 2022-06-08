@@ -151,9 +151,9 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Accoun
 	return
 }
 
-func (o *openTelemetryStorage) GetAccounts(ctx context.Context, q query.Accounts) (c sharedapi.Cursor[core.Account], err error) {
+func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query query.Accounts) (c sharedapi.Cursor[core.Account], err error) {
 	handlingErr := o.handle(ctx, "GetAccounts", func(ctx context.Context) error {
-		c, err = o.underlying.GetAccounts(ctx, q)
+		c, err = o.underlying.GetAccounts(ctx, query)
 		return err
 	})
 	if handlingErr != nil {
