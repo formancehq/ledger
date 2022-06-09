@@ -166,10 +166,10 @@ func TestGetAccounts(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, h, core.TransactionData{
+				rsp := internal.PostTransaction(t, api, core.TransactionData{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -181,12 +181,12 @@ func TestGetAccount(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, h, "alice", core.Metadata{
+				rsp = internal.PostAccountMetadata(t, api, "alice", core.Metadata{
 					"foo": json.RawMessage(`"bar"`),
 				})
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.GetAccount(h, "alice")
+				rsp = internal.GetAccount(api, "alice")
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				resp := core.Account{}
 				internal.DecodeSingleResponse(t, rsp.Body, &resp)
