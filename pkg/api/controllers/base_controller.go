@@ -23,7 +23,7 @@ func respondWithCursor[T any](c *gin.Context, status int, data sharedapi.Cursor[
 
 func respondWithData[T any](c *gin.Context, status int, data T) {
 	c.JSON(status, sharedapi.BaseResponse[T]{
-		Data: data,
+		Data: &data,
 	})
 }
 
