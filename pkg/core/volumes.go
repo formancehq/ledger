@@ -10,6 +10,17 @@ type Volume struct {
 	Output int64 `json:"output"`
 }
 
+func (v Volume) MarshalJSON() ([]byte, error) {
+	type volume Volume
+	return json.Marshal(struct {
+		volume
+		Balance int64 `json:"balance"`
+	}{
+		volume:  volume(v),
+		Balance: v.Input - v.Output,
+	})
+}
+
 func (v Volume) Balance() int64 {
 	return v.Input - v.Output
 }
