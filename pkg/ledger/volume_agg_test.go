@@ -2,12 +2,13 @@ package ledger
 
 import (
 	"context"
+	"testing"
+
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"testing"
 )
 
 func TestVolumeAggregator(t *testing.T) {
