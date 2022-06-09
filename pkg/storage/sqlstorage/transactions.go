@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"math"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -12,43 +11,51 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) transactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildTransactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("t.id", "t.timestamp", "t.reference", "t.metadata", "t.postings")
-	sb.From(s.schema.Table("transactions") + " t")
+
+	sb.Select("id", "timestamp", "reference", "metadata", "postings")
+	sb.From(s.schema.Table("transactions"))
 	if account, ok := p["account"]; ok && account.(string) != "" {
 		arg := sb.Args.Add(account.(string))
-		sb.Where(s.schema.Table("use_account") + "(t.postings, " + arg + ")")
+		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 	}
 	if source, ok := p["source"]; ok && source.(string) != "" {
 		arg := sb.Args.Add(source.(string))
-		sb.Where(s.schema.Table("use_account_as_source") + "(t.postings, " + arg + ")")
+		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
 	}
 	if destination, ok := p["destination"]; ok && destination.(string) != "" {
 		arg := sb.Args.Add(destination.(string))
-		sb.Where(s.schema.Table("use_account_as_destination") + "(t.postings, " + arg + ")")
+		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
 	}
-	if ref, ok := p["reference"]; ok && p["reference"].(string) != "" {
-		sb.Where(sb.E("reference", ref.(string)))
+	if reference, ok := p["reference"]; ok && reference.(string) != "" {
+		sb.Where(sb.E("reference", reference.(string)))
 	}
 	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
-		sb.Where(sb.GE("t.timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
+		sb.Where(sb.GE("timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
 	}
 	if endTime, ok := p["end_time"]; ok && !endTime.(time.Time).IsZero() {
-		sb.Where(sb.L("t.timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
+		sb.Where(sb.L("timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
 	}
+
 	return sb
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Query) (sharedapi.Cursor, error) {
-	q.Limit = int(math.Max(-1, math.Min(float64(q.Limit), 100))) + 1
+func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor, error) {
+	txs := make([]core.Transaction, 0)
 
-	sb := s.transactionsQuery(q.Params)
-	sb.OrderBy("t.id desc")
-	if q.After != "" {
-		sb.Where(sb.L("t.id", q.After))
+	if q.Limit == 0 {
+		return sharedapi.Cursor{Data: txs}, nil
 	}
-	sb.Limit(q.Limit)
+
+	sb := s.buildTransactionsQuery(q.Params)
+	sb.OrderBy("id desc")
+	if q.AfterTxID > 0 {
+		sb.Where(sb.L("id", q.AfterTxID))
+	}
+
+	// We fetch an additional transaction to know if there are more
+	sb.Limit(int(q.Limit + 1))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -60,8 +67,6 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 			panic(err)
 		}
 	}(rows)
-
-	txs := make([]core.Transaction, 0)
 
 	for rows.Next() {
 		var (
@@ -94,20 +99,17 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Quer
 		return sharedapi.Cursor{}, s.error(err)
 	}
 
-	hasMore := false
-	if len(txs) == q.Limit {
-		hasMore = true
+	if len(txs) == int(q.Limit+1) {
 		txs = txs[:len(txs)-1]
 	}
 
 	return sharedapi.Cursor{
-		PageSize: q.Limit - 1,
-		HasMore:  hasMore,
+		PageSize: len(txs),
 		Data:     txs,
 	}, nil
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor, error) {
+func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor, error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 
@@ -116,7 +118,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings")
 	sb.From(s.schema.Table("transactions"))
 	sb.Where(sb.Equal("id", txid))
-	sb.OrderBy("id DESC")
+	sb.OrderBy("id desc")
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq, args...)
@@ -165,7 +167,7 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings")
 	sb.From(s.schema.Table("transactions"))
-	sb.OrderBy("id DESC")
+	sb.OrderBy("id desc")
 	sb.Limit(1)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())

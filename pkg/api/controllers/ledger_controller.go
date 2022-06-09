@@ -23,5 +23,6 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	ctl.response(c, http.StatusOK, stats)
 }

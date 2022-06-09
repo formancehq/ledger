@@ -13,28 +13,29 @@ import (
 func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (uint64, error) {
 	var count uint64
 
-	tq := s.transactionsQuery(params)
-	q, args := tq.BuildWithFlavor(s.schema.Flavor())
+	sb := s.buildTransactionsQuery(params)
+	q, args := sb.BuildWithFlavor(s.schema.Flavor())
 	q = fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, q)
 	err := exec.QueryRowContext(ctx, q, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *Store) CountTransactions(ctx context.Context, q query.Query) (uint64, error) {
+func (s *Store) CountTransactions(ctx context.Context, q query.Transactions) (uint64, error) {
 	return s.countTransactions(ctx, s.schema, q.Params)
 }
 
 func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (uint64, error) {
 	var count uint64
 
-	sqlq, args := s.accountsQuery(p).Select("count(*)").BuildWithFlavor(s.schema.Flavor())
+	sb := s.buildAccountsQuery(p)
+	sqlq, args := sb.Select("count(*)").BuildWithFlavor(s.schema.Flavor())
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *Store) CountAccounts(ctx context.Context, q query.Query) (uint64, error) {
+func (s *Store) CountAccounts(ctx context.Context, q query.Accounts) (uint64, error) {
 	return s.countAccounts(ctx, s.schema, q.Params)
 }
 

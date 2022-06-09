@@ -26,25 +26,35 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
-		query.Reference(c.Query("reference")),
-		query.Account(c.Query("account")),
-		query.Source(c.Query("source")),
-		query.Destination(c.Query("destination")),
+		query.SetReferenceFilter(c.Query("reference")),
+		query.SetAccountFilter(c.Query("account")),
+		query.SetSourceFilter(c.Query("source")),
+		query.SetDestinationFilter(c.Query("destination")),
 	)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
+
 	c.Header("Count", fmt.Sprint(count))
 }
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var startTime, endTime time.Time
 	var err error
+	var afterTxIDParsed uint64
+	if c.Query("after") != "" {
+		afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
+		if err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+			return
+		}
+	}
+
+	var startTimeParsed, endTimeParsed time.Time
 	if c.Query("start_time") != "" {
-		startTime, err = time.Parse(time.RFC3339, c.Query("start_time"))
+		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
 			return
@@ -52,7 +62,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	}
 
 	if c.Query("end_time") != "" {
-		endTime, err = time.Parse(time.RFC3339, c.Query("end_time"))
+		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
 			return
@@ -61,18 +71,19 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 
 	cursor, err := l.(*ledger.Ledger).GetTransactions(
 		c.Request.Context(),
-		query.After(c.Query("after")),
-		query.Reference(c.Query("reference")),
-		query.Account(c.Query("account")),
-		query.Source(c.Query("source")),
-		query.Destination(c.Query("destination")),
-		query.StartTime(startTime),
-		query.EndTime(endTime),
+		query.SetAfterTxID(afterTxIDParsed),
+		query.SetReferenceFilter(c.Query("reference")),
+		query.SetAccountFilter(c.Query("account")),
+		query.SetSourceFilter(c.Query("source")),
+		query.SetDestinationFilter(c.Query("destination")),
+		query.SetStartTime(startTimeParsed),
+		query.SetEndTime(endTimeParsed),
 	)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
+
 	ctl.response(c, http.StatusOK, cursor)
 }
 
@@ -80,7 +91,8 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	value, ok := c.GetQuery("preview")
-	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
+	preview := ok &&
+		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	var t core.TransactionData
 	if err := c.ShouldBindJSON(&t); err != nil {
@@ -92,18 +104,17 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		fn = l.(*ledger.Ledger).CommitPreview
 	}
 
-	_, result, err := fn(c.Request.Context(), []core.TransactionData{t})
+	_, txs, err := fn(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
 
-	status := http.StatusOK
 	if preview {
-		status = http.StatusNotModified
+		ctl.response(c, http.StatusNotModified, txs)
+	} else {
+		ctl.response(c, http.StatusOK, txs)
 	}
-
-	ctl.response(c, status, result)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -120,10 +131,12 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	if len(tx.Postings) == 0 {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
+
 	ctl.response(c, http.StatusOK, tx)
 }
 
@@ -141,6 +154,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	ctl.response(c, http.StatusOK, tx)
 }
 
@@ -158,11 +172,11 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		return
 	}
 
-	err = l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeTransaction, txId, m)
-	if err != nil {
+	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeTransaction, txId, m); err != nil {
 		ResponseError(c, err)
 		return
 	}
+
 	ctl.noContent(c)
 }
 

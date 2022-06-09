@@ -14,20 +14,18 @@ type Stats struct {
 func (l *Ledger) Stats(ctx context.Context) (Stats, error) {
 	var stats Stats
 
-	tt, err := l.store.CountTransactions(ctx, query.Query{})
-
+	transactions, err := l.store.CountTransactions(ctx, query.Transactions{})
 	if err != nil {
 		return stats, err
 	}
 
-	ta, err := l.store.CountAccounts(ctx, query.Query{})
-
+	accounts, err := l.store.CountAccounts(ctx, query.Accounts{})
 	if err != nil {
 		return stats, err
 	}
 
 	return Stats{
-		Transactions: tt,
-		Accounts:     ta,
+		Transactions: transactions,
+		Accounts:     accounts,
 	}, nil
 }

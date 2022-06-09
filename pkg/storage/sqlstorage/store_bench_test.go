@@ -138,7 +138,7 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		txs, err := store.GetTransactions(context.Background(), query.Query{
+		txs, err := store.GetTransactions(context.Background(), query.Transactions{
 			Limit: 100,
 		})
 		assert.NoError(b, err)

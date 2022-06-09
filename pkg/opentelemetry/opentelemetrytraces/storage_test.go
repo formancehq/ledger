@@ -83,7 +83,7 @@ func testLastLog(t *testing.T, store storage.Store) {
 }
 
 func testCountAccounts(t *testing.T, store storage.Store) {
-	_, err := store.CountAccounts(context.Background(), query.Query{})
+	_, err := store.CountAccounts(context.Background(), query.Accounts{})
 	assert.NoError(t, err)
 
 }
@@ -94,19 +94,19 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 }
 
 func testGetAccounts(t *testing.T, store storage.Store) {
-	_, err := store.GetAccounts(context.Background(), query.Query{
+	_, err := store.GetAccounts(context.Background(), query.Accounts{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
 }
 
 func testCountTransactions(t *testing.T, store storage.Store) {
-	_, err := store.CountTransactions(context.Background(), query.Query{})
+	_, err := store.CountTransactions(context.Background(), query.Transactions{})
 	assert.NoError(t, err)
 }
 
 func testGetTransactions(t *testing.T, store storage.Store) {
-	_, err := store.GetTransactions(context.Background(), query.Query{
+	_, err := store.GetTransactions(context.Background(), query.Transactions{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
