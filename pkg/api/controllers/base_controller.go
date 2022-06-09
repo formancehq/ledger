@@ -15,10 +15,6 @@ func respondWithNoContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func respondWithNotModified(c *gin.Context) {
-	c.Status(http.StatusNotModified)
-}
-
 func respondWithCursor[T any](c *gin.Context, status int, data sharedapi.Cursor[T]) {
 	c.JSON(status, sharedapi.BaseResponse[T]{
 		Cursor: &data,
