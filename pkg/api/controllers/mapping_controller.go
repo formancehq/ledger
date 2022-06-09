@@ -29,6 +29,7 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
 }
 
@@ -40,5 +41,6 @@ func (ctl *MappingController) GetMapping(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
+
 	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
 }
