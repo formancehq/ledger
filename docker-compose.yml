@@ -22,7 +22,7 @@ services:
   ledger:
     image: "ghcr.io/numary/ledger:latest"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3068/_info"]
+      test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
       interval: 10s
       timeout: 5s
       retries: 5
