@@ -33,8 +33,7 @@ func TestMapping(t *testing.T) {
 				rsp = internal.LoadMapping(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				m2 := core.Mapping{}
-				internal.DecodeSingleResponse(t, rsp.Body, &m2)
+				m2, _ := internal.DecodeSingleResponse[core.Mapping](t, rsp.Body)
 
 				assert.EqualValues(t, m, m2)
 				return nil
@@ -50,8 +49,7 @@ func TestLoadEmptyMapping(t *testing.T) {
 				rsp := internal.LoadMapping(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				m := core.Mapping{}
-				internal.DecodeSingleResponse(t, rsp.Body, &m)
+				m, _ := internal.DecodeSingleResponse[core.Mapping](t, rsp.Body)
 
 				assert.EqualValues(t, core.Mapping{}, m)
 				return nil

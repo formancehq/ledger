@@ -15,17 +15,6 @@ import (
 	"go.uber.org/fx"
 )
 
-type GetAccountsCursor struct {
-	PageSize int            `json:"page_size,omitempty"`
-	Previous string         `json:"previous,omitempty"`
-	Next     string         `json:"next,omitempty"`
-	Data     []core.Account `json:"data"`
-}
-
-type getAccountsResponse struct {
-	Cursor *GetAccountsCursor `json:"cursor,omitempty"`
-}
-
 func TestGetAccounts(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
@@ -69,13 +58,12 @@ func TestGetAccounts(t *testing.T) {
 				t.Run("all", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 3 accounts: world, bob, alice
-					assert.Len(t, resp.Cursor.Data, 3)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "world")
-					assert.Equal(t, resp.Cursor.Data[1].Address, "bob")
-					assert.Equal(t, resp.Cursor.Data[2].Address, "alice")
+					assert.Len(t, cursor.Data, 3)
+					assert.Equal(t, cursor.Data[0].Address, "world")
+					assert.Equal(t, cursor.Data[1].Address, "bob")
+					assert.Equal(t, cursor.Data[2].Address, "alice")
 				})
 
 				t.Run("meta roles", func(t *testing.T) {
@@ -83,11 +71,10 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[roles]": []string{"admin"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
 				t.Run("meta accountId", func(t *testing.T) {
@@ -95,11 +82,10 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[accountId]": []string{"3"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
 				t.Run("meta enabled", func(t *testing.T) {
@@ -107,11 +93,10 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[enabled]": []string{"true"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
 				t.Run("meta nested", func(t *testing.T) {
@@ -119,11 +104,10 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[a.nested.key]": []string{"hello"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
 				t.Run("meta unknown", func(t *testing.T) {
@@ -131,7 +115,7 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[unknown]": []string{"key"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 0)
 				})
 
@@ -140,11 +124,10 @@ func TestGetAccounts(t *testing.T) {
 						"after": []string{"bob"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: alice
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "alice")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "alice")
 				})
 
 				t.Run("address", func(t *testing.T) {
@@ -152,11 +135,10 @@ func TestGetAccounts(t *testing.T) {
 						"address": []string{"b.b"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getAccountsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
 				return nil
@@ -188,8 +170,7 @@ func TestGetAccount(t *testing.T) {
 
 				rsp = internal.GetAccount(api, "alice")
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp := core.Account{}
-				internal.DecodeSingleResponse(t, rsp.Body, &resp)
+				resp, _ := internal.DecodeSingleResponse[core.Account](t, rsp.Body)
 
 				assert.EqualValues(t, core.Account{
 					Address: "alice",

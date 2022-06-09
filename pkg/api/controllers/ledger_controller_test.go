@@ -44,8 +44,8 @@ func TestGetStats(t *testing.T) {
 				rsp = internal.GetStats(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				stats := ledger.Stats{}
-				internal.DecodeSingleResponse(t, rsp.Body, &stats)
+				stats, _ := internal.DecodeSingleResponse[ledger.Stats](t, rsp.Body)
+
 				assert.EqualValues(t, ledger.Stats{
 					Transactions: 2,
 					Accounts:     3,

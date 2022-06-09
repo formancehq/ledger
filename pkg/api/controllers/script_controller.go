@@ -32,9 +32,7 @@ func EncodeLink(errStr string) string {
 	return fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
 }
 
-type ScriptController struct {
-	BaseController
-}
+type ScriptController struct{}
 
 func NewScriptController() ScriptController {
 	return ScriptController{}

@@ -7,9 +7,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-type LedgerController struct {
-	BaseController
-}
+type LedgerController struct{}
 
 func NewLedgerController() LedgerController {
 	return LedgerController{}
@@ -23,6 +21,5 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-
-	ctl.response(c, http.StatusOK, stats)
+	respondWithData[ledger.Stats](c, http.StatusOK, stats)
 }
