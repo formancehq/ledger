@@ -250,17 +250,6 @@ func TestNotFoundTransaction(t *testing.T) {
 	}))
 }
 
-type GetTransactionsCursor struct {
-	PageSize int                `json:"page_size,omitempty"`
-	Previous string             `json:"previous,omitempty"`
-	Next     string             `json:"next,omitempty"`
-	Data     []core.Transaction `json:"data"`
-}
-
-type getTransactionsResponse struct {
-	Cursor *GetTransactionsCursor `json:"cursor,omitempty"`
-}
-
 func TestGetTransactions(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
@@ -328,16 +317,15 @@ func TestGetTransactions(t *testing.T) {
 				t.Run("all", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// all transactions
-					assert.Len(t, resp.Cursor.Data, 3)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(2))
-					assert.Equal(t, resp.Cursor.Data[1].ID, uint64(1))
-					assert.Equal(t, resp.Cursor.Data[2].ID, uint64(0))
+					assert.Len(t, cursor.Data, 3)
+					assert.Equal(t, cursor.Data[0].ID, uint64(2))
+					assert.Equal(t, cursor.Data[1].ID, uint64(1))
+					assert.Equal(t, cursor.Data[2].ID, uint64(0))
 
-					tx1Timestamp = resp.Cursor.Data[1].Timestamp
-					tx2Timestamp = resp.Cursor.Data[0].Timestamp
+					tx1Timestamp = cursor.Data[1].Timestamp
+					tx2Timestamp = cursor.Data[0].Timestamp
 				})
 
 				t.Run("after", func(t *testing.T) {
@@ -345,11 +333,10 @@ func TestGetTransactions(t *testing.T) {
 						"after": []string{"1"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 1 transaction: txid 0
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].ID, uint64(0))
 				})
 
 				t.Run("reference", func(t *testing.T) {
@@ -357,11 +344,10 @@ func TestGetTransactions(t *testing.T) {
 						"reference": []string{"ref:001"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 1 transaction: txid 0
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].ID, uint64(0))
 				})
 
 				t.Run("destination", func(t *testing.T) {
@@ -369,11 +355,10 @@ func TestGetTransactions(t *testing.T) {
 						"destination": []string{"central_bank1"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 1 transaction: txid 0
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-					assert.Len(t, resp.Cursor.Data, 1)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(0))
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].ID, uint64(0))
 				})
 
 				t.Run("source", func(t *testing.T) {
@@ -381,12 +366,11 @@ func TestGetTransactions(t *testing.T) {
 						"source": []string{"world"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 2 transactions: txid 0 and txid 1
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-					assert.Len(t, resp.Cursor.Data, 2)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(1))
-					assert.Equal(t, resp.Cursor.Data[1].ID, uint64(0))
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].ID, uint64(1))
+					assert.Equal(t, cursor.Data[1].ID, uint64(0))
 				})
 
 				t.Run("account", func(t *testing.T) {
@@ -394,12 +378,11 @@ func TestGetTransactions(t *testing.T) {
 						"account": []string{"world"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 2 transactions: txid 0 and txid 1
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
-					assert.Len(t, resp.Cursor.Data, 2)
-					assert.Equal(t, resp.Cursor.Data[0].ID, uint64(1))
-					assert.Equal(t, resp.Cursor.Data[1].ID, uint64(0))
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].ID, uint64(1))
+					assert.Equal(t, cursor.Data[1].ID, uint64(0))
 				})
 
 				t.Run("time range", func(t *testing.T) {
@@ -408,10 +391,9 @@ func TestGetTransactions(t *testing.T) {
 						"end_time":   []string{tx2Timestamp},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// 1 transaction: txid 1
-					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Len(t, cursor.Data, 1)
 				})
 
 				t.Run("only start time", func(t *testing.T) {
@@ -419,10 +401,9 @@ func TestGetTransactions(t *testing.T) {
 						"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// no transaction
-					assert.Len(t, resp.Cursor.Data, 0)
+					assert.Len(t, cursor.Data, 0)
 				})
 
 				t.Run("only end time", func(t *testing.T) {
@@ -430,10 +411,9 @@ func TestGetTransactions(t *testing.T) {
 						"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					resp := getTransactionsResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					// all transactions
-					assert.Len(t, resp.Cursor.Data, 3)
+					assert.Len(t, cursor.Data, 3)
 				})
 
 				t.Run("invalid start time", func(t *testing.T) {
