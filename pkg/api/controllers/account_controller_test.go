@@ -131,7 +131,7 @@ func TestGetAccounts(t *testing.T) {
 						"metadata[unknown]": []string{"key"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse(t, rsp.Body, core.Account{})
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 0)
 				})
 
@@ -188,8 +188,7 @@ func TestGetAccount(t *testing.T) {
 
 				rsp = internal.GetAccount(api, "alice")
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp := core.Account{}
-				internal.DecodeSingleResponse(t, rsp.Body, &resp)
+				resp, _ := internal.DecodeSingleResponse[core.Account](t, rsp.Body)
 
 				assert.EqualValues(t, core.Account{
 					Address: "alice",

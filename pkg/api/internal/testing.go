@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -49,43 +48,19 @@ func Decode(t *testing.T, reader io.Reader, v interface{}) bool {
 	return assert.NoError(t, err)
 }
 
-func DecodeSingleResponse(t *testing.T, reader io.Reader, v interface{}) bool {
-	type Response struct {
-		Data json.RawMessage `json:"data"`
-	}
-	res := Response{}
+func DecodeSingleResponse[T any](t *testing.T, reader io.Reader) (T, bool) {
+	res := sharedapi.BaseResponse[T]{}
 	if !Decode(t, reader, &res) {
-		return false
+		var zero T
+		return zero, false
 	}
-	if !Decode(t, bytes.NewBuffer(res.Data), v) {
-		return false
-	}
-	return true
+	return res.Data, true
 }
 
-func DecodeCursorResponse(t *testing.T, reader io.Reader, targetType interface{}) *sharedapi.Cursor {
-	type Response struct {
-		Cursor json.RawMessage `json:"cursor"`
-	}
-	res := Response{}
+func DecodeCursorResponse[T any](t *testing.T, reader io.Reader) *sharedapi.Cursor[T] {
+	res := sharedapi.BaseResponse[T]{}
 	Decode(t, reader, &res)
-
-	type Cursor struct {
-		sharedapi.Cursor
-		Data []json.RawMessage `json:"data"`
-	}
-	cursor := Cursor{}
-	Decode(t, bytes.NewBuffer(res.Cursor), &cursor)
-
-	items := make([]interface{}, 0)
-	for _, d := range cursor.Data {
-		target := reflect.New(reflect.TypeOf(targetType)).Interface()
-		Decode(t, bytes.NewBuffer(d), target)
-		items = append(items, reflect.ValueOf(target).Elem().Interface())
-	}
-	cursor.Cursor.Data = items
-
-	return &cursor.Cursor
+	return res.Cursor
 }
 
 func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.ResponseRecorder) {

@@ -262,7 +262,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), query.Accounts{
 		Limit:        1,
-		AfterAddress: accounts.Data.([]core.Account)[0].Address,
+		AfterAddress: accounts.Data[0].Address,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, accounts.PageSize)
@@ -408,7 +408,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, 1, cursor.PageSize)
 
 		cursor, err = store.GetTransactions(context.Background(), query.Transactions{
-			AfterTxID: cursor.Data.([]core.Transaction)[0].ID,
+			AfterTxID: cursor.Data[0].ID,
 			Limit:     1,
 		})
 		assert.NoError(t, err)
