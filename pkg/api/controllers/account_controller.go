@@ -40,26 +40,26 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	paginationToken := c.Query("pagination_token")
-	afterAddress := c.Query("after")
-	addressRegexpFilter := c.Query("address")
-	metadataFilter := c.QueryMap("metadata")
 
-	if paginationToken != "" {
-		if afterAddress != "" || addressRegexpFilter != "" || len(metadataFilter) != 0 {
+	if c.Query("pagination_token") != "" {
+		if c.Query("after") != "" ||
+			c.Query("address") != "" ||
+			len(c.QueryMap("metadata")) > 0 {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(paginationToken)
+		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
 		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			ResponseError(c, ledger.NewValidationError(
+				"invalid query value 'pagination_token'"))
 			return
 		}
 		t := sqlstorage.AccPaginationToken{}
 		if err = json.Unmarshal(res, &t); err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			ResponseError(c, ledger.NewValidationError(
+				"invalid query value 'pagination_token'"))
 			return
 		}
 
@@ -81,9 +81,9 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 
 	cursor, err := l.(*ledger.Ledger).GetAccounts(
 		c.Request.Context(),
-		query.SetAfterAddress(afterAddress),
-		query.SetAddressRegexpFilter(addressRegexpFilter),
-		query.SetMetadataFilter(metadataFilter),
+		query.SetAfterAddress(c.Query("after")),
+		query.SetAddressRegexpFilter(c.Query("address")),
+		query.SetMetadataFilter(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -116,13 +116,13 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	addr := c.Param("address")
-	if !core.ValidateAddress(addr) {
+	if !core.ValidateAddress(c.Param("address")) {
 		ResponseError(c, errors.New("invalid address"))
 		return
 	}
 
-	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeAccount, addr, m); err != nil {
+	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
+		core.MetaTargetTypeAccount, c.Param("address"), m); err != nil {
 		ResponseError(c, err)
 		return
 	}
