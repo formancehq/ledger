@@ -214,13 +214,13 @@ func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (
 	return volumes, txs, err
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor[core.Transaction], error) {
-	q := query.New(m)
+func (l *Ledger) GetTransactions(ctx context.Context, m ...query.TxModifier) (sharedapi.Cursor[core.Transaction], error) {
+	q := query.NewTransactions(m)
 	return l.store.GetTransactions(ctx, q)
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, m ...query.Modifier) (uint64, error) {
-	q := query.New(m)
+func (l *Ledger) CountTransactions(ctx context.Context, m ...query.TxModifier) (uint64, error) {
+	q := query.NewTransactions(m)
 	return l.store.CountTransactions(ctx, q)
 }
 
@@ -276,13 +276,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	return &txs[0], nil
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, m ...query.Modifier) (uint64, error) {
-	q := query.New(m)
+func (l *Ledger) CountAccounts(ctx context.Context, m ...query.AccModifier) (uint64, error) {
+	q := query.NewAccounts(m)
 	return l.store.CountAccounts(ctx, q)
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, m ...query.Modifier) (sharedapi.Cursor[core.Account], error) {
-	q := query.New(m)
+func (l *Ledger) GetAccounts(ctx context.Context, m ...query.AccModifier) (sharedapi.Cursor[core.Account], error) {
+	q := query.NewAccounts(m)
 	return l.store.GetAccounts(ctx, q)
 }
 

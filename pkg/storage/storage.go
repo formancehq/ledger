@@ -61,13 +61,13 @@ func IsTooManyClientError(err error) bool {
 
 type Store interface {
 	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
-	CountTransactions(context.Context, query.Query) (uint64, error)
-	GetTransactions(context.Context, query.Query) (sharedapi.Cursor[core.Transaction], error)
+	CountTransactions(context.Context, query.Transactions) (uint64, error)
+	GetTransactions(context.Context, query.Transactions) (sharedapi.Cursor[core.Transaction], error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
 	AggregateVolumes(context.Context, string) (core.Volumes, error)
-	CountAccounts(context.Context, query.Query) (uint64, error)
-	GetAccounts(context.Context, query.Query) (sharedapi.Cursor[core.Account], error)
+	CountAccounts(context.Context, query.Accounts) (uint64, error)
+	GetAccounts(context.Context, query.Accounts) (sharedapi.Cursor[core.Account], error)
 
 	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
@@ -99,11 +99,11 @@ func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) CountTransactions(ctx context.Context, q query.Query) (uint64, error) {
+func (n noOpStore) CountTransactions(ctx context.Context, q query.Transactions) (uint64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) GetTransactions(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Transaction], error) {
+func (n noOpStore) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
 	return sharedapi.Cursor[core.Transaction]{}, nil
 }
 
@@ -123,11 +123,11 @@ func (n noOpStore) LastLog(ctx context.Context) (*core.Log, error) {
 	return nil, nil
 }
 
-func (n noOpStore) CountAccounts(ctx context.Context, q query.Query) (uint64, error) {
+func (n noOpStore) CountAccounts(ctx context.Context, q query.Accounts) (uint64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) GetAccounts(ctx context.Context, q query.Query) (sharedapi.Cursor[core.Account], error) {
+func (n noOpStore) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
 	return sharedapi.Cursor[core.Account]{}, nil
 }
 

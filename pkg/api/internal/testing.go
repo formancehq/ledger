@@ -54,7 +54,7 @@ func DecodeSingleResponse[T any](t *testing.T, reader io.Reader) (T, bool) {
 		var zero T
 		return zero, false
 	}
-	return res.Data, true
+	return *res.Data, true
 }
 
 func DecodeCursorResponse[T any](t *testing.T, reader io.Reader) *sharedapi.Cursor[T] {

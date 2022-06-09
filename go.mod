@@ -42,9 +42,11 @@ require (
 	github.com/gibson042/canonicaljson-go v1.0.3
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/numary/go-libs v0.0.0-20220608075201-b8d5a8c3880a
+	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/numary/go-libs v0.0.0-20220609100906-5d494c9ab0ba
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.12
 	github.com/xdg-go/scram v1.1.0
+	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
@@ -57,7 +59,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-http v1.1.4 // indirect
 	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211226235153-13a0add2f557 // indirect
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
+	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.2 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -87,7 +89,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -135,15 +136,11 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/segmentio/backo-go v1.0.0 // indirect
-	github.com/segmentio/go-snakecase v0.0.0-20160726192916-45c439a7815b // indirect
-	github.com/segmentio/go-tableize v1.0.1-0.20160728214455-e912c9fa0f24 // indirect
-	github.com/segmentio/objects-go v1.1.0 // indirect
 	github.com/spf13/afero v1.7.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
-	github.com/tj/go-sync v0.0.0-20160119181431-8448302468e8 // indirect
 	github.com/ugorji/go/codec v1.2.6 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.1.12 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
@@ -172,7 +169,5 @@ require (
 	google.golang.org/grpc v1.45.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.66.2 // indirect
-	gopkg.in/segmentio/analytics-go.v3 v3.1.0 // indirect
-	gopkg.in/validator.v2 v2.0.0-20160201165114-3e4f037f12a1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

@@ -91,21 +91,42 @@ func TestPostScriptPreview(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				values := url.Values{}
-				values.Set("preview", "true")
-
-				rsp := internal.PostScript(t, api, core.Script{
-					Plain: script,
-				}, values)
-
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				res := controllers.ScriptResponse{}
-				internal.Decode(t, rsp.Body, &res)
-
 				store := internal.GetStore(t, driver, ctx)
-				cursor, err := store.GetTransactions(ctx, query.New())
-				assert.NoError(t, err)
-				assert.Len(t, cursor.Data, 0)
+
+				t.Run("true", func(t *testing.T) {
+					values := url.Values{}
+					values.Set("preview", "true")
+
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain: script,
+					}, values)
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+
+					cursor, err := store.GetTransactions(ctx, query.NewTransactions())
+					assert.NoError(t, err)
+					assert.Len(t, cursor.Data, 0)
+				})
+
+				t.Run("false", func(t *testing.T) {
+					values := url.Values{}
+					values.Set("preview", "false")
+
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain: script,
+					}, values)
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+
+					cursor, err := store.GetTransactions(ctx, query.NewTransactions())
+					assert.NoError(t, err)
+					assert.Len(t, cursor.Data, 1)
+				})
+
 				return nil
 			},
 		})

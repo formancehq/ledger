@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Ledger API
   contact: {}
-  version: "1.0"
+  version: "LEDGER_VERSION"
 
 paths:
   /_info:
@@ -446,13 +446,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateTransactionResponse'
+                $ref: '#/components/schemas/TransactionsResponse'
         "304":
           description: Not modified (when preview is enabled)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateTransactionResponse'
+                $ref: '#/components/schemas/TransactionsResponse'
         "400":
           description: Commit error
           content:
@@ -460,7 +460,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         "409":
-          description: Confict
+          description: Conflict
           content:
             application/json:
               schema:
@@ -588,19 +588,7 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - type: object
-                    properties:
-                      cursor:
-                        $ref: '#/components/schemas/Cursor'
-                  - properties:
-                      data:
-                        items:
-                          $ref: '#/components/schemas/Transaction'
-                        type: array
-                    type: object
-                    required:
-                      - data
+                $ref: '#/components/schemas/TransactionsResponse'
         "400":
           description: Commit error
           content:
@@ -830,19 +818,17 @@ components:
       required:
         - accounts
         - transactions
+
     Cursor:
       type: object
       required:
         - page_size
-        - has_more
       properties:
         page_size:
           type: integer
           example: 1
-        has_more:
-          type: boolean
-          example: false
-    CreateTransactionResponse:
+
+    TransactionsResponse:
       type: object
       properties:
         data:
@@ -851,6 +837,7 @@ components:
           type: array
       required:
         - data
+
     TransactionResponse:
       properties:
         data:

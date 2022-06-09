@@ -6,3 +6,6 @@ cmd/control/*
 .DS_Store
 .idea
 vendor
+sdk/swagger.yaml
+sdk/swagger.yaml-e
+sdk/sdks
