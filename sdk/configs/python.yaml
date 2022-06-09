@@ -1,0 +1,11 @@
+templateDir: templates/python
+additionalProperties:
+  packageName: ledgerclient
+  infoName: Numary ledger Client
+  infoEmail: support@numary.com
+
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
+  .github/workflows/release.yml.mustache:
+    destinationFilename: .github/workflows/release.yml

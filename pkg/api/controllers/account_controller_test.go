@@ -123,6 +123,18 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					resp := getAccountsResponse{}
 					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
+					// 1 accounts: alice
+					assert.Len(t, resp.Cursor.Data, 1)
+					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")
+				})
+
+				t.Run("address", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"address": []string{"b.b"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp := getAccountsResponse{}
+					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &resp))
 					// 1 accounts: bob
 					assert.Len(t, resp.Cursor.Data, 1)
 					assert.Equal(t, resp.Cursor.Data[0].Address, "bob")

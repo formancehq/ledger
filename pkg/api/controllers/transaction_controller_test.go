@@ -439,6 +439,20 @@ func TestGetTransactions(t *testing.T) {
 					assert.Len(t, resp.Cursor.Data, 3)
 				})
 
+				t.Run("invalid start time", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"start_time": []string{"invalid time"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+				})
+
+				t.Run("invalid end time", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"end_time": []string{"invalid time"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+				})
+
 				to := sqlstorage.TxsPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
@@ -455,20 +469,6 @@ func TestGetTransactions(t *testing.T) {
 						"after":            []string{"1"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
-				t.Run("invalid start time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"start_time": []string{"invalid time"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
-				})
-
-				t.Run("invalid end time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"end_time": []string{"invalid time"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 				})
 
 				t.Run("invalid pagination_token", func(t *testing.T) {

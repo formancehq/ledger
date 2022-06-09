@@ -1,0 +1,13 @@
+templateDir: templates/typescript
+additionalProperties:
+  enumUnknownDefaultCase: true
+  platform: node
+  npmName: '@numaryhq/ledger-nodejs'
+  moduleName: ledger
+  projectName: '@numaryhq/ledger-nodejs'
+  gitRepository: 'https://github.com/numary/numary-sdk-typescript-node'
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
+  .github/workflows/release.yml.mustache:
+    destinationFilename: .github/workflows/release.yml
