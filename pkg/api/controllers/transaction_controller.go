@@ -41,18 +41,11 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	afterTxID := c.Query("after")
-	referenceFilter := c.Query("reference")
-	accountFilter := c.Query("account")
-	sourceFilter := c.Query("source")
-	destinationFilter := c.Query("destination")
-	startTime := c.Query("start_time")
-	endTime := c.Query("end_time")
 
-	var afterTxIDParsed uint64
 	var err error
-	if afterTxID != "" {
-		afterTxIDParsed, err = strconv.ParseUint(afterTxID, 10, 64)
+	var afterTxIDParsed uint64
+	if c.Query("after") != "" {
+		afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
 			return
@@ -60,16 +53,16 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	}
 
 	var startTimeParsed, endTimeParsed time.Time
-	if startTime != "" {
-		startTimeParsed, err = time.Parse(time.RFC3339, startTime)
+	if c.Query("start_time") != "" {
+		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
 			return
 		}
 	}
 
-	if endTime != "" {
-		endTimeParsed, err = time.Parse(time.RFC3339, endTime)
+	if c.Query("end_time") != "" {
+		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
 		if err != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
 			return
@@ -79,10 +72,10 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	cursor, err := l.(*ledger.Ledger).GetTransactions(
 		c.Request.Context(),
 		query.SetAfterTxID(afterTxIDParsed),
-		query.SetReferenceFilter(referenceFilter),
-		query.SetAccountFilter(accountFilter),
-		query.SetSourceFilter(sourceFilter),
-		query.SetDestinationFilter(destinationFilter),
+		query.SetReferenceFilter(c.Query("reference")),
+		query.SetAccountFilter(c.Query("account")),
+		query.SetSourceFilter(c.Query("source")),
+		query.SetDestinationFilter(c.Query("destination")),
 		query.SetStartTime(startTimeParsed),
 		query.SetEndTime(endTimeParsed),
 	)
@@ -98,7 +91,8 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	value, ok := c.GetQuery("preview")
-	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
+	preview := ok &&
+		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	var t core.TransactionData
 	if err := c.ShouldBindJSON(&t); err != nil {

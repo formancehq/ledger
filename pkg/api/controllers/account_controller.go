@@ -37,15 +37,12 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
-	afterAddress := c.Query("after")
-	addressRegexpFilter := c.Query("address")
-	metadataFilter := c.QueryMap("metadata")
 
 	cursor, err := l.(*ledger.Ledger).GetAccounts(
 		c.Request.Context(),
-		query.SetAfterAddress(afterAddress),
-		query.SetAddressRegexpFilter(addressRegexpFilter),
-		query.SetMetadataFilter(metadataFilter),
+		query.SetAfterAddress(c.Query("after")),
+		query.SetAddressRegexpFilter(c.Query("address")),
+		query.SetMetadataFilter(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -78,13 +75,13 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	addr := c.Param("address")
-	if !core.ValidateAddress(addr) {
+	if !core.ValidateAddress(c.Param("address")) {
 		ResponseError(c, errors.New("invalid address"))
 		return
 	}
 
-	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(), core.MetaTargetTypeAccount, addr, m); err != nil {
+	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
+		core.MetaTargetTypeAccount, c.Param("address"), m); err != nil {
 		ResponseError(c, err)
 		return
 	}
