@@ -2,7 +2,6 @@ package controllers_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -22,8 +21,8 @@ func TestGetInfo(t *testing.T) {
 				rsp := internal.GetInfo(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				info := controllers.ConfigInfo{}
-				require.NoError(t, json.NewDecoder(rsp.Body).Decode(&info))
+				info, ok := internal.DecodeSingleResponse[controllers.ConfigInfo](t, rsp.Body)
+				require.True(t, ok)
 
 				info.Config.LedgerStorage.Ledgers = []string{}
 				assert.EqualValues(t, controllers.ConfigInfo{
