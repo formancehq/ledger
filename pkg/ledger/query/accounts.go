@@ -2,6 +2,7 @@ package query
 
 type Accounts struct {
 	Limit        uint
+	Offset       uint
 	AfterAddress string
 	Params       map[string]interface{}
 }
@@ -24,6 +25,12 @@ func NewAccounts(qms ...[]AccModifier) Accounts {
 func (q *Accounts) Apply(modifiers []AccModifier) {
 	for _, m := range modifiers {
 		m(q)
+	}
+}
+
+func SetOffset(v uint) func(accounts *Accounts) {
+	return func(q *Accounts) {
+		q.Offset = v
 	}
 }
 

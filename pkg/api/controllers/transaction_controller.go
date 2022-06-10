@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,9 +10,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
 type TransactionController struct{}
@@ -40,47 +44,83 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var cursor sharedapi.Cursor[core.Transaction]
 	var err error
-	var afterTxIDParsed uint64
-	if c.Query("after") != "" {
-		afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+
+	if c.Query("pagination_token") != "" {
+		if c.Query("after") != "" || c.Query("reference") != "" ||
+			c.Query("account") != "" || c.Query("source") != "" ||
+			c.Query("destination") != "" || c.Query("start_time") != "" ||
+			c.Query("end_time") != "" {
+			ResponseError(c, ledger.NewValidationError(
+				"no other query params can be set with 'pagination_token'"))
 			return
 		}
-	}
 
-	var startTimeParsed, endTimeParsed time.Time
-	if c.Query("start_time") != "" {
-		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
+		if decErr != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
-	}
 
-	if c.Query("end_time") != "" {
-		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+		token := sqlstorage.TxsPaginationToken{}
+		if err = json.Unmarshal(res, &token); err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
+
+		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
+			query.SetAfterTxID(token.AfterTxID),
+			query.SetReferenceFilter(token.ReferenceFilter),
+			query.SetAccountFilter(token.AccountFilter),
+			query.SetSourceFilter(token.SourceFilter),
+			query.SetDestinationFilter(token.DestinationFilter),
+			query.SetStartTime(token.StartTime),
+			query.SetEndTime(token.EndTime),
+		)
+	} else {
+		var afterTxIDParsed uint64
+		if c.Query("after") != "" {
+			afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+				return
+			}
+		}
+
+		var startTimeParsed, endTimeParsed time.Time
+		if c.Query("start_time") != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+				return
+			}
+		}
+
+		if c.Query("end_time") != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+				return
+			}
+		}
+
+		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
+			query.SetAfterTxID(afterTxIDParsed),
+			query.SetReferenceFilter(c.Query("reference")),
+			query.SetAccountFilter(c.Query("account")),
+			query.SetSourceFilter(c.Query("source")),
+			query.SetDestinationFilter(c.Query("destination")),
+			query.SetStartTime(startTimeParsed),
+			query.SetEndTime(endTimeParsed),
+		)
 	}
 
-	cursor, err := l.(*ledger.Ledger).GetTransactions(
-		c.Request.Context(),
-		query.SetAfterTxID(afterTxIDParsed),
-		query.SetReferenceFilter(c.Query("reference")),
-		query.SetAccountFilter(c.Query("account")),
-		query.SetSourceFilter(c.Query("source")),
-		query.SetDestinationFilter(c.Query("destination")),
-		query.SetStartTime(startTimeParsed),
-		query.SetEndTime(endTimeParsed),
-	)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
+
 	respondWithCursor[core.Transaction](c, http.StatusOK, cursor)
 }
 

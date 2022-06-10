@@ -2,6 +2,7 @@ package controllers_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -139,6 +141,31 @@ func TestGetAccounts(t *testing.T) {
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
 					assert.Equal(t, cursor.Data[0].Address, "bob")
+				})
+
+				to := sqlstorage.AccPaginationToken{}
+				raw, err := json.Marshal(to)
+				require.NoError(t, err)
+				t.Run("valid empty pagination_token", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":            []string{"bob"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("invalid pagination_token", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{"invalid"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
 				return nil

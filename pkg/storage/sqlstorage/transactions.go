@@ -3,6 +3,8 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -11,34 +13,41 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) buildTransactionsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
+	t := TxsPaginationToken{}
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings")
 	sb.From(s.schema.Table("transactions"))
 	if account, ok := p["account"]; ok && account.(string) != "" {
 		arg := sb.Args.Add(account.(string))
 		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
+		t.AccountFilter = account.(string)
 	}
 	if source, ok := p["source"]; ok && source.(string) != "" {
 		arg := sb.Args.Add(source.(string))
 		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+		t.SourceFilter = source.(string)
 	}
 	if destination, ok := p["destination"]; ok && destination.(string) != "" {
 		arg := sb.Args.Add(destination.(string))
 		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
+		t.DestinationFilter = destination.(string)
 	}
 	if reference, ok := p["reference"]; ok && reference.(string) != "" {
 		sb.Where(sb.E("reference", reference.(string)))
+		t.ReferenceFilter = reference.(string)
 	}
 	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
 		sb.Where(sb.GE("timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
+		t.StartTime = startTime.(time.Time)
 	}
 	if endTime, ok := p["end_time"]; ok && !endTime.(time.Time).IsZero() {
 		sb.Where(sb.L("timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
+		t.EndTime = endTime.(time.Time)
 	}
 
-	return sb
+	return sb, t
 }
 
 func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
@@ -48,7 +57,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		return sharedapi.Cursor[core.Transaction]{Data: txs}, nil
 	}
 
-	sb := s.buildTransactionsQuery(q.Params)
+	sb, t := s.buildTransactionsQuery(q.Params)
 	sb.OrderBy("id desc")
 	if q.AfterTxID > 0 {
 		sb.Where(sb.L("id", q.AfterTxID))
@@ -99,12 +108,30 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
 
+	var previous, next string
+	if q.AfterTxID > 0 && len(txs) > 0 {
+		t.AfterTxID = txs[0].ID + query.DefaultLimit + 1
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
 	if len(txs) == int(q.Limit+1) {
 		txs = txs[:len(txs)-1]
+		t.AfterTxID = txs[len(txs)-1].ID
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
 	return sharedapi.Cursor[core.Transaction]{
 		PageSize: len(txs),
+		Previous: previous,
+		Next:     next,
 		Data:     txs,
 	}, nil
 }

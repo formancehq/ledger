@@ -3,6 +3,7 @@ package controllers_test
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -428,6 +429,31 @@ func TestGetTransactions(t *testing.T) {
 						"end_time": []string{"invalid time"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+				})
+
+				to := sqlstorage.TxsPaginationToken{}
+				raw, err := json.Marshal(to)
+				require.NoError(t, err)
+				t.Run("valid empty pagination_token", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":            []string{"1"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("invalid pagination_token", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"pagination_token": []string{"invalid"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
 				return nil

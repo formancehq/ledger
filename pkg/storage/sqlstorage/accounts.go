@@ -3,6 +3,8 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -12,8 +14,9 @@ import (
 	"github.com/numary/ledger/pkg/ledger/query"
 )
 
-func (s *Store) buildAccountsQuery(p map[string]interface{}) *sqlbuilder.SelectBuilder {
+func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
+	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
 
 	if address, ok := p["address"]; ok && address.(string) != "" {
@@ -24,6 +27,7 @@ func (s *Store) buildAccountsQuery(p map[string]interface{}) *sqlbuilder.SelectB
 		case sqlbuilder.SQLite:
 			sb.Where("address REGEXP " + arg)
 		}
+		t.AddressRegexpFilter = address.(string)
 	}
 
 	if metadata, ok := p["metadata"]; ok {
@@ -35,9 +39,10 @@ func (s *Store) buildAccountsQuery(p map[string]interface{}) *sqlbuilder.SelectB
 					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
 			))
 		}
+		t.MetadataFilter = metadata.(map[string]string)
 	}
 
-	return sb
+	return sb, t
 }
 
 func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
@@ -47,16 +52,19 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		return sharedapi.Cursor[core.Account]{Data: accounts}, nil
 	}
 
-	sb := s.buildAccountsQuery(q.Params)
+	sb, t := s.buildAccountsQuery(q.Params)
 	sb.Select("address", "metadata")
 	sb.OrderBy("address desc")
 
 	if q.AfterAddress != "" {
 		sb.Where(sb.L("address", q.AfterAddress))
+		t.AfterAddress = q.AfterAddress
 	}
 
 	// We fetch an additional account to know if there is more
 	sb.Limit(int(q.Limit + 1))
+	t.Limit = q.Limit
+	sb.Offset(int(q.Offset))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -81,12 +89,30 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		return sharedapi.Cursor[core.Account]{}, rows.Err()
 	}
 
+	var previous, next string
+	if q.Offset-q.Limit > 0 {
+		t.Offset = q.Offset - q.Limit
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Account]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
 	if len(accounts) == int(q.Limit+1) {
 		accounts = accounts[:len(accounts)-1]
+		t.Offset = q.Offset + q.Limit
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Account]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
 	return sharedapi.Cursor[core.Account]{
 		PageSize: len(accounts),
+		Previous: previous,
+		Next:     next,
 		Data:     accounts,
 	}, nil
 }

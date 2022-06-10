@@ -90,6 +90,15 @@ paths:
             type: object
             properties: {}
           example: metadata[key]=value1&metadata[a.nested.key]=value2
+        - name: pagination_token
+          in: query
+          description: |- 
+            Parameter used in pagination requests. 
+            Set to the value of next for the next page of results. 
+            Set to the value of previous for the previous page of results.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
       responses:
         "200":
           description: OK
@@ -394,6 +403,15 @@ paths:
             The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
           schema:
             type: string
+        - name: pagination_token
+          in: query
+          description: |-
+            Parameter used in pagination requests. 
+            Set to the value of next for the next page of results. 
+            Set to the value of previous for the previous page of results.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
       responses:
         "200":
           description: OK
@@ -827,6 +845,12 @@ components:
         page_size:
           type: integer
           example: 1
+        previous:
+          type: string
+          example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+        next:
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
 
     TransactionsResponse:
       type: object
