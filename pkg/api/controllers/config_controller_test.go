@@ -2,6 +2,7 @@ package controllers_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -21,7 +23,8 @@ func TestGetInfo(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				info := controllers.ConfigInfo{}
-				internal.DecodeSingleResponse(t, rsp.Body, &info)
+				require.NoError(t, json.NewDecoder(rsp.Body).Decode(&info))
+
 				info.Config.LedgerStorage.Ledgers = []string{}
 				assert.EqualValues(t, controllers.ConfigInfo{
 					Server:  "numary-ledger",

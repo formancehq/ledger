@@ -50,11 +50,11 @@ func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.Se
 	return sb, t
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor, error) {
+func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
 	txs := make([]core.Transaction, 0)
 
 	if q.Limit == 0 {
-		return sharedapi.Cursor{Data: txs}, nil
+		return sharedapi.Cursor[core.Transaction]{Data: txs}, nil
 	}
 
 	sb, t := s.buildTransactionsQuery(q.Params)
@@ -69,7 +69,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor{}, s.error(err)
+		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -91,7 +91,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 			&tx.Metadata,
 			&tx.Postings,
 		); err != nil {
-			return sharedapi.Cursor{}, err
+			return sharedapi.Cursor[core.Transaction]{}, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
@@ -99,13 +99,13 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		}
 		timestamp, err := time.Parse(time.RFC3339, ts.String)
 		if err != nil {
-			return sharedapi.Cursor{}, err
+			return sharedapi.Cursor[core.Transaction]{}, err
 		}
 		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
 		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor{}, s.error(err)
+		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
 
 	var previous, next string
@@ -113,7 +113,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		t.AfterTxID = txs[0].ID + query.DefaultLimit + 1
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor{}, s.error(err)
+			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -123,12 +123,12 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor{}, s.error(err)
+			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor{
+	return sharedapi.Cursor[core.Transaction]{
 		PageSize: len(txs),
 		Previous: previous,
 		Next:     next,
@@ -136,7 +136,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 	}, nil
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor, error) {
+func (s *Store) GetTransactions(ctx context.Context, q query.Transactions) (sharedapi.Cursor[core.Transaction], error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 

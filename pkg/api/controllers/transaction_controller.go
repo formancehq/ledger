@@ -10,15 +10,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
-type TransactionController struct {
-	BaseController
-}
+type TransactionController struct{}
 
 func NewTransactionController() TransactionController {
 	return TransactionController{}
@@ -45,6 +44,9 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var cursor sharedapi.Cursor[core.Transaction]
+	var err error
+
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" || c.Query("reference") != "" ||
 			c.Query("account") != "" || c.Query("source") != "" ||
@@ -54,78 +56,72 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 				"no other query params can be set with 'pagination_token'"))
 			return
 		}
-		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
-			return
-		}
-		t := sqlstorage.TxsPaginationToken{}
-		if err = json.Unmarshal(res, &t); err != nil {
+
+		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
+		if decErr != nil {
 			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
 
-		cursor, err := l.(*ledger.Ledger).GetTransactions(
-			c.Request.Context(),
-			query.SetAfterTxID(t.AfterTxID),
-			query.SetReferenceFilter(t.ReferenceFilter),
-			query.SetAccountFilter(t.AccountFilter),
-			query.SetSourceFilter(t.SourceFilter),
-			query.SetDestinationFilter(t.DestinationFilter),
-			query.SetStartTime(t.StartTime),
-			query.SetEndTime(t.EndTime),
+		token := sqlstorage.TxsPaginationToken{}
+		if err = json.Unmarshal(res, &token); err != nil {
+			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			return
+		}
+
+		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
+			query.SetAfterTxID(token.AfterTxID),
+			query.SetReferenceFilter(token.ReferenceFilter),
+			query.SetAccountFilter(token.AccountFilter),
+			query.SetSourceFilter(token.SourceFilter),
+			query.SetDestinationFilter(token.DestinationFilter),
+			query.SetStartTime(token.StartTime),
+			query.SetEndTime(token.EndTime),
 		)
-		if err != nil {
-			ResponseError(c, err)
-		} else {
-			ctl.response(c, http.StatusOK, cursor)
+	} else {
+		var afterTxIDParsed uint64
+		if c.Query("after") != "" {
+			afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+				return
+			}
 		}
-		return
+
+		var startTimeParsed, endTimeParsed time.Time
+		if c.Query("start_time") != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+				return
+			}
+		}
+
+		if c.Query("end_time") != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+			if err != nil {
+				ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+				return
+			}
+		}
+
+		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
+			query.SetAfterTxID(afterTxIDParsed),
+			query.SetReferenceFilter(c.Query("reference")),
+			query.SetAccountFilter(c.Query("account")),
+			query.SetSourceFilter(c.Query("source")),
+			query.SetDestinationFilter(c.Query("destination")),
+			query.SetStartTime(startTimeParsed),
+			query.SetEndTime(endTimeParsed),
+		)
 	}
 
-	var err error
-	var afterTxIDParsed uint64
-	if c.Query("after") != "" {
-		afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
-			return
-		}
-	}
-
-	var startTimeParsed, endTimeParsed time.Time
-	if c.Query("start_time") != "" {
-		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
-			return
-		}
-	}
-
-	if c.Query("end_time") != "" {
-		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
-			return
-		}
-	}
-
-	cursor, err := l.(*ledger.Ledger).GetTransactions(
-		c.Request.Context(),
-		query.SetAfterTxID(afterTxIDParsed),
-		query.SetReferenceFilter(c.Query("reference")),
-		query.SetAccountFilter(c.Query("account")),
-		query.SetSourceFilter(c.Query("source")),
-		query.SetDestinationFilter(c.Query("destination")),
-		query.SetStartTime(startTimeParsed),
-		query.SetEndTime(endTimeParsed),
-	)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
 
-	ctl.response(c, http.StatusOK, cursor)
+	respondWithCursor[core.Transaction](c, http.StatusOK, cursor)
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -151,11 +147,12 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
+	status := http.StatusOK
 	if preview {
-		ctl.response(c, http.StatusNotModified, txs)
-	} else {
-		ctl.response(c, http.StatusOK, txs)
+		status = http.StatusNotModified
 	}
+
+	respondWithData[[]core.Transaction](c, status, txs)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -177,8 +174,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-
-	ctl.response(c, http.StatusOK, tx)
+	respondWithData[core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
@@ -196,7 +192,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, tx)
+	respondWithData[*core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
@@ -217,8 +213,7 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		ResponseError(c, err)
 		return
 	}
-
-	ctl.noContent(c)
+	respondWithNoContent(c)
 }
 
 func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
@@ -236,5 +231,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, txs)
+	respondWithData[[]core.Transaction](c, http.StatusOK, txs)
 }

@@ -22,19 +22,25 @@ services:
   ledger:
     image: "ghcr.io/numary/ledger:latest"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3068/_info"]
+      test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
       interval: 10s
       timeout: 5s
       retries: 5
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "3068:3068"
     environment:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
+
+  proxy:
+    image: caddy:2
+    depends_on:
+    - ledger
+    command: caddy reverse-proxy --from :3068 --to ledger:3068
+    ports:
+    - "3068:3068"
 
   control:
     image: "ghcr.io/numary/ledger:latest"

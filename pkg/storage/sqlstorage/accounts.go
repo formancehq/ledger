@@ -45,11 +45,11 @@ func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.Select
 	return sb, t
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor, error) {
+func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.Limit == 0 {
-		return sharedapi.Cursor{Data: accounts}, nil
+		return sharedapi.Cursor[core.Account]{Data: accounts}, nil
 	}
 
 	sb, t := s.buildAccountsQuery(q.Params)
@@ -69,7 +69,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor{}, s.error(err)
+		return sharedapi.Cursor[core.Account]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -80,13 +80,13 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 	for rows.Next() {
 		account := core.Account{}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return sharedapi.Cursor{}, err
+			return sharedapi.Cursor[core.Account]{}, err
 		}
 
 		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor{}, rows.Err()
+		return sharedapi.Cursor[core.Account]{}, rows.Err()
 	}
 
 	var previous, next string
@@ -94,7 +94,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		t.Offset = q.Offset - q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor{}, s.error(err)
+			return sharedapi.Cursor[core.Account]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -104,12 +104,12 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 		t.Offset = q.Offset + q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor{}, s.error(err)
+			return sharedapi.Cursor[core.Account]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor{
+	return sharedapi.Cursor[core.Account]{
 		PageSize: len(accounts),
 		Previous: previous,
 		Next:     next,
@@ -117,7 +117,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor, error) {
+func (s *Store) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 

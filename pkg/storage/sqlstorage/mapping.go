@@ -19,17 +19,17 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq, args...)
 
+	m := core.Mapping{}
 	var mappingString string
 	if err := row.Scan(&mappingString); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return &m, nil
 		}
-		return nil, err
+		return &m, err
 	}
 
-	m := core.Mapping{}
 	if err := json.Unmarshal([]byte(mappingString), &m); err != nil {
-		return nil, err
+		return &m, err
 	}
 
 	return &m, nil

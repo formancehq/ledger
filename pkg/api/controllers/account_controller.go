@@ -8,15 +8,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
-type AccountController struct {
-	BaseController
-}
+type AccountController struct{}
 
 func NewAccountController() AccountController {
 	return AccountController{}
@@ -41,6 +40,9 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var cursor sharedapi.Cursor[core.Account]
+	var err error
+
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
@@ -50,47 +52,40 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if err != nil {
-			ResponseError(c, ledger.NewValidationError(
-				"invalid query value 'pagination_token'"))
-			return
-		}
-		t := sqlstorage.AccPaginationToken{}
-		if err = json.Unmarshal(res, &t); err != nil {
+		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
+		if decErr != nil {
 			ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
 
-		cursor, err := l.(*ledger.Ledger).GetAccounts(
-			c.Request.Context(),
-			query.SetOffset(t.Offset),
-			query.SetAfterAddress(t.AfterAddress),
-			query.SetAddressRegexpFilter(t.AddressRegexpFilter),
-			query.SetMetadataFilter(t.MetadataFilter),
+		token := sqlstorage.AccPaginationToken{}
+		if err = json.Unmarshal(res, &token); err != nil {
+			ResponseError(c, ledger.NewValidationError(
+				"invalid query value 'pagination_token'"))
+			return
+		}
+
+		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
+			query.SetOffset(token.Offset),
+			query.SetAfterAddress(token.AfterAddress),
+			query.SetAddressRegexpFilter(token.AddressRegexpFilter),
+			query.SetMetadataFilter(token.MetadataFilter),
 		)
-		if err != nil {
-			ResponseError(c, err)
-			return
-		}
-
-		ctl.response(c, http.StatusOK, cursor)
-		return
+	} else {
+		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
+			query.SetAfterAddress(c.Query("after")),
+			query.SetAddressRegexpFilter(c.Query("address")),
+			query.SetMetadataFilter(c.QueryMap("metadata")),
+		)
 	}
 
-	cursor, err := l.(*ledger.Ledger).GetAccounts(
-		c.Request.Context(),
-		query.SetAfterAddress(c.Query("after")),
-		query.SetAddressRegexpFilter(c.Query("address")),
-		query.SetMetadataFilter(c.QueryMap("metadata")),
-	)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
 
-	ctl.response(c, http.StatusOK, cursor)
+	respondWithCursor[core.Account](c, http.StatusOK, cursor)
 }
 
 func (ctl *AccountController) GetAccount(c *gin.Context) {
@@ -104,7 +99,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		return
 	}
 
-	ctl.response(c, http.StatusOK, acc)
+	respondWithData[core.Account](c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
@@ -127,5 +122,5 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	ctl.noContent(c)
+	respondWithNoContent(c)
 }

@@ -265,7 +265,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				sharedauth.NewIntrospectionValidator(
 					oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
 					v.GetBool(authBearerAudiencesWildcardFlag),
-					v.GetStringSlice(authBearerAudienceFlag)...,
+					sharedauth.AudienceIn(v.GetStringSlice(authBearerAudienceFlag)...),
 				),
 			))
 		}

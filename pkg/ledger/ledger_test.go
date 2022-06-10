@@ -516,10 +516,7 @@ func TestGetTransactions(t *testing.T) {
 		res, err := l.GetTransactions(context.Background())
 		require.NoError(t, err)
 
-		txs, ok := res.Data.([]core.Transaction)
-		require.True(t, ok)
-
-		assert.Equal(t, "test_get_transactions", txs[0].Postings[0].Destination)
+		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
 	})
 }
 
