@@ -43,7 +43,7 @@ func (ctl *ConfigController) GetInfo(c *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
-	c.JSON(http.StatusOK, ConfigInfo{
+	respondWithData[ConfigInfo](c, http.StatusOK, ConfigInfo{
 		Server:  "numary-ledger",
 		Version: ctl.Version,
 		Config: &Config{
