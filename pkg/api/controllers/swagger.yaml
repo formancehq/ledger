@@ -880,14 +880,38 @@ components:
       required:
       - input
       - output
+      example:
+        input: 100
+        output: 20
+        balance: 80
     Volumes:
       type: object
       additionalProperties:
         $ref: '#/components/schemas/Volume'
+      example:
+        USD:
+          input: 100
+          output: 10
+          balance: 90
+        EUR:
+          input: 100
+          output: 10
+          balance: 90
     AggregatedVolumes:
       type: object
       additionalProperties:
         $ref: '#/components/schemas/Volumes'
+      example:
+        "orders:1":
+          "USD":
+            input: 100
+            output: 10
+            balance: 90
+        "orders:2":
+          "USD":
+            input: 100
+            output: 10
+            balance: 90
     ErrorCode:
       type: string
       enum:
