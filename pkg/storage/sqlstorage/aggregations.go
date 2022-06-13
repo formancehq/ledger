@@ -100,8 +100,7 @@ func (s *Store) getAccountVolume(ctx context.Context, exec executor, address, as
 		input  int64
 		output int64
 	)
-	err := row.Scan(&input, &output)
-	if err != nil {
+	if err := row.Scan(&input, &output);  err != nil {
 		if err == sql.ErrNoRows {
 			return core.Volume{}, nil
 		}
