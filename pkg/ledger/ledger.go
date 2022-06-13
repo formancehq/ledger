@@ -51,14 +51,14 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-type CommitmentResult struct {
+type CommitResult struct {
 	PreCommitVolumes      core.AggregatedVolumes
 	PostCommitVolumes     core.AggregatedVolumes
 	GeneratedTransactions []core.Transaction
 	GeneratedLogs         []core.Log
 }
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitmentResult, error) {
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -78,11 +78,11 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		nextTxId = lastTx.ID + 1
 	}
 
-	volumeAggregator := NewVolumeAggregator(l.store)
+	volumeAggregator := newVolumeAggregator(l.store)
 
 	generatedTxs := make([]core.Transaction, 0)
 	accounts := make(map[string]core.Account, 0)
-	logs := make([]core.Log, 0)
+	generatedLogs := make([]core.Log, 0)
 	contracts := make([]core.Contract, 0)
 	if mapping != nil {
 		contracts = append(contracts, mapping.Contracts...)
@@ -158,15 +158,15 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		generatedTxs = append(generatedTxs, tx)
 		newLog := core.NewTransactionLog(lastLog, tx)
 		lastLog = &newLog
-		logs = append(logs, newLog)
+		generatedLogs = append(generatedLogs, newLog)
 		nextTxId++
 	}
 
-	return &CommitmentResult{
+	return &CommitResult{
 		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
 		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
-		GeneratedLogs:         logs,
+		GeneratedLogs:         generatedLogs,
 	}, nil
 }
 

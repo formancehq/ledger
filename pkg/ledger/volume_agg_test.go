@@ -55,7 +55,7 @@ func TestVolumeAggregator(t *testing.T) {
 				})
 				require.NoError(t, store.AppendLog(context.Background(), firstTxLog, secondTxLog))
 
-				volumeAggregator := NewVolumeAggregator(store)
+				volumeAggregator := newVolumeAggregator(store)
 				firstTx := volumeAggregator.NextTx()
 				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "alice", "USD", 100))
 				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "zoro", "USD", 50))

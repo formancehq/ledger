@@ -7,22 +7,22 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-type TransactionVolumeAggregator struct {
-	agg         *VolumeAggregator
+type transactionVolumeAggregator struct {
+	agg         *volumeAggregator
 	postVolumes core.AggregatedVolumes
 	preVolumes  core.AggregatedVolumes
-	previous    *TransactionVolumeAggregator
+	previousTx  *transactionVolumeAggregator
 }
 
-func (tva *TransactionVolumeAggregator) PostCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) PostCommitVolumes() core.AggregatedVolumes {
 	return tva.postVolumes
 }
 
-func (tva *TransactionVolumeAggregator) PreCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) PreCommitVolumes() core.AggregatedVolumes {
 	return tva.preVolumes
 }
 
-func (tva *TransactionVolumeAggregator) Transfer(ctx context.Context, from, to, asset string, amount uint64) error {
+func (tva *transactionVolumeAggregator) Transfer(ctx context.Context, from, to, asset string, amount uint64) error {
 	if tva.preVolumes == nil {
 		tva.preVolumes = core.AggregatedVolumes{}
 	}
@@ -31,7 +31,7 @@ func (tva *TransactionVolumeAggregator) Transfer(ctx context.Context, from, to, 
 	}
 	for _, addr := range []string{from, to} {
 		if _, ok := tva.preVolumes[addr][asset]; !ok {
-			current := tva.previous
+			current := tva.previousTx
 			found := false
 			if _, ok := tva.preVolumes[addr]; !ok {
 				tva.preVolumes[addr] = core.Volumes{}
@@ -42,7 +42,7 @@ func (tva *TransactionVolumeAggregator) Transfer(ctx context.Context, from, to, 
 					found = true
 					break
 				}
-				current = current.previous
+				current = current.previousTx
 			}
 			if !found {
 				v, err := tva.agg.store.GetAccountVolume(ctx, addr, asset)
@@ -70,25 +70,25 @@ func (tva *TransactionVolumeAggregator) Transfer(ctx context.Context, from, to, 
 	return nil
 }
 
-type VolumeAggregator struct {
+type volumeAggregator struct {
 	store storage.Store
-	txs   []*TransactionVolumeAggregator
+	txs   []*transactionVolumeAggregator
 }
 
-func (agg *VolumeAggregator) NextTx() *TransactionVolumeAggregator {
-	var previous *TransactionVolumeAggregator
+func (agg *volumeAggregator) NextTx() *transactionVolumeAggregator {
+	var previousTx *transactionVolumeAggregator
 	if len(agg.txs) > 0 {
-		previous = agg.txs[len(agg.txs)-1]
+		previousTx = agg.txs[len(agg.txs)-1]
 	}
-	tva := &TransactionVolumeAggregator{
-		agg:      agg,
-		previous: previous,
+	tva := &transactionVolumeAggregator{
+		agg:        agg,
+		previousTx: previousTx,
 	}
 	agg.txs = append(agg.txs, tva)
 	return tva
 }
 
-func (agg *VolumeAggregator) AggregatedPostCommitVolumes() core.AggregatedVolumes {
+func (agg *volumeAggregator) AggregatedPostCommitVolumes() core.AggregatedVolumes {
 	ret := core.AggregatedVolumes{}
 	for i := len(agg.txs) - 1; i >= 0; i-- {
 		tx := agg.txs[i]
@@ -107,7 +107,7 @@ func (agg *VolumeAggregator) AggregatedPostCommitVolumes() core.AggregatedVolume
 	return ret
 }
 
-func (agg *VolumeAggregator) AggregatedPreCommitVolumes() core.AggregatedVolumes {
+func (agg *volumeAggregator) AggregatedPreCommitVolumes() core.AggregatedVolumes {
 	ret := core.AggregatedVolumes{}
 	for i := 0; i < len(agg.txs); i++ {
 		tx := agg.txs[i]
@@ -126,8 +126,8 @@ func (agg *VolumeAggregator) AggregatedPreCommitVolumes() core.AggregatedVolumes
 	return ret
 }
 
-func NewVolumeAggregator(store storage.Store) *VolumeAggregator {
-	return &VolumeAggregator{
+func newVolumeAggregator(store storage.Store) *volumeAggregator {
+	return &volumeAggregator{
 		store: store,
 	}
 }
