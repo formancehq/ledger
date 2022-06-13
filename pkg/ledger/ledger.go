@@ -323,14 +323,9 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.Transa
 		return nil, err
 	}
 
-	lastTransaction, err := l.store.LastTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	rt := tx.Reverse()
 	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkReverts(fmt.Sprint(lastTransaction.ID))
+	rt.Metadata.MarkReverts(fmt.Sprint(tx.ID))
 	_, ret, err := l.Commit(ctx, []core.TransactionData{rt})
 	switch err {
 	case ErrCommitError:
