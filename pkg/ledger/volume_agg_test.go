@@ -56,9 +56,9 @@ func TestVolumeAggregator(t *testing.T) {
 				require.NoError(t, store.AppendLog(context.Background(), firstTxLog, secondTxLog))
 
 				volumeAggregator := newVolumeAggregator(store)
-				firstTx := volumeAggregator.NextTx()
-				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "alice", "USD", 100))
-				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "zoro", "USD", 50))
+				firstTx := volumeAggregator.nextTx()
+				require.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", 100))
+				require.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", 50))
 
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
@@ -76,7 +76,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Input: 50,
 						},
 					},
-				}, firstTx.PostCommitVolumes())
+				}, firstTx.postCommitVolumes())
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
 						"USD": {
@@ -93,11 +93,11 @@ func TestVolumeAggregator(t *testing.T) {
 							Input: 0,
 						},
 					},
-				}, firstTx.PreCommitVolumes())
+				}, firstTx.preCommitVolumes())
 
-				secondTx := volumeAggregator.NextTx()
-				require.NoError(t, secondTx.Transfer(context.Background(), "alice", "fred", "USD", 50))
-				require.NoError(t, secondTx.Transfer(context.Background(), "bob", "fred", "USD", 25))
+				secondTx := volumeAggregator.nextTx()
+				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", 50))
+				require.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", 25))
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
 						"USD": {
@@ -115,7 +115,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Input: 75,
 						},
 					},
-				}, secondTx.PostCommitVolumes())
+				}, secondTx.postCommitVolumes())
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
 						"USD": {
@@ -130,9 +130,9 @@ func TestVolumeAggregator(t *testing.T) {
 					"fred": core.Volumes{
 						"USD": {},
 					},
-				}, secondTx.PreCommitVolumes())
+				}, secondTx.preCommitVolumes())
 
-				aggregatedPostVolumes := volumeAggregator.AggregatedPostCommitVolumes()
+				aggregatedPostVolumes := volumeAggregator.aggregatedPostCommitVolumes()
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
 						"USD": {
@@ -158,7 +158,7 @@ func TestVolumeAggregator(t *testing.T) {
 					},
 				}, aggregatedPostVolumes)
 
-				aggregatedPreVolumes := volumeAggregator.AggregatedPreCommitVolumes()
+				aggregatedPreVolumes := volumeAggregator.aggregatedPreCommitVolumes()
 				require.Equal(t, core.AggregatedVolumes{
 					"bob": core.Volumes{
 						"USD": {

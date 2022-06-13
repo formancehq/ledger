@@ -94,7 +94,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
-		txVolumeAggregator := volumeAggregator.NextTx()
+		txVolumeAggregator := volumeAggregator.nextTx()
 
 		for _, p := range t.Postings {
 			if p.Amount < 0 {
@@ -109,13 +109,13 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if !core.AssetIsValid(p.Asset) {
 				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
+			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
 			if err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
 		}
 
-		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
+		for addr, volumes := range txVolumeAggregator.postCommitVolumes() {
 			for asset, volume := range volumes {
 				if addr == "world" {
 					continue
@@ -152,8 +152,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			TransactionData:   t,
 			ID:                nextTxId,
 			Timestamp:         time.Now().UTC().Format(time.RFC3339),
-			PostCommitVolumes: txVolumeAggregator.PostCommitVolumes(),
-			PreCommitVolumes:  txVolumeAggregator.PreCommitVolumes(),
+			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
+			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
 		generatedTxs = append(generatedTxs, tx)
 		newLog := core.NewTransactionLog(lastLog, tx)
@@ -163,8 +163,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 	}
 
 	return &CommitResult{
-		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
-		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
+		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
+		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
 		GeneratedLogs:         generatedLogs,
 	}, nil

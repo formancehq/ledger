@@ -14,15 +14,15 @@ type transactionVolumeAggregator struct {
 	previousTx  *transactionVolumeAggregator
 }
 
-func (tva *transactionVolumeAggregator) PostCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) postCommitVolumes() core.AggregatedVolumes {
 	return tva.postVolumes
 }
 
-func (tva *transactionVolumeAggregator) PreCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) preCommitVolumes() core.AggregatedVolumes {
 	return tva.preVolumes
 }
 
-func (tva *transactionVolumeAggregator) Transfer(ctx context.Context, from, to, asset string, amount uint64) error {
+func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, asset string, amount uint64) error {
 	if tva.preVolumes == nil {
 		tva.preVolumes = core.AggregatedVolumes{}
 	}
@@ -75,7 +75,7 @@ type volumeAggregator struct {
 	txs   []*transactionVolumeAggregator
 }
 
-func (agg *volumeAggregator) NextTx() *transactionVolumeAggregator {
+func (agg *volumeAggregator) nextTx() *transactionVolumeAggregator {
 	var previousTx *transactionVolumeAggregator
 	if len(agg.txs) > 0 {
 		previousTx = agg.txs[len(agg.txs)-1]
@@ -88,11 +88,11 @@ func (agg *volumeAggregator) NextTx() *transactionVolumeAggregator {
 	return tva
 }
 
-func (agg *volumeAggregator) AggregatedPostCommitVolumes() core.AggregatedVolumes {
+func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AggregatedVolumes {
 	ret := core.AggregatedVolumes{}
 	for i := len(agg.txs) - 1; i >= 0; i-- {
 		tx := agg.txs[i]
-		postVolumes := tx.PostCommitVolumes()
+		postVolumes := tx.postCommitVolumes()
 		for account, volumes := range postVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
@@ -107,11 +107,11 @@ func (agg *volumeAggregator) AggregatedPostCommitVolumes() core.AggregatedVolume
 	return ret
 }
 
-func (agg *volumeAggregator) AggregatedPreCommitVolumes() core.AggregatedVolumes {
+func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AggregatedVolumes {
 	ret := core.AggregatedVolumes{}
 	for i := 0; i < len(agg.txs); i++ {
 		tx := agg.txs[i]
-		preVolumes := tx.PreCommitVolumes()
+		preVolumes := tx.preCommitVolumes()
 		for account, volumes := range preVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
