@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/api/struct_api"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
@@ -112,4 +113,28 @@ func (s *Store) getVolumes(ctx context.Context, exec executor, accountAddress, a
 
 func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
+}
+
+func (s *Store) getAggregatedBalances(ctx context.Context, exec executor, params struct_api.GetBalancesStruct) (*core.AggregatedBalances, error) {
+	var result core.AggregatedBalances
+	// ex: "aggregated":{"USD": 50,"EUR": 225},{"account1":{"EUR":25,"USD":50},"account2":{"EUR":200}}
+
+	aggregatedBalances, err := s.GetAggregatedBalancesData(ctx, exec, params.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	accountsBalances, err := s.GetBalancesAccountsData(ctx, exec, params.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Aggregated = aggregatedBalances
+	result.Accounts = accountsBalances
+
+	return &result, nil
+}
+
+func (s *Store) GetAggregatedBalances(ctx context.Context, params struct_api.GetBalancesStruct) (*core.AggregatedBalances, error) {
+	return s.getAggregatedBalances(ctx, s.schema, params)
 }

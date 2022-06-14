@@ -41,6 +41,11 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 
 type AccountsAssetsVolumes map[string]AssetsVolumes
 
+type AggregatedBalances struct {
+	Aggregated map[string]int64            `json:"aggregated"`
+	Accounts   map[string]map[string]int64 `json:"accounts"`
+}
+
 // Scan - Implement the database/sql scanner interface
 func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	if value == nil {

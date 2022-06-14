@@ -43,6 +43,8 @@ const (
 	ScopeAccountsWrite     = "accounts:write"
 	ScopeMappingRead       = "mapping:read"
 	ScopeMappingWrite      = "mapping:write"
+	ScopeBalancesRead      = "balances:read"
+	ScopeBalancesWrite     = "balances:write"
 	ScopesStatsRead        = "stats"
 )
 
@@ -65,6 +67,7 @@ type Routes struct {
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	transactionController controllers.TransactionController
+	balanceController     controllers.BalanceController
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
@@ -80,6 +83,7 @@ func NewRoutes(
 	ledgerController controllers.LedgerController,
 	scriptController controllers.ScriptController,
 	accountController controllers.AccountController,
+	balancesController controllers.BalanceController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
 	healthController controllers.HealthController,
@@ -94,6 +98,7 @@ func NewRoutes(
 		ledgerController:      ledgerController,
 		scriptController:      scriptController,
 		accountController:     accountController,
+		balanceController:     balancesController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
 		healthController:      healthController,
@@ -148,6 +153,9 @@ func (r *Routes) Engine() *gin.Engine {
 		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/revert", r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
+
+		// BalanceController
+		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeBalancesRead, ScopeBalancesWrite))
 
 		// MappingController
 		router.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
