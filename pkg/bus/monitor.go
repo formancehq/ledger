@@ -35,10 +35,12 @@ func (l *ledgerMonitor) publish(ctx context.Context, ledger string, et string, d
 	}
 }
 
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, results []core.Transaction, volumes core.AggregatedVolumes) {
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, result *ledger.CommitResult) {
 	l.publish(ctx, ledger, CommittedTransactions, committedTransactions{
-		Transactions: results,
-		Volumes:      volumes,
+		Transactions:      result.GeneratedTransactions,
+		Volumes:           result.PostCommitVolumes,
+		PostCommitVolumes: result.PostCommitVolumes,
+		PreCommitVolumes:  result.PreCommitVolumes,
 	})
 }
 

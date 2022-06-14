@@ -187,7 +187,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 	},
-	"1.sql": func(t *testing.T, store *sqlstorage.Store) {
+	"1.sql": func(t *testing.T, store *sqlstorage.Store) {},
+	"2.sql": func(t *testing.T, store *sqlstorage.Store) {
 
 		count, err := store.CountTransactions(context.Background(), query.Transactions{})
 		if !assert.NoError(t, err) {
@@ -251,14 +252,14 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		volumes, err := store.AggregateVolumes(context.Background(), "player1")
+		volumes, err := store.GetAccountVolumes(context.Background(), "player1")
 		if !assert.NoError(t, err) {
 			return
 		}
 		if !assert.Equal(t, core.Volumes{
 			"USD": {
-				"input":  100,
-				"output": 1,
+				Input:  100,
+				Output: 1,
 			},
 		}, volumes) {
 			return
@@ -448,6 +449,10 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 }
 
 func TestMigrates(t *testing.T) {
+
+	if ledgertesting.StorageDriverName() != "sqlite" {
+		return // Migration file does not match between both drivers
+	}
 
 	if testing.Verbose() {
 		l := logrus.New()

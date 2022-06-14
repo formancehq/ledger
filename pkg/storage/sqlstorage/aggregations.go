@@ -39,7 +39,7 @@ func (s *Store) CountAccounts(ctx context.Context, q query.Accounts) (uint64, er
 	return s.countAccounts(ctx, s.schema, q.Params)
 }
 
-func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
+func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
@@ -57,7 +57,7 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 		}
 	}(rows)
 
-	volumes := make(map[string]map[string]int64)
+	volumes := core.Volumes{}
 	for rows.Next() {
 		var (
 			asset  string
@@ -68,9 +68,9 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 		if err != nil {
 			return nil, s.error(err)
 		}
-		volumes[asset] = map[string]int64{
-			"input":  input,
-			"output": output,
+		volumes[asset] = core.Volume{
+			Input:  input,
+			Output: output,
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -80,6 +80,35 @@ func (s *Store) aggregateVolumes(ctx context.Context, exec executor, address str
 	return volumes, nil
 }
 
-func (s *Store) AggregateVolumes(ctx context.Context, address string) (core.Volumes, error) {
-	return s.aggregateVolumes(ctx, s.schema, address)
+func (s *Store) GetAccountVolumes(ctx context.Context, address string) (core.Volumes, error) {
+	return s.getAccountVolumes(ctx, s.schema, address)
+}
+
+func (s *Store) getAccountVolume(ctx context.Context, exec executor, address, asset string) (core.Volume, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("input", "output")
+	sb.From(s.schema.Table("volumes"))
+	sb.Where(sb.And(sb.E("account", address), sb.E("asset", asset)))
+
+	q, args := sb.BuildWithFlavor(s.schema.Flavor())
+	row := exec.QueryRowContext(ctx, q, args...)
+	if row.Err() != nil {
+		return core.Volume{}, s.error(row.Err())
+	}
+
+	var input, output int64
+	if err := row.Scan(&input, &output); err != nil {
+		if err == sql.ErrNoRows {
+			return core.Volume{}, nil
+		}
+		return core.Volume{}, s.error(err)
+	}
+	return core.Volume{
+		Input:  input,
+		Output: output,
+	}, nil
+}
+
+func (s *Store) GetAccountVolume(ctx context.Context, address, asset string) (core.Volume, error) {
+	return s.getAccountVolume(ctx, s.schema, address, asset)
 }

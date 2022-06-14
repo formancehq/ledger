@@ -8,7 +8,7 @@ import (
 )
 
 func TestStats(t *testing.T) {
-	with(func(l *Ledger) {
+	runOnLedger(func(l *Ledger) {
 		_, err := l.Stats(context.Background())
 		assert.NoError(t, err)
 	})
