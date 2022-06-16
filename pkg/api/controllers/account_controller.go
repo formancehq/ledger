@@ -79,28 +79,20 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		balance := c.Query("balance")
 		if balance != "" {
 			if _, err := strconv.ParseInt(balance, 10, 64); err != nil {
-				ResponseError(
-					c,
-					ledger.ValidationError{
-						Msg: "invalid parameter 'balance', should be a number"})
+				ResponseError(c, ledger.NewValidationError(
+					"invalid parameter 'balance', should be a number"))
 				return
 			}
 		}
 
-		var ok bool
-		var balanceOperator storage.BalanceOperator
-
+		var balanceOperator = storage.DefaultBalanceOperator
 		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
+			var ok bool
 			if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
-				ResponseError(
-					c,
-					ledger.ValidationError{
-						Msg: "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"})
+				ResponseError(c, ledger.NewValidationError(
+					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
 				return
 			}
-		} else {
-			// default value for balanceOperator
-			balanceOperator = storage.BalanceOperatorGte
 		}
 
 		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),

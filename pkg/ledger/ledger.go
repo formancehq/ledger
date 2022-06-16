@@ -269,12 +269,12 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	return &result.GeneratedTransactions[0], nil
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, m ...storage.AccModifier) (uint64, error) {
+func (l *Ledger) CountAccounts(ctx context.Context, m ...storage.AccQueryModifier) (uint64, error) {
 	q := storage.NewAccountsQuery(m)
 	return l.store.CountAccounts(ctx, q)
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, m ...storage.AccModifier) (sharedapi.Cursor[core.Account], error) {
+func (l *Ledger) GetAccounts(ctx context.Context, m ...storage.AccQueryModifier) (sharedapi.Cursor[core.Account], error) {
 	q := storage.NewAccountsQuery(m)
 	return l.store.GetAccounts(ctx, q)
 }

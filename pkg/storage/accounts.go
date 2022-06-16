@@ -7,7 +7,7 @@ type AccountsQuery struct {
 	Params       map[string]interface{}
 }
 
-type AccModifier func(*AccountsQuery)
+type AccQueryModifier func(*AccountsQuery)
 
 type BalanceOperator string
 
@@ -17,6 +17,8 @@ const (
 	BalanceOperatorGte BalanceOperator = "gte"
 	BalanceOperatorLt  BalanceOperator = "lt"
 	BalanceOperatorLte BalanceOperator = "lte"
+
+	DefaultBalanceOperator = BalanceOperatorGte
 )
 
 func (b BalanceOperator) IsValid() bool {
@@ -52,7 +54,7 @@ func SetBalanceOperatorFilter(v BalanceOperator) func(*AccountsQuery) {
 	}
 }
 
-func NewAccountsQuery(qms ...[]AccModifier) AccountsQuery {
+func NewAccountsQuery(qms ...[]AccQueryModifier) AccountsQuery {
 	q := AccountsQuery{
 		Limit:  QueryDefaultLimit,
 		Params: map[string]interface{}{},
@@ -65,7 +67,7 @@ func NewAccountsQuery(qms ...[]AccModifier) AccountsQuery {
 	return q
 }
 
-func (q *AccountsQuery) Apply(modifiers []AccModifier) {
+func (q *AccountsQuery) Apply(modifiers []AccQueryModifier) {
 	for _, m := range modifiers {
 		m(q)
 	}

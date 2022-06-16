@@ -4,10 +4,6 @@ import (
 	"time"
 )
 
-const (
-	QueryDefaultLimit = 15
-)
-
 type TransactionsQuery struct {
 	Limit     uint
 	AfterTxID uint64
