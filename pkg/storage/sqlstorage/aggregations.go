@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/numary/go-libs/sharedapi"
 
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/pkg/api/struct_api"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
@@ -115,26 +115,33 @@ func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (c
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
 }
 
-func (s *Store) getAggregatedBalances(ctx context.Context, exec executor, params struct_api.GetBalancesStruct) (*core.AggregatedBalances, error) {
-	var result core.AggregatedBalances
+func (s *Store) getAggregatedBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error) {
+	result := make([]core.AggregatedBalances, 0)
 	// ex: "aggregated":{"USD": 50,"EUR": 225},{"account1":{"EUR":25,"USD":50},"account2":{"EUR":200}}
 
-	aggregatedBalances, err := s.GetAggregatedBalancesData(ctx, exec, params.Account)
+	aggregatedBalances, err := s.GetAggregatedBalancesData(ctx, exec, q)
 	if err != nil {
-		return nil, err
+		return sharedapi.Cursor[core.AggregatedBalances]{}, err
 	}
 
-	accountsBalances, err := s.GetBalancesAccountsData(ctx, exec, params.Account)
+	accountsBalances, err := s.GetBalancesAccountsData(ctx, exec, q)
 	if err != nil {
-		return nil, err
+		return sharedapi.Cursor[core.AggregatedBalances]{}, err
 	}
 
-	result.Aggregated = aggregatedBalances
-	result.Accounts = accountsBalances
+	result[0].Aggregated = aggregatedBalances
+	result[0].Accounts = accountsBalances
 
-	return &result, nil
+	var previous, next string
+
+	return sharedapi.Cursor[core.AggregatedBalances]{
+		PageSize: len(accountsBalances),
+		Previous: previous,
+		Next:     next,
+		Data:     result,
+	}, nil
 }
 
-func (s *Store) GetAggregatedBalances(ctx context.Context, params struct_api.GetBalancesStruct) (*core.AggregatedBalances, error) {
-	return s.getAggregatedBalances(ctx, s.schema, params)
+func (s *Store) GetAggregatedBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error) {
+	return s.getAggregatedBalances(ctx, s.schema, q)
 }
