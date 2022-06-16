@@ -4,16 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, account string) (map[string]map[string]int64, error) {
+func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AccountsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("account", "asset", "input - output as balance")
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("account", "asset", "balance")
 
-	if account != "" {
-		arg := sb.Args.Add("^" + account + "$")
+	if q.AfterAddress != "" {
+		sb.Where(sb.L("address", q.AfterAddress))
+	}
+
+	if q.Params.Account != "" {
+		arg := sb.Args.Add("^" + q.Params.Account + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
@@ -22,8 +28,8 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, acco
 		}
 	}
 
-	q, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, q, args...)
+	balanceQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := exec.QueryContext(ctx, balanceQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -34,7 +40,7 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, acco
 		}
 	}(rows)
 
-	accounts := make(map[string]map[string]int64)
+	var accounts core.AccountsBalances
 
 	for rows.Next() {
 		var (
@@ -64,14 +70,14 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, acco
 	return accounts, nil
 }
 
-func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, account string) (map[string]int64, error) {
+func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q storage.BalancesQuery) (map[string]int64, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("asset")
 
-	if account != "" {
-		arg := sb.Args.Add("^" + account + "$")
+	if q.Params.Account != "" {
+		arg := sb.Args.Add("^" + q.Params.Account + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
@@ -80,8 +86,8 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, ac
 		}
 	}
 
-	q, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, q, args...)
+	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
