@@ -7,47 +7,47 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestVolumeAggregator(t *testing.T) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()
 
-				store, _, err := storageDriver.GetStore(context.Background(), name, true)
-				if err != nil {
-					return err
-				}
+				store, _, err := driver.GetStore(context.Background(), name, true)
+				require.NoError(t, err)
 
 				_, err = store.Initialize(context.Background())
-				if err != nil {
-					return err
-				}
+				require.NoError(t, err)
 
+				var bobToto int64 = 100
 				firstTxLog := core.NewTransactionLog(nil, core.Transaction{
 					ID: 0,
 					TransactionData: core.TransactionData{
 						Postings: []core.Posting{
 							{
 								Source:      "bob",
-								Destination: "zozo",
-								Amount:      100,
+								Destination: "toto",
+								Amount:      bobToto,
 								Asset:       "USD",
 							},
 						},
 					},
 				})
+
+				var totoAlice int64 = 100
 				secondTxLog := core.NewTransactionLog(&firstTxLog, core.Transaction{
 					ID: 1,
 					TransactionData: core.TransactionData{
 						Postings: []core.Posting{
 							{
-								Source:      "zozo",
+								Source:      "toto",
 								Destination: "alice",
-								Amount:      100,
+								Amount:      totoAlice,
 								Asset:       "USD",
 							},
 						},
@@ -55,125 +55,122 @@ func TestVolumeAggregator(t *testing.T) {
 				})
 				require.NoError(t, store.AppendLog(context.Background(), firstTxLog, secondTxLog))
 
-				volumeAggregator := newVolumeAggregator(store)
-				firstTx := volumeAggregator.nextTx()
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", 100))
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", 50))
+				vAggr := newVolumeAggregator(store)
+				firstTx := vAggr.nextTx()
 
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
+				var bobAlice int64 = 100
+				assert.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", uint64(bobAlice)))
+				var bobZoro int64 = 50
+				assert.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", uint64(bobZoro)))
+
+				assert.Equal(t, core.AccountsVolumes{
+					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 250,
+							Output: bobToto,
 						},
 					},
-					"alice": core.Volumes{
+					"alice": core.AssetsVolumes{
 						"USD": {
-							Input: 200,
+							Input: totoAlice,
+						},
+					},
+					"zoro": core.AssetsVolumes{
+						"USD": {},
+					},
+				}, firstTx.PreCommitVolumes)
+
+				assert.Equal(t, core.AccountsVolumes{
+					"bob": core.AssetsVolumes{
+						"USD": {
+							Output: bobToto + bobAlice + bobZoro,
+						},
+					},
+					"alice": core.AssetsVolumes{
+						"USD": {
+							Input: totoAlice + bobAlice,
 						},
 					},
 					"zoro": {
 						"USD": {
-							Input: 50,
+							Input: bobZoro,
 						},
 					},
-				}, firstTx.postCommitVolumes())
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
-						"USD": {
-							Output: 100,
-						},
-					},
-					"alice": core.Volumes{
-						"USD": {
-							Input: 100,
-						},
-					},
-					"zoro": core.Volumes{
-						"USD": {
-							Input: 0,
-						},
-					},
-				}, firstTx.preCommitVolumes())
+				}, firstTx.PostCommitVolumes)
 
-				secondTx := volumeAggregator.nextTx()
-				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", 50))
-				require.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", 25))
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
-						"USD": {
-							Output: 275,
-						},
-					},
-					"alice": core.Volumes{
-						"USD": {
-							Input:  200,
-							Output: 50,
-						},
-					},
-					"fred": core.Volumes{
-						"USD": {
-							Input: 75,
-						},
-					},
-				}, secondTx.postCommitVolumes())
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
-						"USD": {
-							Output: 250,
-						},
-					},
-					"alice": core.Volumes{
-						"USD": {
-							Input: 200,
-						},
-					},
-					"fred": core.Volumes{
+				secondTx := vAggr.nextTx()
+				var aliceFred int64 = 50
+				assert.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", uint64(aliceFred)))
+				var bobFred int64 = 25
+				assert.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", uint64(bobFred)))
+
+				assert.Equal(t, core.AccountsVolumes{
+					"bob":   firstTx.PostCommitVolumes["bob"],
+					"alice": firstTx.PostCommitVolumes["alice"],
+					"fred": core.AssetsVolumes{
 						"USD": {},
 					},
-				}, secondTx.preCommitVolumes())
+				}, secondTx.PreCommitVolumes)
 
-				aggregatedPostVolumes := volumeAggregator.aggregatedPostCommitVolumes()
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
+				assert.Equal(t, core.AccountsVolumes{
+					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 275,
+							Output: bobToto + bobAlice + bobZoro + bobFred,
 						},
 					},
-					"alice": core.Volumes{
+					"alice": core.AssetsVolumes{
 						"USD": {
 							Input:  200,
 							Output: 50,
 						},
 					},
-					"fred": core.Volumes{
+					"fred": core.AssetsVolumes{
 						"USD": {
 							Input: 75,
 						},
 					},
-					"zoro": core.Volumes{
+				}, secondTx.PostCommitVolumes)
+
+				aggregatedPostVolumes := vAggr.aggregatedPostCommitVolumes()
+				assert.Equal(t, core.AccountsVolumes{
+					"bob": core.AssetsVolumes{
 						"USD": {
-							Input:  50,
-							Output: 0,
+							Output: 275,
+						},
+					},
+					"alice": core.AssetsVolumes{
+						"USD": {
+							Input:  200,
+							Output: 50,
+						},
+					},
+					"fred": core.AssetsVolumes{
+						"USD": {
+							Input: 75,
+						},
+					},
+					"zoro": core.AssetsVolumes{
+						"USD": {
+							Input: 50,
 						},
 					},
 				}, aggregatedPostVolumes)
 
-				aggregatedPreVolumes := volumeAggregator.aggregatedPreCommitVolumes()
-				require.Equal(t, core.AggregatedVolumes{
-					"bob": core.Volumes{
+				aggregatedPreVolumes := vAggr.aggregatedPreCommitVolumes()
+				assert.Equal(t, core.AccountsVolumes{
+					"bob": core.AssetsVolumes{
 						"USD": {
 							Output: 100,
 						},
 					},
-					"alice": core.Volumes{
+					"alice": core.AssetsVolumes{
 						"USD": {
 							Input: 100,
 						},
 					},
-					"fred": core.Volumes{
+					"fred": core.AssetsVolumes{
 						"USD": {},
 					},
-					"zoro": core.Volumes{
+					"zoro": core.AssetsVolumes{
 						"USD": {},
 					},
 				}, aggregatedPreVolumes)

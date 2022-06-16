@@ -282,8 +282,8 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		volumes, _, err := l.Commit(context.Background(), batch)
 		assert.NoError(t, err)
 
-		assert.EqualValues(t, volumes, core.AggregatedVolumes{
-			"world": core.Volumes{
+		assert.EqualValues(t, volumes, core.AccountsVolumes{
+			"world": core.AssetsVolumes{
 				"USD": {
 					Output: 100,
 				},
@@ -291,7 +291,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: 200,
 				},
 			},
-			"player": core.Volumes{
+			"player": core.AssetsVolumes{
 				"USD": {
 					Input: 100,
 				},
@@ -300,7 +300,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: 50,
 				},
 			},
-			"player2": core.Volumes{
+			"player2": core.AssetsVolumes{
 				"EUR": {
 					Input: 150,
 				},

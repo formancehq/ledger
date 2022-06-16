@@ -205,7 +205,7 @@ func TestGetAccount(t *testing.T) {
 					Balances: map[string]int64{
 						"USD": 100,
 					},
-					Volumes: core.Volumes{
+					Volumes: core.AssetsVolumes{
 						"USD": {
 							Input: 100,
 						},

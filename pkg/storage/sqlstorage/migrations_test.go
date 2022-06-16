@@ -256,7 +256,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		if !assert.NoError(t, err) {
 			return
 		}
-		if !assert.Equal(t, core.Volumes{
+		if !assert.Equal(t, core.AssetsVolumes{
 			"USD": {
 				Input:  100,
 				Output: 1,

@@ -65,8 +65,8 @@ type Store interface {
 	GetTransactions(context.Context, query.Transactions) (sharedapi.Cursor[core.Transaction], error)
 	GetTransaction(context.Context, uint64) (core.Transaction, error)
 	GetAccount(context.Context, string) (core.Account, error)
-	GetAccountVolumes(context.Context, string) (core.Volumes, error)
-	GetAccountVolume(ctx context.Context, account, asset string) (core.Volume, error)
+	GetAccountVolumes(context.Context, string) (core.AssetsVolumes, error)
+	GetAccountAssetVolumes(ctx context.Context, account, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, query.Accounts) (uint64, error)
 	GetAccounts(context.Context, query.Accounts) (sharedapi.Cursor[core.Account], error)
 
@@ -84,8 +84,8 @@ type Store interface {
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
-func (n noOpStore) GetAccountVolume(ctx context.Context, account, asset string) (core.Volume, error) {
-	return core.Volume{}, nil
+func (n noOpStore) GetAccountAssetVolumes(ctx context.Context, account, asset string) (core.Volumes, error) {
+	return core.Volumes{}, nil
 }
 
 func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
@@ -120,7 +120,7 @@ func (n noOpStore) GetAccount(ctx context.Context, s string) (core.Account, erro
 	return core.Account{}, nil
 }
 
-func (n noOpStore) GetAccountVolumes(ctx context.Context, s string) (core.Volumes, error) {
+func (n noOpStore) GetAccountVolumes(ctx context.Context, s string) (core.AssetsVolumes, error) {
 	return nil, nil
 }
 

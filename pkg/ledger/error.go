@@ -24,7 +24,7 @@ func (e TransactionCommitError) Is(err error) bool {
 	return ok
 }
 
-func NewTransactionCommitError(txIndex int, err error) *TransactionCommitError {
+func newTransactionCommitError(txIndex int, err error) *TransactionCommitError {
 	return &TransactionCommitError{
 		TXIndex: txIndex,
 		Err:     err,
@@ -48,7 +48,7 @@ func (e InsufficientFundError) Is(err error) bool {
 	return ok
 }
 
-func NewInsufficientFundError(asset string) *InsufficientFundError {
+func newInsufficientFundError(asset string) *InsufficientFundError {
 	return &InsufficientFundError{
 		Asset: asset,
 	}

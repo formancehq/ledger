@@ -32,10 +32,10 @@ func (t *TransactionData) Reverse() TransactionData {
 
 type Transaction struct {
 	TransactionData
-	ID                uint64            `json:"txid"`
-	Timestamp         string            `json:"timestamp"`
-	PreCommitVolumes  AggregatedVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
-	PostCommitVolumes AggregatedVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
+	ID                uint64          `json:"txid"`
+	Timestamp         string          `json:"timestamp"`
+	PreCommitVolumes  AccountsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
+	PostCommitVolumes AccountsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
 
 func (t *Transaction) AppendPosting(p Posting) {

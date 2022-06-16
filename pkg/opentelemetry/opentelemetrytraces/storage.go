@@ -129,7 +129,7 @@ func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx cor
 	return
 }
 
-func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
+func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) (volumes core.AssetsVolumes, err error) {
 	handlingErr := o.handle(ctx, "GetAccountVolumes", func(ctx context.Context) error {
 		volumes, err = o.underlying.GetAccountVolumes(ctx, s)
 		return err
@@ -140,9 +140,9 @@ func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) 
 	return
 }
 
-func (o *openTelemetryStorage) GetAccountVolume(ctx context.Context, account, asset string) (volume core.Volume, err error) {
-	handlingErr := o.handle(ctx, "GetAccountVolume", func(ctx context.Context) error {
-		volume, err = o.underlying.GetAccountVolume(ctx, account, asset)
+func (o *openTelemetryStorage) GetAccountAssetVolumes(ctx context.Context, account, asset string) (volume core.Volumes, err error) {
+	handlingErr := o.handle(ctx, "GetAccountAssetVolumes", func(ctx context.Context) error {
+		volume, err = o.underlying.GetAccountAssetVolumes(ctx, account, asset)
 		return err
 	})
 	if handlingErr != nil {

@@ -194,21 +194,21 @@ func TestGetTransaction(t *testing.T) {
 
 				txs, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 				tx := txs[0]
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {},
 					},
 				}, tx.PreCommitVolumes)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,
 						},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {
 							Input: 1000,
 						},
@@ -232,21 +232,21 @@ func TestGetTransaction(t *testing.T) {
 				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
 				assert.EqualValues(t, "ref", ret.Reference)
 				assert.NotEmpty(t, ret.Timestamp)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {},
 					},
 				}, ret.PreCommitVolumes)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,
 						},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {
 							Input: 1000,
 						},
@@ -496,6 +496,134 @@ func TestGetTransactions(t *testing.T) {
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+type transaction struct {
+	core.TransactionData
+	ID                uint64          `json:"txid"`
+	Timestamp         string          `json:"timestamp"`
+	PreCommitVolumes  accountsVolumes `json:"preCommitVolumes,omitempty"`
+	PostCommitVolumes accountsVolumes `json:"postCommitVolumes,omitempty"`
+}
+type accountsVolumes map[string]assetsVolumes
+type assetsVolumes map[string]core.VolumesWithBalance
+
+func TestTransactionsVolumes(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+
+				var worldAlice int64 = 100
+
+				rsp := internal.PostTransaction(t, api,
+					core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "alice",
+								Amount:      worldAlice,
+								Asset:       "USD",
+							},
+						},
+					})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				txs, ok := internal.DecodeSingleResponse[[]transaction](t, rsp.Body)
+				require.True(t, ok)
+				require.Len(t, txs, 1)
+
+				expPreVolumes := accountsVolumes{
+					"alice": assetsVolumes{
+						"USD": core.VolumesWithBalance{},
+					},
+					"world": assetsVolumes{
+						"USD": core.VolumesWithBalance{},
+					},
+				}
+
+				expPostVolumes := accountsVolumes{
+					"alice": assetsVolumes{
+						"USD": core.VolumesWithBalance{
+							Input:   worldAlice,
+							Balance: worldAlice,
+						},
+					},
+					"world": assetsVolumes{
+						"USD": core.VolumesWithBalance{
+							Output:  worldAlice,
+							Balance: -worldAlice,
+						},
+					},
+				}
+
+				assert.Equal(t, expPreVolumes, txs[0].PreCommitVolumes)
+				assert.Equal(t, expPostVolumes, txs[0].PostCommitVolumes)
+
+				rsp = internal.GetTransactions(api, url.Values{})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				cursor := internal.DecodeCursorResponse[transaction](t, rsp.Body)
+				require.Len(t, cursor.Data, 1)
+
+				assert.Equal(t, expPreVolumes, cursor.Data[0].PreCommitVolumes)
+				assert.Equal(t, expPostVolumes, cursor.Data[0].PostCommitVolumes)
+
+				var aliceBob int64 = 93
+
+				rsp = internal.PostTransaction(t, api,
+					core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "alice",
+								Destination: "bob",
+								Amount:      aliceBob,
+								Asset:       "USD",
+							},
+						},
+					})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				txs, ok = internal.DecodeSingleResponse[[]transaction](t, rsp.Body)
+				require.True(t, ok)
+				require.Len(t, txs, 1)
+
+				prevAlice := expPostVolumes["alice"]
+
+				expPreVolumes = accountsVolumes{
+					"alice": prevAlice,
+					"bob": assetsVolumes{
+						"USD": core.VolumesWithBalance{},
+					},
+				}
+
+				expPostVolumes = accountsVolumes{
+					"alice": assetsVolumes{
+						"USD": core.VolumesWithBalance{
+							Input:   prevAlice["USD"].Input,
+							Output:  prevAlice["USD"].Output + aliceBob,
+							Balance: prevAlice["USD"].Input - prevAlice["USD"].Output - aliceBob,
+						},
+					},
+					"bob": assetsVolumes{
+						"USD": core.VolumesWithBalance{
+							Input:   aliceBob,
+							Balance: aliceBob,
+						},
+					},
+				}
+
+				assert.Equal(t, expPreVolumes, txs[0].PreCommitVolumes)
+				assert.Equal(t, expPostVolumes, txs[0].PostCommitVolumes)
+
+				rsp = internal.GetTransactions(api, url.Values{})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				cursor = internal.DecodeCursorResponse[transaction](t, rsp.Body)
+				require.Len(t, cursor.Data, 2)
+
+				assert.Equal(t, expPreVolumes, cursor.Data[0].PreCommitVolumes)
+				assert.Equal(t, expPostVolumes, cursor.Data[0].PostCommitVolumes)
 
 				return nil
 			},
