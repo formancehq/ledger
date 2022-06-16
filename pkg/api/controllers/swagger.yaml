@@ -843,6 +843,12 @@ paths:
           schema:
             type: string
             example: users:001
+        - name: after
+          in: query
+          description: Pagination cursor, will return accounts after given address, in descending order.
+          schema:
+            type: string
+            example: users:003
       responses:
         "200":
           description: OK
