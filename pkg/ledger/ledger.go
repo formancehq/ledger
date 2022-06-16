@@ -8,7 +8,6 @@ import (
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
@@ -207,13 +206,13 @@ func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (
 	return result.PostCommitVolumes, result.GeneratedTransactions, err
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, m ...query.TxModifier) (sharedapi.Cursor[core.Transaction], error) {
-	q := query.NewTransactions(m)
+func (l *Ledger) GetTransactions(ctx context.Context, m ...storage.TxQueryModifier) (sharedapi.Cursor[core.Transaction], error) {
+	q := storage.NewTransactionsQuery(m)
 	return l.store.GetTransactions(ctx, q)
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, m ...query.TxModifier) (uint64, error) {
-	q := query.NewTransactions(m)
+func (l *Ledger) CountTransactions(ctx context.Context, m ...storage.TxQueryModifier) (uint64, error) {
+	q := storage.NewTransactionsQuery(m)
 	return l.store.CountTransactions(ctx, q)
 }
 
@@ -270,13 +269,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	return &result.GeneratedTransactions[0], nil
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, m ...query.AccModifier) (uint64, error) {
-	q := query.NewAccounts(m)
+func (l *Ledger) CountAccounts(ctx context.Context, m ...storage.AccQueryModifier) (uint64, error) {
+	q := storage.NewAccountsQuery(m)
 	return l.store.CountAccounts(ctx, q)
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, m ...query.AccModifier) (sharedapi.Cursor[core.Account], error) {
-	q := query.NewAccounts(m)
+func (l *Ledger) GetAccounts(ctx context.Context, m ...storage.AccQueryModifier) (sharedapi.Cursor[core.Account], error) {
+	q := storage.NewAccountsQuery(m)
 	return l.store.GetAccounts(ctx, q)
 }
 

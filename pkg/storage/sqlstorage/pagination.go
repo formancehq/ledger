@@ -1,6 +1,10 @@
 package sqlstorage
 
-import "time"
+import (
+	"time"
+
+	"github.com/numary/ledger/pkg/storage"
+)
 
 type TxsPaginationToken struct {
 	AfterTxID         uint64    `json:"after"`
@@ -13,9 +17,11 @@ type TxsPaginationToken struct {
 }
 
 type AccPaginationToken struct {
-	Limit               uint              `json:"limit"`
-	Offset              uint              `json:"offset"`
-	AfterAddress        string            `json:"after,omitempty"`
-	AddressRegexpFilter string            `json:"address,omitempty"`
-	MetadataFilter      map[string]string `json:"metadata,omitempty"`
+	Limit                 uint                    `json:"limit"`
+	Offset                uint                    `json:"offset"`
+	AfterAddress          string                  `json:"after,omitempty"`
+	AddressRegexpFilter   string                  `json:"address,omitempty"`
+	MetadataFilter        map[string]string       `json:"metadata,omitempty"`
+	BalanceFilter         string                  `json:"balance,omitempty"`
+	BalanceOperatorFilter storage.BalanceOperator `json:"balance_operator,omitempty"`
 }

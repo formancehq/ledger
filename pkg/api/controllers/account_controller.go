@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
@@ -26,8 +27,8 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountAccounts(
 		c.Request.Context(),
-		query.SetAddressRegexpFilter(c.Query("address")),
-		query.SetMetadataFilter(c.QueryMap("metadata")),
+		storage.SetAddressRegexpFilter(c.Query("address")),
+		storage.SetMetadataFilter(c.QueryMap("metadata")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -67,16 +68,39 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		}
 
 		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
-			query.SetOffset(token.Offset),
-			query.SetAfterAddress(token.AfterAddress),
-			query.SetAddressRegexpFilter(token.AddressRegexpFilter),
-			query.SetMetadataFilter(token.MetadataFilter),
+			storage.SetOffset(token.Offset),
+			storage.SetAfterAddress(token.AfterAddress),
+			storage.SetAddressRegexpFilter(token.AddressRegexpFilter),
+			storage.SetMetadataFilter(token.MetadataFilter),
+			storage.SetBalanceFilter(token.BalanceFilter),
+			storage.SetBalanceOperatorFilter(token.BalanceOperatorFilter),
 		)
 	} else {
+		balance := c.Query("balance")
+		if balance != "" {
+			if _, err := strconv.ParseInt(balance, 10, 64); err != nil {
+				ResponseError(c, ledger.NewValidationError(
+					"invalid parameter 'balance', should be a number"))
+				return
+			}
+		}
+
+		var balanceOperator = storage.DefaultBalanceOperator
+		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
+			var ok bool
+			if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
+				ResponseError(c, ledger.NewValidationError(
+					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
+				return
+			}
+		}
+
 		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
-			query.SetAfterAddress(c.Query("after")),
-			query.SetAddressRegexpFilter(c.Query("address")),
-			query.SetMetadataFilter(c.QueryMap("metadata")),
+			storage.SetAfterAddress(c.Query("after")),
+			storage.SetAddressRegexpFilter(c.Query("address")),
+			storage.SetMetadataFilter(c.QueryMap("metadata")),
+			storage.SetBalanceFilter(balance),
+			storage.SetBalanceOperatorFilter(balanceOperator),
 		)
 	}
 
