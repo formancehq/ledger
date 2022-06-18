@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
@@ -52,154 +51,45 @@ func (l *Ledger) Close(ctx context.Context) error {
 }
 
 type CommitResult struct {
-	PreCommitVolumes      core.AccountsVolumes
-	PostCommitVolumes     core.AccountsVolumes
+	PreCommitVolumes      core.AccountsAssetsVolumes
+	PostCommitVolumes     core.AccountsAssetsVolumes
 	GeneratedTransactions []core.Transaction
 	GeneratedLogs         []core.Log
 }
 
-func (l *Ledger) processTx(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
-	lastLog, err := l.store.LastLog(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var nextTxId uint64
-	lastTx, err := l.store.GetLastTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if lastTx != nil {
-		nextTxId = lastTx.ID + 1
-	}
-
-	va := newVolumeAggregator(l.store)
-
-	generatedTxs := make([]core.Transaction, len(txsData))
-	generatedLogs := make([]core.Log, len(txsData))
-
-	contracts := make([]core.Contract, 0)
-	mapping, err := l.store.LoadMapping(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "loading mapping")
-	}
-	if mapping != nil {
-		contracts = append(contracts, mapping.Contracts...)
-	}
-	contracts = append(contracts, DefaultContracts...)
-
-	accounts := make(map[string]core.Account, 0)
-	for i, txData := range txsData {
-		if len(txData.Postings) == 0 {
-			return nil, newTransactionCommitError(i, NewValidationError("transaction has no postings"))
-		}
-
-		tx := va.nextTx()
-
-		for _, p := range txData.Postings {
-			if p.Amount < 0 {
-				return nil, newTransactionCommitError(i, NewValidationError("negative amount"))
-			}
-			if !core.ValidateAddress(p.Source) {
-				return nil, newTransactionCommitError(i, NewValidationError("invalid source address"))
-			}
-			if !core.ValidateAddress(p.Destination) {
-				return nil, newTransactionCommitError(i, NewValidationError("invalid destination address"))
-			}
-			if !core.AssetIsValid(p.Asset) {
-				return nil, newTransactionCommitError(i, NewValidationError("invalid asset"))
-			}
-			if err := tx.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount)); err != nil {
-				return nil, newTransactionCommitError(i, err)
-			}
-		}
-
-		for addr, volumes := range tx.PostCommitVolumes {
-			for asset, volume := range volumes {
-				if addr == "world" {
-					continue
-				}
-				for _, contract := range contracts {
-					if contract.Match(addr) {
-						account, ok := accounts[addr]
-						if !ok {
-							account, err = l.store.GetAccount(ctx, addr)
-							if err != nil {
-								return nil, err
-							}
-							accounts[addr] = account
-						}
-
-						if ok = contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": float64(volume.Balance()),
-							},
-							Metadata: account.Metadata,
-							Asset:    asset,
-						}); !ok {
-							return nil, newTransactionCommitError(i, newInsufficientFundError(asset))
-						}
-						break
-					}
-				}
-			}
-		}
-
-		generatedTxs[i] = core.Transaction{
-			TransactionData:   txData,
-			ID:                nextTxId,
-			Timestamp:         time.Now().UTC().Format(time.RFC3339),
-			PostCommitVolumes: tx.PostCommitVolumes,
-			PreCommitVolumes:  tx.PreCommitVolumes,
-		}
-		generatedLogs[i] = core.NewTransactionLog(lastLog, generatedTxs[i])
-		lastLog = &generatedLogs[i]
-		nextTxId++
-	}
-
-	return &CommitResult{
-		PreCommitVolumes:      va.aggregatedPreCommitVolumes(),
-		PostCommitVolumes:     va.aggregatedPostCommitVolumes(),
-		GeneratedTransactions: generatedTxs,
-		GeneratedLogs:         generatedLogs,
-	}, nil
-}
-
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (core.AccountsVolumes, []core.Transaction, error) {
+func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return nil, nil, NewLockError(err)
+		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
 	result, err := l.processTx(ctx, ts)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if err = l.store.AppendLog(ctx, result.GeneratedLogs...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return nil, nil, NewConflictError()
+			return nil, NewConflictError()
 		default:
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	l.monitor.CommittedTransactions(ctx, l.name, result)
-
-	return result.PostCommitVolumes, result.GeneratedTransactions, nil
+	return result, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (core.AccountsVolumes, []core.Transaction, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.name)
 	if err != nil {
-		return nil, nil, NewLockError(err)
+		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	result, err := l.processTx(ctx, ts)
-	return result.PostCommitVolumes, result.GeneratedTransactions, err
+	return l.processTx(ctx, ts)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, m ...query.TxModifier) (sharedapi.Cursor[core.Transaction], error) {

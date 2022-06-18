@@ -16,9 +16,9 @@ type baseEvent struct {
 type committedTransactions struct {
 	Transactions []core.Transaction `json:"transactions"`
 	// Deprecated (use postCommitVolumes)
-	Volumes           core.AccountsVolumes `json:"volumes"`
-	PostCommitVolumes core.AccountsVolumes `json:"postCommitVolumes"`
-	PreCommitVolumes  core.AccountsVolumes `json:"preCommitVolumes"`
+	Volumes           core.AccountsAssetsVolumes `json:"volumes"`
+	PostCommitVolumes core.AccountsAssetsVolumes `json:"postCommitVolumes"`
+	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
 type savedMetadata struct {

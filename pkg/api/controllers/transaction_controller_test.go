@@ -194,7 +194,7 @@ func TestGetTransaction(t *testing.T) {
 
 				txs, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 				tx := txs[0]
-				assert.EqualValues(t, core.AccountsVolumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
 					"world": core.AssetsVolumes{
 						"USD": {},
 					},
@@ -202,7 +202,7 @@ func TestGetTransaction(t *testing.T) {
 						"USD": {},
 					},
 				}, tx.PreCommitVolumes)
-				assert.EqualValues(t, core.AccountsVolumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
 					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,
@@ -232,7 +232,7 @@ func TestGetTransaction(t *testing.T) {
 				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
 				assert.EqualValues(t, "ref", ret.Reference)
 				assert.NotEmpty(t, ret.Timestamp)
-				assert.EqualValues(t, core.AccountsVolumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
 					"world": core.AssetsVolumes{
 						"USD": {},
 					},
@@ -240,7 +240,7 @@ func TestGetTransaction(t *testing.T) {
 						"USD": {},
 					},
 				}, ret.PreCommitVolumes)
-				assert.EqualValues(t, core.AccountsVolumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
 					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,

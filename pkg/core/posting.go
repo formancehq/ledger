@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"regexp"
 )
 
@@ -11,6 +12,23 @@ type Posting struct {
 	Destination string `json:"destination"`
 	Amount      int64  `json:"amount"`
 	Asset       string `json:"asset"`
+}
+
+func (p Posting) Validate() error {
+	if p.Amount < 0 {
+		return errors.New("negative amount")
+	}
+	if !ValidateAddress(p.Source) {
+		return errors.New("invalid source address")
+	}
+	if !ValidateAddress(p.Destination) {
+		return errors.New("invalid destination address")
+	}
+	if !AssetIsValid(p.Asset) {
+		return errors.New("invalid asset")
+	}
+
+	return nil
 }
 
 type Postings []Posting

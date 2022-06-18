@@ -39,10 +39,10 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 	return balances
 }
 
-type AccountsVolumes map[string]AssetsVolumes
+type AccountsAssetsVolumes map[string]AssetsVolumes
 
 // Scan - Implement the database/sql scanner interface
-func (v *AccountsVolumes) Scan(value interface{}) error {
+func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
@@ -52,12 +52,12 @@ func (v *AccountsVolumes) Scan(value interface{}) error {
 		return err
 	}
 
-	*v = AccountsVolumes{}
+	*a = AccountsAssetsVolumes{}
 	switch val := val.(type) {
 	case []uint8:
-		return json.Unmarshal(val, v)
+		return json.Unmarshal(val, a)
 	case string:
-		return json.Unmarshal([]byte(val), v)
+		return json.Unmarshal([]byte(val), a)
 	default:
 		panic("not handled type")
 	}

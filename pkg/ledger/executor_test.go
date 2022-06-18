@@ -157,7 +157,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
 		var script core.Script
@@ -190,7 +190,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
 		var script core.Script
@@ -253,7 +253,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
