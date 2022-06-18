@@ -7,7 +7,7 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (uint64, error) {
@@ -21,7 +21,7 @@ func (s *Store) countTransactions(ctx context.Context, exec executor, params map
 	return count, s.error(err)
 }
 
-func (s *Store) CountTransactions(ctx context.Context, q query.Transactions) (uint64, error) {
+func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
 	return s.countTransactions(ctx, s.schema, q.Params)
 }
 
@@ -35,7 +35,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]i
 	return count, s.error(err)
 }
 
-func (s *Store) CountAccounts(ctx context.Context, q query.Accounts) (uint64, error) {
+func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
 	return s.countAccounts(ctx, s.schema, q.Params)
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
@@ -28,10 +28,10 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
-		query.SetReferenceFilter(c.Query("reference")),
-		query.SetAccountFilter(c.Query("account")),
-		query.SetSourceFilter(c.Query("source")),
-		query.SetDestinationFilter(c.Query("destination")),
+		storage.SetReferenceFilter(c.Query("reference")),
+		storage.SetAccountFilter(c.Query("account")),
+		storage.SetSourceFilter(c.Query("source")),
+		storage.SetDestinationFilter(c.Query("destination")),
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -70,13 +70,13 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		}
 
 		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
-			query.SetAfterTxID(token.AfterTxID),
-			query.SetReferenceFilter(token.ReferenceFilter),
-			query.SetAccountFilter(token.AccountFilter),
-			query.SetSourceFilter(token.SourceFilter),
-			query.SetDestinationFilter(token.DestinationFilter),
-			query.SetStartTime(token.StartTime),
-			query.SetEndTime(token.EndTime),
+			storage.SetAfterTxID(token.AfterTxID),
+			storage.SetReferenceFilter(token.ReferenceFilter),
+			storage.SetAccountFilter(token.AccountFilter),
+			storage.SetSourceFilter(token.SourceFilter),
+			storage.SetDestinationFilter(token.DestinationFilter),
+			storage.SetStartTime(token.StartTime),
+			storage.SetEndTime(token.EndTime),
 		)
 	} else {
 		var afterTxIDParsed uint64
@@ -106,13 +106,13 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		}
 
 		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
-			query.SetAfterTxID(afterTxIDParsed),
-			query.SetReferenceFilter(c.Query("reference")),
-			query.SetAccountFilter(c.Query("account")),
-			query.SetSourceFilter(c.Query("source")),
-			query.SetDestinationFilter(c.Query("destination")),
-			query.SetStartTime(startTimeParsed),
-			query.SetEndTime(endTimeParsed),
+			storage.SetAfterTxID(afterTxIDParsed),
+			storage.SetReferenceFilter(c.Query("reference")),
+			storage.SetAccountFilter(c.Query("account")),
+			storage.SetSourceFilter(c.Query("source")),
+			storage.SetDestinationFilter(c.Query("destination")),
+			storage.SetStartTime(startTimeParsed),
+			storage.SetEndTime(endTimeParsed),
 		)
 	}
 

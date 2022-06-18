@@ -26,7 +26,7 @@ func TestGetAccounts(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      100,
+							Amount:      150,
 							Asset:       "USD",
 						},
 					},
@@ -166,6 +166,124 @@ func TestGetAccounts(t *testing.T) {
 						"pagination_token": []string{"invalid"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("filter by balance >= 50 with default operator", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance": []string{"50"},
+					})
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, cursor.Data[1].Address, "alice")
+				})
+
+				t.Run("filter by balance >= 120 with default operator", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance": []string{"120"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "alice")
+				})
+
+				t.Run("filter by balance >= 50", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"50"},
+						"balance_operator": []string{"gte"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, cursor.Data[1].Address, "alice")
+				})
+
+				t.Run("filter by balance >= 120", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"120"},
+						"balance_operator": []string{"gte"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "alice")
+				})
+
+				t.Run("filter by balance > 120", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"120"},
+						"balance_operator": []string{"gt"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "alice")
+				})
+
+				t.Run("filter by balance < 0", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"0"},
+						"balance_operator": []string{"lt"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "world")
+				})
+
+				t.Run("filter by balance < 100", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"100"},
+						"balance_operator": []string{"lt"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "world")
+				})
+
+				t.Run("filter by balance <= 100", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"100"},
+						"balance_operator": []string{"lte"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].Address, "world")
+					assert.Equal(t, cursor.Data[1].Address, "bob")
+				})
+
+				t.Run("filter by balance = 100", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"100"},
+						"balance_operator": []string{"e"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].Address, "bob")
+				})
+
+				t.Run("invalid balance", func(t *testing.T) {
+					rsp := internal.GetAccounts(api, url.Values{
+						"balance": []string{"toto"},
+					})
+
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+				})
+
+				t.Run("invalid balance_operator", func(t *testing.T) {
+					rsp := internal.GetAccounts(api, url.Values{
+						"balance":          []string{"100"},
+						"balance_operator": []string{"toto"},
+					})
+
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 				})
 
 				return nil

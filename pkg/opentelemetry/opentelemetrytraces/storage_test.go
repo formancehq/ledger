@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -83,7 +82,7 @@ func testLastLog(t *testing.T, store storage.Store) {
 }
 
 func testCountAccounts(t *testing.T, store storage.Store) {
-	_, err := store.CountAccounts(context.Background(), query.Accounts{})
+	_, err := store.CountAccounts(context.Background(), storage.AccountsQuery{})
 	assert.NoError(t, err)
 
 }
@@ -94,19 +93,19 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 }
 
 func testGetAccounts(t *testing.T, store storage.Store) {
-	_, err := store.GetAccounts(context.Background(), query.Accounts{
+	_, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 1,
 	})
 	assert.NoError(t, err)
 }
 
 func testCountTransactions(t *testing.T, store storage.Store) {
-	_, err := store.CountTransactions(context.Background(), query.Transactions{})
+	_, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 	assert.NoError(t, err)
 }
 
 func testGetTransactions(t *testing.T, store storage.Store) {
-	_, err := store.GetTransactions(context.Background(), query.Transactions{
+	_, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
 		Limit: 1,
 	})
 	assert.NoError(t, err)

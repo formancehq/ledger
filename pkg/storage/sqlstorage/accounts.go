@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
@@ -42,10 +44,42 @@ func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.Select
 		t.MetadataFilter = metadata.(map[string]string)
 	}
 
+	if balance, ok := p["balance"]; ok && balance.(string) != "" {
+
+		sb.Join(s.schema.Table("volumes"), "accounts.address = volumes.account")
+		balanceOperation := "volumes.input - volumes.output"
+
+		balanceValue, err := strconv.ParseInt(balance.(string), 10, 0)
+		if err != nil {
+			// parameter is validated in the controller for now
+			panic(errors.Wrap(err, "invalid balance parameter"))
+		}
+
+		if balanceOperator, ok := p["balance_operator"]; ok && balanceOperator != "" {
+			switch balanceOperator {
+			case storage.BalanceOperatorLte:
+				sb.Where(sb.LessEqualThan(balanceOperation, balanceValue))
+			case storage.BalanceOperatorLt:
+				sb.Where(sb.LessThan(balanceOperation, balanceValue))
+			case storage.BalanceOperatorGte:
+				sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
+			case storage.BalanceOperatorGt:
+				sb.Where(sb.GreaterThan(balanceOperation, balanceValue))
+			case storage.BalanceOperatorE:
+				sb.Where(sb.Equal(balanceOperation, balanceValue))
+			default:
+				// parameter is validated in the controller for now
+				panic("invalid balance_operator parameter")
+			}
+		} else { // if no operator is given, default to gte
+			sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
+		}
+	}
+
 	return sb, t
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
+func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.Limit == 0 {
@@ -117,7 +151,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q query.Accounts
 	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q query.Accounts) (sharedapi.Cursor[core.Account], error) {
+func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 

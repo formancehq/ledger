@@ -7,7 +7,6 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel"
@@ -85,7 +84,7 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 	return
 }
 
-func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Transactions) (count uint64, err error) {
+func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
 		count, err = o.underlying.CountTransactions(ctx, q)
 		return err
@@ -96,7 +95,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q query.Tr
 	return
 }
 
-func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query query.Transactions) (q sharedapi.Cursor[core.Transaction], err error) {
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.Transaction], err error) {
 	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
@@ -151,7 +150,7 @@ func (o *openTelemetryStorage) GetAccountAssetVolumes(ctx context.Context, accou
 	return
 }
 
-func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Accounts) (count uint64, err error) {
+func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q storage.AccountsQuery) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx, q)
 		return err
@@ -162,7 +161,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q query.Accoun
 	return
 }
 
-func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query query.Accounts) (c sharedapi.Cursor[core.Account], err error) {
+func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query storage.AccountsQuery) (c sharedapi.Cursor[core.Account], err error) {
 	handlingErr := o.handle(ctx, "GetAccounts", func(ctx context.Context) error {
 		c, err = o.underlying.GetAccounts(ctx, query)
 		return err

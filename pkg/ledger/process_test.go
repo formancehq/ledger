@@ -124,7 +124,7 @@ func TestLedger_processTx(t *testing.T) {
 				}}
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
 
-				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Second)
+				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Millisecond)
 
 				expectedLogs := []core.Log{{
 					ID:   0,
@@ -279,12 +279,12 @@ func TestLedger_processTx(t *testing.T) {
 				expectedLogs[4].Hash = core.Hash(expectedLogs[3], expectedLogs[4])
 				expectedLogs[5].Hash = core.Hash(expectedLogs[4], expectedLogs[5])
 
-				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Second)
-				assert.True(t, time.Until(res.GeneratedLogs[1].Date) < time.Second)
-				assert.True(t, time.Until(res.GeneratedLogs[2].Date) < time.Second)
-				assert.True(t, time.Until(res.GeneratedLogs[3].Date) < time.Second)
-				assert.True(t, time.Until(res.GeneratedLogs[4].Date) < time.Second)
-				assert.True(t, time.Until(res.GeneratedLogs[5].Date) < time.Second)
+				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Millisecond)
+				assert.True(t, time.Until(res.GeneratedLogs[1].Date) < time.Millisecond)
+				assert.True(t, time.Until(res.GeneratedLogs[2].Date) < time.Millisecond)
+				assert.True(t, time.Until(res.GeneratedLogs[3].Date) < time.Millisecond)
+				assert.True(t, time.Until(res.GeneratedLogs[4].Date) < time.Millisecond)
+				assert.True(t, time.Until(res.GeneratedLogs[5].Date) < time.Millisecond)
 
 				assert.Equal(t, expectedLogs, res.GeneratedLogs)
 			})

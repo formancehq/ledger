@@ -15,8 +15,8 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger/query"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -190,7 +190,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 	"1.sql": func(t *testing.T, store *sqlstorage.Store) {},
 	"2.sql": func(t *testing.T, store *sqlstorage.Store) {
 
-		count, err := store.CountTransactions(context.Background(), query.Transactions{})
+		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -265,7 +265,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		txs, err := store.GetTransactions(context.Background(), query.Transactions{
+		txs, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
 			Limit: 100,
 		})
 		if !assert.NoError(t, err) {
