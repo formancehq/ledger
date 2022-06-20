@@ -57,7 +57,7 @@ func (l *Ledger) processTx(ctx context.Context, txsData []core.TransactionData) 
 
 	for i, txData := range txsData {
 		if len(txData.Postings) == 0 {
-			return nil, newTransactionCommitError(i, NewValidationError("transaction has no postings"))
+			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
 		a.txPreCommitVol = core.AccountsAssetsVolumes{}
@@ -65,23 +65,23 @@ func (l *Ledger) processTx(ctx context.Context, txsData []core.TransactionData) 
 
 		for _, p := range txData.Postings {
 			if err := p.Validate(); err != nil {
-				return nil, newTransactionCommitError(i, NewValidationError(err.Error()))
+				return nil, NewTransactionCommitError(i, NewValidationError(err.Error()))
 			}
 
 			initCommitVolumes(a, p)
 
 			if err := l.updateVolumes(p.Source, 0, p.Amount,
 				ctx, a, p, generatedTxs); err != nil {
-				return nil, newTransactionCommitError(i, err)
+				return nil, NewTransactionCommitError(i, err)
 			}
 			if err := l.updateVolumes(p.Destination, p.Amount, 0,
 				ctx, a, p, generatedTxs); err != nil {
-				return nil, newTransactionCommitError(i, err)
+				return nil, NewTransactionCommitError(i, err)
 			}
 		}
 
 		if err := l.checkPostCommitVolumes(ctx, a.txPostCommitVol, contracts, accMatchingContracts); err != nil {
-			return nil, newTransactionCommitError(i, err)
+			return nil, NewTransactionCommitError(i, err)
 		}
 
 		generatedTxs[i] = core.Transaction{
@@ -167,7 +167,7 @@ func (l *Ledger) checkPostCommitVolumes(ctx context.Context, txPostCommitVol cor
 						Metadata: account.Metadata,
 						Asset:    asset,
 					}) {
-						return newInsufficientFundError(asset)
+						return NewInsufficientFundError(asset)
 					}
 					break
 				}
