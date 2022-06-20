@@ -146,6 +146,18 @@ func (o *openTelemetryStorage) GetVolumes(ctx context.Context, accountAddress, a
 	})
 	if handlingErr != nil {
 		sharedlogging.Errorf("opentelemetry GetVolumes: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetBalancesAggregated: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) GetBalances(ctx context.Context, q storage.BalancesQuery) (balances sharedapi.Cursor[core.AccountsBalances], err error) {
+	handlingErr := o.handle(ctx, "GetBalances", func(ctx context.Context) error {
+		balances, err = o.underlying.GetBalances(ctx, q)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry GetBalances: %s", handlingErr)
 	}
 	return
 }
