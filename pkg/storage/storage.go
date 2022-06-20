@@ -71,7 +71,8 @@ type Store interface {
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
 
-	GetAggregatedBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error)
+	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
+	GetBalancesAggregated(context.Context, BalancesQuery) (core.Balances, error)
 
 	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
@@ -139,8 +140,12 @@ func (n noOpStore) GetAccounts(ctx context.Context, q AccountsQuery) (sharedapi.
 	return sharedapi.Cursor[core.Account]{}, nil
 }
 
-func (n noOpStore) GetAggregatedBalances(ctx context.Context, q BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error) {
-	return sharedapi.Cursor[core.AggregatedBalances]{}, nil
+func (n noOpStore) GetBalances(ctx context.Context, q BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+	return sharedapi.Cursor[core.AccountsBalances]{}, nil
+}
+
+func (n noOpStore) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (core.Balances, error) {
+	return core.Balances{}, nil
 }
 
 func (n noOpStore) GetMeta(ctx context.Context, s string, s2 string) (core.Metadata, error) {

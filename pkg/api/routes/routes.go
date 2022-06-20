@@ -51,6 +51,8 @@ const (
 var AllScopes = []string{
 	ScopeTransactionsRead,
 	ScopeAccountsWrite,
+	ScopeBalancesRead,
+	ScopeBalancesWrite,
 	ScopeTransactionsWrite,
 	ScopeAccountsRead,
 	ScopeMappingRead,
@@ -66,8 +68,8 @@ type Routes struct {
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
-	transactionController controllers.TransactionController
 	balanceController     controllers.BalanceController
+	transactionController controllers.TransactionController
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
@@ -83,7 +85,7 @@ func NewRoutes(
 	ledgerController controllers.LedgerController,
 	scriptController controllers.ScriptController,
 	accountController controllers.AccountController,
-	balancesController controllers.BalanceController,
+	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
 	healthController controllers.HealthController,
@@ -98,7 +100,7 @@ func NewRoutes(
 		ledgerController:      ledgerController,
 		scriptController:      scriptController,
 		accountController:     accountController,
-		balanceController:     balancesController,
+		balanceController:     balanceController,
 		transactionController: transactionController,
 		mappingController:     mappingController,
 		healthController:      healthController,
@@ -156,6 +158,7 @@ func (r *Routes) Engine() *gin.Engine {
 
 		// BalanceController
 		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeBalancesRead, ScopeBalancesWrite))
+		router.GET("/aggregate/balances", r.wrapWithScopes(r.balanceController.GetBalancesAggregated, ScopeBalancesRead, ScopeBalancesWrite))
 
 		// MappingController
 		router.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
