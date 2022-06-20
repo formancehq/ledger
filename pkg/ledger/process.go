@@ -117,7 +117,7 @@ func (l *Ledger) updateVolumes(account string, inputAmount, outputAmount int64,
 
 	if _, ok := a.txPreCommitVol[account][p.Asset]; !ok {
 		var err error
-		a.txPreCommitVol[account][p.Asset], err = l.store.GetAccountAssetVolumes(ctx, account, p.Asset)
+		a.txPreCommitVol[account][p.Asset], err = l.store.GetVolumes(ctx, account, p.Asset)
 		if err != nil {
 			return err
 		}

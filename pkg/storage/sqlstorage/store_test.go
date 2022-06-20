@@ -53,7 +53,7 @@ func TestStore(t *testing.T) {
 			fn:   testCountAccounts,
 		},
 		{
-			name: "GetAccountVolumes",
+			name: "GetAssetsVolumes",
 			fn:   testAggregateVolumes,
 		},
 		{
@@ -210,7 +210,7 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	assert.NoError(t, err)
 
-	volumes, err := store.GetAccountVolumes(context.Background(), "central_bank")
+	volumes, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	assert.NoError(t, err)
 	assert.Len(t, volumes, 1)
 	assert.EqualValues(t, 100, volumes["USD"].Input)

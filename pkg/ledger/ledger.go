@@ -26,17 +26,14 @@ var DefaultContracts = []core.Contract{
 }
 
 type Ledger struct {
-	locker Locker
-	// TODO: We could remove this field since it is present in store
-	name    string
+	locker  Locker
 	store   storage.Store
 	monitor Monitor
 }
 
-func NewLedger(name string, store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
+func NewLedger(store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
 	return &Ledger{
 		store:   store,
-		name:    name,
 		locker:  locker,
 		monitor: monitor,
 	}, nil
@@ -56,14 +53,14 @@ type CommitResult struct {
 	GeneratedLogs         []core.Log
 }
 
-func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.name)
+func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	result, err := l.processTx(ctx, ts)
+	result, err := l.processTx(ctx, txsData)
 	if err != nil {
 		return nil, err
 	}
@@ -77,18 +74,18 @@ func (l *Ledger) Commit(ctx context.Context, ts []core.TransactionData) (*Commit
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.name, result)
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
 	return result, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.name)
+func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	return l.processTx(ctx, ts)
+	return l.processTx(ctx, txsData)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, m ...storage.TxQueryModifier) (sharedapi.Cursor[core.Transaction], error) {
@@ -106,11 +103,11 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transactio
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	err := l.store.SaveMapping(ctx, mapping)
-	if err != nil {
+	if err := l.store.SaveMapping(ctx, mapping); err != nil {
 		return err
 	}
-	l.monitor.UpdatedMapping(ctx, l.name, mapping)
+
+	l.monitor.UpdatedMapping(ctx, l.store.Name(), mapping)
 	return nil
 }
 
@@ -128,7 +125,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(tx.ID)
 
-	unlock, err := l.locker.Lock(ctx, l.name)
+	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
 	}
@@ -146,11 +143,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 		Metadata:   core.RevertedMetadata(result.GeneratedTransactions[0].ID),
 	}))
 
-	err = l.store.AppendLog(ctx, logs...)
-	if err != nil {
+	if err = l.store.AppendLog(ctx, logs...); err != nil {
 		return nil, err
 	}
-	l.monitor.RevertedTransaction(ctx, l.name, tx, result.GeneratedTransactions[0])
+
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
 }
 
@@ -170,19 +167,18 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 		return core.Account{}, err
 	}
 
-	volumes, err := l.store.GetAccountVolumes(ctx, address)
+	volumes, err := l.store.GetAssetsVolumes(ctx, address)
 	if err != nil {
 		return account, err
 	}
 
 	account.Volumes = volumes
 	account.Balances = volumes.Balances()
-
 	return account, nil
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
-	unlock, err := l.locker.Lock(ctx, l.name)
+	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return NewLockError(err)
 	}
@@ -209,12 +205,10 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		Metadata:   m,
 	})
 
-	err = l.store.AppendLog(ctx, log)
-	if err != nil {
+	if err = l.store.AppendLog(ctx, log); err != nil {
 		return err
 	}
 
-	l.monitor.SavedMetadata(ctx, l.name, targetType, fmt.Sprint(targetID), m)
-
+	l.monitor.SavedMetadata(ctx, l.store.Name(), targetType, fmt.Sprint(targetID), m)
 	return nil
 }

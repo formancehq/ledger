@@ -69,7 +69,7 @@ func runOnLedger(f func(l *Ledger)) {
 				if err != nil {
 					return err
 				}
-				l, err := NewLedger(name, store, NewInMemoryLocker(), &noOpMonitor{})
+				l, err := NewLedger(store, NewInMemoryLocker(), &noOpMonitor{})
 				if err != nil {
 					panic(err)
 				}
