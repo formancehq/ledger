@@ -39,11 +39,11 @@ func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uin
 	return s.countAccounts(ctx, s.schema, q.Params)
 }
 
-func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address string) (core.Volumes, error) {
+func (s *Store) getAssetsVolumes(ctx context.Context, exec executor, accountAddress string) (core.AssetsVolumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
-	sb.Where(sb.E("account", address))
+	sb.Where(sb.E("account", accountAddress))
 
 	q, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, q, args...)
@@ -57,7 +57,7 @@ func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address st
 		}
 	}(rows)
 
-	volumes := core.Volumes{}
+	volumes := core.AssetsVolumes{}
 	for rows.Next() {
 		var (
 			asset  string
@@ -68,7 +68,7 @@ func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address st
 		if err != nil {
 			return nil, s.error(err)
 		}
-		volumes[asset] = core.Volume{
+		volumes[asset] = core.Volumes{
 			Input:  input,
 			Output: output,
 		}
@@ -80,35 +80,36 @@ func (s *Store) getAccountVolumes(ctx context.Context, exec executor, address st
 	return volumes, nil
 }
 
-func (s *Store) GetAccountVolumes(ctx context.Context, address string) (core.Volumes, error) {
-	return s.getAccountVolumes(ctx, s.schema, address)
+func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
+	return s.getAssetsVolumes(ctx, s.schema, accountAddress)
 }
 
-func (s *Store) getAccountVolume(ctx context.Context, exec executor, address, asset string) (core.Volume, error) {
+func (s *Store) getVolumes(ctx context.Context, exec executor, accountAddress, asset string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("input", "output")
 	sb.From(s.schema.Table("volumes"))
-	sb.Where(sb.And(sb.E("account", address), sb.E("asset", asset)))
+	sb.Where(sb.And(sb.E("account", accountAddress), sb.E("asset", asset)))
 
 	q, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, q, args...)
 	if row.Err() != nil {
-		return core.Volume{}, s.error(row.Err())
+		return core.Volumes{}, s.error(row.Err())
 	}
 
 	var input, output int64
 	if err := row.Scan(&input, &output); err != nil {
 		if err == sql.ErrNoRows {
-			return core.Volume{}, nil
+			return core.Volumes{}, nil
 		}
-		return core.Volume{}, s.error(err)
+		return core.Volumes{}, s.error(err)
 	}
-	return core.Volume{
+
+	return core.Volumes{
 		Input:  input,
 		Output: output,
 	}, nil
 }
 
-func (s *Store) GetAccountVolume(ctx context.Context, address, asset string) (core.Volume, error) {
-	return s.getAccountVolume(ctx, s.schema, address, asset)
+func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
+	return s.getVolumes(ctx, s.schema, accountAddress, asset)
 }
