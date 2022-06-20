@@ -12,7 +12,7 @@ import (
 func TestLedger_processTx(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
-			var (
+			const (
 				worldTotoUSD  int64 = 43
 				worldAliceUSD int64 = 98
 				aliceTotoUSD  int64 = 45

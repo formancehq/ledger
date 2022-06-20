@@ -518,7 +518,7 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Single posting - single asset
 
-				var worldAliceUSD int64 = 100
+				const worldAliceUSD int64 = 100
 
 				rsp := internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -575,7 +575,7 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Single posting - single asset
 
-				var aliceBobUSD int64 = 93
+				const aliceBobUSD int64 = 93
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -634,8 +634,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi posting - single asset
 
-				var worldBobEUR int64 = 156
-				var bobAliceEUR int64 = 3
+				const worldBobEUR int64 = 156
+				const bobAliceEUR int64 = 3
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -711,8 +711,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi postings - multi assets
 
-				var bobAliceUSD int64 = 1
-				var aliceBobEUR int64 = 2
+				const bobAliceUSD int64 = 1
+				const aliceBobEUR int64 = 2
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
