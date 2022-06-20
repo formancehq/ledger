@@ -31,8 +31,8 @@ func TestAccounts(t *testing.T) {
 	t.Run("success balance", func(t *testing.T) {
 		q := storage.AccountsQuery{
 			Limit: 10,
-			Params: map[string]interface{}{
-				"balance": "50",
+			Params: storage.AccountsQueryFilters{
+				Balance: "50",
 			},
 		}
 
@@ -43,13 +43,13 @@ func TestAccounts(t *testing.T) {
 	t.Run("panic invalid balance", func(t *testing.T) {
 		q := storage.AccountsQuery{
 			Limit: 10,
-			Params: map[string]interface{}{
-				"balance": "toto",
+			Params: storage.AccountsQueryFilters{
+				Balance: "TEST",
 			},
 		}
 
 		assert.PanicsWithError(
-			t, `invalid balance parameter: strconv.ParseInt: parsing "toto": invalid syntax`,
+			t, `invalid balance parameter: strconv.ParseInt: parsing "TEST": invalid syntax`,
 
 			func() {
 				_, _ = store.GetAccounts(context.Background(), q)
@@ -60,9 +60,9 @@ func TestAccounts(t *testing.T) {
 		assert.PanicsWithValue(t, "invalid balance_operator parameter", func() {
 			q := storage.AccountsQuery{
 				Limit: 10,
-				Params: map[string]interface{}{
-					"balance":          "50",
-					"balance_operator": "toto",
+				Params: storage.AccountsQueryFilters{
+					Balance:         "50",
+					BalanceOperator: "TEST",
 				},
 			}
 
@@ -73,9 +73,9 @@ func TestAccounts(t *testing.T) {
 	t.Run("success balance_operator", func(t *testing.T) {
 		q := storage.AccountsQuery{
 			Limit: 10,
-			Params: map[string]interface{}{
-				"balance":          "50",
-				"balance_operator": storage.BalanceOperator("gte"),
+			Params: storage.AccountsQueryFilters{
+				Balance:         "50",
+				BalanceOperator: storage.BalanceOperatorGte,
 			},
 		}
 

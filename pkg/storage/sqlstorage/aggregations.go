@@ -10,10 +10,10 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) countTransactions(ctx context.Context, exec executor, params map[string]interface{}) (uint64, error) {
+func (s *Store) countTransactions(ctx context.Context, exec executor, tq storage.TransactionsQuery) (uint64, error) {
 	var count uint64
 
-	sb, _ := s.buildTransactionsQuery(params)
+	sb, _ := s.buildTransactionsQuery(tq)
 	q, args := sb.BuildWithFlavor(s.schema.Flavor())
 	q = fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, q)
 	err := exec.QueryRowContext(ctx, q, args...).Scan(&count)
@@ -22,13 +22,13 @@ func (s *Store) countTransactions(ctx context.Context, exec executor, params map
 }
 
 func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
-	return s.countTransactions(ctx, s.schema, q.Params)
+	return s.countTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]interface{}) (uint64, error) {
+func (s *Store) countAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (uint64, error) {
 	var count uint64
 
-	sb, _ := s.buildAccountsQuery(p)
+	sb, _ := s.buildAccountsQuery(q)
 	sqlq, args := sb.Select("count(*)").BuildWithFlavor(s.schema.Flavor())
 	err := exec.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
@@ -36,7 +36,7 @@ func (s *Store) countAccounts(ctx context.Context, exec executor, p map[string]i
 }
 
 func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
-	return s.countAccounts(ctx, s.schema, q.Params)
+	return s.countAccounts(ctx, s.schema, q)
 }
 
 func (s *Store) getAssetsVolumes(ctx context.Context, exec executor, accountAddress string) (core.AssetsVolumes, error) {

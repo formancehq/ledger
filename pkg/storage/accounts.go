@@ -4,10 +4,15 @@ type AccountsQuery struct {
 	Limit        uint
 	Offset       uint
 	AfterAddress string
-	Params       map[string]interface{}
+	Params       AccountsQueryFilters
 }
 
-type AccQueryModifier func(*AccountsQuery)
+type AccountsQueryFilters struct {
+	Address         string
+	Balance         string
+	BalanceOperator BalanceOperator
+	Metadata        map[string]string
+}
 
 type BalanceOperator string
 
@@ -42,61 +47,25 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 	return BalanceOperator(s), true
 }
 
-func SetBalanceFilter(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Params["balance"] = v
-	}
-}
-
-func SetBalanceOperatorFilter(v BalanceOperator) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Params["balance_operator"] = v
-	}
-}
-
-func NewAccountsQuery(qms ...[]AccQueryModifier) AccountsQuery {
+func NewAccountsQuery(offset uint, limit uint, afterAddress string, filters *AccountsQueryFilters) AccountsQuery {
 	q := AccountsQuery{
-		Limit:  QueryDefaultLimit,
-		Params: map[string]interface{}{},
+		Limit: QueryDefaultLimit,
 	}
 
-	for _, m := range qms {
-		q.Apply(m)
+	// i'd rather use pointers and check if nil, but c.Query returns objects, so for now
+	// i'm testing zero values of object, please fix if you find something better
+
+	if limit != 0 {
+		q.Limit = limit
 	}
+
+	q.AfterAddress = afterAddress
+	q.Offset = offset
+
+	q.Params.Address = filters.Address
+	q.Params.Balance = filters.Balance
+	q.Params.BalanceOperator = filters.BalanceOperator
+	q.Params.Metadata = filters.Metadata
 
 	return q
-}
-
-func (q *AccountsQuery) Apply(modifiers []AccQueryModifier) {
-	for _, m := range modifiers {
-		m(q)
-	}
-}
-
-func SetOffset(v uint) func(accounts *AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Offset = v
-	}
-}
-
-func SetAfterAddress(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.AfterAddress = v
-	}
-}
-
-func SetAddressRegexpFilter(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		if v != "" {
-			q.Params["address"] = v
-		}
-	}
-}
-
-func SetMetadataFilter(v map[string]string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		if len(v) > 0 {
-			q.Params["metadata"] = v
-		}
-	}
 }
