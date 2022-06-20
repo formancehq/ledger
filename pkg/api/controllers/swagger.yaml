@@ -836,7 +836,7 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: account
+        - name: address
           in: query
           description: Filter balances involving given account, either
             as source or destination.
@@ -849,6 +849,49 @@ paths:
           schema:
             type: string
             example: users:003
+        - name: pagination_token
+          in: query
+          description: |-
+            Parameter used in pagination requests. 
+            Set to the value of next for the next page of results. 
+            Set to the value of previous for the previous page of results.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalancesResponse'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /{ledger}/aggregate/balances:
+    get:
+      tags:
+        - balances
+      summary: Get the aggregated balances from selected accounts
+      operationId: getBalances
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: query
+          description: Filter balances involving given account, either
+            as source or destination.
+          schema:
+            type: string
+            example: users:001
       responses:
         "200":
           description: OK

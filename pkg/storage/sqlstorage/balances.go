@@ -3,36 +3,60 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
+	"regexp"
+	"strings"
 )
 
-func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AccountsBalances, error) {
+func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("account", "asset", "input - output as balance")
-	sb.From(s.schema.Table("volumes"))
-	sb.GroupBy("account", "asset", "balance")
-
-	if q.AfterAddress != "" {
-		sb.Where(sb.L("address", q.AfterAddress))
+	switch s.Schema().Flavor() {
+	case sqlbuilder.PostgreSQL:
+		sb.Select("account", "array_agg((asset, input - output))")
+	case sqlbuilder.SQLite:
+		// we try to get the same format as array_agg from postgres : {"(USD,-12686)","(EUR,-250)"}
+		// so don't have to dev a marshal method for each storage
+		sb.Select("account", `'{"(' || group_concat(asset||','||(input-output), ')","(')|| ')"}' as key_value_pairs`)
 	}
 
-	if q.Params.Account != "" {
-		arg := sb.Args.Add("^" + q.Params.Account + "$")
+	sb.From(s.schema.Table("volumes"))
+	sb.GroupBy("account")
+
+	t := BalancesPaginationToken{}
+
+	if q.AfterAddress != "" {
+		sb.Where(sb.L("account", q.AfterAddress))
+		t.AfterAddress = q.AfterAddress
+	}
+
+	if q.Params.Address != "" {
+		arg := sb.Args.Add("^" + q.Params.Address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
 		case sqlbuilder.SQLite:
 			sb.Where("account REGEXP " + arg)
 		}
+		t.AddressRegexpFilter = q.Params.Address
 	}
+
+	sb.Limit(int(q.Limit + 1))
+	t.Limit = q.Limit
+	sb.Offset(int(q.Offset))
 
 	balanceQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, balanceQuery, args...)
 	if err != nil {
-		return nil, s.error(err)
+		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
+
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
@@ -40,34 +64,57 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 		}
 	}(rows)
 
-	var accounts core.AccountsBalances
+	accounts := make([]core.AccountsBalances, 0)
 
 	for rows.Next() {
 		var (
 			currentAccount string
-			asset          string
-			balance        int64
+
+			assetBalance []byte
 		)
-		err = rows.Scan(&currentAccount, &asset, &balance)
+		err = rows.Scan(&currentAccount, &assetBalance)
+
+		// we (clean and) marshal the computed row in a map[string]int64
+		assetBalances := arrayToAssetBalance(assetBalance)
 		if err != nil {
-			return nil, s.error(err)
+			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
-		// if the accounts already exists in the map, we simply want to add an asset, not to override the last map
-		if _, exists := accounts[currentAccount]; exists {
-			accounts[currentAccount][asset] = balance
-		} else {
-			accounts[currentAccount] = map[string]int64{
-				asset: balance,
-			}
-		}
+		accounts = append(accounts, map[string]map[string]int64{
+			currentAccount: assetBalances,
+		})
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, s.error(err)
+		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
 
-	return accounts, nil
+	var previous, next string
+	if q.Offset-q.Limit > 0 {
+		t.Offset = q.Offset - q.Limit
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	if len(accounts) == int(q.Limit+1) {
+		accounts = accounts[:len(accounts)-1]
+		t.Offset = q.Offset + q.Limit
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	return sharedapi.Cursor[core.AccountsBalances]{
+		PageSize: len(accounts),
+		Previous: previous,
+		Next:     next,
+		Data:     accounts,
+	}, nil
 }
 
 func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q storage.BalancesQuery) (map[string]int64, error) {
@@ -76,8 +123,8 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("asset")
 
-	if q.Params.Account != "" {
-		arg := sb.Args.Add("^" + q.Params.Account + "$")
+	if q.Params.Address != "" {
+		arg := sb.Args.Add("^" + q.Params.Address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
@@ -87,10 +134,12 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 	}
 
 	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
+
 	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
+
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
@@ -111,7 +160,6 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 		}
 
 		aggregatedBalances[asset] = amount
-
 	}
 
 	if err := rows.Err(); err != nil {
@@ -119,4 +167,35 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 	}
 
 	return aggregatedBalances, nil
+}
+
+func arrayToAssetBalance(array []byte) map[string]int64 {
+	if len(array) <= 3 {
+		return nil
+	}
+
+	splitRegex := regexp.MustCompile(`([^,]+,[^,]+)`)
+	arrayBalances := splitRegex.FindAllString(string(array), -1)
+
+	result := make(map[string]int64)
+
+	for i, assetBalance := range arrayBalances {
+		values := strings.Split(assetBalance, ",")
+
+		var balance int64
+		if _, err := fmt.Sscanf(values[1], "%d", &balance); err != nil {
+			panic(errors.Wrap(err, "error while converting balance value into map"))
+		}
+
+		// this is because the format we get from pg with array_agg is {"(USD,-12686)","(EUR,-250)"}
+		// and we have {"(  to remove for the first split and "( for the second split
+		// trimming the string could be dangerous (assets are not sanitized)
+		if i == 0 {
+			result[values[0][3:]] = balance
+		} else {
+			result[values[0][2:]] = balance
+		}
+	}
+
+	return result
 }

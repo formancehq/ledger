@@ -4,9 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/numary/go-libs/sharedapi"
-
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
@@ -115,33 +114,29 @@ func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (c
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
 }
 
-func (s *Store) getAggregatedBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error) {
-	result := make([]core.AggregatedBalances, 0)
-	// ex: "aggregated":{"USD": 50,"EUR": 225},{"account1":{"EUR":25,"USD":50},"account2":{"EUR":200}}
-
-	aggregatedBalances, err := s.GetAggregatedBalancesData(ctx, exec, q)
+func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.Balances, error) {
+	balances, err := s.GetAggregatedBalancesData(ctx, exec, q)
 	if err != nil {
-		return sharedapi.Cursor[core.AggregatedBalances]{}, err
+		return core.Balances{}, err
 	}
 
-	accountsBalances, err := s.GetBalancesAccountsData(ctx, exec, q)
-	if err != nil {
-		return sharedapi.Cursor[core.AggregatedBalances]{}, err
-	}
-
-	result[0].Aggregated = aggregatedBalances
-	result[0].Accounts = accountsBalances
-
-	var previous, next string
-
-	return sharedapi.Cursor[core.AggregatedBalances]{
-		PageSize: len(accountsBalances),
-		Previous: previous,
-		Next:     next,
-		Data:     result,
-	}, nil
+	return balances, nil
 }
 
-func (s *Store) GetAggregatedBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AggregatedBalances], error) {
-	return s.getAggregatedBalances(ctx, s.schema, q)
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.Balances, error) {
+	return s.getBalancesAggregated(ctx, s.schema, q)
+}
+
+func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+	balances, err := s.GetBalancesAccountsData(ctx, exec, q)
+	if err != nil {
+		return sharedapi.Cursor[core.AccountsBalances]{}, err
+	}
+
+	return balances, nil
+}
+
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+
+	return s.getBalances(ctx, s.schema, q)
 }

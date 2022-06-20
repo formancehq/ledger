@@ -83,38 +83,6 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 		}
 	}
 
-	if balance, ok := p["balance"]; ok && balance.(string) != "" {
-
-		sb.Join(s.schema.Table("volumes"), "accounts.address = volumes.account")
-		balanceOperation := "volumes.input - volumes.output"
-
-		balanceValue, err := strconv.ParseInt(balance.(string), 10, 0)
-		if err != nil {
-			// parameter is validated in the controller for now
-			panic(errors.Wrap(err, "invalid balance parameter"))
-		}
-
-		if balanceOperator, ok := p["balance_operator"]; ok && balanceOperator != "" {
-			switch balanceOperator {
-			case storage.BalanceOperatorLte:
-				sb.Where(sb.LessEqualThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorLt:
-				sb.Where(sb.LessThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorGte:
-				sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorGt:
-				sb.Where(sb.GreaterThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorE:
-				sb.Where(sb.Equal(balanceOperation, balanceValue))
-			default:
-				// parameter is validated in the controller for now
-				panic("invalid balance_operator parameter")
-			}
-		} else { // if no operator is given, default to gte
-			sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
-		}
-	}
-
 	return sb, t
 }
 
