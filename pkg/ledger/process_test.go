@@ -300,7 +300,5 @@ func TestLedger_processTx(t *testing.T) {
 				GeneratedLogs:         []core.Log{},
 			}, result)
 		})
-
 	})
-
 }
