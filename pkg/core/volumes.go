@@ -28,11 +28,11 @@ func (v Volumes) Balance() int64 {
 	return v.Input - v.Output
 }
 
-type Balances map[string]int64
+type AssetsBalances map[string]int64
 type AssetsVolumes map[string]Volumes
 
-func (v AssetsVolumes) Balances() Balances {
-	balances := Balances{}
+func (v AssetsVolumes) Balances() AssetsBalances {
+	balances := AssetsBalances{}
 	for asset, vv := range v {
 		balances[asset] = vv.Input - vv.Output
 	}
