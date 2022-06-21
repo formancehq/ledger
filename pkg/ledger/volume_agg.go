@@ -9,32 +9,32 @@ import (
 
 type transactionVolumeAggregator struct {
 	agg         *volumeAggregator
-	postVolumes core.AggregatedVolumes
-	preVolumes  core.AggregatedVolumes
+	postVolumes core.AccountsAssetsVolumes
+	preVolumes  core.AccountsAssetsVolumes
 	previousTx  *transactionVolumeAggregator
 }
 
-func (tva *transactionVolumeAggregator) postCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) postCommitVolumes() core.AccountsAssetsVolumes {
 	return tva.postVolumes
 }
 
-func (tva *transactionVolumeAggregator) preCommitVolumes() core.AggregatedVolumes {
+func (tva *transactionVolumeAggregator) preCommitVolumes() core.AccountsAssetsVolumes {
 	return tva.preVolumes
 }
 
 func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, asset string, amount uint64) error {
 	if tva.preVolumes == nil {
-		tva.preVolumes = core.AggregatedVolumes{}
+		tva.preVolumes = core.AccountsAssetsVolumes{}
 	}
 	if tva.postVolumes == nil {
-		tva.postVolumes = core.AggregatedVolumes{}
+		tva.postVolumes = core.AccountsAssetsVolumes{}
 	}
 	for _, addr := range []string{from, to} {
 		if _, ok := tva.preVolumes[addr][asset]; !ok {
 			current := tva.previousTx
 			found := false
 			if _, ok := tva.preVolumes[addr]; !ok {
-				tva.preVolumes[addr] = core.Volumes{}
+				tva.preVolumes[addr] = core.AssetsVolumes{}
 			}
 			for current != nil {
 				if v, ok := current.postVolumes[addr][asset]; ok {
@@ -45,7 +45,7 @@ func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, 
 				current = current.previousTx
 			}
 			if !found {
-				v, err := tva.agg.store.GetAccountVolume(ctx, addr, asset)
+				v, err := tva.agg.store.GetVolumes(ctx, addr, asset)
 				if err != nil {
 					return err
 				}
@@ -54,7 +54,7 @@ func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, 
 		}
 		if _, ok := tva.postVolumes[addr][asset]; !ok {
 			if _, ok := tva.postVolumes[addr]; !ok {
-				tva.postVolumes[addr] = core.Volumes{}
+				tva.postVolumes[addr] = core.AssetsVolumes{}
 			}
 			tva.postVolumes[addr][asset] = tva.preVolumes[addr][asset]
 		}
@@ -88,15 +88,15 @@ func (agg *volumeAggregator) nextTx() *transactionVolumeAggregator {
 	return tva
 }
 
-func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AggregatedVolumes {
-	ret := core.AggregatedVolumes{}
+func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AccountsAssetsVolumes {
+	ret := core.AccountsAssetsVolumes{}
 	for i := len(agg.txs) - 1; i >= 0; i-- {
 		tx := agg.txs[i]
 		postVolumes := tx.postCommitVolumes()
 		for account, volumes := range postVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
-					ret[account] = core.Volumes{}
+					ret[account] = core.AssetsVolumes{}
 				}
 				if _, ok := ret[account][asset]; !ok {
 					ret[account][asset] = volume
@@ -107,15 +107,15 @@ func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AggregatedVolume
 	return ret
 }
 
-func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AggregatedVolumes {
-	ret := core.AggregatedVolumes{}
+func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AccountsAssetsVolumes {
+	ret := core.AccountsAssetsVolumes{}
 	for i := 0; i < len(agg.txs); i++ {
 		tx := agg.txs[i]
 		preVolumes := tx.preCommitVolumes()
 		for account, volumes := range preVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
-					ret[account] = core.Volumes{}
+					ret[account] = core.AssetsVolumes{}
 				}
 				if _, ok := ret[account][asset]; !ok {
 					ret[account][asset] = volume

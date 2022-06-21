@@ -47,8 +47,8 @@ func (l *Ledger) Close(ctx context.Context) error {
 }
 
 type CommitResult struct {
-	PreCommitVolumes      core.AggregatedVolumes
-	PostCommitVolumes     core.AggregatedVolumes
+	PreCommitVolumes      core.AccountsAssetsVolumes
+	PostCommitVolumes     core.AccountsAssetsVolumes
 	GeneratedTransactions []core.Transaction
 	GeneratedLogs         []core.Log
 }
@@ -167,7 +167,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, 
 		return core.Account{}, err
 	}
 
-	volumes, err := l.store.GetAccountVolumes(ctx, address)
+	volumes, err := l.store.GetAssetsVolumes(ctx, address)
 	if err != nil {
 		return account, err
 	}

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 )
 
-type Volume struct {
+type Volumes struct {
 	Input  int64 `json:"input"`
 	Output int64 `json:"output"`
 }
@@ -16,7 +16,7 @@ type VolumesWithBalance struct {
 	Balance int64 `json:"balance"`
 }
 
-func (v Volume) MarshalJSON() ([]byte, error) {
+func (v Volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(VolumesWithBalance{
 		Input:   v.Input,
 		Output:  v.Output,
@@ -24,40 +24,40 @@ func (v Volume) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (v Volume) Balance() int64 {
+func (v Volumes) Balance() int64 {
 	return v.Input - v.Output
 }
 
-type Balances map[string]int64
-type Volumes map[string]Volume
+type AssetsBalances map[string]int64
+type AssetsVolumes map[string]Volumes
 
-func (v Volumes) Balances() Balances {
-	balances := Balances{}
+func (v AssetsVolumes) Balances() AssetsBalances {
+	balances := AssetsBalances{}
 	for asset, vv := range v {
 		balances[asset] = vv.Input - vv.Output
 	}
 	return balances
 }
 
-type AggregatedVolumes map[string]Volumes
+type AccountsAssetsVolumes map[string]AssetsVolumes
 
 // Scan - Implement the database/sql scanner interface
-func (m *AggregatedVolumes) Scan(value interface{}) error {
+func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
 
-	v, err := driver.String.ConvertValue(value)
+	val, err := driver.String.ConvertValue(value)
 	if err != nil {
 		return err
 	}
 
-	*m = AggregatedVolumes{}
-	switch vv := v.(type) {
+	*a = AccountsAssetsVolumes{}
+	switch val := val.(type) {
 	case []uint8:
-		return json.Unmarshal(vv, m)
+		return json.Unmarshal(val, a)
 	case string:
-		return json.Unmarshal([]byte(vv), m)
+		return json.Unmarshal([]byte(val), a)
 	default:
 		panic("not handled type")
 	}
