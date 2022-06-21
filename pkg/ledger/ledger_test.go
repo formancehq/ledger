@@ -69,7 +69,7 @@ func runOnLedger(f func(l *Ledger)) {
 				if err != nil {
 					return err
 				}
-				l, err := NewLedger(name, store, NewInMemoryLocker(), &noOpMonitor{})
+				l, err := NewLedger(store, NewInMemoryLocker(), &noOpMonitor{})
 				if err != nil {
 					panic(err)
 				}
@@ -129,7 +129,7 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			_, _, err := l.Commit(context.Background(), batch)
+			_, err := l.Commit(context.Background(), batch)
 			require.NoError(t, err)
 
 			batch = []core.TransactionData{}
@@ -183,7 +183,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), batch)
+		_, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
 		assert.IsType(t, new(TransactionCommitError), err)
 		assert.IsType(t, new(InsufficientFundError), errors.Unwrap(err))
@@ -228,7 +228,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), batch)
+		_, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
 		assert.IsType(t, new(ConflictError), err)
 	})
@@ -279,10 +279,10 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 		}
 
-		volumes, _, err := l.Commit(context.Background(), batch)
+		res, err := l.Commit(context.Background(), batch)
 		assert.NoError(t, err)
 
-		assert.EqualValues(t, volumes, core.AggregatedVolumes{
+		assert.EqualValues(t, core.AggregatedVolumes{
 			"world": core.Volumes{
 				"USD": {
 					Output: 100,
@@ -305,13 +305,13 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Input: 150,
 				},
 			},
-		})
+		}, res.PostCommitVolumes)
 	})
 }
 
 func TestBalance(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{
+		_, err := l.Commit(context.Background(), []core.TransactionData{
 			{
 				Postings: []core.Posting{
 					{
@@ -342,10 +342,10 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
-		_, _, err = l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err = l.Commit(context.Background(), []core.TransactionData{tx})
 		assert.Error(t, err)
 	})
 }
@@ -378,7 +378,7 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			// We have to create at least one transaction to retrieve an account from GetAccounts store method
-			_, _, err := l.Commit(context.Background(), []core.TransactionData{
+			_, err := l.Commit(context.Background(), []core.TransactionData{
 				{
 					Postings: core.Postings{
 						{
@@ -408,7 +408,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -448,7 +448,7 @@ func TestTransactionMetadata(t *testing.T) {
 
 func TestSaveTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -479,7 +479,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "bar",
 			Postings: []core.Posting{
 				{
@@ -515,7 +515,7 @@ func TestGetTransactions(t *testing.T) {
 			},
 		}
 
-		_, _, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
 		res, err := l.GetTransactions(context.Background())
@@ -529,7 +529,7 @@ func TestRevertTransaction(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
 		revertAmt := int64(100)
 
-		_, txs, err := l.Commit(context.Background(), []core.TransactionData{{
+		res, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -547,7 +547,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), txs[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, core.Postings{
@@ -559,10 +559,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		assert.EqualValues(t, fmt.Sprintf(`"%d"`, txs[0].ID),
+		assert.EqualValues(t, fmt.Sprintf(`"%d"`, res.GeneratedTransactions[0].ID),
 			string(revertTx.Metadata[core.RevertMetadataSpecKey()]))
 
-		tx, err := l.GetTransaction(context.Background(), txs[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
 		assert.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
@@ -598,7 +598,7 @@ func BenchmarkTransaction1(b *testing.B) {
 				},
 			})
 
-			_, _, err := l.Commit(context.Background(), txs)
+			_, err := l.Commit(context.Background(), txs)
 			require.NoError(b, err)
 		}
 	})
@@ -623,7 +623,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					})
 				}
 
-				_, _, err := l.Commit(context.Background(), txs)
+				_, err := l.Commit(context.Background(), txs)
 				require.NoError(b, err)
 			}
 		}
