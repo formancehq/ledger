@@ -69,7 +69,6 @@ func NewResolver(storageFactory storage.Driver, options ...ResolverOption) *Reso
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
-
 	store, _, err := r.storageDriver.GetStore(ctx, name, true)
 	if err != nil {
 		return nil, errors.Wrap(err, "retrieving ledger store")
@@ -79,14 +78,13 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	_, ok := r.initializedStores[name]
 	r.lock.RUnlock()
 	if ok {
-		goto ret
+		return NewLedger(store, r.locker, r.monitor)
 	}
 
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	_, ok = r.initializedStores[name]
-	if !ok {
+	if _, ok = r.initializedStores[name]; !ok {
 		_, err = store.Initialize(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "initializing ledger store")
@@ -94,8 +92,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.initializedStores[name] = struct{}{}
 	}
 
-ret:
-	return NewLedger(name, store, r.locker, r.monitor)
+	return NewLedger(store, r.locker, r.monitor)
 }
 
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`

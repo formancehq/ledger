@@ -141,7 +141,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		fn = l.(*ledger.Ledger).CommitPreview
 	}
 
-	_, txs, err := fn(c.Request.Context(), []core.TransactionData{t})
+	res, err := fn(c.Request.Context(), []core.TransactionData{t})
 	if err != nil {
 		ResponseError(c, err)
 		return
@@ -152,7 +152,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
-	respondWithData[[]core.Transaction](c, status, txs)
+	respondWithData[[]core.Transaction](c, status, res.GeneratedTransactions)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -225,11 +225,11 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	_, txs, err := l.(*ledger.Ledger).Commit(c.Request.Context(), t.Transactions)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), t.Transactions)
 	if err != nil {
 		ResponseError(c, err)
 		return
 	}
 
-	respondWithData[[]core.Transaction](c, http.StatusOK, txs)
+	respondWithData[[]core.Transaction](c, http.StatusOK, res.GeneratedTransactions)
 }
