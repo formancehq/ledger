@@ -1,6 +1,11 @@
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
+default_stages: [commit]
 repos:
+- repo: https://github.com/lumapps/commit-message-validator
+  rev: dc828d77125198da38a7584d1038125895a9c240
+  hooks:
+    - id: commit-message-validator
+      stages: [commit-msg]
+      args: [--allow-temp]
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v3.2.0
   hooks:
