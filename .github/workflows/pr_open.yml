@@ -25,6 +25,9 @@ jobs:
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
+    needs:
+      - Pr
+      - Commit
     steps:
       - name: Get latest release of Numary/Control
         uses: rez0n/actions-github-release@main
