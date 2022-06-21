@@ -18,7 +18,7 @@ install: build
 	golangci-lint --version
 
 lint:
-	golangci-lint run --fix
+	golangci-lint run -v --fix
 
 test: test-sqlite test-postgres
 	@go tool cover -html=coverage-sqlite.out -o coverage-sqlite.html
