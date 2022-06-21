@@ -5,7 +5,6 @@ NUMARY_STORAGE_POSTGRES_CONN_STRING="postgresql://ledger:ledger@127.0.0.1/ledger
 FAILFAST=-failfast
 TIMEOUT=10m
 RUN=".*"
-ENABLED_LINTERS=gofmt,gci
 
 all: lint test
 
@@ -19,7 +18,7 @@ install: build
 	golangci-lint --version
 
 lint:
-	golangci-lint run -v -E $(ENABLED_LINTERS) --fix $(PKG)
+	golangci-lint run --fix
 
 test: test-sqlite test-postgres
 	@go tool cover -html=coverage-sqlite.out -o coverage-sqlite.html
