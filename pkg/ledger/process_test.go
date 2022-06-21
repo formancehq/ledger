@@ -60,23 +60,23 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}
 
-			expectedPreCommitVol := core.AggregatedVolumes{
-				"alice": core.Volumes{
+			expectedPreCommitVol := core.AccountsAssetsVolumes{
+				"alice": core.AssetsVolumes{
 					"USD": {},
 					"EUR": {},
 				},
-				"toto": core.Volumes{
+				"toto": core.AssetsVolumes{
 					"USD": {},
 					"EUR": {},
 				},
-				"world": core.Volumes{
+				"world": core.AssetsVolumes{
 					"USD": {},
 					"EUR": {},
 				},
 			}
 
-			expectedPostCommitVol := core.AggregatedVolumes{
-				"alice": core.Volumes{
+			expectedPostCommitVol := core.AccountsAssetsVolumes{
+				"alice": core.AssetsVolumes{
 					"USD": {
 						Input:  worldAliceUSD,
 						Output: aliceTotoUSD,
@@ -85,7 +85,7 @@ func TestLedger_processTx(t *testing.T) {
 						Input: worldAliceEUR + totoAliceEUR,
 					},
 				},
-				"toto": core.Volumes{
+				"toto": core.AssetsVolumes{
 					"USD": {
 						Input: worldTotoUSD + aliceTotoUSD,
 					},
@@ -94,7 +94,7 @@ func TestLedger_processTx(t *testing.T) {
 						Output: totoAliceEUR,
 					},
 				},
-				"world": core.Volumes{
+				"world": core.AssetsVolumes{
 					"USD": {
 						Output: worldTotoUSD + worldAliceUSD,
 					},
@@ -158,76 +158,76 @@ func TestLedger_processTx(t *testing.T) {
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[0]}},
 						ID:              0,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"toto":  core.Volumes{"USD": core.Volume{Input: 0, Output: 0}},
-							"world": core.Volumes{"USD": core.Volume{Input: 0, Output: 0}}},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"toto":  core.Volumes{"USD": core.Volume{Input: worldTotoUSD, Output: 0}},
-							"world": core.Volumes{"USD": core.Volume{Input: 0, Output: worldTotoUSD}}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}},
+							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: worldTotoUSD, Output: 0}},
+							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: worldTotoUSD}}},
 					},
 					{
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[1]}},
 						ID:              1,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"USD": core.Volume{Input: 0, Output: worldTotoUSD}},
-							"alice": core.Volumes{"USD": core.Volume{Input: 0, Output: 0}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: worldTotoUSD}},
+							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}},
 						},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"USD": core.Volume{Input: 0, Output: worldTotoUSD + worldAliceUSD}},
-							"alice": core.Volumes{"USD": core.Volume{Input: worldAliceUSD, Output: 0}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: worldTotoUSD + worldAliceUSD}},
+							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: worldAliceUSD, Output: 0}},
 						},
 					},
 					{
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[2]}},
 						ID:              2,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"alice": core.Volumes{"USD": core.Volume{Input: worldAliceUSD, Output: 0}},
-							"toto":  core.Volumes{"USD": core.Volume{Input: worldTotoUSD, Output: 0}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: worldAliceUSD, Output: 0}},
+							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: worldTotoUSD, Output: 0}},
 						},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"alice": core.Volumes{"USD": core.Volume{Input: worldAliceUSD, Output: aliceTotoUSD}},
-							"toto":  core.Volumes{"USD": core.Volume{Input: worldTotoUSD + aliceTotoUSD, Output: 0}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: worldAliceUSD, Output: aliceTotoUSD}},
+							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: worldTotoUSD + aliceTotoUSD, Output: 0}},
 						},
 					},
 					{
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[3]}},
 						ID:              3,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"EUR": core.Volume{Input: 0, Output: 0}},
-							"toto":  core.Volumes{"EUR": core.Volume{Input: 0, Output: 0}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
+							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
 						},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"EUR": core.Volume{Input: 0, Output: worldTotoEUR}},
-							"toto":  core.Volumes{"EUR": core.Volume{Input: worldTotoEUR, Output: 0}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: worldTotoEUR}},
+							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: worldTotoEUR, Output: 0}},
 						},
 					},
 					{
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[4]}},
 						ID:              4,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"EUR": core.Volume{Input: 0, Output: worldTotoEUR}},
-							"alice": core.Volumes{"EUR": core.Volume{Input: 0, Output: 0}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: worldTotoEUR}},
+							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
 						},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"world": core.Volumes{"EUR": core.Volume{Input: 0, Output: worldTotoEUR + worldAliceEUR}},
-							"alice": core.Volumes{"EUR": core.Volume{Input: worldAliceEUR, Output: 0}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: worldTotoEUR + worldAliceEUR}},
+							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: worldAliceEUR, Output: 0}},
 						},
 					},
 					{
 						TransactionData: core.TransactionData{Postings: core.Postings{postings[5]}},
 						ID:              5,
 						Timestamp:       time.Now().UTC().Format(time.RFC3339),
-						PreCommitVolumes: core.AggregatedVolumes{
-							"toto":  core.Volumes{"EUR": core.Volume{Input: worldTotoEUR, Output: 0}},
-							"alice": core.Volumes{"EUR": core.Volume{Input: worldAliceEUR, Output: 0}},
+						PreCommitVolumes: core.AccountsAssetsVolumes{
+							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: worldTotoEUR, Output: 0}},
+							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: worldAliceEUR, Output: 0}},
 						},
-						PostCommitVolumes: core.AggregatedVolumes{
-							"toto":  core.Volumes{"EUR": core.Volume{Input: worldTotoEUR, Output: totoAliceEUR}},
-							"alice": core.Volumes{"EUR": core.Volume{Input: worldAliceEUR + totoAliceEUR, Output: 0}},
+						PostCommitVolumes: core.AccountsAssetsVolumes{
+							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: worldTotoEUR, Output: totoAliceEUR}},
+							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: worldAliceEUR + totoAliceEUR, Output: 0}},
 						},
 					},
 				}
@@ -294,8 +294,8 @@ func TestLedger_processTx(t *testing.T) {
 			result, err := l.processTx(context.Background(), []core.TransactionData{})
 			assert.NoError(t, err)
 			assert.Equal(t, &CommitResult{
-				PreCommitVolumes:      core.AggregatedVolumes{},
-				PostCommitVolumes:     core.AggregatedVolumes{},
+				PreCommitVolumes:      core.AccountsAssetsVolumes{},
+				PostCommitVolumes:     core.AccountsAssetsVolumes{},
 				GeneratedTransactions: []core.Transaction{},
 				GeneratedLogs:         []core.Log{},
 			}, result)

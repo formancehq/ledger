@@ -71,7 +71,7 @@ func BenchmarkStore(b *testing.B) {
 				fn:   testBenchmarkLastLog,
 			},
 			{
-				name: "GetAccountVolumes",
+				name: "GetAssetsVolumes",
 				fn:   testBenchmarkAggregateVolumes,
 			},
 			{
@@ -222,7 +222,7 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_, err := store.GetAccountVolumes(context.Background(), "world")
+		_, err := store.GetAssetsVolumes(context.Background(), "world")
 		assert.NoError(b, err)
 	}
 

@@ -211,7 +211,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 						require.NoError(t, store.Close(ctx))
 					}(store, ctx)
 
-					_, err = store.Initialize(context.Background())
+					_, err = store.Initialize(ctx)
 					return err
 				},
 			})

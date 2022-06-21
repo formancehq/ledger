@@ -194,21 +194,21 @@ func TestGetTransaction(t *testing.T) {
 
 				txs, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 				tx := txs[0]
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {},
 					},
 				}, tx.PreCommitVolumes)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,
 						},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {
 							Input: 1000,
 						},
@@ -232,21 +232,21 @@ func TestGetTransaction(t *testing.T) {
 				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
 				assert.EqualValues(t, "ref", ret.Reference)
 				assert.NotEmpty(t, ret.Timestamp)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {},
 					},
 				}, ret.PreCommitVolumes)
-				assert.EqualValues(t, core.AggregatedVolumes{
-					"world": core.Volumes{
+				assert.EqualValues(t, core.AccountsAssetsVolumes{
+					"world": core.AssetsVolumes{
 						"USD": {
 							Output: 1000,
 						},
 					},
-					"central_bank": core.Volumes{
+					"central_bank": core.AssetsVolumes{
 						"USD": {
 							Input: 1000,
 						},

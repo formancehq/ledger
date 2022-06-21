@@ -117,9 +117,9 @@ func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s uint64) (tx
 	return
 }
 
-func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx core.Account, err error) {
+func (o *openTelemetryStorage) GetAccount(ctx context.Context, accountAddress string) (acc core.Account, err error) {
 	handlingErr := o.handle(ctx, "GetAccount", func(ctx context.Context) error {
-		tx, err = o.underlying.GetAccount(ctx, s)
+		acc, err = o.underlying.GetAccount(ctx, accountAddress)
 		return err
 	})
 	if handlingErr != nil {
@@ -128,24 +128,24 @@ func (o *openTelemetryStorage) GetAccount(ctx context.Context, s string) (tx cor
 	return
 }
 
-func (o *openTelemetryStorage) GetAccountVolumes(ctx context.Context, s string) (volumes core.Volumes, err error) {
-	handlingErr := o.handle(ctx, "GetAccountVolumes", func(ctx context.Context) error {
-		volumes, err = o.underlying.GetAccountVolumes(ctx, s)
+func (o *openTelemetryStorage) GetAssetsVolumes(ctx context.Context, accountAddress string) (av core.AssetsVolumes, err error) {
+	handlingErr := o.handle(ctx, "GetAssetsVolumes", func(ctx context.Context) error {
+		av, err = o.underlying.GetAssetsVolumes(ctx, accountAddress)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry GetAccountVolumes: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetAssetsVolumes: %s", handlingErr)
 	}
 	return
 }
 
-func (o *openTelemetryStorage) GetAccountVolume(ctx context.Context, account, asset string) (volume core.Volume, err error) {
-	handlingErr := o.handle(ctx, "GetAccountVolume", func(ctx context.Context) error {
-		volume, err = o.underlying.GetAccountVolume(ctx, account, asset)
+func (o *openTelemetryStorage) GetVolumes(ctx context.Context, accountAddress, asset string) (v core.Volumes, err error) {
+	handlingErr := o.handle(ctx, "GetVolumes", func(ctx context.Context) error {
+		v, err = o.underlying.GetVolumes(ctx, accountAddress, asset)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry GetAccountVolumes: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetVolumes: %s", handlingErr)
 	}
 	return
 }

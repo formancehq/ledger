@@ -64,10 +64,10 @@ type Store interface {
 	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
 	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.Transaction], error)
-	GetTransaction(context.Context, uint64) (core.Transaction, error)
-	GetAccount(context.Context, string) (core.Account, error)
-	GetAccountVolumes(context.Context, string) (core.Volumes, error)
-	GetAccountVolume(ctx context.Context, account, asset string) (core.Volume, error)
+	GetTransaction(ctx context.Context, txid uint64) (core.Transaction, error)
+	GetAccount(ctx context.Context, accountAddress string) (core.Account, error)
+	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
+	GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
 
@@ -85,8 +85,8 @@ type Store interface {
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
-func (n noOpStore) GetAccountVolume(ctx context.Context, account, asset string) (core.Volume, error) {
-	return core.Volume{}, nil
+func (n noOpStore) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
+	return core.Volumes{}, nil
 }
 
 func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
@@ -113,15 +113,15 @@ func (n noOpStore) GetTransactions(ctx context.Context, q TransactionsQuery) (sh
 	return sharedapi.Cursor[core.Transaction]{}, nil
 }
 
-func (n noOpStore) GetTransaction(ctx context.Context, s uint64) (core.Transaction, error) {
+func (n noOpStore) GetTransaction(ctx context.Context, txid uint64) (core.Transaction, error) {
 	return core.Transaction{}, nil
 }
 
-func (n noOpStore) GetAccount(ctx context.Context, s string) (core.Account, error) {
+func (n noOpStore) GetAccount(ctx context.Context, accountAddress string) (core.Account, error) {
 	return core.Account{}, nil
 }
 
-func (n noOpStore) GetAccountVolumes(ctx context.Context, s string) (core.Volumes, error) {
+func (n noOpStore) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
 	return nil, nil
 }
 

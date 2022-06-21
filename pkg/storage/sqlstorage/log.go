@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/numary/go-libs/sharedlogging"
 	"time"
 
 	json "github.com/gibson042/canonicaljson-go"
@@ -59,6 +60,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 		}
 	}
 
+	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	_, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
