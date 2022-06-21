@@ -108,7 +108,7 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          args: -v --timeout 10m -E gofmt,gci
+          args: --fix
   Build:
     name: 'Build'
     needs:
