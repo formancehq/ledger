@@ -3,6 +3,17 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
 jobs:
+  Commit:
+    name: 'Check Commit Style'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Commit message validation
+        uses: lumapps/commit-message-validator@dc828d77125198da38a7584d1038125895a9c240
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
