@@ -49,7 +49,7 @@ func (p *Postings) Scan(value interface{}) error {
 	}
 }
 
-var addressRegexp = regexp.MustCompile("^[a-zA-Z_0-9]+(:[a-zA-Z_0-9]+){0,}$")
+var addressRegexp = regexp.MustCompile(`^\w+(:\w+)*$`)
 
 func ValidateAddress(addr string) bool {
 	return addressRegexp.Match([]byte(addr))

@@ -80,83 +80,89 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 }
 
 func PostTransaction(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions", Buffer(t, tx))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions", testingLedger), Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions?preview=true", Buffer(t, tx))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions?preview=true", testingLedger), Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/metadata", id), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions/%d/metadata", testingLedger, id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func CountTransactions(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodHead, "/"+testingLedger+"/transactions", nil)
+	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/transactions", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransactions(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/transactions", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/"+testingLedger+"/transactions/%d", id), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions/%d", testingLedger, id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func CountAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodHead, "/"+testingLedger+"/accounts", nil)
+	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/accounts", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/accounts", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/accounts/"+addr, nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts/%s", testingLedger, addr), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/accounts/%s/metadata", addr), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/accounts/%s/metadata", testingLedger, addr), Buffer(t, m))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func NewRequestOnLedger(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", testingLedger, path), Buffer(t, body))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetStats(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/stats", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/stats", testingLedger), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func LoadMapping(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/mapping", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/mapping", testingLedger), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func SaveMapping(t *testing.T, handler http.Handler, m core.Mapping) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPut, "/"+testingLedger+"/mapping", Buffer(t, m))
+	req, rec := NewRequest(http.MethodPut, fmt.Sprintf("/%s/mapping", testingLedger), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
@@ -168,7 +174,7 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/script", Buffer(t, s))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/script", testingLedger), Buffer(t, s))
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec

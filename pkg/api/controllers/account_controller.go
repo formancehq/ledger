@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -115,11 +114,21 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid address"))
+		return
+	}
+
 	acc, err := l.(*ledger.Ledger).GetAccount(
 		c.Request.Context(),
 		c.Param("address"))
 	if err != nil {
 		ResponseError(c, err)
+		return
+	}
+
+	if acc.Address != c.Param("address") {
+		ResponseError(c, ledger.NewNotFoundError("unknown account"))
 		return
 	}
 
@@ -129,14 +138,24 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var m core.Metadata
-	if err := c.ShouldBindJSON(&m); err != nil {
-		ResponseError(c, err)
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid address"))
 		return
 	}
 
-	if !core.ValidateAddress(c.Param("address")) {
-		ResponseError(c, errors.New("invalid address"))
+	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
+	if err != nil {
+		ResponseError(c, err)
+		return
+	}
+	if acc.Address != c.Param("address") {
+		ResponseError(c, ledger.NewNotFoundError("unknown account"))
+		return
+	}
+
+	var m core.Metadata
+	if err := c.ShouldBindJSON(&m); err != nil {
+		ResponseError(c, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 

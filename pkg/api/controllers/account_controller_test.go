@@ -168,6 +168,13 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
+				t.Run("invalid pagination_token not base64", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{"\n*@"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
 				t.Run("filter by balance >= 50 with default operator", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
 						"balance": []string{"50"},
@@ -308,30 +315,88 @@ func TestGetAccount(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, api, "alice", core.Metadata{
-					"foo": json.RawMessage(`"bar"`),
-				})
+				rsp = internal.PostAccountMetadata(t, api, "alice",
+					core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.GetAccount(api, "alice")
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp, _ := internal.DecodeSingleResponse[core.Account](t, rsp.Body)
+				t.Run("valid address", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "alice")
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp, _ := internal.DecodeSingleResponse[core.Account](t, rsp.Body)
 
-				assert.EqualValues(t, core.Account{
-					Address: "alice",
-					Type:    "",
-					Balances: map[string]int64{
-						"USD": 100,
-					},
-					Volumes: core.Volumes{
-						"USD": {
-							Input: 100,
+					assert.EqualValues(t, core.Account{
+						Address: "alice",
+						Type:    "",
+						Balances: core.Balances{
+							"USD": 100,
+						},
+						Volumes: core.Volumes{
+							"USD": {
+								Input: 100,
+							},
+						},
+						Metadata: core.Metadata{
+							"foo": json.RawMessage(`"bar"`),
+						},
+					}, resp)
+				})
+
+				t.Run("malformed address", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "accounts::alice")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("unknown account", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "bob")
+					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostAccountMetadata(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "alice",
+							Amount:      100,
+							Asset:       "USD",
 						},
 					},
-					Metadata: core.Metadata{
-						"foo": json.RawMessage(`"bar"`),
-					},
-				}, resp)
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				t.Run("valid request", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "alice",
+						core.Metadata{
+							"foo": json.RawMessage(`"bar"`),
+						})
+					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("malformed address", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "accounts::alice", core.Metadata{})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("unknown account", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "unknownAccount", core.Metadata{})
+					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("invalid body", func(t *testing.T) {
+					rsp = internal.NewRequestOnLedger(t, api, "/accounts/alice/metadata", "invalid")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
 
 				return nil
 			},

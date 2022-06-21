@@ -167,6 +167,18 @@ paths:
                 type: object
                 required:
                   - data
+        "400":
+          description: "Invalid parameters"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: "Account not found"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/accounts/{address}/metadata:
     post:
@@ -200,8 +212,17 @@ paths:
         "204":
           description: Empty response
         "400":
-          description: ""
-          content: {}
+          description: "Invalid parameters"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: "Account not found"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/mapping:
     get:
