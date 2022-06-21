@@ -1,11 +1,10 @@
-default_stages: [commit]
 repos:
-- repo: https://github.com/lumapps/commit-message-validator
-  rev: dc828d77125198da38a7584d1038125895a9c240
+- repo: https://github.com/compilerla/conventional-pre-commit
+  rev: v1.3.0
   hooks:
-    - id: commit-message-validator
-      stages: [commit-msg]
-      args: [--allow-temp]
+    - id: conventional-pre-commit
+#      stages: [commit-msg]
+      args: [] # optional: list of Conventional Commits types to allow
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v3.2.0
   hooks:
