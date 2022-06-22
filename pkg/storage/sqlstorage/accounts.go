@@ -145,6 +145,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 
 	return sharedapi.Cursor[core.Account]{
 		PageSize: len(accounts),
+		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,
 		Data:     accounts,
