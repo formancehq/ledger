@@ -5,12 +5,15 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -168,11 +171,50 @@ func TestPostTransactions(t *testing.T) {
 					}
 					rsp := internal.PostTransaction(t, api, tc.transactions[len(tc.transactions)-1])
 					assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					if internal.Decode(t, rsp.Body, &err) {
+						assert.Equal(t, tc.expectedErrorCode, err.ErrorCode)
+					}
 					return nil
 				},
 			})
 		}))
 	}
+}
+
+func TestPostTransactionInvalid(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("no JSON", func(t *testing.T) {
+					rsp := internal.NewPostOnLedger(t, api, "/transactions", "invalid")
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid transaction format",
+					}, err)
+				})
+
+				t.Run("JSON without postings", func(t *testing.T) {
+					rsp := internal.NewPostOnLedger(t, api, "/transactions", core.Account{Address: "addr"})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "transaction has no postings",
+					}, err)
+				})
+
+				return nil
+			},
+		})
+	}))
 }
 
 func TestGetTransaction(t *testing.T) {
@@ -192,66 +234,69 @@ func TestGetTransaction(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				txs, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
-				tx := txs[0]
-				assert.EqualValues(t, core.AccountsAssetsVolumes{
-					"world": core.AssetsVolumes{
-						"USD": {},
-					},
-					"central_bank": core.AssetsVolumes{
-						"USD": {},
-					},
-				}, tx.PreCommitVolumes)
-				assert.EqualValues(t, core.AccountsAssetsVolumes{
-					"world": core.AssetsVolumes{
-						"USD": {
-							Output: 1000,
-						},
-					},
-					"central_bank": core.AssetsVolumes{
-						"USD": {
-							Input: 1000,
-						},
-					},
-				}, tx.PostCommitVolumes)
+				t.Run("valid txid", func(t *testing.T) {
+					rsp = internal.GetTransaction(api, 0)
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.GetTransaction(api, tx.ID)
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
-
-				assert.EqualValues(t, core.Postings{
-					{
-						Source:      "world",
-						Destination: "central_bank",
-						Amount:      1000,
-						Asset:       "USD",
-					},
-				}, ret.Postings)
-				assert.EqualValues(t, 0, ret.ID)
-				assert.EqualValues(t, core.Metadata{}, ret.Metadata)
-				assert.EqualValues(t, "ref", ret.Reference)
-				assert.NotEmpty(t, ret.Timestamp)
-				assert.EqualValues(t, core.AccountsAssetsVolumes{
-					"world": core.AssetsVolumes{
-						"USD": {},
-					},
-					"central_bank": core.AssetsVolumes{
-						"USD": {},
-					},
-				}, ret.PreCommitVolumes)
-				assert.EqualValues(t, core.AccountsAssetsVolumes{
-					"world": core.AssetsVolumes{
-						"USD": {
-							Output: 1000,
+					ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
+					assert.EqualValues(t, core.Postings{
+						{
+							Source:      "world",
+							Destination: "central_bank",
+							Amount:      1000,
+							Asset:       "USD",
 						},
-					},
-					"central_bank": core.AssetsVolumes{
-						"USD": {
-							Input: 1000,
+					}, ret.Postings)
+					assert.EqualValues(t, 0, ret.ID)
+					assert.EqualValues(t, core.Metadata{}, ret.Metadata)
+					assert.EqualValues(t, "ref", ret.Reference)
+					assert.NotEmpty(t, ret.Timestamp)
+					assert.EqualValues(t, core.AccountsAssetsVolumes{
+						"world": core.AssetsVolumes{
+							"USD": {},
 						},
-					},
-				}, ret.PostCommitVolumes)
+						"central_bank": core.AssetsVolumes{
+							"USD": {},
+						},
+					}, ret.PreCommitVolumes)
+					assert.EqualValues(t, core.AccountsAssetsVolumes{
+						"world": core.AssetsVolumes{
+							"USD": {
+								Output: 1000,
+							},
+						},
+						"central_bank": core.AssetsVolumes{
+							"USD": {
+								Input: 1000,
+							},
+						},
+					}, ret.PostCommitVolumes)
+				})
+
+				t.Run("unknown txid", func(t *testing.T) {
+					rsp = internal.GetTransaction(api, 42)
+					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrNotFound,
+						ErrorMessage: "transaction not found",
+					}, err)
+				})
+
+				t.Run("invalid txid", func(t *testing.T) {
+					rsp = internal.NewGetOnLedger(api, "/transactions/invalid")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid transaction ID",
+					}, err)
+				})
+
 				return nil
 			},
 		})
@@ -274,18 +319,6 @@ func TestPreviewTransaction(t *testing.T) {
 					Reference: "ref",
 				})
 				assert.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
-				return nil
-			},
-		})
-	}))
-}
-
-func TestNotFoundTransaction(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				rsp := internal.GetTransaction(api, 0)
-				assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 				return nil
 			},
 		})
@@ -381,6 +414,20 @@ func TestGetTransactions(t *testing.T) {
 					assert.Equal(t, cursor.Data[0].ID, uint64(0))
 				})
 
+				t.Run("invalid after", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"after": []string{"invalid"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'after'",
+					}, err)
+				})
+
 				t.Run("reference", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
 						"reference": []string{"ref:001"},
@@ -463,6 +510,13 @@ func TestGetTransactions(t *testing.T) {
 						"start_time": []string{"invalid time"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'start_time'",
+					}, err)
 				})
 
 				t.Run("invalid end time", func(t *testing.T) {
@@ -470,6 +524,13 @@ func TestGetTransactions(t *testing.T) {
 						"end_time": []string{"invalid time"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'end_time'",
+					}, err)
 				})
 
 				to := sqlstorage.TxsPaginationToken{}
@@ -488,6 +549,13 @@ func TestGetTransactions(t *testing.T) {
 						"after":            []string{"1"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "no other query params can be set with 'pagination_token'",
+					}, err)
 				})
 
 				t.Run("invalid pagination_token", func(t *testing.T) {
@@ -495,6 +563,27 @@ func TestGetTransactions(t *testing.T) {
 						"pagination_token": []string{"invalid"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'pagination_token'",
+					}, err)
+				})
+
+				t.Run("invalid pagination_token not base64", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"pagination_token": []string{"@!/"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'pagination_token'",
+					}, err)
 				})
 
 				return nil
@@ -805,38 +894,62 @@ func TestPostTransactionMetadata(t *testing.T) {
 						},
 					},
 				})
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				tx, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+				t.Run("valid", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
+					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
-					"foo": json.RawMessage(`"bar"`),
+					rsp = internal.GetTransaction(api, 0)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
+					assert.EqualValues(t, core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					}, ret.Metadata)
 				})
-				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
-					return nil
-				}
 
-				rsp = internal.GetTransaction(api, tx[0].ID)
-				if !assert.Equal(t, http.StatusOK, rsp.Result().StatusCode) {
-					return nil
-				}
+				t.Run("different metadata on same key should replace it", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
+						"foo": json.RawMessage(`"baz"`),
+					})
+					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
-
-				if !assert.EqualValues(t, core.Metadata{
-					"foo": json.RawMessage(`"bar"`),
-				}, ret.Metadata) {
-					return nil
-				}
-
-				rsp = internal.PostTransactionMetadata(t, api, tx[0].ID, core.Metadata{
-					"foo": json.RawMessage(`"baz"`),
+					rsp = internal.GetTransaction(api, 0)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					ret, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
+					assert.EqualValues(t, core.Metadata{
+						"foo": json.RawMessage(`"baz"`),
+					}, ret.Metadata)
 				})
-				if !assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode) {
-					return nil
-				}
+
+				t.Run("no JSON", func(t *testing.T) {
+					rsp = internal.NewPostOnLedger(t, api, "/transactions/0/metadata", "invalid")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid metadata format",
+					}, err)
+				})
+
+				t.Run("invalid txid", func(t *testing.T) {
+					rsp = internal.NewPostOnLedger(t, api, "/transactions/invalid/metadata", core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid transaction ID",
+					}, err)
+				})
+
 				return nil
 			},
 		})
@@ -870,6 +983,222 @@ func TestTooManyClient(t *testing.T) {
 
 				rsp := internal.GetTransactions(api, url.Values{})
 				assert.Equal(t, http.StatusServiceUnavailable, rsp.Result().StatusCode)
+				return nil
+			},
+		})
+	}))
+}
+
+func TestRevertTransaction(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "alice",
+							Amount:      100,
+							Asset:       "USD",
+						},
+					},
+					Reference: "ref:23434656",
+					Metadata: map[string]json.RawMessage{
+						"foo1": json.RawMessage(`"bar1"`),
+					},
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				rsp = internal.PostTransaction(t, api, core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bob",
+							Amount:      100,
+							Asset:       "USD",
+						},
+					},
+					Reference: "ref:534646",
+					Metadata: map[string]json.RawMessage{
+						"foo2": json.RawMessage(`"bar2"`),
+					},
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				rsp = internal.PostTransaction(t, api, core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "alice",
+							Destination: "bob",
+							Amount:      3,
+							Asset:       "USD",
+						},
+					},
+					Reference: "ref:578632",
+					Metadata: map[string]json.RawMessage{
+						"foo3": json.RawMessage(`"bar3"`),
+					},
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				rsp = internal.GetTransactions(api, url.Values{})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+				require.Len(t, cursor.Data, 3)
+				require.Equal(t, uint64(2), cursor.Data[0].ID)
+
+				revertedTxID := cursor.Data[0].ID
+
+				t.Run("first revert should succeed", func(t *testing.T) {
+					rsp := internal.RevertTransaction(api, revertedTxID)
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res, _ := internal.DecodeSingleResponse[core.Transaction](t, rsp.Body)
+					assert.Equal(t, revertedTxID+1, res.ID)
+					assert.Equal(t, core.Metadata{
+						core.RevertMetadataSpecKey(): json.RawMessage(
+							fmt.Sprintf(`"%d"`, revertedTxID)),
+					}, res.Metadata)
+
+					revertedByTxID := res.ID
+
+					rsp = internal.GetTransactions(api, url.Values{})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+					require.Len(t, cursor.Data, 4)
+					require.Equal(t, revertedByTxID, cursor.Data[0].ID)
+					require.Equal(t, revertedTxID, cursor.Data[1].ID)
+
+					spec, err := json.Marshal(
+						core.RevertedMetadataSpecValue{
+							By: strconv.FormatUint(revertedByTxID, 10),
+						})
+					require.NoError(t, err)
+
+					assert.Equal(t, core.Metadata{
+						"foo3":                         json.RawMessage(`"bar3"`),
+						core.RevertedMetadataSpecKey(): spec,
+					}, cursor.Data[1].Metadata)
+				})
+
+				t.Run("transaction not found", func(t *testing.T) {
+					rsp := internal.RevertTransaction(api, uint64(42))
+					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode, rsp.Body.String())
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrNotFound,
+						ErrorMessage: "transaction not found",
+					}, err)
+				})
+
+				t.Run("second revert should fail", func(t *testing.T) {
+					rsp := internal.RevertTransaction(api, revertedTxID)
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "transaction already reverted",
+					}, err)
+				})
+
+				t.Run("invalid transaction ID format", func(t *testing.T) {
+					rsp = internal.NewPostOnLedger(t, api, "/transactions/invalid/revert", nil)
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid transaction ID",
+					}, err)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionsBatch(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("valid", func(t *testing.T) {
+					txs := []core.TransactionData{
+						{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "alice",
+									Amount:      100,
+									Asset:       "USD",
+								},
+							},
+						},
+						{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bob",
+									Amount:      100,
+									Asset:       "USD",
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: txs,
+					})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+					assert.Len(t, res, 2)
+					assert.Equal(t, txs[0].Postings, res[0].Postings)
+					assert.Equal(t, txs[1].Postings, res[1].Postings)
+				})
+
+				t.Run("no postings in second tx", func(t *testing.T) {
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: []core.TransactionData{
+							{
+								Postings: core.Postings{
+									{
+										Source:      "world",
+										Destination: "alice",
+										Amount:      100,
+										Asset:       "USD",
+									},
+								},
+							},
+							{
+								Postings: core.Postings{},
+							},
+						},
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "processing tx 1: transaction has no postings",
+					}, err)
+				})
+
+				t.Run("invalid transactions format", func(t *testing.T) {
+					rsp := internal.NewPostOnLedger(t, api, "/transactions/batch", "invalid")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid transactions format",
+					}, err)
+				})
+
 				return nil
 			},
 		})

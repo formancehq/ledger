@@ -99,7 +99,15 @@ func (l *Ledger) CountTransactions(ctx context.Context, m ...storage.TxQueryModi
 }
 
 func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
-	return l.store.GetTransaction(ctx, id)
+	tx, err := l.store.GetTransaction(ctx, id)
+	if err != nil {
+		return core.Transaction{}, err
+	}
+	if len(tx.Postings) == 0 {
+		return core.Transaction{}, NewNotFoundError("transaction not found")
+	}
+
+	return tx, nil
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
@@ -115,10 +123,16 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
-		return nil, err
+		return core.Transaction{}, err
+	}
+	if len(tx.Postings) == 0 {
+		return core.Transaction{}, NewNotFoundError("transaction not found")
+	}
+	if tx.IsReverted() {
+		return core.Transaction{}, NewValidationError("transaction already reverted")
 	}
 
 	rt := tx.Reverse()
@@ -127,13 +141,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
-		return nil, NewLockError(err)
+		return core.Transaction{}, NewLockError(err)
 	}
 	defer unlock(ctx)
 
 	result, err := l.processTx(ctx, []core.TransactionData{rt})
 	if err != nil {
-		return nil, err
+		return core.Transaction{}, err
 	}
 
 	logs := result.GeneratedLogs
@@ -144,11 +158,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}))
 
 	if err = l.store.AppendLog(ctx, logs...); err != nil {
-		return nil, err
+		return core.Transaction{}, err
 	}
 
 	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, result.GeneratedTransactions[0])
-	return &result.GeneratedTransactions[0], nil
+	return result.GeneratedTransactions[0], nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, m ...storage.AccQueryModifier) (uint64, error) {

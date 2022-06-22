@@ -85,6 +85,12 @@ func PostTransaction(t *testing.T, handler http.Handler, tx core.TransactionData
 	return rec
 }
 
+func PostTransactionBatch(t *testing.T, handler http.Handler, txs core.Transactions) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions/batch", Buffer(t, txs))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions?preview=true", Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
@@ -117,6 +123,12 @@ func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder 
 	return rec
 }
 
+func RevertTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/revert", id), nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func CountAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodHead, "/"+testingLedger+"/accounts", nil)
 	req.URL.RawQuery = query.Encode()
@@ -139,6 +151,18 @@ func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
 
 func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core.Metadata) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/accounts/%s/metadata", addr), Buffer(t, m))
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func NewGetOnLedger(handler http.Handler, path string) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s%s", testingLedger, path), nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func NewPostOnLedger(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", testingLedger, path), Buffer(t, body))
 	handler.ServeHTTP(rec, req)
 	return rec
 }

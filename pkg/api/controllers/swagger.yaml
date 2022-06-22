@@ -593,6 +593,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
+        "400":
+          description: "Bad Request"
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid transaction ID"
+        "404":
+          description: "Not Found"
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "NOT_FOUND"
+                  error_message:
+                    type: string
+                    example: "transaction not found"
 
   /{ledger}/transactions/batch:
     post:

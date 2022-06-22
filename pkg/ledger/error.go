@@ -156,3 +156,26 @@ func NewLockError(err error) *LockError {
 		Err: err,
 	}
 }
+
+type NotFoundError struct {
+	Msg string
+}
+
+func (v NotFoundError) Error() string {
+	return v.Msg
+}
+
+func (v NotFoundError) Is(err error) bool {
+	_, ok := err.(*NotFoundError)
+	return ok
+}
+
+func NewNotFoundError(msg string) *NotFoundError {
+	return &NotFoundError{
+		Msg: msg,
+	}
+}
+
+func IsNotFoundError(err error) bool {
+	return errors.Is(err, &NotFoundError{})
+}
