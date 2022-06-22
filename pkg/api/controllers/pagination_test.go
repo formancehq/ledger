@@ -73,6 +73,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 				assert.Len(t, cursor.Data, query.DefaultLimit)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First txid of the page
 				assert.Equal(t,
@@ -92,6 +93,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 				assert.Len(t, cursor.Data, additionalTxs)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First txid of the last page
 				assert.Equal(t,
@@ -112,6 +114,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					assert.Len(t, cursor.Data, query.DefaultLimit)
+					assert.Equal(t, cursor.Next != "", cursor.HasMore)
 				}
 
 				// First txid of the first page
@@ -144,6 +147,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 				assert.Len(t, cursor.Data, query.DefaultLimit)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First account of the page
 				if i == 0 {
@@ -170,6 +174,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 				assert.Len(t, cursor.Data, additionalTxs+1)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First account of the last page
 				if txsPages == 0 {
@@ -196,7 +201,9 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 					cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+
 					assert.Len(t, cursor.Data, query.DefaultLimit)
+					assert.Equal(t, cursor.Next != "", cursor.HasMore)
 				}
 
 				// First account of the first page

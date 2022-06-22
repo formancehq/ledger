@@ -130,6 +130,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q query.Tran
 
 	return sharedapi.Cursor[core.Transaction]{
 		PageSize: len(txs),
+		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,
 		Data:     txs,
