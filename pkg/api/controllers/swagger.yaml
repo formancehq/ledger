@@ -107,7 +107,7 @@ paths:
         - name: pagination_token
           in: query
           description: |- 
-            Parameter used in pagination requests. 
+            Parameter used in pagination requests. Maximum page size in set to 15.
             Set to the value of next for the next page of results. 
             Set to the value of previous for the previous page of results.
           schema:
@@ -456,7 +456,7 @@ paths:
         - name: pagination_token
           in: query
           description: |-
-            Parameter used in pagination requests. 
+            Parameter used in pagination requests. Maximum page size in set to 15.
             Set to the value of next for the next page of results. 
             Set to the value of previous for the previous page of results.
           schema:
@@ -898,6 +898,9 @@ components:
         page_size:
           type: integer
           example: 1
+        has_more:
+          type: boolean
+          example: false
         previous:
           type: string
           example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
