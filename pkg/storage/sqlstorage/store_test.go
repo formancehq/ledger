@@ -531,7 +531,13 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, tx1, tx)
+	assert.Equal(t, core.Transaction{
+		TransactionData:   tx1.TransactionData,
+		ID:                tx1.ID,
+		Timestamp:         tx1.Timestamp,
+		PreCommitVolumes:  core.AccountsAssetsVolumes{},
+		PostCommitVolumes: core.AccountsAssetsVolumes{},
+	}, *tx)
 }
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {

@@ -498,7 +498,7 @@ func TestGetTransaction(t *testing.T) {
 		tx, err := l.GetTransaction(context.Background(), last.ID)
 		require.NoError(t, err)
 
-		assert.True(t, reflect.DeepEqual(tx, *last))
+		assert.True(t, reflect.DeepEqual(tx, last))
 	})
 }
 

@@ -175,7 +175,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[core.Transaction](c, http.StatusOK, tx)
+	respondWithData[*core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
@@ -193,7 +193,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[core.Transaction](c, http.StatusOK, tx)
+	respondWithData[*core.Transaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {

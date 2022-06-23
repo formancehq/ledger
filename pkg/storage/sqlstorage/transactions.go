@@ -143,7 +143,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	return s.getTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (core.Transaction, error) {
+func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -153,16 +153,20 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq, args...)
 	if row.Err() != nil {
-		return core.Transaction{}, s.error(row.Err())
+		return nil, s.error(row.Err())
 	}
 
-	var (
-		ref sql.NullString
-		ts  sql.NullString
-		tx  core.Transaction
-	)
+	tx := core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: core.Postings{},
+			Metadata: core.Metadata{},
+		},
+		PreCommitVolumes:  core.AccountsAssetsVolumes{},
+		PostCommitVolumes: core.AccountsAssetsVolumes{},
+	}
 
-	err := row.Scan(
+	var ref, ts sql.NullString
+	if err := row.Scan(
 		&tx.ID,
 		&ts,
 		&ref,
@@ -170,28 +174,24 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 		&tx.Postings,
 		&tx.PreCommitVolumes,
 		&tx.PostCommitVolumes,
-	)
-	if err != nil {
+	); err != nil {
 		if err == sql.ErrNoRows {
-			return core.Transaction{}, nil
+			return nil, nil
 		}
-		return core.Transaction{}, err
+		return nil, err
 	}
 
-	if tx.Metadata == nil {
-		tx.Metadata = core.Metadata{}
-	}
 	t, err := time.Parse(time.RFC3339, ts.String)
 	if err != nil {
-		return core.Transaction{}, err
+		return nil, err
 	}
 	tx.Timestamp = t.UTC().Format(time.RFC3339)
 	tx.Reference = ref.String
 
-	return tx, nil
+	return &tx, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId uint64) (tx core.Transaction, err error) {
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
 	return s.getTransaction(ctx, s.schema, txId)
 }
 
@@ -208,13 +208,17 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 		return nil, s.error(row.Err())
 	}
 
-	var (
-		ref sql.NullString
-		ts  sql.NullString
-		tx  core.Transaction
-	)
+	tx := core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: core.Postings{},
+			Metadata: core.Metadata{},
+		},
+		PreCommitVolumes:  core.AccountsAssetsVolumes{},
+		PostCommitVolumes: core.AccountsAssetsVolumes{},
+	}
 
-	err := row.Scan(
+	var ref, ts sql.NullString
+	if err := row.Scan(
 		&tx.ID,
 		&ts,
 		&ref,
@@ -222,17 +226,13 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 		&tx.Postings,
 		&tx.PreCommitVolumes,
 		&tx.PostCommitVolumes,
-	)
-	if err != nil {
+	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	if tx.Metadata == nil {
-		tx.Metadata = core.Metadata{}
-	}
 	t, err := time.Parse(time.RFC3339, ts.String)
 	if err != nil {
 		return nil, err
