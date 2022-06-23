@@ -31,7 +31,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 	volumeAggregator := newVolumeAggregator(l.store)
 
 	generatedTxs := make([]core.Transaction, 0)
-	accounts := make(map[string]core.Account, 0)
+	accounts := make(map[string]*core.Account, 0)
 	generatedLogs := make([]core.Log, 0)
 	contracts := make([]core.Contract, 0)
 	if mapping != nil {

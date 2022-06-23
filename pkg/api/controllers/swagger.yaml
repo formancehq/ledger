@@ -133,6 +133,21 @@ paths:
                         type: object
                         required:
                           - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
 
   /{ledger}/accounts/{address}:
     get:
@@ -172,7 +187,7 @@ paths:
                 required:
                   - data
         "400":
-          description: "Bad Request"
+          description: Bad Request
           content:
             application/json:
               schema:
@@ -222,9 +237,10 @@ paths:
         required: true
       responses:
         "204":
-          description: Empty response
+          description: No Content
+          content: {}
         "400":
-          description: "Bad Request"
+          description: Bad Request
           content:
             application/json:
               schema:
@@ -598,7 +614,7 @@ paths:
               $ref: '#/components/schemas/Metadata'
       responses:
         "204":
-          description: Empty response
+          description: No Content
           content: {}
 
   /{ledger}/transactions/{txid}/revert:

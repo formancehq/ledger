@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/numary/go-libs/sharedlogging"
 	"time"
 
 	json "github.com/gibson042/canonicaljson-go"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/pkg/errors"
 )

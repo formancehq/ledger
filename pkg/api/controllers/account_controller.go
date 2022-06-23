@@ -46,7 +46,9 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
-			len(c.QueryMap("metadata")) > 0 {
+			len(c.QueryMap("metadata")) > 0 ||
+			c.Query("balance") != "" ||
+			c.Query("balance_operator") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -127,12 +129,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		return
 	}
 
-	if acc.Address != c.Param("address") {
-		ResponseError(c, ledger.NewNotFoundError("unknown account"))
-		return
-	}
-
-	respondWithData[core.Account](c, http.StatusOK, acc)
+	respondWithData[*core.AccountWithVolumes](c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
