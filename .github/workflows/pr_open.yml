@@ -3,9 +3,31 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
 jobs:
+  Pr:
+    name: 'Check PR Style'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aslafy-z/conventional-pr-title-action@v2.2.5
+        with:
+          success-state: Title follows the specification.
+          failure-state: Title does not follow the specification.
+          context-name: conventional-pr-title
+          preset: conventional-changelog-angular@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  Commit:
+    name: 'Check Commit Style'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: webiny/action-conventional-commits@v1.0.5
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
+    needs:
+      - Pr
+      - Commit
     steps:
       - name: Get latest release of Numary/Control
         uses: rez0n/actions-github-release@main
@@ -99,6 +121,9 @@ jobs:
   Lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs:
+      - Pr
+      - Commit
     steps:
       - uses: actions/setup-go@v3
         with:
@@ -108,7 +133,6 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          args: -v --timeout 10m -E gofmt,gci
   Build:
     name: 'Build'
     needs:
