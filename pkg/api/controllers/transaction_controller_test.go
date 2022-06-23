@@ -924,6 +924,20 @@ func TestPostTransactionMetadata(t *testing.T) {
 					}, ret.Metadata)
 				})
 
+				t.Run("transaction not found", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 42, core.Metadata{
+						"foo": json.RawMessage(`"baz"`),
+					})
+					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrNotFound,
+						ErrorMessage: "transaction not found",
+					}, err)
+				})
+
 				t.Run("no JSON", func(t *testing.T) {
 					rsp = internal.NewPostOnLedger(t, api, "/transactions/0/metadata", "invalid")
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)

@@ -106,10 +106,11 @@ paths:
             example: gte
         - name: pagination_token
           in: query
-          description: |- 
+          description: | 
             Parameter used in pagination requests. 
             Set to the value of next for the next page of results. 
             Set to the value of previous for the previous page of results.
+            No other parameters can be set when the pagination token is set.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
@@ -291,7 +292,7 @@ paths:
         - stats
       operationId: readStats
       summary: Get Stats
-      description: |-
+      description: |
         Get ledger stats (aggregate metrics on accounts and transactions)
         The stats for account
       parameters:
@@ -404,7 +405,7 @@ paths:
             example: users:001
         - name: start_time
           in: query
-          description: |-
+          description: |
             Filter transactions that occurred after this timestamp.
             The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).
           schema:
@@ -412,17 +413,18 @@ paths:
             example:
         - name: end_time
           in: query
-          description: |-
+          description: |
             Filter transactions that occurred before this timestamp.
             The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
           schema:
             type: string
         - name: pagination_token
           in: query
-          description: |-
+          description: |
             Parameter used in pagination requests. 
             Set to the value of next for the next page of results. 
             Set to the value of previous for the previous page of results.
+            No other parameters can be set when the pagination token is set.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
@@ -447,6 +449,21 @@ paths:
                               $ref: '#/components/schemas/Transaction'
                         required:
                           - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
     post:
       tags:
         - transactions
@@ -486,18 +503,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransactionsResponse'
         "400":
-          description: Commit error
+          description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "transaction has no postings"
         "409":
           description: Conflict
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
+                    example: "conflict error on reference"
+
   /{ledger}/transactions/{txid}:
     get:
       tags:
@@ -526,12 +561,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid transaction ID"
         "404":
           description: Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "NOT_FOUND"
+                  error_message:
+                    type: string
+                    example: "transaction not found"
 
   /{ledger}/transactions/{txid}/metadata:
     post:
@@ -562,8 +621,38 @@ paths:
               $ref: '#/components/schemas/Metadata'
       responses:
         "204":
-          description: Empty response
+          description: No Content
           content: {}
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid transaction ID"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "NOT_FOUND"
+                  error_message:
+                    type: string
+                    example: "transaction not found"
 
   /{ledger}/transactions/{txid}/revert:
     post:
@@ -594,7 +683,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
         "400":
-          description: "Bad Request"
+          description: Bad Request
           content:
             application/json:
               schema:
@@ -609,7 +698,7 @@ paths:
                     type: string
                     example: "invalid transaction ID"
         "404":
-          description: "Not Found"
+          description: Not Found
           content:
             application/json:
               schema:
@@ -652,17 +741,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransactionsResponse'
         "400":
-          description: Commit error
+          description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid transactions format"
         "409":
           description: Conflict
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
+                    example: "conflict error on reference"
 
 security:
   - basicAuth: []

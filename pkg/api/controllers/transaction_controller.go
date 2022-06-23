@@ -211,6 +211,12 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 		return
 	}
 
+	_, err = l.(*ledger.Ledger).GetTransaction(c.Request.Context(), txId)
+	if err != nil {
+		ResponseError(c, err)
+		return
+	}
+
 	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
 		core.MetaTargetTypeTransaction, txId, m); err != nil {
 		ResponseError(c, err)
