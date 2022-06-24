@@ -437,7 +437,7 @@ func TestPostAccountMetadata(t *testing.T) {
 					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("unknown account", func(t *testing.T) {
+				t.Run("unknown account should succeed", func(t *testing.T) {
 					rsp = internal.PostAccountMetadata(t, api, "bob",
 						core.Metadata{
 							"foo": json.RawMessage(`"bar"`),

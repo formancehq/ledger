@@ -34,7 +34,6 @@ const (
 	ErrValidation       = "VALIDATION"
 	ErrContextCancelled = "CONTEXT_CANCELLED"
 	ErrStore            = "STORE"
-	ErrNotFound         = "NOT_FOUND"
 
 	errorCodeKey = "_errorCode"
 )
@@ -47,8 +46,6 @@ func coreErrorToErrorCode(err error) (int, string) {
 		return http.StatusBadRequest, ErrInsufficientFund
 	case ledger.IsValidationError(err):
 		return http.StatusBadRequest, ErrValidation
-	case ledger.IsNotFoundError(err):
-		return http.StatusNotFound, ErrNotFound
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled
 	case storage.IsError(err):

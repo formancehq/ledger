@@ -140,16 +140,6 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 		return
 	}
 
-	acc, err := l.(*ledger.Ledger).GetAccount(c.Request.Context(), c.Param("address"))
-	if err != nil {
-		ResponseError(c, err)
-		return
-	}
-	if acc.Address != c.Param("address") {
-		ResponseError(c, ledger.NewNotFoundError("unknown account"))
-		return
-	}
-
 	var m core.Metadata
 	if err := c.ShouldBindJSON(&m); err != nil {
 		ResponseError(c, ledger.NewValidationError("invalid metadata format"))
