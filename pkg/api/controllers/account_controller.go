@@ -136,7 +136,7 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	if !core.ValidateAddress(c.Param("address")) {
-		ResponseError(c, ledger.NewValidationError("invalid address"))
+		ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
