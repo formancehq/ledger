@@ -518,7 +518,7 @@ func TestGetTransactions(t *testing.T) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
-		res, err := l.GetTransactions(context.Background(), storage.NewTransactionsQuery(0, 0, nil))
+		res, err := l.GetTransactions(context.Background(), *storage.NewTransactionsQuery())
 		require.NoError(t, err)
 
 		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)

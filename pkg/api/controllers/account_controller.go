@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"net/http"
+	"strconv"
 )
 
 type AccountController struct{}
@@ -25,16 +24,11 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) CountAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	accountsQuery := storage.NewAccountsQuery(
-		0,
-		0,
-		"",
-		&storage.AccountsQueryFilters{
-			Address:  c.Query("address"),
-			Metadata: c.QueryMap("metadata"),
-		})
+	accountsQuery := storage.NewAccountsQuery().
+		WithAddressFilter(c.Query("address")).
+		WithMetadataFilter(c.QueryMap("metadata"))
 
-	count, err := l.(*ledger.Ledger).CountAccounts(c.Request.Context(), accountsQuery)
+	count, err := l.(*ledger.Ledger).CountAccounts(c.Request.Context(), *accountsQuery)
 	if err != nil {
 		ResponseError(c, err)
 		return
@@ -47,7 +41,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.Account]
-	var accountsQuery storage.AccountsQuery
+	var accountsQuery *storage.AccountsQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
@@ -73,16 +67,13 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		accountsQuery = storage.NewAccountsQuery(
-			token.Offset,
-			0,
-			token.AfterAddress,
-			&storage.AccountsQueryFilters{
-				Address:         token.AddressRegexpFilter,
-				Balance:         token.BalanceFilter,
-				BalanceOperator: token.BalanceOperatorFilter,
-				Metadata:        token.MetadataFilter,
-			})
+		accountsQuery = storage.NewAccountsQuery().
+			WithOffset(token.Offset).
+			WithAfterAddress(token.AfterAddress).
+			WithAddressFilter(token.AddressRegexpFilter).
+			WithBalanceFilter(token.BalanceFilter).
+			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
+			WithMetadataFilter(token.MetadataFilter)
 
 	} else {
 		balance := c.Query("balance")
@@ -104,19 +95,15 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		accountsQuery = storage.NewAccountsQuery(
-			0,
-			0,
-			c.Query("after"),
-			&storage.AccountsQueryFilters{
-				Address:         c.Query("address"),
-				Balance:         balance,
-				BalanceOperator: balanceOperator,
-				Metadata:        c.QueryMap("metadata"),
-			})
+		accountsQuery = storage.NewAccountsQuery().
+			WithAfterAddress(c.Query("after")).
+			WithAddressFilter(c.Query("address")).
+			WithBalanceFilter(balance).
+			WithBalanceOperatorFilter(balanceOperator).
+			WithMetadataFilter(c.QueryMap("metadata"))
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), accountsQuery)
+	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
 
 	if err != nil {
 		ResponseError(c, err)

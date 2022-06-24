@@ -47,25 +47,53 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 	return BalanceOperator(s), true
 }
 
-func NewAccountsQuery(offset uint, limit uint, afterAddress string, filters *AccountsQueryFilters) AccountsQuery {
-	q := AccountsQuery{
+func NewAccountsQuery() *AccountsQuery {
+
+	return &AccountsQuery{
 		Limit: QueryDefaultLimit,
 	}
+}
 
-	// i'd rather use pointers and check if nil, but c.Query returns objects, so for now
-	// i'm testing zero values of object, please fix if you find something better
-
+func (a *AccountsQuery) WithLimit(limit uint) *AccountsQuery {
 	if limit != 0 {
-		q.Limit = limit
+		a.Limit = limit
 	}
 
-	q.AfterAddress = afterAddress
-	q.Offset = offset
+	return a
+}
 
-	q.Params.Address = filters.Address
-	q.Params.Balance = filters.Balance
-	q.Params.BalanceOperator = filters.BalanceOperator
-	q.Params.Metadata = filters.Metadata
+func (a *AccountsQuery) WithOffset(offset uint) *AccountsQuery {
+	a.Offset = offset
 
-	return q
+	return a
+}
+
+func (a *AccountsQuery) WithAfterAddress(after string) *AccountsQuery {
+	a.AfterAddress = after
+
+	return a
+}
+
+func (a *AccountsQuery) WithAddressFilter(address string) *AccountsQuery {
+	a.Params.Address = address
+
+	return a
+}
+
+func (a *AccountsQuery) WithBalanceFilter(balance string) *AccountsQuery {
+	a.Params.Balance = balance
+
+	return a
+}
+
+func (a *AccountsQuery) WithBalanceOperatorFilter(balanceOperator BalanceOperator) *AccountsQuery {
+	a.Params.BalanceOperator = balanceOperator
+
+	return a
+}
+
+func (a *AccountsQuery) WithMetadataFilter(metadata map[string]string) *AccountsQuery {
+	a.Params.Metadata = metadata
+
+	return a
 }

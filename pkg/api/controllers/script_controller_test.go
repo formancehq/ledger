@@ -104,11 +104,7 @@ func TestPostScriptPreview(t *testing.T) {
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
-					cursor, err := store.GetTransactions(ctx, storage.NewTransactionsQuery(
-						0,
-						0,
-						&storage.TransactionsQueryFilters{},
-					))
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					assert.NoError(t, err)
 					assert.Len(t, cursor.Data, 0)
 				})
@@ -125,10 +121,7 @@ func TestPostScriptPreview(t *testing.T) {
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
-					cursor, err := store.GetTransactions(ctx, storage.NewTransactionsQuery(
-						0,
-						0,
-						&storage.TransactionsQueryFilters{}))
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					assert.NoError(t, err)
 					assert.Len(t, cursor.Data, 1)
 				})

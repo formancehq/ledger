@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// please use the builder NewTransactionsQuery() if you're not sure what you're doing
 type TransactionsQuery struct {
 	Limit     uint
 	AfterTxID uint64
@@ -20,31 +19,63 @@ type TransactionsQueryFilters struct {
 	StartTime   time.Time
 }
 
-func NewTransactionsQuery(limit uint, afterTxID uint64, filters *TransactionsQueryFilters) TransactionsQuery {
-	q := TransactionsQuery{
+func NewTransactionsQuery() *TransactionsQuery {
+
+	return &TransactionsQuery{
 		Limit: QueryDefaultLimit,
 	}
+}
 
+func (a *TransactionsQuery) WithLimit(limit uint) *TransactionsQuery {
 	if limit != 0 {
-		q.Limit = limit
+		a.Limit = limit
 	}
 
-	q.AfterTxID = afterTxID
+	return a
+}
 
-	if filters != nil {
+func (a *TransactionsQuery) WithAfterTxID(after uint64) *TransactionsQuery {
+	a.AfterTxID = after
 
-		if !filters.StartTime.IsZero() {
-			q.Params.StartTime = filters.StartTime
-		}
-		if !filters.EndTime.IsZero() {
-			q.Params.EndTime = filters.EndTime
-		}
+	return a
+}
 
-		q.Params.Account = filters.Account
-		q.Params.Destination = filters.Destination
-		q.Params.Reference = filters.Reference
-		q.Params.Source = filters.Source
+func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQuery {
+	if !start.IsZero() {
+		a.Params.StartTime = start
 	}
 
-	return q
+	return a
+}
+
+func (a *TransactionsQuery) WithEndTimeFilter(end time.Time) *TransactionsQuery {
+	if !end.IsZero() {
+		a.Params.EndTime = end
+	}
+
+	return a
+}
+
+func (a *TransactionsQuery) WithAccountFilter(account string) *TransactionsQuery {
+	a.Params.Account = account
+
+	return a
+}
+
+func (a *TransactionsQuery) WithDestinationFilter(dest string) *TransactionsQuery {
+	a.Params.Destination = dest
+
+	return a
+}
+
+func (a *TransactionsQuery) WithReferenceFilter(ref string) *TransactionsQuery {
+	a.Params.Reference = ref
+
+	return a
+}
+
+func (a *TransactionsQuery) WithSourceFilter(source string) *TransactionsQuery {
+	a.Params.Source = source
+
+	return a
 }
