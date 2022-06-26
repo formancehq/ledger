@@ -198,7 +198,7 @@ func (l *Ledger) GetBalances(ctx context.Context, q storage.BalancesQuery) (shar
 	return l.store.GetBalances(ctx, q)
 }
 
-func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.Balances, error) {
+func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 
 	return l.store.GetBalancesAggregated(ctx, q)
 }

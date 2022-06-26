@@ -25,20 +25,14 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 	// With a c.GetQuery for required params
 	// other job focused validation, like checking if a parameter is a number should also be done here
 
-	var balances core.Balances
+	var balances core.AssetsBalances
 	var err error
 
-	balancesQuery := storage.NewBalancesQuery(
-		0,
-		0,
-		"", // no after needed in this endpoint
-		&storage.BalancesQueryFilters{
-			Address: c.Query("address"),
-		})
+	balancesQuery := storage.NewBalancesQuery().WithAddressFilter(c.Query("address"))
 
 	balances, err = l.(*ledger.Ledger).GetBalancesAggregated(
 		c.Request.Context(),
-		balancesQuery,
+		*balancesQuery,
 	)
 
 	if err != nil {
@@ -46,14 +40,14 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 		return
 	}
 
-	respondWithData[core.Balances](c, http.StatusOK, balances)
+	respondWithData[core.AssetsBalances](c, http.StatusOK, balances)
 }
 
 func (ctl *BalanceController) GetBalances(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.AccountsBalances]
-	var balancesQuery storage.BalancesQuery
+	var balancesQuery *storage.BalancesQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
@@ -78,25 +72,18 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 			return
 		}
 
-		balancesQuery = storage.NewBalancesQuery(
-			token.Offset,
-			0,
-			token.AfterAddress,
-			&storage.BalancesQueryFilters{
-				Address: token.AddressRegexpFilter,
-			})
+		balancesQuery = storage.NewBalancesQuery().
+			WithOffset(token.Offset).
+			WithAfterAddress(token.AfterAddress).
+			WithAddressFilter(token.AddressRegexpFilter)
 
 	} else {
-		balancesQuery = storage.NewBalancesQuery(
-			0,
-			0,
-			c.Query("after"),
-			&storage.BalancesQueryFilters{
-				Address: c.Query("address"),
-			})
+		balancesQuery = storage.NewBalancesQuery().
+			WithAfterAddress(c.Query("after")).
+			WithAddressFilter(c.Query("address"))
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetBalances(c.Request.Context(), balancesQuery)
+	cursor, err = l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)
 
 	if err != nil {
 		ResponseError(c, err)

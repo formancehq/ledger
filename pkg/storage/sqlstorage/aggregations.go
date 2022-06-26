@@ -114,16 +114,16 @@ func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (c
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
 }
 
-func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.Balances, error) {
+func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	balances, err := s.GetAggregatedBalancesData(ctx, exec, q)
 	if err != nil {
-		return core.Balances{}, err
+		return core.AssetsBalances{}, err
 	}
 
 	return balances, nil
 }
 
-func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.Balances, error) {
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	return s.getBalancesAggregated(ctx, s.schema, q)
 }
 
