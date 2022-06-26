@@ -61,7 +61,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					resp, ok := internal.DecodeSingleResponse[core.Balances](t, rsp.Body)
+					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 
 					assert.Equal(t, ok, true)
 
@@ -72,7 +72,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"after": []string{"bob"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					resp, ok := internal.DecodeSingleResponse[core.Balances](t, rsp.Body)
+					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 
 					assert.Equal(t, ok, true)
 
@@ -83,7 +83,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"after": []string{"world"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					resp, ok := internal.DecodeSingleResponse[core.Balances](t, rsp.Body)
+					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 
 					assert.Equal(t, ok, true)
 					assert.Equal(t, resp["USD"], int64(0))
@@ -93,7 +93,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"address": []string{"world"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					resp, ok := internal.DecodeSingleResponse[core.Balances](t, rsp.Body)
+					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 
 					assert.Equal(t, true, ok)
 
@@ -104,7 +104,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"address": []string{"XXX"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					resp, ok := internal.DecodeSingleResponse[core.Balances](t, rsp.Body)
+					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 
 					assert.Equal(t, ok, true)
 					assert.Len(t, resp, 0)

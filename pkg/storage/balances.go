@@ -6,25 +6,40 @@ type BalancesQuery struct {
 	AfterAddress string
 	Params       BalancesQueryFilters
 }
-type BalancesModifier *BalancesQuery
 
 type BalancesQueryFilters struct {
 	Address string
 }
 
-func NewBalancesQuery(offset uint, limit uint, afterAddress string, filters *BalancesQueryFilters) BalancesQuery {
-	q := BalancesQuery{
+func NewBalancesQuery() *BalancesQuery {
+
+	return &BalancesQuery{
 		Limit: QueryDefaultLimit,
 	}
+}
 
+func (b *BalancesQuery) WithLimit(limit uint) *BalancesQuery {
 	if limit != 0 {
-		q.Limit = limit
+		b.Limit = limit
 	}
 
-	q.AfterAddress = afterAddress
-	q.Offset = offset
+	return b
+}
 
-	q.Params.Address = filters.Address
+func (b *BalancesQuery) WithAfterAddress(after string) *BalancesQuery {
+	b.AfterAddress = after
 
-	return q
+	return b
+}
+
+func (b *BalancesQuery) WithOffset(offset uint) *BalancesQuery {
+	b.Offset = offset
+
+	return b
+}
+
+func (b *BalancesQuery) WithAddressFilter(address string) *BalancesQuery {
+	b.Params.Address = address
+
+	return b
 }
