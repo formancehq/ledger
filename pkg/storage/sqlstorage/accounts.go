@@ -16,24 +16,31 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
+func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
 
-	if address, ok := p["address"]; ok && address.(string) != "" {
-		arg := sb.Args.Add("^" + address.(string) + "$")
+	var (
+		address         = p.Filters.Address
+		metadata        = p.Filters.Metadata
+		balance         = p.Filters.Balance
+		balanceOperator = p.Filters.BalanceOperator
+	)
+
+	if address != "" {
+		arg := sb.Args.Add("^" + address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("address ~* " + arg)
 		case sqlbuilder.SQLite:
 			sb.Where("address REGEXP " + arg)
 		}
-		t.AddressRegexpFilter = address.(string)
+		t.AddressRegexpFilter = address
 	}
 
-	if metadata, ok := p["metadata"]; ok {
-		for key, value := range metadata.(map[string]string) {
+	if len(metadata) > 0 {
+		for key, value := range metadata {
 			arg := sb.Args.Add(value)
 			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
 			sb.Where(s.schema.Table(
@@ -41,21 +48,21 @@ func (s *Store) buildAccountsQuery(p map[string]interface{}) (*sqlbuilder.Select
 					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
 			))
 		}
-		t.MetadataFilter = metadata.(map[string]string)
+		t.MetadataFilter = metadata
 	}
 
-	if balance, ok := p["balance"]; ok && balance.(string) != "" {
+	if balance != "" {
 
 		sb.Join(s.schema.Table("volumes"), "accounts.address = volumes.account")
 		balanceOperation := "volumes.input - volumes.output"
 
-		balanceValue, err := strconv.ParseInt(balance.(string), 10, 0)
+		balanceValue, err := strconv.ParseInt(balance, 10, 0)
 		if err != nil {
 			// parameter is validated in the controller for now
 			panic(errors.Wrap(err, "invalid balance parameter"))
 		}
 
-		if balanceOperator, ok := p["balance_operator"]; ok && balanceOperator != "" {
+		if balanceOperator != "" {
 			switch balanceOperator {
 			case storage.BalanceOperatorLte:
 				sb.Where(sb.LessEqualThan(balanceOperation, balanceValue))
@@ -86,7 +93,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 		return sharedapi.Cursor[core.Account]{Data: accounts}, nil
 	}
 
-	sb, t := s.buildAccountsQuery(q.Params)
+	sb, t := s.buildAccountsQuery(q)
 	sb.Select("address", "metadata")
 	sb.OrderBy("address desc")
 

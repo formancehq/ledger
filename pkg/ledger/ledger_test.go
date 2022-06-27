@@ -518,7 +518,7 @@ func TestGetTransactions(t *testing.T) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
-		res, err := l.GetTransactions(context.Background())
+		res, err := l.GetTransactions(context.Background(), *storage.NewTransactionsQuery())
 		require.NoError(t, err)
 
 		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
@@ -642,7 +642,7 @@ func BenchmarkGetAccount(b *testing.B) {
 func BenchmarkGetTransactions(b *testing.B) {
 	runOnLedger(func(l *Ledger) {
 		for i := 0; i < b.N; i++ {
-			_, err := l.GetTransactions(context.Background())
+			_, err := l.GetTransactions(context.Background(), storage.TransactionsQuery{})
 			require.NoError(b, err)
 		}
 	})
