@@ -250,7 +250,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				"phones": json.RawMessage(`["0836656565"]`),
 				"role":   json.RawMessage(`"admin"`),
 			},
-		}, account) {
+		}, *account) {
 			return
 		}
 

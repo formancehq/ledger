@@ -175,20 +175,22 @@ func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (shar
 	return l.store.GetAccounts(ctx, a)
 }
 
-func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
+func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	account, err := l.store.GetAccount(ctx, address)
 	if err != nil {
-		return core.Account{}, err
+		return nil, err
 	}
 
 	volumes, err := l.store.GetAssetsVolumes(ctx, address)
 	if err != nil {
-		return account, err
+		return nil, err
 	}
 
-	account.Volumes = volumes
-	account.Balances = volumes.Balances()
-	return account, nil
+	return &core.AccountWithVolumes{
+		Account:  *account,
+		Volumes:  volumes,
+		Balances: volumes.Balances(),
+	}, nil
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {

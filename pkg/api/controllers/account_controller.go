@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -48,7 +47,9 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
-			len(c.QueryMap("metadata")) > 0 {
+			len(c.QueryMap("metadata")) > 0 ||
+			c.Query("balance") != "" ||
+			c.Query("balance_operator") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -117,6 +118,11 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid account address format"))
+		return
+	}
+
 	acc, err := l.(*ledger.Ledger).GetAccount(
 		c.Request.Context(),
 		c.Param("address"))
@@ -125,20 +131,20 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		return
 	}
 
-	respondWithData[core.Account](c, http.StatusOK, acc)
+	respondWithData[*core.AccountWithVolumes](c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var m core.Metadata
-	if err := c.ShouldBindJSON(&m); err != nil {
-		ResponseError(c, err)
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
-	if !core.ValidateAddress(c.Param("address")) {
-		ResponseError(c, errors.New("invalid address"))
+	var m core.Metadata
+	if err := c.ShouldBindJSON(&m); err != nil {
+		ResponseError(c, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 

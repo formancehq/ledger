@@ -8,6 +8,7 @@ import (
 
 	json "github.com/gibson042/canonicaljson-go"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/pkg/errors"
 )
@@ -59,6 +60,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 		}
 	}
 
+	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	_, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
