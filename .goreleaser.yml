@@ -125,7 +125,7 @@ brews:
     name: numary
     folder: Formula
     homepage: https://numary.com
-    skip_upload: 'false'
+    skip_upload: auto
     test: |
       system "#{bin}/numary version"
     install: |
