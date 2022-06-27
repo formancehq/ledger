@@ -1,0 +1,21 @@
+{
+  "name": "Formance Ledger",
+  "description": "A programmable financial ledger to build money-moving apps",
+  "repository": "https://github.com/numary/ledger",
+  "logo": "https://avatars.githubusercontent.com/u/84325077?s=200",
+  "keywords": ["ledger", "go", "golang", "programming", "money", "finance"],
+  "addons": [
+    {
+      "plan": "heroku-postgresql:hobby-dev"
+    },
+    {
+      "plan": "heroku-redis:hobby-dev"
+    }
+  ],
+  "env": {
+    "NUMARY_SERVER_HTTP_BIND_ADDRESS": {
+      "description": "!! NOT TOUCH !! The address to bind the HTTP server to public port",
+      "value": "0.0.0.0:3068"
+    }
+  }
+}
