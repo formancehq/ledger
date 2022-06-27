@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -25,11 +24,11 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) CountAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	count, err := l.(*ledger.Ledger).CountAccounts(
-		c.Request.Context(),
-		storage.SetAddressRegexpFilter(c.Query("address")),
-		storage.SetMetadataFilter(c.QueryMap("metadata")),
-	)
+	accountsQuery := storage.NewAccountsQuery().
+		WithAddressFilter(c.Query("address")).
+		WithMetadataFilter(c.QueryMap("metadata"))
+
+	count, err := l.(*ledger.Ledger).CountAccounts(c.Request.Context(), *accountsQuery)
 	if err != nil {
 		ResponseError(c, err)
 		return
@@ -42,12 +41,15 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.Account]
+	var accountsQuery *storage.AccountsQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
-			len(c.QueryMap("metadata")) > 0 {
+			len(c.QueryMap("metadata")) > 0 ||
+			c.Query("balance") != "" ||
+			c.Query("balance_operator") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -67,14 +69,14 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
-			storage.SetOffset(token.Offset),
-			storage.SetAfterAddress(token.AfterAddress),
-			storage.SetAddressRegexpFilter(token.AddressRegexpFilter),
-			storage.SetMetadataFilter(token.MetadataFilter),
-			storage.SetBalanceFilter(token.BalanceFilter),
-			storage.SetBalanceOperatorFilter(token.BalanceOperatorFilter),
-		)
+		accountsQuery = storage.NewAccountsQuery().
+			WithOffset(token.Offset).
+			WithAfterAddress(token.AfterAddress).
+			WithAddressFilter(token.AddressRegexpFilter).
+			WithBalanceFilter(token.BalanceFilter).
+			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
+			WithMetadataFilter(token.MetadataFilter)
+
 	} else {
 		balance := c.Query("balance")
 		if balance != "" {
@@ -95,14 +97,15 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(),
-			storage.SetAfterAddress(c.Query("after")),
-			storage.SetAddressRegexpFilter(c.Query("address")),
-			storage.SetMetadataFilter(c.QueryMap("metadata")),
-			storage.SetBalanceFilter(balance),
-			storage.SetBalanceOperatorFilter(balanceOperator),
-		)
+		accountsQuery = storage.NewAccountsQuery().
+			WithAfterAddress(c.Query("after")).
+			WithAddressFilter(c.Query("address")).
+			WithBalanceFilter(balance).
+			WithBalanceOperatorFilter(balanceOperator).
+			WithMetadataFilter(c.QueryMap("metadata"))
 	}
+
+	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
 
 	if err != nil {
 		ResponseError(c, err)
@@ -115,6 +118,11 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid account address format"))
+		return
+	}
+
 	acc, err := l.(*ledger.Ledger).GetAccount(
 		c.Request.Context(),
 		c.Param("address"))
@@ -123,20 +131,20 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		return
 	}
 
-	respondWithData[core.Account](c, http.StatusOK, acc)
+	respondWithData[*core.AccountWithVolumes](c, http.StatusOK, acc)
 }
 
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var m core.Metadata
-	if err := c.ShouldBindJSON(&m); err != nil {
-		ResponseError(c, err)
+	if !core.ValidateAddress(c.Param("address")) {
+		ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
-	if !core.ValidateAddress(c.Param("address")) {
-		ResponseError(c, errors.New("invalid address"))
+	var m core.Metadata
+	if err := c.ShouldBindJSON(&m); err != nil {
+		ResponseError(c, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 

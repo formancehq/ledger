@@ -267,8 +267,8 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
-		Params: map[string]interface{}{
-			"address": ".*der.*",
+		Filters: storage.AccountsQueryFilters{
+			Address: ".*der.*",
 		},
 	})
 	assert.NoError(t, err)
@@ -277,8 +277,8 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
-		Params: map[string]interface{}{
-			"metadata": map[string]string{
+		Filters: storage.AccountsQueryFilters{
+			Metadata: map[string]string{
 				"foo": "bar",
 			},
 		},
@@ -288,8 +288,8 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
-		Params: map[string]interface{}{
-			"metadata": map[string]string{
+		Filters: storage.AccountsQueryFilters{
+			Metadata: map[string]string{
 				"number": "3",
 			},
 		},
@@ -299,8 +299,8 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
-		Params: map[string]interface{}{
-			"metadata": map[string]string{
+		Filters: storage.AccountsQueryFilters{
+			Metadata: map[string]string{
 				"boolean": "true",
 			},
 		},
@@ -310,8 +310,8 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
-		Params: map[string]interface{}{
-			"metadata": map[string]string{
+		Filters: storage.AccountsQueryFilters{
+			Metadata: map[string]string{
 				"a.super.nested.key": "hello",
 			},
 		},
@@ -378,8 +378,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.EqualValues(t, 3, count)
 
 		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"account": "world",
+			Filters: storage.TransactionsQueryFilters{
+				Account: "world",
 			},
 		})
 		assert.NoError(t, err)
@@ -387,9 +387,10 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.EqualValues(t, 2, count)
 
 		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"start_time": now.Add(-2 * time.Hour),
-				"end_time":   now.Add(-1 * time.Hour),
+			Filters: storage.TransactionsQueryFilters{
+				Account:   "world",
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now.Add(-1 * time.Hour),
 			},
 		})
 		assert.NoError(t, err)
@@ -414,9 +415,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, 1, cursor.PageSize)
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"account":   "world",
-				"reference": "tx1",
+			Filters: storage.TransactionsQueryFilters{
+				Account:   "world",
+				Reference: "tx1",
 			},
 			Limit: 1,
 		})
@@ -426,8 +427,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"source": "central_bank",
+			Filters: storage.TransactionsQueryFilters{
+				Source: "central_bank",
 			},
 			Limit: 10,
 		})
@@ -437,8 +438,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"destination": "users:1",
+			Filters: storage.TransactionsQueryFilters{
+				Destination: "users:1",
 			},
 			Limit: 10,
 		})
@@ -448,9 +449,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Params: map[string]interface{}{
-				"start_time": now.Add(-2 * time.Hour),
-				"end_time":   now.Add(-1 * time.Hour),
+			Filters: storage.TransactionsQueryFilters{
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now.Add(-1 * time.Hour),
 			},
 			Limit: 10,
 		})
@@ -531,7 +532,13 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, tx1, tx)
+	assert.Equal(t, core.Transaction{
+		TransactionData:   tx1.TransactionData,
+		ID:                tx1.ID,
+		Timestamp:         tx1.Timestamp,
+		PreCommitVolumes:  core.AccountsAssetsVolumes{},
+		PostCommitVolumes: core.AccountsAssetsVolumes{},
+	}, *tx)
 }
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {

@@ -88,18 +88,26 @@ func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionDa
 	return l.processTx(ctx, txsData)
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, m ...storage.TxQueryModifier) (sharedapi.Cursor[core.Transaction], error) {
-	q := storage.NewTransactionsQuery(m)
+func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
+
 	return l.store.GetTransactions(ctx, q)
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, m ...storage.TxQueryModifier) (uint64, error) {
-	q := storage.NewTransactionsQuery(m)
+func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
+
 	return l.store.CountTransactions(ctx, q)
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
-	return l.store.GetTransaction(ctx, id)
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+	tx, err := l.store.GetTransaction(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, NewNotFoundError("transaction not found")
+	}
+
+	return tx, nil
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
@@ -119,6 +127,12 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if tx == nil {
+		return nil, NewNotFoundError("transaction not found")
+	}
+	if tx.IsReverted() {
+		return nil, NewValidationError("transaction already reverted")
 	}
 
 	rt := tx.Reverse()
@@ -147,34 +161,36 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 		return nil, err
 	}
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, result.GeneratedTransactions[0])
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, &result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, m ...storage.AccQueryModifier) (uint64, error) {
-	q := storage.NewAccountsQuery(m)
-	return l.store.CountAccounts(ctx, q)
+func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
+
+	return l.store.CountAccounts(ctx, a)
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, m ...storage.AccQueryModifier) (sharedapi.Cursor[core.Account], error) {
-	q := storage.NewAccountsQuery(m)
-	return l.store.GetAccounts(ctx, q)
+func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+
+	return l.store.GetAccounts(ctx, a)
 }
 
-func (l *Ledger) GetAccount(ctx context.Context, address string) (core.Account, error) {
+func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	account, err := l.store.GetAccount(ctx, address)
 	if err != nil {
-		return core.Account{}, err
+		return nil, err
 	}
 
 	volumes, err := l.store.GetAssetsVolumes(ctx, address)
 	if err != nil {
-		return account, err
+		return nil, err
 	}
 
-	account.Volumes = volumes
-	account.Balances = volumes.Balances()
-	return account, nil
+	return &core.AccountWithVolumes{
+		Account:  *account,
+		Volumes:  volumes,
+		Balances: volumes.Balances(),
+	}, nil
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {

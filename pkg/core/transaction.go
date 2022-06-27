@@ -42,6 +42,13 @@ func (t *Transaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
+func (t *Transaction) IsReverted() bool {
+	if _, ok := t.Metadata[RevertedMetadataSpecKey()]; ok {
+		return true
+	}
+	return false
+}
+
 func Hash(t1, t2 interface{}) string {
 	b1, err := json.Marshal(t1)
 	if err != nil {

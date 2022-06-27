@@ -217,7 +217,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}, tx.Postings) {
 			return
 		}
-		tx.Postings = nil
+		tx.Postings = core.Postings{}
 
 		if !assert.True(t, compareMetadata(t, core.Metadata{
 			"info":      json.RawMessage("\"Init game\""),
@@ -226,16 +226,18 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}, tx.Metadata)) {
 			return
 		}
-		tx.Metadata = nil
+		tx.Metadata = core.Metadata{}
 
-		if !assert.EqualValues(t, core.Transaction{
+		assert.EqualValues(t, core.Transaction{
 			TransactionData: core.TransactionData{
+				Postings:  core.Postings{},
 				Reference: "tx1",
+				Metadata:  core.Metadata{},
 			},
-			Timestamp: now.Format(time.RFC3339),
-		}, tx) {
-			return
-		}
+			Timestamp:         now.Format(time.RFC3339),
+			PreCommitVolumes:  core.AccountsAssetsVolumes{},
+			PostCommitVolumes: core.AccountsAssetsVolumes{},
+		}, *tx)
 
 		account, err := store.GetAccount(context.Background(), "player1")
 		if !assert.NoError(t, err) {
@@ -248,7 +250,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				"phones": json.RawMessage(`["0836656565"]`),
 				"role":   json.RawMessage(`"admin"`),
 			},
-		}, account) {
+		}, *account) {
 			return
 		}
 
