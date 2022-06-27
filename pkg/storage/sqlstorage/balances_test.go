@@ -30,8 +30,8 @@ func TestBalances(t *testing.T) {
 
 	t.Run("success balance", func(t *testing.T) {
 		q := storage.BalancesQuery{
-			Limit:  10,
-			Params: storage.BalancesQueryFilters{},
+			Limit:   10,
+			Filters: storage.BalancesQueryFilters{},
 		}
 
 		_, err := store.GetBalances(context.Background(), q)
@@ -41,7 +41,7 @@ func TestBalances(t *testing.T) {
 	t.Run("success balance_operator", func(t *testing.T) {
 		q := storage.BalancesQuery{
 			Limit: 10,
-			Params: storage.BalancesQueryFilters{
+			Filters: storage.BalancesQueryFilters{
 				Address: "world",
 			},
 		}

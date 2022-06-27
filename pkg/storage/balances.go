@@ -4,7 +4,7 @@ type BalancesQuery struct {
 	Limit        uint
 	Offset       uint
 	AfterAddress string
-	Params       BalancesQueryFilters
+	Filters      BalancesQueryFilters
 }
 
 type BalancesQueryFilters struct {
@@ -39,7 +39,7 @@ func (b *BalancesQuery) WithOffset(offset uint) *BalancesQuery {
 }
 
 func (b *BalancesQuery) WithAddressFilter(address string) *BalancesQuery {
-	b.Params.Address = address
+	b.Filters.Address = address
 
 	return b
 }
