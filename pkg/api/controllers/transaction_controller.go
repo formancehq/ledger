@@ -26,12 +26,15 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	txQuery := storage.NewTransactionsQuery().
+		WithReferenceFilter(c.Query("reference")).
+		WithAccountFilter(c.Query("account")).
+		WithSourceFilter(c.Query("source")).
+		WithDestinationFilter(c.Query("destination"))
+
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),
-		storage.SetReferenceFilter(c.Query("reference")),
-		storage.SetAccountFilter(c.Query("account")),
-		storage.SetSourceFilter(c.Query("source")),
-		storage.SetDestinationFilter(c.Query("destination")),
+		*txQuery,
 	)
 	if err != nil {
 		ResponseError(c, err)
@@ -45,6 +48,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.Transaction]
+	var txQuery *storage.TransactionsQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
@@ -69,15 +73,15 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
-			storage.SetAfterTxID(token.AfterTxID),
-			storage.SetReferenceFilter(token.ReferenceFilter),
-			storage.SetAccountFilter(token.AccountFilter),
-			storage.SetSourceFilter(token.SourceFilter),
-			storage.SetDestinationFilter(token.DestinationFilter),
-			storage.SetStartTime(token.StartTime),
-			storage.SetEndTime(token.EndTime),
-		)
+		txQuery = storage.NewTransactionsQuery().
+			WithAfterTxID(token.AfterTxID).
+			WithReferenceFilter(token.ReferenceFilter).
+			WithAccountFilter(token.AccountFilter).
+			WithSourceFilter(token.SourceFilter).
+			WithDestinationFilter(token.DestinationFilter).
+			WithStartTimeFilter(token.StartTime).
+			WithEndTimeFilter(token.EndTime)
+
 	} else {
 		var afterTxIDParsed uint64
 		if c.Query("after") != "" {
@@ -105,17 +109,17 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			}
 		}
 
-		cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(),
-			storage.SetAfterTxID(afterTxIDParsed),
-			storage.SetReferenceFilter(c.Query("reference")),
-			storage.SetAccountFilter(c.Query("account")),
-			storage.SetSourceFilter(c.Query("source")),
-			storage.SetDestinationFilter(c.Query("destination")),
-			storage.SetStartTime(startTimeParsed),
-			storage.SetEndTime(endTimeParsed),
-		)
+		txQuery = storage.NewTransactionsQuery().
+			WithAfterTxID(afterTxIDParsed).
+			WithReferenceFilter(c.Query("reference")).
+			WithAccountFilter(c.Query("account")).
+			WithSourceFilter(c.Query("source")).
+			WithDestinationFilter(c.Query("destination")).
+			WithStartTimeFilter(startTimeParsed).
+			WithEndTimeFilter(endTimeParsed)
 	}
 
+	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
 	if err != nil {
 		ResponseError(c, err)
 		return

@@ -4,10 +4,15 @@ type AccountsQuery struct {
 	Limit        uint
 	Offset       uint
 	AfterAddress string
-	Params       map[string]interface{}
+	Filters      AccountsQueryFilters
 }
 
-type AccQueryModifier func(*AccountsQuery)
+type AccountsQueryFilters struct {
+	Address         string
+	Balance         string
+	BalanceOperator BalanceOperator
+	Metadata        map[string]string
+}
 
 type BalanceOperator string
 
@@ -42,61 +47,53 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 	return BalanceOperator(s), true
 }
 
-func SetBalanceFilter(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Params["balance"] = v
+func NewAccountsQuery() *AccountsQuery {
+
+	return &AccountsQuery{
+		Limit: QueryDefaultLimit,
 	}
 }
 
-func SetBalanceOperatorFilter(v BalanceOperator) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Params["balance_operator"] = v
+func (a *AccountsQuery) WithLimit(limit uint) *AccountsQuery {
+	if limit != 0 {
+		a.Limit = limit
 	}
+
+	return a
 }
 
-func NewAccountsQuery(qms ...[]AccQueryModifier) AccountsQuery {
-	q := AccountsQuery{
-		Limit:  QueryDefaultLimit,
-		Params: map[string]interface{}{},
-	}
+func (a *AccountsQuery) WithOffset(offset uint) *AccountsQuery {
+	a.Offset = offset
 
-	for _, m := range qms {
-		q.Apply(m)
-	}
-
-	return q
+	return a
 }
 
-func (q *AccountsQuery) Apply(modifiers []AccQueryModifier) {
-	for _, m := range modifiers {
-		m(q)
-	}
+func (a *AccountsQuery) WithAfterAddress(after string) *AccountsQuery {
+	a.AfterAddress = after
+
+	return a
 }
 
-func SetOffset(v uint) func(accounts *AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.Offset = v
-	}
+func (a *AccountsQuery) WithAddressFilter(address string) *AccountsQuery {
+	a.Filters.Address = address
+
+	return a
 }
 
-func SetAfterAddress(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		q.AfterAddress = v
-	}
+func (a *AccountsQuery) WithBalanceFilter(balance string) *AccountsQuery {
+	a.Filters.Balance = balance
+
+	return a
 }
 
-func SetAddressRegexpFilter(v string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		if v != "" {
-			q.Params["address"] = v
-		}
-	}
+func (a *AccountsQuery) WithBalanceOperatorFilter(balanceOperator BalanceOperator) *AccountsQuery {
+	a.Filters.BalanceOperator = balanceOperator
+
+	return a
 }
 
-func SetMetadataFilter(v map[string]string) func(*AccountsQuery) {
-	return func(q *AccountsQuery) {
-		if len(v) > 0 {
-			q.Params["metadata"] = v
-		}
-	}
+func (a *AccountsQuery) WithMetadataFilter(metadata map[string]string) *AccountsQuery {
+	a.Filters.Metadata = metadata
+
+	return a
 }
