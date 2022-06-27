@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/numary/ledger/cmd/internal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,7 +44,7 @@ func NewDocFlagCommand() *cobra.Command {
 				panic(err)
 			}
 			for _, key := range allKeys {
-				asEnvVar := strings.ToUpper(replacer.Replace(key))
+				asEnvVar := strings.ToUpper(internal.EnvVarReplacer.Replace(key))
 				flag := cmd.Parent().Parent().PersistentFlags().Lookup(key)
 				if flag == nil {
 					continue

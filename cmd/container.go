@@ -23,6 +23,7 @@ import (
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
+	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/analytics"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/middlewares"
@@ -248,17 +249,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res := make([]gin.HandlerFunc, 0)
 
 		methods := make([]sharedauth.Method, 0)
-		if basicAuth := v.GetStringSlice(authBasicCredentialsFlag); len(basicAuth) > 0 &&
-			(!v.IsSet(authBasicEnabledFlag) || v.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
-			credentials := sharedauth.Credentials{}
-			for _, kv := range basicAuth {
-				parts := strings.SplitN(kv, ":", 2)
-				credentials[parts[0]] = sharedauth.Credential{
-					Password: parts[1],
-					Scopes:   routes.AllScopes,
-				}
-			}
-			methods = append(methods, sharedauth.NewHTTPBasicMethod(credentials))
+		if httpBasicMethod := internal.HTTPBasicAuthMethod(v); httpBasicMethod != nil {
+			methods = append(methods, httpBasicMethod)
 		}
 		if v.GetBool(authBearerEnabledFlag) {
 			methods = append(methods, sharedauth.NewHttpBearerMethod(
