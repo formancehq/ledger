@@ -111,7 +111,7 @@ changelog:
 release:
   prerelease: auto
   footer: |
-    **Full Changelog**: https://github.com/numary/ledger/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://docs.formance.com/oss/ledger/changelog/{{ .Tag }}
     ## What to do next?
     - Read the [documentation](https://docs.numary.com/oss/ledger/get-started/installation)
     - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
@@ -123,7 +123,7 @@ brews:
     name: numary
     folder: Formula
     homepage: https://numary.com
-    skip_upload: false
+    skip_upload: auto
     test: |
       system "#{bin}/numary version"
     install: |
