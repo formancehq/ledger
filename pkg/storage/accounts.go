@@ -4,7 +4,7 @@ type AccountsQuery struct {
 	Limit        uint
 	Offset       uint
 	AfterAddress string
-	Params       AccountsQueryFilters
+	Filters      AccountsQueryFilters
 }
 
 type AccountsQueryFilters struct {
@@ -75,25 +75,25 @@ func (a *AccountsQuery) WithAfterAddress(after string) *AccountsQuery {
 }
 
 func (a *AccountsQuery) WithAddressFilter(address string) *AccountsQuery {
-	a.Params.Address = address
+	a.Filters.Address = address
 
 	return a
 }
 
 func (a *AccountsQuery) WithBalanceFilter(balance string) *AccountsQuery {
-	a.Params.Balance = balance
+	a.Filters.Balance = balance
 
 	return a
 }
 
 func (a *AccountsQuery) WithBalanceOperatorFilter(balanceOperator BalanceOperator) *AccountsQuery {
-	a.Params.BalanceOperator = balanceOperator
+	a.Filters.BalanceOperator = balanceOperator
 
 	return a
 }
 
 func (a *AccountsQuery) WithMetadataFilter(metadata map[string]string) *AccountsQuery {
-	a.Params.Metadata = metadata
+	a.Filters.Metadata = metadata
 
 	return a
 }

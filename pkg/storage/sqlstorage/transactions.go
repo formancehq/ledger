@@ -18,12 +18,12 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 	t := TxsPaginationToken{}
 
 	var (
-		destination = p.Params.Destination
-		source      = p.Params.Source
-		account     = p.Params.Account
-		reference   = p.Params.Reference
-		startTime   = p.Params.StartTime
-		endTime     = p.Params.EndTime
+		destination = p.Filters.Destination
+		source      = p.Filters.Source
+		account     = p.Filters.Account
+		reference   = p.Filters.Reference
+		startTime   = p.Filters.StartTime
+		endTime     = p.Filters.EndTime
 	)
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")

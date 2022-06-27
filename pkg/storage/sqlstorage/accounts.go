@@ -22,10 +22,10 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 	sb.From(s.schema.Table("accounts"))
 
 	var (
-		address         = p.Params.Address
-		metadata        = p.Params.Metadata
-		balance         = p.Params.Balance
-		balanceOperator = p.Params.BalanceOperator
+		address         = p.Filters.Address
+		metadata        = p.Filters.Metadata
+		balance         = p.Filters.Balance
+		balanceOperator = p.Filters.BalanceOperator
 	)
 
 	if address != "" {

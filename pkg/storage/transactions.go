@@ -7,7 +7,7 @@ import (
 type TransactionsQuery struct {
 	Limit     uint
 	AfterTxID uint64
-	Params    TransactionsQueryFilters
+	Filters   TransactionsQueryFilters
 }
 
 type TransactionsQueryFilters struct {
@@ -42,7 +42,7 @@ func (a *TransactionsQuery) WithAfterTxID(after uint64) *TransactionsQuery {
 
 func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQuery {
 	if !start.IsZero() {
-		a.Params.StartTime = start
+		a.Filters.StartTime = start
 	}
 
 	return a
@@ -50,32 +50,32 @@ func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQu
 
 func (a *TransactionsQuery) WithEndTimeFilter(end time.Time) *TransactionsQuery {
 	if !end.IsZero() {
-		a.Params.EndTime = end
+		a.Filters.EndTime = end
 	}
 
 	return a
 }
 
 func (a *TransactionsQuery) WithAccountFilter(account string) *TransactionsQuery {
-	a.Params.Account = account
+	a.Filters.Account = account
 
 	return a
 }
 
 func (a *TransactionsQuery) WithDestinationFilter(dest string) *TransactionsQuery {
-	a.Params.Destination = dest
+	a.Filters.Destination = dest
 
 	return a
 }
 
 func (a *TransactionsQuery) WithReferenceFilter(ref string) *TransactionsQuery {
-	a.Params.Reference = ref
+	a.Filters.Reference = ref
 
 	return a
 }
 
 func (a *TransactionsQuery) WithSourceFilter(source string) *TransactionsQuery {
-	a.Params.Source = source
+	a.Filters.Source = source
 
 	return a
 }
