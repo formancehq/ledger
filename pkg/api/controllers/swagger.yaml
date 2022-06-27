@@ -864,19 +864,41 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BalancesResponse'
-        "404":
-          description: Not Found
+                required:
+                  - cursor
+                properties:
+                  cursor:
+                    allOf:
+                      - $ref: '#/components/schemas/Cursor'
+                      - properties:
+                          data:
+                            items:
+                              $ref: '#/components/schemas/AccountsBalances'
+                            type: array
+                        type: object
+                        required:
+                          - data
+        "400":
+          description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
   /{ledger}/aggregate/balances:
     get:
       tags:
         - balances
       summary: Get the aggregated balances from selected accounts
-      operationId: getBalances
+      operationId: getBalancesAggregated
       parameters:
         - name: ledger
           in: path
@@ -898,13 +920,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BalancesResponse'
-        "404":
-          description: Not Found
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AggregatedBalances'
+                type: object
+                required:
+                  - data
+        "400":
+          description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid address"
 
 security:
   - basicAuth: []
@@ -1011,31 +1047,18 @@ components:
             type: integer
           example:
             COIN: 100
-    AggregatedBalances:
+    AccountsBalances:
       type: object
-      required:
-        - aggregated
-        - accounts
-      properties:
-        aggregated:
-          type: object
-          additionalProperties:
-            type: integer
-          example:
-            COIN: 100
-            USD: 5
-        accounts:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
-          example: { account1: { gold: 100, usd: 0 } }
-    AccountBalances:
+      additionalProperties:
         type: object
         additionalProperties:
           type: integer
-      example: { USD: 100, EUR: 0 }
+        example: { account1: { gold: 100, usd: 0 } }
+    AggregatedBalances:
+        type: object
+        additionalProperties:
+          type: integer
+        example: { USD: 100, EUR: 0 }
     Contract:
       type: object
       properties:
