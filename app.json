@@ -12,10 +12,6 @@
       "plan": "heroku-redis:hobby-dev"
     }
   ],
-  "env": {
-    "NUMARY_SERVER_HTTP_BIND_ADDRESS": {
-      "description": "!! NOT TOUCH !! The address to bind the HTTP server to public port",
-      "value": "0.0.0.0:3068"
-    }
-  }
+  "stack": "heroku-22",
+  "success_url": "/_info"
 }
