@@ -6,13 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"regexp"
-	"strings"
 )
 
 func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
@@ -36,15 +37,15 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 		t.AfterAddress = q.AfterAddress
 	}
 
-	if q.Params.Address != "" {
-		arg := sb.Args.Add("^" + q.Params.Address + "$")
+	if q.Filters.Address != "" {
+		arg := sb.Args.Add("^" + q.Filters.Address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
 		case sqlbuilder.SQLite:
 			sb.Where("account REGEXP " + arg)
 		}
-		t.AddressRegexpFilter = q.Params.Address
+		t.AddressRegexpFilter = q.Filters.Address
 	}
 
 	sb.Limit(int(q.Limit + 1))
@@ -123,8 +124,8 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("asset")
 
-	if q.Params.Address != "" {
-		arg := sb.Args.Add("^" + q.Params.Address + "$")
+	if q.Filters.Address != "" {
+		arg := sb.Args.Add("^" + q.Filters.Address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)

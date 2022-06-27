@@ -44,7 +44,7 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 type AccountsAssetsVolumes map[string]AssetsVolumes
 
 type AggregatedBalances struct {
-	Aggregated AssetsBalances         `json:"aggregated"`
+	Aggregated AssetsBalances   `json:"aggregated"`
 	Accounts   AccountsBalances `json:"accounts"`
 }
 
