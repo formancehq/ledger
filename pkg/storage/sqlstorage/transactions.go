@@ -13,38 +13,47 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) buildTransactionsQuery(p map[string]interface{}) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
+	var (
+		destination = p.Filters.Destination
+		source      = p.Filters.Source
+		account     = p.Filters.Account
+		reference   = p.Filters.Reference
+		startTime   = p.Filters.StartTime
+		endTime     = p.Filters.EndTime
+	)
+
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
-	if account, ok := p["account"]; ok && account.(string) != "" {
-		arg := sb.Args.Add(account.(string))
+	if account != "" {
+		arg := sb.Args.Add(account)
 		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
-		t.AccountFilter = account.(string)
+		t.AccountFilter = account
 	}
-	if source, ok := p["source"]; ok && source.(string) != "" {
-		arg := sb.Args.Add(source.(string))
+	if source != "" {
+		arg := sb.Args.Add(source)
 		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
-		t.SourceFilter = source.(string)
+		t.SourceFilter = source
 	}
-	if destination, ok := p["destination"]; ok && destination.(string) != "" {
-		arg := sb.Args.Add(destination.(string))
+	if destination != "" {
+		arg := sb.Args.Add(destination)
 		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
-		t.DestinationFilter = destination.(string)
+		t.DestinationFilter = destination
 	}
-	if reference, ok := p["reference"]; ok && reference.(string) != "" {
-		sb.Where(sb.E("reference", reference.(string)))
-		t.ReferenceFilter = reference.(string)
+	if reference != "" {
+		sb.Where(sb.E("reference", reference))
+		t.ReferenceFilter = reference
 	}
-	if startTime, ok := p["start_time"]; ok && !startTime.(time.Time).IsZero() {
-		sb.Where(sb.GE("timestamp", startTime.(time.Time).UTC().Format(time.RFC3339)))
-		t.StartTime = startTime.(time.Time)
+	if !startTime.IsZero() {
+		sb.Where(sb.GE("timestamp", startTime.UTC().Format(time.RFC3339)))
+		t.StartTime = startTime
 	}
-	if endTime, ok := p["end_time"]; ok && !endTime.(time.Time).IsZero() {
-		sb.Where(sb.L("timestamp", endTime.(time.Time).UTC().Format(time.RFC3339)))
-		t.EndTime = endTime.(time.Time)
+	if !endTime.IsZero() {
+		sb.Where(sb.L("timestamp", endTime.UTC().Format(time.RFC3339)))
+		t.EndTime = endTime
 	}
 
 	return sb, t
@@ -57,7 +66,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 		return sharedapi.Cursor[core.Transaction]{Data: txs}, nil
 	}
 
-	sb, t := s.buildTransactionsQuery(q.Params)
+	sb, t := s.buildTransactionsQuery(q)
 	sb.OrderBy("id desc")
 	if q.AfterTxID > 0 {
 		sb.Where(sb.L("id", q.AfterTxID))
