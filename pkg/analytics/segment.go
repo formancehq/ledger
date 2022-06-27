@@ -5,9 +5,14 @@ import (
 	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/pborman/uuid"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
+)
+
+const (
+	ApplicationStartedEvent = "Application started"
+
+	VersionProperty = "version"
 )
 
 type heartbeat struct {
@@ -56,9 +61,10 @@ func (m *heartbeat) Stop(ctx context.Context) error {
 
 func (m *heartbeat) enqueue() error {
 	return m.client.Enqueue(&analytics.Track{
-		AnonymousId: uuid.New(),
-		Event:       "Application started",
-		Properties:  analytics.NewProperties().Set("version", m.version),
+		AnonymousId: m.id,
+		Event:       ApplicationStartedEvent,
+		Properties: analytics.NewProperties().
+			Set(VersionProperty, m.version),
 	})
 }
 
@@ -74,8 +80,9 @@ func newHeartbeat(applicationId string, client analytics.Client, version string,
 
 func NewHeartbeatModule(applicationId, version, writeKey string, interval time.Duration) fx.Option {
 	return fx.Options(
-		fx.Provide(func() analytics.Client {
-			return analytics.New(writeKey)
+		fx.Supply(analytics.Config{}), // Provide empty config to be able to replace (use fx.Replace) if necessary
+		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
+			return analytics.NewWithConfig(writeKey, cfg)
 		}),
 		fx.Provide(func(client analytics.Client) *heartbeat {
 			return newHeartbeat(applicationId, client, version, interval)
