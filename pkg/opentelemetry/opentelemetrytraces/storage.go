@@ -106,9 +106,9 @@ func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storag
 	return
 }
 
-func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s uint64) (tx core.Transaction, err error) {
+func (o *openTelemetryStorage) GetTransaction(ctx context.Context, txid uint64) (tx *core.Transaction, err error) {
 	handlingErr := o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
-		tx, err = o.underlying.GetTransaction(ctx, s)
+		tx, err = o.underlying.GetTransaction(ctx, txid)
 		return err
 	})
 	if handlingErr != nil {

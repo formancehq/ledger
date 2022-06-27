@@ -98,8 +98,16 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 	return l.store.CountTransactions(ctx, q)
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (core.Transaction, error) {
-	return l.store.GetTransaction(ctx, id)
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+	tx, err := l.store.GetTransaction(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, NewNotFoundError("transaction not found")
+	}
+
+	return tx, nil
 }
 
 func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
@@ -119,6 +127,12 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if tx == nil {
+		return nil, NewNotFoundError("transaction not found")
+	}
+	if tx.IsReverted() {
+		return nil, NewValidationError("transaction already reverted")
 	}
 
 	rt := tx.Reverse()
@@ -147,7 +161,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 		return nil, err
 	}
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, result.GeneratedTransactions[0])
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, &result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
 }
 
