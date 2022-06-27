@@ -117,7 +117,7 @@ func (o *openTelemetryStorage) GetTransaction(ctx context.Context, s uint64) (tx
 	return
 }
 
-func (o *openTelemetryStorage) GetAccount(ctx context.Context, accountAddress string) (acc core.Account, err error) {
+func (o *openTelemetryStorage) GetAccount(ctx context.Context, accountAddress string) (acc *core.Account, err error) {
 	handlingErr := o.handle(ctx, "GetAccount", func(ctx context.Context) error {
 		acc, err = o.underlying.GetAccount(ctx, accountAddress)
 		return err

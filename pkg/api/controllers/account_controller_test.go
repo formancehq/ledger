@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -45,12 +47,13 @@ func TestGetAccounts(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, api, "bob", core.Metadata{
+				meta := core.Metadata{
 					"roles":     json.RawMessage(`"admin"`),
 					"accountId": json.RawMessage("3"),
 					"enabled":   json.RawMessage(`"true"`),
-					"a":         json.RawMessage(`{"nested": {"key": "hello"}}`),
-				})
+					"a":         json.RawMessage(`{"nested":{"key":"hello"}}`),
+				}
+				rsp = internal.PostAccountMetadata(t, api, "bob", meta)
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
 				rsp = internal.CountAccounts(api, url.Values{})
@@ -63,9 +66,11 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 3 accounts: world, bob, alice
 					assert.Len(t, cursor.Data, 3)
-					assert.Equal(t, cursor.Data[0].Address, "world")
-					assert.Equal(t, cursor.Data[1].Address, "bob")
-					assert.Equal(t, cursor.Data[2].Address, "alice")
+					assert.Equal(t, []core.Account{
+						{Address: "world", Metadata: core.Metadata{}},
+						{Address: "bob", Metadata: meta},
+						{Address: "alice", Metadata: core.Metadata{}},
+					}, cursor.Data)
 				})
 
 				t.Run("meta roles", func(t *testing.T) {
@@ -159,6 +164,13 @@ func TestGetAccounts(t *testing.T) {
 						"after":            []string{"bob"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "no other query params can be set with 'pagination_token'",
+					}, err)
 				})
 
 				t.Run("invalid pagination_token", func(t *testing.T) {
@@ -166,15 +178,35 @@ func TestGetAccounts(t *testing.T) {
 						"pagination_token": []string{"invalid"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'pagination_token'",
+					}, err)
+				})
+
+				t.Run("invalid pagination_token not base64", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"pagination_token": []string{"\n*@"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid query value 'pagination_token'",
+					}, err)
 				})
 
 				t.Run("filter by balance >= 50 with default operator", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
 						"balance": []string{"50"},
 					})
-					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
-
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 2)
 					assert.Equal(t, cursor.Data[0].Address, "bob")
 					assert.Equal(t, cursor.Data[1].Address, "alice")
@@ -273,8 +305,14 @@ func TestGetAccounts(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
 						"balance": []string{"toto"},
 					})
-
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid parameter 'balance', should be a number",
+					}, err)
 				})
 
 				t.Run("invalid balance_operator", func(t *testing.T) {
@@ -282,8 +320,14 @@ func TestGetAccounts(t *testing.T) {
 						"balance":          []string{"100"},
 						"balance_operator": []string{"toto"},
 					})
-
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
+					}, err)
 				})
 
 				return nil
@@ -308,30 +352,122 @@ func TestGetAccount(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, api, "alice", core.Metadata{
-					"foo": json.RawMessage(`"bar"`),
-				})
+				rsp = internal.PostAccountMetadata(t, api, "alice",
+					core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
-				rsp = internal.GetAccount(api, "alice")
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				resp, _ := internal.DecodeSingleResponse[core.Account](t, rsp.Body)
+				t.Run("valid address", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "alice")
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
 
-				assert.EqualValues(t, core.Account{
-					Address: "alice",
-					Type:    "",
-					Balances: map[string]int64{
-						"USD": 100,
-					},
-					Volumes: core.AssetsVolumes{
-						"USD": {
-							Input: 100,
+					assert.EqualValues(t, core.AccountWithVolumes{
+						Account: core.Account{
+							Address: "alice",
+							Metadata: core.Metadata{
+								"foo": json.RawMessage(`"bar"`),
+							},
+						},
+						Balances: core.AssetsBalances{
+							"USD": 100,
+						},
+						Volumes: core.AssetsVolumes{
+							"USD": {
+								Input: 100,
+							},
+						},
+					}, resp)
+				})
+
+				t.Run("unknown address", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "bob")
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					resp, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
+					assert.EqualValues(t, core.AccountWithVolumes{
+						Account: core.Account{
+							Address:  "bob",
+							Metadata: core.Metadata{},
+						},
+						Balances: core.AssetsBalances{},
+						Volumes:  core.AssetsVolumes{},
+					}, resp)
+				})
+
+				t.Run("invalid address format", func(t *testing.T) {
+					rsp = internal.GetAccount(api, "accounts::alice")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid account address format",
+					}, err)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostAccountMetadata(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "alice",
+							Amount:      100,
+							Asset:       "USD",
 						},
 					},
-					Metadata: core.Metadata{
-						"foo": json.RawMessage(`"bar"`),
-					},
-				}, resp)
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				t.Run("valid request", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "alice",
+						core.Metadata{
+							"foo": json.RawMessage(`"bar"`),
+						})
+					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("unknown account should succeed", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "bob",
+						core.Metadata{
+							"foo": json.RawMessage(`"bar"`),
+						})
+					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run("invalid address format", func(t *testing.T) {
+					rsp = internal.PostAccountMetadata(t, api, "accounts::alice", core.Metadata{})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid account address format",
+					}, err)
+				})
+
+				t.Run("invalid metadata format", func(t *testing.T) {
+					rsp = internal.NewRequestOnLedger(t, api, "/accounts/alice/metadata", "invalid")
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: "invalid metadata format",
+					}, err)
+				})
 
 				return nil
 			},

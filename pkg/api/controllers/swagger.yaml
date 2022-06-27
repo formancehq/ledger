@@ -133,6 +133,21 @@ paths:
                         type: object
                         required:
                           - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
 
   /{ledger}/accounts/{address}:
     get:
@@ -150,7 +165,11 @@ paths:
             example: ledger001
         - name: address
           in: path
-          description: Exact address of the account.
+          description: |
+            Exact address of the account. It must match the following regular expressions pattern:
+            ```
+            ^\w+(:\w+)*$
+            ```
           required: true
           schema:
             type: string
@@ -167,6 +186,22 @@ paths:
                 type: object
                 required:
                   - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid account address format"
+
 
   /{ledger}/accounts/{address}/metadata:
     post:
@@ -184,7 +219,11 @@ paths:
             example: ledger001
         - name: address
           in: path
-          description: Exact address of the account.
+          description: |
+            Exact address of the account. It must match the following regular expressions pattern:
+            ```
+            ^\w+(:\w+)*$
+            ```
           required: true
           schema:
             type: string
@@ -198,10 +237,23 @@ paths:
         required: true
       responses:
         "204":
-          description: Empty response
-        "400":
-          description: ""
+          description: No Content
           content: {}
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid account address format"
 
   /{ledger}/mapping:
     get:
@@ -562,7 +614,7 @@ paths:
               $ref: '#/components/schemas/Metadata'
       responses:
         "204":
-          description: Empty response
+          description: No Content
           content: {}
 
   /{ledger}/transactions/{txid}/revert:
@@ -958,7 +1010,6 @@ components:
         - INSUFFICIENT_FUND
         - VALIDATION
         - CONFLICT
-        - NOT_FOUND
     ErrorResponse:
       type: object
       required:

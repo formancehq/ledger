@@ -119,7 +119,9 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}(rows)
 
 	for rows.Next() {
-		account := core.Account{}
+		account := core.Account{
+			Metadata: core.Metadata{},
+		}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
 			return sharedapi.Cursor[core.Account]{}, err
 		}
@@ -163,29 +165,33 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (share
 	return s.getAccounts(ctx, s.schema, q)
 }
 
-func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (core.Account, error) {
+func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*core.Account, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
 		Where(sb.Equal("address", addr))
 
+	account := core.Account{
+		Address:  addr,
+		Metadata: core.Metadata{},
+	}
+
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq, args...)
 	if err := row.Err(); err != nil {
-		return core.Account{}, err
+		return nil, err
 	}
 
-	account := core.Account{}
 	if err := row.Scan(&account.Address, &account.Metadata); err != nil {
 		if err == sql.ErrNoRows {
-			return core.Account{}, nil
+			return &account, nil
 		}
-		return core.Account{}, err
+		return nil, err
 	}
 
-	return account, nil
+	return &account, nil
 }
 
-func (s *Store) GetAccount(ctx context.Context, addr string) (core.Account, error) {
+func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	return s.getAccount(ctx, s.schema, addr)
 }
