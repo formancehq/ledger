@@ -43,16 +43,12 @@ const (
 	ScopeAccountsWrite     = "accounts:write"
 	ScopeMappingRead       = "mapping:read"
 	ScopeMappingWrite      = "mapping:write"
-	ScopeBalancesRead      = "balances:read"
-	ScopeBalancesWrite     = "balances:write"
 	ScopesStatsRead        = "stats"
 )
 
 var AllScopes = []string{
 	ScopeTransactionsRead,
 	ScopeAccountsWrite,
-	ScopeBalancesRead,
-	ScopeBalancesWrite,
 	ScopeTransactionsWrite,
 	ScopeAccountsRead,
 	ScopeMappingRead,
@@ -157,8 +153,8 @@ func (r *Routes) Engine() *gin.Engine {
 		router.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
 
 		// BalanceController
-		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeBalancesRead, ScopeBalancesWrite))
-		router.GET("/aggregate/balances", r.wrapWithScopes(r.balanceController.GetBalancesAggregated, ScopeBalancesRead, ScopeBalancesWrite))
+		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeAccountsRead))
+		router.GET("/aggregate/balances", r.wrapWithScopes(r.balanceController.GetBalancesAggregated, ScopeAccountsRead))
 
 		// MappingController
 		router.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
