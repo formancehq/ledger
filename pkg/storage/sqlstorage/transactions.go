@@ -74,6 +74,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 
 	// We fetch an additional transaction to know if there are more
 	sb.Limit(int(q.Limit + 1))
+	t.Limit = q.Limit
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -121,7 +122,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 
 	var previous, next string
 	if q.AfterTxID > 0 && len(txs) > 0 {
-		t.AfterTxID = txs[0].ID + storage.QueryDefaultLimit + 1
+		t.AfterTxID = txs[0].ID + uint64(q.Limit) + 1
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, s.error(err)

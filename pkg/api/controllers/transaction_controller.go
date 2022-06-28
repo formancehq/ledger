@@ -55,7 +55,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("after") != "" || c.Query("reference") != "" ||
 			c.Query("account") != "" || c.Query("source") != "" ||
 			c.Query("destination") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" {
+			c.Query("end_time") != "" || c.Query("limit") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -80,7 +80,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithSourceFilter(token.SourceFilter).
 			WithDestinationFilter(token.DestinationFilter).
 			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime)
+			WithEndTimeFilter(token.EndTime).
+			WithLimit(token.Limit)
 
 	} else {
 		var afterTxIDParsed uint64
@@ -109,6 +110,12 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			}
 		}
 
+		limit, err := getLimit(c)
+		if err != nil {
+			ResponseError(c, err)
+			return
+		}
+
 		txQuery = storage.NewTransactionsQuery().
 			WithAfterTxID(afterTxIDParsed).
 			WithReferenceFilter(c.Query("reference")).
@@ -116,7 +123,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithSourceFilter(c.Query("source")).
 			WithDestinationFilter(c.Query("destination")).
 			WithStartTimeFilter(startTimeParsed).
-			WithEndTimeFilter(endTimeParsed)
+			WithEndTimeFilter(endTimeParsed).
+			WithLimit(limit)
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)

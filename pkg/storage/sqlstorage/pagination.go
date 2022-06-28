@@ -14,6 +14,7 @@ type TxsPaginationToken struct {
 	DestinationFilter string    `json:"destination,omitempty"`
 	StartTime         time.Time `json:"start_time,omitempty"`
 	EndTime           time.Time `json:"end_time,omitempty"`
+	Limit             uint      `json:"limit,omitempty"`
 }
 
 type AccPaginationToken struct {

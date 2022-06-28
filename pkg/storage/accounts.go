@@ -48,7 +48,6 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 }
 
 func NewAccountsQuery() *AccountsQuery {
-
 	return &AccountsQuery{
 		Limit: QueryDefaultLimit,
 	}

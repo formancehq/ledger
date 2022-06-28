@@ -20,7 +20,6 @@ type TransactionsQueryFilters struct {
 }
 
 func NewTransactionsQuery() *TransactionsQuery {
-
 	return &TransactionsQuery{
 		Limit: QueryDefaultLimit,
 	}
