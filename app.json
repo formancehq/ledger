@@ -13,12 +13,12 @@
     }
   ],
   "env": {
-    "AUTH_BASIC_ENABLED": {
+    "NUMARY_AUTH_BASIC_ENABLED": {
       "description": "Enable basic auth. (true or false)",
       "required": true,
       "value": "true"
     },
-    "AUTH_BASIC_CREDENTIALS": {
+    "NUMARY_AUTH_BASIC_CREDENTIALS": {
       "description": "HTTP basic auth credentials (<username>:<password>)",
       "required": false
     }
