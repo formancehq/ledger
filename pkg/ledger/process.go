@@ -53,7 +53,7 @@ func (l *Ledger) processTx(ctx context.Context, txsData []core.TransactionData) 
 	}
 	contracts = append(contracts, DefaultContracts...)
 
-	accMatchingContracts := make(map[string]core.Account, 0)
+	accMatchingContracts := make(map[string]*core.Account, 0)
 
 	for i, txData := range txsData {
 		if len(txData.Postings) == 0 {
@@ -141,7 +141,7 @@ func (l *Ledger) updateVolumes(account string, inputAmount, outputAmount int64,
 }
 
 func (l *Ledger) checkPostCommitVolumes(ctx context.Context, txPostCommitVol core.AccountsAssetsVolumes,
-	contracts []core.Contract, accMatchingContracts map[string]core.Account) error {
+	contracts []core.Contract, accMatchingContracts map[string]*core.Account) error {
 	for accountAddress, assetsVolumes := range txPostCommitVol {
 		for asset, volumes := range assetsVolumes {
 			if accountAddress == "world" {

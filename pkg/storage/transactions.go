@@ -7,80 +7,75 @@ import (
 type TransactionsQuery struct {
 	Limit     uint
 	AfterTxID uint64
-	Params    map[string]interface{}
+	Filters   TransactionsQueryFilters
 }
 
-type TxQueryModifier func(*TransactionsQuery)
-
-func NewTransactionsQuery(qms ...[]TxQueryModifier) TransactionsQuery {
-	q := TransactionsQuery{
-		Limit:  QueryDefaultLimit,
-		Params: map[string]interface{}{},
-	}
-
-	for _, m := range qms {
-		q.Apply(m)
-	}
-
-	return q
+type TransactionsQueryFilters struct {
+	Reference   string
+	Destination string
+	Source      string
+	Account     string
+	EndTime     time.Time
+	StartTime   time.Time
 }
 
-func (q *TransactionsQuery) Apply(modifiers []TxQueryModifier) {
-	for _, m := range modifiers {
-		m(q)
+func NewTransactionsQuery() *TransactionsQuery {
+
+	return &TransactionsQuery{
+		Limit: QueryDefaultLimit,
 	}
 }
 
-func SetAfterTxID(v uint64) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		q.AfterTxID = v
+func (a *TransactionsQuery) WithLimit(limit uint) *TransactionsQuery {
+	if limit != 0 {
+		a.Limit = limit
 	}
+
+	return a
 }
 
-func SetStartTime(v time.Time) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if !v.IsZero() {
-			q.Params["start_time"] = v
-		}
-	}
+func (a *TransactionsQuery) WithAfterTxID(after uint64) *TransactionsQuery {
+	a.AfterTxID = after
+
+	return a
 }
 
-func SetEndTime(v time.Time) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if !v.IsZero() {
-			q.Params["end_time"] = v
-		}
+func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQuery {
+	if !start.IsZero() {
+		a.Filters.StartTime = start
 	}
+
+	return a
 }
 
-func SetAccountFilter(v string) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if v != "" {
-			q.Params["account"] = v
-		}
+func (a *TransactionsQuery) WithEndTimeFilter(end time.Time) *TransactionsQuery {
+	if !end.IsZero() {
+		a.Filters.EndTime = end
 	}
+
+	return a
 }
 
-func SetSourceFilter(v string) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if v != "" {
-			q.Params["source"] = v
-		}
-	}
+func (a *TransactionsQuery) WithAccountFilter(account string) *TransactionsQuery {
+	a.Filters.Account = account
+
+	return a
 }
 
-func SetDestinationFilter(v string) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if v != "" {
-			q.Params["destination"] = v
-		}
-	}
+func (a *TransactionsQuery) WithDestinationFilter(dest string) *TransactionsQuery {
+	a.Filters.Destination = dest
+
+	return a
 }
 
-func SetReferenceFilter(v string) func(*TransactionsQuery) {
-	return func(q *TransactionsQuery) {
-		if v != "" {
-			q.Params["reference"] = v
-		}
-	}
+func (a *TransactionsQuery) WithReferenceFilter(ref string) *TransactionsQuery {
+	a.Filters.Reference = ref
+
+	return a
+}
+
+func (a *TransactionsQuery) WithSourceFilter(source string) *TransactionsQuery {
+	a.Filters.Source = source
+
+	return a
 }

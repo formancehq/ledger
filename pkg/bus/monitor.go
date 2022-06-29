@@ -58,11 +58,12 @@ func (l ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mappin
 	})
 }
 
-func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted core.Transaction, revert core.Transaction) {
-	l.publish(ctx, ledger, RevertedTransaction, revertedTransaction{
-		RevertedTransaction: reverted,
-		RevertTransaction:   revert,
-	})
+func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.Transaction) {
+	l.publish(ctx, ledger, RevertedTransaction,
+		revertedTransaction{
+			RevertedTransaction: *reverted,
+			RevertTransaction:   *revert,
+		})
 }
 
 var _ ledger.Monitor = &ledgerMonitor{}

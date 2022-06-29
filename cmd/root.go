@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
 	"time"
 
+	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -23,7 +23,7 @@ const (
 	serverHttpBindAddressFlag           = "server.http.bind_address"
 	uiHttpBindAddressFlag               = "ui.http.bind_address"
 	// Deprecated
-	serverHttpBasicAuthFlag              = "server.http.basic_auth"
+
 	lockStrategyFlag                     = "lock-strategy"
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
 	lockStrategyRedisDurationFlag        = "lock-strategy-redis-duration"
@@ -54,13 +54,12 @@ const (
 	publisherKafkaTLSEnabled             = "publisher-kafka-tls-enabled"
 	publisherTopicMappingFlag            = "publisher-topic-mapping"
 	publisherHttpEnabledFlag             = "publisher-http-enabled"
-	authBasicEnabledFlag                 = "auth-basic-enabled"
-	authBasicCredentialsFlag             = "auth-basic-credentials"
-	authBearerEnabledFlag                = "auth-bearer-enabled"
-	authBearerIntrospectUrlFlag          = "auth-bearer-introspect-url"
-	authBearerAudienceFlag               = "auth-bearer-audience"
-	authBearerAudiencesWildcardFlag      = "auth-bearer-audiences-wildcard"
-	authBearerUseScopesFlag              = "auth-bearer-use-scopes"
+
+	authBearerEnabledFlag           = "auth-bearer-enabled"
+	authBearerIntrospectUrlFlag     = "auth-bearer-introspect-url"
+	authBearerAudienceFlag          = "auth-bearer-audience"
+	authBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
+	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
 
 	segmentEnabledFlag       = "segment-enabled"
 	segmentWriteKey          = "segment-write-key"
@@ -73,8 +72,6 @@ var (
 	BuildDate              = "-"
 	Commit                 = "-"
 	DefaultSegmentWriteKey = ""
-
-	replacer = strings.NewReplacer(".", "_", "-", "_")
 )
 
 func NewRootCommand() *cobra.Command {
@@ -134,7 +131,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
-	root.PersistentFlags().String(serverHttpBasicAuthFlag, "", "Http basic auth")
 	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
 	root.PersistentFlags().Bool(otelTracesBatchFlag, false, "Use OpenTelemetry batching")
 	root.PersistentFlags().String(otelTracesExporterFlag, "stdout", "OpenTelemetry traces exporter")
@@ -165,8 +161,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(publisherKafkaSASLMechanism, "", "SASL authentication mechanism")
 	root.PersistentFlags().Int(publisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
 	root.PersistentFlags().Bool(publisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
-	root.PersistentFlags().Bool(authBasicEnabledFlag, false, "Enable basic auth")
-	root.PersistentFlags().StringSlice(authBasicCredentialsFlag, []string{}, "HTTP basic auth credentials (<username>:<password>)")
 	root.PersistentFlags().Bool(authBearerEnabledFlag, false, "Enable bearer auth")
 	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
 	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
@@ -177,7 +171,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
 	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
 
-	viper.RegisterAlias(serverHttpBasicAuthFlag, authBasicCredentialsFlag)
+	internal.InitHTTPBasicFlags(root)
 
 	if err = viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)
@@ -191,9 +185,7 @@ func NewRootCommand() *cobra.Command {
 		fmt.Printf("loading config file: %s\n", err)
 	}
 
-	viper.SetEnvPrefix("numary")
-	viper.SetEnvKeyReplacer(replacer)
-	viper.AutomaticEnv()
+	internal.BindEnv(viper.GetViper())
 
 	return root
 }
