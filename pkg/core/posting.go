@@ -18,10 +18,10 @@ func (p Posting) Validate() error {
 	if p.Amount < 0 {
 		return errors.New("negative amount")
 	}
-	if !ValidateAddress(p.Source) {
+	if !IsAddressValid(p.Source) {
 		return errors.New("invalid source address")
 	}
-	if !ValidateAddress(p.Destination) {
+	if !IsAddressValid(p.Destination) {
 		return errors.New("invalid destination address")
 	}
 	if !AssetIsValid(p.Asset) {
@@ -71,6 +71,6 @@ func (p *Postings) Scan(value interface{}) error {
 // Each segment contains only the following characters: a to z (lower or upper case) and/or digits and/or the special character "_".
 var addressRegexp = regexp.MustCompile(`^\w+(:\w+)*$`)
 
-func ValidateAddress(addr string) bool {
+func IsAddressValid(addr string) bool {
 	return addressRegexp.Match([]byte(addr))
 }
