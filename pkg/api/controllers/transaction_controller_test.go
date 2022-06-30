@@ -374,6 +374,9 @@ func TestGetTransactions(t *testing.T) {
 							},
 						},
 						Reference: "ref:003",
+						Metadata: map[string]json.RawMessage{
+							"priority": json.RawMessage(`"high"`),
+						},
 					},
 					Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
 				}
@@ -401,6 +404,17 @@ func TestGetTransactions(t *testing.T) {
 
 					tx1Timestamp = cursor.Data[1].Timestamp
 					tx2Timestamp = cursor.Data[0].Timestamp
+				})
+
+				t.Run("metadata", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"metadata[priority]": []string{"high"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+					// 1 transaction: txid 0
+					assert.Len(t, cursor.Data, 1)
+					assert.Equal(t, cursor.Data[0].ID, tx3.ID)
 				})
 
 				t.Run("after", func(t *testing.T) {

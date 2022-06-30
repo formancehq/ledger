@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -24,6 +26,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		reference   = p.Filters.Reference
 		startTime   = p.Filters.StartTime
 		endTime     = p.Filters.EndTime
+		metadata    = p.Filters.Metadata
 	)
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
@@ -54,6 +57,16 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC().Format(time.RFC3339)))
 		t.EndTime = endTime
+	}
+	if len(metadata) > 0 {
+		for key, value := range metadata {
+			arg := sb.Args.Add(value)
+			sb.Where(s.schema.Table(
+				fmt.Sprintf("%s(metadata, %s, '%s')",
+					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
+			))
+		}
+		t.MetadataFilter = metadata
 	}
 
 	return sb, t
