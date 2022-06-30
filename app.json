@@ -1,0 +1,28 @@
+{
+  "name": "Formance Ledger",
+  "description": "A programmable financial ledger to build money-moving apps",
+  "repository": "https://github.com/numary/ledger",
+  "logo": "https://avatars.githubusercontent.com/u/84325077?s=200",
+  "keywords": ["ledger", "go", "golang", "programming", "money", "finance"],
+  "addons": [
+    {
+      "plan": "heroku-postgresql:hobby-dev"
+    },
+    {
+      "plan": "heroku-redis:hobby-dev"
+    }
+  ],
+  "env": {
+    "NUMARY_AUTH_BASIC_ENABLED": {
+      "description": "Enable basic auth. (true or false)",
+      "required": true,
+      "value": "true"
+    },
+    "NUMARY_AUTH_BASIC_CREDENTIALS": {
+      "description": "HTTP basic auth credentials (<username>:<password>)",
+      "required": false
+    }
+  },
+  "stack": "heroku-22",
+  "success_url": "/_info"
+}
