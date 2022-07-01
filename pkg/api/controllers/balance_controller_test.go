@@ -1,5 +1,8 @@
 package controllers_test
 
+/*
+TODO: rewrite those tests
+
 import (
 	"context"
 	"encoding/base64"
@@ -16,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
+
 
 func TestGetBalancesAggregated(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
@@ -261,3 +265,5 @@ func TestGetBalances(t *testing.T) {
 		})
 	}))
 }
+
+*/
