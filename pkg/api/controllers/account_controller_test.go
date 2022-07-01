@@ -372,19 +372,6 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 						ErrorMessage: controllers.ErrInvalidPageSize.Error(),
 					}, err)
 				})
-				t.Run("negative page size", func(t *testing.T) {
-					rsp := internal.GetAccounts(api, url.Values{
-						"page_size": []string{"-1"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    controllers.ErrValidation,
-						ErrorMessage: controllers.ErrNegativePageSize.Error(),
-					}, err)
-				})
 				t.Run("page size over maximum", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
 						"page_size": []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
