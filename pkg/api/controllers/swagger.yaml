@@ -71,7 +71,7 @@ paths:
             example: ledger001
         - name: page_size
           in: query
-          description: 'Number of results to return. The api will return at most N items.'
+          description: 'The maximum number of results to return per page'
           example: 100
           schema:
             type: integer
@@ -434,7 +434,7 @@ paths:
             example: ledger001
         - name: page_size
           in: query
-          description: 'Number of results to return. The api will return at most N items.'
+          description: 'The maximum number of results to return per page'
           example: 100
           schema:
             type: integer
