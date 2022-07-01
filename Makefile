@@ -3,7 +3,7 @@ PKG=./...
 NUMARY_STORAGE_DRIVER="postgres"
 NUMARY_STORAGE_POSTGRES_CONN_STRING="postgresql://ledger:ledger@127.0.0.1/ledger"
 FAILFAST=-failfast
-TIMEOUT=30s
+TIMEOUT=10m
 RUN=".*"
 
 all: lint test
