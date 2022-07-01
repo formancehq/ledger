@@ -164,9 +164,9 @@ func TestGetBalances(t *testing.T) {
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 					assert.Equal(t, core.AccountsBalances{
-						{"world": {"USD": -250, "EUR": -400, "CAD": -200}},
-						{"bob": {"USD": 100}},
-						{"alice": {"USD": 150, "EUR": 400, "CAD": 200}},
+						"world": core.AssetsBalances{"USD": -250, "EUR": -400, "CAD": -200},
+						"bob": core.AssetsBalances{"USD": 100},
+						"alice": core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200},
 					}, resp.Data)
 				})
 
@@ -176,7 +176,7 @@ func TestGetBalances(t *testing.T) {
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 					assert.Equal(t, core.AccountsBalances{
-						{"alice": {"USD": 150, "EUR": 400, "CAD": 200}},
+						"alice": core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200},
 					}, resp.Data)
 				})
 
@@ -186,7 +186,7 @@ func TestGetBalances(t *testing.T) {
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 					assert.Equal(t, core.AccountsBalances{
-						{"world": {"USD": -250, "EUR": -400, "CAD": -200}},
+						"world": core.AssetsBalances{"USD": -250, "EUR": -400, "CAD": -200},	
 					}, resp.Data)
 				})
 
