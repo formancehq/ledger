@@ -17,7 +17,6 @@ import (
 	"go.uber.org/fx"
 )
 
-
 func TestGetBalancesAggregated(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
