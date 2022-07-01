@@ -164,8 +164,8 @@ func TestGetBalances(t *testing.T) {
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 					assert.Equal(t, core.AccountsBalances{
 						"world": core.AssetsBalances{"USD": -250, "EUR": -400, "CAD": -200},
-						"bob": core.AssetsBalances{"USD": 100},
-						"alice": core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200},
+						"bob":   core.AssetsBalances{"USD": 100},
+						"alice":	 core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200},
 					}, resp.Data)
 				})
 
