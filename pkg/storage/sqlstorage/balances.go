@@ -5,18 +5,17 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/lib/pq"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
 )
 
-func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -28,7 +27,7 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 	}
 
 	sb.From(s.schema.Table("volumes"))
-	sb.GroupBy("account")
+	sb.GroupBy("account").OrderBy("account").Desc()
 
 	t := BalancesPaginationToken{}
 
@@ -57,36 +56,41 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 	if err != nil {
 		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
-
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
 
-	accounts := make([]core.AccountsBalances, 0)
+	res := make([]core.AccountsBalances, 0)
 
 	for rows.Next() {
-		var (
-			currentAccount string
-
-			assetBalance []byte
-		)
-		err = rows.Scan(&currentAccount, &assetBalance)
-		if err != nil {
+		var account string
+		var arrayAgg []string
+		if err = rows.Scan(&account, pq.Array(&arrayAgg)); err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
-		// we (clean and) marshal the computed row in a map[string]int64
-		assetBalances := arrayToAssetBalance(assetBalance)
-		if err != nil {
-			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+		accountsBalances := core.AccountsBalances{
+			account: core.AssetsBalances{},
 		}
 
-		accounts = append(accounts, map[string]map[string]int64{
-			currentAccount: assetBalances,
-		})
+		// arrayAgg is in the form: []string{"(USD,-250)","(EUR,1000)"}
+		for _, agg := range arrayAgg {
+			// Remove parenthesis
+			agg = agg[1 : len(agg)-1]
+			// Split the asset and balances on the comma separator
+			split := strings.Split(agg, ",")
+			asset := split[0]
+			balancesString := split[1]
+			balances, err := strconv.ParseInt(balancesString, 10, 64)
+			if err != nil {
+				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+			}
+			accountsBalances[account][asset] = balances
+		}
+
+		res = append(res, accountsBalances)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -94,13 +98,8 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 	}
 
 	var previous, next string
-	if q.Offset > 0 {
-		offset := int(q.Offset) - int(q.Limit)
-		if offset < 0 {
-			t.Offset = 0
-		} else {
-			t.Offset = uint(offset)
-		}
+	if int(q.Offset)-int(q.Limit) >= 0 {
+		t.Offset = q.Offset - q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
@@ -108,8 +107,8 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(accounts) == int(q.Limit+1) {
-		accounts = accounts[:len(accounts)-1]
+	if len(res) == int(q.Limit+1) {
+		res = res[:len(res)-1]
 		t.Offset = q.Offset + q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
@@ -119,14 +118,15 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 	}
 
 	return sharedapi.Cursor[core.AccountsBalances]{
-		PageSize: len(accounts),
+		PageSize: len(res),
+		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,
-		Data:     accounts,
+		Data:     res,
 	}, nil
 }
 
-func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q storage.BalancesQuery) (map[string]int64, error) {
+func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
@@ -143,68 +143,33 @@ func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q 
 	}
 
 	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-
 	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
 
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
 
-	aggregatedBalances := make(map[string]int64)
+	res := core.AssetsBalances{}
 
 	for rows.Next() {
 		var (
-			asset  string
-			amount int64
+			asset    string
+			balances int64
 		)
-		err = rows.Scan(&asset, &amount)
-		if err != nil {
+		if err = rows.Scan(&asset, &balances); err != nil {
 			return nil, s.error(err)
 		}
 
-		aggregatedBalances[asset] = amount
+		res[asset] = balances
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, s.error(err)
 	}
 
-	return aggregatedBalances, nil
-}
-
-func arrayToAssetBalance(array []byte) map[string]int64 {
-	if len(array) <= 3 {
-		return nil
-	}
-
-	splitRegex := regexp.MustCompile(`([^,]+,[^,]+)`)
-	arrayBalances := splitRegex.FindAllString(string(array), -1)
-
-	result := make(map[string]int64)
-
-	for i, assetBalance := range arrayBalances {
-		values := strings.Split(assetBalance, ",")
-
-		var balance int64
-		if _, err := fmt.Sscanf(values[1], "%d", &balance); err != nil {
-			panic(errors.Wrap(err, "error while converting balance value into map"))
-		}
-
-		// this is because the format we get from pg with array_agg is {"(USD,-12686)","(EUR,-250)"}
-		// and we have {"(  to remove for the first split and "( for the second split
-		// trimming the string could be dangerous (assets are not sanitized)
-		if i == 0 {
-			result[values[0][3:]] = balance
-		} else {
-			result[values[0][2:]] = balance
-		}
-	}
-
-	return result
+	return res, nil
 }
