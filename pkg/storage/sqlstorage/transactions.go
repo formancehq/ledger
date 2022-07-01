@@ -62,7 +62,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	txs := make([]core.Transaction, 0)
 
-	if q.Limit == 0 {
+	if q.PageSize == 0 {
 		return sharedapi.Cursor[core.Transaction]{Data: txs}, nil
 	}
 
@@ -73,8 +73,8 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}
 
 	// We fetch an additional transaction to know if there are more
-	sb.Limit(int(q.Limit + 1))
-	t.Limit = q.Limit
+	sb.Limit(int(q.PageSize + 1))
+	t.PageSize = q.PageSize
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := exec.QueryContext(ctx, sqlq, args...)
@@ -122,7 +122,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 
 	var previous, next string
 	if q.AfterTxID > 0 && len(txs) > 0 {
-		t.AfterTxID = txs[0].ID + uint64(q.Limit) + 1
+		t.AfterTxID = txs[0].ID + uint64(q.PageSize) + 1
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
@@ -130,7 +130,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(txs) == int(q.Limit+1) {
+	if len(txs) == int(q.PageSize+1) {
 		txs = txs[:len(txs)-1]
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)

@@ -50,7 +50,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			len(c.QueryMap("metadata")) > 0 ||
 			c.Query("balance") != "" ||
 			c.Query("balance_operator") != "" ||
-			c.Query("limit") != "" {
+			c.Query("page_size") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -77,7 +77,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithBalanceFilter(token.BalanceFilter).
 			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
 			WithMetadataFilter(token.MetadataFilter).
-			WithLimit(token.Limit)
+			WithPageSize(token.PageSize)
 
 	} else {
 		balance := c.Query("balance")
@@ -99,7 +99,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		limit, err := getLimit(c)
+		pageSize, err := getPageSize(c)
 		if err != nil {
 			ResponseError(c, err)
 			return
@@ -111,7 +111,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithBalanceFilter(balance).
 			WithBalanceOperatorFilter(balanceOperator).
 			WithMetadataFilter(c.QueryMap("metadata")).
-			WithLimit(limit)
+			WithPageSize(pageSize)
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)

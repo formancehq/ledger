@@ -94,7 +94,7 @@ func testAggregateVolumes(t *testing.T, store storage.Store) {
 
 func testGetAccounts(t *testing.T, store storage.Store) {
 	_, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 1,
+		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }
@@ -106,7 +106,7 @@ func testCountTransactions(t *testing.T, store storage.Store) {
 
 func testGetTransactions(t *testing.T, store storage.Store) {
 	_, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
-		Limit: 1,
+		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }

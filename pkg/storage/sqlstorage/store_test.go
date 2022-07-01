@@ -253,20 +253,20 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 
 	accounts, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 1,
+		PageSize: 1,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit:        1,
+		PageSize:     1,
 		AfterAddress: accounts.Data[0].Address,
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 10,
+		PageSize: 10,
 		Filters: storage.AccountsQueryFilters{
 			Address: ".*der.*",
 		},
@@ -276,7 +276,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Equal(t, 10, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 10,
+		PageSize: 10,
 		Filters: storage.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"foo": "bar",
@@ -287,7 +287,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 10,
+		PageSize: 10,
 		Filters: storage.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"number": "3",
@@ -298,7 +298,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 10,
+		PageSize: 10,
 		Filters: storage.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"boolean": "true",
@@ -309,7 +309,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 1)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		Limit: 10,
+		PageSize: 10,
 		Filters: storage.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"a.super.nested.key": "hello",
@@ -400,7 +400,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 
 	t.Run("Get", func(t *testing.T) {
 		cursor, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Limit: 1,
+			PageSize: 1,
 		})
 		assert.NoError(t, err)
 		// Should get only the first transaction.
@@ -408,7 +408,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
 			AfterTxID: cursor.Data[0].ID,
-			Limit:     1,
+			PageSize:  1,
 		})
 		assert.NoError(t, err)
 		// Should get only the second transaction.
@@ -419,7 +419,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 				Account:   "world",
 				Reference: "tx1",
 			},
-			Limit: 1,
+			PageSize: 1,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
@@ -430,7 +430,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Filters: storage.TransactionsQueryFilters{
 				Source: "central_bank",
 			},
-			Limit: 10,
+			PageSize: 10,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 10, cursor.PageSize)
@@ -441,7 +441,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Filters: storage.TransactionsQueryFilters{
 				Destination: "users:1",
 			},
-			Limit: 10,
+			PageSize: 10,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 10, cursor.PageSize)
@@ -453,7 +453,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now.Add(-1 * time.Hour),
 			},
-			Limit: 10,
+			PageSize: 10,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, 10, cursor.PageSize)

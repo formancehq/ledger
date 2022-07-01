@@ -14,11 +14,11 @@ type TxsPaginationToken struct {
 	DestinationFilter string    `json:"destination,omitempty"`
 	StartTime         time.Time `json:"start_time,omitempty"`
 	EndTime           time.Time `json:"end_time,omitempty"`
-	Limit             uint      `json:"limit,omitempty"`
+	PageSize          uint      `json:"page_size,omitempty"`
 }
 
 type AccPaginationToken struct {
-	Limit                 uint                    `json:"limit"`
+	PageSize              uint                    `json:"page_size"`
 	Offset                uint                    `json:"offset"`
 	AfterAddress          string                  `json:"after,omitempty"`
 	AddressRegexpFilter   string                  `json:"address,omitempty"`

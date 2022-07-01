@@ -1,7 +1,7 @@
 package storage
 
 type AccountsQuery struct {
-	Limit        uint
+	PageSize     uint
 	Offset       uint
 	AfterAddress string
 	Filters      AccountsQueryFilters
@@ -49,13 +49,13 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 
 func NewAccountsQuery() *AccountsQuery {
 	return &AccountsQuery{
-		Limit: QueryDefaultLimit,
+		PageSize: QueryDefaultPageSize,
 	}
 }
 
-func (a *AccountsQuery) WithLimit(limit uint) *AccountsQuery {
-	if limit != 0 {
-		a.Limit = limit
+func (a *AccountsQuery) WithPageSize(pageSize uint) *AccountsQuery {
+	if pageSize != 0 {
+		a.PageSize = pageSize
 	}
 
 	return a

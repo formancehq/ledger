@@ -55,7 +55,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("after") != "" || c.Query("reference") != "" ||
 			c.Query("account") != "" || c.Query("source") != "" ||
 			c.Query("destination") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" || c.Query("limit") != "" {
+			c.Query("end_time") != "" || c.Query("page_size") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -81,7 +81,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(token.DestinationFilter).
 			WithStartTimeFilter(token.StartTime).
 			WithEndTimeFilter(token.EndTime).
-			WithLimit(token.Limit)
+			WithPageSize(token.PageSize)
 
 	} else {
 		var afterTxIDParsed uint64
@@ -110,7 +110,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			}
 		}
 
-		limit, err := getLimit(c)
+		pageSize, err := getPageSize(c)
 		if err != nil {
 			ResponseError(c, err)
 			return
@@ -124,7 +124,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(c.Query("destination")).
 			WithStartTimeFilter(startTimeParsed).
 			WithEndTimeFilter(endTimeParsed).
-			WithLimit(limit)
+			WithPageSize(pageSize)
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)

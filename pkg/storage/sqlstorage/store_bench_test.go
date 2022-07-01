@@ -139,7 +139,7 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		txs, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Limit: 100,
+			PageSize: 100,
 		})
 		assert.NoError(b, err)
 		if txs.PageSize != 100 {

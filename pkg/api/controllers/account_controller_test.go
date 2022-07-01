@@ -338,7 +338,7 @@ func TestGetAccounts(t *testing.T) {
 	}))
 }
 
-func TestGetAccountsWithLimit(t *testing.T) {
+func TestGetAccountsWithPageSize(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -346,7 +346,7 @@ func TestGetAccountsWithLimit(t *testing.T) {
 				logs := make([]core.Log, 0)
 				store := internal.GetStore(t, driver, context.Background())
 
-				for i := 0; i < 3*controllers.MaxLimit; i++ {
+				for i := 0; i < 3*controllers.MaxPageSize; i++ {
 					log := core.NewSetMetadataLog(previousLog, core.SetMetadata{
 						TargetID:   fmt.Sprintf("accounts:%06d", i),
 						TargetType: core.MetaTargetTypeAccount,
@@ -359,9 +359,9 @@ func TestGetAccountsWithLimit(t *testing.T) {
 				}
 				require.NoError(t, store.AppendLog(context.Background(), logs...))
 
-				t.Run("invalid limit", func(t *testing.T) {
+				t.Run("invalid page size", func(t *testing.T) {
 					rsp := internal.GetTransactions(api, url.Values{
-						"limit": []string{"nan"},
+						"page_size": []string{"nan"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -369,12 +369,12 @@ func TestGetAccountsWithLimit(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    controllers.ErrValidation,
-						ErrorMessage: controllers.ErrInvalidLimit.Error(),
+						ErrorMessage: controllers.ErrInvalidPageSize.Error(),
 					}, err)
 				})
-				t.Run("negative limit", func(t *testing.T) {
+				t.Run("negative page size", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
-						"limit": []string{"-1"},
+						"page_size": []string{"-1"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -382,43 +382,43 @@ func TestGetAccountsWithLimit(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    controllers.ErrValidation,
-						ErrorMessage: controllers.ErrNegativeLimit.Error(),
+						ErrorMessage: controllers.ErrNegativePageSize.Error(),
 					}, err)
 				})
-				t.Run("limit over maximum", func(t *testing.T) {
+				t.Run("page size over maximum", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"limit": []string{fmt.Sprintf("%d", 2*controllers.MaxLimit)},
+						"page_size": []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
 					cursor := internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
-					assert.Len(t, cursor.Data, controllers.MaxLimit)
-					assert.Equal(t, cursor.PageSize, controllers.MaxLimit)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize)
 					assert.NotEmpty(t, cursor.Next)
 					assert.True(t, cursor.HasMore)
 				})
-				t.Run("with limit greater than max count", func(t *testing.T) {
+				t.Run("with page size greater than max count", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"limit": []string{fmt.Sprintf("%d", controllers.MaxLimit)},
-						"after": []string{fmt.Sprintf("accounts:%06d", controllers.MaxLimit-100)},
+						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
+						"after":     []string{fmt.Sprintf("accounts:%06d", controllers.MaxPageSize-100)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
 					cursor := internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
-					assert.Len(t, cursor.Data, controllers.MaxLimit-100)
-					assert.Equal(t, controllers.MaxLimit-100, cursor.PageSize)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize-100)
+					assert.Equal(t, controllers.MaxPageSize-100, cursor.PageSize)
 					assert.Empty(t, cursor.Next)
 					assert.False(t, cursor.HasMore)
 				})
-				t.Run("with limit lower than max count", func(t *testing.T) {
+				t.Run("with page size lower than max count", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"limit": []string{fmt.Sprintf("%d", controllers.MaxLimit/10)},
+						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
 					cursor := internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
-					assert.Len(t, cursor.Data, controllers.MaxLimit/10)
-					assert.Equal(t, cursor.PageSize, controllers.MaxLimit/10)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize/10)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize/10)
 					assert.NotEmpty(t, cursor.Next)
 					assert.True(t, cursor.HasMore)
 				})

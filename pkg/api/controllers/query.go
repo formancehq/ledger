@@ -9,37 +9,37 @@ import (
 )
 
 const (
-	MaxLimit     = 1000
-	DefaultLimit = storage.QueryDefaultLimit
+	MaxPageSize     = 1000
+	DefaultPageSize = storage.QueryDefaultPageSize
 )
 
 var (
-	ErrInvalidLimit  = ledger.NewValidationError("invalid query value 'limit'")
-	ErrNegativeLimit = ledger.NewValidationError("cannot pass negative 'limit'")
+	ErrInvalidPageSize  = ledger.NewValidationError("invalid query value 'page_size'")
+	ErrNegativePageSize = ledger.NewValidationError("cannot pass negative 'page_size'")
 )
 
-func getLimit(c *gin.Context) (uint, error) {
+func getPageSize(c *gin.Context) (uint, error) {
 	var (
-		// Use int instead of uint because if the client pass a negative limit
+		// Use int instead of uint because if the client pass a negative page_size
 		// the uint will transparently convert the value to a valid uint
 		// and the error will not be catched
-		limit int64
-		err   error
+		pageSize int64
+		err      error
 	)
-	if limitParam := c.Query("limit"); limitParam != "" {
-		limit, err = strconv.ParseInt(limitParam, 10, 64)
+	if pageSizeParam := c.Query("page_size"); pageSizeParam != "" {
+		pageSize, err = strconv.ParseInt(pageSizeParam, 10, 64)
 		if err != nil {
-			return 0, ErrInvalidLimit
+			return 0, ErrInvalidPageSize
 		}
-		if limit < 0 {
-			return 0, ErrNegativeLimit
+		if pageSize < 0 {
+			return 0, ErrNegativePageSize
 		}
 
-		if limit > MaxLimit {
-			limit = MaxLimit
+		if pageSize > MaxPageSize {
+			pageSize = MaxPageSize
 		}
 	} else {
-		limit = DefaultLimit
+		pageSize = DefaultPageSize
 	}
-	return uint(limit), nil
+	return uint(pageSize), nil
 }

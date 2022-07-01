@@ -69,7 +69,7 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: limit
+        - name: page_size
           in: query
           description: 'Number of results to return. The api will return at most N items.'
           example: 100
@@ -432,7 +432,7 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: limit
+        - name: page_size
           in: query
           description: 'Number of results to return. The api will return at most N items.'
           example: 100
