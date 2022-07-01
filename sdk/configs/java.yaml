@@ -1,0 +1,27 @@
+templateDir: templates/java
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
+additionalProperties:
+  invokerPackage: com.formance.ledgerclient
+  apiPackage: com.formance.ledgerclient.api
+  modelPackage: com.formance.ledgerclient.model
+  groupId: com.formance
+  artifactId: ledgerclient
+  artifactDescription: Ledger Java Client
+  artifactUrl: https://github.com/numary/ledger-sdk-java
+  scmConnection: scm:git:git@github.com/numary/ledger-sdk-java.git
+  scmDeveloperConnection: scm:git:git@github.com/numary/ledger-sdk-java.git
+  scmUrl: https://github.com/numary/ledger-sdk-java
+  developerEmail: support@numary.com
+  developerName: Ledger Java Client Contributors
+  developerOrganization: Formance
+  developerOrganizationUrl: https://formance.com
+  library: retrofit2
+  openApiNullable: false
+inlineSchemaNameMappings:
+  getAccount_200_response: GetAccountResponse
+  listAccounts_200_response: ListAccountsResponse
+  listAccounts_200_response_cursor: ListAccountsResponseCursor
+  listTransactions_200_response: ListTransactionsResponse
+  listTransactions_200_response_cursor: ListTransactionsResponseCursor
