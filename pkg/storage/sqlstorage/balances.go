@@ -16,7 +16,63 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("asset", "sum(input - output)")
+	sb.From(s.schema.Table("volumes"))
+	sb.GroupBy("asset")
+
+	if q.Filters.AddressRegexp != "" {
+		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("account ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("account REGEXP " + arg)
+		}
+	}
+
+	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
+
+	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
+	if err != nil {
+		return nil, s.error(err)
+	}
+
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(rows)
+
+	aggregatedBalances := core.AssetsBalances{}
+
+	for rows.Next() {
+		var (
+			asset  string
+			amount int64
+		)
+		err = rows.Scan(&asset, &amount)
+		if err != nil {
+			return nil, s.error(err)
+		}
+
+		aggregatedBalances[asset] = amount
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, s.error(err)
+	}
+
+	return aggregatedBalances, nil
+}
+
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	return s.getBalancesAggregated(ctx, s.schema, q)
+}
+
+func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -29,6 +85,7 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("account")
+	sb.OrderBy("account desc")
 
 	t := BalancesPaginationToken{}
 
@@ -37,15 +94,15 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 		t.AfterAddress = q.AfterAddress
 	}
 
-	if q.Filters.Address != "" {
-		arg := sb.Args.Add("^" + q.Filters.Address + "$")
+	if q.Filters.AddressRegexp != "" {
+		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
 		case sqlbuilder.SQLite:
 			sb.Where("account REGEXP " + arg)
 		}
-		t.AddressRegexpFilter = q.Filters.Address
+		t.AddressRegexpFilter = q.Filters.AddressRegexp
 	}
 
 	sb.Limit(int(q.Limit + 1))
@@ -78,13 +135,10 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
-		// we (clean and) marshal the computed row in a map[string]int64
-		assetBalances := arrayToAssetBalance(assetBalance)
-		if err != nil {
-			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
-		}
+		// we (clean and) unmarshal the computed row (byte array) in a core.AssetsBalances (map[string]int64)
+		assetBalances := arrayToAssetsBalances(assetBalance)
 
-		accounts = append(accounts, map[string]map[string]int64{
+		accounts = append(accounts, core.AccountsBalances{
 			currentAccount: assetBalances,
 		})
 	}
@@ -94,13 +148,8 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 	}
 
 	var previous, next string
-	if q.Offset > 0 {
-		offset := int(q.Offset) - int(q.Limit)
-		if offset < 0 {
-			t.Offset = 0
-		} else {
-			t.Offset = uint(offset)
-		}
+	if int(q.Offset)-int(q.Limit) >= 0 {
+		t.Offset = q.Offset - q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
@@ -120,65 +169,19 @@ func (s *Store) GetBalancesAccountsData(ctx context.Context, exec executor, q st
 
 	return sharedapi.Cursor[core.AccountsBalances]{
 		PageSize: len(accounts),
+		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,
 		Data:     accounts,
 	}, nil
 }
 
-func (s *Store) GetAggregatedBalancesData(ctx context.Context, exec executor, q storage.BalancesQuery) (map[string]int64, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("asset", "sum(input - output)")
-	sb.From(s.schema.Table("volumes"))
-	sb.GroupBy("asset")
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 
-	if q.Filters.Address != "" {
-		arg := sb.Args.Add("^" + q.Filters.Address + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("account ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("account REGEXP " + arg)
-		}
-	}
-
-	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-
-	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
-	if err != nil {
-		return nil, s.error(err)
-	}
-
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(rows)
-
-	aggregatedBalances := make(map[string]int64)
-
-	for rows.Next() {
-		var (
-			asset  string
-			amount int64
-		)
-		err = rows.Scan(&asset, &amount)
-		if err != nil {
-			return nil, s.error(err)
-		}
-
-		aggregatedBalances[asset] = amount
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, s.error(err)
-	}
-
-	return aggregatedBalances, nil
+	return s.getBalances(ctx, s.schema, q)
 }
 
-func arrayToAssetBalance(array []byte) map[string]int64 {
+func arrayToAssetsBalances(array []byte) core.AssetsBalances {
 	if len(array) <= 3 {
 		return nil
 	}
@@ -186,7 +189,7 @@ func arrayToAssetBalance(array []byte) map[string]int64 {
 	splitRegex := regexp.MustCompile(`([^,]+,[^,]+)`)
 	arrayBalances := splitRegex.FindAllString(string(array), -1)
 
-	result := make(map[string]int64)
+	result := core.AssetsBalances{}
 
 	for i, assetBalance := range arrayBalances {
 		values := strings.Split(assetBalance, ",")

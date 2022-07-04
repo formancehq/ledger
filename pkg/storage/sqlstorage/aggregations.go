@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
@@ -113,31 +112,4 @@ func (s *Store) getVolumes(ctx context.Context, exec executor, accountAddress, a
 
 func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
-}
-
-func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
-	balances, err := s.GetAggregatedBalancesData(ctx, exec, q)
-	if err != nil {
-		return core.AssetsBalances{}, err
-	}
-
-	return balances, nil
-}
-
-func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
-	return s.getBalancesAggregated(ctx, s.schema, q)
-}
-
-func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-	balances, err := s.GetBalancesAccountsData(ctx, exec, q)
-	if err != nil {
-		return sharedapi.Cursor[core.AccountsBalances]{}, err
-	}
-
-	return balances, nil
-}
-
-func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-
-	return s.getBalances(ctx, s.schema, q)
 }

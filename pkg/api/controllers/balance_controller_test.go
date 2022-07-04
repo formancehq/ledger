@@ -214,13 +214,14 @@ func TestGetBalances(t *testing.T) {
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 
 					assert.Len(t, resp.Data, 3)
-					assert.Equal(t, resp.Data[0]["alice"]["USD"], int64(150))
-					assert.Equal(t, resp.Data[0]["alice"]["EUR"], int64(400))
-					assert.Equal(t, resp.Data[0]["alice"]["CAD"], int64(200))
+					assert.Equal(t, resp.Data[0]["world"]["USD"], int64(-250))
+					assert.Equal(t, resp.Data[0]["world"]["EUR"], int64(-400))
+					assert.Equal(t, resp.Data[0]["world"]["CAD"], int64(-200))
 					assert.Equal(t, resp.Data[1]["bob"]["USD"], int64(100))
-					assert.Equal(t, resp.Data[2]["world"]["USD"], int64(-250))
-					assert.Equal(t, resp.Data[2]["world"]["EUR"], int64(-400))
-					assert.Equal(t, resp.Data[2]["world"]["CAD"], int64(-200))
+					assert.Equal(t, resp.Data[2]["alice"]["USD"], int64(150))
+					assert.Equal(t, resp.Data[2]["alice"]["EUR"], int64(400))
+					assert.Equal(t, resp.Data[2]["alice"]["CAD"], int64(200))
+
 				})
 
 				t.Run("after bob", func(t *testing.T) {

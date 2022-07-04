@@ -31,7 +31,7 @@ func (v Volumes) Balance() int64 {
 type AssetsBalances map[string]int64
 type AssetsVolumes map[string]Volumes
 
-type AccountsBalances map[string]map[string]int64
+type AccountsBalances map[string]AssetsBalances
 
 func (v AssetsVolumes) Balances() AssetsBalances {
 	balances := AssetsBalances{}
@@ -42,11 +42,6 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 }
 
 type AccountsAssetsVolumes map[string]AssetsVolumes
-
-type AggregatedBalances struct {
-	Aggregated AssetsBalances   `json:"aggregated"`
-	Accounts   AccountsBalances `json:"accounts"`
-}
 
 // Scan - Implement the database/sql scanner interface
 func (a *AccountsAssetsVolumes) Scan(value interface{}) error {

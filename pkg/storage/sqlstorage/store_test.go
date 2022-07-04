@@ -57,8 +57,16 @@ func TestStore(t *testing.T) {
 			fn:   testAggregateVolumes,
 		},
 		{
+			name: "GetAggregatedBalances",
+			fn:   testAggregateBalances,
+		},
+		{
 			name: "GetAccounts",
 			fn:   testGetAccounts,
+		},
+		{
+			name: "GetBalances",
+			fn:   testGetBalances,
 		},
 		{
 			name: "TransactionsQuery",
@@ -217,6 +225,49 @@ func testAggregateVolumes(t *testing.T, store *sqlstorage.Store) {
 	assert.EqualValues(t, 0, volumes["USD"].Output)
 }
 
+func testAggregateBalances(t *testing.T, store *sqlstorage.Store) {
+	tx := core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "alice",
+					Amount:      150,
+					Asset:       "USD",
+				},
+				{
+					Source:      "world",
+					Destination: "bob",
+					Amount:      100,
+					Asset:       "USD",
+				},
+			},
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	assert.NoError(t, err)
+
+	// success
+	balances, err := store.GetBalancesAggregated(context.Background(), storage.BalancesQuery{})
+	assert.NoError(t, err)
+	assert.Len(t, balances, 1)
+	assert.EqualValues(t, 0, balances["USD"])
+
+	// success with address
+	balances, err = store.GetBalancesAggregated(context.Background(), storage.BalancesQuery{
+		Filters: storage.BalancesQueryFilters{AddressRegexp: "world"}})
+	assert.NoError(t, err)
+	assert.Len(t, balances, 1)
+	assert.EqualValues(t, -250, balances["USD"])
+
+	// success with no result
+	balances, err = store.GetBalancesAggregated(context.Background(), storage.BalancesQuery{
+		Filters: storage.BalancesQueryFilters{AddressRegexp: "XXX"}})
+	assert.NoError(t, err)
+	assert.Len(t, balances, 0)
+}
+
 func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	account1 := core.NewSetMetadataLog(nil, core.SetMetadata{
 		TargetType: core.MetaTargetTypeAccount,
@@ -318,6 +369,94 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	})
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 1)
+}
+
+func testGetBalances(t *testing.T, store *sqlstorage.Store) {
+	tx := core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "alice",
+					Amount:      150,
+					Asset:       "USD",
+				},
+				{
+					Source:      "world",
+					Destination: "bob",
+					Amount:      100,
+					Asset:       "USD",
+				},
+				{
+					Source:      "world",
+					Destination: "alice",
+					Amount:      200,
+					Asset:       "CAD",
+				},
+				{
+					Source:      "world",
+					Destination: "alice",
+					Amount:      400,
+					Asset:       "EUR",
+				},
+			},
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
+
+	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
+	assert.NoError(t, err)
+
+	balances, err := store.GetBalances(context.Background(),
+		storage.BalancesQuery{
+			Limit: 10,
+		})
+	assert.NoError(t, err)
+	assert.Len(t, balances.Data, 3)
+	assert.Equal(t, balances.Data[0]["world"]["USD"], int64(-250))
+	assert.Equal(t, balances.Data[0]["world"]["EUR"], int64(-400))
+	assert.Equal(t, balances.Data[0]["world"]["CAD"], int64(-200))
+	assert.Equal(t, balances.Data[1]["bob"]["USD"], int64(100))
+	assert.Equal(t, balances.Data[2]["alice"]["USD"], int64(150))
+	assert.Equal(t, balances.Data[2]["alice"]["EUR"], int64(400))
+	assert.Equal(t, balances.Data[2]["alice"]["CAD"], int64(200))
+
+	balances, err = store.GetBalances(context.Background(),
+		storage.BalancesQuery{
+			Limit:        10,
+			AfterAddress: "bob",
+		})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, balances.PageSize)
+	assert.Len(t, balances.Data, 1)
+	assert.Equal(t, balances.Data[0]["alice"]["USD"], int64(150))
+	assert.Equal(t, balances.Data[0]["alice"]["EUR"], int64(400))
+	assert.Equal(t, balances.Data[0]["alice"]["CAD"], int64(200))
+
+	balances, err = store.GetBalances(context.Background(),
+		storage.BalancesQuery{
+			Limit: 10,
+			Filters: storage.BalancesQueryFilters{
+				AddressRegexp: "world",
+			},
+		})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, balances.PageSize)
+	assert.Len(t, balances.Data, 1)
+	assert.Equal(t, balances.Data[0]["world"]["USD"], int64(-250))
+	assert.Equal(t, balances.Data[0]["world"]["EUR"], int64(-400))
+	assert.Equal(t, balances.Data[0]["world"]["CAD"], int64(-200))
+
+	balances, err = store.GetBalances(context.Background(),
+		storage.BalancesQuery{
+			Limit: 10,
+			Filters: storage.BalancesQueryFilters{
+				AddressRegexp: "XXX",
+			},
+		})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, balances.PageSize)
+	assert.Len(t, balances.Data, 0)
 }
 
 func testTransactions(t *testing.T, store *sqlstorage.Store) {
