@@ -8,7 +8,7 @@ type BalancesQuery struct {
 }
 
 type BalancesQueryFilters struct {
-	Address string
+	AddressRegexp string
 }
 
 func NewBalancesQuery() *BalancesQuery {
@@ -39,7 +39,7 @@ func (b *BalancesQuery) WithOffset(offset uint) *BalancesQuery {
 }
 
 func (b *BalancesQuery) WithAddressFilter(address string) *BalancesQuery {
-	b.Filters.Address = address
+	b.Filters.AddressRegexp = address
 
 	return b
 }

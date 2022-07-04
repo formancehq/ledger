@@ -38,11 +38,11 @@ func TestBalances(t *testing.T) {
 		assert.NoError(t, err, "balance filter should not fail")
 	})
 
-	t.Run("success balance_operator", func(t *testing.T) {
+	t.Run("success address", func(t *testing.T) {
 		q := storage.BalancesQuery{
 			Limit: 10,
 			Filters: storage.BalancesQueryFilters{
-				Address: "world",
+				AddressRegexp: "world",
 			},
 		}
 
@@ -51,7 +51,7 @@ func TestBalances(t *testing.T) {
 	})
 }
 
-func TestArrayToAssetBalancet(t *testing.T) {
+func TestArrayToAssetsBalances(t *testing.T) {
 	t.Run("panic invalid balance value", func(t *testing.T) {
 		var byteArray = []byte("{\"(USD,-TEST)\",\"(EUR,-250)\"}")
 
@@ -59,7 +59,7 @@ func TestArrayToAssetBalancet(t *testing.T) {
 			t, `error while converting balance value into map: expected integer`,
 
 			func() {
-				_ = arrayToAssetBalance(byteArray)
+				_ = arrayToAssetsBalances(byteArray)
 			}, "should have panicked")
 	})
 
@@ -70,13 +70,13 @@ func TestArrayToAssetBalancet(t *testing.T) {
 			t, `error while converting balance value into map: expected integer`,
 
 			func() {
-				_ = arrayToAssetBalance(byteArray)
+				_ = arrayToAssetsBalances(byteArray)
 			}, "should have panicked")
 	})
 
 	t.Run("success", func(t *testing.T) {
 		var byteArray = []byte(`{"(USD,50)","(EUR,-250)","(CAD,5000000)","(YAN,-8000)"}`)
-		resultMap := arrayToAssetBalance(byteArray)
+		resultMap := arrayToAssetsBalances(byteArray)
 
 		assert.Equal(t, int64(50), resultMap["USD"])
 		assert.Equal(t, int64(-250), resultMap["EUR"])
