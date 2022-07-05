@@ -412,7 +412,7 @@ func TestGetTransactions(t *testing.T) {
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
-					// 1 transaction: txid 0
+
 					assert.Len(t, cursor.Data, 1)
 					assert.Equal(t, cursor.Data[0].ID, tx3.ID)
 				})
