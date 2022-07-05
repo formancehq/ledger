@@ -130,7 +130,6 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          args: "--out-${NO_FUTURE}format colored-line-number"
   Build:
     name: 'Build'
     needs:
