@@ -350,3 +350,30 @@ func TestSetTxMeta(t *testing.T) {
 		}))
 	})
 }
+
+func TestScriptSetReference(t *testing.T) {
+	runOnLedger(func(l *Ledger) {
+		defer func(l *Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
+
+		plain := `send [USD/2 99] (
+			source=@world
+			destination=@user:001
+		)`
+
+		script := core.Script{
+			Plain:     plain,
+			Vars:      map[string]json.RawMessage{},
+			Reference: "tx_ref",
+		}
+
+		_, err := l.Execute(context.Background(), script)
+		require.NoError(t, err)
+
+		last, err := l.store.GetLastTransaction(context.Background())
+		require.NoError(t, err)
+
+		assert.Equal(t, script.Reference, last.Reference)
+	})
+}
