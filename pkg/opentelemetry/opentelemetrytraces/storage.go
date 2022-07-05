@@ -68,7 +68,7 @@ func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) 
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry AppendLogs: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry AppendLog: %s", handlingErr)
 	}
 	return
 }
@@ -79,7 +79,7 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry LastLogs: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry LastLog: %s", handlingErr)
 	}
 	return
 }
@@ -195,7 +195,7 @@ func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query storage.Ac
 }
 
 func (o *openTelemetryStorage) LoadMapping(ctx context.Context) (m *core.Mapping, err error) {
-	handlingErr := o.handle(ctx, "FindContracts", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "LoadMapping", func(ctx context.Context) error {
 		m, err = o.underlying.LoadMapping(ctx)
 		return err
 	})

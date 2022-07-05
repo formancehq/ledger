@@ -5,15 +5,14 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/lib/pq"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
 )
 
 func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
@@ -33,15 +32,13 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	}
 
 	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-
 	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
 
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
@@ -50,17 +47,15 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 
 	for rows.Next() {
 		var (
-			asset  string
-			amount int64
+			asset    string
+			balances int64
 		)
-		err = rows.Scan(&asset, &amount)
-		if err != nil {
+		if err = rows.Scan(&asset, &balances); err != nil {
 			return nil, s.error(err)
 		}
 
-		aggregatedBalances[asset] = amount
+		aggregatedBalances[asset] = balances
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, s.error(err)
 	}
@@ -114,10 +109,8 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	if err != nil {
 		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
-
 	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+		if err := rows.Close(); err != nil {
 			panic(err)
 		}
 	}(rows)
@@ -125,22 +118,32 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	accounts := make([]core.AccountsBalances, 0)
 
 	for rows.Next() {
-		var (
-			currentAccount string
-
-			assetBalance []byte
-		)
-		err = rows.Scan(&currentAccount, &assetBalance)
-		if err != nil {
+		var currentAccount string
+		var arrayAgg []string
+		if err = rows.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
-		// we (clean and) unmarshal the computed row (byte array) in a core.AssetsBalances (map[string]int64)
-		assetBalances := arrayToAssetsBalances(assetBalance)
+		accountsBalances := core.AccountsBalances{
+			currentAccount: core.AssetsBalances{},
+		}
 
-		accounts = append(accounts, core.AccountsBalances{
-			currentAccount: assetBalances,
-		})
+		// arrayAgg is in the form: []string{"(USD,-250)","(EUR,1000)"}
+		for _, agg := range arrayAgg {
+			// Remove parenthesis
+			agg = agg[1 : len(agg)-1]
+			// Split the asset and balances on the comma separator
+			split := strings.Split(agg, ",")
+			asset := split[0]
+			balancesString := split[1]
+			balances, err := strconv.ParseInt(balancesString, 10, 64)
+			if err != nil {
+				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+			}
+			accountsBalances[currentAccount][asset] = balances
+		}
+
+		accounts = append(accounts, accountsBalances)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -177,37 +180,5 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 }
 
 func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-
 	return s.getBalances(ctx, s.schema, q)
-}
-
-func arrayToAssetsBalances(array []byte) core.AssetsBalances {
-	if len(array) <= 3 {
-		return nil
-	}
-
-	splitRegex := regexp.MustCompile(`([^,]+,[^,]+)`)
-	arrayBalances := splitRegex.FindAllString(string(array), -1)
-
-	result := core.AssetsBalances{}
-
-	for i, assetBalance := range arrayBalances {
-		values := strings.Split(assetBalance, ",")
-
-		var balance int64
-		if _, err := fmt.Sscanf(values[1], "%d", &balance); err != nil {
-			panic(errors.Wrap(err, "error while converting balance value into map"))
-		}
-
-		// this is because the format we get from pg with array_agg is {"(USD,-12686)","(EUR,-250)"}
-		// and we have {"(  to remove for the first split and "( for the second split
-		// trimming the string could be dangerous (assets are not sanitized)
-		if i == 0 {
-			result[values[0][3:]] = balance
-		} else {
-			result[values[0][2:]] = balance
-		}
-	}
-
-	return result
 }

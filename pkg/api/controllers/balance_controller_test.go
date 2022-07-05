@@ -45,69 +45,31 @@ func TestGetBalancesAggregated(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, api, "bob", core.Metadata{
-					"roles":     json.RawMessage(`"admin"`),
-					"accountId": json.RawMessage("3"),
-					"enabled":   json.RawMessage(`"true"`),
-					"a":         json.RawMessage(`{"nested": {"key": "hello"}}`),
-				})
-				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
-
-				rsp = internal.CountAccounts(api, url.Values{})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				require.Equal(t, "3", rsp.Header().Get("Count"))
-
-				t.Run("success full", func(t *testing.T) {
+				t.Run("all", func(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-
 					assert.Equal(t, ok, true)
-
-					assert.Equal(t, resp["USD"], int64(0))
+					assert.Equal(t, core.AssetsBalances{"USD": 0}, resp)
 				})
 
-				t.Run("after bob", func(t *testing.T) {
-					rsp = internal.GetBalancesAggregated(api, url.Values{"after": []string{"bob"}})
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-
-					assert.Equal(t, ok, true)
-
-					assert.Equal(t, resp["USD"], int64(0))
-				})
-
-				t.Run("after world", func(t *testing.T) {
-					rsp = internal.GetBalancesAggregated(api, url.Values{"after": []string{"world"}})
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-
-					assert.Equal(t, ok, true)
-					assert.Equal(t, resp["USD"], int64(0))
-				})
-
-				t.Run("success account world", func(t *testing.T) {
+				t.Run("filter by address", func(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"address": []string{"world"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-
 					assert.Equal(t, true, ok)
-
-					assert.Equal(t, int64(-250), resp["USD"])
+					assert.Equal(t, core.AssetsBalances{"USD": -250}, resp)
 				})
 
-				t.Run("no  result", func(t *testing.T) {
+				t.Run("filter by address no result", func(t *testing.T) {
 					rsp = internal.GetBalancesAggregated(api, url.Values{"address": []string{"XXX"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-
 					assert.Equal(t, ok, true)
-					assert.Len(t, resp, 0)
+					assert.Equal(t, core.AssetsBalances{}, resp)
 				})
 
 				return nil
@@ -168,18 +130,6 @@ func TestGetBalances(t *testing.T) {
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostAccountMetadata(t, api, "bob", core.Metadata{
-					"roles":     json.RawMessage(`"admin"`),
-					"accountId": json.RawMessage("3"),
-					"enabled":   json.RawMessage(`"true"`),
-					"a":         json.RawMessage(`{"nested": {"key": "hello"}}`),
-				})
-				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
-
-				rsp = internal.CountAccounts(api, url.Values{})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				require.Equal(t, "3", rsp.Header().Get("Count"))
-
 				to := sqlstorage.BalancesPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
@@ -207,54 +157,45 @@ func TestGetBalances(t *testing.T) {
 					assert.Contains(t, rsp.Body.String(), `error_message":"invalid query value 'pagination_token'"`)
 				})
 
-				t.Run("success full", func(t *testing.T) {
+				t.Run("all", func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
+					assert.Equal(t, []core.AccountsBalances{
+						{"world": core.AssetsBalances{"USD": -250, "EUR": -400, "CAD": -200}},
+						{"bob": core.AssetsBalances{"USD": 100}},
 
-					assert.Len(t, resp.Data, 3)
-					assert.Equal(t, resp.Data[0]["world"]["USD"], int64(-250))
-					assert.Equal(t, resp.Data[0]["world"]["EUR"], int64(-400))
-					assert.Equal(t, resp.Data[0]["world"]["CAD"], int64(-200))
-					assert.Equal(t, resp.Data[1]["bob"]["USD"], int64(100))
-					assert.Equal(t, resp.Data[2]["alice"]["USD"], int64(150))
-					assert.Equal(t, resp.Data[2]["alice"]["EUR"], int64(400))
-					assert.Equal(t, resp.Data[2]["alice"]["CAD"], int64(200))
-
+						{"alice": core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200}},
+					}, resp.Data)
 				})
 
-				t.Run("after bob", func(t *testing.T) {
+				t.Run("after address", func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{"after": []string{"bob"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-
-					assert.Len(t, resp.Data, 1)
-					assert.Equal(t, resp.Data[0]["alice"]["USD"], int64(150))
-					assert.Equal(t, resp.Data[0]["alice"]["EUR"], int64(400))
-					assert.Equal(t, resp.Data[0]["alice"]["CAD"], int64(200))
+					assert.Equal(t, []core.AccountsBalances{
+						{"alice": core.AssetsBalances{"USD": 150, "EUR": 400, "CAD": 200}},
+					}, resp.Data)
 				})
 
-				t.Run("account world", func(t *testing.T) {
+				t.Run("filter by address", func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{"address": []string{"world"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-
-					assert.Len(t, resp.Data, 1)
-					assert.Equal(t, resp.Data[0]["world"]["USD"], int64(-250))
-					assert.Equal(t, resp.Data[0]["world"]["EUR"], int64(-400))
-					assert.Equal(t, resp.Data[0]["world"]["CAD"], int64(-200))
+					assert.Equal(t, []core.AccountsBalances{
+						{"world": core.AssetsBalances{"USD": -250, "EUR": -400, "CAD": -200}},
+					}, resp.Data)
 				})
 
-				t.Run("no result", func(t *testing.T) {
+				t.Run("filter by address no results", func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{"address": []string{"TEST"}})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-
-					assert.Len(t, resp.Data, 0)
+					assert.Equal(t, []core.AccountsBalances{}, resp.Data)
 				})
 
 				return nil

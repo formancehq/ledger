@@ -43,6 +43,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/lib/pq v1.10.2
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.12
 	github.com/xdg-go/scram v1.1.0
