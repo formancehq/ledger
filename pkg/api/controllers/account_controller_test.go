@@ -393,7 +393,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 
 					cursor := internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
 					assert.Len(t, cursor.Data, controllers.MaxPageSize-100)
-					assert.Equal(t, controllers.MaxPageSize-100, cursor.PageSize)
+					assert.Equal(t, controllers.MaxPageSize, cursor.PageSize)
 					assert.Empty(t, cursor.Next)
 					assert.False(t, cursor.HasMore)
 				})

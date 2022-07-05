@@ -656,7 +656,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 
 					cursor := internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
 					assert.Len(t, cursor.Data, controllers.MaxPageSize-100)
-					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize-100)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize)
 					assert.Empty(t, cursor.Next)
 					assert.False(t, cursor.HasMore)
 				})
