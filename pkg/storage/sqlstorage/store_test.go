@@ -273,7 +273,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	})
 	assert.NoError(t, err)
 	assert.Len(t, accounts.Data, 2)
-	assert.Equal(t, 2, accounts.PageSize)
+	assert.Equal(t, 10, accounts.PageSize)
 
 	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
 		Limit: 10,
@@ -433,7 +433,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
@@ -444,7 +444,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
@@ -456,7 +456,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		assert.Len(t, cursor.Data, 1)
 	})
