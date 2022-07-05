@@ -27,7 +27,8 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	}
 
 	sb.From(s.schema.Table("volumes"))
-	sb.GroupBy("account").OrderBy("account").Desc()
+	sb.GroupBy("account")
+	sb.OrderBy("account desc")
 
 	t := BalancesPaginationToken{}
 
@@ -36,15 +37,15 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 		t.AfterAddress = q.AfterAddress
 	}
 
-	if q.Filters.Address != "" {
-		arg := sb.Args.Add("^" + q.Filters.Address + "$")
+	if q.Filters.AddressRegexp != "" {
+		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)
 		case sqlbuilder.SQLite:
 			sb.Where("account REGEXP " + arg)
 		}
-		t.AddressRegexpFilter = q.Filters.Address
+		t.AddressRegexpFilter = q.Filters.AddressRegexp
 	}
 
 	sb.Limit(int(q.Limit + 1))
@@ -132,8 +133,8 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("asset")
 
-	if q.Filters.Address != "" {
-		arg := sb.Args.Add("^" + q.Filters.Address + "$")
+	if q.Filters.AddressRegexp != "" {
+		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			sb.Where("account ~* " + arg)

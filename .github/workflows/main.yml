@@ -5,6 +5,81 @@ on:
 
 name: Main
 jobs:
+  Test_sqlite:
+    name: 'Test - SQLite'
+    runs-on: ubuntu-latest
+    needs:
+      - build_control
+    steps:
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.18'
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: get deps
+        run: go mod download
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: run tests
+        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash)
+  Test_postgres:
+    name: 'Test - PostgreSQL'
+    runs-on: ubuntu-latest
+    needs:
+      - build_control
+    services:
+      postgres:
+        image: postgres:13-alpine
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.18'
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: get deps
+        run: go mod download
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: run tests
+        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
+        env:
+          NUMARY_STORAGE_DRIVER: "postgres"
+          NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash)
   build_control:
     name: 'Build Control'
     runs-on: ubuntu-latest
@@ -27,6 +102,8 @@ jobs:
     name: 'Build'
     needs:
       - build_control
+      - Test_sqlite
+      - Test_postgres
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2

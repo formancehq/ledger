@@ -163,12 +163,12 @@ func (o *openTelemetryStorage) GetBalances(ctx context.Context, q storage.Balanc
 }
 
 func (o *openTelemetryStorage) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (balances core.AssetsBalances, err error) {
-	handlingErr := o.handle(ctx, "GetAggregatedBalances", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "GetBalancesAggregated", func(ctx context.Context) error {
 		balances, err = o.underlying.GetBalancesAggregated(ctx, q)
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry GetAggregatedBalances: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry GetBalancesAggregated: %s", handlingErr)
 	}
 	return
 }

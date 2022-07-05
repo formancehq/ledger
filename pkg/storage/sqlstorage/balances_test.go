@@ -116,7 +116,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 			storage.BalancesQuery{
 				Limit:        10,
 				AfterAddress: "world",
-				Filters:      storage.BalancesQueryFilters{Address: "users.+"},
+				Filters:      storage.BalancesQueryFilters{AddressRegexp: "users.+"},
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
