@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"regexp"
 )
 
@@ -11,6 +12,23 @@ type Posting struct {
 	Destination string `json:"destination"`
 	Amount      int64  `json:"amount"`
 	Asset       string `json:"asset"`
+}
+
+func (p Posting) Validate() error {
+	if p.Amount < 0 {
+		return errors.New("negative amount")
+	}
+	if !IsAddressValid(p.Source) {
+		return errors.New("invalid source address")
+	}
+	if !IsAddressValid(p.Destination) {
+		return errors.New("invalid destination address")
+	}
+	if !AssetIsValid(p.Asset) {
+		return errors.New("invalid asset")
+	}
+
+	return nil
 }
 
 type Postings []Posting
@@ -53,6 +71,6 @@ func (p *Postings) Scan(value interface{}) error {
 // Each segment contains only the following characters: a to z (lower or upper case) and/or digits and/or the special character "_".
 var addressRegexp = regexp.MustCompile(`^\w+(:\w+)*$`)
 
-func ValidateAddress(addr string) bool {
+func IsAddressValid(addr string) bool {
 	return addressRegexp.Match([]byte(addr))
 }

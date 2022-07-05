@@ -118,7 +118,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	if !core.ValidateAddress(c.Param("address")) {
+	if !core.IsAddressValid(c.Param("address")) {
 		ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
@@ -137,7 +137,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	if !core.ValidateAddress(c.Param("address")) {
+	if !core.IsAddressValid(c.Param("address")) {
 		ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}

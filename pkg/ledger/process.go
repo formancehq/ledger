@@ -8,12 +8,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
-	mapping, err := l.store.LoadMapping(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "loading mapping")
-	}
+type volumeAggregator struct {
+	aggregatePreCommitVol  core.AccountsAssetsVolumes
+	aggregatePostCommitVol core.AccountsAssetsVolumes
 
+	txPreCommitVol  core.AccountsAssetsVolumes
+	txPostCommitVol core.AccountsAssetsVolumes
+}
+
+func (l *Ledger) processTx(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
 		return nil, err
@@ -28,94 +31,178 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		nextTxId = lastTx.ID + 1
 	}
 
-	volumeAggregator := newVolumeAggregator(l.store)
+	generatedTxs := make([]core.Transaction, len(txsData))
 
-	generatedTxs := make([]core.Transaction, 0)
-	accounts := make(map[string]*core.Account, 0)
-	generatedLogs := make([]core.Log, 0)
+	a := volumeAggregator{
+		aggregatePreCommitVol:  core.AccountsAssetsVolumes{},
+		aggregatePostCommitVol: core.AccountsAssetsVolumes{},
+
+		txPreCommitVol:  core.AccountsAssetsVolumes{},
+		txPostCommitVol: core.AccountsAssetsVolumes{},
+	}
+
+	generatedLogs := make([]core.Log, len(txsData))
+
 	contracts := make([]core.Contract, 0)
+	mapping, err := l.store.LoadMapping(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "loading mapping")
+	}
 	if mapping != nil {
 		contracts = append(contracts, mapping.Contracts...)
 	}
 	contracts = append(contracts, DefaultContracts...)
 
-	for i, t := range ts {
-		if len(t.Postings) == 0 {
+	accMatchingContracts := make(map[string]*core.Account, 0)
+
+	for i, txData := range txsData {
+		if len(txData.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
 
-		txVolumeAggregator := volumeAggregator.nextTx()
+		a.txPreCommitVol = core.AccountsAssetsVolumes{}
+		a.txPostCommitVol = core.AccountsAssetsVolumes{}
 
-		for _, p := range t.Postings {
-			if p.Amount < 0 {
-				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
+		for _, p := range txData.Postings {
+			if err := p.Validate(); err != nil {
+				return nil, NewTransactionCommitError(i, NewValidationError(err.Error()))
 			}
-			if !core.ValidateAddress(p.Source) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid source address"))
+
+			initCommitVolumes(a, p)
+
+			if err := l.updateVolumes(p.Source, 0, p.Amount,
+				ctx, a, p, generatedTxs); err != nil {
+				return nil, NewTransactionCommitError(i, err)
 			}
-			if !core.ValidateAddress(p.Destination) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
-			}
-			if !core.AssetIsValid(p.Asset) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
-			}
-			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
-			if err != nil {
+			if err := l.updateVolumes(p.Destination, p.Amount, 0,
+				ctx, a, p, generatedTxs); err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
 		}
 
-		for addr, volumes := range txVolumeAggregator.postCommitVolumes() {
-			for asset, volume := range volumes {
-				if addr == "world" {
-					continue
-				}
-
-				expectedBalance := volume.Balance()
-				for _, contract := range contracts {
-					if contract.Match(addr) {
-						account, ok := accounts[addr]
-						if !ok {
-							account, err = l.store.GetAccount(ctx, addr)
-							if err != nil {
-								return nil, err
-							}
-							accounts[addr] = account
-						}
-
-						if ok = contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": float64(expectedBalance),
-							},
-							Metadata: account.Metadata,
-							Asset:    asset,
-						}); !ok {
-							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
-						}
-						break
-					}
-				}
-			}
+		if err := l.checkPostCommitVolumes(ctx, a.txPostCommitVol, contracts, accMatchingContracts); err != nil {
+			return nil, NewTransactionCommitError(i, err)
 		}
 
-		tx := core.Transaction{
-			TransactionData:   t,
+		generatedTxs[i] = core.Transaction{
+			TransactionData:   txData,
 			ID:                nextTxId,
 			Timestamp:         time.Now().UTC().Format(time.RFC3339),
-			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
-			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
+			PreCommitVolumes:  a.txPreCommitVol,
+			PostCommitVolumes: a.txPostCommitVol,
 		}
-		generatedTxs = append(generatedTxs, tx)
-		newLog := core.NewTransactionLog(lastLog, tx)
-		lastLog = &newLog
-		generatedLogs = append(generatedLogs, newLog)
+		generatedLogs[i] = core.NewTransactionLog(lastLog, generatedTxs[i])
+		lastLog = &generatedLogs[i]
 		nextTxId++
 	}
 
 	return &CommitResult{
-		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
-		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
+		PreCommitVolumes:      a.aggregatePreCommitVol,
+		PostCommitVolumes:     a.aggregatePostCommitVol,
 		GeneratedTransactions: generatedTxs,
 		GeneratedLogs:         generatedLogs,
 	}, nil
+}
+
+func (l *Ledger) updateVolumes(account string, inputAmount, outputAmount int64,
+	ctx context.Context, a volumeAggregator,
+	p core.Posting, generatedTxs []core.Transaction) error {
+	if _, ok := a.txPreCommitVol[account][p.Asset]; !ok {
+		for _, tx := range generatedTxs {
+			if v, ok := tx.PostCommitVolumes[account][p.Asset]; ok {
+				a.txPreCommitVol[account][p.Asset] = v
+			}
+		}
+	}
+
+	if _, ok := a.txPreCommitVol[account][p.Asset]; !ok {
+		var err error
+		a.txPreCommitVol[account][p.Asset], err = l.store.GetVolumes(ctx, account, p.Asset)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, ok := a.txPostCommitVol[account][p.Asset]; !ok {
+		a.txPostCommitVol[account][p.Asset] = a.txPreCommitVol[account][p.Asset]
+	}
+
+	if _, ok := a.aggregatePreCommitVol[account][p.Asset]; !ok {
+		a.aggregatePreCommitVol[account][p.Asset] = a.txPreCommitVol[account][p.Asset]
+	}
+
+	v := a.txPostCommitVol[account][p.Asset]
+	v.Input += inputAmount
+	v.Output += outputAmount
+	a.txPostCommitVol[account][p.Asset] = v
+	a.aggregatePostCommitVol[account][p.Asset] = a.txPostCommitVol[account][p.Asset]
+
+	return nil
+}
+
+func (l *Ledger) checkPostCommitVolumes(ctx context.Context, txPostCommitVol core.AccountsAssetsVolumes,
+	contracts []core.Contract, accMatchingContracts map[string]*core.Account) error {
+	for accountAddress, assetsVolumes := range txPostCommitVol {
+		for asset, volumes := range assetsVolumes {
+			if accountAddress == "world" {
+				continue
+			}
+
+			for _, contract := range contracts {
+				if contract.Match(accountAddress) {
+					account, ok := accMatchingContracts[accountAddress]
+					if !ok {
+						var err error
+						account, err = l.store.GetAccount(ctx, accountAddress)
+						if err != nil {
+							return err
+						}
+						accMatchingContracts[accountAddress] = account
+					}
+
+					if !contract.Expr.Eval(core.EvalContext{
+						Variables: map[string]interface{}{
+							"balance": float64(volumes.Balance()),
+						},
+						Metadata: account.Metadata,
+						Asset:    asset,
+					}) {
+						return NewInsufficientFundError(asset)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func initCommitVolumes(a volumeAggregator, p core.Posting) {
+	if _, ok := a.aggregatePreCommitVol[p.Source]; !ok {
+		a.aggregatePreCommitVol[p.Source] = core.AssetsVolumes{}
+	}
+	if _, ok := a.aggregatePreCommitVol[p.Destination]; !ok {
+		a.aggregatePreCommitVol[p.Destination] = core.AssetsVolumes{}
+	}
+	if _, ok := a.aggregatePostCommitVol[p.Source]; !ok {
+		a.aggregatePostCommitVol[p.Source] = core.AssetsVolumes{}
+	}
+	if _, ok := a.aggregatePostCommitVol[p.Destination]; !ok {
+		a.aggregatePostCommitVol[p.Destination] = core.AssetsVolumes{}
+	}
+
+	if _, ok := a.txPreCommitVol[p.Source]; !ok {
+		a.txPreCommitVol[p.Source] = core.AssetsVolumes{}
+	}
+	if _, ok := a.txPreCommitVol[p.Destination]; !ok {
+		a.txPreCommitVol[p.Destination] = core.AssetsVolumes{}
+	}
+
+	if _, ok := a.txPostCommitVol[p.Source]; !ok {
+		a.txPostCommitVol[p.Source] = core.AssetsVolumes{}
+	}
+	if _, ok := a.txPostCommitVol[p.Destination]; !ok {
+		a.txPostCommitVol[p.Destination] = core.AssetsVolumes{}
+	}
 }
