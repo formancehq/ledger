@@ -131,3 +131,35 @@ func TestPostScriptPreview(t *testing.T) {
 		})
 	}))
 }
+
+func TestPostScriptWithReference(t *testing.T) {
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				reference := "order_1234"
+				rsp := internal.PostScript(t, api, core.Script{
+					Plain: `
+						send [COIN 100] (
+						  	source = @world
+						  	destination = @centralbank
+						)`,
+					Reference: reference,
+				}, url.Values{})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				res := controllers.ScriptResponse{}
+				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+				assert.Equal(t, reference, res.Transaction.Reference)
+
+				store := internal.GetStore(t, driver, ctx)
+				cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
+				assert.NoError(t, err)
+				assert.Len(t, cursor.Data, 1)
+				assert.Equal(t, reference, cursor.Data[0].Reference)
+
+				return nil
+			},
+		})
+	}))
+}

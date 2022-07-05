@@ -972,6 +972,10 @@ components:
     Script:
       type: object
       properties:
+        reference:
+          type: string
+          example: order_1234
+          description: Reference to attach to the generated transaction
         plain:
           type: string
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
