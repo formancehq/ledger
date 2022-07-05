@@ -15,6 +15,62 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+	return s.getBalances(ctx, s.schema, q)
+}
+
+func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("asset", "sum(input - output)")
+	sb.From(s.schema.Table("volumes"))
+	sb.GroupBy("asset")
+
+	if q.Filters.AddressRegexp != "" {
+		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
+		switch s.Schema().Flavor() {
+		case sqlbuilder.PostgreSQL:
+			sb.Where("account ~* " + arg)
+		case sqlbuilder.SQLite:
+			sb.Where("account REGEXP " + arg)
+		}
+	}
+
+	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
+	if err != nil {
+		return nil, s.error(err)
+	}
+
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			panic(err)
+		}
+	}(rows)
+
+	res := core.AssetsBalances{}
+
+	for rows.Next() {
+		var (
+			asset    string
+			balances int64
+		)
+		if err = rows.Scan(&asset, &balances); err != nil {
+			return nil, s.error(err)
+		}
+
+		res[asset] = balances
+	}
+	if err := rows.Err(); err != nil {
+		return nil, s.error(err)
+	}
+
+	return res, nil
+}
+
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	return s.getBalancesAggregated(ctx, s.schema, q)
+}
+
 func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
@@ -125,60 +181,4 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 		Next:     next,
 		Data:     res,
 	}, nil
-}
-
-func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-	return s.getBalances(ctx, s.schema, q)
-}
-
-func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("asset", "sum(input - output)")
-	sb.From(s.schema.Table("volumes"))
-	sb.GroupBy("asset")
-
-	if q.Filters.AddressRegexp != "" {
-		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("account ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("account REGEXP " + arg)
-		}
-	}
-
-	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
-	if err != nil {
-		return nil, s.error(err)
-	}
-
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
-
-	res := core.AssetsBalances{}
-
-	for rows.Next() {
-		var (
-			asset    string
-			balances int64
-		)
-		if err = rows.Scan(&asset, &balances); err != nil {
-			return nil, s.error(err)
-		}
-
-		res[asset] = balances
-	}
-	if err := rows.Err(); err != nil {
-		return nil, s.error(err)
-	}
-
-	return res, nil
-}
-
-func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
-	return s.getBalancesAggregated(ctx, s.schema, q)
 }
