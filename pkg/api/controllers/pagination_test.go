@@ -216,6 +216,87 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 			}
 		})
 
+		t.Run("balances", func(t *testing.T) {
+			var paginationToken string
+			var cursor *sharedapi.Cursor[core.AccountsBalances]
+
+			// MOVING FORWARD
+			for i := 0; i < txsPages; i++ {
+				rsp = internal.GetBalances(api, url.Values{
+					"pagination_token": []string{paginationToken},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
+				assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
+
+				// First account balances of the page
+				if i == 0 {
+					_, ok := cursor.Data[0]["world"]
+					assert.True(t, ok)
+				} else {
+					_, ok := cursor.Data[0][fmt.Sprintf(
+						"accounts:%06d", (txsPages-i)*storage.QueryDefaultLimit+additionalTxs)]
+					assert.True(t, ok)
+				}
+
+				// Last account balances of the page
+				_, ok := cursor.Data[len(cursor.Data)-1][fmt.Sprintf(
+					"accounts:%06d", (txsPages-i-1)*storage.QueryDefaultLimit+additionalTxs+1)]
+				assert.True(t, ok)
+
+				paginationToken = cursor.Next
+			}
+
+			if additionalTxs > 0 {
+				rsp = internal.GetBalances(api, url.Values{
+					"pagination_token": []string{paginationToken},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
+				assert.Len(t, cursor.Data, additionalTxs+1)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
+
+				// First account balances of the last page
+				if txsPages == 0 {
+					_, ok := cursor.Data[0]["world"]
+					assert.True(t, ok)
+				} else {
+					_, ok := cursor.Data[0][fmt.Sprintf(
+						"accounts:%06d", additionalTxs)]
+					assert.True(t, ok)
+				}
+
+				// Last account balances of the last page
+				_, ok := cursor.Data[len(cursor.Data)-1][fmt.Sprintf(
+					"accounts:%06d", 0)]
+				assert.True(t, ok)
+			}
+
+			// MOVING BACKWARD
+			if txsPages > 0 {
+				for i := 0; i < txsPages; i++ {
+					paginationToken = cursor.Previous
+					rsp = internal.GetBalances(api, url.Values{
+						"pagination_token": []string{paginationToken},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+					cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
+					assert.Len(t, cursor.Data, storage.QueryDefaultLimit)
+					assert.Equal(t, cursor.Next != "", cursor.HasMore)
+				}
+
+				// First account balances of the first page
+				_, ok := cursor.Data[0]["world"]
+				assert.True(t, ok)
+
+				// Last account balances of the first page
+				_, ok = cursor.Data[len(cursor.Data)-1][fmt.Sprintf(
+					"accounts:%06d", (txsPages-1)*storage.QueryDefaultLimit+additionalTxs+1)]
+				assert.True(t, ok)
+			}
+		})
+
 		return nil
 	}
 }

@@ -23,33 +23,6 @@ import (
 	"go.uber.org/fx"
 )
 
-func TestInitializeStore(t *testing.T) {
-	l := logrus.New()
-	l.Level = logrus.DebugLevel
-	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
-
-	driver, stopFn, err := ledgertesting.StorageDriver()
-	assert.NoError(t, err)
-	defer stopFn()
-	defer func(driver storage.Driver, ctx context.Context) {
-		require.NoError(t, driver.Close(ctx))
-	}(driver, context.Background())
-
-	err = driver.Initialize(context.Background())
-	assert.NoError(t, err)
-
-	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
-	assert.NoError(t, err)
-
-	modified, err := store.Initialize(context.Background())
-	assert.NoError(t, err)
-	assert.True(t, modified)
-
-	modified, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
-	assert.False(t, modified)
-}
-
 func TestStore(t *testing.T) {
 	l := logrus.New()
 	if testing.Verbose() {
@@ -501,6 +474,33 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	assert.Error(t, err)
 	assert.IsType(t, new(storage.Error), err)
 	assert.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
+}
+
+func TestInitializeStore(t *testing.T) {
+	l := logrus.New()
+	l.Level = logrus.DebugLevel
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+
+	driver, stopFn, err := ledgertesting.StorageDriver()
+	assert.NoError(t, err)
+	defer stopFn()
+	defer func(driver storage.Driver, ctx context.Context) {
+		require.NoError(t, driver.Close(ctx))
+	}(driver, context.Background())
+
+	err = driver.Initialize(context.Background())
+	assert.NoError(t, err)
+
+	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	assert.NoError(t, err)
+
+	modified, err := store.Initialize(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, modified)
+
+	modified, err = store.Initialize(context.Background())
+	assert.NoError(t, err)
+	assert.False(t, modified)
 }
 
 func testLastLog(t *testing.T, store *sqlstorage.Store) {

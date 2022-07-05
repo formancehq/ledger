@@ -127,6 +127,10 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	}, nil
 }
 
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+	return s.getBalances(ctx, s.schema, q)
+}
+
 func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
@@ -173,4 +177,8 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	}
 
 	return res, nil
+}
+
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	return s.getBalancesAggregated(ctx, s.schema, q)
 }
