@@ -43,7 +43,7 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 		}
 	}(rows)
 
-	res := core.AssetsBalances{}
+	aggregatedBalances := core.AssetsBalances{}
 
 	for rows.Next() {
 		var (
@@ -54,13 +54,13 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 			return nil, s.error(err)
 		}
 
-		res[asset] = balances
+		aggregatedBalances[asset] = balances
 	}
 	if err := rows.Err(); err != nil {
 		return nil, s.error(err)
 	}
 
-	return res, nil
+	return aggregatedBalances, nil
 }
 
 func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
@@ -115,17 +115,17 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 		}
 	}(rows)
 
-	res := make([]core.AccountsBalances, 0)
+	accounts := make([]core.AccountsBalances, 0)
 
 	for rows.Next() {
-		var account string
+		var currentAccount string
 		var arrayAgg []string
-		if err = rows.Scan(&account, pq.Array(&arrayAgg)); err != nil {
+		if err = rows.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
 		accountsBalances := core.AccountsBalances{
-			account: core.AssetsBalances{},
+			currentAccount: core.AssetsBalances{},
 		}
 
 		// arrayAgg is in the form: []string{"(USD,-250)","(EUR,1000)"}
@@ -140,10 +140,10 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 			if err != nil {
 				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
-			accountsBalances[account][asset] = balances
+			accountsBalances[currentAccount][asset] = balances
 		}
 
-		res = append(res, accountsBalances)
+		accounts = append(accounts, accountsBalances)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -160,8 +160,8 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(res) == int(q.Limit+1) {
-		res = res[:len(res)-1]
+	if len(accounts) == int(q.Limit+1) {
+		accounts = accounts[:len(accounts)-1]
 		t.Offset = q.Offset + q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
@@ -171,11 +171,11 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	}
 
 	return sharedapi.Cursor[core.AccountsBalances]{
-		PageSize: len(res),
+		PageSize: len(accounts),
 		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,
-		Data:     res,
+		Data:     accounts,
 	}, nil
 }
 
