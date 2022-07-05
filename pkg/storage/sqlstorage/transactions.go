@@ -58,16 +58,15 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		sb.Where(sb.L("timestamp", endTime.UTC().Format(time.RFC3339)))
 		t.EndTime = endTime
 	}
-	if len(metadata) > 0 {
-		for key, value := range metadata {
-			arg := sb.Args.Add(value)
-			sb.Where(s.schema.Table(
-				fmt.Sprintf("%s(metadata, %s, '%s')",
-					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
-			))
-		}
-		t.MetadataFilter = metadata
+
+	for key, value := range metadata {
+		arg := sb.Args.Add(value)
+		sb.Where(s.schema.Table(
+			fmt.Sprintf("%s(metadata, %s, '%s')",
+				SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
+		))
 	}
+	t.MetadataFilter = metadata
 
 	return sb, t
 }
