@@ -482,7 +482,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Limit: 10,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 	})
