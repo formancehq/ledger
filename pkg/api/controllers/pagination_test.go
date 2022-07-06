@@ -17,7 +17,9 @@ import (
 	"go.uber.org/fx"
 )
 
+// This test makes sense if maxAdditionalTxs < pageSize
 const (
+	pageSize         = 10
 	maxTxsPages      = 3
 	maxAdditionalTxs = 2
 )
@@ -39,8 +41,6 @@ func TestGetPagination(t *testing.T) {
 func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		var rsp *httptest.ResponseRecorder
-
-		pageSize := 10
 
 		numTxs := txsPages*pageSize + additionalTxs
 		for i := 0; i < numTxs; i++ {
@@ -64,7 +64,7 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 			require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
 
 			var paginationToken string
-			var cursor *sharedapi.Cursor[core.Transaction]
+			cursor := &sharedapi.Cursor[core.Transaction]{}
 
 			// MOVING FORWARD
 			for i := 0; i < txsPages; i++ {
@@ -111,9 +111,12 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					uint64(0), cursor.Data[len(cursor.Data)-1].ID)
 			}
 
+			assert.Empty(t, cursor.Next)
+
 			// MOVING BACKWARD
 			if txsPages > 0 {
-				for i := 0; i < txsPages; i++ {
+				back := 0
+				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetTransactions(api, url.Values{
 						"pagination_token": []string{paginationToken},
@@ -122,6 +125,12 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
 					assert.Len(t, cursor.Data, pageSize)
 					assert.Equal(t, cursor.Next != "", cursor.HasMore)
+					back++
+				}
+				if additionalTxs > 0 {
+					assert.Equal(t, txsPages, back)
+				} else {
+					assert.Equal(t, txsPages-1, back)
 				}
 
 				// First txid of the first page
@@ -132,6 +141,8 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 				assert.Equal(t,
 					uint64((txsPages-1)*pageSize+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
 			}
+
+			assert.Empty(t, cursor.Previous)
 		})
 
 		t.Run("accounts", func(t *testing.T) {
@@ -143,11 +154,15 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 			require.Equal(t, fmt.Sprintf("%d", numAcc), rsp.Header().Get("Count"))
 
+			accPages := numAcc / pageSize
+			additionalAccs := numAcc % pageSize
+			fmt.Printf("numAcc:%d accPages:%d addi:%d\n", numAcc, accPages, additionalAccs)
+
 			var paginationToken string
-			var cursor *sharedapi.Cursor[core.Account]
+			cursor := &sharedapi.Cursor[core.Account]{}
 
 			// MOVING FORWARD
-			for i := 0; i < txsPages; i++ {
+			for i := 0; i < accPages; i++ {
 
 				values := url.Values{}
 				if paginationToken == "" {
@@ -168,34 +183,34 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 						cursor.Data[0].Address)
 				} else {
 					assert.Equal(t,
-						fmt.Sprintf("accounts:%06d", (txsPages-i)*pageSize+additionalTxs),
+						fmt.Sprintf("accounts:%06d", (accPages-i)*pageSize+additionalAccs-1),
 						cursor.Data[0].Address)
 				}
 
 				// Last account of the page
 				assert.Equal(t,
-					fmt.Sprintf("accounts:%06d", (txsPages-i-1)*pageSize+additionalTxs+1),
+					fmt.Sprintf("accounts:%06d", (accPages-i-1)*pageSize+additionalAccs),
 					cursor.Data[len(cursor.Data)-1].Address)
 
 				paginationToken = cursor.Next
 			}
 
-			if additionalTxs > 0 {
+			if additionalAccs > 0 {
 				rsp = internal.GetAccounts(api, url.Values{
 					"pagination_token": []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
-				assert.Len(t, cursor.Data, additionalTxs+1)
+				assert.Len(t, cursor.Data, additionalAccs)
 				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First account of the last page
-				if txsPages == 0 {
+				if accPages == 0 {
 					assert.Equal(t, "world",
 						cursor.Data[0].Address)
 				} else {
 					assert.Equal(t,
-						fmt.Sprintf("accounts:%06d", additionalTxs),
+						fmt.Sprintf("accounts:%06d", additionalAccs-1),
 						cursor.Data[0].Address)
 				}
 
@@ -205,15 +220,13 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					cursor.Data[len(cursor.Data)-1].Address)
 			}
 
+			assert.Empty(t, cursor.Next)
+
 			// MOVING BACKWARD
-			pageToRead := txsPages - 1
-			if additionalTxs > 0 {
-				pageToRead++
-			}
-			if pageToRead > 0 { // Only if we have MORE than one page in the result set
-				for i := 0; i < pageToRead; i++ {
+			if accPages > 0 {
+				back := 0
+				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
-					require.NotEmpty(t, paginationToken)
 					rsp = internal.GetAccounts(api, url.Values{
 						"pagination_token": []string{paginationToken},
 					})
@@ -221,6 +234,12 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, pageSize)
 					assert.Equal(t, cursor.Next != "", cursor.HasMore)
+					back++
+				}
+				if additionalAccs > 0 {
+					assert.Equal(t, accPages, back)
+				} else {
+					assert.Equal(t, accPages-1, back)
 				}
 
 				// First account of the first page
@@ -232,6 +251,8 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					fmt.Sprintf("accounts:%06d", (txsPages-1)*pageSize+additionalTxs+1),
 					cursor.Data[len(cursor.Data)-1].Address)
 			}
+
+			assert.Empty(t, cursor.Previous)
 		})
 
 		return nil

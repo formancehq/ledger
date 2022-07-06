@@ -67,13 +67,13 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}
 
 	sb, t := s.buildTransactionsQuery(q)
-	sb.OrderBy("id desc")
+	sb.OrderBy("id").Desc()
 	if q.AfterTxID > 0 {
-		sb.Where(sb.L("id", q.AfterTxID))
+		sb.Where(sb.LE("id", q.AfterTxID))
 	}
 
-	// We fetch an additional transaction to know if there are more
-	sb.Limit(int(q.PageSize + 1))
+	// We fetch additional transactions to know if there are more before and/or after.
+	sb.Limit(int(q.PageSize + 2))
 	t.PageSize = q.PageSize
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
@@ -88,11 +88,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}(rows)
 
 	for rows.Next() {
-		var (
-			ref sql.NullString
-			ts  sql.NullString
-		)
-
+		var ref, ts sql.NullString
 		tx := core.Transaction{}
 		if err := rows.Scan(
 			&tx.ID,
@@ -121,8 +117,22 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}
 
 	var previous, next string
-	if q.AfterTxID > 0 && len(txs) > 0 {
-		t.AfterTxID = txs[0].ID + uint64(q.PageSize) + 1
+
+	// First page with transactions after
+	if q.AfterTxID == 0 && len(txs) > int(q.PageSize) {
+		txs = txs[:q.PageSize]
+		t.AfterTxID = txs[len(txs)-1].ID
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	// Page with transactions before
+	if q.AfterTxID > 0 && (len(txs) > 1 && txs[0].ID == q.AfterTxID) {
+		t.AfterTxID = txs[0].ID + uint64(q.PageSize)
+		txs = txs[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
@@ -130,8 +140,9 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(txs) == int(q.PageSize+1) {
-		txs = txs[:len(txs)-1]
+	// Page with transactions after
+	if q.AfterTxID > 0 && len(txs) > int(q.PageSize) {
+		txs = txs[:q.PageSize]
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
