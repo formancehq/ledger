@@ -156,7 +156,6 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 
 			accPages := numAcc / pageSize
 			additionalAccs := numAcc % pageSize
-			fmt.Printf("numAcc:%d accPages:%d addi:%d\n", numAcc, accPages, additionalAccs)
 
 			var paginationToken string
 			cursor := &sharedapi.Cursor[core.Account]{}
