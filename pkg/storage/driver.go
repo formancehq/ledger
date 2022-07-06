@@ -10,12 +10,17 @@ type Driver interface {
 	Close(ctx context.Context) error
 	List(ctx context.Context) ([]string, error)
 	DeleteStore(ctx context.Context, name string) error
+	CleanTablesFromLedger(ctx context.Context, ledger string) error
 	Name() string
 }
 
 type noOpDriver struct{}
 
 func (n noOpDriver) DeleteStore(ctx context.Context, name string) error {
+	return nil
+}
+
+func (n noOpDriver) CleanTablesFromLedger(ctx context.Context, ledger string) error {
 	return nil
 }
 

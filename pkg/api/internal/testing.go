@@ -210,6 +210,10 @@ func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.
 	return store
 }
 
+func CleanTablesFromTestingLedger(t *testing.T, driver storage.Driver, ctx context.Context) {
+	require.NoError(t, driver.CleanTablesFromLedger(ctx, testingLedger))
+}
+
 func RunTest(t *testing.T, options ...fx.Option) {
 	l := logrus.New()
 	if testing.Verbose() {

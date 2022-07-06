@@ -154,6 +154,30 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 	return nil
 }
 
+func (d *Driver) CleanTablesFromLedger(ctx context.Context, ledger string) error {
+	schema, err := d.db.Schema(ctx, ledger)
+	if err != nil {
+		return err
+	}
+
+	tables := []string{
+		"accounts",
+		"transactions",
+		"log",
+		"volumes",
+	}
+
+	for _, table := range tables {
+		b := sqlbuilder.DeleteFrom(schema.Table(table))
+		q, args := b.BuildWithFlavor(schema.Flavor())
+		if _, err := schema.ExecContext(ctx, q, args...); err != nil {
+			sharedlogging.GetLogger(ctx).Errorf("deleting from %s: %s", schema.Table(table), err)
+		}
+	}
+
+	return nil
+}
+
 func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
