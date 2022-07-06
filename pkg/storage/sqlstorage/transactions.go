@@ -118,19 +118,8 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 
 	var previous, next string
 
-	// First page with transactions after
-	if q.AfterTxID == 0 && len(txs) > int(q.PageSize) {
-		txs = txs[:q.PageSize]
-		t.AfterTxID = txs[len(txs)-1].ID
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
 	// Page with transactions before
-	if q.AfterTxID > 0 && (len(txs) > 1 && txs[0].ID == q.AfterTxID) {
+	if q.AfterTxID > 0 && len(txs) > 1 && txs[0].ID == q.AfterTxID {
 		t.AfterTxID = txs[0].ID + uint64(q.PageSize)
 		txs = txs[1:]
 		raw, err := json.Marshal(t)
@@ -141,7 +130,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}
 
 	// Page with transactions after
-	if q.AfterTxID > 0 && len(txs) > int(q.PageSize) {
+	if len(txs) > int(q.PageSize) {
 		txs = txs[:q.PageSize]
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
