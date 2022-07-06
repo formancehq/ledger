@@ -144,14 +144,14 @@ func GetAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecor
 }
 
 func GetBalances(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/balances", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/balances", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetBalancesAggregated(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, "/"+testingLedger+"/aggregate/balances", nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/aggregate/balances", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec

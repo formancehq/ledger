@@ -12,7 +12,6 @@ type BalancesQueryFilters struct {
 }
 
 func NewBalancesQuery() *BalancesQuery {
-
 	return &BalancesQuery{
 		Limit: QueryDefaultLimit,
 	}

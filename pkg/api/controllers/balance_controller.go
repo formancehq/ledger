@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
@@ -21,10 +20,6 @@ func NewBalanceController() BalanceController {
 
 func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 	l, _ := c.Get("ledger")
-
-	// if there was a need to do params validation, it would be done here.
-	// With a c.GetQuery for required params
-	// other job focused validation, like checking if a parameter is a number should also be done here
 
 	var balances core.AssetsBalances
 	var err error
@@ -47,9 +42,7 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 func (ctl *BalanceController) GetBalances(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor sharedapi.Cursor[core.AccountsBalances]
-	var balancesQuery *storage.BalancesQuery
-	var err error
+	balancesQuery := storage.NewBalancesQuery()
 
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
@@ -67,24 +60,24 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 		}
 
 		token := sqlstorage.BalancesPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
+		if err := json.Unmarshal(res, &token); err != nil {
 			ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
 
-		balancesQuery = storage.NewBalancesQuery().
+		balancesQuery = balancesQuery.
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
 			WithAddressFilter(token.AddressRegexpFilter)
 
 	} else {
-		balancesQuery = storage.NewBalancesQuery().
+		balancesQuery = balancesQuery.
 			WithAfterAddress(c.Query("after")).
 			WithAddressFilter(c.Query("address"))
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)
+	cursor, err := l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)
 
 	if err != nil {
 		ResponseError(c, err)

@@ -194,12 +194,10 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountW
 }
 
 func (l *Ledger) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-
 	return l.store.GetBalances(ctx, q)
 }
 
 func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
-
 	return l.store.GetBalancesAggregated(ctx, q)
 }
 
