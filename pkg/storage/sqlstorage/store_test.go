@@ -135,6 +135,9 @@ var tx3 = core.Transaction{
 			},
 		},
 		Reference: "tx3",
+		Metadata: core.Metadata{
+			"priority": json.RawMessage(`"high"`),
+		},
 	},
 	Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
 }
