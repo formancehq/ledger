@@ -133,7 +133,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}
 
 	var previous, next string
-	if q.Offset-q.Limit > 0 {
+	if int(q.Offset)-int(q.Limit) >= 0 {
 		t.Offset = q.Offset - q.Limit
 		raw, err := json.Marshal(t)
 		if err != nil {
