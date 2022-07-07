@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
-	machine "github.com/numary/machine/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -308,47 +307,80 @@ func TestMetadata(t *testing.T) {
 }
 
 func TestSetTxMeta(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
-		plain := `
-			vars {
-				account $user
-			}
-
-			set_tx_meta("test_meta", [COIN 10])
-
-			send [COIN 10] (
-				source = @world
-				destination = $user
-			)
-		`
-
-		script := core.Script{
-			Plain: plain,
-			Vars: map[string]json.RawMessage{
-				"user": json.RawMessage(`"user:042"`),
+	type testCase struct {
+		name              string
+		script            core.Script
+		expectedMetadata  core.Metadata
+		expectedErrorCode string
+	}
+	for _, tc := range []testCase{
+		{
+			name: "nominal",
+			script: core.Script{
+				Plain: `send [USD/2 99] (
+					source=@world
+					destination=@user:001
+				)`,
+				Metadata: core.Metadata{
+					"priority": json.RawMessage(`"low"`),
+				},
 			},
-		}
+			expectedMetadata: core.Metadata{
+				"priority": json.RawMessage(`"low"`),
+			},
+		},
+		{
+			name: "define metadata on script",
+			script: core.Script{
+				Plain: `
+                set_tx_meta("priority", "low")
+                send [COIN 10] (
+                    source = @world
+                    destination = @user:001
+				)`,
+			},
+			expectedMetadata: core.Metadata{
+				"priority": json.RawMessage(`{"type":"string","value":"low"}`),
+			},
+		},
+		{
+			name: "override metadata of script",
+			script: core.Script{
+				Plain: `
+				set_tx_meta("priority", "low")
 
-		_, err := l.Execute(context.Background(), script)
-		require.NoError(t, err)
+				send [USD/2 99] (
+					source=@world
+					destination=@user:001
+				)`,
+				Metadata: core.Metadata{
+					"priority": json.RawMessage(`"high"`),
+				},
+			},
+			expectedErrorCode: ScriptErrorMetadataOverride,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runOnLedger(func(l *Ledger) {
+				defer func(l *Ledger, ctx context.Context) {
+					require.NoError(t, l.Close(ctx))
+				}(l, context.Background())
 
-		assertBalance(t, l, "user:042", "COIN", 10)
+				_, err := l.Execute(context.Background(), tc.script)
 
-		last, err := l.store.GetLastTransaction(context.Background())
-		require.NoError(t, err)
+				if tc.expectedErrorCode != "" {
+					require.Error(t, err)
+					require.True(t, IsScriptErrorWithCode(err, tc.expectedErrorCode))
+				} else {
+					require.NoError(t, err)
+					last, err := l.store.GetLastTransaction(context.Background())
+					require.NoError(t, err)
 
-		value, err := machine.NewValueFromTypedJSON(last.Metadata["test_meta"])
-		require.NoError(t, err)
-
-		assert.True(t, machine.ValueEquals(*value, machine.Monetary{
-			Asset:  "COIN",
-			Amount: 10,
-		}))
-	})
+					assert.Equal(t, tc.expectedMetadata, last.Metadata)
+				}
+			})
+		})
+	}
 }
 
 func TestScriptSetReference(t *testing.T) {
