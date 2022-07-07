@@ -135,6 +135,9 @@ var tx3 = core.Transaction{
 			},
 		},
 		Reference: "tx3",
+		Metadata: core.Metadata{
+			"priority": json.RawMessage(`"high"`),
+		},
 	},
 	Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
 }
@@ -345,6 +348,16 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		assert.EqualValues(t, 1, count)
+
+		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
+			Filters: storage.TransactionsQueryFilters{
+				Metadata: map[string]string{
+					"priority": "high",
+				},
+			},
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, 1, count)
 	})
 
 	t.Run("Get", func(t *testing.T) {
@@ -407,6 +420,19 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		assert.NoError(t, err)
 		assert.Equal(t, 10, cursor.PageSize)
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
+		assert.Len(t, cursor.Data, 1)
+
+		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
+			Filters: storage.TransactionsQueryFilters{
+				Metadata: map[string]string{
+					"priority": "high",
+				},
+			},
+			Limit: 10,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 	})
 }

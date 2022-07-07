@@ -80,7 +80,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithSourceFilter(token.SourceFilter).
 			WithDestinationFilter(token.DestinationFilter).
 			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime)
+			WithEndTimeFilter(token.EndTime).
+			WithMetadataFilter(token.MetadataFilter)
 
 	} else {
 		var afterTxIDParsed uint64
@@ -116,7 +117,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithSourceFilter(c.Query("source")).
 			WithDestinationFilter(c.Query("destination")).
 			WithStartTimeFilter(startTimeParsed).
-			WithEndTimeFilter(endTimeParsed)
+			WithEndTimeFilter(endTimeParsed).
+			WithMetadataFilter(c.QueryMap("metadata"))
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
