@@ -1191,9 +1191,6 @@ components:
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
-        timestamp:
-          type: string
-          format: date-time
         txid:
           type: integer
         preCommitVolumes:
@@ -1207,6 +1204,9 @@ components:
     TransactionData:
       type: object
       properties:
+        timestamp:
+          type: string
+          format: date-time
         postings:
           type: array
           items:
