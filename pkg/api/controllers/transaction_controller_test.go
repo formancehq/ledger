@@ -341,8 +341,8 @@ func TestGetTransactions(t *testing.T) {
 							},
 						},
 						Reference: "ref:001",
+						Timestamp: now.Add(-3 * time.Hour),
 					},
-					Timestamp: now.Add(-3 * time.Hour),
 				}
 				tx2 := core.Transaction{
 					ID: 1,
@@ -359,8 +359,8 @@ func TestGetTransactions(t *testing.T) {
 							"foo": json.RawMessage(`"bar"`),
 						},
 						Reference: "ref:002",
+						Timestamp: now.Add(-2 * time.Hour),
 					},
-					Timestamp: now.Add(-2 * time.Hour),
 				}
 				tx3 := core.Transaction{
 					ID: 2,
@@ -377,8 +377,8 @@ func TestGetTransactions(t *testing.T) {
 						Metadata: map[string]json.RawMessage{
 							"priority": json.RawMessage(`"high"`),
 						},
+						Timestamp: now.Add(-1 * time.Hour),
 					},
-					Timestamp: now.Add(-1 * time.Hour),
 				}
 				log1 := core.NewTransactionLog(nil, tx1)
 				log2 := core.NewTransactionLog(&log1, tx2)
@@ -627,8 +627,8 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 									Asset:       "USD",
 								},
 							},
+							Timestamp: now,
 						},
-						Timestamp: now,
 					}
 					log := core.NewTransactionLog(previousLog, tx)
 					logs = append(logs, log)

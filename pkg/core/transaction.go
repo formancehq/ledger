@@ -13,9 +13,10 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings  Postings `json:"postings"`
-	Reference string   `json:"reference"`
-	Metadata  Metadata `json:"metadata" swaggertype:"object"`
+	Postings  Postings  `json:"postings"`
+	Reference string    `json:"reference"`
+	Metadata  Metadata  `json:"metadata" swaggertype:"object"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 func (t *TransactionData) Reverse() TransactionData {
@@ -36,7 +37,6 @@ var _ json.Marshaler = Transaction{}
 type Transaction struct {
 	TransactionData
 	ID                uint64                `json:"txid"`
-	Timestamp         time.Time             `json:"timestamp"`
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
