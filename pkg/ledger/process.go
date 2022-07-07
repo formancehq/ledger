@@ -14,8 +14,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		return nil, errors.Wrap(err, "loading mapping")
 	}
 
-	// TODO: Check order
-
 	lastLog, err := l.store.LastLog(ctx)
 	if err != nil {
 		return nil, err
@@ -49,6 +47,9 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		}
 		if len(t.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
+		}
+		if lastLog != nil && t.Timestamp.Before(lastLog.Date) {
+			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
 		txVolumeAggregator := volumeAggregator.nextTx()

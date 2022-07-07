@@ -35,6 +35,8 @@ func TestPostTransactions(t *testing.T) {
 		expectedErrorCode  string
 	}
 
+	var now = time.Now().Round(time.Second)
+
 	testCases := []testCase{
 		{
 			name:               "nominal",
@@ -159,6 +161,52 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:               "with specified timestamp",
+			expectedStatusCode: http.StatusOK,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now,
+				},
+			},
+		},
+		{
+			name:               "with specified timestamp prior to last tx",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrValidation,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now,
+				},
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now.Add(-time.Second),
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -168,6 +216,12 @@ func TestPostTransactions(t *testing.T) {
 					for i := 0; i < len(tc.transactions)-1; i++ {
 						rsp := internal.PostTransaction(t, api, tc.transactions[i])
 						assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						if !tc.transactions[i].Timestamp.IsZero() {
+							txs, ok := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+							require.True(t, ok)
+							require.Len(t, txs, 1)
+							assert.Equal(t, tc.transactions[i].Timestamp, txs[0].Timestamp)
+						}
 					}
 					rsp := internal.PostTransaction(t, api, tc.transactions[len(tc.transactions)-1])
 					assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLedger_processTx(t *testing.T) {
@@ -323,6 +324,31 @@ func TestLedger_processTx(t *testing.T) {
 				GeneratedTransactions: []core.Transaction{},
 				GeneratedLogs:         []core.Log{},
 			}, result)
+		})
+
+		t.Run("date in the past", func(t *testing.T) {
+			now := time.Now()
+			log := core.NewTransactionLogWithDate(nil, core.Transaction{
+				TransactionData: core.TransactionData{
+					Timestamp: now,
+				},
+				ID: 0,
+			}, now)
+			require.NoError(t, l.store.AppendLog(context.Background(), log))
+
+			_, err := l.processTx(context.Background(), []core.TransactionData{
+				{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      100,
+						Asset:       "USD",
+					}},
+					Timestamp: now.Add(-time.Second),
+				},
+			})
+			assert.Error(t, err)
+			assert.True(t, IsValidationError(err))
 		})
 	})
 }
