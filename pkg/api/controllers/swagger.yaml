@@ -1051,9 +1051,7 @@ components:
     AccountsBalances:
       type: object
       additionalProperties:
-        type: object
-        additionalProperties:
-          type: integer
+        type: integer
         example: { account1: { gold: 100, usd: 0 } }
     AggregatedBalances:
         type: object

@@ -17,14 +17,6 @@ func NewBalancesQuery() *BalancesQuery {
 	}
 }
 
-func (b *BalancesQuery) WithLimit(limit uint) *BalancesQuery {
-	if limit != 0 {
-		b.Limit = limit
-	}
-
-	return b
-}
-
 func (b *BalancesQuery) WithAfterAddress(after string) *BalancesQuery {
 	b.AfterAddress = after
 
