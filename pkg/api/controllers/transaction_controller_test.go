@@ -761,7 +761,6 @@ func TestTransactionsVolumes(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 
 				// Single posting - single asset
-
 				const worldAliceUSD int64 = 100
 
 				rsp := internal.PostTransaction(t, api,
