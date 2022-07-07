@@ -26,3 +26,10 @@ type AccPaginationToken struct {
 	BalanceFilter         string                  `json:"balance,omitempty"`
 	BalanceOperatorFilter storage.BalanceOperator `json:"balance_operator,omitempty"`
 }
+
+type BalancesPaginationToken struct {
+	Limit               uint   `json:"limit"`
+	Offset              uint   `json:"offset"`
+	AfterAddress        string `json:"after,omitempty"`
+	AddressRegexpFilter string `json:"address,omitempty"`
+}

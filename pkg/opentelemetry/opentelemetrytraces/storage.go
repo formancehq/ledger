@@ -68,7 +68,7 @@ func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) 
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry AppendLogs: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry AppendLog: %s", handlingErr)
 	}
 	return
 }
@@ -79,7 +79,7 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 		return err
 	})
 	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry LastLogs: %s", handlingErr)
+		sharedlogging.Errorf("opentelemetry LastLog: %s", handlingErr)
 	}
 	return
 }
@@ -150,6 +150,28 @@ func (o *openTelemetryStorage) GetVolumes(ctx context.Context, accountAddress, a
 	return
 }
 
+func (o *openTelemetryStorage) GetBalances(ctx context.Context, q storage.BalancesQuery) (balances sharedapi.Cursor[core.AccountsBalances], err error) {
+	handlingErr := o.handle(ctx, "GetBalances", func(ctx context.Context) error {
+		balances, err = o.underlying.GetBalances(ctx, q)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry GetBalances: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (balances core.AssetsBalances, err error) {
+	handlingErr := o.handle(ctx, "GetBalancesAggregated", func(ctx context.Context) error {
+		balances, err = o.underlying.GetBalancesAggregated(ctx, q)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry GetBalancesAggregated: %s", handlingErr)
+	}
+	return
+}
+
 func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q storage.AccountsQuery) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx, q)
@@ -173,7 +195,7 @@ func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query storage.Ac
 }
 
 func (o *openTelemetryStorage) LoadMapping(ctx context.Context) (m *core.Mapping, err error) {
-	handlingErr := o.handle(ctx, "FindContracts", func(ctx context.Context) error {
+	handlingErr := o.handle(ctx, "LoadMapping", func(ctx context.Context) error {
 		m, err = o.underlying.LoadMapping(ctx)
 		return err
 	})

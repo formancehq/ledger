@@ -841,6 +841,129 @@ paths:
                     type: string
                     example: "conflict error on reference"
 
+  /{ledger}/balances:
+    get:
+      tags:
+        - balances
+      summary: Get the balances from a ledger's account
+      operationId: getBalances
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: query
+          description: Filter balances involving given account, either
+            as source or destination.
+          schema:
+            type: string
+            example: users:001
+        - name: after
+          in: query
+          description: Pagination cursor, will return accounts after given address, in descending order.
+          schema:
+            type: string
+            example: users:003
+        - name: pagination_token
+          in: query
+          description: |-
+            Parameter used in pagination requests. 
+            Set to the value of next for the next page of results. 
+            Set to the value of previous for the previous page of results.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - cursor
+                properties:
+                  cursor:
+                    allOf:
+                      - $ref: '#/components/schemas/Cursor'
+                      - type: object
+                        properties:
+                          data:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AccountsBalances'
+                        required:
+                          - data
+
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
+
+  /{ledger}/aggregate/balances:
+    get:
+      tags:
+        - balances
+      summary: Get the aggregated balances from selected accounts
+      operationId: getBalancesAggregated
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: query
+          description: Filter balances involving given account, either
+            as source or destination.
+          schema:
+            type: string
+            example: users:001
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AssetsBalances'
+                required:
+                  - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid address"
+
 security:
   - basicAuth: []
 
@@ -946,6 +1069,27 @@ components:
             type: integer
           example:
             COIN: 100
+
+    AccountsBalances:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/AssetsBalances'
+      example:
+        account1:
+          USD: 100
+          EUR: 23
+        account2:
+          CAD: 20
+          JPY: 21
+
+    AssetsBalances:
+      type: object
+      additionalProperties:
+        type: integer
+      example:
+        USD: 100
+        EUR: 12
+
     Contract:
       type: object
       properties:
@@ -990,6 +1134,10 @@ components:
     Script:
       type: object
       properties:
+        reference:
+          type: string
+          example: order_1234
+          description: Reference to attach to the generated transaction
         plain:
           type: string
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"

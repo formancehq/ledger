@@ -23,6 +23,7 @@ var Module = fx.Options(
 	fx.Provide(NewScriptController),
 	fx.Provide(NewAccountController),
 	fx.Provide(NewTransactionController),
+	fx.Provide(NewBalanceController),
 	fx.Provide(NewMappingController),
 	fx.Provide(
 		fx.Annotate(NewHealthController, fx.ParamTags(health.HealthCheckKey)),

@@ -95,8 +95,9 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	}
 
 	t := &core.TransactionData{
-		Postings: m.Postings,
-		Metadata: m.GetTxMetaJson(),
+		Postings:  m.Postings,
+		Metadata:  m.GetTxMetaJson(),
+		Reference: script.Reference,
 	}
 
 	return t, nil
