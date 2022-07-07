@@ -35,7 +35,7 @@ func TestPostTransactions(t *testing.T) {
 		expectedErrorCode  string
 	}
 
-	var now = time.Now().Round(time.Second)
+	var now = time.Now().Round(time.Second).UTC()
 
 	testCases := []testCase{
 		{
