@@ -13,7 +13,7 @@ func TestLog(t *testing.T) {
 
 	log1 := NewTransactionLogWithDate(nil, Transaction{}, d)
 	log2 := NewTransactionLogWithDate(&log1, Transaction{}, d)
-	if !assert.Equal(t, "69595c585c2068dea91e0a918f49e3e00a2e22da54af4b6a506ff57a4f600485", log2.Hash) {
+	if !assert.Equal(t, "3070ef3437354b5cb5ece914f8610d8d1276c6a9df127c0d2a49c48e3f81b017", log2.Hash) {
 		return
 	}
 }

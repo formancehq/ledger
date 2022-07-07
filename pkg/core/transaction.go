@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	json "github.com/gibson042/canonicaljson-go"
 )
@@ -33,7 +34,7 @@ func (t *TransactionData) Reverse() TransactionData {
 type Transaction struct {
 	TransactionData
 	ID                uint64                `json:"txid"`
-	Timestamp         string                `json:"timestamp"`
+	Timestamp         time.Time             `json:"timestamp"`
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
@@ -54,6 +55,7 @@ func Hash(t1, t2 interface{}) string {
 	if err != nil {
 		panic(err)
 	}
+
 	b2, err := json.Marshal(t2)
 	if err != nil {
 		panic(err)

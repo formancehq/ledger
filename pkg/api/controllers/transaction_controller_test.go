@@ -342,7 +342,7 @@ func TestGetTransactions(t *testing.T) {
 						},
 						Reference: "ref:001",
 					},
-					Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
+					Timestamp: now.Add(-3 * time.Hour),
 				}
 				tx2 := core.Transaction{
 					ID: 1,
@@ -360,7 +360,7 @@ func TestGetTransactions(t *testing.T) {
 						},
 						Reference: "ref:002",
 					},
-					Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
+					Timestamp: now.Add(-2 * time.Hour),
 				}
 				tx3 := core.Transaction{
 					ID: 2,
@@ -378,7 +378,7 @@ func TestGetTransactions(t *testing.T) {
 							"priority": json.RawMessage(`"high"`),
 						},
 					},
-					Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
+					Timestamp: now.Add(-1 * time.Hour),
 				}
 				log1 := core.NewTransactionLog(nil, tx1)
 				log2 := core.NewTransactionLog(&log1, tx2)
@@ -391,7 +391,7 @@ func TestGetTransactions(t *testing.T) {
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				require.Equal(t, "3", rsp.Header().Get("Count"))
 
-				var tx1Timestamp, tx2Timestamp string
+				var tx1Timestamp, tx2Timestamp time.Time
 				t.Run("all", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -490,8 +490,8 @@ func TestGetTransactions(t *testing.T) {
 
 				t.Run("time range", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"start_time": []string{tx1Timestamp},
-						"end_time":   []string{tx2Timestamp},
+						"start_time": []string{tx1Timestamp.Format(time.RFC3339)},
+						"end_time":   []string{tx2Timestamp.Format(time.RFC3339)},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
