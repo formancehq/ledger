@@ -822,6 +822,7 @@ paths:
                   error_message:
                     type: string
                     example: "conflict error on reference"
+
   /{ledger}/balances:
     get:
       tags:
@@ -871,14 +872,15 @@ paths:
                   cursor:
                     allOf:
                       - $ref: '#/components/schemas/Cursor'
-                      - properties:
+                      - type: object
+                        properties:
                           data:
+                            type: array
                             items:
                               $ref: '#/components/schemas/AccountsBalances'
-                            type: array
-                        type: object
                         required:
                           - data
+
         "400":
           description: Bad Request
           content:
@@ -894,6 +896,7 @@ paths:
                   error_message:
                     type: string
                     example: "no other query params can be set with 'pagination_token'"
+
   /{ledger}/aggregate/balances:
     get:
       tags:
@@ -921,10 +924,10 @@ paths:
           content:
             application/json:
               schema:
+                type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/AggregatedBalances'
-                type: object
+                    $ref: '#/components/schemas/AssetsBalances'
                 required:
                   - data
         "400":
@@ -1048,16 +1051,27 @@ components:
             type: integer
           example:
             COIN: 100
+
     AccountsBalances:
       type: object
       additionalProperties:
+        $ref: '#/components/schemas/AssetsBalances'
+      example:
+        account1:
+          USD: 100
+          EUR: 23
+        account2:
+          CAD: 20
+          JPY: 21
+
+    AssetsBalances:
+      type: object
+      additionalProperties:
         type: integer
-        example: { account1: { gold: 100, usd: 0 } }
-    AggregatedBalances:
-        type: object
-        additionalProperties:
-          type: integer
-        example: { USD: 100, EUR: 0 }
+      example:
+        USD: 100
+        EUR: 12
+
     Contract:
       type: object
       properties:
