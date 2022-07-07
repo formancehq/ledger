@@ -31,7 +31,7 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
-//var _ json.Marshaler = Transaction{}
+var _ json.Marshaler = Transaction{}
 
 type Transaction struct {
 	TransactionData
