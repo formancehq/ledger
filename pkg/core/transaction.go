@@ -31,12 +31,26 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
+//var _ json.Marshaler = Transaction{}
+
 type Transaction struct {
 	TransactionData
 	ID                uint64                `json:"txid"`
 	Timestamp         time.Time             `json:"timestamp"`
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
+}
+
+func (t Transaction) MarshalJSON() ([]byte, error) {
+	type transaction Transaction
+	return json.Marshal(struct {
+		transaction
+		Timestamp string `json:"timestamp"`
+	}{
+		transaction: transaction(t),
+		// The std lib format time as RFC3339Nano, use a custom encoding to ensure backward compatibility
+		Timestamp: t.Timestamp.Format(time.RFC3339),
+	})
 }
 
 func (t *Transaction) AppendPosting(p Posting) {

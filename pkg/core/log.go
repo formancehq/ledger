@@ -23,12 +23,15 @@ func (m LoggedTX) MarshalJSON() ([]byte, error) {
 		}
 		metadata[k] = i
 	}
+	type transaction Transaction
 	return json.Marshal(struct {
-		Transaction
-		Metadata map[string]interface{} `json:"metadata"`
+		transaction
+		Metadata  map[string]interface{} `json:"metadata"`
+		Timestamp string                 `json:"timestamp"`
 	}{
-		Transaction: Transaction(m),
+		transaction: transaction(m),
 		Metadata:    metadata,
+		Timestamp:   m.Timestamp.Format(time.RFC3339),
 	})
 }
 
@@ -41,7 +44,6 @@ type Log struct {
 }
 
 func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time) Log {
-
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -57,7 +59,7 @@ func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time)
 }
 
 func NewTransactionLog(previousLog *Log, tx Transaction) Log {
-	return NewTransactionLogWithDate(previousLog, tx, time.Now().UTC())
+	return NewTransactionLogWithDate(previousLog, tx, tx.Timestamp)
 }
 
 type SetMetadata struct {
@@ -107,7 +109,7 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 	l := Log{
 		ID:   id,
 		Type: SetMetadataType,
-		Date: time.Now().UTC(),
+		Date: time.Now().UTC().Round(time.Second),
 		Data: metadata,
 	}
 	l.Hash = Hash(previousLog, &l)
