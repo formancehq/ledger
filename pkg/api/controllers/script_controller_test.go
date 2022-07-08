@@ -21,34 +21,34 @@ import (
 func TestPostScript(t *testing.T) {
 	type testCase struct {
 		name             string
-		script           string
+		script           core.Script
 		expectedResponse controllers.ScriptResponse
 	}
 
-	script1 := `
-	send [COIN 100] (
-	  source = @world
-	  destination = @centralbank
-	)
-	send [COIN 100] (
-	  source = @centralbank
-	  destination = @users:001
-	)`
-
-	script2 := `
-	send [COIN 100] (
-	  source = @centralbank
-	  destination = @users:001
-	)`
-
 	testCases := []testCase{
 		{
-			name:   "nominal",
-			script: script1,
+			name: "nominal",
+			script: core.Script{
+				Plain: `
+				send [COIN 100] (
+				  source = @world
+				  destination = @centralbank
+				)
+				send [COIN 100] (
+				  source = @centralbank
+				  destination = @users:001
+				)`,
+			},
 		},
 		{
-			name:   "failure",
-			script: script2,
+			name: "failure with insufficient funcs",
+			script: core.Script{
+				Plain: `
+				send [COIN 100] (
+				  source = @centralbank
+				  destination = @users:001
+				)`,
+			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
 					ErrorCode:    ledger.ScriptErrorInsufficientFund,
@@ -57,15 +57,35 @@ func TestPostScript(t *testing.T) {
 				Link: controllers.EncodeLink("account had insufficient funds"),
 			},
 		},
+		{
+			name: "failure with metadata override",
+			script: core.Script{
+				Plain: `
+				set_tx_meta("priority", "low")
+
+				send [USD/2 99] (
+					source=@world
+					destination=@user:001
+				)`,
+				Metadata: core.Metadata{
+					"priority": json.RawMessage(`"high"`),
+				},
+			},
+			expectedResponse: controllers.ScriptResponse{
+				ErrorResponse: sharedapi.ErrorResponse{
+					ErrorCode:    ledger.ScriptErrorMetadataOverride,
+					ErrorMessage: "cannot override metadata from script",
+				},
+				Link: controllers.EncodeLink("cannot override metadata from script"),
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					rsp := internal.PostScript(t, api, core.Script{
-						Plain: tc.script,
-					}, url.Values{})
+					rsp := internal.PostScript(t, api, tc.script, url.Values{})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					res := controllers.ScriptResponse{}

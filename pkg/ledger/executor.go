@@ -94,9 +94,18 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 		}
 	}
 
+	metadata := m.GetTxMetaJson()
+	for k, v := range script.Metadata {
+		_, ok := metadata[k]
+		if ok {
+			return nil, NewScriptError(ScriptErrorMetadataOverride, "cannot override metadata from script")
+		}
+		metadata[k] = v
+	}
+
 	t := &core.TransactionData{
 		Postings:  m.Postings,
-		Metadata:  m.GetTxMetaJson(),
+		Metadata:  metadata,
 		Reference: script.Reference,
 	}
 

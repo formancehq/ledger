@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 const (
@@ -19,6 +20,36 @@ func SpecMetadata(name string) string {
 }
 
 type Metadata map[string]json.RawMessage
+
+// IsEquivalentTo allow to compare to metadata object.
+//
+// Postgres and SQLite doesn't have the same behavior regarding json processing
+// Postgres will clean the json and keep a space after semicolons.
+// Sqlite will clean the json and minify it.
+// So we can't directly compare metadata.
+func (m1 Metadata) IsEquivalentTo(m2 Metadata) bool {
+	d1, err := json.Marshal(m1)
+	if err != nil {
+		panic(err)
+	}
+	map1 := make(map[string]interface{})
+	err = json.Unmarshal(d1, &map1)
+	if err != nil {
+		panic(err)
+	}
+
+	d2, err := json.Marshal(m2)
+	if err != nil {
+		panic(err)
+	}
+	map2 := make(map[string]interface{})
+	err = json.Unmarshal(d2, &map2)
+	if err != nil {
+		panic(err)
+	}
+
+	return reflect.DeepEqual(map1, map2)
+}
 
 func (m1 Metadata) Merge(m2 Metadata) Metadata {
 	for k, v := range m2 {
