@@ -104,6 +104,7 @@ const (
 	ScriptErrorInsufficientFund  = "INSUFFICIENT_FUND"
 	ScriptErrorCompilationFailed = "COMPILATION_FAILED"
 	ScriptErrorNoScript          = "NO_SCRIPT"
+	ScriptErrorMetadataOverride  = "METADATA_OVERRIDE"
 )
 
 type ScriptError struct {
@@ -123,8 +124,10 @@ func (e ScriptError) Is(err error) bool {
 	return e.Code == eerr.Code
 }
 
-func IsScriptError(err error) bool {
-	return errors.Is(err, &ScriptError{})
+func IsScriptErrorWithCode(err error, code string) bool {
+	return errors.Is(err, &ScriptError{
+		Code: code,
+	})
 }
 
 func NewScriptError(code string, message string) *ScriptError {
