@@ -376,7 +376,7 @@ func TestSetTxMeta(t *testing.T) {
 					last, err := l.store.GetLastTransaction(context.Background())
 					require.NoError(t, err)
 
-					assert.Equal(t, tc.expectedMetadata, last.Metadata)
+					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
 				}
 			})
 		})
