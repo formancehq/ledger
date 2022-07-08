@@ -17,6 +17,7 @@ type TransactionsQueryFilters struct {
 	Account     string
 	EndTime     time.Time
 	StartTime   time.Time
+	Metadata    map[string]string
 }
 
 func NewTransactionsQuery() *TransactionsQuery {
@@ -75,6 +76,12 @@ func (a *TransactionsQuery) WithReferenceFilter(ref string) *TransactionsQuery {
 
 func (a *TransactionsQuery) WithSourceFilter(source string) *TransactionsQuery {
 	a.Filters.Source = source
+
+	return a
+}
+
+func (a *TransactionsQuery) WithMetadataFilter(metadata map[string]string) *TransactionsQuery {
+	a.Filters.Metadata = metadata
 
 	return a
 }

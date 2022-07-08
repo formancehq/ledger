@@ -23,7 +23,7 @@ func getPageSize(c *gin.Context) (uint, error) {
 		err      error
 	)
 	if pageSizeParam := c.Query("page_size"); pageSizeParam != "" {
-		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 64)
+		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
 		if err != nil {
 			return 0, ErrInvalidPageSize
 		}

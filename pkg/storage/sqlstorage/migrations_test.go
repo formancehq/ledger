@@ -92,36 +92,6 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 	return assert.NoError(t, err)
 }
 
-/** Postgres and SQLite doesn't have the same behavior regarding json processing
-Postgres will clean the json and keep a space after semicolons.
-Sqlite will clean the json and minify it.
-So we can't directly compare metadata.
-compareMetadata convert metadata to map[string]interface{} which can be compared.
-*/
-func compareMetadata(t *testing.T, m1, m2 core.Metadata) bool {
-	d1, err := json.Marshal(m1)
-	if !assert.NoError(t, err) {
-		return false
-	}
-	map1 := make(map[string]interface{})
-	err = json.Unmarshal(d1, &map1)
-	if !assert.NoError(t, err) {
-		return false
-	}
-
-	d2, err := json.Marshal(m2)
-	if !assert.NoError(t, err) {
-		return false
-	}
-	map2 := make(map[string]interface{})
-	err = json.Unmarshal(d2, &map2)
-	if !assert.NoError(t, err) {
-		return false
-	}
-
-	return assert.EqualValues(t, map1, map2)
-}
-
 var now = time.Now().Truncate(time.Second).UTC()
 
 var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
@@ -219,11 +189,11 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}
 		tx.Postings = core.Postings{}
 
-		if !assert.True(t, compareMetadata(t, core.Metadata{
+		if !assert.True(t, tx.Metadata.IsEquivalentTo(core.Metadata{
 			"info":      json.RawMessage("\"Init game\""),
 			"players":   json.RawMessage(`["player1", "player2"]`),
 			"startedAt": json.RawMessage(fmt.Sprintf(`"%s"`, now.Format(time.RFC3339))),
-		}, tx.Metadata)) {
+		})) {
 			return
 		}
 		tx.Metadata = core.Metadata{}

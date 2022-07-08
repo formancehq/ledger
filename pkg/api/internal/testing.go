@@ -143,6 +143,20 @@ func GetAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecor
 	return rec
 }
 
+func GetBalances(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/balances", testingLedger), nil)
+	req.URL.RawQuery = query.Encode()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func GetBalancesAggregated(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/aggregate/balances", testingLedger), nil)
+	req.URL.RawQuery = query.Encode()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts/%s", testingLedger, addr), nil)
 	handler.ServeHTTP(rec, req)
@@ -210,8 +224,13 @@ func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.
 	return store
 }
 
-func CleanTablesFromTestingLedger(t *testing.T, driver storage.Driver, ctx context.Context) {
-	require.NoError(t, driver.CleanTablesFromLedger(ctx, testingLedger))
+func CleanTablesFromTestingLedger(t *testing.T, driver storage.Driver) {
+	require.NoError(t, driver.CleanTablesFromLedger(testingLedger, []string{
+		"accounts",
+		"transactions",
+		"log",
+		"volumes",
+	}))
 }
 
 func RunTest(t *testing.T, options ...fx.Option) {

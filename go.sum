@@ -697,6 +697,10 @@ github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGY
 github.com/numary/machine v0.0.0-20210831114934-e54c99840e08/go.mod h1:KulcZIlMidEjXmuFSGNckmk0pKr4HFKFYy3bB+ksWSQ=
 github.com/numary/machine v1.1.1 h1:ESJJ7pCIzeMPS3V6esffIPBBiGXjKRdgB5aqfqND4FM=
 github.com/numary/machine v1.1.1/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
+github.com/numary/machine v1.1.2-0.20220707224429-2a09b3f81249 h1:02EHCDlgU2aNV/B1r9jyUthlKaSHil28rPvvtAoVafM=
+github.com/numary/machine v1.1.2-0.20220707224429-2a09b3f81249/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
+github.com/numary/machine v1.1.2 h1:MoPu4I2NvkM/V0CT8xNngsZrKrA3X5jA8Ge1ZCDamXA=
+github.com/numary/machine v1.1.2/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=

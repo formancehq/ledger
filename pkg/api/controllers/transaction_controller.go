@@ -81,8 +81,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(token.DestinationFilter).
 			WithStartTimeFilter(token.StartTime).
 			WithEndTimeFilter(token.EndTime).
+			WithMetadataFilter(token.MetadataFilter).
 			WithPageSize(token.PageSize)
-
 	} else {
 		var afterTxIDParsed uint64
 		if c.Query("after") != "" {
@@ -124,6 +124,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(c.Query("destination")).
 			WithStartTimeFilter(startTimeParsed).
 			WithEndTimeFilter(endTimeParsed).
+			WithMetadataFilter(c.QueryMap("metadata")).
 			WithPageSize(pageSize)
 	}
 

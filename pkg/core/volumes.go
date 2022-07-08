@@ -31,6 +31,8 @@ func (v Volumes) Balance() int64 {
 type AssetsBalances map[string]int64
 type AssetsVolumes map[string]Volumes
 
+type AccountsBalances map[string]AssetsBalances
+
 func (v AssetsVolumes) Balances() AssetsBalances {
 	balances := AssetsBalances{}
 	for asset, vv := range v {

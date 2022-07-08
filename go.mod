@@ -10,7 +10,7 @@ require (
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/mattn/go-sqlite3 v1.14.9
-	github.com/numary/machine v1.1.1
+	github.com/numary/machine v1.1.2
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
@@ -43,6 +43,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/lib/pq v1.10.2
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.12
 	github.com/xdg-go/scram v1.1.0

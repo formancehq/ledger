@@ -360,7 +360,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 				require.NoError(t, store.AppendLog(context.Background(), logs...))
 
 				t.Run("invalid page size", func(t *testing.T) {
-					rsp := internal.GetTransactions(api, url.Values{
+					rsp := internal.GetAccounts(api, url.Values{
 						"page_size": []string{"nan"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())

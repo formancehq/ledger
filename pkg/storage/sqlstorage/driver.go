@@ -23,10 +23,6 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 	sqlDrivers[flavor] = cfg
 }
 
-func SQLDriverName(f Flavor) string {
-	return sqlDrivers[f].driverName
-}
-
 func init() {
 	// Default mapping for app driver/sql driver
 	UpdateSQLDriverMapping(SQLite, "sqlite3")
@@ -154,24 +150,18 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 	return nil
 }
 
-func (d *Driver) CleanTablesFromLedger(ctx context.Context, ledger string) error {
+func (d *Driver) CleanTablesFromLedger(ledger string, tables []string) error {
+	ctx := context.Background()
 	schema, err := d.db.Schema(ctx, ledger)
 	if err != nil {
 		return err
-	}
-
-	tables := []string{
-		"accounts",
-		"transactions",
-		"log",
-		"volumes",
 	}
 
 	for _, table := range tables {
 		b := sqlbuilder.DeleteFrom(schema.Table(table))
 		q, args := b.BuildWithFlavor(schema.Flavor())
 		if _, err := schema.ExecContext(ctx, q, args...); err != nil {
-			sharedlogging.GetLogger(ctx).Errorf("deleting from %s: %s", schema.Table(table), err)
+			sharedlogging.GetLogger(ctx).Errorf("cleaning table %s: %s", schema.Table(table), err)
 		}
 	}
 
