@@ -30,7 +30,7 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("success balance", func(t *testing.T) {
 		q := storage.AccountsQuery{
-			Limit: 10,
+			PageSize: 10,
 			Filters: storage.AccountsQueryFilters{
 				Balance: "50",
 			},
@@ -42,7 +42,7 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("panic invalid balance", func(t *testing.T) {
 		q := storage.AccountsQuery{
-			Limit: 10,
+			PageSize: 10,
 			Filters: storage.AccountsQueryFilters{
 				Balance: "TEST",
 			},
@@ -59,7 +59,7 @@ func TestAccounts(t *testing.T) {
 	t.Run("panic invalid balance_operator", func(t *testing.T) {
 		assert.PanicsWithValue(t, "invalid balance_operator parameter", func() {
 			q := storage.AccountsQuery{
-				Limit: 10,
+				PageSize: 10,
 				Filters: storage.AccountsQueryFilters{
 					Balance:         "50",
 					BalanceOperator: "TEST",
@@ -72,7 +72,7 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("success balance_operator", func(t *testing.T) {
 		q := storage.AccountsQuery{
-			Limit: 10,
+			PageSize: 10,
 			Filters: storage.AccountsQueryFilters{
 				Balance:         "50",
 				BalanceOperator: storage.BalanceOperatorGte,

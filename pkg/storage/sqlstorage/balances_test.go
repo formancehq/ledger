@@ -21,7 +21,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	t.Run("all accounts", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			storage.BalancesQuery{
-				Limit: 10,
+				PageSize: 10,
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, 3, cursor.PageSize)
@@ -50,7 +50,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	t.Run("limit", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			storage.BalancesQuery{
-				Limit: 1,
+				PageSize: 1,
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
@@ -69,8 +69,8 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	t.Run("limit and offset", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			storage.BalancesQuery{
-				Limit:  1,
-				Offset: 1,
+				PageSize: 1,
+				Offset:   1,
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, 1, cursor.PageSize)
@@ -89,7 +89,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	t.Run("after", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			storage.BalancesQuery{
-				Limit:        10,
+				PageSize:     10,
 				AfterAddress: "world",
 			})
 		assert.NoError(t, err)
@@ -114,7 +114,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	t.Run("after and filter on address", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			storage.BalancesQuery{
-				Limit:        10,
+				PageSize:     10,
 				AfterAddress: "world",
 				Filters:      storage.BalancesQueryFilters{AddressRegexp: "users.+"},
 			})
@@ -141,7 +141,7 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 
 	q := storage.BalancesQuery{
-		Limit: 10,
+		PageSize: 10,
 	}
 	cursor, err := store.GetBalancesAggregated(context.Background(), q)
 	assert.NoError(t, err)
