@@ -151,8 +151,13 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	}
 
 	var previous, next string
-	if int(q.Offset)-int(q.PageSize) >= 0 {
-		t.Offset = q.Offset - q.PageSize
+	if q.Offset > 0 {
+		offset := int(q.Offset) - int(q.PageSize)
+		if offset < 0 {
+			t.Offset = 0
+		} else {
+			t.Offset = uint(offset)
+		}
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)

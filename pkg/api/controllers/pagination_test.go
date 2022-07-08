@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -30,7 +29,7 @@ func TestGetPagination(t *testing.T) {
 			t.Run(fmt.Sprintf("%d-pages-%d-additional", txsPages, additionalTxs), func(t *testing.T) {
 				internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 					lc.Append(fx.Hook{
-						OnStart: getPagination(t, api, txsPages, additionalTxs),
+						OnStart: testGetPagination(t, api, txsPages, additionalTxs),
 					})
 				}))
 			})
@@ -38,31 +37,44 @@ func TestGetPagination(t *testing.T) {
 	}
 }
 
-func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func(ctx context.Context) error {
+func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		var rsp *httptest.ResponseRecorder
-
 		numTxs := txsPages*pageSize + additionalTxs
-		for i := 0; i < numTxs; i++ {
-			rsp = internal.PostTransaction(t, api, core.TransactionData{
-				Postings: core.Postings{
-					{
-						Source:      "world",
-						Destination: fmt.Sprintf("accounts:%06d", i),
-						Amount:      10,
-						Asset:       "USD",
+		if numTxs > 0 {
+			txsData := make([]core.TransactionData, numTxs)
+			for i := 0; i < numTxs; i++ {
+				txsData[i] = core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: fmt.Sprintf("accounts:%06d", i),
+							Amount:      10,
+							Asset:       "USD",
+						},
 					},
-				},
-				Reference: fmt.Sprintf("ref:%06d", i),
-			})
+					Reference: fmt.Sprintf("ref:%06d", i),
+				}
+			}
+			rsp := internal.PostTransactionBatch(t, api, core.Transactions{Transactions: txsData})
 			require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
 		}
 
-		t.Run("transactions", func(t *testing.T) {
-			rsp = internal.CountTransactions(api, url.Values{})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-			require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
+		rsp := internal.CountTransactions(api, url.Values{})
+		require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		require.Equal(t, fmt.Sprintf("%d", numTxs), rsp.Header().Get("Count"))
 
+		numAcc := 0
+		if numTxs > 0 {
+			numAcc = numTxs + 1 // + world account
+		}
+		rsp = internal.CountAccounts(api, url.Values{})
+		require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+		require.Equal(t, fmt.Sprintf("%d", numAcc), rsp.Header().Get("Count"))
+
+		accPages := numAcc / pageSize
+		additionalAccs := numAcc % pageSize
+
+		t.Run("transactions", func(t *testing.T) {
 			var paginationToken string
 			cursor := &sharedapi.Cursor[core.Transaction]{}
 
@@ -146,17 +158,6 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 		})
 
 		t.Run("accounts", func(t *testing.T) {
-			numAcc := 0
-			if numTxs > 0 {
-				numAcc = numTxs + 1 // + world account
-			}
-			rsp = internal.CountAccounts(api, url.Values{})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-			require.Equal(t, fmt.Sprintf("%d", numAcc), rsp.Header().Get("Count"))
-
-			accPages := numAcc / pageSize
-			additionalAccs := numAcc % pageSize
-
 			var paginationToken string
 			cursor := &sharedapi.Cursor[core.Account]{}
 
@@ -256,16 +257,18 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 
 		t.Run("balances", func(t *testing.T) {
 			var paginationToken string
-			var cursor *sharedapi.Cursor[core.AccountsBalances]
+			cursor := &sharedapi.Cursor[core.AccountsBalances]{}
 
 			// MOVING FORWARD
-			for i := 0; i < txsPages; i++ {
+			for i := 0; i < accPages; i++ {
+
 				values := url.Values{}
 				if paginationToken == "" {
 					values.Set("page_size", fmt.Sprintf("%d", pageSize))
 				} else {
 					values.Set("pagination_token", paginationToken)
 				}
+
 				rsp = internal.GetBalances(api, values)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
@@ -278,34 +281,34 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					assert.True(t, ok)
 				} else {
 					_, ok := cursor.Data[0][fmt.Sprintf(
-						"accounts:%06d", (txsPages-i)*pageSize+additionalTxs)]
+						"accounts:%06d", (accPages-i)*pageSize+additionalAccs-1)]
 					assert.True(t, ok)
 				}
 
 				// Last account balances of the page
 				_, ok := cursor.Data[len(cursor.Data)-1][fmt.Sprintf(
-					"accounts:%06d", (txsPages-i-1)*pageSize+additionalTxs+1)]
+					"accounts:%06d", (accPages-i-1)*pageSize+additionalAccs)]
 				assert.True(t, ok)
 
 				paginationToken = cursor.Next
 			}
 
-			if additionalTxs > 0 {
+			if additionalAccs > 0 {
 				rsp = internal.GetBalances(api, url.Values{
 					"pagination_token": []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-				assert.Len(t, cursor.Data, additionalTxs+1)
+				assert.Len(t, cursor.Data, additionalAccs)
 				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
 				// First account balances of the last page
-				if txsPages == 0 {
+				if accPages == 0 {
 					_, ok := cursor.Data[0]["world"]
 					assert.True(t, ok)
 				} else {
 					_, ok := cursor.Data[0][fmt.Sprintf(
-						"accounts:%06d", additionalTxs)]
+						"accounts:%06d", additionalAccs-1)]
 					assert.True(t, ok)
 				}
 
@@ -316,7 +319,8 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 			}
 
 			// MOVING BACKWARD
-			if txsPages > 0 {
+			if accPages > 0 {
+				back := 0
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetBalances(api, url.Values{
@@ -326,6 +330,12 @@ func getPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) func
 					cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 					assert.Len(t, cursor.Data, pageSize)
 					assert.Equal(t, cursor.Next != "", cursor.HasMore)
+					back++
+				}
+				if additionalAccs > 0 {
+					assert.Equal(t, accPages, back)
+				} else {
+					assert.Equal(t, accPages-1, back)
 				}
 
 				// First account balances of the first page
