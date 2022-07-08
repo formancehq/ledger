@@ -37,6 +37,7 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm64
     flags:
       - -tags=json1
   - binary: numary
