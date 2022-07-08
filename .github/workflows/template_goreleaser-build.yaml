@@ -1,0 +1,48 @@
+name: GoReleaser Build
+on:
+  workflow_call:
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+        description: GitHub token with access to the repo
+      SEGMENT_WRITE_KEY_OSS:
+        required: true
+        description: Segment write key for the OSS repo
+
+jobs:
+  goreleaser:
+    name: GoReleaser Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.18'
+          cache: true
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: OSXCross for CGO Support
+        run: |
+          mkdir ../../osxcross
+          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
+      - name: Downgrade libssl
+        run: |
+          echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
+          sudo apt update && apt-cache policy libssl1.0-dev
+          sudo apt-get install libssl1.0-dev
+      - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: build --parallelism 4 --rm-dist --skip-validate --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: dist
+          path: ./dist/**

@@ -2,216 +2,136 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened ]
+  release:
+    types: [ prereleased, released ]
 
 name: Main
 jobs:
-  Test_sqlite:
-    name: 'Test - SQLite'
-    runs-on: ubuntu-latest
+  Pr:
+    if: github.event_name == 'pull_request'
+    uses: numary/gh-workflows/.github/workflows/pr-style.yml@main
+
+  Lint:
+    uses: numary/gh-workflows/.github/workflows/golang-lint.yml@main
+    with:
+      go_version: 1.18
+
+  Control:
+    name: 'Control'
     needs:
-      - build_control
-    steps:
-      - uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      - name: get deps
-        run: go mod download
-      - name: fetch numary control
-        uses: actions/download-artifact@v2
-        with:
-          name: control-dist
-          path: cmd/control/
-      - name: run tests
-        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
-      - name: Upload coverage to Codecov
-        run: bash <(curl -s https://codecov.io/bash)
+      - Lint
+    uses: ./.github/workflows/template_build-control.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
   Test_postgres:
-    name: 'Test - PostgreSQL'
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/template_golang-test-pgsql.yaml
     needs:
-      - build_control
-    services:
-      postgres:
-        image: postgres:13-alpine
-        env:
-          POSTGRES_USER: ledger
-          POSTGRES_PASSWORD: ledger
-          POSTGRES_DB: ledger
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      - name: get deps
-        run: go mod download
-      - name: fetch numary control
-        uses: actions/download-artifact@v2
-        with:
-          name: control-dist
-          path: cmd/control/
-      - name: run tests
-        run: go test -tags json1 -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
-        env:
-          NUMARY_STORAGE_DRIVER: "postgres"
-          NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-      - name: Upload coverage to Codecov
-        run: bash <(curl -s https://codecov.io/bash)
-  build_control:
-    name: 'Build Control'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get latest release of Numary/Control
-        uses: rez0n/actions-github-release@main
-        id: control_release
-        env:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: "numary/control"
-          type: "stable"
-      - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
-      - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
-      - run: rm -rf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
-      - uses: actions/upload-artifact@v2
-        with:
-          name: control-dist
-          path: ./**
-  build_binary:
-    name: 'Build'
+      - Lint
+    with:
+      go_version: 1.18
+
+  Test_sqlite:
+    uses: numary/gh-workflows/.github/workflows/golang-test.yml@main
     needs:
-      - build_control
+      - Lint
+    with:
+      go_version: 1.18
+
+  GoReleaserBuild:
+    if: github.event_name != 'release'
+    name: 'GoReleaser Build'
+    needs:
+      - Control
       - Test_sqlite
       - Test_postgres
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      - name: get deps
-        run: go get
-        env:
-          CGO_ENABLED: 1
-      - name: fetch numary control
-        uses: actions/download-artifact@v2
-        with:
-          name: control-dist
-          path: cmd/control/
-      - name: OSXCross for CGO Support
-        run: |
-          mkdir ../../osxcross
-          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
-      - name: Downgrade libssl
-        run: |
-          echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
-          sudo apt update && apt-cache policy libssl1.0-dev
-          sudo apt-get install libssl1.0-dev
-      - run: sudo apt install gcc-mingw-w64 -y
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          version: latest
-          args: build --parallelism 4 --rm-dist --skip-validate --snapshot
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-  build_docker:
-    name: 'Build & Publish Docker'
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/template_goreleaser-build.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+  GoReleaserRelease:
+    if: github.event_name == 'release'
+    name: 'GoReleaser Release'
     needs:
-      - build_control
-    steps:
-      - uses: actions/checkout@v2
-      - name: fetch numary control
-        uses: actions/download-artifact@v2
-        with:
-          name: control-dist
-          path: cmd/control/
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - uses: actions/cache@v3
-        with:
-          path: /root/.cache/
-          key: ${{ runner.os }}-go-build
-      - uses: actions/cache@v3
-        with:
-          path: /go/pkg
-          key: ${{ runner.os }}-go-pkg
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: "NumaryBot"
-          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Build and push
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/numary/main:latest,ghcr.io/numary/ledger:${{ github.sha }}
-          build-args: |
-            APP_SHA=${{ github.sha }}
-            VERSION=develop
-            SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-  sdk:
-    name: 'Generate SDK'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./sdk/
-    strategy:
-      matrix:
-        sdk: [ go, php, python, typescript-node ]
+      - Control
+      - Test_sqlite
+      - Test_postgres
+    uses: ./.github/workflows/template_goreleaser-release.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+
+  SdkGenerate:
     needs:
-      - build_docker
-      - build_binary
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          repository: numary/numary-sdk-${{ matrix.sdk }}
-          path: sdks/${{ matrix.sdk }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-      - name: Install Task
-        uses: arduino/setup-task@v1
-      - name: Launch Generate
-        run: task generate VERSION=develop  -- ${{ matrix.sdk }}
+      - GoReleaserBuild
+    uses: ./.github/workflows/template_sdk-generate.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+  SdkPublish:
+    needs:
+      - GoReleaserRelease
+    uses: ./.github/workflows/template_sdk-publish.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+  DockerRelease:
+    if: github.event_name == 'release'
+    uses: ./.github/workflows/template_docker.yaml
+    needs:
+      - Control
+      - Test_sqlite
+      - Test_postgres
+    with:
+      VERSION: ${{ github.event.release.tag_name }}
+      APP_SHA: ${{ github.sha }}
+      RELEASE: ${{ github.event.action }}
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+  DockerBranch:
+    if: github.event_name != 'release'
+    uses: ./.github/workflows/template_docker.yaml
+    needs:
+      - Control
+      - Test_sqlite
+      - Test_postgres
+    with:
+      VERSION: develop
+      APP_SHA: ${{ github.sha }}
+      RELEASE: ${{ github.event.action }}
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+#  Check-pkgs:
+#    if: github.event_name == 'release'
+#    runs-on: ubuntu-latest
+#    env:
+#      DOCKER_CLI_EXPERIMENTAL: "enabled"
+#    needs:
+#      - GoReleaserRelease
+#    strategy:
+#      matrix:
+#        format: [ deb, rpm ]
+#    steps:
+#      - uses: actions/checkout@v2
+#        with:
+#          fetch-depth: 0
+#      - uses: arduino/setup-task@v1
+#        with:
+#          version: 3.x
+#          repo-token: ${{ secrets.GITHUB_TOKEN }}
+#      - uses: docker/setup-qemu-action@v1
+#      - uses: actions/cache@v2
+#        with:
+#          path: |
+#            ./dist/*.deb
+#            ./dist/*.rpm
+#          key: ${{ runner.os }}-go-${{ hashFiles('**/*.go') }}-${{ hashFiles('**/go.sum') }}
+#      - run: task goreleaser:test:${{ matrix.format }}
