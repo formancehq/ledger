@@ -248,6 +248,11 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
+	if len(txs.Transactions) == 0 {
+		ResponseError(c, ledger.NewValidationError("no transaction to insert"))
+		return
+	}
+
 	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions)
 	if err != nil {
 		ResponseError(c, err)
