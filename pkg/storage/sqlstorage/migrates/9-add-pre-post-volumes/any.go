@@ -55,6 +55,7 @@ func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error
 		preCommitVolumes := core.AccountsAssetsVolumes{}
 		postCommitVolumes := core.AccountsAssetsVolumes{}
 		for _, posting := range tx.Postings {
+			preCommitVolumes.EnsureAccountExists(posting.Source, posting.Destination)
 
 			preCommitVolumes.SetVolumes(posting.Source, posting.Asset,
 				aggregatedVolumes.GetVolumes(posting.Source, posting.Asset))

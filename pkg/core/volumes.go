@@ -43,6 +43,15 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 
 type AccountsAssetsVolumes map[string]AssetsVolumes
 
+func (a AccountsAssetsVolumes) EnsureAccountExists(accounts ...string) {
+	for _, account := range accounts {
+		_, ok := a[account]
+		if !ok {
+			a[account] = AssetsVolumes{}
+		}
+	}
+}
+
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	if assetsVolumes, ok := a[account]; !ok {
 		return Volumes{}
