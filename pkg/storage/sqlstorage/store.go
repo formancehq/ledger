@@ -42,7 +42,12 @@ func (s *Store) Name() string {
 func (s *Store) Initialize(ctx context.Context) (bool, error) {
 	sharedlogging.GetLogger(ctx).Debug("Initialize store")
 
-	return CollectAndMigrate(ctx, s.schema)
+	migrations, err := CollectMigrationFiles(MigrationsFS)
+	if err != nil {
+		return false, err
+	}
+
+	return Migrate(ctx, s.schema, migrations...)
 }
 
 func (s *Store) Close(ctx context.Context) error {

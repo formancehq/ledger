@@ -95,12 +95,3 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 
 	return modified, errorFromFlavor(Flavor(schema.Flavor()), tx.Commit())
 }
-
-func CollectAndMigrate(ctx context.Context, schema Schema) (bool, error) {
-	migrations, err := CollectMigrationFiles(MigrationsFS)
-	if err != nil {
-		return false, err
-	}
-
-	return Migrate(ctx, schema, migrations...)
-}
