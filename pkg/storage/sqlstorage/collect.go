@@ -13,8 +13,6 @@ import (
 //go:embed migrates
 var MigrationsFS embed.FS
 
-type HandlersByEngine map[string][]MigrationFunc
-
 func extractMigrationInformation(filename string) (string, string) {
 	parts := strings.SplitN(filename, "-", 2)
 	number := parts[0]

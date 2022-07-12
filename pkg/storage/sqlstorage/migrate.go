@@ -9,6 +9,8 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 )
 
+type HandlersByEngine map[string][]MigrationFunc
+
 type Migration struct {
 	Number   string
 	Name     string
