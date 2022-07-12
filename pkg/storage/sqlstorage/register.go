@@ -18,7 +18,6 @@ func RegisterGoMigration(fn MigrationFunc) {
 }
 
 func RegisterGoMigrationFromFilename(filename string, fn MigrationFunc) {
-
 	rest, goFile := filepath.Split(filename)
 	directory := filepath.Base(rest)
 
