@@ -57,8 +57,6 @@ github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 h1:w+iIsaOQNcT7O
 github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78/go.mod h1:LmzpDX56iTiv29bbRTIsUNlaFfuhWRQBWjQdVyAevI8=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/DATA-DOG/go-sqlmock v1.5.0 h1:Shsta01QNfFxHCfpW6YH2STWB0MudeXXEWMr20OEh60=
-github.com/DATA-DOG/go-sqlmock v1.5.0/go.mod h1:f/Ixk793poVmq4qj/V1dPUg2JEAKC73Q5eFN3EC/SaM=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
@@ -697,10 +695,6 @@ github.com/numary/ledger v0.0.0-20210702172952-a5bd30e551d0/go.mod h1:u2K28z9TDY
 github.com/numary/ledger v0.0.0-20211227131550-dc7b78f85b5b/go.mod h1:uovuDsK7Gs7duqKQ9PgaFulJnPTDftGdR/n3rBRzNIs=
 github.com/numary/machine v0.0.0-20210702091459-23a82555adbf/go.mod h1:WAFvefAGYNjdDmPtDoZ305F58QDtUJyB0QWN3vzSZao=
 github.com/numary/machine v0.0.0-20210831114934-e54c99840e08/go.mod h1:KulcZIlMidEjXmuFSGNckmk0pKr4HFKFYy3bB+ksWSQ=
-github.com/numary/machine v1.1.1 h1:ESJJ7pCIzeMPS3V6esffIPBBiGXjKRdgB5aqfqND4FM=
-github.com/numary/machine v1.1.1/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
-github.com/numary/machine v1.1.2-0.20220707224429-2a09b3f81249 h1:02EHCDlgU2aNV/B1r9jyUthlKaSHil28rPvvtAoVafM=
-github.com/numary/machine v1.1.2-0.20220707224429-2a09b3f81249/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
 github.com/numary/machine v1.1.2 h1:MoPu4I2NvkM/V0CT8xNngsZrKrA3X5jA8Ge1ZCDamXA=
 github.com/numary/machine v1.1.2/go.mod h1:lSdeCwegoylxgHOl6wBC9BgOo2N35ra53aTsRybmJsc=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
