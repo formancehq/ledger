@@ -1,0 +1,97 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  goreleaser:test:pkg:
+    desc: Test a package
+    cmds:
+      - docker run --platform linux/{{.Platform}} --rm --workdir /tmp -v $PWD/dist:/tmp {{.Image}} sh -c '{{.Cmd}} && goreleaser --version'
+
+  goreleaser:test:rpm:
+    desc: Tests rpm packages
+    vars:
+      rpm: 'rpm --nodeps -ivh'
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: '386'
+          Image: centos:centos7
+          Cmd: '{{.rpm}} goreleaser-*.i386.rpm'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'amd64'
+          Image: fedora
+          Cmd: '{{.rpm}} goreleaser-*.x86_64.rpm'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm64'
+          Image: fedora
+          Cmd: '{{.rpm}} goreleaser-*.aarch64.rpm'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/6'
+          Image: fedora
+          Cmd: '{{.rpm}} goreleaser-*.armv6hl.rpm'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/7'
+          Image: fedora
+          Cmd: '{{.rpm}} goreleaser-*.armv7hl.rpm'
+
+  goreleaser:test:deb:
+    desc: Tests rpm packages
+    vars:
+      dpkg: 'dpkg --ignore-depends=git -i'
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'amd64'
+          Image: ubuntu
+          Cmd: '{{.dpkg}} goreleaser*_amd64.deb'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm64'
+          Image: ubuntu
+          Cmd: '{{.dpkg}} goreleaser*_arm64.deb'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/6'
+          Image: debian
+          Cmd: '{{.dpkg}} goreleaser*_armel.deb'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/7'
+          Image: ubuntu
+          Cmd: '{{.dpkg}} goreleaser*_armhf.deb'
+
+  goreleaser:test:apk:
+    desc: Tests rpm packages
+    vars:
+      apk: 'apk add --allow-untrusted -U'
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: '386'
+          Image: alpine
+          Cmd: '{{.apk}} goreleaser*_x86.apk'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'amd64'
+          Image: alpine
+          Cmd: '{{.apk}} goreleaser*_x86_64.apk'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm64'
+          Image: alpine
+          Cmd: '{{.apk}} goreleaser*_aarch64.apk'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/6'
+          Image: alpine
+          Cmd: '{{.apk}} goreleaser*_armhf.apk'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm/7'
+          Image: alpine
+          Cmd: '{{.apk}} goreleaser*_armv7.apk'

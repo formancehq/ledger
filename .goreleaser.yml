@@ -150,3 +150,36 @@ publishers:
       - packages
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/numary/
+
+dockers:
+  - id: release
+    ids:
+      - numary_linux
+    use: buildx
+    skip_push: "auto"
+    dockerfile: goreleaser.Dockerfile
+    image_templates:
+      - "gcr.io/numary/{{.ProjectName}}:{{ .Tag }}"
+      - "gcr.io/numary/{{.ProjectName}}:v{{ .Major }}"
+      - "gcr.io/numary/{{.ProjectName}}:v{{ .Major }}.{{ .Minor }}"
+      - "gcr.io/numary/{{.ProjectName}}:latest"
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+  - id: main
+    ids:
+      - numary_linux
+    use: buildx
+    skip_push: "false"
+    dockerfile: goreleaser.Dockerfile
+    image_templates:
+      - "gcr.io/numary/{{.ProjectName}}:{{ .Tag }}"
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
