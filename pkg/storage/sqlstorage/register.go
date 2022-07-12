@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -17,9 +18,10 @@ func RegisterGoMigration(fn MigrationFunc) {
 }
 
 func RegisterGoMigrationFromFilename(filename string, fn MigrationFunc) {
-	pathParts := strings.Split(filename, "/")
-	goFile := pathParts[len(pathParts)-1]
-	directory := pathParts[len(pathParts)-2]
+
+	rest, goFile := filepath.Split(filename)
+	directory := filepath.Base(rest)
+
 	number, name := extractMigrationInformation(directory)
 	engine := strings.Split(goFile, ".")[0]
 

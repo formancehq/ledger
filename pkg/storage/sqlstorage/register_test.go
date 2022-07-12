@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,6 @@ func TestRegister(t *testing.T) {
 	defer func() {
 		registeredGoMigrations = make([]Migration, 0)
 	}()
-	RegisterGoMigrationFromFilename("/XXX/0-init-schema/any.go", fn)
+	RegisterGoMigrationFromFilename(filepath.Join("XXX", "0-init-schema", "any.go"), fn)
 	require.Len(t, registeredGoMigrations, 1)
 }
