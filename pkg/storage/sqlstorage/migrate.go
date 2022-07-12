@@ -19,7 +19,6 @@ type Migration struct {
 
 func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool, error) {
 	logger := sharedlogging.GetLogger(ctx)
-	logger.Debug("Initialize store")
 
 	q, args := sqlbuilder.
 		CreateTable(schema.Table("migrations")).
@@ -52,15 +51,15 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		row := schema.QueryRowContext(ctx, sqlq, args...)
 		var v string
 		if err = row.Scan(&v); err != nil {
-			sharedlogging.GetLogger(ctx).Debugf("%s", err)
+			logger.Debugf("%s", err)
 		}
 		if v != "" {
-			sharedlogging.GetLogger(ctx).Debugf("version %s already up to date", m.Number)
+			logger.Debugf("version %s already up to date", m.Number)
 			continue
 		}
 		modified = true
 
-		sharedlogging.GetLogger(ctx).Debugf("running migrations %s", m.Number)
+		logger.Debugf("running migrations %s", m.Number)
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
@@ -88,7 +87,7 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		ib.Values(m.Number, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Number, err)
+			logger.Errorf("failed to insert migration version %s: %s", m.Number, err)
 			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
 		}
 	}
