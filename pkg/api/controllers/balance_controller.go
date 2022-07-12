@@ -46,7 +46,8 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||
-			c.Query("address") != "" {
+			c.Query("address") != "" ||
+			c.Query("page_size") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -69,12 +70,21 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 		balancesQuery = balancesQuery.
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter)
+			WithAddressFilter(token.AddressRegexpFilter).
+			WithPageSize(token.PageSize)
 
 	} else {
+
+		pageSize, err := getPageSize(c)
+		if err != nil {
+			ResponseError(c, err)
+			return
+		}
+
 		balancesQuery = balancesQuery.
 			WithAfterAddress(c.Query("after")).
-			WithAddressFilter(c.Query("address"))
+			WithAddressFilter(c.Query("address")).
+			WithPageSize(pageSize)
 	}
 
 	cursor, err := l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)

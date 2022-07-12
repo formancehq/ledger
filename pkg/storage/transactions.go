@@ -5,7 +5,7 @@ import (
 )
 
 type TransactionsQuery struct {
-	Limit     uint
+	PageSize  uint
 	AfterTxID uint64
 	Filters   TransactionsQueryFilters
 }
@@ -21,15 +21,14 @@ type TransactionsQueryFilters struct {
 }
 
 func NewTransactionsQuery() *TransactionsQuery {
-
 	return &TransactionsQuery{
-		Limit: QueryDefaultLimit,
+		PageSize: QueryDefaultPageSize,
 	}
 }
 
-func (a *TransactionsQuery) WithLimit(limit uint) *TransactionsQuery {
-	if limit != 0 {
-		a.Limit = limit
+func (a *TransactionsQuery) WithPageSize(pageSize uint) *TransactionsQuery {
+	if pageSize != 0 {
+		a.PageSize = pageSize
 	}
 
 	return a

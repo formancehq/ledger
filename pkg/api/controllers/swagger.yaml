@@ -69,6 +69,15 @@ paths:
           schema:
             type: string
             example: ledger001
+        - name: page_size
+          in: query
+          description: 'The maximum number of results to return per page'
+          example: 100
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            default: 15
         - name: after
           in: query
           description: Pagination cursor, will return accounts after given address, in descending order.
@@ -432,6 +441,15 @@ paths:
           schema:
             type: string
             example: ledger001
+        - name: page_size
+          in: query
+          description: 'The maximum number of results to return per page'
+          example: 100
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            default: 15
         - name: after
           in: query
           description: Pagination cursor, will return transactions after given txid

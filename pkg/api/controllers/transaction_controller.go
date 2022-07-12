@@ -55,7 +55,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("after") != "" || c.Query("reference") != "" ||
 			c.Query("account") != "" || c.Query("source") != "" ||
 			c.Query("destination") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" {
+			c.Query("end_time") != "" || c.Query("page_size") != "" {
 			ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
@@ -81,8 +81,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(token.DestinationFilter).
 			WithStartTimeFilter(token.StartTime).
 			WithEndTimeFilter(token.EndTime).
-			WithMetadataFilter(token.MetadataFilter)
-
+			WithMetadataFilter(token.MetadataFilter).
+			WithPageSize(token.PageSize)
 	} else {
 		var afterTxIDParsed uint64
 		if c.Query("after") != "" {
@@ -110,6 +110,12 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			}
 		}
 
+		pageSize, err := getPageSize(c)
+		if err != nil {
+			ResponseError(c, err)
+			return
+		}
+
 		txQuery = storage.NewTransactionsQuery().
 			WithAfterTxID(afterTxIDParsed).
 			WithReferenceFilter(c.Query("reference")).
@@ -118,7 +124,8 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithDestinationFilter(c.Query("destination")).
 			WithStartTimeFilter(startTimeParsed).
 			WithEndTimeFilter(endTimeParsed).
-			WithMetadataFilter(c.QueryMap("metadata"))
+			WithMetadataFilter(c.QueryMap("metadata")).
+			WithPageSize(pageSize)
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
@@ -238,6 +245,11 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 	var txs core.Transactions
 	if err := c.ShouldBindJSON(&txs); err != nil {
 		ResponseError(c, ledger.NewValidationError("invalid transactions format"))
+		return
+	}
+
+	if len(txs.Transactions) == 0 {
+		ResponseError(c, ledger.NewValidationError("no transaction to insert"))
 		return
 	}
 
