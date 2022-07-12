@@ -169,7 +169,7 @@ jobs:
           echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
           sudo apt update && apt-cache policy libssl1.0-dev
           sudo apt-get install libssl1.0-dev
-      - run: sudo apt install gcc-mingw-w64 -y
+      - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
