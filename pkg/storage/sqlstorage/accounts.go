@@ -89,7 +89,7 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
-	if q.Limit == 0 {
+	if q.PageSize == 0 {
 		return sharedapi.Cursor[core.Account]{Data: accounts}, nil
 	}
 
@@ -103,8 +103,8 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}
 
 	// We fetch an additional account to know if there is more
-	sb.Limit(int(q.Limit + 1))
-	t.Limit = q.Limit
+	sb.Limit(int(q.PageSize + 1))
+	t.PageSize = q.PageSize
 	sb.Offset(int(q.Offset))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
@@ -133,8 +133,13 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}
 
 	var previous, next string
-	if int(q.Offset)-int(q.Limit) >= 0 {
-		t.Offset = q.Offset - q.Limit
+	if q.Offset > 0 {
+		offset := int(q.Offset) - int(q.PageSize)
+		if offset < 0 {
+			t.Offset = 0
+		} else {
+			t.Offset = uint(offset)
+		}
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Account]{}, s.error(err)
@@ -142,9 +147,9 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	if len(accounts) == int(q.Limit+1) {
+	if len(accounts) == int(q.PageSize+1) {
 		accounts = accounts[:len(accounts)-1]
-		t.Offset = q.Offset + q.Limit
+		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
 			return sharedapi.Cursor[core.Account]{}, s.error(err)
@@ -153,7 +158,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}
 
 	return sharedapi.Cursor[core.Account]{
-		PageSize: int(q.Limit),
+		PageSize: int(q.PageSize),
 		HasMore:  next != "",
 		Previous: previous,
 		Next:     next,

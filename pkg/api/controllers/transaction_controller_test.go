@@ -606,6 +606,93 @@ func TestGetTransactions(t *testing.T) {
 	}))
 }
 
+func TestGetTransactionsWithPageSize(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				now := time.Now().UTC()
+				var previousLog *core.Log
+				logs := make([]core.Log, 0)
+				store := internal.GetStore(t, driver, context.Background())
+
+				for i := 0; i < 3*controllers.MaxPageSize; i++ {
+					tx := core.Transaction{
+						ID: uint64(i),
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: fmt.Sprintf("account:%d", i),
+									Amount:      1000,
+									Asset:       "USD",
+								},
+							},
+						},
+						Timestamp: now.Format(time.RFC3339),
+					}
+					log := core.NewTransactionLog(previousLog, tx)
+					logs = append(logs, log)
+					previousLog = &log
+				}
+				require.NoError(t, store.AppendLog(context.Background(), logs...))
+
+				t.Run("invalid page size", func(t *testing.T) {
+					rsp := internal.GetTransactions(api, url.Values{
+						"page_size": []string{"nan"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    controllers.ErrValidation,
+						ErrorMessage: controllers.ErrInvalidPageSize.Error(),
+					}, err)
+				})
+				t.Run("page size over maximum", func(t *testing.T) {
+					httpResponse := internal.GetTransactions(api, url.Values{
+						"page_size": []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize)
+					assert.NotEmpty(t, cursor.Next)
+					assert.True(t, cursor.HasMore)
+				})
+				t.Run("with page size greater than max count", func(t *testing.T) {
+					httpResponse := internal.GetTransactions(api, url.Values{
+						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
+						"after":     []string{fmt.Sprintf("%d", controllers.MaxPageSize-100)},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize-100)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize)
+					assert.Empty(t, cursor.Next)
+					assert.False(t, cursor.HasMore)
+				})
+				t.Run("with page size lower than max count", func(t *testing.T) {
+					httpResponse := internal.GetTransactions(api, url.Values{
+						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
+					assert.Len(t, cursor.Data, controllers.MaxPageSize/10)
+					assert.Equal(t, cursor.PageSize, controllers.MaxPageSize/10)
+					assert.NotEmpty(t, cursor.Next)
+					assert.True(t, cursor.HasMore)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
 type transaction struct {
 	core.Transaction
 	PreCommitVolumes  accountsVolumes `json:"preCommitVolumes,omitempty"`

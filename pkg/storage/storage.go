@@ -12,7 +12,7 @@ import (
 type Code string
 
 const (
-	QueryDefaultLimit = 15
+	QueryDefaultPageSize = 15
 
 	ConstraintFailed Code = "CONSTRAINT_FAILED"
 	TooManyClient    Code = "TOO_MANY_CLIENT"
