@@ -8,8 +8,6 @@ import (
 
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
-	// Add go migration
-	// Cannot set this line on storage as actually, it causes some circular dependencies
 	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
