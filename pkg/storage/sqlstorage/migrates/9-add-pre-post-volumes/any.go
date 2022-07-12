@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pkg/errors"
 )
 
 func init() {
@@ -31,21 +31,24 @@ func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error
 	sqlq, args := sb.BuildWithFlavor(schema.Flavor())
 	rows, err := sqlTx.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "querying rows")
 	}
+	defer rows.Close()
+
+	updates := make([]*sqlbuilder.UpdateBuilder, 0)
 
 	aggregatedVolumes := core.AccountsAssetsVolumes{}
 	for rows.Next() {
 		var data string
 		err := rows.Scan(&data)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "scanning row")
 		}
 
 		var tx Transaction
 		err = json.Unmarshal([]byte(data), &tx)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "decoding transaction")
 		}
 
 		preCommitVolumes := core.AccountsAssetsVolumes{}
@@ -97,12 +100,20 @@ func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error
 			ub.Assign("post_commit_volumes", postCommitVolumesData),
 		)
 		ub.Where(ub.E("id", tx.ID))
-		sqlq, args := ub.Build()
 
-		fmt.Println(sqlq, args)
+		updates = append(updates, ub)
+	}
+	err = rows.Close()
+	if err != nil {
+		return err
+	}
+
+	for _, update := range updates {
+		sqlq, args := update.BuildWithFlavor(schema.Flavor())
+
 		_, err = sqlTx.ExecContext(ctx, sqlq, args...)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "executing update")
 		}
 	}
 

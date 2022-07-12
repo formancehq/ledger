@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
@@ -220,9 +221,13 @@ func TestMigrate9(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = schema.ExecContext(context.Background(),
-			`INSERT INTO log (id, data, type, date) VALUES (?, ?, ?, ?)`,
-			i, string(txData), core.NewTransactionType, now)
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto(schema.Table("log"))
+		ib.Cols("id", "data", "type", "date")
+		ib.Values(i, string(txData), core.NewTransactionType, now)
+		sqlq, args := ib.BuildWithFlavor(schema.Flavor())
+
+		_, err = schema.ExecContext(context.Background(), sqlq, args...)
 		require.NoError(t, err)
 	}
 
