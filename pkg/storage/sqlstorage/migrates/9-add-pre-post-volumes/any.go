@@ -22,11 +22,12 @@ type Transaction struct {
 
 func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error {
 	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(schema.Table("log"))
-	sb.Select("data")
-	sb.Where(sb.E("type", core.NewTransactionType))
-	sb.OrderBy("id")
-	sb.Asc()
+	sb.
+		From(schema.Table("log")).
+		Select("data").
+		Where(sb.E("type", core.NewTransactionType)).
+		OrderBy("id").
+		Asc()
 
 	sqlq, args := sb.BuildWithFlavor(schema.Flavor())
 	rows, err := sqlTx.QueryContext(ctx, sqlq, args...)
@@ -54,21 +55,18 @@ func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error
 		preCommitVolumes := core.AccountsAssetsVolumes{}
 		postCommitVolumes := core.AccountsAssetsVolumes{}
 		for _, posting := range tx.Postings {
-			if _, ok := preCommitVolumes[posting.Source]; !ok {
-				preCommitVolumes[posting.Source] = core.AssetsVolumes{}
-			}
-			if _, ok := preCommitVolumes[posting.Destination]; !ok {
-				preCommitVolumes[posting.Destination] = core.AssetsVolumes{}
-			}
-			preCommitVolumes[posting.Source][posting.Asset] = aggregatedVolumes.GetVolumes(posting.Source, posting.Asset)
-			preCommitVolumes[posting.Destination][posting.Asset] = aggregatedVolumes.GetVolumes(posting.Destination, posting.Asset)
+			preCommitVolumes.EnsureAccountExists(posting.Source, posting.Destination)
 
-			if _, ok := postCommitVolumes[posting.Source]; !ok {
+			preCommitVolumes.SetVolumes(posting.Source, posting.Asset,
+				aggregatedVolumes.GetVolumes(posting.Source, posting.Asset))
+			preCommitVolumes.SetVolumes(posting.Destination, posting.Asset,
+				aggregatedVolumes.GetVolumes(posting.Destination, posting.Asset))
+
+			if !postCommitVolumes.HasAccount(posting.Source) {
 				postCommitVolumes.SetVolumes(posting.Source, posting.Asset,
 					preCommitVolumes.GetVolumes(posting.Source, posting.Asset))
-
 			}
-			if _, ok := postCommitVolumes[posting.Destination]; !ok {
+			if !postCommitVolumes.HasAccount(posting.Destination) {
 				postCommitVolumes.SetVolumes(posting.Destination, posting.Asset,
 					preCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
 			}
