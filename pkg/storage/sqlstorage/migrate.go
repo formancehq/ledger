@@ -3,6 +3,8 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -16,6 +18,30 @@ type Migration struct {
 	Name     string
 	Handlers HandlersByEngine
 }
+
+type Migrations []Migration
+
+func (m Migrations) Len() int {
+	return len(m)
+}
+
+func (m Migrations) Less(i, j int) bool {
+	iNumber, err := strconv.ParseInt(m[i].Number, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	jNumber, err := strconv.ParseInt(m[j].Number, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return iNumber < jNumber
+}
+
+func (m Migrations) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+
+var _ sort.Interface = &Migrations{}
 
 func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool, error) {
 	logger := sharedlogging.GetLogger(ctx)

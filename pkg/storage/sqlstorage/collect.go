@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -26,7 +27,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 		return nil, err
 	}
 
-	migrations := make([]Migration, 0)
+	migrations := Migrations{}
 	for _, directory := range directories {
 		directoryName := directory.Name()
 
@@ -74,6 +75,8 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 			Handlers: units,
 		})
 	}
+
+	sort.Sort(migrations)
 
 	return migrations, nil
 }
