@@ -31,5 +31,5 @@ func TestNewDriver(t *testing.T) {
 
 	_, err = store.(*Store).schema.QueryContext(context.Background(), "select * from transactions")
 	assert.Error(t, err)
-	assert.Equal(t, "sql: database is closed [UNKNOWN]", err.Error())
+	assert.Equal(t, "sql: database is closed", err.Error())
 }
