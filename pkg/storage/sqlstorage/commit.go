@@ -46,61 +46,33 @@ func (s *Store) commit(ctx context.Context, exec executor, txs ...core.Transacti
 }
 
 func (s *Store) Commit(ctx context.Context, txs ...core.Transaction) error {
-	sqlTx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(sqlTx)
-
-	_, err = s.commit(ctx, sqlTx, txs...)
-	if err != nil {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		_, err := s.commit(ctx, tx, txs...)
 		return err
-	}
-
-	if err = sqlTx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
+	})
 }
 
 func (s *Store) CommitRevert(ctx context.Context, reverted, revert core.Transaction) error {
-	sqlTx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(sqlTx)
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		logs, err := s.commit(ctx, tx, revert)
+		if err != nil {
+			return err
+		}
 
-	logs, err := s.commit(ctx, sqlTx, revert)
-	if err != nil {
-		return err
-	}
+		at, err := time.Parse(time.RFC3339, revert.Timestamp)
+		if err != nil {
+			return err
+		}
 
-	at, err := time.Parse(time.RFC3339, revert.Timestamp)
-	if err != nil {
-		return err
-	}
+		metadata := core.RevertedMetadata(revert.ID)
+		if err := s.updateTransactionMetadata(ctx, tx, reverted.ID, metadata); err != nil {
+			return err
+		}
 
-	metadata := core.RevertedMetadata(revert.ID)
-	if err := s.updateTransactionMetadata(ctx, sqlTx, reverted.ID, metadata); err != nil {
-		return err
-	}
-
-	if err := s.appendLog(ctx, sqlTx, core.NewSetMetadataLog(&logs[len(logs)-1], at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeTransaction,
-		TargetID:   reverted.ID,
-		Metadata:   metadata,
-	})); err != nil {
-		return err
-	}
-
-	if err = sqlTx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
+		return s.appendLog(ctx, tx, core.NewSetMetadataLog(&logs[len(logs)-1], at, core.SetMetadata{
+			TargetType: core.MetaTargetTypeTransaction,
+			TargetID:   reverted.ID,
+			Metadata:   metadata,
+		}))
+	})
 }

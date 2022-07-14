@@ -244,35 +244,20 @@ func (s *Store) updateAccountMetadata(ctx context.Context, exec executor, addres
 }
 
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
-	tx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(tx)
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		if err := s.updateAccountMetadata(ctx, tx, address, metadata); err != nil {
+			return err
+		}
 
-	if err = s.updateAccountMetadata(ctx, tx, address, metadata); err != nil {
-		return err
-	}
+		lastLog, err := s.lastLog(ctx, tx)
+		if err != nil {
+			return err
+		}
 
-	lastLog, err := s.lastLog(ctx, tx)
-	if err != nil {
-		return err
-	}
-
-	err = s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   address,
-		Metadata:   metadata,
-	}))
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
+		return s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+			TargetType: core.MetaTargetTypeAccount,
+			TargetID:   address,
+			Metadata:   metadata,
+		}))
+	})
 }
