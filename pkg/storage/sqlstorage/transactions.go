@@ -392,11 +392,12 @@ func (s *Store) updateTransactionMetadata(ctx context.Context, exec executor, id
 		Update(s.schema.Table("transactions")).
 		Where(ub.E("id", id))
 
+	placeholder := ub.Var(string(metadataData))
 	switch Flavor(s.schema.Flavor()) {
 	case PostgreSQL:
-		ub.Set(fmt.Sprintf("metadata = metadata || '%s'::jsonb", string(metadataData)))
+		ub.Set(fmt.Sprintf("metadata = metadata || %s", placeholder))
 	case SQLite:
-		ub.Set(fmt.Sprintf("metadata = json_patch(metadata, '%s')", string(metadataData)))
+		ub.Set(fmt.Sprintf("metadata = json_patch(metadata, %s)", placeholder))
 	}
 
 	sqlq, args := ub.BuildWithFlavor(s.schema.Flavor())
