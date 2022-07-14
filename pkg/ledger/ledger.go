@@ -46,7 +46,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*core.CommitResult, error) {
+func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
@@ -71,7 +71,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*c
 	return result, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*core.CommitResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)

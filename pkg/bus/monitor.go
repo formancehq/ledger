@@ -35,7 +35,7 @@ func (l *ledgerMonitor) publish(ctx context.Context, ledger string, et string, d
 	}
 }
 
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, result *core.CommitResult) {
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, result *ledger.CommitResult) {
 	l.publish(ctx, ledger, CommittedTransactions, committedTransactions{
 		Transactions:      result.GeneratedTransactions,
 		Volumes:           result.PostCommitVolumes,
