@@ -19,7 +19,7 @@ func (s *Store) commit(ctx context.Context, exec executor, txs ...core.Transacti
 	for account := range postCommitVolumes {
 		err := s.ensureAccountExists(ctx, exec, account)
 		if err != nil {
-			return nil, errors.Wrap(err, "creating account entries")
+			return nil, errors.Wrap(err, "creating account entry")
 		}
 	}
 

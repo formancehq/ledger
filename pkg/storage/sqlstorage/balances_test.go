@@ -11,56 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-/**
-var tx1 = core.Transaction{
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "world",
-				Destination: "central_bank",
-				Amount:      100,
-				Asset:       "USD",
-			},
-		},
-		Reference: "tx1",
-	},
-	Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
-}
-var tx2 = core.Transaction{
-	ID: 1,
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "world",
-				Destination: "central_bank",
-				Amount:      100,
-				Asset:       "USD",
-			},
-		},
-		Reference: "tx2",
-	},
-	Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
-}
-var tx3 = core.Transaction{
-	ID: 2,
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "central_bank",
-				Destination: "users:1",
-				Amount:      1,
-				Asset:       "USD",
-			},
-		},
-		Reference: "tx3",
-		Metadata: core.Metadata{
-			"priority": json.RawMessage(`"high"`),
-		},
-	},
-	Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
-}
-*/
-
 func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 
 	err := store.Commit(context.Background(), tx1, tx2, tx3)

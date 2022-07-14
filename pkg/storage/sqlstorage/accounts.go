@@ -202,12 +202,6 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	return s.getAccount(ctx, s.schema, addr)
 }
 
-/**
-INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
-VALUES (p.source, '{}')
-ON CONFLICT DO NOTHING;
-*/
-
 func (s *Store) ensureAccountExists(ctx context.Context, exec executor, account string) error {
 
 	sb := sqlbuilder.NewInsertBuilder()
