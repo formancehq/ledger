@@ -20,11 +20,10 @@ const (
 	storageDriverFlag                   = "storage.driver"
 	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
-	storageCacheFlag                    = "storage.cache"
-	serverHttpBindAddressFlag           = "server.http.bind_address"
-	uiHttpBindAddressFlag               = "ui.http.bind_address"
 	// Deprecated
-
+	storageCacheFlag                     = "storage.cache"
+	serverHttpBindAddressFlag            = "server.http.bind_address"
+	uiHttpBindAddressFlag                = "ui.http.bind_address"
 	lockStrategyFlag                     = "lock-strategy"
 	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
 	lockStrategyRedisDurationFlag        = "lock-strategy-redis-duration"
