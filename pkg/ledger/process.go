@@ -8,12 +8,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type CommitResult struct {
-	PreCommitVolumes      core.AccountsAssetsVolumes
-	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.Transaction
-}
-
 func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {

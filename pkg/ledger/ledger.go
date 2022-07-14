@@ -46,6 +46,12 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
+type CommitResult struct {
+	PreCommitVolumes      core.AccountsAssetsVolumes
+	PostCommitVolumes     core.AccountsAssetsVolumes
+	GeneratedTransactions []core.Transaction
+}
+
 func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
