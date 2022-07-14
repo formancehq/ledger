@@ -123,18 +123,6 @@ func TestLedger_processTx(t *testing.T) {
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
-
-				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Millisecond)
-
-				expectedLogs := []core.Log{{
-					ID:   0,
-					Type: core.NewTransactionType,
-					Data: core.LoggedTX(expectedTxs[0]),
-					Date: res.GeneratedLogs[0].Date,
-				}}
-				expectedLogs[0].Hash = core.Hash(nil, expectedLogs[0])
-
-				assert.Equal(t, expectedLogs, res.GeneratedLogs)
 			})
 
 			t.Run("multi transactions single postings", func(t *testing.T) {
@@ -234,59 +222,6 @@ func TestLedger_processTx(t *testing.T) {
 
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
 
-				expectedLogs := []core.Log{
-					{
-						ID:   0,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[0]),
-						Date: res.GeneratedLogs[0].Date,
-					},
-					{
-						ID:   1,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[1]),
-						Date: res.GeneratedLogs[1].Date,
-					},
-					{
-						ID:   2,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[2]),
-						Date: res.GeneratedLogs[2].Date,
-					},
-					{
-						ID:   3,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[3]),
-						Date: res.GeneratedLogs[3].Date,
-					},
-					{
-						ID:   4,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[4]),
-						Date: res.GeneratedLogs[4].Date,
-					},
-					{
-						ID:   5,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[5]),
-						Date: res.GeneratedLogs[5].Date,
-					},
-				}
-				expectedLogs[0].Hash = core.Hash(nil, expectedLogs[0])
-				expectedLogs[1].Hash = core.Hash(expectedLogs[0], expectedLogs[1])
-				expectedLogs[2].Hash = core.Hash(expectedLogs[1], expectedLogs[2])
-				expectedLogs[3].Hash = core.Hash(expectedLogs[2], expectedLogs[3])
-				expectedLogs[4].Hash = core.Hash(expectedLogs[3], expectedLogs[4])
-				expectedLogs[5].Hash = core.Hash(expectedLogs[4], expectedLogs[5])
-
-				assert.True(t, time.Until(res.GeneratedLogs[0].Date) < time.Millisecond)
-				assert.True(t, time.Until(res.GeneratedLogs[1].Date) < time.Millisecond)
-				assert.True(t, time.Until(res.GeneratedLogs[2].Date) < time.Millisecond)
-				assert.True(t, time.Until(res.GeneratedLogs[3].Date) < time.Millisecond)
-				assert.True(t, time.Until(res.GeneratedLogs[4].Date) < time.Millisecond)
-				assert.True(t, time.Until(res.GeneratedLogs[5].Date) < time.Millisecond)
-
-				assert.Equal(t, expectedLogs, res.GeneratedLogs)
 			})
 		})
 
@@ -297,7 +232,6 @@ func TestLedger_processTx(t *testing.T) {
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
 				PostCommitVolumes:     core.AccountsAssetsVolumes{},
 				GeneratedTransactions: []core.Transaction{},
-				GeneratedLogs:         []core.Log{},
 			}, result)
 		})
 	})
