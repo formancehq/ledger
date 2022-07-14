@@ -3,6 +3,7 @@ package opentelemetrytraces
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
@@ -17,6 +18,50 @@ import (
 
 type openTelemetryStorage struct {
 	underlying storage.Store
+}
+
+func (o *openTelemetryStorage) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) (err error) {
+	handlingErr := o.handle(ctx, "UpdateTransactionMetadata", func(ctx context.Context) error {
+		err = o.underlying.UpdateTransactionMetadata(ctx, id, metadata, at)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry UpdateTransactionMetadata: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) (err error) {
+	handlingErr := o.handle(ctx, "UpdateAccountMetadata", func(ctx context.Context) error {
+		err = o.underlying.UpdateAccountMetadata(ctx, id, metadata, at)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry UpdateAccountMetadata: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) Commit(ctx context.Context, txs ...core.Transaction) (err error) {
+	handlingErr := o.handle(ctx, "Commit", func(ctx context.Context) error {
+		err = o.underlying.Commit(ctx, txs...)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry Commit: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) CommitRevert(ctx context.Context, reverted, revert core.Transaction) (err error) {
+	handlingErr := o.handle(ctx, "CommitRevert", func(ctx context.Context) error {
+		err = o.underlying.CommitRevert(ctx, reverted, revert)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry CommitRevert: %s", handlingErr)
+	}
+	return
 }
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
@@ -58,17 +103,6 @@ func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err er
 	})
 	if handlingErr != nil {
 		sharedlogging.Errorf("opentelemetry Logs: %s", handlingErr)
-	}
-	return
-}
-
-func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) (err error) {
-	handlingErr := o.handle(ctx, "AppendLog", func(ctx context.Context) error {
-		err = o.underlying.AppendLog(ctx, logs...)
-		return err
-	})
-	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry AppendLog: %s", handlingErr)
 	}
 	return
 }

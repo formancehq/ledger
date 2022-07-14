@@ -318,7 +318,7 @@ func TestLedger_processTx(t *testing.T) {
 		t.Run("no transactions", func(t *testing.T) {
 			result, err := l.processTx(context.Background(), []core.TransactionData{})
 			assert.NoError(t, err)
-			assert.Equal(t, &CommitResult{
+			assert.Equal(t, &core.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
 				PostCommitVolumes:     core.AccountsAssetsVolumes{},
 				GeneratedTransactions: []core.Transaction{},

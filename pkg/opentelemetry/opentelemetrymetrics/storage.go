@@ -25,30 +25,22 @@ type storageDecorator struct {
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) error {
-	err := o.Store.AppendLog(ctx, logs...)
+func (o *storageDecorator) Commit(ctx context.Context, txs ...core.Transaction) error {
+	err := o.Store.Commit(ctx, txs...)
 	if err != nil {
 		return err
 	}
-	add := 0
-	reverts := 0
-	for _, log := range logs {
-		switch tx := log.Data.(type) {
-		case core.Transaction:
-			if tx.Metadata == nil {
-				add++
-				continue
-			}
-			if tx.Metadata.IsReverted() {
-				reverts++
-				continue
-			}
-			add++
-		}
+	o.transactionsCounter.Add(context.Background(), int64(len(txs)))
+	return nil
+}
 
+func (o *storageDecorator) CommitRevert(ctx context.Context, reverted, revert core.Transaction) error {
+	err := o.Store.CommitRevert(ctx, reverted, revert)
+	if err != nil {
+		return err
 	}
-	o.transactionsCounter.Add(context.Background(), int64(add))
-	o.revertsCounter.Add(context.Background(), int64(reverts))
+
+	o.revertsCounter.Add(context.Background(), 1)
 	return nil
 }
 

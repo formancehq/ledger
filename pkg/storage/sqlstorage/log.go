@@ -68,26 +68,6 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 	return nil
 }
 
-func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
-	tx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(tx)
-
-	if err = s.appendLog(ctx, tx, logs...); err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
-}
-
 func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	var (
 		l    core.Log

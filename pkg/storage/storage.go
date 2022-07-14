@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
@@ -70,13 +71,15 @@ type Store interface {
 	GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
-
 	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-
-	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
 	Logs(ctx context.Context) ([]core.Log, error)
+
+	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error
+	UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) error
+	Commit(ctx context.Context, txs ...core.Transaction) error
+	CommitRevert(ctx context.Context, reverted, revert core.Transaction) error
 
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 	SaveMapping(ctx context.Context, m core.Mapping) error
@@ -88,6 +91,22 @@ type Store interface {
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
+func (n noOpStore) CommitRevert(ctx context.Context, reverted, revert core.Transaction) error {
+	return nil
+}
+
+func (n noOpStore) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
+	return nil
+}
+
+func (n noOpStore) UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) error {
+	return nil
+}
+
+func (n noOpStore) Commit(ctx context.Context, txs ...core.Transaction) error {
+	return nil
+}
+
 func (n noOpStore) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	return core.Volumes{}, nil
 }
@@ -98,10 +117,6 @@ func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, e
 
 func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return nil, nil
-}
-
-func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) error {
-	return nil
 }
 
 func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {

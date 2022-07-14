@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
@@ -199,4 +200,85 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*co
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	return s.getAccount(ctx, s.schema, addr)
+}
+
+/**
+INSERT INTO "VAR_LEDGER_NAME".accounts (address, metadata)
+VALUES (p.source, '{}')
+ON CONFLICT DO NOTHING;
+*/
+
+func (s *Store) ensureAccountExists(ctx context.Context, exec executor, account string) error {
+
+	sb := sqlbuilder.NewInsertBuilder()
+	sqlq, args := sb.
+		InsertInto(s.schema.Table("accounts")).
+		Cols("address", "metadata").
+		Values(account, "{}").
+		SQL("ON CONFLICT DO NOTHING").
+		BuildWithFlavor(s.schema.Flavor())
+
+	_, err := exec.ExecContext(ctx, sqlq, args...)
+	return s.error(err)
+}
+
+func (s *Store) updateAccountMetadata(ctx context.Context, exec executor, address string, metadata core.Metadata) error {
+
+	ib := sqlbuilder.NewInsertBuilder()
+
+	metadataData, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	placeholder := ib.Var(metadataData)
+	ib.
+		InsertInto(s.schema.Table("accounts")).
+		Cols("address", "metadata").
+		Values(address, metadataData)
+
+	switch Flavor(s.schema.Flavor()) {
+	case PostgreSQL:
+		ib.SQL("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || " + placeholder)
+	case SQLite:
+		ib.SQL("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata, " + placeholder + ")")
+	}
+
+	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
+	_, err = exec.ExecContext(ctx, sqlq, args...)
+
+	return err
+}
+
+func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+	tx, err := s.schema.BeginTx(ctx, nil)
+	if err != nil {
+		return s.error(err)
+	}
+	defer func(tx *sql.Tx) {
+		_ = tx.Rollback()
+	}(tx)
+
+	if err = s.updateAccountMetadata(ctx, tx, address, metadata); err != nil {
+		return err
+	}
+
+	lastLog, err := s.lastLog(ctx, tx)
+	if err != nil {
+		return err
+	}
+
+	err = s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   address,
+		Metadata:   metadata,
+	}))
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return s.error(err)
+	}
+
+	return nil
 }

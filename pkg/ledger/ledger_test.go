@@ -437,11 +437,11 @@ func TestTransactionMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a random metadata"]
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		var value string
-		assert.NoError(t, json.Unmarshal(meta, &value))
-		assert.Equalf(t, value, "new value",
+		require.NoError(t, json.Unmarshal(meta, &value))
+		require.Equalf(t, value, "new value",
 			"metadata entry did not match: expected \"new value\", got %v", value)
 	})
 }
@@ -550,7 +550,7 @@ func TestRevertTransaction(t *testing.T) {
 		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
 		require.NoError(t, err)
 
-		assert.Equal(t, core.Postings{
+		require.Equal(t, core.Postings{
 			{
 				Source:      "payments:001",
 				Destination: "world",
@@ -559,25 +559,25 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		assert.EqualValues(t, fmt.Sprintf(`"%d"`, res.GeneratedTransactions[0].ID),
+		require.EqualValues(t, fmt.Sprintf(`"%d"`, res.GeneratedTransactions[0].ID),
 			string(revertTx.Metadata[core.RevertMetadataSpecKey()]))
 
 		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
-		assert.NoError(t, json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v))
+		require.NoError(t, json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v))
 
-		assert.Equal(t, core.RevertedMetadataSpecValue{
+		require.Equal(t, core.RevertedMetadataSpecValue{
 			By: fmt.Sprint(revertTx.ID),
 		}, v)
 
 		world, err = l.GetAccount(context.Background(), "world")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		newBal := world.Balances["COIN"]
 		expectedBal := originalBal + revertAmt
-		assert.Equalf(t, expectedBal, newBal,
+		require.Equalf(t, expectedBal, newBal,
 			"COIN world balances expected %d, got %d", expectedBal, newBal)
 	})
 }
