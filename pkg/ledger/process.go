@@ -8,7 +8,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*core.CommitResult, error) {
+type CommitResult struct {
+	PreCommitVolumes      core.AccountsAssetsVolumes
+	PostCommitVolumes     core.AccountsAssetsVolumes
+	GeneratedTransactions []core.Transaction
+}
+
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -110,7 +116,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*cor
 		nextTxId++
 	}
 
-	return &core.CommitResult{
+	return &CommitResult{
 		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
 		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
