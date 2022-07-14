@@ -14,7 +14,7 @@ func (s *Store) commit(ctx context.Context, exec executor, txs ...core.Transacti
 		return nil, errors.Wrap(err, "inserting transactions")
 	}
 
-	postCommitVolumes := core.AggregateVolumes(txs...)
+	postCommitVolumes := core.AggregatePostCommitVolumes(txs...)
 
 	for account := range postCommitVolumes {
 		err := s.ensureAccountExists(ctx, exec, account)
