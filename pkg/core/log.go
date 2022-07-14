@@ -99,7 +99,7 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
+func NewSetMetadataLog(previousLog *Log, at time.Time, metadata SetMetadata) Log {
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -107,7 +107,7 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 	l := Log{
 		ID:   id,
 		Type: SetMetadataType,
-		Date: time.Now().UTC(),
+		Date: at,
 		Data: metadata,
 	}
 	l.Hash = Hash(previousLog, &l)

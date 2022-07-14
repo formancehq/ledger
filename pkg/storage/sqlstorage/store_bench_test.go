@@ -110,7 +110,6 @@ func BenchmarkStore(b *testing.B) {
 }
 
 func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
-	var log *core.Log
 	for i := 0; i < 1000; i++ {
 		tx := core.Transaction{
 			TransactionData: core.TransactionData{
@@ -131,8 +130,7 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 			},
 			ID: uint64(i),
 		}
-		*log = core.NewTransactionLog(log, tx)
-		err := store.AppendLog(context.Background(), *log)
+		err := store.Commit(context.Background(), tx)
 		assert.NoError(b, err)
 	}
 
@@ -150,7 +148,6 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 }
 
 func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
-	var log *core.Log
 	count := 1000
 	for i := 0; i < count; i++ {
 		tx := core.Transaction{
@@ -172,8 +169,7 @@ func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
 			},
 			ID: uint64(i),
 		}
-		*log = core.NewTransactionLog(log, tx)
-		err := store.AppendLog(context.Background(), *log)
+		err := store.Commit(context.Background(), tx)
 		assert.NoError(b, err)
 	}
 
@@ -188,7 +184,6 @@ func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
 
 func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 	count := 1000
-	var log *core.Log
 	for i := 0; i < count; i++ {
 		tx := core.Transaction{
 			TransactionData: core.TransactionData{
@@ -215,8 +210,7 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 			},
 			ID: uint64(i),
 		}
-		*log = core.NewTransactionLog(log, tx)
-		err := store.AppendLog(context.Background(), *log)
+		err := store.Commit(context.Background(), tx)
 		assert.NoError(b, err)
 	}
 
@@ -229,9 +223,8 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 }
 
 func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
-	var log *core.Log
 	for n := 0; n < b.N; n++ {
-		*log = core.NewTransactionLog(log, core.Transaction{
+		tx := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -243,8 +236,8 @@ func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
 				},
 			},
 			ID: uint64(n),
-		})
-		err := store.AppendLog(context.Background(), *log)
+		}
+		err := store.Commit(context.Background(), tx)
 		assert.NoError(b, err)
 	}
 }

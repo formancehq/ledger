@@ -27,7 +27,7 @@ func TestVolumeAggregator(t *testing.T) {
 					return err
 				}
 
-				firstTxLog := core.NewTransactionLog(nil, core.Transaction{
+				tx1 := core.Transaction{
 					ID: 0,
 					TransactionData: core.TransactionData{
 						Postings: []core.Posting{
@@ -39,8 +39,29 @@ func TestVolumeAggregator(t *testing.T) {
 							},
 						},
 					},
-				})
-				secondTxLog := core.NewTransactionLog(&firstTxLog, core.Transaction{
+					PreCommitVolumes: map[string]core.AssetsVolumes{
+						"bob": {
+							"USD": {},
+						},
+						"zozo": {
+							"USD": {},
+						},
+					},
+					PostCommitVolumes: map[string]core.AssetsVolumes{
+						"bob": {
+							"USD": {
+								Output: 100,
+							},
+						},
+						"zozo": {
+							"USD": {
+								Input: 100,
+							},
+						},
+					},
+				}
+
+				tx2 := core.Transaction{
 					ID: 1,
 					TransactionData: core.TransactionData{
 						Postings: []core.Posting{
@@ -52,8 +73,31 @@ func TestVolumeAggregator(t *testing.T) {
 							},
 						},
 					},
-				})
-				require.NoError(t, store.AppendLog(context.Background(), firstTxLog, secondTxLog))
+					PostCommitVolumes: map[string]core.AssetsVolumes{
+						"alice": {
+							"USD": {
+								Input: 100,
+							},
+						},
+						"zozo": {
+							"USD": {
+								Input:  100,
+								Output: 100,
+							},
+						},
+					},
+					PreCommitVolumes: map[string]core.AssetsVolumes{
+						"alice": {
+							"USD": {},
+						},
+						"zozo": {
+							"USD": {
+								Input: 100,
+							},
+						},
+					},
+				}
+				require.NoError(t, store.Commit(context.Background(), tx1, tx2))
 
 				volumeAggregator := newVolumeAggregator(store)
 				firstTx := volumeAggregator.nextTx()

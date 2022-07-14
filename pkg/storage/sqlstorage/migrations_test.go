@@ -155,8 +155,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 	},
-	"1": func(t *testing.T, store *sqlstorage.Store) {},
-	"8": func(t *testing.T, store *sqlstorage.Store) {
+	"10": func(t *testing.T, store *sqlstorage.Store) {
 
 		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 		if !assert.NoError(t, err) {
@@ -259,40 +258,25 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		newLog := core.Log{
-			ID:   logs[0].ID + 1,
-			Type: core.SetMetadataType,
-			Data: core.SetMetadata{
-				TargetType: core.MetaTargetTypeTransaction,
-				TargetID:   uint64(0),
-				Metadata: core.Metadata{
-					"after": json.RawMessage("\"migrate\""),
-				},
-			},
-			Hash: "",
-			Date: now.Add(2 * time.Second),
-		}
-		newLog.Hash = core.Hash(logs[0], newLog)
-		err = store.AppendLog(context.Background(), newLog)
-		if !assert.NoError(t, err) {
-			return
-		}
+		err = store.UpdateTransactionMetadata(context.Background(), 0, core.Metadata{
+			"after": json.RawMessage("\"migrate\""),
+		}, now.Add(2*time.Second))
+		require.NoError(t, err)
 
 		logs, err = store.Logs(context.Background())
-		if !assert.NoError(t, err) {
-			return
-		}
-		if !assert.Len(t, logs, 8) {
-			return
-		}
+		require.NoError(t, err)
+		require.Len(t, logs, 8)
 
 		index, ok := core.CheckHash(logs...)
 		if !assert.Truef(t, ok, "error checking hash at index %d", index) {
 			return
 		}
 
+		lastLog, err := store.LastLog(context.Background())
+		require.NoError(t, err)
+
 		expectedLogs := []core.Log{
-			newLog,
+			*lastLog,
 			{
 				ID:   6,
 				Type: core.NewTransactionType,
@@ -410,11 +394,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			logs[i].Date = logs[i].Date.UTC()
 			expectedLogs[i].Hash = ""
 			expectedLogs[i].Hash = core.Hash(previousLog, expectedLogs[i])
-			if !assert.EqualValues(t, expectedLogs[i], logs[i]) {
-				return
-			}
+			require.EqualValuesf(t, expectedLogs[i], logs[i], "Hash %d does not match", i)
 		}
-
 	},
 }
 

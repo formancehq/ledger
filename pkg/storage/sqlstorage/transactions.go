@@ -11,8 +11,10 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
@@ -267,4 +269,172 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 
 func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
 	return s.getLastTransaction(ctx, s.schema)
+}
+
+func (s *Store) insertTransactions(ctx context.Context, exec executor, txs ...core.Transaction) error {
+	var (
+		query string
+		args  []interface{}
+	)
+
+	switch s.Schema().Flavor() {
+	case sqlbuilder.SQLite:
+		ib := sqlbuilder.NewInsertBuilder()
+		ib.InsertInto(s.schema.Table("transactions"))
+		ib.Cols("id", "timestamp", "reference", "postings", "metadata", "pre_commit_volumes", "post_commit_volumes")
+		for _, tx := range txs {
+			postingsData, err := json.Marshal(tx.Postings)
+			if err != nil {
+				panic(err)
+			}
+
+			metadataData := []byte("{}")
+			if tx.Metadata != nil {
+				metadataData, err = json.Marshal(tx.Metadata)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
+			if err != nil {
+				panic(err)
+			}
+
+			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
+			if err != nil {
+				panic(err)
+			}
+
+			var reference *string
+			if tx.Reference != "" {
+				cp := tx.Reference
+				reference = &cp
+			}
+
+			ib.Values(tx.ID, tx.Timestamp, reference, postingsData,
+				metadataData, preCommitVolumesData, postCommitVolumesData)
+		}
+		query, args = ib.BuildWithFlavor(s.schema.Flavor())
+	case sqlbuilder.PostgreSQL:
+		ids := make([]uint64, len(txs))
+		timestamps := make([]string, len(txs))
+		references := make([]*string, len(txs))
+		postingDataSet := make([]string, len(txs))
+		metadataDataSet := make([]string, len(txs))
+		preCommitVolumesDataSet := make([]string, len(txs))
+		postCommitVolumesDataSet := make([]string, len(txs))
+
+		for i, tx := range txs {
+			postingsData, err := json.Marshal(tx.Postings)
+			if err != nil {
+				panic(err)
+			}
+
+			metadataData := []byte("{}")
+			if tx.Metadata != nil {
+				metadataData, err = json.Marshal(tx.Metadata)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
+			if err != nil {
+				panic(err)
+			}
+
+			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
+			if err != nil {
+				panic(err)
+			}
+
+			ids[i] = tx.ID
+			timestamps[i] = tx.Timestamp
+			postingDataSet[i] = string(postingsData)
+			metadataDataSet[i] = string(metadataData)
+			preCommitVolumesDataSet[i] = string(preCommitVolumesData)
+			postCommitVolumesDataSet[i] = string(postCommitVolumesData)
+			references[i] = nil
+			if tx.Reference != "" {
+				cp := tx.Reference
+				references[i] = &cp
+			}
+		}
+
+		query = fmt.Sprintf(
+			`INSERT INTO "%s".transactions (id, timestamp, reference, postings, metadata, pre_commit_volumes, post_commit_volumes) (SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[], $4::jsonb[], $5::jsonb[], $6::jsonb[], $7::jsonb[]))`,
+			s.schema.Name())
+		args = []interface{}{
+			ids, timestamps, references, postingDataSet,
+			metadataDataSet, preCommitVolumesDataSet, postCommitVolumesDataSet,
+		}
+	}
+
+	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+
+	_, err := exec.ExecContext(ctx, query, args...)
+	if err != nil {
+		return s.error(err)
+	}
+	return nil
+}
+
+func (s *Store) updateTransactionMetadata(ctx context.Context, exec executor, id uint64, metadata core.Metadata) error {
+
+	ub := sqlbuilder.NewUpdateBuilder()
+
+	metadataData, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	ub.
+		Update(s.schema.Table("transactions")).
+		Where(ub.E("id", id))
+
+	switch Flavor(s.schema.Flavor()) {
+	case PostgreSQL:
+		ub.Set(fmt.Sprintf("metadata = metadata || '%s'::jsonb", string(metadataData)))
+	case SQLite:
+		ub.Set(fmt.Sprintf("metadata = json_patch(metadata, '%s')", string(metadataData)))
+	}
+
+	sqlq, args := ub.BuildWithFlavor(s.schema.Flavor())
+	_, err = exec.ExecContext(ctx, sqlq, args...)
+
+	return s.error(err)
+}
+
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
+	tx, err := s.schema.BeginTx(ctx, nil)
+	if err != nil {
+		return s.error(err)
+	}
+	defer func(tx *sql.Tx) {
+		_ = tx.Rollback()
+	}(tx)
+
+	if err = s.updateTransactionMetadata(ctx, tx, id, metadata); err != nil {
+		return errors.Wrap(err, "updating metadata")
+	}
+
+	lastLog, err := s.lastLog(ctx, tx)
+	if err != nil {
+		return errors.Wrap(err, "reading last log")
+	}
+
+	err = s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+		TargetType: core.MetaTargetTypeTransaction,
+		TargetID:   id,
+		Metadata:   metadata,
+	}))
+	if err != nil {
+		return errors.Wrap(err, "appending log")
+	}
+
+	if err = tx.Commit(); err != nil {
+		return s.error(err)
+	}
+
+	return nil
 }

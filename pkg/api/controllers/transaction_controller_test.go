@@ -380,11 +380,8 @@ func TestGetTransactions(t *testing.T) {
 					},
 					Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
 				}
-				log1 := core.NewTransactionLog(nil, tx1)
-				log2 := core.NewTransactionLog(&log1, tx2)
-				log3 := core.NewTransactionLog(&log2, tx3)
 				store := internal.GetStore(t, driver, ctx)
-				err := store.AppendLog(context.Background(), log1, log2, log3)
+				err := store.Commit(context.Background(), tx1, tx2, tx3)
 				require.NoError(t, err)
 
 				rsp := internal.CountTransactions(api, url.Values{})

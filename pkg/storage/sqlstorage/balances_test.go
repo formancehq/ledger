@@ -11,11 +11,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+/**
+var tx1 = core.Transaction{
+	TransactionData: core.TransactionData{
+		Postings: []core.Posting{
+			{
+				Source:      "world",
+				Destination: "central_bank",
+				Amount:      100,
+				Asset:       "USD",
+			},
+		},
+		Reference: "tx1",
+	},
+	Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
+}
+var tx2 = core.Transaction{
+	ID: 1,
+	TransactionData: core.TransactionData{
+		Postings: []core.Posting{
+			{
+				Source:      "world",
+				Destination: "central_bank",
+				Amount:      100,
+				Asset:       "USD",
+			},
+		},
+		Reference: "tx2",
+	},
+	Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
+}
+var tx3 = core.Transaction{
+	ID: 2,
+	TransactionData: core.TransactionData{
+		Postings: []core.Posting{
+			{
+				Source:      "central_bank",
+				Destination: "users:1",
+				Amount:      1,
+				Asset:       "USD",
+			},
+		},
+		Reference: "tx3",
+		Metadata: core.Metadata{
+			"priority": json.RawMessage(`"high"`),
+		},
+	},
+	Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
+}
+*/
+
 func testGetBalances(t *testing.T, store *sqlstorage.Store) {
-	log1 := core.NewTransactionLog(nil, tx1)
-	log2 := core.NewTransactionLog(&log1, tx2)
-	log3 := core.NewTransactionLog(&log2, tx3)
-	err := store.AppendLog(context.Background(), log1, log2, log3)
+
+	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	require.NoError(t, err)
 
 	t.Run("all accounts", func(t *testing.T) {
@@ -134,10 +182,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
-	log1 := core.NewTransactionLog(nil, tx1)
-	log2 := core.NewTransactionLog(&log1, tx2)
-	log3 := core.NewTransactionLog(&log2, tx3)
-	err := store.AppendLog(context.Background(), log1, log2, log3)
+	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	assert.NoError(t, err)
 
 	q := storage.BalancesQuery{
