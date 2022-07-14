@@ -2,6 +2,7 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/numary/go-libs/sharedlogging"
@@ -52,6 +53,21 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 
 func (s *Store) Close(ctx context.Context) error {
 	return s.onClose(ctx)
+}
+
+func (s *Store) withTx(ctx context.Context, callback func(tx *sql.Tx) error) error {
+	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return s.error(err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	err = callback(tx)
+	if err != nil {
+		return s.error(err)
+	}
+	return s.error(tx.Commit())
 }
 
 var _ storage.Store = &Store{}

@@ -406,35 +406,20 @@ func (s *Store) updateTransactionMetadata(ctx context.Context, exec executor, id
 }
 
 func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
-	tx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(tx)
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		if err := s.updateTransactionMetadata(ctx, tx, id, metadata); err != nil {
+			return errors.Wrap(err, "updating metadata")
+		}
 
-	if err = s.updateTransactionMetadata(ctx, tx, id, metadata); err != nil {
-		return errors.Wrap(err, "updating metadata")
-	}
+		lastLog, err := s.lastLog(ctx, tx)
+		if err != nil {
+			return errors.Wrap(err, "reading last log")
+		}
 
-	lastLog, err := s.lastLog(ctx, tx)
-	if err != nil {
-		return errors.Wrap(err, "reading last log")
-	}
-
-	err = s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeTransaction,
-		TargetID:   id,
-		Metadata:   metadata,
-	}))
-	if err != nil {
-		return errors.Wrap(err, "appending log")
-	}
-
-	if err = tx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
+		return s.appendLog(ctx, tx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+			TargetType: core.MetaTargetTypeTransaction,
+			TargetID:   id,
+			Metadata:   metadata,
+		}))
+	})
 }

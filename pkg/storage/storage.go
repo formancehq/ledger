@@ -195,5 +195,4 @@ var _ Store = &noOpStore{}
 
 func NoOpStore() *noOpStore {
 	return &noOpStore{}
-
 }

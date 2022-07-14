@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
@@ -65,6 +66,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 	}
 
 	if err = l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
+		spew.Dump(err)
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
