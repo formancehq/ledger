@@ -14,11 +14,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*cor
 		return nil, errors.Wrap(err, "loading mapping")
 	}
 
-	lastLog, err := l.store.LastLog(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var nextTxId uint64
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
@@ -32,7 +27,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*cor
 
 	generatedTxs := make([]core.Transaction, 0)
 	accounts := make(map[string]*core.Account, 0)
-	generatedLogs := make([]core.Log, 0)
 	contracts := make([]core.Contract, 0)
 	if mapping != nil {
 		contracts = append(contracts, mapping.Contracts...)
@@ -113,9 +107,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*cor
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
 		generatedTxs = append(generatedTxs, tx)
-		newLog := core.NewTransactionLogWithDate(lastLog, tx, tx.Timestamp)
-		lastLog = &newLog
-		generatedLogs = append(generatedLogs, newLog)
 		nextTxId++
 	}
 
@@ -123,6 +114,5 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*cor
 		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
 		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
-		GeneratedLogs:         generatedLogs,
 	}, nil
 }

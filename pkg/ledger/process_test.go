@@ -126,16 +126,6 @@ func TestLedger_processTx(t *testing.T) {
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
-
-				expectedLogs := []core.Log{{
-					ID:   0,
-					Type: core.NewTransactionType,
-					Data: core.LoggedTX(expectedTxs[0]),
-					Date: res.GeneratedLogs[0].Date,
-				}}
-				expectedLogs[0].Hash = core.Hash(nil, expectedLogs[0])
-
-				assert.Equal(t, expectedLogs, res.GeneratedLogs)
 			})
 
 			t.Run("multi transactions single postings", func(t *testing.T) {
@@ -266,52 +256,6 @@ func TestLedger_processTx(t *testing.T) {
 
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
 
-				expectedLogs := []core.Log{
-					{
-						ID:   0,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[0]),
-						Date: now,
-					},
-					{
-						ID:   1,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[1]),
-						Date: now.Add(time.Second),
-					},
-					{
-						ID:   2,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[2]),
-						Date: now.Add(2 * time.Second),
-					},
-					{
-						ID:   3,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[3]),
-						Date: now.Add(3 * time.Second),
-					},
-					{
-						ID:   4,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[4]),
-						Date: now.Add(4 * time.Second),
-					},
-					{
-						ID:   5,
-						Type: core.NewTransactionType,
-						Data: core.LoggedTX(expectedTxs[5]),
-						Date: now.Add(5 * time.Second),
-					},
-				}
-				expectedLogs[0].Hash = core.Hash(nil, expectedLogs[0])
-				expectedLogs[1].Hash = core.Hash(expectedLogs[0], expectedLogs[1])
-				expectedLogs[2].Hash = core.Hash(expectedLogs[1], expectedLogs[2])
-				expectedLogs[3].Hash = core.Hash(expectedLogs[2], expectedLogs[3])
-				expectedLogs[4].Hash = core.Hash(expectedLogs[3], expectedLogs[4])
-				expectedLogs[5].Hash = core.Hash(expectedLogs[4], expectedLogs[5])
-
-				assert.Equal(t, expectedLogs, res.GeneratedLogs)
 			})
 		})
 
@@ -322,7 +266,6 @@ func TestLedger_processTx(t *testing.T) {
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
 				PostCommitVolumes:     core.AccountsAssetsVolumes{},
 				GeneratedTransactions: []core.Transaction{},
-				GeneratedLogs:         []core.Log{},
 			}, result)
 		})
 
