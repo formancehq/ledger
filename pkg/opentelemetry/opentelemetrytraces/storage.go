@@ -20,6 +20,10 @@ type openTelemetryStorage struct {
 	underlying storage.Store
 }
 
+func (o *openTelemetryStorage) WithTX(ctx context.Context, callback func(api storage.API) error) error {
+	return callback(o)
+}
+
 func (o *openTelemetryStorage) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) (err error) {
 	handlingErr := o.handle(ctx, "UpdateTransactionMetadata", func(ctx context.Context) error {
 		err = o.underlying.UpdateTransactionMetadata(ctx, id, metadata, at)
@@ -49,17 +53,6 @@ func (o *openTelemetryStorage) Commit(ctx context.Context, txs ...core.Transacti
 	})
 	if handlingErr != nil {
 		sharedlogging.Errorf("opentelemetry Commit: %s", handlingErr)
-	}
-	return
-}
-
-func (o *openTelemetryStorage) CommitRevert(ctx context.Context, reverted, revert core.Transaction) (err error) {
-	handlingErr := o.handle(ctx, "CommitRevert", func(ctx context.Context) error {
-		err = o.underlying.CommitRevert(ctx, reverted, revert)
-		return err
-	})
-	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry CommitRevert: %s", handlingErr)
 	}
 	return
 }

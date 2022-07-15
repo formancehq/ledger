@@ -23,10 +23,8 @@ func TestNewStorageDecorator(t *testing.T) {
 
 	transactionsCounter, err := transactionsCounter(m)
 	assert.NoError(t, err)
-	revertsCounter, err := revertsCounter(m)
-	assert.NoError(t, err)
 
-	store := NewStorageDecorator(storage.NoOpStore(), transactionsCounter, revertsCounter)
+	store := NewStorageDecorator(storage.NoOpStore(), transactionsCounter)
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)
 

@@ -90,10 +90,10 @@ func BenchmarkStore(b *testing.B) {
 					return
 				}
 
-				store, err := sqlstorage.NewStore(schema, func(ctx context.Context) error {
+				store := sqlstorage.NewStore(schema, func(ctx context.Context) error {
 					return db.Close(context.Background())
 				})
-				assert.NoError(b, err)
+
 				defer func(store *sqlstorage.Store, ctx context.Context) {
 					require.NoError(b, store.Close(ctx))
 				}(store, context.Background())

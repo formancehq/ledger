@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
@@ -65,8 +64,9 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		return nil, err
 	}
 
-	if err = l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
-		spew.Dump(err)
+	if err := l.store.WithTX(ctx, func(api storage.API) error {
+		return l.store.Commit(ctx, result.GeneratedTransactions...)
+	}); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
@@ -90,12 +90,10 @@ func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionDa
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
-
 	return l.store.GetTransactions(ctx, q)
 }
 
 func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
-
 	return l.store.CountTransactions(ctx, q)
 }
 
@@ -125,20 +123,20 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
-	tx, err := l.store.GetTransaction(ctx, id)
+	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if tx == nil {
+	if revertedTx == nil {
 		return nil, NewNotFoundError("transaction not found")
 	}
-	if tx.IsReverted() {
+	if revertedTx.IsReverted() {
 		return nil, NewValidationError("transaction already reverted")
 	}
 
-	rt := tx.Reverse()
+	rt := revertedTx.Reverse()
 	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkReverts(tx.ID)
+	rt.Metadata.MarkReverts(revertedTx.ID)
 
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
@@ -150,12 +148,23 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	if err != nil {
 		return nil, err
 	}
+	revert := result.GeneratedTransactions[0]
 
-	if err = l.store.CommitRevert(ctx, *tx, result.GeneratedTransactions[0]); err != nil {
-		return nil, err
-	}
+	err = l.store.WithTX(ctx, func(api storage.API) error {
+		err := api.Commit(ctx, revert)
+		if err != nil {
+			return err
+		}
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, &result.GeneratedTransactions[0])
+		at, err := time.Parse(time.RFC3339, revert.Timestamp)
+		if err != nil {
+			return err
+		}
+
+		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), at)
+	})
+
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
 }
 
@@ -212,12 +221,15 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return NewValidationError("empty target id")
 	}
 
-	switch targetType {
-	case core.MetaTargetTypeTransaction:
-		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
-	case core.MetaTargetTypeAccount:
-		err = l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
-	}
+	err = l.store.WithTX(ctx, func(api storage.API) error {
+		switch targetType {
+		case core.MetaTargetTypeTransaction:
+			return l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
+		case core.MetaTargetTypeAccount:
+			return l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
+		}
+		panic("can not happen")
+	})
 	if err != nil {
 		return err
 	}
