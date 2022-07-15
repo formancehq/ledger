@@ -181,13 +181,9 @@ func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storag
 		return nil, false, err
 	}
 
-	store, err := NewStore(schema, func(ctx context.Context) error {
+	return NewStore(schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
-	})
-	if err != nil {
-		return nil, false, err
-	}
-	return store, created, nil
+	}), created, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {

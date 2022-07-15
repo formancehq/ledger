@@ -22,7 +22,6 @@ func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
 type storageDecorator struct {
 	storage.Store
 	transactionsCounter metric.Int64Counter
-	revertsCounter      metric.Int64Counter
 }
 
 func (o *storageDecorator) Commit(ctx context.Context, txs ...core.Transaction) error {
@@ -34,23 +33,12 @@ func (o *storageDecorator) Commit(ctx context.Context, txs ...core.Transaction) 
 	return nil
 }
 
-func (o *storageDecorator) CommitRevert(ctx context.Context, reverted, revert core.Transaction) error {
-	err := o.Store.CommitRevert(ctx, reverted, revert)
-	if err != nil {
-		return err
-	}
-
-	o.revertsCounter.Add(context.Background(), 1)
-	return nil
-}
-
 var _ storage.Store = &storageDecorator{}
 
-func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter, revertsCounter metric.Int64Counter) *storageDecorator {
+func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter) *storageDecorator {
 	return &storageDecorator{
 		Store:               underlying,
 		transactionsCounter: counter,
-		revertsCounter:      revertsCounter,
 	}
 }
 
@@ -59,7 +47,6 @@ type openTelemetryStorageDriver struct {
 	meter               metric.Meter
 	transactionsCounter metric.Int64Counter
 	once                sync.Once
-	revertsCounter      metric.Int64Counter
 }
 
 func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
@@ -69,7 +56,6 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 		if err != nil {
 			return
 		}
-		o.revertsCounter, err = revertsCounter(o.meter)
 	})
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
@@ -78,7 +64,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, err
 	}
-	return NewStorageDecorator(store, o.transactionsCounter, o.revertsCounter), created, nil
+	return NewStorageDecorator(store, o.transactionsCounter), created, nil
 }
 
 func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {

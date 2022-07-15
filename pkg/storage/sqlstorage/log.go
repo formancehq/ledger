@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) error {
+func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
 	var (
 		query string
 		args  []interface{}
@@ -61,14 +61,14 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
-	_, err := exec.ExecContext(ctx, query, args...)
+	_, err := s.executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
+func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	var (
 		l    core.Log
 		data sql.NullString
@@ -81,7 +81,7 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	sb.Limit(1)
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	row := exec.QueryRowContext(ctx, sqlq)
+	row := s.executor.QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -99,18 +99,14 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
-	return s.lastLog(ctx, s.schema)
-}
-
-func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
+func (s *API) Logs(ctx context.Context) ([]core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.OrderBy("id desc")
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sqlq)
+	rows, err := s.executor.QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -147,8 +143,4 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	}
 
 	return ret, nil
-}
-
-func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
-	return s.logs(ctx, s.schema)
 }
