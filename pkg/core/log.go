@@ -109,7 +109,7 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 	l := Log{
 		ID:   id,
 		Type: SetMetadataType,
-		Date: time.Now().UTC().Round(time.Second),
+		Date: time.Now().UTC().Truncate(time.Second),
 		Data: metadata,
 	}
 	l.Hash = Hash(previousLog, &l)

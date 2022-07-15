@@ -103,7 +103,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			ID:              nextTxId,
 			// Until v1.5.0, dates was stored as string using rfc3339 format
 			// So round the date to the second to keep the same behaviour
-			Timestamp:         time.Now().UTC().Round(time.Second),
+			Timestamp:         time.Now().UTC().Truncate(time.Second),
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
