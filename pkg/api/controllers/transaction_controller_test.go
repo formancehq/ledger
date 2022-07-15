@@ -628,7 +628,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 								},
 							},
 						},
-						Timestamp: now.Format(time.RFC3339),
+						Timestamp: now,
 					}
 					log := core.NewTransactionLog(previousLog, tx)
 					logs = append(logs, log)
