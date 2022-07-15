@@ -18,13 +18,6 @@ func (fn ResolveOptionFn) apply(r *Resolver) error {
 	return fn(r)
 }
 
-func WithStorageDriver(factory storage.Driver) ResolveOptionFn {
-	return func(r *Resolver) error {
-		r.storageDriver = factory
-		return nil
-	}
-}
-
 func WithLocker(locker Locker) ResolveOptionFn {
 	return func(r *Resolver) error {
 		r.locker = locker
@@ -108,7 +101,6 @@ func ResolveModule() fx.Option {
 		fx.Provide(
 			fx.Annotate(NewResolver, fx.ParamTags("", ResolverOptionsKey)),
 		),
-		ProvideResolverOption(WithStorageDriver),
 	)
 }
 
