@@ -223,9 +223,9 @@ func (s *API) UpdateAccountMetadata(ctx context.Context, address string, metadat
 
 	switch Flavor(s.schema.Flavor()) {
 	case PostgreSQL:
-		ib.SQL("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || " + placeholder)
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
 	case SQLite:
-		ib.SQL("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata, " + placeholder + ")")
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
 	}
 
 	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
