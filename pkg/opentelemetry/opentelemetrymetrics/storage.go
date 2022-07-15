@@ -15,10 +15,6 @@ func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {
 	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".transactions")
 }
 
-func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
-	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".reverts")
-}
-
 type storageDecorator struct {
 	storage.Store
 	transactionsCounter metric.Int64Counter

@@ -163,6 +163,9 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 
 		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), at)
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
