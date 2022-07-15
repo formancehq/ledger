@@ -98,10 +98,6 @@ func (n noOpStore) WithTX(ctx context.Context, callback func(api API) error) err
 	return nil
 }
 
-func (n noOpStore) CommitRevert(ctx context.Context, reverted, revert core.Transaction) error {
-	return nil
-}
-
 func (n noOpStore) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	return nil
 }
@@ -124,10 +120,6 @@ func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, e
 
 func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return nil, nil
-}
-
-func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
-	return 0, nil
 }
 
 func (n noOpStore) CountTransactions(ctx context.Context, q TransactionsQuery) (uint64, error) {
@@ -168,10 +160,6 @@ func (n noOpStore) GetBalances(ctx context.Context, q BalancesQuery) (sharedapi.
 
 func (n noOpStore) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (core.AssetsBalances, error) {
 	return core.AssetsBalances{}, nil
-}
-
-func (n noOpStore) GetMeta(ctx context.Context, s string, s2 string) (core.Metadata, error) {
-	return core.Metadata{}, nil
 }
 
 func (n noOpStore) CountMeta(ctx context.Context) (int64, error) {
