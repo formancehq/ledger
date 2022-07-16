@@ -1,12 +1,12 @@
-package pgtesting
+package pgserver
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v4"
+	. "github.com/onsi/gomega"
 	"github.com/ory/dockertest/v3"
 )
 
@@ -15,8 +15,8 @@ type PGServer struct {
 	close func() error
 }
 
-func (s *PGServer) ConnString() string {
-	return s.url
+func (s *PGServer) ConnString(name string) string {
+	return fmt.Sprintf("%s/%s", s.url, name)
 }
 
 func (s *PGServer) Close() error {
@@ -26,19 +26,7 @@ func (s *PGServer) Close() error {
 	return s.close()
 }
 
-const MaxConnections = 15
-
 func PostgresServer() (*PGServer, error) {
-
-	externalConnectionString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
-	if externalConnectionString != "" {
-		return &PGServer{
-			url: externalConnectionString,
-			close: func() error {
-				return nil
-			},
-		}, nil
-	}
 
 	pool, err := dockertest.NewPool("")
 	if err != nil {
@@ -53,18 +41,17 @@ func PostgresServer() (*PGServer, error) {
 			"POSTGRES_PASSWORD=root",
 			"POSTGRES_DB=ledger",
 		},
-		Entrypoint: nil,
-		Cmd:        []string{"-c", fmt.Sprintf("max_connections=%d", MaxConnections), "-c", "superuser-reserved-connections=0"},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	connString := "postgresql://root:root@localhost:" + resource.GetPort("5432/tcp") + "/ledger"
+	url := "postgresql://root:root@localhost:" + resource.GetPort("5432/tcp")
+
 	try := time.Duration(0)
 	delay := 200 * time.Millisecond
 	for try*delay < 5*time.Second {
-		conn, err := pgx.Connect(context.Background(), connString)
+		conn, err := pgx.Connect(context.Background(), fmt.Sprintf("%s/ledger", url))
 		if err != nil {
 			try++
 			<-time.After(delay)
@@ -75,10 +62,22 @@ func PostgresServer() (*PGServer, error) {
 	}
 
 	return &PGServer{
-		url: "postgresql://root:root@localhost:" + resource.GetPort("5432/tcp") + "/ledger",
+		url: url,
 		close: func() error {
 			return pool.Purge(resource)
 		},
 	}, nil
+}
 
+func CreateDatabase(name string) string {
+	conn, err := pgx.Connect(context.Background(), ConnString("ledger"))
+	Expect(err).WithOffset(1).To(BeNil())
+	defer func() {
+		Expect(conn.Close(context.Background())).To(BeNil())
+	}()
+
+	_, err = conn.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE \"%s\"", name))
+	Expect(err).WithOffset(1).To(BeNil())
+
+	return ConnString(name)
 }

@@ -275,7 +275,7 @@ func TestContainers(t *testing.T) {
 			v.Set(storageDirFlag, "/tmp")
 			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
-			app := NewContainer(v, options...)
+			app := NewContainer(v, os.Stdout, options...)
 
 			require.NoError(t, app.Start(context.Background()))
 			defer func(app *fx.App, ctx context.Context) {

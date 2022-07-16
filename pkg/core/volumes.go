@@ -10,6 +10,13 @@ type Volumes struct {
 	Output *MonetaryInt `json:"output"`
 }
 
+func NewVolumes(input, output *MonetaryInt) Volumes {
+	return Volumes{
+		Input:  input.OrZero(),
+		Output: output.OrZero(),
+	}
+}
+
 type VolumesWithBalance struct {
 	Input   *MonetaryInt `json:"input"`
 	Output  *MonetaryInt `json:"output"`

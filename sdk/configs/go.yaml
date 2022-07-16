@@ -1,4 +1,4 @@
-templateDir: templates/go
+#templateDir: templates/go
 additionalProperties:
   packageName: ledgerclient
   goImportAlias: client
@@ -6,3 +6,5 @@ additionalProperties:
 files:
   Taskfile.yml.mustache:
     destinationFilename: Taskfile.yml
+  model_aggregated_volumes.mustache:
+    destinationFilename: model_aggregated_volumes.go

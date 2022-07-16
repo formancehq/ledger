@@ -27,6 +27,7 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
+				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -71,6 +72,7 @@ func NewStorageList() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
+				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -104,6 +106,7 @@ func NewStorageUpgrade() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
+				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -235,7 +238,7 @@ func NewStorageScan() *cobra.Command {
 				})
 			}
 
-			app := NewContainer(viper.GetViper(), opt)
+			app := NewContainer(viper.GetViper(), cmd.OutOrStdout(), opt)
 			return app.Start(cmd.Context())
 		},
 	}
@@ -249,6 +252,7 @@ func NewStorageDelete() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
+				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {

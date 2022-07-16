@@ -41,9 +41,13 @@ import (
 	"go.uber.org/fx"
 )
 
-const ServiceName = "ledger"
+const (
+	ServiceName = "ledger"
 
-func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
+	TraceIdHeader = "trace-id"
+)
+
+func NewContainer(v *viper.Viper, stdout io.Writer, userOptions ...fx.Option) *fx.App {
 
 	options := make([]fx.Option, 0)
 	if !v.GetBool(debugFlag) {
@@ -51,6 +55,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	l := logrus.New()
+	l.SetOutput(stdout)
 	if v.GetBool(debugFlag) {
 		l.Level = logrus.DebugLevel
 	}
@@ -246,6 +251,10 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, cors.New(cc))
 		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
+			res = append(res, func(c *gin.Context) {
+				span := trace.SpanFromContext(c.Request.Context())
+				c.Writer.Header().Set(TraceIdHeader, span.SpanContext().TraceID().String())
+			})
 		} else {
 			res = append(res, func(context *gin.Context) {
 				context.Next()

@@ -32,7 +32,16 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
-var _ json.Marshaler = ExpandedTransaction{}
+func (t TransactionData) SetReference(reference string) TransactionData {
+	t.Reference = reference
+	return t
+}
+
+func NewTransactionData(postings ...Posting) TransactionData {
+	return TransactionData{
+		Postings: postings,
+	}
+}
 
 type Transaction struct {
 	TransactionData
@@ -44,6 +53,8 @@ type ExpandedTransaction struct {
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"`
 }
+
+var _ json.Marshaler = ExpandedTransaction{}
 
 func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
 	type transaction ExpandedTransaction

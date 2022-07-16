@@ -1303,8 +1303,9 @@ components:
         balance:
           type: number
       required:
-        - input
-        - output
+      - input
+      - output
+      - balance
       example:
         input: 100
         output: 20
@@ -1324,6 +1325,8 @@ components:
           balance: 90
     AggregatedVolumes:
       type: object
+      x-go-type:
+        type: AggregatedVolumes
       additionalProperties:
         $ref: '#/components/schemas/Volumes'
       example:

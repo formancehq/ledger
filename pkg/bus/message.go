@@ -16,14 +16,18 @@ const (
 	EventTypeRevertedTransaction   = "REVERTED_TRANSACTION"
 )
 
-type EventMessage struct {
+type EventMessage[PAYLOAD Payload] struct {
 	Date    time.Time `json:"date"`
 	App     string    `json:"app"`
 	Version string    `json:"version"`
 	Type    string    `json:"type"`
-	Payload any       `json:"payload"`
+	Payload PAYLOAD   `json:"payload"`
 	// TODO: deprecated in future version
 	Ledger string `json:"ledger"`
+}
+
+type Payload interface {
+	PayloadType() string
 }
 
 type CommittedTransactions struct {
@@ -35,8 +39,12 @@ type CommittedTransactions struct {
 	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
-func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
-	return EventMessage{
+func (c CommittedTransactions) PayloadType() string {
+	return EventTypeCommittedTransactions
+}
+
+func newEventCommittedTransactions(txs CommittedTransactions) EventMessage[CommittedTransactions] {
+	return EventMessage[CommittedTransactions]{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
@@ -53,8 +61,12 @@ type SavedMetadata struct {
 	Metadata   core.Metadata `json:"metadata"`
 }
 
-func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
-	return EventMessage{
+func (s SavedMetadata) PayloadType() string {
+	return EventTypeSavedMetadata
+}
+
+func newEventSavedMetadata(metadata SavedMetadata) EventMessage[SavedMetadata] {
+	return EventMessage[SavedMetadata]{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
@@ -69,8 +81,12 @@ type UpdatedMapping struct {
 	Mapping core.Mapping `json:"mapping"`
 }
 
-func newEventUpdatedMapping(mapping UpdatedMapping) EventMessage {
-	return EventMessage{
+func (u UpdatedMapping) PayloadType() string {
+	return EventTypeUpdatedMapping
+}
+
+func newEventUpdatedMapping(mapping UpdatedMapping) EventMessage[UpdatedMapping] {
+	return EventMessage[UpdatedMapping]{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
@@ -86,8 +102,12 @@ type RevertedTransaction struct {
 	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
 }
 
-func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
-	return EventMessage{
+func (r RevertedTransaction) PayloadType() string {
+	return EventTypeRevertedTransaction
+}
+
+func newEventRevertedTransaction(tx RevertedTransaction) EventMessage[RevertedTransaction] {
+	return EventMessage[RevertedTransaction]{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,

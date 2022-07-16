@@ -19,7 +19,7 @@ type {{classname}} struct {
 {{#deprecated}}
 	// Deprecated
 {{/deprecated}}
-	{{name}} {{^required}}{{^isNullable}}*{{/isNullable}}{{/required}}{{{dataType}}} `json:"{{baseName}}{{^required}},omitempty{{/required}}"{{#withXml}} xml:"{{baseName}}{{#isXmlAttribute}},attr{{/isXmlAttribute}}"{{/withXml}}{{#vendorExtensions.x-go-custom-tag}} {{{.}}}{{/vendorExtensions.x-go-custom-tag}}`
+	{{name}} {{^required}}{{^isNullable}}*{{/isNullable}}{{/required}}{{^vendorExtensions.x-go-type}}{{{dataType}}}{{/vendorExtensions.x-go-type}}{{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}} `json:"{{baseName}}{{^required}},omitempty{{/required}}"{{#withXml}} xml:"{{baseName}}{{#isXmlAttribute}},attr{{/isXmlAttribute}}"{{/withXml}}{{#vendorExtensions.x-go-custom-tag}} {{{.}}}{{/vendorExtensions.x-go-custom-tag}}`
 {{/vars}}
 {{#isAdditionalPropertiesTrue}}
 	AdditionalProperties map[string]interface{}
@@ -94,9 +94,9 @@ func New{{classname}}WithDefaults() *{{classname}} {
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Get{{name}}() {{vendorExtensions.x-go-base-type}} {
+func (o *{{classname}}) Get{{name}}() {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}} {
 	if o == nil{{#isNullable}}{{^vendorExtensions.x-golang-is-container}} || o.{{name}}.Get() == nil{{/vendorExtensions.x-golang-is-container}}{{/isNullable}} {
-		var ret {{vendorExtensions.x-go-base-type}}
+		var ret {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}
 		return ret
 	}
 
@@ -121,7 +121,7 @@ func (o *{{classname}}) Get{{name}}() {{vendorExtensions.x-go-base-type}} {
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Get{{name}}Ok() (*{{vendorExtensions.x-go-base-type}}, bool) {
+func (o *{{classname}}) Get{{name}}Ok() (*{{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}, bool) {
 	if o == nil {{#isNullable}}{{#vendorExtensions.x-golang-is-container}}|| o.{{name}} == nil{{/vendorExtensions.x-golang-is-container}}{{/isNullable}} {
 		return nil, false
 	}
@@ -142,7 +142,7 @@ func (o *{{classname}}) Get{{name}}Ok() (*{{vendorExtensions.x-go-base-type}}, b
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Set{{name}}(v {{vendorExtensions.x-go-base-type}}) {
+func (o *{{classname}}) Set{{name}}(v {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}) {
 {{#isNullable}}
 {{#vendorExtensions.x-golang-is-container}}
 	o.{{name}} = v
@@ -162,9 +162,9 @@ func (o *{{classname}}) Set{{name}}(v {{vendorExtensions.x-go-base-type}}) {
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Get{{name}}() {{vendorExtensions.x-go-base-type}} {
+func (o *{{classname}}) Get{{name}}() {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}} {
 	if o == nil {{^isNullable}}|| o.{{name}} == nil{{/isNullable}}{{#isNullable}}{{^vendorExtensions.x-golang-is-container}}|| o.{{name}}.Get() == nil{{/vendorExtensions.x-golang-is-container}}{{/isNullable}} {
-		var ret {{vendorExtensions.x-go-base-type}}
+		var ret {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}
 		return ret
 	}
 {{#isNullable}}
@@ -188,7 +188,7 @@ func (o *{{classname}}) Get{{name}}() {{vendorExtensions.x-go-base-type}} {
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Get{{name}}Ok() (*{{vendorExtensions.x-go-base-type}}, bool) {
+func (o *{{classname}}) Get{{name}}Ok() (*{{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}, bool) {
 	if o == nil {{^isNullable}}|| o.{{name}} == nil{{/isNullable}}{{#isNullable}}{{#vendorExtensions.x-golang-is-container}}|| o.{{name}} == nil{{/vendorExtensions.x-golang-is-container}}{{/isNullable}} {
 		return nil, false
 	}
@@ -218,7 +218,7 @@ func (o *{{classname}}) Has{{name}}() bool {
 {{#deprecated}}
 // Deprecated
 {{/deprecated}}
-func (o *{{classname}}) Set{{name}}(v {{vendorExtensions.x-go-base-type}}) {
+func (o *{{classname}}) Set{{name}}(v {{#vendorExtensions.x-go-type}}{{{type}}}{{/vendorExtensions.x-go-type}}{{^vendorExtensions.x-go-type}}{{vendorExtensions.x-go-base-type}}{{/vendorExtensions.x-go-type}}) {
 {{#isNullable}}
 {{#vendorExtensions.x-golang-is-container}}
 	o.{{name}} = v
