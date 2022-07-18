@@ -11,27 +11,6 @@ import (
 const SetMetadataType = "SET_METADATA"
 const NewTransactionType = "NEW_TRANSACTION"
 
-type LoggedTX Transaction
-
-func (m LoggedTX) MarshalJSON() ([]byte, error) {
-	metadata := make(map[string]interface{})
-	for k, v := range m.Metadata {
-		var i interface{}
-		err := json.Unmarshal(v, &i)
-		if err != nil {
-			return nil, err
-		}
-		metadata[k] = i
-	}
-	return json.Marshal(struct {
-		Transaction
-		Metadata map[string]interface{} `json:"metadata"`
-	}{
-		Transaction: Transaction(m),
-		Metadata:    metadata,
-	})
-}
-
 type Log struct {
 	ID   uint64      `json:"id"`
 	Type string      `json:"type"`
@@ -41,7 +20,6 @@ type Log struct {
 }
 
 func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time) Log {
-
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -50,7 +28,7 @@ func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time)
 		ID:   id,
 		Type: NewTransactionType,
 		Date: time,
-		Data: LoggedTX(tx),
+		Data: tx.payload(),
 	}
 	l.Hash = Hash(previousLog, &l)
 	return l

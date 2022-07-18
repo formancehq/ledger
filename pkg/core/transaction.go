@@ -38,6 +38,31 @@ type Transaction struct {
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
 
+func (t Transaction) payload() any {
+	metadata := make(map[string]interface{})
+	for k, v := range t.Metadata {
+		var i interface{}
+		err := json.Unmarshal(v, &i)
+		if err != nil {
+			panic(err)
+		}
+		metadata[k] = i
+	}
+	return struct {
+		Postings  Postings               `json:"postings"`
+		Reference string                 `json:"reference"`
+		Metadata  map[string]interface{} `json:"metadata"`
+		ID        uint64                 `json:"txid"`
+		Timestamp string                 `json:"timestamp"`
+	}{
+		Postings:  t.Postings,
+		Reference: t.Reference,
+		Metadata:  metadata,
+		ID:        t.ID,
+		Timestamp: t.Timestamp,
+	}
+}
+
 func (t *Transaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
