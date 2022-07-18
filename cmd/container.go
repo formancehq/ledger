@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/Shopify/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -79,11 +80,16 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		writeKey := viper.GetString(segmentWriteKey)
 		interval := viper.GetDuration(segmentHeartbeatInterval)
 		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Error("Segment enabled but no write key provided")
+			sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but no write key provided")
 		} else if interval == 0 {
 			sharedlogging.GetLogger(context.Background()).Error("Segment heartbeat interval is 0")
 		} else {
-			options = append(options, analytics.NewHeartbeatModule(applicationId, Version, writeKey, interval))
+			_, err := semver.NewVersion(Version)
+			if err != nil {
+				sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but version '%s' is not semver, skip", Version)
+			} else {
+				options = append(options, analytics.NewHeartbeatModule(applicationId, Version, writeKey, interval))
+			}
 		}
 	}
 
