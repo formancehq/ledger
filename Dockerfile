@@ -21,7 +21,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
     CC=$TARGETARCH-linux-gnu-gcc \
-    go build -o numary -tags json1 \
+    go build -o numary -tags json1,netgo \
     -ldflags="-X github.com/numary/ledger/cmd.Version=${VERSION} \
     -X github.com/numary/ledger/cmd.BuildDate=$(date +%s) \
     -X github.com/numary/ledger/cmd.Commit=${APP_SHA} \
@@ -31,4 +31,5 @@ FROM ubuntu:jammy
 RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /go/src/github.com/numary/ledger/numary /usr/local/bin/numary
 EXPOSE 3068
-CMD ["numary", "server", "start"]
+ENTRYPOINT ["numary"]
+CMD ["server", "start"]

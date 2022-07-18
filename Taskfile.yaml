@@ -1,0 +1,45 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  tests:
+    cmds:
+      - go test -tags json1,netgo -v -coverpkg ./... -coverprofile coverage.out -covermode atomic ./...
+
+  goreleaser:test:pkg:
+    desc: Test a package
+    cmds:
+      - docker run --platform linux/{{.Platform}} --rm --workdir /tmp -v $PWD/dist:/tmp {{.Image}} sh -c '{{.Cmd}} && goreleaser --version'
+
+  goreleaser:test:rpm:
+    desc: Tests rpm packages
+    vars:
+      rpm: 'rpm --nodeps -ivh'
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'amd64'
+          Image: fedora
+          Cmd: '{{.rpm}} numary_*_linux_amd64.rpm'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm64'
+          Image: fedora
+          Cmd: '{{.rpm}} numary_*_linux_arm64.rpm'
+
+  goreleaser:test:deb:
+    desc: Tests deb packages
+    vars:
+      dpkg: 'dpkg --ignore-depends=git -i'
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'amd64'
+          Image: ubuntu
+          Cmd: '{{.dpkg}} numary_*_linux_amd64.deb'
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: 'arm64'
+          Image: ubuntu
+          Cmd: '{{.dpkg}} numary_*_linux_arm64.deb'
