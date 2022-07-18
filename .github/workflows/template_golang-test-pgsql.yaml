@@ -1,0 +1,43 @@
+name: Tests - PostgreSQL
+on:
+  workflow_call:
+    inputs:
+      go_version:
+        required: false
+        type: string
+        default: 1.18
+        description: "Go version to use for the tests"
+
+jobs:
+  build:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13-alpine
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Task
+        uses: arduino/setup-task@v1
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ inputs.go_version }}
+          cache: true
+      - name: run tests
+        run: task tests
+        env:
+          NUMARY_STORAGE_DRIVER: "postgres"
+          NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash)

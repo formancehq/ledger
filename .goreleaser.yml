@@ -24,7 +24,7 @@ builds:
     flags:
       - -tags=json1
   - binary: numary
-    id: numary_linux
+    id: numary_linux_amd64
     ldflags:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
@@ -38,7 +38,24 @@ builds:
     goarch:
       - amd64
     flags:
-      - -tags=json1
+      - -tags=json1,netgo
+  - binary: numary
+    id: numary_linux_arm64
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+    goos:
+      - linux
+    goarch:
+      - arm64
+    flags:
+      - -tags=json1,netgo
   - binary: numary
     id: numary_darwin
     ldflags:
@@ -62,7 +79,8 @@ builds:
 archives:
   - id: "numary"
     builds:
-      - numary_linux
+      - numary_linux_amd64
+      - numary_linux_arm64
       - numary_darwin
       - numary_windows
     format: tar.gz
@@ -81,7 +99,7 @@ archives:
 
 
 checksum:
-  name_template: 'checksums_linux.txt'
+  name_template: 'checksums.txt'
 
 snapshot:
   name_template: "{{ .Tag }}"
@@ -136,7 +154,8 @@ nfpms:
     package_name: numary
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
-      - numary_linux
+      - numary_linux_amd64
+      - numary_linux_arm64
     homepage: https://numary.com
     maintainer: Maxence Maireaux <maxence@numary.com>
     formats:

@@ -1,0 +1,27 @@
+name: Build for Control
+on:
+  workflow_call:
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+        description: GitHub token with access to the repo
+
+jobs:
+  build:
+    name: 'Build Control'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest release of Numary/Control
+        uses: rez0n/actions-github-release@main
+        id: control_release
+        env:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          repository: "numary/control"
+          type: "stable"
+      - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
+      - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - run: rm -rf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - uses: actions/upload-artifact@v2
+        with:
+          name: control-dist
+          path: ./**
