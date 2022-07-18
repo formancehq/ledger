@@ -5,10 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -21,6 +18,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Transaction) bool {
@@ -95,7 +93,7 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 var now = time.Now().Truncate(time.Second).UTC()
 
 var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
-	"0.sql": func(t *testing.T, store *sqlstorage.Store) {
+	"0": func(t *testing.T, store *sqlstorage.Store) {
 		tx1 := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
@@ -157,8 +155,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 	},
-	"1.sql": func(t *testing.T, store *sqlstorage.Store) {},
-	"2.sql": func(t *testing.T, store *sqlstorage.Store) {
+	"1": func(t *testing.T, store *sqlstorage.Store) {},
+	"8": func(t *testing.T, store *sqlstorage.Store) {
 
 		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 		if !assert.NoError(t, err) {
@@ -420,11 +418,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 	},
 }
 
-func TestMigrates(t *testing.T) {
-
-	if ledgertesting.StorageDriverName() != "sqlite" {
-		return // Migration file does not match between both drivers
-	}
+func TestAllMigrations(t *testing.T) {
 
 	if testing.Verbose() {
 		l := logrus.New()
@@ -433,49 +427,26 @@ func TestMigrates(t *testing.T) {
 	}
 
 	driver, closeFunc, err := ledgertesting.StorageDriver()
-	if !assert.NoError(t, err) {
-		return
-	}
+	require.NoError(t, err)
 	defer closeFunc()
 
 	err = driver.Initialize(context.Background())
-	if !assert.NoError(t, err) {
-		return
-	}
+	require.NoError(t, err)
 
 	s, _, err := driver.GetStore(context.Background(), uuid.New(), true)
-	if !assert.NoError(t, err) {
-		return
-	}
+	require.NoError(t, err)
 	store := s.(*sqlstorage.Store)
-	flavor := strings.ToLower(store.Schema().Flavor().String())
 
-	migrationsFs := fstest.MapFS{}
-	sqlstorage.MigrationsFs = migrationsFs
+	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
+	require.NoError(t, err)
 
-	entries, err := os.ReadDir("./migrations/" + flavor)
-	if !assert.NoError(t, err) {
-		return
-	}
+	for _, migration := range migrations {
 
-	for _, entry := range entries {
-		file := fmt.Sprintf("migrations/%s/%s", flavor, entry.Name())
-		data, err := os.ReadFile(file)
-		if !assert.NoError(t, err) {
-			return
-		}
-		migrationsFs[file] = &fstest.MapFile{
-			Data: data,
-		}
+		modified, err := sqlstorage.Migrate(context.Background(), store.Schema(), migration)
+		require.NoError(t, err)
+		require.True(t, modified)
 
-		modified, err := store.Initialize(context.Background())
-		if !assert.NoError(t, err) {
-			return
-		}
-		if !assert.True(t, modified) {
-			return
-		}
-		pm := postMigrate[entry.Name()]
+		pm := postMigrate[migration.Number]
 		if pm != nil {
 			pm(t, store)
 		}
