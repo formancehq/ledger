@@ -35,7 +35,9 @@ func TestStore(t *testing.T) {
 	}
 
 	for _, tf := range []testingFunction{
-		//{name: "AppendLog", fn: testAppendLog},
+		{name: "Commit", fn: testCommit},
+		{name: "UpdateTransactionMetadata", fn: testUpdateTransactionMetadata},
+		{name: "UpdateAccountMetadata", fn: testUpdateAccountMetadata},
 		{name: "LastLog", fn: testLastLog},
 		{name: "CountAccounts", fn: testCountAccounts},
 		{name: "GetAssetsVolumes", fn: testGetAssetsVolumes},
@@ -208,29 +210,87 @@ var tx3 = core.Transaction{
 	},
 }
 
-//func testAppendLog(t *testing.T, store *sqlstorage.Store) {
-//	log := core.NewTransactionLog(nil, core.Transaction{
-//		ID: 0,
-//		TransactionData: core.TransactionData{
-//			Postings: []core.Posting{
-//				{
-//					Source:      "world",
-//					Destination: "central_bank",
-//					Amount:      100,
-//					Asset:       "USD",
-//				},
-//			},
-//			Reference: "foo",
-//		},
-//		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
-//	})
-//	err := store.AppendLog(context.Background(), log)
-//	require.NoError(t, err)
-//
-//	err = store.AppendLog(context.Background(), log)
-//	require.Error(t, err)
-//	require.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
-//}
+func testCommit(t *testing.T, store *sqlstorage.Store) {
+	tx := core.Transaction{
+		ID: 0,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      100,
+					Asset:       "USD",
+				},
+			},
+			Reference: "foo",
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
+	err := store.Commit(context.Background(), tx)
+	require.NoError(t, err)
+
+	err = store.Commit(context.Background(), tx)
+	require.Error(t, err)
+	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
+}
+
+func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
+	tx := core.Transaction{
+		ID: 0,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      100,
+					Asset:       "USD",
+				},
+			},
+			Reference: "foo",
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
+	err := store.Commit(context.Background(), tx)
+	require.NoError(t, err)
+
+	err = store.UpdateTransactionMetadata(context.Background(), tx.ID, core.Metadata{
+		"foo": json.RawMessage(`"bar"`),
+	}, time.Now())
+	require.NoError(t, err)
+
+	retrievedTransaction, err := store.GetTransaction(context.Background(), tx.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, json.RawMessage(`"bar"`), retrievedTransaction.Metadata["foo"])
+}
+
+func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
+	tx := core.Transaction{
+		ID: 0,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      100,
+					Asset:       "USD",
+				},
+			},
+			Reference: "foo",
+		},
+		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+	}
+	err := store.Commit(context.Background(), tx)
+	require.NoError(t, err)
+
+	err = store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
+		"foo": json.RawMessage(`"bar"`),
+	}, time.Now())
+	require.NoError(t, err)
+
+	account, err := store.GetAccount(context.Background(), "central_bank")
+	require.NoError(t, err)
+	require.EqualValues(t, json.RawMessage(`"bar"`), account.Metadata["foo"])
+}
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	tx := core.Transaction{
