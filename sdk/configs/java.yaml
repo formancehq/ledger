@@ -9,7 +9,7 @@ additionalProperties:
   groupId: com.formance
   artifactId: ledgerclient
   artifactDescription: Ledger Java Client
-  artifactUrl: https://github.com/numary/ledger-sdk-java
+  artifactUrl: https://github.com/numary/numary-sdk-java
   scmConnection: scm:git:git@github.com/numary/numary-sdk-java.git
   scmDeveloperConnection: scm:git:git@github.com/numary/numary-sdk-java.git
   scmUrl: https://github.com/numary/numary-sdk-java
