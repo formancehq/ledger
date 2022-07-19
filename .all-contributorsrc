@@ -102,6 +102,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "edwardmp",
+      "name": "Edward Poot",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1686739?v=4",
+      "profile": "https://edwardpoot.com",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,
