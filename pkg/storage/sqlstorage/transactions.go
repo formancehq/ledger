@@ -121,7 +121,7 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 		if err != nil {
 			return sharedapi.Cursor[core.Transaction]{}, err
 		}
-		tx.Timestamp = timestamp.UTC().Format(time.RFC3339)
+		tx.Timestamp = timestamp.UTC()
 		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
@@ -207,7 +207,7 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 	if err != nil {
 		return nil, err
 	}
-	tx.Timestamp = t.UTC().Format(time.RFC3339)
+	tx.Timestamp = t.UTC()
 	tx.Reference = ref.String
 
 	return &tx, nil
@@ -259,7 +259,7 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 	if err != nil {
 		return nil, err
 	}
-	tx.Timestamp = t.UTC().Format(time.RFC3339)
+	tx.Timestamp = t.UTC()
 	tx.Reference = ref.String
 
 	return &tx, nil

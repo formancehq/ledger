@@ -30,7 +30,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 				panic(err)
 			}
 
-			ib.Values(l.ID, l.Type, l.Hash, l.Date.Format(time.RFC3339Nano), string(data))
+			ib.Values(l.ID, l.Type, l.Hash, l.Date, string(data))
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
 	case sqlbuilder.PostgreSQL:
@@ -91,7 +91,6 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	var (
 		l    core.Log
-		ts   sql.NullString
 		data sql.NullString
 	)
 
@@ -103,19 +102,14 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
 	row := exec.QueryRowContext(ctx, sqlq)
-	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data); err != nil {
+	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	t, err := time.Parse(time.RFC3339Nano, ts.String)
-	if err != nil {
-		return nil, err
-	}
-	l.Date = t.UTC()
-
+	var err error
 	l.Data, err = core.HydrateLog(l.Type, data.String)
 	if err != nil {
 		return nil, err
@@ -149,22 +143,17 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	for rows.Next() {
 		l := core.Log{}
 		var (
-			ts   sql.NullString
 			data sql.NullString
 		)
 
-		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &ts, &data)
+		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return nil, nil
 			}
 			return nil, err
 		}
-		t, err := time.Parse(time.RFC3339Nano, ts.String)
-		if err != nil {
-			return nil, err
-		}
-		l.Date = t.UTC()
+
 		l.Data, err = core.HydrateLog(l.Type, data.String)
 		if err != nil {
 			return nil, errors.Wrap(err, "hydrating log")

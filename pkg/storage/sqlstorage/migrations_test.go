@@ -25,7 +25,7 @@ var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Tr
 	sqlx, args := sqlbuilder.NewInsertBuilder().
 		InsertInto(store.Schema().Table("transactions")).
 		Cols("id", "timestamp", "hash", "reference").
-		Values(tx.ID, tx.Timestamp, "xyz", tx.Reference).
+		Values(tx.ID, tx.Timestamp.Format(time.RFC3339), "xyz", tx.Reference).
 		BuildWithFlavor(store.Schema().Flavor())
 	_, err := store.Schema().ExecContext(context.Background(), sqlx, args...)
 	if !assert.NoError(t, err) {
@@ -75,7 +75,7 @@ func v0CountMetadata(t *testing.T, store *sqlstorage.Store) (int, bool) {
 	return count, true
 }
 
-func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, timestamp, key string, value json.RawMessage) bool {
+func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId string, timestamp time.Time, key string, value json.RawMessage) bool {
 	count, ok := v0CountMetadata(t, store)
 	if !ok {
 		return false
@@ -84,7 +84,7 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId, 
 	sqlx, args := sqlbuilder.NewInsertBuilder().
 		InsertInto(store.Schema().Table("metadata")).
 		Cols("meta_id", "meta_target_type", "meta_target_id", "meta_key", "meta_value", "timestamp").
-		Values(count+1, targetType, targetId, key, string(value), timestamp).
+		Values(count+1, targetType, targetId, key, string(value), timestamp.Format(time.RFC3339)).
 		BuildWithFlavor(store.Schema().Flavor())
 	_, err := store.Schema().ExecContext(context.Background(), sqlx, args...)
 	return assert.NoError(t, err)
@@ -116,7 +116,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Reference: "tx1",
 			},
 			ID:        0,
-			Timestamp: now.Format(time.RFC3339),
+			Timestamp: now,
 		}
 		if !v0CreateTransaction(t, store, tx1) {
 			return
@@ -126,13 +126,13 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		if !v0AddMetadata(t, store, "transaction", fmt.Sprint(tx1.ID), tx1.Timestamp, "startedAt", json.RawMessage(tx1.Timestamp)) {
+		if !v0AddMetadata(t, store, "transaction", fmt.Sprint(tx1.ID), tx1.Timestamp, "startedAt", json.RawMessage(tx1.Timestamp.Format(time.RFC3339))) {
 			return
 		} // Invalid json.RawMessage, it is to prevent failures when upgrading corrupted data
-		if !v0AddMetadata(t, store, "account", "player1", now.Add(time.Second).Format(time.RFC3339), "role", json.RawMessage(`"admin"`)) {
+		if !v0AddMetadata(t, store, "account", "player1", now.Add(time.Second), "role", json.RawMessage(`"admin"`)) {
 			return
 		}
-		if !v0AddMetadata(t, store, "account", "player1", now.Add(time.Second).Format(time.RFC3339), "phones", json.RawMessage(`["0836656565"]`)) {
+		if !v0AddMetadata(t, store, "account", "player1", now.Add(time.Second), "phones", json.RawMessage(`["0836656565"]`)) {
 			return
 		}
 
@@ -149,7 +149,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Reference: "tx2",
 			},
 			ID:        1,
-			Timestamp: now.Add(2 * time.Second).Format(time.RFC3339),
+			Timestamp: now.Add(2 * time.Second),
 		}
 		if !v0CreateTransaction(t, store, tx2) {
 			return
@@ -202,7 +202,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Reference: "tx1",
 				Metadata:  core.Metadata{},
 			},
-			Timestamp:         now.Format(time.RFC3339),
+			Timestamp:         now,
 			PreCommitVolumes:  core.AccountsAssetsVolumes{},
 			PostCommitVolumes: core.AccountsAssetsVolumes{},
 		}, *tx)
@@ -310,7 +310,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						Reference: "tx2",
 					},
 					ID:        1,
-					Timestamp: now.Add(2 * time.Second).Format(time.RFC3339),
+					Timestamp: now.Add(2 * time.Second),
 				},
 				Date: now.Add(2 * time.Second),
 			},
@@ -396,7 +396,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						Metadata:  core.Metadata{},
 						Reference: "tx1",
 					},
-					Timestamp: now.Format(time.RFC3339),
+					Timestamp: now,
 				},
 				Date: now,
 			},

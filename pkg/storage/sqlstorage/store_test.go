@@ -106,7 +106,7 @@ var tx1 = core.Transaction{
 		},
 		Reference: "tx1",
 	},
-	Timestamp: now.Add(-3 * time.Hour).Format(time.RFC3339),
+	Timestamp: now.Add(-3 * time.Hour),
 }
 var tx2 = core.Transaction{
 	ID: 1,
@@ -121,7 +121,7 @@ var tx2 = core.Transaction{
 		},
 		Reference: "tx2",
 	},
-	Timestamp: now.Add(-2 * time.Hour).Format(time.RFC3339),
+	Timestamp: now.Add(-2 * time.Hour),
 }
 var tx3 = core.Transaction{
 	ID: 2,
@@ -139,7 +139,7 @@ var tx3 = core.Transaction{
 			"priority": json.RawMessage(`"high"`),
 		},
 	},
-	Timestamp: now.Add(-1 * time.Hour).Format(time.RFC3339),
+	Timestamp: now.Add(-1 * time.Hour),
 }
 
 func testAppendLog(t *testing.T, store *sqlstorage.Store) {
@@ -156,7 +156,7 @@ func testAppendLog(t *testing.T, store *sqlstorage.Store) {
 			},
 			Reference: "foo",
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: time.Now().Round(time.Second),
 	})
 	err := store.AppendLog(context.Background(), log)
 	assert.NoError(t, err)
@@ -179,7 +179,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 				},
 			},
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: time.Now().Round(time.Second),
 	}
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	assert.NoError(t, err)
@@ -201,7 +201,7 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 				},
 			},
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
+		Timestamp: time.Now().Round(time.Second),
 	}
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, tx))
 	assert.NoError(t, err)

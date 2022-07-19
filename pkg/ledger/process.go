@@ -99,14 +99,16 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		}
 
 		tx := core.Transaction{
-			TransactionData:   t,
-			ID:                nextTxId,
-			Timestamp:         time.Now().UTC().Format(time.RFC3339),
+			TransactionData: t,
+			ID:              nextTxId,
+			// Until v1.5.0, dates was stored as string using rfc3339 format
+			// So round the date to the second to keep the same behaviour
+			Timestamp:         time.Now().UTC().Truncate(time.Second),
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
 		generatedTxs = append(generatedTxs, tx)
-		newLog := core.NewTransactionLog(lastLog, tx)
+		newLog := core.NewTransactionLogWithDate(lastLog, tx, tx.Timestamp)
 		lastLog = &newLog
 		generatedLogs = append(generatedLogs, newLog)
 		nextTxId++
