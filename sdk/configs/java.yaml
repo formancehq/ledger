@@ -10,15 +10,17 @@ additionalProperties:
   artifactId: ledgerclient
   artifactDescription: Ledger Java Client
   artifactUrl: https://github.com/numary/ledger-sdk-java
-  scmConnection: scm:git:git@github.com/numary/ledger-sdk-java.git
-  scmDeveloperConnection: scm:git:git@github.com/numary/ledger-sdk-java.git
-  scmUrl: https://github.com/numary/ledger-sdk-java
-  developerEmail: support@numary.com
+  scmConnection: scm:git:git@github.com/numary/numary-sdk-java.git
+  scmDeveloperConnection: scm:git:git@github.com/numary/numary-sdk-java.git
+  scmUrl: https://github.com/numary/numary-sdk-java
+  developerEmail: support@formance.com
   developerName: Ledger Java Client Contributors
   developerOrganization: Formance
   developerOrganizationUrl: https://formance.com
   library: retrofit2
   openApiNullable: false
+  licenseName: MIT License
+  licenseUrl: http://www.opensource.org/licenses/mit-license.php
 inlineSchemaNameMappings:
   getAccount_200_response: GetAccountResponse
   listAccounts_200_response: ListAccountsResponse
