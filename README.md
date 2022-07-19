@@ -101,6 +101,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <td align="center"><a href="https://karmanyaah.malhotra.cc/"><img src="https://avatars.githubusercontent.com/u/32671690?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Karmanyaah Malhotra</b></sub></a><br /><a href="#userTesting-karmanyaahm" title="User Testing">📓</a></td>
     <td align="center"><a href="https://www.linkedin.com/in/antoinegelloz/"><img src="https://avatars.githubusercontent.com/u/42968436?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Antoine Gelloz</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=antoinegelloz" title="Code">💻</a></td>
     <td align="center"><a href="https://github.com/jdupas22"><img src="https://avatars.githubusercontent.com/u/106673437?v=4?s=100" width="100px;" alt=""/><br /><sub><b>jdupas22</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=jdupas22" title="Code">💻</a></td>
+    <td align="center"><a href="https://edwardpoot.com"><img src="https://avatars.githubusercontent.com/u/1686739?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Edward Poot</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=edwardmp" title="Code">💻</a></td>
   </tr>
 </table>
 
