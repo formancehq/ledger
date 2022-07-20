@@ -76,6 +76,8 @@ jobs:
     needs:
       - GoReleaserRelease
     uses: ./.github/workflows/template_sdk-publish.yaml
+    with:
+      VERSION: ${{ github.event.release.tag_name }}
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
@@ -120,7 +122,7 @@ jobs:
 #      matrix:
 #        format: [ deb, rpm ]
 #    steps:
-#      - uses: actions/checkout@v2
+#      - uses: actions/checkout@v3
 #        with:
 #          fetch-depth: 0
 #      - uses: arduino/setup-task@v1
