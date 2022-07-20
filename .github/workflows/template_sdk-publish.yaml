@@ -1,6 +1,17 @@
-name: SDK Generate
+name: SDK Publish
 on:
+  workflow_dispatch:
+    inputs:
+      VERSION:
+        type: string
+        required: true
+        description: Version of the SDK to publish
   workflow_call:
+    inputs:
+      VERSION:
+        type: string
+        required: true
+        description: Version of the SDK to publish
     secrets:
       NUMARY_GITHUB_TOKEN:
         required: true
@@ -8,7 +19,7 @@ on:
 
 jobs:
   Sdk:
-    name: 'Generate SDK'
+    name: 'Publish SDK'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -17,10 +28,11 @@ jobs:
       matrix:
         sdk: [ go, php, python, typescript-node ]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - uses: actions/checkout@v2
+          ref: ${{ inputs.VERSION }}
+      - uses: actions/checkout@v3
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           repository: numary/numary-sdk-${{ matrix.sdk }}
@@ -32,4 +44,11 @@ jobs:
       - name: Install Task
         uses: arduino/setup-task@v1
       - name: Launch Generate
-        run: task generate VERSION=develop -- ${{ matrix.sdk }}
+        run: task generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
+      - uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Upgrade Release to ${{ inputs.VERSION }}
+          tagging_message: ${{ inputs.VERSION }}
+          repository: ./sdks/${{ matrix.sdk }}
+          commit_user_name: NumaryBot
+          commit_user_email: support@numary.com
