@@ -35,6 +35,8 @@ func TestPostTransactions(t *testing.T) {
 		expectedErrorCode  string
 	}
 
+	var now = time.Now().Round(time.Second).UTC()
+
 	testCases := []testCase{
 		{
 			name:               "nominal",
@@ -159,6 +161,52 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:               "with specified timestamp",
+			expectedStatusCode: http.StatusOK,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now,
+				},
+			},
+		},
+		{
+			name:               "with specified timestamp prior to last tx",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  controllers.ErrValidation,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now,
+				},
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      1000,
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: now.Add(-time.Second),
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -168,6 +216,12 @@ func TestPostTransactions(t *testing.T) {
 					for i := 0; i < len(tc.transactions)-1; i++ {
 						rsp := internal.PostTransaction(t, api, tc.transactions[i])
 						assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						if !tc.transactions[i].Timestamp.IsZero() {
+							txs, ok := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
+							require.True(t, ok)
+							require.Len(t, txs, 1)
+							assert.Equal(t, tc.transactions[i].Timestamp, txs[0].Timestamp)
+						}
 					}
 					rsp := internal.PostTransaction(t, api, tc.transactions[len(tc.transactions)-1])
 					assert.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
@@ -341,8 +395,8 @@ func TestGetTransactions(t *testing.T) {
 							},
 						},
 						Reference: "ref:001",
+						Timestamp: now.Add(-3 * time.Hour),
 					},
-					Timestamp: now.Add(-3 * time.Hour),
 				}
 				tx2 := core.Transaction{
 					ID: 1,
@@ -359,8 +413,8 @@ func TestGetTransactions(t *testing.T) {
 							"foo": json.RawMessage(`"bar"`),
 						},
 						Reference: "ref:002",
+						Timestamp: now.Add(-2 * time.Hour),
 					},
-					Timestamp: now.Add(-2 * time.Hour),
 				}
 				tx3 := core.Transaction{
 					ID: 2,
@@ -377,8 +431,8 @@ func TestGetTransactions(t *testing.T) {
 						Metadata: map[string]json.RawMessage{
 							"priority": json.RawMessage(`"high"`),
 						},
+						Timestamp: now.Add(-1 * time.Hour),
 					},
-					Timestamp: now.Add(-1 * time.Hour),
 				}
 				log1 := core.NewTransactionLog(nil, tx1)
 				log2 := core.NewTransactionLog(&log1, tx2)
@@ -627,8 +681,8 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 									Asset:       "USD",
 								},
 							},
+							Timestamp: now,
 						},
-						Timestamp: now,
 					}
 					log := core.NewTransactionLog(previousLog, tx)
 					logs = append(logs, log)
@@ -707,7 +761,6 @@ func TestTransactionsVolumes(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 
 				// Single posting - single asset
-
 				const worldAliceUSD int64 = 100
 
 				rsp := internal.PostTransaction(t, api,

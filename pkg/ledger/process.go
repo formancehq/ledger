@@ -40,8 +40,16 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 	contracts = append(contracts, DefaultContracts...)
 
 	for i, t := range ts {
+		if t.Timestamp.IsZero() {
+			// Until v1.5.0, dates was stored as string using rfc3339 format
+			// So round the date to the second to keep the same behaviour
+			t.Timestamp = time.Now().UTC().Truncate(time.Second)
+		}
 		if len(t.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
+		}
+		if lastLog != nil && t.Timestamp.Before(lastLog.Date) {
+			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
 		txVolumeAggregator := volumeAggregator.nextTx()
@@ -101,9 +109,6 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		tx := core.Transaction{
 			TransactionData: t,
 			ID:              nextTxId,
-			// Until v1.5.0, dates was stored as string using rfc3339 format
-			// So round the date to the second to keep the same behaviour
-			Timestamp:         time.Now().UTC().Truncate(time.Second),
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}

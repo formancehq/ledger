@@ -114,9 +114,9 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 					"players": json.RawMessage(`["player1", "player2"]`),
 				},
 				Reference: "tx1",
+				Timestamp: now,
 			},
-			ID:        0,
-			Timestamp: now,
+			ID: 0,
 		}
 		if !v0CreateTransaction(t, store, tx1) {
 			return
@@ -147,9 +147,9 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 					},
 				},
 				Reference: "tx2",
+				Timestamp: now.Add(2 * time.Second),
 			},
-			ID:        1,
-			Timestamp: now.Add(2 * time.Second),
+			ID: 1,
 		}
 		if !v0CreateTransaction(t, store, tx2) {
 			return
@@ -201,8 +201,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 				Postings:  core.Postings{},
 				Reference: "tx1",
 				Metadata:  core.Metadata{},
+				Timestamp: now,
 			},
-			Timestamp:         now,
 			PreCommitVolumes:  core.AccountsAssetsVolumes{},
 			PostCommitVolumes: core.AccountsAssetsVolumes{},
 		}, *tx)
@@ -308,9 +308,9 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						},
 						Metadata:  core.Metadata{},
 						Reference: "tx2",
+						Timestamp: now.Add(2 * time.Second),
 					},
-					ID:        1,
-					Timestamp: now.Add(2 * time.Second),
+					ID: 1,
 				},
 				Date: now.Add(2 * time.Second),
 			},
@@ -395,8 +395,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 						},
 						Metadata:  core.Metadata{},
 						Reference: "tx1",
+						Timestamp: now,
 					},
-					Timestamp: now,
 				},
 				Date: now,
 			},
