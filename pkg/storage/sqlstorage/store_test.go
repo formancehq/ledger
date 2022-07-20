@@ -108,7 +108,6 @@ var tx1 = core.Transaction{
 		Reference: "tx1",
 		Timestamp: now.Add(-3 * time.Hour),
 	},
-	Timestamp: now.Add(-3 * time.Hour),
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
@@ -144,7 +143,6 @@ var tx2 = core.Transaction{
 		Reference: "tx2",
 		Timestamp: now.Add(-2 * time.Hour),
 	},
-	Timestamp: now.Add(-2 * time.Hour),
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
@@ -187,7 +185,6 @@ var tx3 = core.Transaction{
 		},
 		Timestamp: now.Add(-1 * time.Hour),
 	},
-	Timestamp: now.Add(-1 * time.Hour),
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
@@ -226,8 +223,8 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 				},
 			},
 			Reference: "foo",
+			Timestamp: time.Now().Round(time.Second),
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.Commit(context.Background(), tx)
 	require.NoError(t, err)
@@ -250,8 +247,8 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 				},
 			},
 			Reference: "foo",
+			Timestamp: time.Now().Round(time.Second),
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.Commit(context.Background(), tx)
 	require.NoError(t, err)
@@ -279,8 +276,8 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 				},
 			},
 			Reference: "foo",
+			Timestamp: time.Now().Round(time.Second),
 		},
-		Timestamp: time.Now().Round(time.Second).Format(time.RFC3339),
 	}
 	err := store.Commit(context.Background(), tx)
 	require.NoError(t, err)
@@ -331,7 +328,6 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 			},
 			Timestamp: time.Now().Round(time.Second),
 		},
-		Timestamp: time.Now().Round(time.Second),
 		PostCommitVolumes: core.AccountsAssetsVolumes{
 			"central_bank": core.AssetsVolumes{
 				"USD": {
@@ -658,7 +654,7 @@ func testLastLog(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 
-	require.Equal(t, tx1.Postings, lastLog.Data.(core.Transaction).Postings)
-	require.Equal(t, tx1.Reference, lastLog.Data.(core.Transaction).Reference)
-	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.Transaction).Timestamp)
+	require.Equal(t, tx1.Postings, lastLog.Data.(core.RawTransaction).Postings)
+	require.Equal(t, tx1.Reference, lastLog.Data.(core.RawTransaction).Reference)
+	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.RawTransaction).Timestamp)
 }

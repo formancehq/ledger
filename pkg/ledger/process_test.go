@@ -271,13 +271,12 @@ func TestLedger_processTx(t *testing.T) {
 
 		t.Run("date in the past", func(t *testing.T) {
 			now := time.Now()
-			log := core.NewTransactionLogWithDate(nil, core.Transaction{
+			require.NoError(t, l.store.Commit(context.Background(), core.Transaction{
 				TransactionData: core.TransactionData{
 					Timestamp: now,
 				},
 				ID: 0,
-			}, now)
-			require.NoError(t, l.store.AppendLog(context.Background(), log))
+			}))
 
 			_, err := l.processTx(context.Background(), []core.TransactionData{
 				{

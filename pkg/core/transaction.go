@@ -34,11 +34,52 @@ func (t *TransactionData) Reverse() TransactionData {
 
 var _ json.Marshaler = Transaction{}
 
+type RawTransaction struct {
+	Postings  Postings    `json:"postings"`
+	Reference string      `json:"reference"`
+	Metadata  RawMetadata `json:"metadata"`
+	ID        uint64      `json:"txid"`
+	Timestamp time.Time   `json:"timestamp"`
+}
+
+func (r RawTransaction) ToTransaction() Transaction {
+	return Transaction{
+		TransactionData: TransactionData{
+			Postings:  r.Postings,
+			Reference: r.Reference,
+			Metadata:  r.Metadata.ToMetadata(),
+			Timestamp: r.Timestamp,
+		},
+		ID:                r.ID,
+		PreCommitVolumes:  AccountsAssetsVolumes{},
+		PostCommitVolumes: AccountsAssetsVolumes{},
+	}
+}
+
 type Transaction struct {
 	TransactionData
 	ID                uint64                `json:"txid"`
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
+}
+
+func (t Transaction) raw() RawTransaction {
+	metadata := make(map[string]interface{})
+	for k, v := range t.Metadata {
+		var i interface{}
+		err := json.Unmarshal(v, &i)
+		if err != nil {
+			panic(err)
+		}
+		metadata[k] = i
+	}
+	return RawTransaction{
+		Postings:  t.Postings,
+		Reference: t.Reference,
+		Metadata:  metadata,
+		ID:        t.ID,
+		Timestamp: t.Timestamp,
+	}
 }
 
 func (t Transaction) MarshalJSON() ([]byte, error) {
@@ -69,11 +110,13 @@ func Hash(t1, t2 interface{}) string {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(string(b1))
 
 	b2, err := json.Marshal(t2)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(string(b2))
 
 	h := sha256.New()
 	_, err = h.Write(b1)

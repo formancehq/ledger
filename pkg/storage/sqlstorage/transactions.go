@@ -300,7 +300,7 @@ func (s *API) insertTransactions(ctx context.Context, txs ...core.Transaction) e
 				reference = &cp
 			}
 
-			ib.Values(tx.ID, tx.Timestamp, reference, postingsData,
+			ib.Values(tx.ID, tx.Timestamp.Format(time.RFC3339), reference, postingsData,
 				metadataData, preCommitVolumesData, postCommitVolumesData)
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
@@ -338,7 +338,7 @@ func (s *API) insertTransactions(ctx context.Context, txs ...core.Transaction) e
 			}
 
 			ids[i] = tx.ID
-			timestamps[i] = tx.Timestamp
+			timestamps[i] = tx.Timestamp.Format(time.RFC3339)
 			postingDataSet[i] = string(postingsData)
 			metadataDataSet[i] = string(metadataData)
 			preCommitVolumesDataSet[i] = string(preCommitVolumesData)

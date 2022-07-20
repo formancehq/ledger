@@ -19,7 +19,35 @@ func SpecMetadata(name string) string {
 	return numaryNamespace + name
 }
 
+type RawMetadata map[string]any
+
+func (m RawMetadata) ToMetadata() Metadata {
+	data, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	ret := Metadata{}
+	err = json.Unmarshal(data, &ret)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
 type Metadata map[string]json.RawMessage
+
+func (m Metadata) Raw() RawMetadata {
+	metadata := make(map[string]any)
+	for k, v := range m {
+		var i interface{}
+		err := json.Unmarshal(v, &i)
+		if err != nil {
+			panic(err)
+		}
+		metadata[k] = i
+	}
+	return metadata
+}
 
 // IsEquivalentTo allow to compare to metadata object.
 //

@@ -42,7 +42,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		if len(t.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
-		if lastLog != nil && t.Timestamp.Before(lastLog.Date) {
+		if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
 			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
@@ -101,11 +101,12 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		}
 
 		tx := core.Transaction{
-			TransactionData: t,
-			ID:              nextTxId,
+			TransactionData:   t,
+			ID:                nextTxId,
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
+		lastTx = &tx
 		generatedTxs = append(generatedTxs, tx)
 		nextTxId++
 	}

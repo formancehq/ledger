@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
@@ -68,7 +67,6 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 	if err := l.store.WithTX(ctx, func(api storage.API) error {
 		return l.store.Commit(ctx, result.GeneratedTransactions...)
 	}); err != nil {
-		spew.Dump(err)
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
@@ -158,12 +156,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 			return err
 		}
 
-		at, err := time.Parse(time.RFC3339, revert.Timestamp)
-		if err != nil {
-			return err
-		}
-
-		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), at)
+		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp)
 	})
 	if err != nil {
 		return nil, err

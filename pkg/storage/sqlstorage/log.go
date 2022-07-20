@@ -88,6 +88,7 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 		}
 		return nil, err
 	}
+	l.Date = l.Date.UTC()
 
 	var err error
 	l.Data, err = core.HydrateLog(l.Type, data.String)
@@ -136,6 +137,7 @@ func (s *API) Logs(ctx context.Context) ([]core.Log, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "hydrating log")
 		}
+		l.Date = l.Date.UTC()
 		ret = append(ret, l)
 	}
 	if rows.Err() != nil {

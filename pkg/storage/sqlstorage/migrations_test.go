@@ -267,6 +267,7 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		require.NoError(t, err)
 		require.Len(t, logs, 8)
 
+		fmt.Println("check all hash")
 		index, ok := core.CheckHash(logs...)
 		if !assert.Truef(t, ok, "error checking hash at index %d", index) {
 			return
@@ -280,21 +281,19 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			{
 				ID:   6,
 				Type: core.NewTransactionType,
-				Data: core.Transaction{
-					TransactionData: core.TransactionData{
-						Postings: core.Postings{
-							{
-								Source:      "player1",
-								Destination: "shop",
-								Amount:      1,
-								Asset:       "USD",
-							},
+				Data: core.RawTransaction{
+					Postings: core.Postings{
+						{
+							Source:      "player1",
+							Destination: "shop",
+							Amount:      1,
+							Asset:       "USD",
 						},
-						Metadata:  core.Metadata{},
-						Reference: "tx2",
-						Timestamp: now.Add(2 * time.Second),
 					},
-					ID: 1,
+					Metadata:  core.RawMetadata{},
+					Reference: "tx2",
+					Timestamp: now.Add(2 * time.Second),
+					ID:        1,
 				},
 				Date: now.Add(2 * time.Second),
 			},
@@ -361,26 +360,24 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			{
 				ID:   0,
 				Type: core.NewTransactionType,
-				Data: core.Transaction{
-					TransactionData: core.TransactionData{
-						Postings: core.Postings{
-							{
-								Source:      "world",
-								Destination: "player1",
-								Amount:      100,
-								Asset:       "USD",
-							},
-							{
-								Source:      "world",
-								Destination: "player2",
-								Amount:      100,
-								Asset:       "USD",
-							},
+				Data: core.RawTransaction{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "player1",
+							Amount:      100,
+							Asset:       "USD",
 						},
-						Metadata:  core.Metadata{},
-						Reference: "tx1",
-						Timestamp: now,
+						{
+							Source:      "world",
+							Destination: "player2",
+							Amount:      100,
+							Asset:       "USD",
+						},
 					},
+					Metadata:  core.RawMetadata{},
+					Reference: "tx1",
+					Timestamp: now,
 				},
 				Date: now,
 			},
