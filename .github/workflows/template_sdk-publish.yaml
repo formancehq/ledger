@@ -21,9 +21,6 @@ jobs:
   Sdk:
     name: 'Publish SDK'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./sdk/
     strategy:
       matrix:
         sdk: [ go, php, python, typescript-node ]
@@ -31,12 +28,11 @@ jobs:
       - uses: actions/checkout@v3
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          ref: ${{ inputs.VERSION }}
       - uses: actions/checkout@v3
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           repository: numary/numary-sdk-${{ matrix.sdk }}
-          path: sdks/${{ matrix.sdk }}
+          path: ./sdk/sdks/${{ matrix.sdk }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
@@ -44,11 +40,11 @@ jobs:
       - name: Install Task
         uses: arduino/setup-task@v1
       - name: Launch Generate
-        run: task generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
+        run: task sdk:generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: Upgrade Release to ${{ inputs.VERSION }}
           tagging_message: ${{ inputs.VERSION }}
-          repository: ./sdks/${{ matrix.sdk }}
+          repository: ./sdk/sdks/${{ matrix.sdk }}
           commit_user_name: NumaryBot
           commit_user_email: support@numary.com

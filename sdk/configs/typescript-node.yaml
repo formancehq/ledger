@@ -6,6 +6,7 @@ additionalProperties:
   moduleName: ledger
   projectName: '@numaryhq/ledger-nodejs'
   gitRepository: 'https://github.com/numary/numary-sdk-typescript-node'
+  NPM_TOKEN: '${{ secrets.NPM_TOKEN }}'
 files:
   Taskfile.yml.mustache:
     destinationFilename: Taskfile.yml
