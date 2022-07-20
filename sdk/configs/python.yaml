@@ -3,6 +3,7 @@ additionalProperties:
   packageName: ledgerclient
   infoName: Numary ledger Client
   infoEmail: support@numary.com
+  PYPI_SECRET: "${{ secrets.PYPI_SECRET }}"
 
 files:
   Taskfile.yml.mustache:

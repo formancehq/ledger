@@ -49,7 +49,6 @@ tasks:
       RANDOM:
         sh: "echo $$"
     cmds:
-      - task: generate
       - |
         cd ./sdks/{{.CLI_ARGS}}
         task test
