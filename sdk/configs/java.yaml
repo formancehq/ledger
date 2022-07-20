@@ -21,6 +21,11 @@ additionalProperties:
   openApiNullable: false
   licenseName: MIT License
   licenseUrl: http://www.opensource.org/licenses/mit-license.php
+  gpg_private_key: '${{ secrets.GPG_SIGNING_KEY }}'
+  gpg_passphrase: '${{ secrets.GPG_PASSPHRASE }}'
+  nexus_username: '${{ secrets.OSSRH_USERNAME }}'
+  nexus_password: '${{ secrets.OSSRH_PASSWORD }}'
+
 inlineSchemaNameMappings:
   getAccount_200_response: GetAccountResponse
   listAccounts_200_response: ListAccountsResponse
