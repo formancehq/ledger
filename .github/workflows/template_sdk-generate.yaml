@@ -30,4 +30,4 @@ jobs:
       - name: Install Task
         uses: arduino/setup-task@v1
       - name: Launch Generate
-        run: task sdk:generate VERSION=develop -- ${{ matrix.sdk }}
+        run: task sdk:generate VERSION=main -- ${{ matrix.sdk }}
