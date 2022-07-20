@@ -2,7 +2,6 @@ package suite_test
 
 import (
 	"context"
-	"time"
 
 	. "github.com/numary/ledger/it/internal"
 	. "github.com/numary/ledger/it/internal/httplistener"
@@ -38,7 +37,7 @@ var _ = Scenario("Transactions api", func(env *Environment) {
 						{
 							TransactionData: core.NewTransactionData(core.NewPosting("world", "bank", "USD", 100)).
 								SetReference(""),
-							Timestamp: response.Data[0].Timestamp.Format(time.RFC3339),
+							Timestamp: response.Data[0].Timestamp,
 							PreCommitVolumes: core.NewAccountsAssetsVolumes().
 								SetVolumes("world", "USD", core.NewVolumes(0, 0)).
 								SetVolumes("bank", "USD", core.NewVolumes(0, 0)),

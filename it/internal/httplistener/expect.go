@@ -1,11 +1,8 @@
 package httplistener
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/ledger/pkg/bus"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -37,9 +34,7 @@ func (a *haveTriggeredEvent[T]) FailureMessage(actual interface{}) (message stri
 }
 
 func (a *haveTriggeredEvent[T]) NegatedFailureMessage(actual interface{}) (message string) {
-	buf := bytes.NewBufferString("")
-	spew.Fdump(buf, a.event)
-	return fmt.Sprintf("expected ledger '%s' to not trigger event \r\n%#s\r\n", *actual.(*string), buf.String())
+	return Equal(a.event).NegatedFailureMessage(*a.foundEvent)
 }
 
 var _ types.GomegaMatcher = &haveTriggeredEvent[bus.CommittedTransactions]{}
