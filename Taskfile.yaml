@@ -1,0 +1,23 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  COMPOSE_FILE: -f docker-compose.yml
+
+tasks:
+  run:
+    cmds:
+      - docker-compose {{.COMPOSE_FILE}} up -d --remove-orphans
+  stop:
+    cmds:
+      - docker-compose {{.COMPOSE_FILE}} stop
+  ps:
+    cmds:
+      - docker-compose {{.COMPOSE_FILE}} ps
+  rm:
+    deps:
+      - stop
+    cmds:
+      - docker-compose {{.COMPOSE_FILE}} rm -f
+      - docker volume prune -f

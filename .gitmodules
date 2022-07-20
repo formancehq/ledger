@@ -1,0 +1,21 @@
+[submodule "services/ledger"]
+	path = services/ledger
+	url = https://github.com/formancehq/ledger
+[submodule "services/payments"]
+	path = services/payments
+	url = https://github.com/formancehq/payments
+[submodule "services/auth"]
+	path = services/auth
+	url = https://github.com/formancehq/auth
+[submodule "services/search"]
+	path = services/search
+	url = https://github.com/formancehq/search
+[submodule "services/webhooks"]
+	path = services/webhooks
+	url = https://github.com/formancehq/webhooks
+[submodule "services/ui"]
+	path = services/ui
+	url = https://github.com/formancehq/control
+[submodule "docs"]
+	path = docs
+	url = https://github.com/formancehq/docs
