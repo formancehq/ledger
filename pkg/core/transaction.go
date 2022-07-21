@@ -110,13 +110,11 @@ func Hash(t1, t2 interface{}) string {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(b1))
 
 	b2, err := json.Marshal(t2)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(b2))
 
 	h := sha256.New()
 	_, err = h.Write(b1)
