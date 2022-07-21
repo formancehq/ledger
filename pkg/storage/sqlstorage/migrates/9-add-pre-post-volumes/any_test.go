@@ -231,9 +231,9 @@ func TestMigrate9(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	txs, err := store.GetTransactions(context.Background(), *storage.NewTransactionsQuery())
+	count, err := store.CountTransactions(context.Background(), *storage.NewTransactionsQuery())
 	require.NoError(t, err)
-	require.Len(t, txs.Data, len(testCases))
+	require.Equal(t, count, uint64(len(testCases)))
 
 	sqlTx, err := schema.BeginTx(context.Background(), &sql.TxOptions{})
 	require.NoError(t, err)
@@ -242,10 +242,21 @@ func TestMigrate9(t *testing.T) {
 	require.NoError(t, sqlTx.Commit())
 
 	for i, tc := range testCases {
-		tx, err := store.GetTransaction(context.Background(), uint64(i))
-		require.NoError(t, err)
-		require.Equal(t, tc.expectedPreCommitVolumes, tx.PreCommitVolumes)
-		require.Equal(t, tc.expectedPostCommitVolumes, tx.PostCommitVolumes)
+
+		sb := sqlbuilder.NewSelectBuilder()
+		sqlq, args := sb.
+			From(schema.Table("transactions")).
+			Select("pre_commit_volumes", "post_commit_volumes").
+			Where(sb.E("id", i)).
+			BuildWithFlavor(schema.Flavor())
+		row := schema.QueryRowContext(context.Background(), sqlq, args...)
+		require.NoError(t, row.Err())
+
+		preCommitVolumes, postCommitVolumes := core.AccountsAssetsVolumes{}, core.AccountsAssetsVolumes{}
+		require.NoError(t, row.Scan(&preCommitVolumes, &postCommitVolumes))
+
+		require.Equal(t, tc.expectedPreCommitVolumes, preCommitVolumes)
+		require.Equal(t, tc.expectedPostCommitVolumes, postCommitVolumes)
 	}
 
 }
