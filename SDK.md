@@ -10,7 +10,7 @@ If you want to add a new languages, you have to configure some things.
 First, you need to create a configuration file.
 
 The config file must be added inside the directory sdk/configs/.
-The filename MUST match the name of the involved api generator (ie java.yaml for java or php.yaml for php).
+The file name MUST match the name of the involved api generator (i.e. java.yaml for java or php.yaml for php).
 
 By convention, the newly added config file MUST add the following configuration : 
 ```
