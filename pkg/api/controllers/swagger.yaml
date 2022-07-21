@@ -4,6 +4,14 @@ info:
   contact: {}
   version: "LEDGER_VERSION"
 
+servers:
+- url: https://{organization}.o.numary.cloud/ledger
+  description: Production server
+  variables:
+    organization:
+      description: The organization on which the ledger is located
+      default: ""
+
 paths:
   /_info:
     get:
