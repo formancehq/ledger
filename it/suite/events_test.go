@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Scenario("Transactions api", func(env *Environment) {
+var _ = Scenario("Transactions api", func() {
 	WithNewLedger("with an empty ledger", func(ledger *string) {
 		When("creating a new transactions from world to a 'bank' account", func() {
 			var (
@@ -23,7 +23,7 @@ var _ = Scenario("Transactions api", func(env *Environment) {
 				}
 			)
 			BeforeEach(func() {
-				response, _, err = env.TransactionsApi.
+				response, _, err = Client().TransactionsApi.
 					CreateTransaction(context.Background(), *ledger).
 					TransactionData(ledgerclient.TransactionData{
 						Postings: postings,

@@ -4,16 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 
 	_ "github.com/getkin/kin-openapi/openapi3"
 	"github.com/numary/ledger/cmd"
 	"github.com/numary/ledger/it/internal/httplistener"
-	"github.com/numary/ledger/it/internal/openapi3"
+	"github.com/numary/ledger/it/internal/ledgerclient"
 	"github.com/numary/ledger/it/internal/otlpinterceptor"
 	"github.com/numary/ledger/it/internal/pgserver"
-	"github.com/numary/numary-sdk-go"
+	ledgerclient2 "github.com/numary/numary-sdk-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
@@ -32,11 +31,8 @@ func flag(flag, value string) string {
 	return fmt.Sprintf("--%s=%s", flag, value)
 }
 
-func Scenario(text string, callback func(env *Environment)) bool {
+func Scenario(text string, callback func()) bool {
 	return Describe(text, func() {
-		var (
-			env = &Environment{}
-		)
 		BeforeEach(func() {
 			ctx := context.Background()
 			ctx = cmd.NewContext(ctx)
@@ -60,9 +56,8 @@ func Scenario(text string, callback func(env *Environment)) bool {
 				flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
 			})
 			rootCommand.SetOut(io.Discard)
-			//rootCommand.SetErr(os.Stderr)
+			rootCommand.SetErr(io.Discard)
 			go func() {
-				//defer GinkgoRecover()
 				Expect(rootCommand.ExecuteContext(ctx)).To(BeNil())
 			}()
 
@@ -72,22 +67,14 @@ func Scenario(text string, callback func(env *Environment)) bool {
 
 			ledgerUrl := fmt.Sprintf("http://localhost:%d", cmd.Port(ctx))
 
-			httpClient := &(*http.DefaultClient)
-			httpClient.Transport = openapi3.NewTransport(ledgerUrl)
-
-			clientConfiguration := ledgerclient.NewConfiguration()
-			clientConfiguration.HTTPClient = httpClient
-			clientConfiguration.Servers[0].URL = ledgerUrl
-			client := ledgerclient.NewAPIClient(clientConfiguration)
+			ledgerclient.Init(ledgerUrl)
 
 			Eventually(func() error {
-				_, _, err := client.ServerApi.GetInfo(ctx).Execute()
+				_, _, err := ledgerclient.Client().ServerApi.GetInfo(ctx).Execute()
 				return err
 			}).Should(BeNil())
-
-			*env = *NewEnvironment(client)
 		})
-		callback(env)
+		callback()
 	})
 }
 
@@ -100,4 +87,8 @@ func WithNewLedger(text string, callback func(ledger *string)) {
 		})
 		callback(ledger)
 	})
+}
+
+func Client() *ledgerclient2.APIClient {
+	return ledgerclient.Client()
 }
