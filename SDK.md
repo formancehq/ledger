@@ -3,7 +3,7 @@
 We use [OpenAPI generator](https://openapi-generator.tech/) to generate ledger client SDK.`
 This doc refers to the tools named [task](https://taskfile.dev/)
 
-If you want to add a new languages, you have to configure some things.
+If you want to add a new language, you have to configure a few things.
 
 ## Configuration
 
