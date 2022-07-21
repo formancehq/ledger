@@ -33,7 +33,7 @@ task sdk:template -- <generator name>
 ```
 
 The command will extract all templates inside the directory sdk/templates/<generator name>.
-You can modify them as well as you want.
+You can edit them as much as you want.
 Please keep only modified templates.
 
 Please read [documentation](https://openapi-generator.tech/docs/templating) for additional information.
