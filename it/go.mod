@@ -3,10 +3,13 @@ module github.com/numary/ledger/it
 go 1.18
 
 require (
+	github.com/getkin/kin-openapi v0.97.0
+	github.com/jackc/pgx/v4 v4.14.1
 	github.com/numary/ledger v1.6.0
 	github.com/numary/numary-sdk-go v1.4.2
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
+	github.com/ory/dockertest/v3 v3.9.1
 	github.com/pborman/uuid v1.2.1
 	go.opentelemetry.io/collector v0.55.0
 	go.opentelemetry.io/collector/pdata v0.55.0
@@ -45,7 +48,6 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
-	github.com/getkin/kin-openapi v0.97.0 // indirect
 	github.com/gibson042/canonicaljson-go v1.0.3 // indirect
 	github.com/gin-contrib/cors v1.3.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
@@ -93,7 +95,6 @@ require (
 	github.com/jackc/pgproto3/v2 v2.2.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.9.1 // indirect
-	github.com/jackc/pgx/v4 v4.14.1 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
@@ -126,7 +127,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/opencontainers/runc v1.1.2 // indirect
-	github.com/ory/dockertest/v3 v3.9.1 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect

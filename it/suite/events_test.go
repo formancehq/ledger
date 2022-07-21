@@ -36,8 +36,8 @@ var _ = Scenario("Transactions api", func(env *Environment) {
 					Transactions: []core.Transaction{
 						{
 							TransactionData: core.NewTransactionData(core.NewPosting("world", "bank", "USD", 100)).
-								SetReference(""),
-							Timestamp: response.Data[0].Timestamp,
+								SetReference("").
+								SetTimestamp(response.Data[0].Timestamp),
 							PreCommitVolumes: core.NewAccountsAssetsVolumes().
 								SetVolumes("world", "USD", core.NewVolumes(0, 0)).
 								SetVolumes("bank", "USD", core.NewVolumes(0, 0)),

@@ -18,6 +18,11 @@ type TransactionData struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+func (t TransactionData) SetTimestamp(ts time.Time) TransactionData {
+	t.Timestamp = ts
+	return t
+}
+
 func (t *TransactionData) Reverse() TransactionData {
 	postings := make(Postings, len(t.Postings))
 	copy(postings, t.Postings)

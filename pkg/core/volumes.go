@@ -64,7 +64,7 @@ func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	}
 }
 
-func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) {
+func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) AccountsAssetsVolumes {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
@@ -78,6 +78,7 @@ func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes
 			Output: volumes.Output.OrZero(),
 		}
 	}
+	return a
 }
 
 func (a AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryInt) {
