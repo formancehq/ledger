@@ -22,7 +22,7 @@ Again, we use the generator name to name this directory. We also have to create 
 If the generator provide required properties, you MUST define the licence to MIT.
 
 The rest of the configuration is specific to the language and should be carefully specified. 
-You have to keep in mind the SDK will be hosted on github.com/numary/numary-sdk-<generator name> and so, you could have to define some properties for a language which would not exists on another language.
+You have to keep in mind that the SDK will be hosted on github.com/numary/numary-sdk-<generator name>, so you could have to define some properties for a language which would not exist on another language.
 
 ## Customization
 
