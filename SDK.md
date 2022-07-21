@@ -26,7 +26,7 @@ You have to keep in mind that the SDK will be hosted on github.com/numary/numary
 
 ## Customization
 
-Customization of the generated SDK can be achieved modifying the openapi generator builtins templates.
+Customization of the generated SDK can be achieved by modifying the openapi generator builtins templates.
 You can extract them for your generator using the following command :
 ```
 task sdk:template -- <generator name>
