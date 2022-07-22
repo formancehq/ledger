@@ -90,16 +90,21 @@ func Hash(t1, t2 interface{}) string {
 
 func CheckHash(logs ...Log) (int, bool) {
 	for i := len(logs) - 1; i >= 0; i-- {
+		fmt.Printf("i: %d\n", i)
 		var lastLog *Log
 		if i < len(logs)-1 {
 			lastLog = &logs[i+1]
 		}
 		log := logs[i]
 		log.Hash = ""
+		fmt.Printf("log: %+v\n", logs)
+		fmt.Printf("lastLog: %+v\n", lastLog)
 		h := Hash(lastLog, log)
 		if logs[i].Hash != h {
+			fmt.Printf("hash %s != %s\n", logs[i].Hash, h)
 			return i, false
 		}
+		fmt.Printf("hash %s == %s\n", logs[i].Hash, h)
 	}
 	return 0, true
 }
