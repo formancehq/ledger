@@ -10,9 +10,80 @@ vars:
   TAGS: "-tags json1,netgo"
 
 tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: tests:local:sqlite
+      - task: tests:local:postgres
+
+  lint:
+    cmds:
+      - golangci-lint run -v --fix
+
   tests:
     cmds:
       - go test {{.TAGS}} -v -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
+
+  tests:local:
+    cmds:
+      - task: local:tests:sqlite
+      - task: local:tests:postgres
+
+  tests:local:sqlite:
+    cmds:
+      - |
+        go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: print:coverage
+
+  tests:local:postgres:
+    deps: [postgres]
+    cmds:
+      - |
+        go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: print:coverage
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:
+    cmds:
+      - go test {{.TAGS}} -run=XXX -bench=. {{.PKG}}
+
+  print:coverage:
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "To open the html coverage file, use one of the following commands:"
+      - echo "open coverage.html on mac"
+      - echo "xdg-open coverage.html on linux"
+    silent: true
+
+  install:
+    deps: [install:golangci-lint]
+
+  install:golangci-lint:
+    cmds:
+      - >
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+        sh -s -- -b $(go env GOPATH)/bin latest
+      - golangci-lint --version
+
+  postgres:
+    cmds:
+      - docker compose up -d postgres
+
+  clean:
+    cmds:
+      - go clean
+      - rm -f {{.SERVICE}} coverage.out coverage.html
+      - docker compose down -v
 
   sdk:template:
     desc: Extract templates
@@ -60,7 +131,6 @@ tasks:
         cd ./sdks/{{.CLI_ARGS}}
         task test
 
-
   goreleaser:test:pkg:
     desc: Test a package
     cmds:
@@ -97,70 +167,3 @@ tasks:
           Platform: 'arm64'
           Image: ubuntu
           Cmd: '{{.dpkg}} numary_*_linux_arm64.deb'
-
-  install:
-    deps: [install:golangci-lint]
-
-  install:golangci-lint:
-    cmds:
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
-      - golangci-lint --version
-
-  default:
-    cmds:
-      - task: lint
-      - task: local:tests:sqlite
-      - task: local:tests:postgres
-
-  lint:
-    cmds:
-      - golangci-lint run -v --fix
-
-  local:tests:
-    cmds:
-      - task: local:tests:sqlite
-      - task: local:tests:postgres
-
-  local:tests:sqlite:
-    cmds:
-      - go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} | sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' | sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' | sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
-      - task: print:coverage
-
-  local:tests:postgres:
-    deps: [postgres]
-    cmds:
-      - go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} | sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' | sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' | sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
-      - task: print:coverage
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  print:coverage:
-    cmds:
-      - go tool cover -html=coverage.out -o coverage.html
-      - echo "To open the html coverage file, use one of the following commands:"
-      - echo "open coverage.html on mac"
-      - echo "xdg-open coverage.html on linux"
-    silent: true
-
-
-  local:bench:sqlite:
-    cmds:
-      - go test {{.TAGS}} -bench=. -run=^a {{.PKG}}
-
-  local:bench:postgres:
-    cmds:
-      - go test {{.TAGS}} -bench=. -run=^a {{.PKG}}
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  postgres:
-    cmds:
-      - docker compose up -d postgres
-
-  clean:
-    cmds:
-      - go clean
-      - rm -f {{.SERVICE}} coverage.out coverage.html
-      - docker compose down -v
