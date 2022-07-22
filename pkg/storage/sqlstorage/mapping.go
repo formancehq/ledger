@@ -12,12 +12,12 @@ import (
 // We have only one mapping for a ledger, so hardcode the id
 const mappingId = "0000"
 
-func (s *API) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("mapping").From(s.schema.Table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq, args...)
+	row := s.getExecutorFromContext(ctx).QueryRowContext(ctx, sqlq, args...)
 
 	m := core.Mapping{}
 	var mappingString string
@@ -35,7 +35,7 @@ func (s *API) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return &m, nil
 }
 
-func (s *API) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 	data, err := json.Marshal(mapping)
 	if err != nil {
 		return err
@@ -59,6 +59,6 @@ func (s *API) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
 
-	_, err = s.executor.ExecContext(ctx, sqlq, args...)
+	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
 	return s.error(err)
 }

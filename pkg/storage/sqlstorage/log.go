@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
+func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 	var (
 		query string
 		args  []interface{}
@@ -61,14 +61,14 @@ func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
-	_, err := s.executor.ExecContext(ctx, query, args...)
+	_, err := s.getExecutorFromContext(ctx).ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
+func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	var (
 		l    core.Log
 		data sql.NullString
@@ -81,7 +81,7 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	sb.Limit(1)
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq)
+	row := s.getExecutorFromContext(ctx).QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -100,14 +100,14 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *API) Logs(ctx context.Context) ([]core.Log, error) {
+func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.OrderBy("id desc")
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, sqlq)
+	rows, err := s.getExecutorFromContext(ctx).QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
 	}

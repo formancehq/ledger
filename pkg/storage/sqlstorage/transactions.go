@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *API) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
@@ -73,7 +73,7 @@ func (s *API) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.S
 	return sb, t
 }
 
-func (s *API) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	txs := make([]core.Transaction, 0)
 
 	if q.PageSize == 0 {
@@ -91,7 +91,7 @@ func (s *API) GetTransactions(ctx context.Context, q storage.TransactionsQuery) 
 	t.PageSize = q.PageSize
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, sqlq, args...)
+	rows, err := s.getExecutorFromContext(ctx).QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
 	}
@@ -163,7 +163,7 @@ func (s *API) GetTransactions(ctx context.Context, q storage.TransactionsQuery) 
 	}, nil
 }
 
-func (s *API) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -171,7 +171,7 @@ func (s *API) GetTransaction(ctx context.Context, txId uint64) (*core.Transactio
 	sb.OrderBy("id desc")
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq, args...)
+	row := s.getExecutorFromContext(ctx).QueryRowContext(ctx, sqlq, args...)
 	if row.Err() != nil {
 		return nil, s.error(row.Err())
 	}
@@ -211,7 +211,7 @@ func (s *API) GetTransaction(ctx context.Context, txId uint64) (*core.Transactio
 	return &tx, nil
 }
 
-func (s *API) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -219,7 +219,7 @@ func (s *API) GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	sb.Limit(1)
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq, args...)
+	row := s.getExecutorFromContext(ctx).QueryRowContext(ctx, sqlq, args...)
 	if row.Err() != nil {
 		return nil, s.error(row.Err())
 	}
@@ -259,7 +259,7 @@ func (s *API) GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	return &tx, nil
 }
 
-func (s *API) insertTransactions(ctx context.Context, txs ...core.Transaction) error {
+func (s *Store) insertTransactions(ctx context.Context, txs ...core.Transaction) error {
 	var (
 		query string
 		args  []interface{}
@@ -361,14 +361,14 @@ func (s *API) insertTransactions(ctx context.Context, txs ...core.Transaction) e
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 
-	_, err := s.executor.ExecContext(ctx, query, args...)
+	_, err := s.getExecutorFromContext(ctx).ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *API) updateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
+func (s *Store) updateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
 
 	ub := sqlbuilder.NewUpdateBuilder()
 
@@ -389,12 +389,12 @@ func (s *API) updateTransactionMetadata(ctx context.Context, id uint64, metadata
 	}
 
 	sqlq, args := ub.BuildWithFlavor(s.schema.Flavor())
-	_, err = s.executor.ExecContext(ctx, sqlq, args...)
+	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
 
 	return s.error(err)
 }
 
-func (s *API) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	if err := s.updateTransactionMetadata(ctx, id, metadata); err != nil {
 		return errors.Wrap(err, "updating metadata")
 	}

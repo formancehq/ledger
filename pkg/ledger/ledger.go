@@ -64,9 +64,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		return nil, err
 	}
 
-	if err := l.store.WithTX(ctx, func(api storage.API) error {
-		return l.store.Commit(ctx, result.GeneratedTransactions...)
-	}); err != nil {
+	if err := l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
@@ -150,15 +148,10 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	}
 	revert := result.GeneratedTransactions[0]
 
-	err = l.store.WithTX(ctx, func(api storage.API) error {
-		err := api.Commit(ctx, revert)
-		if err != nil {
-			return err
-		}
-
-		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp)
-	})
-	if err != nil {
+	if err := l.store.Commit(ctx, revert); err != nil {
+		return nil, err
+	}
+	if err = l.store.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp); err != nil {
 		return nil, err
 	}
 
@@ -219,15 +212,14 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return NewValidationError("empty target id")
 	}
 
-	err = l.store.WithTX(ctx, func(api storage.API) error {
-		switch targetType {
-		case core.MetaTargetTypeTransaction:
-			return l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
-		case core.MetaTargetTypeAccount:
-			return l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
-		}
-		panic("can not happen")
-	})
+	switch targetType {
+	case core.MetaTargetTypeTransaction:
+		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
+	case core.MetaTargetTypeAccount:
+		err = l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
+	default:
+		panic("should not happen")
+	}
 	if err != nil {
 		return err
 	}

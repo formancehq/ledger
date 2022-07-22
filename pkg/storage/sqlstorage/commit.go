@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *API) commit(ctx context.Context, txs ...core.Transaction) ([]core.Log, error) {
+func (s *Store) commit(ctx context.Context, txs ...core.Transaction) ([]core.Log, error) {
 	if err := s.insertTransactions(ctx, txs...); err != nil {
 		return nil, errors.Wrap(err, "inserting transactions")
 	}
@@ -43,7 +43,7 @@ func (s *API) commit(ctx context.Context, txs ...core.Transaction) ([]core.Log, 
 	return logs, nil
 }
 
-func (s *API) Commit(ctx context.Context, txs ...core.Transaction) error {
+func (s *Store) Commit(ctx context.Context, txs ...core.Transaction) error {
 	_, err := s.commit(ctx, txs...)
 	return err
 }
