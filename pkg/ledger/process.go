@@ -107,8 +107,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		}
 
 		tx := core.Transaction{
-			TransactionData: t,
-			ID:              nextTxId,
+			TransactionData:   t,
+			ID:                nextTxId,
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}
