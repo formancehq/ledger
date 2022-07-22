@@ -34,7 +34,8 @@ func openuri(uri string) bool {
 }
 
 var UICmd = &cobra.Command{
-	Use: "ui",
+	Use:        "ui",
+	Deprecated: "UI is deprecated and will be removed in a future release",
 	Run: func(cmd *cobra.Command, args []string) {
 		addr := viper.GetString("ui.http.bind_address")
 
