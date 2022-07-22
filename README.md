@@ -80,6 +80,16 @@ Want to give a shot to the latest version? You can easily deploy a test instance
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/numary/ledger)
 
+# How to contribute
+
+Want to contribute to the project? Please read the [CONTRIBUTING.md](https://github.com/numary/ledger/blob/main/CONTRIBUTING.md) file.
+
+We are using [Task](https://taskfile.dev) to easily lint or test the project locally. You can install it with:
+```SHELL
+go install github.com/go-task/task/v3/cmd/task@latest
+```
+Then you can run `task` to run both the linters and the tests. You will find other tasks in the [Taskfile](https://github.com/numary/ledger/blob/main/Taskfile.yaml).
+
 # Contributors ✨
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
