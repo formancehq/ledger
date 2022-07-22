@@ -22,9 +22,15 @@ jobs:
     name: 'Control'
     needs:
       - Lint
-    uses: ./.github/workflows/template_build-control.yaml
-    secrets:
-      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -OL $https://github.com/numary/control/releases/download/1.0.2/numary-control-1.0.2.tar.gz
+      - run: tar -zxvf numary-control-1.0.2.tar.gz
+      - run: rm -rf numary-control-1.0.2.tar.gz
+      - uses: actions/upload-artifact@v2
+        with:
+          name: control-dist
+          path: ./**
 
   Test_postgres:
     uses: ./.github/workflows/template_golang-test-pgsql.yaml
