@@ -5,7 +5,7 @@ version: '3'
 vars:
   PKG: "./..."
   FAILFAST: "-failfast"
-  TIMEOUT: "2m"
+  TIMEOUT: "10m"
   RUN: "''"
   TAGS: "-tags json1,netgo"
 
@@ -13,8 +13,7 @@ tasks:
   default:
     cmds:
       - task: lint
-      - task: tests:local:sqlite
-      - task: tests:local:postgres
+      - task: tests:local
 
   lint:
     cmds:
@@ -26,12 +25,12 @@ tasks:
 
   tests:local:
     cmds:
-      - task: local:tests:sqlite
-      - task: local:tests:postgres
+      - task: tests:local:sqlite
+      - task: tests:local:postgres
 
   tests:local:sqlite:
     cmds:
-      - |
+      - >
         go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
@@ -42,7 +41,7 @@ tasks:
   tests:local:postgres:
     deps: [postgres]
     cmds:
-      - |
+      - >
         go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
