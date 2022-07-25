@@ -15,7 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *LedgerStore) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
@@ -71,7 +71,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 	return sb, t
 }
 
-func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
+func (s *LedgerStore) getTransactions(ctx context.Context, exec executor, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	txs := make([]core.Transaction, 0)
 
 	if q.PageSize == 0 {
@@ -161,11 +161,11 @@ func (s *Store) getTransactions(ctx context.Context, exec executor, q storage.Tr
 	}, nil
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
+func (s *LedgerStore) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
 	return s.getTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) (*core.Transaction, error) {
+func (s *LedgerStore) getTransaction(ctx context.Context, exec executor, txid uint64) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -213,11 +213,11 @@ func (s *Store) getTransaction(ctx context.Context, exec executor, txid uint64) 
 	return &tx, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
+func (s *LedgerStore) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
 	return s.getTransaction(ctx, s.schema, txId)
 }
 
-func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
+func (s *LedgerStore) getLastTransaction(ctx context.Context, exec executor) (*core.Transaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -265,6 +265,6 @@ func (s *Store) getLastTransaction(ctx context.Context, exec executor) (*core.Tr
 	return &tx, nil
 }
 
-func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (s *LedgerStore) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
 	return s.getLastTransaction(ctx, s.schema)
 }

@@ -15,7 +15,7 @@ type Schema interface {
 	executor
 	Initialize(ctx context.Context) error
 	Table(name string) string
-	Close(ctx context.Context) error
+	close(ctx context.Context) error
 	BeginTx(ctx context.Context, s *sql.TxOptions) (*sql.Tx, error)
 	Flavor() sqlbuilder.Flavor
 	Name() string
@@ -44,7 +44,7 @@ func (s *baseSchema) ExecContext(ctx context.Context, query string, args ...inte
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	return s.DB.ExecContext(ctx, query, args...)
 }
-func (s *baseSchema) Close(ctx context.Context) error {
+func (s *baseSchema) close(ctx context.Context) error {
 	if s.closeDb {
 		return s.DB.Close()
 	}
@@ -132,7 +132,7 @@ func (s *SQLiteSchema) ExecContext(ctx context.Context, query string, args ...in
 }
 
 type DB interface {
-	Initialize(ctx context.Context) error
+	initialize(ctx context.Context) error
 	Schema(ctx context.Context, name string) (Schema, error)
 	Close(ctx context.Context) error
 }
@@ -141,7 +141,7 @@ type postgresDB struct {
 	db *sql.DB
 }
 
-func (p *postgresDB) Initialize(ctx context.Context) error {
+func (p *postgresDB) initialize(ctx context.Context) error {
 	_, err := p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pgcrypto")
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ type sqliteDB struct {
 	dbName    string
 }
 
-func (p *sqliteDB) Initialize(ctx context.Context) error {
+func (p *sqliteDB) initialize(ctx context.Context) error {
 	return nil
 }
 

@@ -60,7 +60,7 @@ func IsTooManyClientError(err error) bool {
 	return IsErrorCode(err, TooManyClient)
 }
 
-type Store interface {
+type LedgerStore interface {
 	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
 	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.Transaction], error)
@@ -80,7 +80,7 @@ type Store interface {
 
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 	SaveMapping(ctx context.Context, m core.Mapping) error
-	Initialize(context.Context) (bool, error)
+	Migrate(context.Context) (bool, error)
 	Name() string
 	Close(context.Context) error
 }
@@ -156,7 +156,7 @@ func (n noOpStore) CountMeta(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) Initialize(ctx context.Context) (bool, error) {
+func (n noOpStore) Migrate(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
@@ -176,9 +176,15 @@ func (n noOpStore) Close(ctx context.Context) error {
 	return nil
 }
 
-var _ Store = &noOpStore{}
+var _ LedgerStore = &noOpStore{}
 
 func NoOpStore() *noOpStore {
 	return &noOpStore{}
+}
 
+type SystemStore interface {
+	List(ctx context.Context) ([]string, error)
+	Register(ctx context.Context, ledger string) (bool, error)
+	Exists(ctx context.Context, ledger string) (bool, error)
+	Delete(ctx context.Context, ledger string) error
 }

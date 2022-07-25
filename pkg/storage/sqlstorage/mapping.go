@@ -12,7 +12,7 @@ import (
 // We have only one mapping for a ledger, so hardcode the id
 const mappingId = "0000"
 
-func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, error) {
+func (s *LedgerStore) loadMapping(ctx context.Context, exec executor) (*core.Mapping, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("mapping").From(s.schema.Table("mapping"))
 
@@ -35,11 +35,11 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	return &m, nil
 }
 
-func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
+func (s *LedgerStore) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return s.loadMapping(ctx, s.schema)
 }
 
-func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
+func (s *LedgerStore) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
 	data, err := json.Marshal(mapping)
 	if err != nil {
 		return err
@@ -67,6 +67,6 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 	return s.error(err)
 }
 
-func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
+func (s *LedgerStore) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 	return s.saveMapping(ctx, s.schema, mapping)
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testGetBalances(t *testing.T, store *sqlstorage.Store) {
+func testGetBalances(t *testing.T, store *sqlstorage.LedgerStore) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	log3 := core.NewTransactionLog(&log2, tx3)
@@ -133,7 +133,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	})
 }
 
-func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
+func testGetBalancesAggregated(t *testing.T, store *sqlstorage.LedgerStore) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	log3 := core.NewTransactionLog(&log2, tx3)

@@ -16,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
+func (s *LedgerStore) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
@@ -86,7 +86,7 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 	return sb, t
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *LedgerStore) getAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
@@ -166,11 +166,11 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *LedgerStore) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	return s.getAccounts(ctx, s.schema, q)
 }
 
-func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*core.Account, error) {
+func (s *LedgerStore) getAccount(ctx context.Context, exec executor, addr string) (*core.Account, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
@@ -197,6 +197,6 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*co
 	return &account, nil
 }
 
-func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
+func (s *LedgerStore) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	return s.getAccount(ctx, s.schema, addr)
 }

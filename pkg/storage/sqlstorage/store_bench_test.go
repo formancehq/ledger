@@ -57,7 +57,7 @@ func BenchmarkStore(b *testing.B) {
 
 	type testingFunction struct {
 		name string
-		fn   func(b *testing.B, store *sqlstorage.Store)
+		fn   func(b *testing.B, store *sqlstorage.LedgerStore)
 	}
 
 	for _, driver := range drivers {
@@ -94,11 +94,11 @@ func BenchmarkStore(b *testing.B) {
 					return db.Close(context.Background())
 				})
 				assert.NoError(b, err)
-				defer func(store *sqlstorage.Store, ctx context.Context) {
+				defer func(store *sqlstorage.LedgerStore, ctx context.Context) {
 					require.NoError(b, store.Close(ctx))
 				}(store, context.Background())
 
-				_, err = store.Initialize(context.Background())
+				_, err = store.Migrate(context.Background())
 				assert.NoError(b, err)
 
 				b.ResetTimer()
@@ -109,7 +109,7 @@ func BenchmarkStore(b *testing.B) {
 	}
 }
 
-func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
+func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.LedgerStore) {
 	var log *core.Log
 	for i := 0; i < 1000; i++ {
 		tx := core.Transaction{
@@ -149,7 +149,7 @@ func testBenchmarkGetTransactions(b *testing.B, store *sqlstorage.Store) {
 
 }
 
-func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
+func testBenchmarkLastLog(b *testing.B, store *sqlstorage.LedgerStore) {
 	var log *core.Log
 	count := 1000
 	for i := 0; i < count; i++ {
@@ -186,7 +186,7 @@ func testBenchmarkLastLog(b *testing.B, store *sqlstorage.Store) {
 
 }
 
-func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
+func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.LedgerStore) {
 	count := 1000
 	var log *core.Log
 	for i := 0; i < count; i++ {
@@ -228,7 +228,7 @@ func testBenchmarkAggregateVolumes(b *testing.B, store *sqlstorage.Store) {
 
 }
 
-func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.Store) {
+func testBenchmarkSaveTransactions(b *testing.B, store *sqlstorage.LedgerStore) {
 	var log *core.Log
 	for n := 0; n < b.N; n++ {
 		*log = core.NewTransactionLog(log, core.Transaction{

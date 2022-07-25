@@ -18,7 +18,7 @@ func TestStore(t *testing.T) {
 
 	type testingFunction struct {
 		name string
-		fn   func(t *testing.T, store storage.Store)
+		fn   func(t *testing.T, store storage.LedgerStore)
 	}
 
 	for _, tf := range []testingFunction{
@@ -63,7 +63,7 @@ func TestStore(t *testing.T) {
 				}
 			}(store, context.Background())
 
-			_, err := store.Initialize(context.Background())
+			_, err := store.Migrate(context.Background())
 			assert.NoError(t, err)
 
 			tf.fn(t, store)
@@ -71,47 +71,47 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func testAppendLog(t *testing.T, store storage.Store) {
+func testAppendLog(t *testing.T, store storage.LedgerStore) {
 	err := store.AppendLog(context.Background(), core.NewTransactionLog(nil, core.Transaction{}))
 	assert.NoError(t, err)
 }
 
-func testLastLog(t *testing.T, store storage.Store) {
+func testLastLog(t *testing.T, store storage.LedgerStore) {
 	_, err := store.LastLog(context.Background())
 	assert.NoError(t, err)
 }
 
-func testCountAccounts(t *testing.T, store storage.Store) {
+func testCountAccounts(t *testing.T, store storage.LedgerStore) {
 	_, err := store.CountAccounts(context.Background(), storage.AccountsQuery{})
 	assert.NoError(t, err)
 
 }
 
-func testAggregateVolumes(t *testing.T, store storage.Store) {
+func testAggregateVolumes(t *testing.T, store storage.LedgerStore) {
 	_, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	assert.NoError(t, err)
 }
 
-func testGetAccounts(t *testing.T, store storage.Store) {
+func testGetAccounts(t *testing.T, store storage.LedgerStore) {
 	_, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
 		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }
 
-func testCountTransactions(t *testing.T, store storage.Store) {
+func testCountTransactions(t *testing.T, store storage.LedgerStore) {
 	_, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 	assert.NoError(t, err)
 }
 
-func testGetTransactions(t *testing.T, store storage.Store) {
+func testGetTransactions(t *testing.T, store storage.LedgerStore) {
 	_, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
 		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }
 
-func testGetTransaction(t *testing.T, store storage.Store) {
+func testGetTransaction(t *testing.T, store storage.LedgerStore) {
 	_, err := store.GetTransaction(context.Background(), 1)
 	assert.NoError(t, err)
 }

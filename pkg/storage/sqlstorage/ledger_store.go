@@ -12,34 +12,34 @@ const (
 	SQLCustomFuncMetaCompare = "meta_compare"
 )
 
-type Store struct {
+type LedgerStore struct {
 	schema  Schema
 	onClose func(ctx context.Context) error
 }
 
-func (s *Store) Schema() Schema {
+func (s *LedgerStore) Schema() Schema {
 	return s.schema
 }
 
-func (s *Store) error(err error) error {
+func (s *LedgerStore) error(err error) error {
 	if err == nil {
 		return nil
 	}
 	return errorFromFlavor(Flavor(s.schema.Flavor()), err)
 }
 
-func NewStore(schema Schema, onClose func(ctx context.Context) error) (*Store, error) {
-	return &Store{
+func NewStore(schema Schema, onClose func(ctx context.Context) error) (*LedgerStore, error) {
+	return &LedgerStore{
 		schema:  schema,
 		onClose: onClose,
 	}, nil
 }
 
-func (s *Store) Name() string {
+func (s *LedgerStore) Name() string {
 	return s.schema.Name()
 }
 
-func (s *Store) Initialize(ctx context.Context) (bool, error) {
+func (s *LedgerStore) Migrate(ctx context.Context) (bool, error) {
 	sharedlogging.GetLogger(ctx).Debug("Initialize store")
 
 	migrations, err := CollectMigrationFiles(MigrationsFS)
@@ -50,8 +50,8 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 	return Migrate(ctx, s.schema, migrations...)
 }
 
-func (s *Store) Close(ctx context.Context) error {
+func (s *LedgerStore) Close(ctx context.Context) error {
 	return s.onClose(ctx)
 }
 
-var _ storage.Store = &Store{}
+var _ storage.LedgerStore = &LedgerStore{}

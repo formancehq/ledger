@@ -1135,12 +1135,12 @@ func TestTooManyClient(t *testing.T) {
 					return nil
 				}
 
-				store, _, err := driver.GetStore(context.Background(), "quickstart", true)
+				store, _, err := driver.GetLedgerStore(context.Background(), "quickstart", true)
 				assert.NoError(t, err)
 
 				// Grab all potential connections
 				for i := 0; i < pgtesting.MaxConnections; i++ {
-					tx, err := store.(*sqlstorage.Store).Schema().BeginTx(context.Background(), &sql.TxOptions{})
+					tx, err := store.(*sqlstorage.LedgerStore).Schema().BeginTx(context.Background(), &sql.TxOptions{})
 					assert.NoError(t, err)
 					defer func(tx *sql.Tx) {
 						if err := tx.Rollback(); err != nil {

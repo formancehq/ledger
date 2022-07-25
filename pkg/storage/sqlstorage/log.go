@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) error {
+func (s *LedgerStore) appendLog(ctx context.Context, exec executor, log ...core.Log) error {
 	var (
 		query string
 		args  []interface{}
@@ -68,7 +68,7 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 	return nil
 }
 
-func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
+func (s *LedgerStore) AppendLog(ctx context.Context, logs ...core.Log) error {
 	tx, err := s.schema.BeginTx(ctx, nil)
 	if err != nil {
 		return s.error(err)
@@ -88,7 +88,7 @@ func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
 	return nil
 }
 
-func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
+func (s *LedgerStore) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	var (
 		l    core.Log
 		data sql.NullString
@@ -119,11 +119,11 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
+func (s *LedgerStore) LastLog(ctx context.Context) (*core.Log, error) {
 	return s.lastLog(ctx, s.schema)
 }
 
-func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
+func (s *LedgerStore) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
@@ -169,6 +169,6 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	return ret, nil
 }
 
-func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
+func (s *LedgerStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return s.logs(ctx, s.schema)
 }

@@ -71,7 +71,7 @@ func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, 
 }
 
 type volumeAggregator struct {
-	store storage.Store
+	store storage.LedgerStore
 	txs   []*transactionVolumeAggregator
 }
 
@@ -126,7 +126,7 @@ func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AccountsAssetsVol
 	return ret
 }
 
-func newVolumeAggregator(store storage.Store) *volumeAggregator {
+func newVolumeAggregator(store storage.LedgerStore) *volumeAggregator {
 	return &volumeAggregator{
 		store: store,
 	}

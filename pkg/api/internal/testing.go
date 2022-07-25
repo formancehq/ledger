@@ -218,8 +218,8 @@ func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Val
 	return rec
 }
 
-func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.Store {
-	store, _, err := driver.GetStore(ctx, testingLedger, true)
+func GetStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.LedgerStore {
+	store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
 	require.NoError(t, err)
 	return store
 }
@@ -241,15 +241,15 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					store, _, err := driver.GetStore(ctx, testingLedger, true)
+					store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
 					if err != nil {
 						return err
 					}
-					defer func(store storage.Store, ctx context.Context) {
+					defer func(store storage.LedgerStore, ctx context.Context) {
 						require.NoError(t, store.Close(ctx))
 					}(store, ctx)
 
-					_, err = store.Initialize(ctx)
+					_, err = store.Migrate(ctx)
 					return err
 				},
 			})

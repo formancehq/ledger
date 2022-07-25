@@ -16,7 +16,7 @@ import (
 )
 
 type openTelemetryStorage struct {
-	underlying storage.Store
+	underlying storage.LedgerStore
 }
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
@@ -211,9 +211,9 @@ func (o *openTelemetryStorage) SaveMapping(ctx context.Context, mapping core.Map
 	})
 }
 
-func (o *openTelemetryStorage) Initialize(ctx context.Context) (ret bool, err error) {
+func (o *openTelemetryStorage) Migrate(ctx context.Context) (ret bool, err error) {
 	handlingErr := o.handle(ctx, "Initialize", func(ctx context.Context) error {
-		ret, err = o.underlying.Initialize(ctx)
+		ret, err = o.underlying.Migrate(ctx)
 		return nil
 	})
 	if handlingErr != nil {
@@ -232,9 +232,9 @@ func (o *openTelemetryStorage) Close(ctx context.Context) error {
 	})
 }
 
-var _ storage.Store = &openTelemetryStorage{}
+var _ storage.LedgerStore = &openTelemetryStorage{}
 
-func NewStorageDecorator(underlying storage.Store) *openTelemetryStorage {
+func NewStorageDecorator(underlying storage.LedgerStore) *openTelemetryStorage {
 	return &openTelemetryStorage{
 		underlying: underlying,
 	}
@@ -244,8 +244,8 @@ type openTelemetryStorageDriver struct {
 	storage.Driver
 }
 
-func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+func (o openTelemetryStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (storage.LedgerStore, bool, error) {
+	store, created, err := o.Driver.GetLedgerStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}

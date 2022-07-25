@@ -15,7 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (s *LedgerStore) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
@@ -63,11 +63,11 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	return aggregatedBalances, nil
 }
 
-func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (s *LedgerStore) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	return s.getBalancesAggregated(ctx, s.schema, q)
 }
 
-func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *LedgerStore) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -184,6 +184,6 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	}, nil
 }
 
-func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *LedgerStore) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	return s.getBalances(ctx, s.schema, q)
 }

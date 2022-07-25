@@ -32,7 +32,7 @@ func TestStore(t *testing.T) {
 
 	type testingFunction struct {
 		name string
-		fn   func(t *testing.T, store *sqlstorage.Store)
+		fn   func(t *testing.T, store *sqlstorage.LedgerStore)
 	}
 
 	for _, tf := range []testingFunction{
@@ -59,20 +59,20 @@ func TestStore(t *testing.T) {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, _, err := driver.GetStore(ctx, ledger, true)
+							store, _, err := driver.GetLedgerStore(ctx, ledger, true)
 							if err != nil {
 								return err
 							}
-							defer func(store storage.Store, ctx context.Context) {
+							defer func(store storage.LedgerStore, ctx context.Context) {
 								require.NoError(t, store.Close(ctx))
 							}(store, context.Background())
 
-							_, err = store.Initialize(context.Background())
+							_, err = store.Migrate(context.Background())
 							if err != nil {
 								return err
 							}
 
-							tf.fn(t, store.(*sqlstorage.Store))
+							tf.fn(t, store.(*sqlstorage.LedgerStore))
 							return nil
 						},
 					})
@@ -142,7 +142,7 @@ var tx3 = core.Transaction{
 	},
 }
 
-func testAppendLog(t *testing.T, store *sqlstorage.Store) {
+func testAppendLog(t *testing.T, store *sqlstorage.LedgerStore) {
 	log := core.NewTransactionLog(nil, core.Transaction{
 		ID: 0,
 		TransactionData: core.TransactionData{
@@ -165,7 +165,7 @@ func testAppendLog(t *testing.T, store *sqlstorage.Store) {
 	assert.Equal(t, storage.ConstraintFailed, err.(*storage.Error).Code)
 }
 
-func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
+func testCountAccounts(t *testing.T, store *sqlstorage.LedgerStore) {
 	tx := core.Transaction{
 		ID: 0,
 		TransactionData: core.TransactionData{
@@ -188,7 +188,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.EqualValues(t, 2, countAccounts) // world + central_bank
 }
 
-func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
+func testGetAssetsVolumes(t *testing.T, store *sqlstorage.LedgerStore) {
 	tx := core.Transaction{
 		TransactionData: core.TransactionData{
 			Postings: []core.Posting{
@@ -212,7 +212,7 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 	assert.EqualValues(t, 0, volumes["USD"].Output)
 }
 
-func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
+func testGetAccounts(t *testing.T, store *sqlstorage.LedgerStore) {
 	account1 := core.NewSetMetadataLog(nil, core.SetMetadata{
 		TargetType: core.MetaTargetTypeAccount,
 		TargetID:   "world",
@@ -315,7 +315,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, accounts.Data, 1)
 }
 
-func testTransactions(t *testing.T, store *sqlstorage.Store) {
+func testTransactions(t *testing.T, store *sqlstorage.LedgerStore) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	log3 := core.NewTransactionLog(&log2, tx3)
@@ -436,7 +436,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 }
 
-func testMapping(t *testing.T, store *sqlstorage.Store) {
+func testMapping(t *testing.T, store *sqlstorage.LedgerStore) {
 	m := core.Mapping{
 		Contracts: []core.Contract{
 			{
@@ -467,7 +467,7 @@ func testMapping(t *testing.T, store *sqlstorage.Store) {
 	assert.Len(t, mapping.Contracts, 0)
 }
 
-func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
+func testGetTransaction(t *testing.T, store *sqlstorage.LedgerStore) {
 	log1 := core.NewTransactionLog(nil, tx1)
 	log2 := core.NewTransactionLog(&log1, tx2)
 	err := store.AppendLog(context.Background(), log1, log2)
@@ -480,7 +480,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 	assert.Equal(t, tx1.Timestamp, tx.Timestamp)
 }
 
-func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
+func testTooManyClient(t *testing.T, store *sqlstorage.LedgerStore) {
 	// Use of external server, ignore this test
 	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" ||
 		ledgertesting.StorageDriverName() != "postgres" {
@@ -516,19 +516,19 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	assert.NoError(t, err)
 
-	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	assert.NoError(t, err)
 
-	modified, err := store.Initialize(context.Background())
+	modified, err := store.Migrate(context.Background())
 	assert.NoError(t, err)
 	assert.True(t, modified)
 
-	modified, err = store.Initialize(context.Background())
+	modified, err = store.Migrate(context.Background())
 	assert.NoError(t, err)
 	assert.False(t, modified)
 }
 
-func testLastLog(t *testing.T, store *sqlstorage.Store) {
+func testLastLog(t *testing.T, store *sqlstorage.LedgerStore) {
 	log := core.NewTransactionLog(nil, tx1)
 	err := store.AppendLog(context.Background(), log)
 	assert.NoError(t, err)

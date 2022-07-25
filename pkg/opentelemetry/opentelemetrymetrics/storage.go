@@ -20,13 +20,13 @@ func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
 }
 
 type storageDecorator struct {
-	storage.Store
+	storage.LedgerStore
 	transactionsCounter metric.Int64Counter
 	revertsCounter      metric.Int64Counter
 }
 
 func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) error {
-	err := o.Store.AppendLog(ctx, logs...)
+	err := o.LedgerStore.AppendLog(ctx, logs...)
 	if err != nil {
 		return err
 	}
@@ -52,11 +52,11 @@ func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) erro
 	return nil
 }
 
-var _ storage.Store = &storageDecorator{}
+var _ storage.LedgerStore = &storageDecorator{}
 
-func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter, revertsCounter metric.Int64Counter) *storageDecorator {
+func NewStorageDecorator(underlying storage.LedgerStore, counter metric.Int64Counter, revertsCounter metric.Int64Counter) *storageDecorator {
 	return &storageDecorator{
-		Store:               underlying,
+		LedgerStore:         underlying,
 		transactionsCounter: counter,
 		revertsCounter:      revertsCounter,
 	}
@@ -70,7 +70,7 @@ type openTelemetryStorageDriver struct {
 	revertsCounter      metric.Int64Counter
 }
 
-func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+func (o *openTelemetryStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (storage.LedgerStore, bool, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -82,7 +82,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
 	}
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+	store, created, err := o.Driver.GetLedgerStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}

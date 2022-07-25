@@ -10,7 +10,7 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) countTransactions(ctx context.Context, exec executor, tq storage.TransactionsQuery) (uint64, error) {
+func (s *LedgerStore) countTransactions(ctx context.Context, exec executor, tq storage.TransactionsQuery) (uint64, error) {
 	var count uint64
 
 	sb, _ := s.buildTransactionsQuery(tq)
@@ -21,11 +21,11 @@ func (s *Store) countTransactions(ctx context.Context, exec executor, tq storage
 	return count, s.error(err)
 }
 
-func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
+func (s *LedgerStore) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
 	return s.countTransactions(ctx, s.schema, q)
 }
 
-func (s *Store) countAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (uint64, error) {
+func (s *LedgerStore) countAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (uint64, error) {
 	var count uint64
 
 	sb, _ := s.buildAccountsQuery(q)
@@ -35,11 +35,11 @@ func (s *Store) countAccounts(ctx context.Context, exec executor, q storage.Acco
 	return count, s.error(err)
 }
 
-func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
+func (s *LedgerStore) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
 	return s.countAccounts(ctx, s.schema, q)
 }
 
-func (s *Store) getAssetsVolumes(ctx context.Context, exec executor, accountAddress string) (core.AssetsVolumes, error) {
+func (s *LedgerStore) getAssetsVolumes(ctx context.Context, exec executor, accountAddress string) (core.AssetsVolumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
@@ -80,11 +80,11 @@ func (s *Store) getAssetsVolumes(ctx context.Context, exec executor, accountAddr
 	return volumes, nil
 }
 
-func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
+func (s *LedgerStore) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
 	return s.getAssetsVolumes(ctx, s.schema, accountAddress)
 }
 
-func (s *Store) getVolumes(ctx context.Context, exec executor, accountAddress, asset string) (core.Volumes, error) {
+func (s *LedgerStore) getVolumes(ctx context.Context, exec executor, accountAddress, asset string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("input", "output")
 	sb.From(s.schema.Table("volumes"))
@@ -110,6 +110,6 @@ func (s *Store) getVolumes(ctx context.Context, exec executor, accountAddress, a
 	}, nil
 }
 
-func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
+func (s *LedgerStore) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	return s.getVolumes(ctx, s.schema, accountAddress, asset)
 }

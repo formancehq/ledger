@@ -27,11 +27,11 @@ var DefaultContracts = []core.Contract{
 
 type Ledger struct {
 	locker  Locker
-	store   storage.Store
+	store   storage.LedgerStore
 	monitor Monitor
 }
 
-func NewLedger(store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
+func NewLedger(store storage.LedgerStore, locker Locker, monitor Monitor) (*Ledger, error) {
 	return &Ledger{
 		store:   store,
 		locker:  locker,

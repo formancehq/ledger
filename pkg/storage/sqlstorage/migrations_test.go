@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Transaction) bool {
+var v0CreateTransaction = func(t *testing.T, store *sqlstorage.LedgerStore, tx core.Transaction) bool {
 	sqlx, args := sqlbuilder.NewInsertBuilder().
 		InsertInto(store.Schema().Table("transactions")).
 		Cols("id", "timestamp", "hash", "reference").
@@ -53,7 +53,7 @@ var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Tr
 	return true
 }
 
-func v0CountMetadata(t *testing.T, store *sqlstorage.Store) (int, bool) {
+func v0CountMetadata(t *testing.T, store *sqlstorage.LedgerStore) (int, bool) {
 	sqlx, args := sqlbuilder.Select("count(*)").From(store.Schema().Table("metadata")).BuildWithFlavor(store.Schema().Flavor())
 	rows, err := store.Schema().QueryContext(context.Background(), sqlx, args...)
 	if !assert.NoError(t, err) {
@@ -75,7 +75,7 @@ func v0CountMetadata(t *testing.T, store *sqlstorage.Store) (int, bool) {
 	return count, true
 }
 
-func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId string, timestamp time.Time, key string, value json.RawMessage) bool {
+func v0AddMetadata(t *testing.T, store *sqlstorage.LedgerStore, targetType, targetId string, timestamp time.Time, key string, value json.RawMessage) bool {
 	count, ok := v0CountMetadata(t, store)
 	if !ok {
 		return false
@@ -92,8 +92,8 @@ func v0AddMetadata(t *testing.T, store *sqlstorage.Store, targetType, targetId s
 
 var now = time.Now().Truncate(time.Second).UTC()
 
-var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
-	"0": func(t *testing.T, store *sqlstorage.Store) {
+var postMigrate = map[string]func(t *testing.T, store *sqlstorage.LedgerStore){
+	"0": func(t *testing.T, store *sqlstorage.LedgerStore) {
 		tx1 := core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: []core.Posting{
@@ -155,8 +155,8 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 	},
-	"1": func(t *testing.T, store *sqlstorage.Store) {},
-	"8": func(t *testing.T, store *sqlstorage.Store) {
+	"1": func(t *testing.T, store *sqlstorage.LedgerStore) {},
+	"8": func(t *testing.T, store *sqlstorage.LedgerStore) {
 
 		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 		if !assert.NoError(t, err) {
@@ -433,9 +433,9 @@ func TestAllMigrations(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	require.NoError(t, err)
 
-	s, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	s, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
-	store := s.(*sqlstorage.Store)
+	store := s.(*sqlstorage.LedgerStore)
 
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
