@@ -66,12 +66,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 	}
 
 	if err = l.store.AppendLog(ctx, result.GeneratedLogs...); err != nil {
-		switch {
-		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return nil, NewConflictError()
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
 
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
