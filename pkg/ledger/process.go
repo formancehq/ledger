@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
@@ -39,11 +40,25 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 	}
 	contracts = append(contracts, DefaultContracts...)
 
+	usedReferences := make(map[string]struct{})
 	for i, t := range ts {
 		if t.Timestamp.IsZero() {
 			// Until v1.5.0, dates was stored as string using rfc3339 format
 			// So round the date to the second to keep the same behaviour
 			t.Timestamp = time.Now().UTC().Truncate(time.Second)
+		}
+		if t.Reference != "" {
+			if _, ok := usedReferences[t.Reference]; ok {
+				return nil, NewConflictError()
+			}
+			cursor, err := l.store.GetTransactions(ctx, *storage.NewTransactionsQuery().WithReferenceFilter(t.Reference))
+			if err != nil {
+				return nil, err
+			}
+			if len(cursor.Data) > 0 {
+				return nil, NewConflictError()
+			}
+			usedReferences[t.Reference] = struct{}{}
 		}
 		if len(t.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))

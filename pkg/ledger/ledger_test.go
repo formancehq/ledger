@@ -191,46 +191,69 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 }
 
 func TestTransactionBatchWithConflictingReference(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		batch := []core.TransactionData{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player",
-						Asset:       "GEM",
-						Amount:      int64(100),
+	t.Run("With conflict reference on transaction set", func(t *testing.T) {
+		runOnLedger(func(l *Ledger) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      "world",
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      int64(100),
+						},
 					},
+					Reference: "ref1",
 				},
-				Reference: "ref1",
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "player",
-						Destination: "game",
-						Asset:       "GEM",
-						Amount:      int64(100),
+				{
+					Postings: []core.Posting{
+						{
+							Source:      "player",
+							Destination: "game",
+							Asset:       "GEM",
+							Amount:      int64(100),
+						},
 					},
+					Reference: "ref2",
 				},
-				Reference: "ref2",
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player",
-						Asset:       "GEM",
-						Amount:      int64(100),
+				{
+					Postings: []core.Posting{
+						{
+							Source:      "player",
+							Destination: "player2",
+							Asset:       "GEM",
+							Amount:      int64(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
+						},
 					},
+					Reference: "ref1",
 				},
-				Reference: "ref1",
-			},
-		}
+			}
 
-		_, err := l.Commit(context.Background(), batch)
-		assert.Error(t, err)
-		assert.IsType(t, new(ConflictError), err)
+			_, err := l.Commit(context.Background(), batch)
+			assert.Error(t, err)
+			assert.IsType(t, new(ConflictError), err)
+		})
+	})
+	t.Run("with conflict reference on database", func(t *testing.T) {
+		runOnLedger(func(l *Ledger) {
+			txData := core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "player",
+						Asset:       "GEM",
+						Amount:      int64(100),
+					},
+				},
+				Reference: "ref1",
+			}
+			_, err := l.Commit(context.Background(), []core.TransactionData{txData})
+			require.NoError(t, err)
+
+			_, err = l.Commit(context.Background(), []core.TransactionData{txData})
+			assert.Error(t, err)
+			assert.IsType(t, new(ConflictError), err)
+		})
 	})
 }
 
