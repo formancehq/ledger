@@ -167,12 +167,10 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
-
 	return l.store.CountAccounts(ctx, a)
 }
 
 func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
-
 	return l.store.GetAccounts(ctx, a)
 }
 
@@ -212,7 +210,10 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	if targetType == "" {
 		return NewValidationError("empty target type")
 	}
-	if targetType != core.MetaTargetTypeTransaction && targetType != core.MetaTargetTypeAccount {
+	switch targetType {
+	case core.MetaTargetTypeTransaction:
+	case core.MetaTargetTypeAccount:
+	default:
 		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if targetID == "" {
