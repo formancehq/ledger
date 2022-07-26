@@ -15,8 +15,6 @@ jobs:
 
   Lint:
     uses: numary/gh-workflows/.github/workflows/golang-lint.yml@main
-    with:
-      go_version: 1.18
 
   Control:
     name: 'Control'
@@ -27,18 +25,10 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   Test_postgres:
-    uses: ./.github/workflows/template_golang-test-pgsql.yaml
-    needs:
-      - Lint
-    with:
-      go_version: 1.18
+    uses: numary/gh-workflows/.github/workflows/golang-test-postgres.yml@main
 
   Test_sqlite:
     uses: numary/gh-workflows/.github/workflows/golang-test.yml@main
-    needs:
-      - Lint
-    with:
-      go_version: 1.18
 
   GoReleaserBuild:
     if: github.event_name != 'release'

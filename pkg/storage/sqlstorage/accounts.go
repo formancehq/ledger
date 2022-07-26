@@ -230,8 +230,10 @@ func (s *API) UpdateAccountMetadata(ctx context.Context, address string, metadat
 
 	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 	_, err = s.executor.ExecContext(ctx, sqlq, args...)
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	lastLog, err := s.LastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")

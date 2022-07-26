@@ -41,8 +41,8 @@ type Transaction struct {
 
 type ExpandedTransaction struct {
 	Transaction
-	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
-	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
+	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`
+	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"`
 }
 
 func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {

@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        sdk: [ go, php, python, typescript-node ]
+        sdk: [ go, php, python, typescript-node, java ]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -44,7 +44,12 @@ jobs:
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: Upgrade Release to ${{ inputs.VERSION }}
-          tagging_message: ${{ inputs.VERSION }}
+          create_branch: true
+          branch: release/${{ inputs.VERSION }}
           repository: ./sdk/sdks/${{ matrix.sdk }}
           commit_user_name: NumaryBot
           commit_user_email: support@numary.com
+      - run: gh pr create --base main --head release/${{ inputs.VERSION }} --title "Upgrade to ${{ inputs.VERSION }}" --body "Upgrade to ${{ inputs.VERSION }}"
+        working-directory: ./sdk/sdks/${{ matrix.sdk }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

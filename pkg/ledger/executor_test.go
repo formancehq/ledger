@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -376,8 +375,6 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, err)
 					last, err := l.store.GetLastTransaction(context.Background())
 					require.NoError(t, err)
-
-					spew.Dump(last.Metadata, tc.expectedMetadata)
 					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
 				}
 			})
