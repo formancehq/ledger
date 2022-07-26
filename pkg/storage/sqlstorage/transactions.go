@@ -372,8 +372,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	return nil
 }
 
-func (s *Store) updateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
-
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	ub := sqlbuilder.NewUpdateBuilder()
 
 	metadataData, err := json.Marshal(metadata)
@@ -394,13 +393,8 @@ func (s *Store) updateTransactionMetadata(ctx context.Context, id uint64, metada
 
 	sqlq, args := ub.BuildWithFlavor(s.schema.Flavor())
 	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
-
-	return s.error(err)
-}
-
-func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
-	if err := s.updateTransactionMetadata(ctx, id, metadata); err != nil {
-		return errors.Wrap(err, "updating metadata")
+	if err != nil {
+		return err
 	}
 
 	lastLog, err := s.LastLog(ctx)

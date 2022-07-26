@@ -240,6 +240,10 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 	err = store.Commit(context.Background(), tx)
 	require.Error(t, err)
 	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
+
+	logs, err := store.Logs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
 }
 
 func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
@@ -271,6 +275,10 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 	retrievedTransaction, err := store.GetTransaction(context.Background(), tx.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, json.RawMessage(`"bar"`), retrievedTransaction.Metadata["foo"])
+
+	logs, err := store.Logs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
 }
 
 func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
@@ -302,6 +310,10 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 	account, err := store.GetAccount(context.Background(), "central_bank")
 	require.NoError(t, err)
 	require.EqualValues(t, json.RawMessage(`"bar"`), account.Metadata["foo"])
+
+	logs, err := store.Logs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
 }
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {

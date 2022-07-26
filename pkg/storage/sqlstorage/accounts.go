@@ -208,7 +208,7 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 	return s.error(err)
 }
 
-func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+func (s *Store) updateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
 	ib := sqlbuilder.NewInsertBuilder()
 
 	metadataData, err := json.Marshal(metadata)
@@ -232,4 +232,39 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
 
 	return err
+}
+
+func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+	ib := sqlbuilder.NewInsertBuilder()
+
+	metadataData, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	placeholder := ib.Var(metadataData)
+	ib.
+		InsertInto(s.schema.Table("accounts")).
+		Cols("address", "metadata").
+		Values(address, metadataData)
+
+	switch Flavor(s.schema.Flavor()) {
+	case PostgreSQL:
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
+	case SQLite:
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
+	}
+
+	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
+	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
+
+	lastLog, err := s.LastLog(ctx)
+	if err != nil {
+		return errors.Wrap(err, "reading last log")
+	}
+
+	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   address,
+		Metadata:   metadata,
+	}))
 }
