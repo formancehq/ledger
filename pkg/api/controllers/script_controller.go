@@ -16,8 +16,8 @@ import (
 
 type ScriptResponse struct {
 	sharedapi.ErrorResponse
-	Link        string            `json:"details,omitempty"`
-	Transaction *core.Transaction `json:"transaction,omitempty"`
+	Link        string                    `json:"details,omitempty"`
+	Transaction *core.ExpandedTransaction `json:"transaction,omitempty"`
 }
 
 func EncodeLink(errStr string) string {

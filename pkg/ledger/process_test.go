@@ -119,9 +119,11 @@ func TestLedger_processTx(t *testing.T) {
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
 				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
 
-				expectedTxs := []core.Transaction{{
-					TransactionData:   txsData[0],
-					ID:                0,
+				expectedTxs := []core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: txsData[0],
+						ID:              0,
+					},
 					PreCommitVolumes:  expectedPreCommitVol,
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
@@ -163,13 +165,15 @@ func TestLedger_processTx(t *testing.T) {
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
 				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
 
-				expectedTxs := []core.Transaction{
+				expectedTxs := []core.ExpandedTransaction{
 					{
-						TransactionData: core.TransactionData{
-							Timestamp: now,
-							Postings:  core.Postings{postings[0]},
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Timestamp: now,
+								Postings:  core.Postings{postings[0]},
+							},
+							ID: 0,
 						},
-						ID: 0,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}},
 							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}}},
@@ -178,11 +182,13 @@ func TestLedger_processTx(t *testing.T) {
 							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: worldTotoUSD}}},
 					},
 					{
-						TransactionData: core.TransactionData{
-							Postings:  core.Postings{postings[1]},
-							Timestamp: now.Add(time.Second),
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Postings:  core.Postings{postings[1]},
+								Timestamp: now.Add(time.Second),
+							},
+							ID: 1,
 						},
-						ID: 1,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"world": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: worldTotoUSD}},
 							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: 0, Output: 0}},
@@ -193,11 +199,13 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 					{
-						TransactionData: core.TransactionData{
-							Timestamp: now.Add(2 * time.Second),
-							Postings:  core.Postings{postings[2]},
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Timestamp: now.Add(2 * time.Second),
+								Postings:  core.Postings{postings[2]},
+							},
+							ID: 2,
 						},
-						ID: 2,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"alice": core.AssetsVolumes{"USD": core.Volumes{Input: worldAliceUSD, Output: 0}},
 							"toto":  core.AssetsVolumes{"USD": core.Volumes{Input: worldTotoUSD, Output: 0}},
@@ -208,11 +216,13 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 					{
-						TransactionData: core.TransactionData{
-							Timestamp: now.Add(3 * time.Second),
-							Postings:  core.Postings{postings[3]},
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Timestamp: now.Add(3 * time.Second),
+								Postings:  core.Postings{postings[3]},
+							},
+							ID: 3,
 						},
-						ID: 3,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
 							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
@@ -223,11 +233,13 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 					{
-						TransactionData: core.TransactionData{
-							Timestamp: now.Add(4 * time.Second),
-							Postings:  core.Postings{postings[4]},
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Timestamp: now.Add(4 * time.Second),
+								Postings:  core.Postings{postings[4]},
+							},
+							ID: 4,
 						},
-						ID: 4,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"world": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: worldTotoEUR}},
 							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: 0, Output: 0}},
@@ -238,11 +250,13 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 					{
-						TransactionData: core.TransactionData{
-							Timestamp: now.Add(5 * time.Second),
-							Postings:  core.Postings{postings[5]},
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Timestamp: now.Add(5 * time.Second),
+								Postings:  core.Postings{postings[5]},
+							},
+							ID: 5,
 						},
-						ID: 5,
 						PreCommitVolumes: core.AccountsAssetsVolumes{
 							"toto":  core.AssetsVolumes{"EUR": core.Volumes{Input: worldTotoEUR, Output: 0}},
 							"alice": core.AssetsVolumes{"EUR": core.Volumes{Input: worldAliceEUR, Output: 0}},
@@ -265,17 +279,19 @@ func TestLedger_processTx(t *testing.T) {
 			assert.Equal(t, &CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
 				PostCommitVolumes:     core.AccountsAssetsVolumes{},
-				GeneratedTransactions: []core.Transaction{},
+				GeneratedTransactions: []core.ExpandedTransaction{},
 			}, result)
 		})
 
 		t.Run("date in the past", func(t *testing.T) {
 			now := time.Now()
-			require.NoError(t, l.store.Commit(context.Background(), core.Transaction{
-				TransactionData: core.TransactionData{
-					Timestamp: now,
+			require.NoError(t, l.store.Commit(context.Background(), core.ExpandedTransaction{
+				Transaction: core.Transaction{
+					TransactionData: core.TransactionData{
+						Timestamp: now,
+					},
+					ID: 0,
 				},
-				ID: 0,
 			}))
 
 			_, err := l.processTx(context.Background(), []core.TransactionData{

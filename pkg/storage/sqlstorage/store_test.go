@@ -95,18 +95,20 @@ func TestStore(t *testing.T) {
 	}
 }
 
-var tx1 = core.Transaction{
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "world",
-				Destination: "central_bank",
-				Amount:      100,
-				Asset:       "USD",
+var tx1 = core.ExpandedTransaction{
+	Transaction: core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      100,
+					Asset:       "USD",
+				},
 			},
+			Reference: "tx1",
+			Timestamp: now.Add(-3 * time.Hour),
 		},
-		Reference: "tx1",
-		Timestamp: now.Add(-3 * time.Hour),
 	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
@@ -129,19 +131,21 @@ var tx1 = core.Transaction{
 		},
 	},
 }
-var tx2 = core.Transaction{
-	ID: 1,
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "world",
-				Destination: "central_bank",
-				Amount:      100,
-				Asset:       "USD",
+var tx2 = core.ExpandedTransaction{
+	Transaction: core.Transaction{
+		ID: 1,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      100,
+					Asset:       "USD",
+				},
 			},
+			Reference: "tx2",
+			Timestamp: now.Add(-2 * time.Hour),
 		},
-		Reference: "tx2",
-		Timestamp: now.Add(-2 * time.Hour),
 	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
@@ -168,22 +172,24 @@ var tx2 = core.Transaction{
 		},
 	},
 }
-var tx3 = core.Transaction{
-	ID: 2,
-	TransactionData: core.TransactionData{
-		Postings: []core.Posting{
-			{
-				Source:      "central_bank",
-				Destination: "users:1",
-				Amount:      1,
-				Asset:       "USD",
+var tx3 = core.ExpandedTransaction{
+	Transaction: core.Transaction{
+		ID: 2,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "central_bank",
+					Destination: "users:1",
+					Amount:      1,
+					Asset:       "USD",
+				},
 			},
+			Reference: "tx3",
+			Metadata: core.Metadata{
+				"priority": json.RawMessage(`"high"`),
+			},
+			Timestamp: now.Add(-1 * time.Hour),
 		},
-		Reference: "tx3",
-		Metadata: core.Metadata{
-			"priority": json.RawMessage(`"high"`),
-		},
-		Timestamp: now.Add(-1 * time.Hour),
 	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
@@ -211,19 +217,21 @@ var tx3 = core.Transaction{
 }
 
 func testCommit(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		ID: 0,
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			ID: 0,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "foo",
+				Timestamp: time.Now().Round(time.Second),
 			},
-			Reference: "foo",
-			Timestamp: time.Now().Round(time.Second),
 		},
 	}
 	err := store.Commit(context.Background(), tx)
@@ -235,19 +243,21 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		ID: 0,
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			ID: 0,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "foo",
+				Timestamp: time.Now().Round(time.Second),
 			},
-			Reference: "foo",
-			Timestamp: time.Now().Round(time.Second),
 		},
 	}
 	err := store.Commit(context.Background(), tx)
@@ -264,19 +274,21 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		ID: 0,
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			ID: 0,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Reference: "foo",
+				Timestamp: time.Now().Round(time.Second),
 			},
-			Reference: "foo",
-			Timestamp: time.Now().Round(time.Second),
 		},
 	}
 	err := store.Commit(context.Background(), tx)
@@ -293,18 +305,20 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		ID: 0,
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			ID: 0,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Timestamp: time.Now().Round(time.Second),
 			},
-			Timestamp: time.Now().Round(time.Second),
 		},
 	}
 	err := store.Commit(context.Background(), tx)
@@ -316,17 +330,19 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "central_bank",
-					Amount:      100,
-					Asset:       "USD",
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      100,
+						Asset:       "USD",
+					},
 				},
+				Timestamp: time.Now().Round(time.Second),
 			},
-			Timestamp: time.Now().Round(time.Second),
 		},
 		PostCommitVolumes: core.AccountsAssetsVolumes{
 			"central_bank": core.AssetsVolumes{
@@ -654,7 +670,7 @@ func testLastLog(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 
-	require.Equal(t, tx1.Postings, lastLog.Data.(core.RawTransaction).Postings)
-	require.Equal(t, tx1.Reference, lastLog.Data.(core.RawTransaction).Reference)
-	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.RawTransaction).Timestamp)
+	require.Equal(t, tx1.Postings, lastLog.Data.(core.Transaction).Postings)
+	require.Equal(t, tx1.Reference, lastLog.Data.(core.Transaction).Reference)
+	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.Transaction).Timestamp)
 }

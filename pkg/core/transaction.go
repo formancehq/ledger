@@ -32,58 +32,56 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
-var _ json.Marshaler = Transaction{}
-
-type RawTransaction struct {
-	Postings  Postings    `json:"postings"`
-	Reference string      `json:"reference"`
-	Metadata  RawMetadata `json:"metadata"`
-	ID        uint64      `json:"txid"`
-	Timestamp time.Time   `json:"timestamp"`
-}
-
-func (r RawTransaction) ToTransaction() Transaction {
-	return Transaction{
-		TransactionData: TransactionData{
-			Postings:  r.Postings,
-			Reference: r.Reference,
-			Metadata:  r.Metadata.ToMetadata(),
-			Timestamp: r.Timestamp,
-		},
-		ID:                r.ID,
-		PreCommitVolumes:  AccountsAssetsVolumes{},
-		PostCommitVolumes: AccountsAssetsVolumes{},
-	}
-}
+var _ json.Marshaler = ExpandedTransaction{}
 
 type Transaction struct {
 	TransactionData
-	ID                uint64                `json:"txid"`
+	ID uint64 `json:"txid"`
+}
+
+//func (r Transaction) ToTransaction() ExpandedTransaction {
+//	return ExpandedTransaction{
+//		Transaction: Transaction{
+//			TransactionData: TransactionData{
+//				Postings:  r.Postings,
+//				Reference: r.Reference,
+//				Metadata:  r.Metadata.ToMetadata(),
+//				Timestamp: r.Timestamp,
+//			},
+//			ID:                r.ID,
+//		},
+//		PreCommitVolumes:  AccountsAssetsVolumes{},
+//		PostCommitVolumes: AccountsAssetsVolumes{},
+//	}
+//}
+
+type ExpandedTransaction struct {
+	Transaction
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
 
-func (t Transaction) raw() RawTransaction {
-	metadata := make(map[string]interface{})
-	for k, v := range t.Metadata {
-		var i interface{}
-		err := json.Unmarshal(v, &i)
-		if err != nil {
-			panic(err)
-		}
-		metadata[k] = i
-	}
-	return RawTransaction{
-		Postings:  t.Postings,
-		Reference: t.Reference,
-		Metadata:  metadata,
-		ID:        t.ID,
-		Timestamp: t.Timestamp,
-	}
-}
+//func (t ExpandedTransaction) raw() Transaction {
+//	metadata := make(map[string]interface{})
+//	for k, v := range t.Metadata {
+//		var i interface{}
+//		err := json.Unmarshal(v, &i)
+//		if err != nil {
+//			panic(err)
+//		}
+//		metadata[k] = i
+//	}
+//	return Transaction{
+//		Postings:  t.Postings,
+//		Reference: t.Reference,
+//		Metadata:  metadata,
+//		ID:        t.ID,
+//		Timestamp: t.Timestamp,
+//	}
+//}
 
-func (t Transaction) MarshalJSON() ([]byte, error) {
-	type transaction Transaction
+func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
+	type transaction ExpandedTransaction
 	return json.Marshal(struct {
 		transaction
 		Timestamp string `json:"timestamp"`
@@ -94,11 +92,11 @@ func (t Transaction) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (t *Transaction) AppendPosting(p Posting) {
+func (t *ExpandedTransaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
-func (t *Transaction) IsReverted() bool {
+func (t *ExpandedTransaction) IsReverted() bool {
 	if _, ok := t.Metadata[RevertedMetadataSpecKey()]; ok {
 		return true
 	}
@@ -110,11 +108,13 @@ func Hash(t1, t2 interface{}) string {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(string(b1))
 
 	b2, err := json.Marshal(t2)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(string(b2))
 
 	h := sha256.New()
 	_, err = h.Write(b1)

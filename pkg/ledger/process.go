@@ -25,7 +25,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 
 	volumeAggregator := newVolumeAggregator(l.store)
 
-	generatedTxs := make([]core.Transaction, 0)
+	generatedTxs := make([]core.ExpandedTransaction, 0)
 	accounts := make(map[string]*core.Account, 0)
 	contracts := make([]core.Contract, 0)
 	if mapping != nil {
@@ -100,9 +100,11 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			}
 		}
 
-		tx := core.Transaction{
-			TransactionData:   t,
-			ID:                nextTxId,
+		tx := core.ExpandedTransaction{
+			Transaction: core.Transaction{
+				TransactionData: t,
+				ID:              nextTxId,
+			},
 			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
 			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
 		}

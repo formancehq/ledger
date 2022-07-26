@@ -73,11 +73,11 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 	return sb, t
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
-	txs := make([]core.Transaction, 0)
+func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+	txs := make([]core.ExpandedTransaction, 0)
 
 	if q.PageSize == 0 {
-		return sharedapi.Cursor[core.Transaction]{Data: txs}, nil
+		return sharedapi.Cursor[core.ExpandedTransaction]{Data: txs}, nil
 	}
 
 	sb, t := s.buildTransactionsQuery(q)
@@ -93,7 +93,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := s.getExecutorFromContext(ctx).QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -103,7 +103,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 
 	for rows.Next() {
 		var ref, ts sql.NullString
-		tx := core.Transaction{}
+		tx := core.ExpandedTransaction{}
 		if err := rows.Scan(
 			&tx.ID,
 			&ts,
@@ -113,7 +113,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 			&tx.PreCommitVolumes,
 			&tx.PostCommitVolumes,
 		); err != nil {
-			return sharedapi.Cursor[core.Transaction]{}, err
+			return sharedapi.Cursor[core.ExpandedTransaction]{}, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
@@ -121,13 +121,13 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		}
 		timestamp, err := time.Parse(time.RFC3339, ts.String)
 		if err != nil {
-			return sharedapi.Cursor[core.Transaction]{}, err
+			return sharedapi.Cursor[core.ExpandedTransaction]{}, err
 		}
 		tx.Timestamp = timestamp.UTC()
 		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
 
 	var previous, next string
@@ -138,7 +138,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		txs = txs[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+			return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -149,12 +149,12 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Transaction]{}, s.error(err)
+			return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor[core.Transaction]{
+	return sharedapi.Cursor[core.ExpandedTransaction]{
 		PageSize: int(q.PageSize),
 		HasMore:  next != "",
 		Previous: previous,
@@ -163,7 +163,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	}, nil
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transaction, error) {
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -176,10 +176,12 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transact
 		return nil, s.error(row.Err())
 	}
 
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: core.Postings{},
-			Metadata: core.Metadata{},
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: core.Postings{},
+				Metadata: core.Metadata{},
+			},
 		},
 		PreCommitVolumes:  core.AccountsAssetsVolumes{},
 		PostCommitVolumes: core.AccountsAssetsVolumes{},
@@ -211,7 +213,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Transact
 	return &tx, nil
 }
 
-func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
+func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
@@ -224,10 +226,12 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, erro
 		return nil, s.error(row.Err())
 	}
 
-	tx := core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: core.Postings{},
-			Metadata: core.Metadata{},
+	tx := core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: core.Postings{},
+				Metadata: core.Metadata{},
+			},
 		},
 		PreCommitVolumes:  core.AccountsAssetsVolumes{},
 		PostCommitVolumes: core.AccountsAssetsVolumes{},
@@ -259,7 +263,7 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.Transaction, erro
 	return &tx, nil
 }
 
-func (s *Store) insertTransactions(ctx context.Context, txs ...core.Transaction) error {
+func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
 	var (
 		query string
 		args  []interface{}

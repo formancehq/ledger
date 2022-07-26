@@ -20,7 +20,7 @@ type storageDecorator struct {
 	transactionsCounter metric.Int64Counter
 }
 
-func (o *storageDecorator) Commit(ctx context.Context, txs ...core.Transaction) error {
+func (o *storageDecorator) Commit(ctx context.Context, txs ...core.ExpandedTransaction) error {
 	err := o.Store.Commit(ctx, txs...)
 	if err != nil {
 		return err

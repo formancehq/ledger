@@ -27,15 +27,17 @@ func TestVolumeAggregator(t *testing.T) {
 					return err
 				}
 
-				tx1 := core.Transaction{
-					ID: 0,
-					TransactionData: core.TransactionData{
-						Postings: []core.Posting{
-							{
-								Source:      "bob",
-								Destination: "zozo",
-								Amount:      100,
-								Asset:       "USD",
+				tx1 := core.ExpandedTransaction{
+					Transaction: core.Transaction{
+						ID: 0,
+						TransactionData: core.TransactionData{
+							Postings: []core.Posting{
+								{
+									Source:      "bob",
+									Destination: "zozo",
+									Amount:      100,
+									Asset:       "USD",
+								},
 							},
 						},
 					},
@@ -61,15 +63,17 @@ func TestVolumeAggregator(t *testing.T) {
 					},
 				}
 
-				tx2 := core.Transaction{
-					ID: 1,
-					TransactionData: core.TransactionData{
-						Postings: []core.Posting{
-							{
-								Source:      "zozo",
-								Destination: "alice",
-								Amount:      100,
-								Asset:       "USD",
+				tx2 := core.ExpandedTransaction{
+					Transaction: core.Transaction{
+						ID: 1,
+						TransactionData: core.TransactionData{
+							Postings: []core.Posting{
+								{
+									Source:      "zozo",
+									Destination: "alice",
+									Amount:      100,
+									Asset:       "USD",
+								},
 							},
 						},
 					},

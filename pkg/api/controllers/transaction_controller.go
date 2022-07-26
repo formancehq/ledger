@@ -47,7 +47,7 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor sharedapi.Cursor[core.Transaction]
+	var cursor sharedapi.Cursor[core.ExpandedTransaction]
 	var txQuery *storage.TransactionsQuery
 	var err error
 
@@ -134,7 +134,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		return
 	}
 
-	respondWithCursor[core.Transaction](c, http.StatusOK, cursor)
+	respondWithCursor[core.ExpandedTransaction](c, http.StatusOK, cursor)
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -170,7 +170,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
-	respondWithData[[]core.Transaction](c, status, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, status, res.GeneratedTransactions)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -188,7 +188,7 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[*core.Transaction](c, http.StatusOK, tx)
+	respondWithData[*core.ExpandedTransaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
@@ -206,7 +206,7 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[*core.Transaction](c, http.StatusOK, tx)
+	respondWithData[*core.ExpandedTransaction](c, http.StatusOK, tx)
 }
 
 func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
@@ -259,5 +259,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.Transaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
 }

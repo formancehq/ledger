@@ -112,7 +112,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	return t, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transaction, error) {
+func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transac
 	return &res.GeneratedTransactions[0], nil
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.Transaction, error) {
+func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err

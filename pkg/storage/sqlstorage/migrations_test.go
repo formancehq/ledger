@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.Transaction) bool {
+var v0CreateTransaction = func(t *testing.T, store *sqlstorage.Store, tx core.ExpandedTransaction) bool {
 	sqlx, args := sqlbuilder.NewInsertBuilder().
 		InsertInto(store.Schema().Table("transactions")).
 		Cols("id", "timestamp", "hash", "reference").
@@ -94,29 +94,31 @@ var now = time.Now().Truncate(time.Second).UTC()
 
 var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 	"0": func(t *testing.T, store *sqlstorage.Store) {
-		tx1 := core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player1",
-						Amount:      100,
-						Asset:       "USD",
+		tx1 := core.ExpandedTransaction{
+			Transaction: core.Transaction{
+				TransactionData: core.TransactionData{
+					Postings: []core.Posting{
+						{
+							Source:      "world",
+							Destination: "player1",
+							Amount:      100,
+							Asset:       "USD",
+						},
+						{
+							Source:      "world",
+							Destination: "player2",
+							Amount:      100,
+							Asset:       "USD",
+						},
 					},
-					{
-						Source:      "world",
-						Destination: "player2",
-						Amount:      100,
-						Asset:       "USD",
+					Metadata: core.Metadata{
+						"players": json.RawMessage(`["player1", "player2"]`),
 					},
+					Reference: "tx1",
+					Timestamp: now,
 				},
-				Metadata: core.Metadata{
-					"players": json.RawMessage(`["player1", "player2"]`),
-				},
-				Reference: "tx1",
-				Timestamp: now,
+				ID: 0,
 			},
-			ID: 0,
 		}
 		if !v0CreateTransaction(t, store, tx1) {
 			return
@@ -136,20 +138,22 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			return
 		}
 
-		tx2 := core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "player1",
-						Destination: "shop",
-						Amount:      1,
-						Asset:       "USD",
+		tx2 := core.ExpandedTransaction{
+			Transaction: core.Transaction{
+				TransactionData: core.TransactionData{
+					Postings: []core.Posting{
+						{
+							Source:      "player1",
+							Destination: "shop",
+							Amount:      1,
+							Asset:       "USD",
+						},
 					},
+					Reference: "tx2",
+					Timestamp: now.Add(2 * time.Second),
 				},
-				Reference: "tx2",
-				Timestamp: now.Add(2 * time.Second),
+				ID: 1,
 			},
-			ID: 1,
 		}
 		if !v0CreateTransaction(t, store, tx2) {
 			return
@@ -195,12 +199,14 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 		}
 		tx.Metadata = core.Metadata{}
 
-		assert.EqualValues(t, core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings:  core.Postings{},
-				Reference: "tx1",
-				Metadata:  core.Metadata{},
-				Timestamp: now,
+		assert.EqualValues(t, core.ExpandedTransaction{
+			Transaction: core.Transaction{
+				TransactionData: core.TransactionData{
+					Postings:  core.Postings{},
+					Reference: "tx1",
+					Metadata:  core.Metadata{},
+					Timestamp: now,
+				},
 			},
 			PreCommitVolumes:  core.AccountsAssetsVolumes{},
 			PostCommitVolumes: core.AccountsAssetsVolumes{},
@@ -281,19 +287,21 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			{
 				ID:   6,
 				Type: core.NewTransactionType,
-				Data: core.RawTransaction{
-					Postings: core.Postings{
-						{
-							Source:      "player1",
-							Destination: "shop",
-							Amount:      1,
-							Asset:       "USD",
+				Data: core.Transaction{
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "player1",
+								Destination: "shop",
+								Amount:      1,
+								Asset:       "USD",
+							},
 						},
+						Metadata:  core.Metadata{},
+						Reference: "tx2",
+						Timestamp: now.Add(2 * time.Second),
 					},
-					Metadata:  core.RawMetadata{},
-					Reference: "tx2",
-					Timestamp: now.Add(2 * time.Second),
-					ID:        1,
+					ID: 1,
 				},
 				Date: now.Add(2 * time.Second),
 			},
@@ -360,24 +368,26 @@ var postMigrate = map[string]func(t *testing.T, store *sqlstorage.Store){
 			{
 				ID:   0,
 				Type: core.NewTransactionType,
-				Data: core.RawTransaction{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "player1",
-							Amount:      100,
-							Asset:       "USD",
+				Data: core.Transaction{
+					TransactionData: core.TransactionData{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "player1",
+								Amount:      100,
+								Asset:       "USD",
+							},
+							{
+								Source:      "world",
+								Destination: "player2",
+								Amount:      100,
+								Asset:       "USD",
+							},
 						},
-						{
-							Source:      "world",
-							Destination: "player2",
-							Amount:      100,
-							Asset:       "USD",
-						},
+						Metadata:  core.Metadata{},
+						Reference: "tx1",
+						Timestamp: now,
 					},
-					Metadata:  core.RawMetadata{},
-					Reference: "tx1",
-					Timestamp: now,
 				},
 				Date: now,
 			},

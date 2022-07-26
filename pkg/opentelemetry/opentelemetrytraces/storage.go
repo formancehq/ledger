@@ -42,7 +42,7 @@ func (o *openTelemetryStorage) UpdateAccountMetadata(ctx context.Context, id str
 	return
 }
 
-func (o *openTelemetryStorage) Commit(ctx context.Context, txs ...core.Transaction) (err error) {
+func (o *openTelemetryStorage) Commit(ctx context.Context, txs ...core.ExpandedTransaction) (err error) {
 	handlingErr := o.handle(ctx, "Commit", func(ctx context.Context) error {
 		err = o.underlying.Commit(ctx, txs...)
 		return err
@@ -74,7 +74,7 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 	return err
 }
 
-func (o *openTelemetryStorage) GetLastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
+func (o *openTelemetryStorage) GetLastTransaction(ctx context.Context) (ret *core.ExpandedTransaction, err error) {
 	handlingErr := o.handle(ctx, "GetLastTransaction", func(ctx context.Context) error {
 		ret, err = o.underlying.GetLastTransaction(ctx)
 		return err
@@ -118,7 +118,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q storage.
 	return
 }
 
-func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.Transaction], err error) {
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.ExpandedTransaction], err error) {
 	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
@@ -129,7 +129,7 @@ func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storag
 	return
 }
 
-func (o *openTelemetryStorage) GetTransaction(ctx context.Context, txid uint64) (tx *core.Transaction, err error) {
+func (o *openTelemetryStorage) GetTransaction(ctx context.Context, txid uint64) (tx *core.ExpandedTransaction, err error) {
 	handlingErr := o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
 		tx, err = o.underlying.GetTransaction(ctx, txid)
 		return err

@@ -49,7 +49,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 type CommitResult struct {
 	PreCommitVolumes      core.AccountsAssetsVolumes
 	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.Transaction
+	GeneratedTransactions []core.ExpandedTransaction
 }
 
 func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
@@ -87,7 +87,7 @@ func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionDa
 	return l.processTx(ctx, txsData)
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
 	return l.store.GetTransactions(ctx, q)
 }
 
@@ -95,7 +95,7 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 	return l.store.CountTransactions(ctx, q)
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err

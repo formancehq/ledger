@@ -14,7 +14,7 @@ type baseEvent struct {
 }
 
 type committedTransactions struct {
-	Transactions []core.Transaction `json:"transactions"`
+	Transactions []core.ExpandedTransaction `json:"transactions"`
 	// Deprecated (use postCommitVolumes)
 	Volumes           core.AccountsAssetsVolumes `json:"volumes"`
 	PostCommitVolumes core.AccountsAssetsVolumes `json:"postCommitVolumes"`
@@ -28,8 +28,8 @@ type savedMetadata struct {
 }
 
 type revertedTransaction struct {
-	RevertedTransaction core.Transaction `json:"revertedTransaction"`
-	RevertTransaction   core.Transaction `json:"revertTransaction"`
+	RevertedTransaction core.ExpandedTransaction `json:"revertedTransaction"`
+	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
 }
 
 type updatedMapping struct {

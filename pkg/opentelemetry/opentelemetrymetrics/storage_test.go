@@ -28,6 +28,6 @@ func TestNewStorageDecorator(t *testing.T) {
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)
 
-	err = store.Commit(context.Background(), core.Transaction{})
+	err = store.Commit(context.Background(), core.ExpandedTransaction{})
 	assert.NoError(t, err)
 }
