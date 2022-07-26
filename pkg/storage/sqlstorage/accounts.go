@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
+func (s *API) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
@@ -87,7 +87,7 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 	return sb, t
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *API) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
@@ -109,7 +109,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (share
 	sb.Offset(int(q.Offset))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.getExecutorFromContext(ctx).QueryContext(ctx, sqlq, args...)
+	rows, err := s.executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.Account]{}, s.error(err)
 	}
@@ -167,7 +167,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (share
 	}, nil
 }
 
-func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
+func (s *API) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
@@ -179,7 +179,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.getExecutorFromContext(ctx).QueryRowContext(ctx, sqlq, args...)
+	row := s.executor.QueryRowContext(ctx, sqlq, args...)
 	if err := row.Err(); err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	return &account, nil
 }
 
-func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
+func (s *API) ensureAccountExists(ctx context.Context, account string) error {
 
 	sb := sqlbuilder.NewInsertBuilder()
 	sqlq, args := sb.
@@ -204,11 +204,11 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 		SQL("ON CONFLICT DO NOTHING").
 		BuildWithFlavor(s.schema.Flavor())
 
-	_, err := s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
+	_, err := s.executor.ExecContext(ctx, sqlq, args...)
 	return s.error(err)
 }
 
-func (s *Store) updateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
+func (s *API) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
 	ib := sqlbuilder.NewInsertBuilder()
 
 	metadataData, err := json.Marshal(metadata)
@@ -229,34 +229,9 @@ func (s *Store) updateAccountMetadata(ctx context.Context, address string, metad
 	}
 
 	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
-	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
-
-	return err
-}
-
-func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
-	ib := sqlbuilder.NewInsertBuilder()
-
-	metadataData, err := json.Marshal(metadata)
-	if err != nil {
-		return err
-	}
-	placeholder := ib.Var(metadataData)
-	ib.
-		InsertInto(s.schema.Table("accounts")).
-		Cols("address", "metadata").
-		Values(address, metadataData)
-
-	switch Flavor(s.schema.Flavor()) {
-	case PostgreSQL:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
-	case SQLite:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
-	}
-
-	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
-	_, err = s.getExecutorFromContext(ctx).ExecContext(ctx, sqlq, args...)
-
+	_, err = s.executor.ExecContext(ctx, sqlq, args...)
+	if err != nil { return err }
+	
 	lastLog, err := s.LastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")

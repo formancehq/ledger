@@ -61,7 +61,7 @@ func IsTooManyClientError(err error) bool {
 	return IsErrorCode(err, TooManyClient)
 }
 
-type Store interface {
+type API interface {
 	GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
 	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error)
@@ -82,12 +82,21 @@ type Store interface {
 	Commit(ctx context.Context, txs ...core.ExpandedTransaction) error
 	SaveMapping(ctx context.Context, m core.Mapping) error
 	Name() string
+}
+
+type Store interface {
+	API
 	Initialize(context.Context) (bool, error)
 	Close(context.Context) error
+	WithTX(ctx context.Context, callback func(api API) error) error
 }
 
 // A no op store. Useful for testing.
 type noOpStore struct{}
+
+func (n noOpStore) WithTX(ctx context.Context, callback func(api API) error) error {
+	return nil
+}
 
 func (n noOpStore) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	return nil
