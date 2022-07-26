@@ -218,10 +218,10 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 			{
 				Postings: []core.Posting{
 					{
-						Source:      "world",
-						Destination: "player",
+						Source:      "player",
+						Destination: "player2",
 						Asset:       "GEM",
-						Amount:      int64(100),
+						Amount:      int64(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
 					},
 				},
 				Reference: "ref1",
