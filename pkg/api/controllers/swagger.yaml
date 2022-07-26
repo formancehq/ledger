@@ -1182,6 +1182,9 @@ components:
     Transaction:
       type: object
       properties:
+        timestamp:
+          type: string
+          format: date-time
         postings:
           type: array
           items:
