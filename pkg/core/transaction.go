@@ -39,46 +39,11 @@ type Transaction struct {
 	ID uint64 `json:"txid"`
 }
 
-//func (r Transaction) ToTransaction() ExpandedTransaction {
-//	return ExpandedTransaction{
-//		Transaction: Transaction{
-//			TransactionData: TransactionData{
-//				Postings:  r.Postings,
-//				Reference: r.Reference,
-//				Metadata:  r.Metadata.ToMetadata(),
-//				Timestamp: r.Timestamp,
-//			},
-//			ID:                r.ID,
-//		},
-//		PreCommitVolumes:  AccountsAssetsVolumes{},
-//		PostCommitVolumes: AccountsAssetsVolumes{},
-//	}
-//}
-
 type ExpandedTransaction struct {
 	Transaction
 	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
 	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
 }
-
-//func (t ExpandedTransaction) raw() Transaction {
-//	metadata := make(map[string]interface{})
-//	for k, v := range t.Metadata {
-//		var i interface{}
-//		err := json.Unmarshal(v, &i)
-//		if err != nil {
-//			panic(err)
-//		}
-//		metadata[k] = i
-//	}
-//	return Transaction{
-//		Postings:  t.Postings,
-//		Reference: t.Reference,
-//		Metadata:  metadata,
-//		ID:        t.ID,
-//		Timestamp: t.Timestamp,
-//	}
-//}
 
 func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
 	type transaction ExpandedTransaction
@@ -125,20 +90,4 @@ func Hash(t1, t2 interface{}) string {
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-func CheckHash(logs ...Log) (int, bool) {
-	for i := len(logs) - 1; i >= 0; i-- {
-		var lastLog *Log
-		if i < len(logs)-1 {
-			lastLog = &logs[i+1]
-		}
-		log := logs[i]
-		log.Hash = ""
-		h := Hash(lastLog, log)
-		if logs[i].Hash != h {
-			return i, false
-		}
-	}
-	return 0, true
 }
