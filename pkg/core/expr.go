@@ -160,7 +160,7 @@ type MetaExpr struct {
 }
 
 func (e MetaExpr) eval(ctx EvalContext) interface{} {
-	return string(ctx.Metadata[e.Name])
+	return ctx.Metadata[e.Name]
 }
 
 func (e MetaExpr) MarshalJSON() ([]byte, error) {

@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
@@ -354,12 +354,12 @@ func TestAccountMetadata(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
 
 		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
-			"a random metadata": json.RawMessage(`"old value"`),
+			"a random metadata": "old value",
 		})
 		assert.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
-			"a random metadata": json.RawMessage(`"new value"`),
+			"a random metadata": "new value",
 		})
 		assert.NoError(t, err)
 
@@ -370,10 +370,8 @@ func TestAccountMetadata(t *testing.T) {
 			meta, ok := acc.Metadata["a random metadata"]
 			require.True(t, ok)
 
-			var value string
-			require.NoError(t, json.Unmarshal(meta, &value))
-			assert.Equalf(t, value, "new value",
-				"metadata entry did not match in get: expected \"new value\", got %v", value)
+			assert.Equalf(t, meta, "new value",
+				"metadata entry did not match in get: expected \"new value\", got %v", meta)
 		}
 
 		{
@@ -398,10 +396,8 @@ func TestAccountMetadata(t *testing.T) {
 
 			meta, ok := acc.Metadata["a random metadata"]
 			assert.True(t, ok)
-			var value string
-			require.NoError(t, json.Unmarshal(meta, &value))
-			assert.Equalf(t, value, "new value",
-				"metadata entry did not match in find: expected \"new value\", got %v", value)
+			assert.Equalf(t, meta, "new value",
+				"metadata entry did not match in find: expected \"new value\", got %v", meta)
 		}
 	})
 }
@@ -424,12 +420,12 @@ func TestTransactionMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
-			"a random metadata": json.RawMessage(`"old value"`),
+			"a random metadata": "old value",
 		})
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
-			"a random metadata": json.RawMessage(`"new value"`),
+			"a random metadata": "new value",
 		})
 		require.NoError(t, err)
 
@@ -439,10 +435,8 @@ func TestTransactionMetadata(t *testing.T) {
 		meta, ok := tx.Metadata["a random metadata"]
 		require.True(t, ok)
 
-		var value string
-		require.NoError(t, json.Unmarshal(meta, &value))
-		require.Equalf(t, value, "new value",
-			"metadata entry did not match: expected \"new value\", got %v", value)
+		require.Equalf(t, meta, "new value",
+			"metadata entry did not match: expected \"new value\", got %v", meta)
 	})
 }
 
@@ -458,7 +452,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 				},
 			},
 			Metadata: core.Metadata{
-				"a metadata": json.RawMessage(`"a value"`),
+				"a metadata": "a value",
 			},
 		}})
 		require.NoError(t, err)
@@ -469,11 +463,8 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		meta, ok := tx.Metadata["a metadata"]
 		require.True(t, ok)
 
-		var value string
-		require.NoError(t, json.Unmarshal(meta, &value))
-
-		assert.Equalf(t, value, "a value",
-			"metadata entry did not match: expected \"a value\", got %v", value)
+		assert.Equalf(t, meta, "a value",
+			"metadata entry did not match: expected \"a value\", got %v", meta)
 	})
 }
 
@@ -559,15 +550,14 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf(`"%d"`, res.GeneratedTransactions[0].ID),
-			string(revertTx.Metadata[core.RevertMetadataSpecKey()]))
+		require.EqualValues(t, fmt.Sprintf("%d", res.GeneratedTransactions[0].ID),
+			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
 		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
-		require.NoError(t, json.Unmarshal(tx.Metadata[core.RevertedMetadataSpecKey()], &v))
-
+		require.NoError(t, mapstructure.Decode(tx.Metadata[core.RevertedMetadataSpecKey()], &v))
 		require.Equal(t, core.RevertedMetadataSpecValue{
 			By: fmt.Sprint(revertTx.ID),
 		}, v)

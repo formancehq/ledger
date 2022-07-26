@@ -412,8 +412,8 @@ func TestGetTransactions(t *testing.T) {
 									Asset:       "USD",
 								},
 							},
-							Metadata: map[string]json.RawMessage{
-								"foo": json.RawMessage(`"bar"`),
+							Metadata: core.Metadata{
+								"foo": "bar",
 							},
 							Reference: "ref:002",
 							Timestamp: now.Add(-2 * time.Hour),
@@ -433,8 +433,8 @@ func TestGetTransactions(t *testing.T) {
 								},
 							},
 							Reference: "ref:003",
-							Metadata: map[string]json.RawMessage{
-								"priority": json.RawMessage(`"high"`),
+							Metadata: core.Metadata{
+								"priority": "high",
 							},
 							Timestamp: now.Add(-1 * time.Hour),
 						},
@@ -1060,13 +1060,13 @@ func TestPostTransactionMetadata(t *testing.T) {
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					assert.EqualValues(t, core.Metadata{
-						"foo": json.RawMessage(`"bar"`),
+						"foo": "bar",
 					}, ret.Metadata)
 				})
 
 				t.Run("different metadata on same key should replace it", func(t *testing.T) {
 					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
-						"foo": json.RawMessage(`"baz"`),
+						"foo": "baz",
 					})
 					assert.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
 
@@ -1074,13 +1074,13 @@ func TestPostTransactionMetadata(t *testing.T) {
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					assert.EqualValues(t, core.Metadata{
-						"foo": json.RawMessage(`"baz"`),
+						"foo": "baz",
 					}, ret.Metadata)
 				})
 
 				t.Run("transaction not found", func(t *testing.T) {
 					rsp = internal.PostTransactionMetadata(t, api, 42, core.Metadata{
-						"foo": json.RawMessage(`"baz"`),
+						"foo": "baz",
 					})
 					assert.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
 
@@ -1171,8 +1171,8 @@ func TestRevertTransaction(t *testing.T) {
 						},
 					},
 					Reference: "ref:23434656",
-					Metadata: map[string]json.RawMessage{
-						"foo1": json.RawMessage(`"bar1"`),
+					Metadata: core.Metadata{
+						"foo1": "bar1",
 					},
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -1187,8 +1187,8 @@ func TestRevertTransaction(t *testing.T) {
 						},
 					},
 					Reference: "ref:534646",
-					Metadata: map[string]json.RawMessage{
-						"foo2": json.RawMessage(`"bar2"`),
+					Metadata: core.Metadata{
+						"foo2": "bar2",
 					},
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -1203,8 +1203,8 @@ func TestRevertTransaction(t *testing.T) {
 						},
 					},
 					Reference: "ref:578632",
-					Metadata: map[string]json.RawMessage{
-						"foo3": json.RawMessage(`"bar3"`),
+					Metadata: core.Metadata{
+						"foo3": "bar3",
 					},
 				})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -1223,8 +1223,7 @@ func TestRevertTransaction(t *testing.T) {
 					res, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					assert.Equal(t, revertedTxID+1, res.ID)
 					assert.Equal(t, core.Metadata{
-						core.RevertMetadataSpecKey(): json.RawMessage(
-							fmt.Sprintf(`"%d"`, revertedTxID)),
+						core.RevertMetadataSpecKey(): fmt.Sprintf("%d", revertedTxID),
 					}, res.Metadata)
 
 					revertedByTxID := res.ID
@@ -1236,15 +1235,11 @@ func TestRevertTransaction(t *testing.T) {
 					require.Equal(t, revertedByTxID, cursor.Data[0].ID)
 					require.Equal(t, revertedTxID, cursor.Data[1].ID)
 
-					spec, err := json.Marshal(
-						core.RevertedMetadataSpecValue{
-							By: strconv.FormatUint(revertedByTxID, 10),
-						})
-					require.NoError(t, err)
-
 					assert.Equal(t, core.Metadata{
-						"foo3":                         json.RawMessage(`"bar3"`),
-						core.RevertedMetadataSpecKey(): spec,
+						"foo3": "bar3",
+						core.RevertedMetadataSpecKey(): map[string]any{
+							"by": strconv.FormatUint(revertedByTxID, 10),
+						},
 					}, cursor.Data[1].Metadata)
 				})
 

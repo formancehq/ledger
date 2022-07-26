@@ -19,7 +19,7 @@ type Log struct {
 	Date time.Time   `json:"date"`
 }
 
-func NewTransactionLogWithDate(previousLog *Log, tx ExpandedTransaction, time time.Time) Log {
+func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time) Log {
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -28,13 +28,13 @@ func NewTransactionLogWithDate(previousLog *Log, tx ExpandedTransaction, time ti
 		ID:   id,
 		Type: NewTransactionType,
 		Date: time,
-		Data: tx.Transaction,
+		Data: tx,
 	}
 	l.Hash = Hash(previousLog, &l)
 	return l
 }
 
-func NewTransactionLog(previousLog *Log, tx ExpandedTransaction) Log {
+func NewTransactionLog(previousLog *Log, tx Transaction) Log {
 	return NewTransactionLogWithDate(previousLog, tx, tx.Timestamp)
 }
 

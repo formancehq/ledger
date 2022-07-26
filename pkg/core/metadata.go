@@ -19,64 +19,11 @@ func SpecMetadata(name string) string {
 	return numaryNamespace + name
 }
 
-type RawMetadata map[string]any
-
-func (m RawMetadata) ToMetadata() Metadata {
-	data, err := json.Marshal(m)
-	if err != nil {
-		panic(err)
-	}
-	ret := Metadata{}
-	err = json.Unmarshal(data, &ret)
-	if err != nil {
-		panic(err)
-	}
-	return ret
-}
-
-type Metadata map[string]json.RawMessage
-
-func (m Metadata) Raw() RawMetadata {
-	metadata := make(map[string]any)
-	for k, v := range m {
-		var i interface{}
-		err := json.Unmarshal(v, &i)
-		if err != nil {
-			panic(err)
-		}
-		metadata[k] = i
-	}
-	return metadata
-}
+type Metadata map[string]any
 
 // IsEquivalentTo allow to compare to metadata object.
-//
-// Postgres and SQLite doesn't have the same behavior regarding json processing
-// Postgres will clean the json and keep a space after semicolons.
-// Sqlite will clean the json and minify it.
-// So we can't directly compare metadata.
 func (m1 Metadata) IsEquivalentTo(m2 Metadata) bool {
-	d1, err := json.Marshal(m1)
-	if err != nil {
-		panic(err)
-	}
-	map1 := make(map[string]interface{})
-	err = json.Unmarshal(d1, &map1)
-	if err != nil {
-		panic(err)
-	}
-
-	d2, err := json.Marshal(m2)
-	if err != nil {
-		panic(err)
-	}
-	map2 := make(map[string]interface{})
-	err = json.Unmarshal(d2, &map2)
-	if err != nil {
-		panic(err)
-	}
-
-	return reflect.DeepEqual(map1, map2)
+	return reflect.DeepEqual(m1, m2)
 }
 
 func (m1 Metadata) Merge(m2 Metadata) Metadata {
@@ -91,7 +38,7 @@ func (m Metadata) MarkReverts(txID uint64) {
 }
 
 func (m Metadata) IsReverted() bool {
-	return string(m[SpecMetadata(revertedKey)]) == "\"reverted\""
+	return m[SpecMetadata(revertedKey)].(string) == "\"reverted\""
 }
 
 // Scan - Implement the database/sql scanner interface
@@ -132,12 +79,8 @@ func RevertMetadataSpecKey() string {
 }
 
 func ComputeMetadata(key string, value interface{}) Metadata {
-	data, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
 	return Metadata{
-		key: data,
+		key: value,
 	}
 }
 

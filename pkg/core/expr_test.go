@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -39,8 +38,8 @@ func TestRules(t *testing.T) {
 				Variables: map[string]interface{}{
 					"balance": float64(-10),
 				},
-				Metadata: map[string]json.RawMessage{
-					"approved": json.RawMessage("yes"),
+				Metadata: Metadata{
+					"approved": "yes",
 				},
 			},
 			shouldBeAccepted: true,
@@ -64,7 +63,7 @@ func TestRules(t *testing.T) {
 				Variables: map[string]interface{}{
 					"balance": float64(-100),
 				},
-				Metadata: map[string]json.RawMessage{},
+				Metadata: Metadata{},
 			},
 			shouldBeAccepted: true,
 		},
@@ -78,7 +77,7 @@ func TestRules(t *testing.T) {
 				Variables: map[string]interface{}{
 					"balance": float64(100),
 				},
-				Metadata: map[string]json.RawMessage{},
+				Metadata: Metadata{},
 			},
 			shouldBeAccepted: false,
 		},
@@ -92,7 +91,7 @@ func TestRules(t *testing.T) {
 				Variables: map[string]interface{}{
 					"balance": float64(0),
 				},
-				Metadata: map[string]json.RawMessage{},
+				Metadata: Metadata{},
 			},
 			shouldBeAccepted: true,
 		},
@@ -118,8 +117,8 @@ func TestRules(t *testing.T) {
 				Variables: map[string]interface{}{
 					"balance": float64(10),
 				},
-				Metadata: map[string]json.RawMessage{
-					"approved": json.RawMessage("no"),
+				Metadata: Metadata{
+					"approved": "no",
 				},
 			},
 			shouldBeAccepted: false,

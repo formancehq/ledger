@@ -31,7 +31,7 @@ func (s *Store) commit(ctx context.Context, txs ...core.ExpandedTransaction) ([]
 		return nil, err
 	}
 	for _, tx := range txs {
-		newLog := core.NewTransactionLog(lastLog, tx)
+		newLog := core.NewTransactionLog(lastLog, tx.Transaction)
 		lastLog = &newLog
 		logs = append(logs, newLog)
 	}

@@ -95,6 +95,7 @@ func TestStore(t *testing.T) {
 	}
 }
 
+var now = time.Now().UTC().Truncate(time.Second)
 var tx1 = core.ExpandedTransaction{
 	Transaction: core.Transaction{
 		TransactionData: core.TransactionData{
@@ -268,13 +269,13 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 
 	err = store.UpdateTransactionMetadata(context.Background(), tx.ID, core.Metadata{
-		"foo": json.RawMessage(`"bar"`),
+		"foo": "bar",
 	}, time.Now())
 	require.NoError(t, err)
 
 	retrievedTransaction, err := store.GetTransaction(context.Background(), tx.ID)
 	require.NoError(t, err)
-	require.EqualValues(t, json.RawMessage(`"bar"`), retrievedTransaction.Metadata["foo"])
+	require.EqualValues(t, "bar", retrievedTransaction.Metadata["foo"])
 
 	logs, err := store.Logs(context.Background())
 	require.NoError(t, err)
@@ -303,13 +304,13 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 
 	err = store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
-		"foo": json.RawMessage(`"bar"`),
+		"foo": "bar",
 	}, time.Now())
 	require.NoError(t, err)
 
 	account, err := store.GetAccount(context.Background(), "central_bank")
 	require.NoError(t, err)
-	require.EqualValues(t, json.RawMessage(`"bar"`), account.Metadata["foo"])
+	require.EqualValues(t, "bar", account.Metadata["foo"])
 
 	logs, err := store.Logs(context.Background())
 	require.NoError(t, err)

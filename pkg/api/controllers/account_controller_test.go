@@ -51,10 +51,14 @@ func TestGetAccounts(t *testing.T) {
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				meta := core.Metadata{
-					"roles":     json.RawMessage(`"admin"`),
-					"accountId": json.RawMessage("3"),
-					"enabled":   json.RawMessage(`"true"`),
-					"a":         json.RawMessage(`{"nested":{"key":"hello"}}`),
+					"roles":     "admin",
+					"accountId": float64(3),
+					"enabled":   "true",
+					"a": map[string]any{
+						"nested": map[string]any{
+							"key": "hello",
+						},
+					},
 				}
 				rsp = internal.PostAccountMetadata(t, api, "bob", meta)
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
@@ -440,7 +444,7 @@ func TestGetAccount(t *testing.T) {
 						Account: core.Account{
 							Address: "alice",
 							Metadata: core.Metadata{
-								"foo": json.RawMessage(`"bar"`),
+								"foo": "bar",
 							},
 						},
 						Balances: core.AssetsBalances{
