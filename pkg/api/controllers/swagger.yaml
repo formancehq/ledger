@@ -403,19 +403,19 @@ paths:
       - name: account
         in: query
         description: Filter transactions with postings involving given account, either
-          as source or destination.
+          as source or destination (regular expression placed between ^ and $).
         schema:
           type: string
           example: users:001
       - name: source
         in: query
-        description: Filter transactions with postings involving given account at source.
+        description: Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
         schema:
           type: string
           example: users:001
       - name: destination
         in: query
-        description: Filter transactions with postings involving given account at destination.
+        description: Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
         schema:
           type: string
           example: users:001
