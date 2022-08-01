@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"os"
 
-	"github.com/numary/go-libs/sharedhealth/pkg"
+	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
