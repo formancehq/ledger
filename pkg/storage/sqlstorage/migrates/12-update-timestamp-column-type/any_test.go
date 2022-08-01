@@ -1,4 +1,4 @@
-package _1_update_timestamp_column_type
+package _2_update_timestamp_column_type
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func TestMigrate11(t *testing.T) {
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
 
-	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:11]...)
+	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:12]...)
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -42,7 +42,7 @@ func TestMigrate11(t *testing.T) {
 	_, err = schema.ExecContext(context.Background(), sqlq, args...)
 	require.NoError(t, err)
 
-	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[11])
+	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[12])
 	require.NoError(t, err)
 	require.True(t, modified)
 
