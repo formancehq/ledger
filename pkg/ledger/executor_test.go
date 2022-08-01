@@ -322,11 +322,11 @@ func TestSetTxMeta(t *testing.T) {
 					destination=@user:001
 				)`,
 				Metadata: core.Metadata{
-					"priority": json.RawMessage(`"low"`),
+					"priority": "low",
 				},
 			},
 			expectedMetadata: core.Metadata{
-				"priority": json.RawMessage(`"low"`),
+				"priority": "low",
 			},
 		},
 		{
@@ -340,7 +340,7 @@ func TestSetTxMeta(t *testing.T) {
 				)`,
 			},
 			expectedMetadata: core.Metadata{
-				"priority": json.RawMessage(`{"type":"string","value":"low"}`),
+				"priority": map[string]any{"type": "string", "value": "low"},
 			},
 		},
 		{
@@ -354,7 +354,7 @@ func TestSetTxMeta(t *testing.T) {
 					destination=@user:001
 				)`,
 				Metadata: core.Metadata{
-					"priority": json.RawMessage(`"high"`),
+					"priority": "high",
 				},
 			},
 			expectedErrorCode: ScriptErrorMetadataOverride,
@@ -375,7 +375,6 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, err)
 					last, err := l.store.GetLastTransaction(context.Background())
 					require.NoError(t, err)
-
 					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
 				}
 			})

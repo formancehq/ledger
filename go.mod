@@ -45,6 +45,7 @@ require (
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.2
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.12
@@ -126,7 +127,6 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
-	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

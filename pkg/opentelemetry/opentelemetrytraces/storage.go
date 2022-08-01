@@ -3,6 +3,7 @@ package opentelemetrytraces
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
@@ -17,6 +18,43 @@ import (
 
 type openTelemetryStorage struct {
 	underlying storage.Store
+}
+
+func (o *openTelemetryStorage) WithTX(ctx context.Context, callback func(api storage.API) error) error {
+	return callback(o)
+}
+
+func (o *openTelemetryStorage) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) (err error) {
+	handlingErr := o.handle(ctx, "UpdateTransactionMetadata", func(ctx context.Context) error {
+		err = o.underlying.UpdateTransactionMetadata(ctx, id, metadata, at)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry UpdateTransactionMetadata: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) (err error) {
+	handlingErr := o.handle(ctx, "UpdateAccountMetadata", func(ctx context.Context) error {
+		err = o.underlying.UpdateAccountMetadata(ctx, id, metadata, at)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry UpdateAccountMetadata: %s", handlingErr)
+	}
+	return
+}
+
+func (o *openTelemetryStorage) Commit(ctx context.Context, txs ...core.ExpandedTransaction) (err error) {
+	handlingErr := o.handle(ctx, "Commit", func(ctx context.Context) error {
+		err = o.underlying.Commit(ctx, txs...)
+		return err
+	})
+	if handlingErr != nil {
+		sharedlogging.Errorf("opentelemetry Commit: %s", handlingErr)
+	}
+	return
 }
 
 func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(ctx context.Context) error) error {
@@ -40,7 +78,7 @@ func (o *openTelemetryStorage) handle(ctx context.Context, name string, fn func(
 	return err
 }
 
-func (o *openTelemetryStorage) GetLastTransaction(ctx context.Context) (ret *core.Transaction, err error) {
+func (o *openTelemetryStorage) GetLastTransaction(ctx context.Context) (ret *core.ExpandedTransaction, err error) {
 	handlingErr := o.handle(ctx, "GetLastTransaction", func(ctx context.Context) error {
 		ret, err = o.underlying.GetLastTransaction(ctx)
 		return err
@@ -58,17 +96,6 @@ func (o *openTelemetryStorage) Logs(ctx context.Context) (ret []core.Log, err er
 	})
 	if handlingErr != nil {
 		sharedlogging.Errorf("opentelemetry Logs: %s", handlingErr)
-	}
-	return
-}
-
-func (o *openTelemetryStorage) AppendLog(ctx context.Context, logs ...core.Log) (err error) {
-	handlingErr := o.handle(ctx, "AppendLog", func(ctx context.Context) error {
-		err = o.underlying.AppendLog(ctx, logs...)
-		return err
-	})
-	if handlingErr != nil {
-		sharedlogging.Errorf("opentelemetry AppendLog: %s", handlingErr)
 	}
 	return
 }
@@ -95,7 +122,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q storage.
 	return
 }
 
-func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.Transaction], err error) {
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.ExpandedTransaction], err error) {
 	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
@@ -106,7 +133,7 @@ func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storag
 	return
 }
 
-func (o *openTelemetryStorage) GetTransaction(ctx context.Context, txid uint64) (tx *core.Transaction, err error) {
+func (o *openTelemetryStorage) GetTransaction(ctx context.Context, txid uint64) (tx *core.ExpandedTransaction, err error) {
 	handlingErr := o.handle(ctx, "GetTransaction", func(ctx context.Context) error {
 		tx, err = o.underlying.GetTransaction(ctx, txid)
 		return err

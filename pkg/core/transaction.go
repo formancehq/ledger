@@ -32,17 +32,21 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
-var _ json.Marshaler = Transaction{}
+var _ json.Marshaler = ExpandedTransaction{}
 
 type Transaction struct {
 	TransactionData
-	ID                uint64                `json:"txid"`
-	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`  // Keep omitempty to keep consistent hash
-	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"` // Keep omitempty to keep consistent hash
+	ID uint64 `json:"txid"`
 }
 
-func (t Transaction) MarshalJSON() ([]byte, error) {
-	type transaction Transaction
+type ExpandedTransaction struct {
+	Transaction
+	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes,omitempty"`
+	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes,omitempty"`
+}
+
+func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
+	type transaction ExpandedTransaction
 	return json.Marshal(struct {
 		transaction
 		Timestamp string `json:"timestamp"`
@@ -53,11 +57,11 @@ func (t Transaction) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (t *Transaction) AppendPosting(p Posting) {
+func (t *ExpandedTransaction) AppendPosting(p Posting) {
 	t.Postings = append(t.Postings, p)
 }
 
-func (t *Transaction) IsReverted() bool {
+func (t *ExpandedTransaction) IsReverted() bool {
 	if _, ok := t.Metadata[RevertedMetadataSpecKey()]; ok {
 		return true
 	}
@@ -86,20 +90,4 @@ func Hash(t1, t2 interface{}) string {
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-func CheckHash(logs ...Log) (int, bool) {
-	for i := len(logs) - 1; i >= 0; i-- {
-		var lastLog *Log
-		if i < len(logs)-1 {
-			lastLog = &logs[i+1]
-		}
-		log := logs[i]
-		log.Hash = ""
-		h := Hash(lastLog, log)
-		if logs[i].Hash != h {
-			return i, false
-		}
-	}
-	return 0, true
 }

@@ -15,50 +15,26 @@ func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {
 	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".transactions")
 }
 
-func revertsCounter(m metric.Meter) (metric.Int64Counter, error) {
-	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".reverts")
-}
-
 type storageDecorator struct {
 	storage.Store
 	transactionsCounter metric.Int64Counter
-	revertsCounter      metric.Int64Counter
 }
 
-func (o *storageDecorator) AppendLog(ctx context.Context, logs ...core.Log) error {
-	err := o.Store.AppendLog(ctx, logs...)
+func (o *storageDecorator) Commit(ctx context.Context, txs ...core.ExpandedTransaction) error {
+	err := o.Store.Commit(ctx, txs...)
 	if err != nil {
 		return err
 	}
-	add := 0
-	reverts := 0
-	for _, log := range logs {
-		switch tx := log.Data.(type) {
-		case core.Transaction:
-			if tx.Metadata == nil {
-				add++
-				continue
-			}
-			if tx.Metadata.IsReverted() {
-				reverts++
-				continue
-			}
-			add++
-		}
-
-	}
-	o.transactionsCounter.Add(context.Background(), int64(add))
-	o.revertsCounter.Add(context.Background(), int64(reverts))
+	o.transactionsCounter.Add(context.Background(), int64(len(txs)))
 	return nil
 }
 
 var _ storage.Store = &storageDecorator{}
 
-func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter, revertsCounter metric.Int64Counter) *storageDecorator {
+func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter) *storageDecorator {
 	return &storageDecorator{
 		Store:               underlying,
 		transactionsCounter: counter,
-		revertsCounter:      revertsCounter,
 	}
 }
 
@@ -67,7 +43,6 @@ type openTelemetryStorageDriver struct {
 	meter               metric.Meter
 	transactionsCounter metric.Int64Counter
 	once                sync.Once
-	revertsCounter      metric.Int64Counter
 }
 
 func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
@@ -77,7 +52,6 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 		if err != nil {
 			return
 		}
-		o.revertsCounter, err = revertsCounter(o.meter)
 	})
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
@@ -86,7 +60,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, err
 	}
-	return NewStorageDecorator(store, o.transactionsCounter, o.revertsCounter), created, nil
+	return NewStorageDecorator(store, o.transactionsCounter), created, nil
 }
 
 func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {

@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) error {
+func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
 	var (
 		query string
 		args  []interface{}
@@ -61,34 +61,14 @@ func (s *Store) appendLog(ctx context.Context, exec executor, log ...core.Log) e
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
-	_, err := exec.ExecContext(ctx, query, args...)
+	_, err := s.executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *Store) AppendLog(ctx context.Context, logs ...core.Log) error {
-	tx, err := s.schema.BeginTx(ctx, nil)
-	if err != nil {
-		return s.error(err)
-	}
-	defer func(tx *sql.Tx) {
-		_ = tx.Rollback()
-	}(tx)
-
-	if err = s.appendLog(ctx, tx, logs...); err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return s.error(err)
-	}
-
-	return nil
-}
-
-func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
+func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	var (
 		l    core.Log
 		data sql.NullString
@@ -101,13 +81,14 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	sb.Limit(1)
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	row := exec.QueryRowContext(ctx, sqlq)
+	row := s.executor.QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
+	l.Date = l.Date.UTC()
 
 	var err error
 	l.Data, err = core.HydrateLog(l.Type, data.String)
@@ -119,18 +100,14 @@ func (s *Store) lastLog(ctx context.Context, exec executor) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
-	return s.lastLog(ctx, s.schema)
-}
-
-func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
+func (s *API) Logs(ctx context.Context) ([]core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.OrderBy("id desc")
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sqlq)
+	rows, err := s.executor.QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -160,6 +137,7 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "hydrating log")
 		}
+		l.Date = l.Date.UTC()
 		ret = append(ret, l)
 	}
 	if rows.Err() != nil {
@@ -167,8 +145,4 @@ func (s *Store) logs(ctx context.Context, exec executor) ([]core.Log, error) {
 	}
 
 	return ret, nil
-}
-
-func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
-	return s.logs(ctx, s.schema)
 }

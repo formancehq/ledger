@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
@@ -50,10 +51,14 @@ func TestGetAccounts(t *testing.T) {
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				meta := core.Metadata{
-					"roles":     json.RawMessage(`"admin"`),
-					"accountId": json.RawMessage("3"),
-					"enabled":   json.RawMessage(`"true"`),
-					"a":         json.RawMessage(`{"nested":{"key":"hello"}}`),
+					"roles":     "admin",
+					"accountId": float64(3),
+					"enabled":   "true",
+					"a": map[string]any{
+						"nested": map[string]any{
+							"key": "hello",
+						},
+					},
 				}
 				rsp = internal.PostAccountMetadata(t, api, "bob", meta)
 				require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
@@ -339,25 +344,17 @@ func TestGetAccounts(t *testing.T) {
 }
 
 func TestGetAccountsWithPageSize(t *testing.T) {
+	now := time.Now()
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				var previousLog *core.Log
-				logs := make([]core.Log, 0)
 				store := internal.GetStore(t, driver, context.Background())
 
 				for i := 0; i < 3*controllers.MaxPageSize; i++ {
-					log := core.NewSetMetadataLog(previousLog, core.SetMetadata{
-						TargetID:   fmt.Sprintf("accounts:%06d", i),
-						TargetType: core.MetaTargetTypeAccount,
-						Metadata: map[string]json.RawMessage{
-							"foo": []byte("{}"),
-						},
-					})
-					logs = append(logs, log)
-					previousLog = &log
+					require.NoError(t, store.UpdateAccountMetadata(ctx, fmt.Sprintf("accounts:%06d", i), core.Metadata{
+						"foo": []byte("{}"),
+					}, now))
 				}
-				require.NoError(t, store.AppendLog(context.Background(), logs...))
 
 				t.Run("invalid page size", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
@@ -447,7 +444,7 @@ func TestGetAccount(t *testing.T) {
 						Account: core.Account{
 							Address: "alice",
 							Metadata: core.Metadata{
-								"foo": json.RawMessage(`"bar"`),
+								"foo": "bar",
 							},
 						},
 						Balances: core.AssetsBalances{

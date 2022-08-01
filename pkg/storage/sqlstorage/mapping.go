@@ -12,12 +12,12 @@ import (
 // We have only one mapping for a ledger, so hardcode the id
 const mappingId = "0000"
 
-func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, error) {
+func (s *API) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("mapping").From(s.schema.Table("mapping"))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := exec.QueryRowContext(ctx, sqlq, args...)
+	row := s.executor.QueryRowContext(ctx, sqlq, args...)
 
 	m := core.Mapping{}
 	var mappingString string
@@ -35,11 +35,7 @@ func (s *Store) loadMapping(ctx context.Context, exec executor) (*core.Mapping, 
 	return &m, nil
 }
 
-func (s *Store) LoadMapping(ctx context.Context) (*core.Mapping, error) {
-	return s.loadMapping(ctx, s.schema)
-}
-
-func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Mapping) error {
+func (s *API) SaveMapping(ctx context.Context, mapping core.Mapping) error {
 	data, err := json.Marshal(mapping)
 	if err != nil {
 		return err
@@ -63,10 +59,6 @@ func (s *Store) saveMapping(ctx context.Context, exec executor, mapping core.Map
 		sqlq, args = ib.BuildWithFlavor(s.schema.Flavor())
 	}
 
-	_, err = exec.ExecContext(ctx, sqlq, args...)
+	_, err = s.executor.ExecContext(ctx, sqlq, args...)
 	return s.error(err)
-}
-
-func (s *Store) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	return s.saveMapping(ctx, s.schema, mapping)
 }

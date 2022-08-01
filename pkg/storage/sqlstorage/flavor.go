@@ -76,7 +76,7 @@ func init() {
 					return storage.NewError(storage.TooManyClient, err)
 				}
 			}
-			return storage.NewError(storage.Unknown, err)
+			return err
 		}
 
 		unwrappedError := errors.Unwrap(err)

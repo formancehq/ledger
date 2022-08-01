@@ -11,30 +11,6 @@ import (
 const SetMetadataType = "SET_METADATA"
 const NewTransactionType = "NEW_TRANSACTION"
 
-type LoggedTX Transaction
-
-func (m LoggedTX) MarshalJSON() ([]byte, error) {
-	metadata := make(map[string]interface{})
-	for k, v := range m.Metadata {
-		var i interface{}
-		err := json.Unmarshal(v, &i)
-		if err != nil {
-			return nil, err
-		}
-		metadata[k] = i
-	}
-	type transaction Transaction
-	return json.Marshal(struct {
-		transaction
-		Metadata  map[string]interface{} `json:"metadata"`
-		Timestamp string                 `json:"timestamp"`
-	}{
-		transaction: transaction(m),
-		Metadata:    metadata,
-		Timestamp:   m.Timestamp.Format(time.RFC3339),
-	})
-}
-
 type Log struct {
 	ID   uint64      `json:"id"`
 	Type string      `json:"type"`
@@ -52,7 +28,7 @@ func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time)
 		ID:   id,
 		Type: NewTransactionType,
 		Date: time,
-		Data: LoggedTX(tx),
+		Data: tx,
 	}
 	l.Hash = Hash(previousLog, &l)
 	return l
@@ -101,7 +77,7 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
+func NewSetMetadataLog(previousLog *Log, at time.Time, metadata SetMetadata) Log {
 	id := uint64(0)
 	if previousLog != nil {
 		id = previousLog.ID + 1
@@ -109,7 +85,7 @@ func NewSetMetadataLog(previousLog *Log, metadata SetMetadata) Log {
 	l := Log{
 		ID:   id,
 		Type: SetMetadataType,
-		Date: time.Now().UTC().Truncate(time.Second),
+		Date: at,
 		Data: metadata,
 	}
 	l.Hash = Hash(previousLog, &l)
@@ -124,6 +100,7 @@ func HydrateLog(_type string, data string) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return tx, nil
 	case SetMetadataType:
 		sm := SetMetadata{}

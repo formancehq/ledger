@@ -12,10 +12,8 @@ import (
 )
 
 func testGetBalances(t *testing.T, store *sqlstorage.Store) {
-	log1 := core.NewTransactionLog(nil, tx1)
-	log2 := core.NewTransactionLog(&log1, tx2)
-	log3 := core.NewTransactionLog(&log2, tx3)
-	err := store.AppendLog(context.Background(), log1, log2, log3)
+
+	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	require.NoError(t, err)
 
 	t.Run("all accounts", func(t *testing.T) {
@@ -134,10 +132,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
-	log1 := core.NewTransactionLog(nil, tx1)
-	log2 := core.NewTransactionLog(&log1, tx2)
-	log3 := core.NewTransactionLog(&log2, tx3)
-	err := store.AppendLog(context.Background(), log1, log2, log3)
+	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	assert.NoError(t, err)
 
 	q := storage.BalancesQuery{

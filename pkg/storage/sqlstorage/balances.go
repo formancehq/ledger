@@ -15,7 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 )
 
-func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (s *API) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
@@ -32,7 +32,7 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	}
 
 	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, balanceAggregatedQuery, args...)
+	rows, err := s.executor.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -63,11 +63,7 @@ func (s *Store) getBalancesAggregated(ctx context.Context, exec executor, q stor
 	return aggregatedBalances, nil
 }
 
-func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
-	return s.getBalancesAggregated(ctx, s.schema, q)
-}
-
-func (s *Store) getBalances(ctx context.Context, exec executor, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *API) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -105,7 +101,7 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 	sb.Offset(int(q.Offset))
 
 	balanceQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, balanceQuery, args...)
+	rows, err := s.executor.QueryContext(ctx, balanceQuery, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
@@ -182,8 +178,4 @@ func (s *Store) getBalances(ctx context.Context, exec executor, q storage.Balanc
 		Next:     next,
 		Data:     accounts,
 	}, nil
-}
-
-func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-	return s.getBalances(ctx, s.schema, q)
 }

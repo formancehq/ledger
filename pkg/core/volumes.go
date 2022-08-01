@@ -94,6 +94,15 @@ func (a AccountsAssetsVolumes) HasAccount(account string) bool {
 	return ok
 }
 
+func (a AccountsAssetsVolumes) HasAccountAndAsset(account, asset string) bool {
+	volumesByAsset, ok := a[account]
+	if !ok {
+		return false
+	}
+	_, ok = volumesByAsset[asset]
+	return ok
+}
+
 // Scan - Implement the database/sql scanner interface
 func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	if value == nil {
@@ -114,4 +123,22 @@ func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	default:
 		panic("not handled type")
 	}
+}
+
+func AggregatePostCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
+	ret := AccountsAssetsVolumes{}
+	for i := len(txs) - 1; i >= 0; i-- {
+		tx := txs[i]
+		for _, posting := range tx.Postings {
+			if !ret.HasAccountAndAsset(posting.Source, posting.Asset) {
+				ret.SetVolumes(posting.Source, posting.Asset,
+					tx.PostCommitVolumes.GetVolumes(posting.Source, posting.Asset))
+			}
+			if !ret.HasAccountAndAsset(posting.Destination, posting.Asset) {
+				ret.SetVolumes(posting.Destination, posting.Asset,
+					tx.PostCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
+			}
+		}
+	}
+	return ret
 }

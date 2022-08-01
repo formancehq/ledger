@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
@@ -60,63 +61,76 @@ func IsTooManyClientError(err error) bool {
 	return IsErrorCode(err, TooManyClient)
 }
 
-type Store interface {
-	GetLastTransaction(ctx context.Context) (*core.Transaction, error)
+type API interface {
+	GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
-	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.Transaction], error)
-	GetTransaction(ctx context.Context, txid uint64) (*core.Transaction, error)
+	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error)
+	GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error)
 	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
 	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
 	GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
-
 	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-
-	AppendLog(ctx context.Context, log ...core.Log) error
 	LastLog(ctx context.Context) (*core.Log, error)
 	Logs(ctx context.Context) ([]core.Log, error)
-
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
+
+	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error
+	UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) error
+	Commit(ctx context.Context, txs ...core.ExpandedTransaction) error
 	SaveMapping(ctx context.Context, m core.Mapping) error
-	Initialize(context.Context) (bool, error)
 	Name() string
+}
+
+type Store interface {
+	API
+	Initialize(context.Context) (bool, error)
 	Close(context.Context) error
+	WithTX(ctx context.Context, callback func(api API) error) error
 }
 
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
+func (n noOpStore) WithTX(ctx context.Context, callback func(api API) error) error {
+	return nil
+}
+
+func (n noOpStore) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
+	return nil
+}
+
+func (n noOpStore) UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) error {
+	return nil
+}
+
+func (n noOpStore) Commit(ctx context.Context, txs ...core.ExpandedTransaction) error {
+	return nil
+}
+
 func (n noOpStore) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	return core.Volumes{}, nil
 }
 
-func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.Transaction, error) {
-	return &core.Transaction{}, nil
+func (n noOpStore) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
+	return &core.ExpandedTransaction{}, nil
 }
 
 func (n noOpStore) Logs(ctx context.Context) ([]core.Log, error) {
 	return nil, nil
 }
 
-func (n noOpStore) AppendLog(ctx context.Context, log ...core.Log) error {
-	return nil
-}
-
-func (n noOpStore) LastMetaID(ctx context.Context) (int64, error) {
-	return 0, nil
-}
-
 func (n noOpStore) CountTransactions(ctx context.Context, q TransactionsQuery) (uint64, error) {
 	return 0, nil
 }
 
-func (n noOpStore) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
-	return sharedapi.Cursor[core.Transaction]{}, nil
+func (n noOpStore) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+	return sharedapi.Cursor[core.ExpandedTransaction]{}, nil
 }
 
-func (n noOpStore) GetTransaction(ctx context.Context, txid uint64) (*core.Transaction, error) {
+func (n noOpStore) GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error) {
 	return nil, nil
 }
 
@@ -148,10 +162,6 @@ func (n noOpStore) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (
 	return core.AssetsBalances{}, nil
 }
 
-func (n noOpStore) GetMeta(ctx context.Context, s string, s2 string) (core.Metadata, error) {
-	return core.Metadata{}, nil
-}
-
 func (n noOpStore) CountMeta(ctx context.Context) (int64, error) {
 	return 0, nil
 }
@@ -180,5 +190,4 @@ var _ Store = &noOpStore{}
 
 func NoOpStore() *noOpStore {
 	return &noOpStore{}
-
 }

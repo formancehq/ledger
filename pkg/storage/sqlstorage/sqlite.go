@@ -23,7 +23,7 @@ func init() {
 	errorHandlers[SQLite] = func(err error) error {
 		eerr, ok := err.(sqlite3.Error)
 		if !ok {
-			return storage.NewError(storage.Unknown, err)
+			return err
 		}
 		if eerr.Code == sqlite3.ErrConstraint {
 			return storage.NewError(storage.ConstraintFailed, err)

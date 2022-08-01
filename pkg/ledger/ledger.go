@@ -3,7 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
-	"strings"
+	"time"
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
@@ -49,8 +49,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 type CommitResult struct {
 	PreCommitVolumes      core.AccountsAssetsVolumes
 	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.Transaction
-	GeneratedLogs         []core.Log
+	GeneratedTransactions []core.ExpandedTransaction
 }
 
 func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
@@ -65,8 +64,15 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		return nil, err
 	}
 
-	if err = l.store.AppendLog(ctx, result.GeneratedLogs...); err != nil {
-		return nil, err
+	if err := l.store.WithTX(ctx, func(api storage.API) error {
+		return l.store.Commit(ctx, result.GeneratedTransactions...)
+	}); err != nil {
+		switch {
+		case storage.IsErrorCode(err, storage.ConstraintFailed):
+			return nil, NewConflictError()
+		default:
+			return nil, err
+		}
 	}
 
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
@@ -83,17 +89,15 @@ func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionDa
 	return l.processTx(ctx, txsData)
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.Transaction], error) {
-
+func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
 	return l.store.GetTransactions(ctx, q)
 }
 
 func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
-
 	return l.store.CountTransactions(ctx, q)
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
@@ -118,21 +122,21 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transaction, error) {
-	tx, err := l.store.GetTransaction(ctx, id)
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if tx == nil {
+	if revertedTx == nil {
 		return nil, NewNotFoundError("transaction not found")
 	}
-	if tx.IsReverted() {
+	if revertedTx.IsReverted() {
 		return nil, NewValidationError("transaction already reverted")
 	}
 
-	rt := tx.Reverse()
+	rt := revertedTx.Reverse()
 	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkReverts(tx.ID)
+	rt.Metadata.MarkReverts(revertedTx.ID)
 
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
@@ -144,29 +148,29 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Transa
 	if err != nil {
 		return nil, err
 	}
+	revert := result.GeneratedTransactions[0]
 
-	logs := result.GeneratedLogs
-	logs = append(logs, core.NewSetMetadataLog(&logs[len(logs)-1], core.SetMetadata{
-		TargetType: core.MetaTargetTypeTransaction,
-		TargetID:   id,
-		Metadata:   core.RevertedMetadata(result.GeneratedTransactions[0].ID),
-	}))
+	err = l.store.WithTX(ctx, func(api storage.API) error {
+		err := api.Commit(ctx, revert)
+		if err != nil {
+			return err
+		}
 
-	if err = l.store.AppendLog(ctx, logs...); err != nil {
+		return api.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp)
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), tx, &result.GeneratedTransactions[0])
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result.GeneratedTransactions[0])
 	return &result.GeneratedTransactions[0], nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
-
 	return l.store.CountAccounts(ctx, a)
 }
 
 func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
-
 	return l.store.GetAccounts(ctx, a)
 }
 
@@ -206,25 +210,26 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	if targetType == "" {
 		return NewValidationError("empty target type")
 	}
-	if targetType != core.MetaTargetTypeTransaction && targetType != core.MetaTargetTypeAccount {
+	switch targetType {
+	case core.MetaTargetTypeTransaction:
+	case core.MetaTargetTypeAccount:
+	default:
 		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if targetID == "" {
 		return NewValidationError("empty target id")
 	}
 
-	lastLog, err := l.store.LastLog(ctx)
-	if err != nil {
-		return err
-	}
-
-	log := core.NewSetMetadataLog(lastLog, core.SetMetadata{
-		TargetType: strings.ToUpper(targetType),
-		TargetID:   targetID,
-		Metadata:   m,
+	err = l.store.WithTX(ctx, func(api storage.API) error {
+		switch targetType {
+		case core.MetaTargetTypeTransaction:
+			return l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
+		case core.MetaTargetTypeAccount:
+			return l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
+		}
+		panic("can not happen")
 	})
-
-	if err = l.store.AppendLog(ctx, log); err != nil {
+	if err != nil {
 		return err
 	}
 

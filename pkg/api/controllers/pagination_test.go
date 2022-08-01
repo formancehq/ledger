@@ -76,7 +76,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 		t.Run("transactions", func(t *testing.T) {
 			var paginationToken string
-			cursor := &sharedapi.Cursor[core.Transaction]{}
+			cursor := &sharedapi.Cursor[core.ExpandedTransaction]{}
 
 			// MOVING FORWARD
 			for i := 0; i < txsPages; i++ {
@@ -90,7 +90,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				rsp = internal.GetTransactions(api, values)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+				cursor = internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 				assert.Len(t, cursor.Data, pageSize)
 				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
@@ -110,7 +110,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 					"pagination_token": []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-				cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+				cursor = internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 				assert.Len(t, cursor.Data, additionalTxs)
 				assert.Equal(t, cursor.Next != "", cursor.HasMore)
 
@@ -134,7 +134,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 						"pagination_token": []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor = internal.DecodeCursorResponse[core.Transaction](t, rsp.Body)
+					cursor = internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 					assert.Len(t, cursor.Data, pageSize)
 					assert.Equal(t, cursor.Next != "", cursor.HasMore)
 					back++

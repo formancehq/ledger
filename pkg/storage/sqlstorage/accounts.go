@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
@@ -16,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
+func (s *API) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
@@ -86,7 +87,7 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectB
 	return sb, t
 }
 
-func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *API) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
@@ -108,7 +109,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	sb.Offset(int(q.Offset))
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := exec.QueryContext(ctx, sqlq, args...)
+	rows, err := s.executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.Account]{}, s.error(err)
 	}
@@ -166,11 +167,7 @@ func (s *Store) getAccounts(ctx context.Context, exec executor, q storage.Accoun
 	}, nil
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
-	return s.getAccounts(ctx, s.schema, q)
-}
-
-func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*core.Account, error) {
+func (s *API) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
@@ -182,7 +179,7 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*co
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := exec.QueryRowContext(ctx, sqlq, args...)
+	row := s.executor.QueryRowContext(ctx, sqlq, args...)
 	if err := row.Err(); err != nil {
 		return nil, err
 	}
@@ -197,6 +194,54 @@ func (s *Store) getAccount(ctx context.Context, exec executor, addr string) (*co
 	return &account, nil
 }
 
-func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
-	return s.getAccount(ctx, s.schema, addr)
+func (s *API) ensureAccountExists(ctx context.Context, account string) error {
+
+	sb := sqlbuilder.NewInsertBuilder()
+	sqlq, args := sb.
+		InsertInto(s.schema.Table("accounts")).
+		Cols("address", "metadata").
+		Values(account, "{}").
+		SQL("ON CONFLICT DO NOTHING").
+		BuildWithFlavor(s.schema.Flavor())
+
+	_, err := s.executor.ExecContext(ctx, sqlq, args...)
+	return s.error(err)
+}
+
+func (s *API) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+	ib := sqlbuilder.NewInsertBuilder()
+
+	metadataData, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	placeholder := ib.Var(metadataData)
+	ib.
+		InsertInto(s.schema.Table("accounts")).
+		Cols("address", "metadata").
+		Values(address, metadataData)
+
+	switch Flavor(s.schema.Flavor()) {
+	case PostgreSQL:
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
+	case SQLite:
+		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
+	}
+
+	sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
+	_, err = s.executor.ExecContext(ctx, sqlq, args...)
+	if err != nil {
+		return err
+	}
+
+	lastLog, err := s.LastLog(ctx)
+	if err != nil {
+		return errors.Wrap(err, "reading last log")
+	}
+
+	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   address,
+		Metadata:   metadata,
+	}))
 }

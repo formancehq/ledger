@@ -7,23 +7,25 @@ import (
 )
 
 func TestReverseTransaction(t *testing.T) {
-	tx := &Transaction{
-		TransactionData: TransactionData{
-			Postings: Postings{
-				{
-					Source:      "world",
-					Destination: "users:001",
-					Amount:      100,
-					Asset:       "COIN",
+	tx := &ExpandedTransaction{
+		Transaction: Transaction{
+			TransactionData: TransactionData{
+				Postings: Postings{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Amount:      100,
+						Asset:       "COIN",
+					},
+					{
+						Source:      "users:001",
+						Destination: "payments:001",
+						Amount:      100,
+						Asset:       "COIN",
+					},
 				},
-				{
-					Source:      "users:001",
-					Destination: "payments:001",
-					Amount:      100,
-					Asset:       "COIN",
-				},
+				Reference: "foo",
 			},
-			Reference: "foo",
 		},
 	}
 

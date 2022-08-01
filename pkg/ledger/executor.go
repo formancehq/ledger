@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -46,7 +47,11 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 			if !ok {
 				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
 			}
-			value, err := machine.NewValueFromTypedJSON(entry)
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return nil, err
+			}
+			value, err := machine.NewValueFromTypedJSON(data)
 			if err != nil {
 				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err))
 			}
@@ -95,6 +100,14 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	}
 
 	metadata := m.GetTxMetaJson()
+	for k, v := range metadata {
+		asMapAny := make(map[string]any)
+		err := json.Unmarshal(v.([]byte), &asMapAny)
+		if err != nil {
+			panic(err)
+		}
+		metadata[k] = asMapAny
+	}
 	for k, v := range script.Metadata {
 		_, ok := metadata[k]
 		if ok {
@@ -112,7 +125,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	return t, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transaction, error) {
+func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
@@ -126,7 +139,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Transac
 	return &res.GeneratedTransactions[0], nil
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.Transaction, error) {
+func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
