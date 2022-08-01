@@ -18,6 +18,7 @@ import (
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
@@ -542,9 +543,9 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			},
 			PageSize: 10,
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		assert.Len(t, cursor.Data, 1)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
+		require.Len(t, cursor.Data, 1)
 
 		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
 			Filters: storage.TransactionsQueryFilters{
