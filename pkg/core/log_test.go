@@ -41,6 +41,7 @@ func TestLogProcessor(t *testing.T) {
 						Asset:       "USD",
 					},
 				},
+				Metadata: Metadata{},
 			},
 			ID: 0,
 		},
@@ -60,6 +61,7 @@ func TestLogProcessor(t *testing.T) {
 						Asset:       "USD",
 					},
 				},
+				Metadata: Metadata{},
 			},
 			ID: 1,
 		},
@@ -93,22 +95,24 @@ func TestLogProcessor(t *testing.T) {
 		previousLog = &log
 	}
 
-	require.Equal(t, []*Transaction{
+	require.Equal(t, []*ExpandedTransaction{
 		{
-			TransactionData: TransactionData{
-				Postings: []Posting{
-					{
-						Source:      "world",
-						Destination: "orders:1234",
-						Amount:      100,
-						Asset:       "USD",
+			Transaction: Transaction{
+				TransactionData: TransactionData{
+					Postings: []Posting{
+						{
+							Source:      "world",
+							Destination: "orders:1234",
+							Amount:      100,
+							Asset:       "USD",
+						},
+					},
+					Metadata: Metadata{
+						"psp-ref": json.RawMessage(`"#ABCDEF"`),
 					},
 				},
-				Metadata: Metadata{
-					"psp-ref": json.RawMessage(`"#ABCDEF"`),
-				},
+				ID: 0,
 			},
-			ID: 0,
 			PreCommitVolumes: AccountsAssetsVolumes{
 				"world": {
 					"USD": {
@@ -139,24 +143,26 @@ func TestLogProcessor(t *testing.T) {
 			},
 		},
 		{
-			TransactionData: TransactionData{
-				Postings: []Posting{
-					{
-						Source:      "orders:1234",
-						Destination: "merchant:1234",
-						Amount:      90,
-						Asset:       "USD",
+			Transaction: Transaction{
+				TransactionData: TransactionData{
+					Postings: []Posting{
+						{
+							Source:      "orders:1234",
+							Destination: "merchant:1234",
+							Amount:      90,
+							Asset:       "USD",
+						},
+						{
+							Source:      "orders:1234",
+							Destination: "fees",
+							Amount:      10,
+							Asset:       "USD",
+						},
 					},
-					{
-						Source:      "orders:1234",
-						Destination: "fees",
-						Amount:      10,
-						Asset:       "USD",
-					},
+					Metadata: Metadata{},
 				},
-				Metadata: Metadata{},
+				ID: 1,
 			},
-			ID: 1,
 			PreCommitVolumes: AccountsAssetsVolumes{
 				"orders:1234": {
 					"USD": {

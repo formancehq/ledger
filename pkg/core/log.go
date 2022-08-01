@@ -129,7 +129,7 @@ func (a Accounts) ensureExists(accounts ...string) {
 }
 
 type LogProcessor struct {
-	Transactions []*Transaction
+	Transactions []*ExpandedTransaction
 	Accounts     Accounts
 	Volumes      AccountsAssetsVolumes
 }
@@ -138,7 +138,11 @@ func (m *LogProcessor) ProcessNextLog(logs ...Log) {
 	for _, log := range logs {
 		switch log.Type {
 		case NewTransactionType:
-			tx := log.Data.(RawTransaction).ToTransaction()
+			tx := ExpandedTransaction{
+				Transaction:       log.Data.(Transaction),
+				PreCommitVolumes:  AccountsAssetsVolumes{},
+				PostCommitVolumes: AccountsAssetsVolumes{},
+			}
 			m.Transactions = append(m.Transactions, &tx)
 			for _, posting := range tx.Postings {
 				tx.PreCommitVolumes.SetVolumes(posting.Source, posting.Asset, m.Volumes.GetVolumes(posting.Source, posting.Asset))
@@ -170,7 +174,7 @@ func (m *LogProcessor) ProcessNextLog(logs ...Log) {
 
 func NewLogProcessor() *LogProcessor {
 	return &LogProcessor{
-		Transactions: make([]*Transaction, 0),
+		Transactions: make([]*ExpandedTransaction, 0),
 		Accounts:     Accounts{},
 		Volumes:      AccountsAssetsVolumes{},
 	}
