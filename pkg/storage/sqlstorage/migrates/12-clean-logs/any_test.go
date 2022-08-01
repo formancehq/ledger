@@ -28,7 +28,7 @@ func TestMigrate(t *testing.T) {
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
 
-	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:11]...)
+	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:12]...)
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -52,7 +52,7 @@ func TestMigrate(t *testing.T) {
 	_, err = schema.ExecContext(context.Background(), sqlq, args...)
 	require.NoError(t, err)
 
-	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[11])
+	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[12])
 	require.NoError(t, err)
 	require.True(t, modified)
 
