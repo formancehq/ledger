@@ -559,6 +559,8 @@ github.com/mrunalp/fileutils v0.5.0/go.mod h1:M1WthSahJixYnrXQl/DFQuteStB1weuxD2
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097 h1:50vHv20bk4REFNkbw2sOS3Fvzn7HzlzML0tY3QLxk3U=
 github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097/go.mod h1:7StJNTZ3QbU2uBWpOeryPaHD6xMYUN8AWXWTjP67kv0=
+github.com/numary/go-libs/sharedhealth v0.0.0-20220801152411-b600be8e0d85 h1:+KA84QMomrNaoHrtrDIRbE4HkUrgu3JAsXcw8XF3OGQ=
+github.com/numary/go-libs/sharedhealth v0.0.0-20220801152411-b600be8e0d85/go.mod h1:DzBUp4HCdWscgXmt8/5F/KlCSktv0OwgOwDfRdz5Hzo=
 github.com/numary/machine v1.2.0 h1:Jiy8FMPCJb4Cep5nACXyIQFzVPHse+t2w9Jzzqc7Ojk=
 github.com/numary/machine v1.2.0/go.mod h1:vK6ftGapdOvYjFxbRHFYKxzce4doaCpfk9Wqkhozkfw=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
