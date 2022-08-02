@@ -7,11 +7,12 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 )
 
 func TestWrapStorageFactory(t *testing.T) {
-	f := WrapStorageDriver(storage.NoOpDriver(), global.GetMeterProvider())
+	f := WrapStorageDriver(storage.NoOpDriver(), metric.NewNoopMeterProvider())
 	store, _, err := f.GetStore(context.Background(), "bar", true)
 	assert.NoError(t, err)
 	assert.NotNil(t, store)

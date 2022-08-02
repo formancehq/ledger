@@ -9,15 +9,16 @@ import (
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 )
 
-func transactionsCounter(m metric.Meter) (metric.Int64Counter, error) {
-	return m.NewInt64Counter(opentelemetry.StoreInstrumentationName + ".transactions")
+func transactionsCounter(m metric.Meter) (syncint64.Counter, error) {
+	return m.SyncInt64().Counter(opentelemetry.StoreInstrumentationName + ".transactions")
 }
 
 type storageDecorator struct {
 	storage.Store
-	transactionsCounter metric.Int64Counter
+	transactionsCounter syncint64.Counter
 }
 
 func (o *storageDecorator) Commit(ctx context.Context, txs ...core.ExpandedTransaction) error {
@@ -31,7 +32,7 @@ func (o *storageDecorator) Commit(ctx context.Context, txs ...core.ExpandedTrans
 
 var _ storage.Store = &storageDecorator{}
 
-func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter) *storageDecorator {
+func NewStorageDecorator(underlying storage.Store, counter syncint64.Counter) *storageDecorator {
 	return &storageDecorator{
 		Store:               underlying,
 		transactionsCounter: counter,
@@ -41,7 +42,7 @@ func NewStorageDecorator(underlying storage.Store, counter metric.Int64Counter) 
 type openTelemetryStorageDriver struct {
 	storage.Driver
 	meter               metric.Meter
-	transactionsCounter metric.Int64Counter
+	transactionsCounter syncint64.Counter
 	once                sync.Once
 }
 
