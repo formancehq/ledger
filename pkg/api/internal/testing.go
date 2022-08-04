@@ -257,6 +257,14 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		fx.NopLogger,
 	}, options...)
 
+	options = append(options, fx.Provide(
+		fx.Annotate(func() []ledger.LedgerOption {
+			ledgerOptions := []ledger.LedgerOption{}
+
+			return ledgerOptions
+		}, fx.ResultTags(ledger.ResolverLedgerOptionsKey)),
+	))
+
 	options = append(options, routes.ProvidePerLedgerMiddleware(func() []gin.HandlerFunc {
 		return []gin.HandlerFunc{
 			func(c *gin.Context) {

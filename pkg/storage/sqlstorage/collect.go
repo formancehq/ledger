@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -33,7 +33,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 
 		number, name := extractMigrationInformation(directoryName)
 
-		migrationDirectoryName := filepath.Join("migrates", directoryName)
+		migrationDirectoryName := path.Join("migrates", directoryName)
 		units := make(map[string][]MigrationFunc)
 		unitsFiles, err := fs.ReadDir(migrationsFS, migrationDirectoryName)
 		if err != nil {
@@ -46,7 +46,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 			engine := parts[0]
 			switch extension {
 			case "sql":
-				content, err := fs.ReadFile(migrationsFS, filepath.Join(migrationDirectoryName, unit.Name()))
+				content, err := fs.ReadFile(migrationsFS, path.Join(migrationDirectoryName, unit.Name()))
 				if err != nil {
 					return nil, err
 				}

@@ -21,7 +21,7 @@ func TestLog(t *testing.T) {
 			Metadata: Metadata{},
 		},
 	}, d)
-	if !assert.Equal(t, "3070ef3437354b5cb5ece914f8610d8d1276c6a9df127c0d2a49c48e3f81b017", log2.Hash) {
+	if !assert.Equal(t, "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", log2.Hash) {
 		return
 	}
 }

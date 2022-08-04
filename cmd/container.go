@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -230,6 +229,18 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}(),
 	}))
 
+	options = append(options, fx.Provide(
+		fx.Annotate(func() []ledger.LedgerOption {
+			ledgerOptions := []ledger.LedgerOption{}
+
+			if v.GetString(commitPolicyFlag) == "allow-past-timestamps" {
+				ledgerOptions = append(ledgerOptions, ledger.WithPastTimestamps)
+			}
+
+			return ledgerOptions
+		}, fx.ResultTags(ledger.ResolverLedgerOptionsKey)),
+	))
+
 	// Handle resolver
 	options = append(options,
 		ledger.ResolveModule(),
@@ -304,7 +315,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
 		if v.GetBool(otelTracesFlag) {
-			writer = ioutil.Discard
+			writer = io.Discard
 			res = append(res, opentelemetrytraces.Middleware())
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {

@@ -36,10 +36,15 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 
 	usedReferences := make(map[string]struct{})
 	for i, t := range ts {
+		past := false
 		if t.Timestamp.IsZero() {
 			// Until v1.5.0, dates was stored as string using rfc3339 format
 			// So round the date to the second to keep the same behaviour
 			t.Timestamp = time.Now().UTC().Truncate(time.Second)
+		} else {
+			if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
+				past = true
+			}
 		}
 		if t.Reference != "" {
 			if _, ok := usedReferences[t.Reference]; ok {
@@ -57,14 +62,14 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		if len(t.Postings) == 0 {
 			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
-		if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
+		if past && !l.allowPastTimestamps {
 			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
 		txVolumeAggregator := volumeAggregator.nextTx()
 
 		for _, p := range t.Postings {
-			if p.Amount < 0 {
+			if p.Amount.Ltz() {
 				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
@@ -76,7 +81,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if !core.AssetIsValid(p.Asset) {
 				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
+			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
 			if err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
@@ -91,22 +96,14 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 				expectedBalance := volume.Balance()
 				for _, contract := range contracts {
 					if contract.Match(addr) {
-						account, ok := accounts[addr]
-						if !ok {
-							account, err = l.store.GetAccount(ctx, addr)
+						if _, ok := accounts[addr]; !ok {
+							account, err := l.store.GetAccount(ctx, addr)
 							if err != nil {
 								return nil, err
 							}
 							accounts[addr] = account
 						}
-
-						if ok = contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": float64(expectedBalance),
-							},
-							Metadata: account.Metadata,
-							Asset:    asset,
-						}); !ok {
+						if !expectedBalance.Gte(core.NewMonetaryInt(0)) {
 							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 						}
 						break
