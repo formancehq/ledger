@@ -53,8 +53,8 @@ func (s *API) GetAssetsVolumes(ctx context.Context, accountAddress string) (core
 	for rows.Next() {
 		var (
 			asset  string
-			input  int64
-			output int64
+			input  core.MonetaryInt
+			output core.MonetaryInt
 		)
 		err = rows.Scan(&asset, &input, &output)
 		if err != nil {
@@ -84,7 +84,7 @@ func (s *API) GetVolumes(ctx context.Context, accountAddress, asset string) (cor
 		return core.Volumes{}, s.error(row.Err())
 	}
 
-	var input, output int64
+	var input, output core.MonetaryInt
 	if err := row.Scan(&input, &output); err != nil {
 		if err == sql.ErrNoRows {
 			return core.Volumes{}, nil

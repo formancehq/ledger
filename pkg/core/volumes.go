@@ -6,14 +6,14 @@ import (
 )
 
 type Volumes struct {
-	Input  int64 `json:"input"`
-	Output int64 `json:"output"`
+	Input  MonetaryInt `json:"input"`
+	Output MonetaryInt `json:"output"`
 }
 
 type VolumesWithBalance struct {
-	Input   int64 `json:"input"`
-	Output  int64 `json:"output"`
-	Balance int64 `json:"balance"`
+	Input   MonetaryInt `json:"input"`
+	Output  MonetaryInt `json:"output"`
+	Balance MonetaryInt `json:"balance"`
 }
 
 func (v Volumes) MarshalJSON() ([]byte, error) {
@@ -24,7 +24,7 @@ func (v Volumes) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (v Volumes) Balance() int64 {
+func (v Volumes) Balance() MonetaryInt {
 	return v.Input - v.Output
 }
 
@@ -61,7 +61,7 @@ func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes
 	}
 }
 
-func (a AccountsAssetsVolumes) AddInput(account, asset string, input int64) {
+func (a AccountsAssetsVolumes) AddInput(account, asset string, input MonetaryInt) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
@@ -75,7 +75,7 @@ func (a AccountsAssetsVolumes) AddInput(account, asset string, input int64) {
 	}
 }
 
-func (a AccountsAssetsVolumes) AddOutput(account, asset string, output int64) {
+func (a AccountsAssetsVolumes) AddOutput(account, asset string, output MonetaryInt) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {

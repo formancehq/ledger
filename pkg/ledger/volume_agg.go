@@ -60,11 +60,11 @@ func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, 
 		}
 	}
 	v := tva.postVolumes[from][asset]
-	v.Output += int64(amount)
+	v.Output += core.MonetaryInt(amount)
 	tva.postVolumes[from][asset] = v
 
 	v = tva.postVolumes[to][asset]
-	v.Input += int64(amount)
+	v.Input += core.MonetaryInt(amount)
 	tva.postVolumes[to][asset] = v
 
 	return nil

@@ -114,13 +114,13 @@ func TestTransaction(t *testing.T) {
 						Source:      "world",
 						Destination: "mint",
 						Asset:       "GEM",
-						Amount:      int64(amount),
+						Amount:      core.MonetaryInt(amount),
 					},
 					{
 						Source:      "mint",
 						Destination: user,
 						Asset:       "GEM",
-						Amount:      int64(amount),
+						Amount:      core.MonetaryInt(amount),
 					},
 				},
 			})
@@ -138,7 +138,7 @@ func TestTransaction(t *testing.T) {
 		world, err := l.GetAccount(context.Background(), "world")
 		require.NoError(t, err)
 
-		expected := int64(-1 * total)
+		expected := core.MonetaryInt(-1 * total)
 		b := world.Balances["GEM"]
 		assert.Equalf(t, expected, b,
 			"wrong GEM balance for account world, expected: %d got: %d",
@@ -157,7 +157,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "world",
 						Destination: "player2",
 						Asset:       "GEM",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -167,7 +167,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "player",
 						Destination: "game",
 						Asset:       "GEM",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -177,7 +177,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "GEM",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -200,7 +200,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "world",
 							Destination: "player",
 							Asset:       "GEM",
-							Amount:      int64(100),
+							Amount:      core.MonetaryInt(100),
 						},
 					},
 					Reference: "ref1",
@@ -211,7 +211,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "player",
 							Destination: "game",
 							Asset:       "GEM",
-							Amount:      int64(100),
+							Amount:      core.MonetaryInt(100),
 						},
 					},
 					Reference: "ref2",
@@ -222,7 +222,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "player",
 							Destination: "player2",
 							Asset:       "GEM",
-							Amount:      int64(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
+							Amount:      core.MonetaryInt(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
 						},
 					},
 					Reference: "ref1",
@@ -242,7 +242,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "GEM",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 				Reference: "ref1",
@@ -266,7 +266,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "USD",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -276,7 +276,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "EUR",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -286,7 +286,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player2",
 						Asset:       "EUR",
-						Amount:      int64(100),
+						Amount:      core.MonetaryInt(100),
 					},
 				},
 			},
@@ -296,7 +296,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "player",
 						Destination: "player2",
 						Asset:       "EUR",
-						Amount:      int64(50),
+						Amount:      core.MonetaryInt(50),
 					},
 				},
 			},
@@ -541,7 +541,7 @@ func TestGetTransactions(t *testing.T) {
 
 func TestRevertTransaction(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		revertAmt := int64(100)
+		revertAmt := core.MonetaryInt(100)
 
 		res, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "foo",

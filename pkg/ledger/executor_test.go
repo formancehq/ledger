@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func assertBalance(t *testing.T, l *Ledger, account, asset string, amount int64) {
+func assertBalance(t *testing.T, l *Ledger, account, asset string, amount core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)
 
@@ -132,7 +132,7 @@ func TestVariables(t *testing.T) {
 		require.NoError(t, err)
 
 		b := user.Balances["CAD/2"]
-		assert.Equalf(t, int64(42), b,
+		assert.Equalf(t, core.MonetaryInt(42), b,
 			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
 			42, b,
 		)

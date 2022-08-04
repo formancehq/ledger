@@ -14,12 +14,12 @@ func TestLedger_processTx(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
 			const (
-				worldTotoUSD  int64 = 43
-				worldAliceUSD int64 = 98
-				aliceTotoUSD  int64 = 45
-				worldTotoEUR  int64 = 15
-				worldAliceEUR int64 = 10
-				totoAliceEUR  int64 = 5
+				worldTotoUSD  core.MonetaryInt = 43
+				worldAliceUSD core.MonetaryInt = 98
+				aliceTotoUSD  core.MonetaryInt = 45
+				worldTotoEUR  core.MonetaryInt = 15
+				worldAliceEUR core.MonetaryInt = 10
+				totoAliceEUR  core.MonetaryInt = 5
 			)
 
 			postings := []core.Posting{

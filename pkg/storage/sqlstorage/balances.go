@@ -48,7 +48,7 @@ func (s *API) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery
 	for rows.Next() {
 		var (
 			asset    string
-			balances int64
+			balances core.MonetaryInt
 		)
 		if err = rows.Scan(&asset, &balances); err != nil {
 			return nil, s.error(err)

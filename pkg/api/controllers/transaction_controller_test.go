@@ -761,7 +761,7 @@ func TestTransactionsVolumes(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 
 				// Single posting - single asset
-				const worldAliceUSD int64 = 100
+				const worldAliceUSD core.MonetaryInt = 100
 
 				rsp := internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -818,7 +818,7 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Single posting - single asset
 
-				const aliceBobUSD int64 = 93
+				const aliceBobUSD core.MonetaryInt = 93
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -877,8 +877,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi posting - single asset
 
-				const worldBobEUR int64 = 156
-				const bobAliceEUR int64 = 3
+				const worldBobEUR core.MonetaryInt = 156
+				const bobAliceEUR core.MonetaryInt = 3
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -954,8 +954,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi postings - multi assets
 
-				const bobAliceUSD int64 = 1
-				const aliceBobEUR int64 = 2
+				const bobAliceUSD core.MonetaryInt = 1
+				const aliceBobEUR core.MonetaryInt = 2
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
