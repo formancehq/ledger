@@ -11,13 +11,13 @@ func TestReverseMultiple(t *testing.T) {
 		{
 			Source:      "world",
 			Destination: "users:001",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 		{
 			Source:      "users:001",
 			Destination: "payments:001",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 	}
@@ -26,13 +26,13 @@ func TestReverseMultiple(t *testing.T) {
 		{
 			Source:      "payments:001",
 			Destination: "users:001",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 		{
 			Source:      "users:001",
 			Destination: "world",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 	}
@@ -49,7 +49,7 @@ func TestReverseSingle(t *testing.T) {
 		{
 			Source:      "world",
 			Destination: "users:001",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 	}
@@ -58,7 +58,7 @@ func TestReverseSingle(t *testing.T) {
 		{
 			Source:      "users:001",
 			Destination: "world",
-			Amount:      100,
+			Amount:      NewMonetaryInt(100),
 			Asset:       "COIN",
 		},
 	}

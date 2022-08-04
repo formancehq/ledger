@@ -69,7 +69,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		txVolumeAggregator := volumeAggregator.nextTx()
 
 		for _, p := range t.Postings {
-			if p.Amount < 0 {
+			if p.Amount.Ltz() {
 				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
@@ -81,7 +81,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if !core.AssetIsValid(p.Asset) {
 				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
+			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
 			if err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
@@ -96,22 +96,14 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 				expectedBalance := volume.Balance()
 				for _, contract := range contracts {
 					if contract.Match(addr) {
-						account, ok := accounts[addr]
-						if !ok {
-							account, err = l.store.GetAccount(ctx, addr)
+						if _, ok := accounts[addr]; !ok {
+							account, err := l.store.GetAccount(ctx, addr)
 							if err != nil {
 								return nil, err
 							}
 							accounts[addr] = account
 						}
-
-						if ok = contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": float64(expectedBalance),
-							},
-							Metadata: account.Metadata,
-							Asset:    asset,
-						}); !ok {
+						if !expectedBalance.Gte(core.NewMonetaryInt(0)) {
 							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 						}
 						break

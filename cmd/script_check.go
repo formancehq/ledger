@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/numary/machine/script/compiler"
 	"github.com/sirupsen/logrus"
@@ -14,7 +14,7 @@ func NewScriptCheck() *cobra.Command {
 		Use:  "check [script]",
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			b, err := ioutil.ReadFile(args[0])
+			b, err := os.ReadFile(args[0])
 			if err != nil {
 				logrus.Fatal(err)
 			}

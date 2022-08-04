@@ -22,7 +22,7 @@ func TestGetStats(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      100,
+							Amount:      core.NewMonetaryInt(100),
 							Asset:       "USD",
 						},
 					},
@@ -34,7 +34,7 @@ func TestGetStats(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "boc",
-							Amount:      100,
+							Amount:      core.NewMonetaryInt(100),
 							Asset:       "USD",
 						},
 					},

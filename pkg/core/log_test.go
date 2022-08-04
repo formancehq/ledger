@@ -23,7 +23,7 @@ func TestLog(t *testing.T) {
 			Metadata: Metadata{},
 		},
 	}, d)
-	if !assert.Equal(t, "3070ef3437354b5cb5ece914f8610d8d1276c6a9df127c0d2a49c48e3f81b017", log2.Hash) {
+	if !assert.Equal(t, "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", log2.Hash) {
 		return
 	}
 }
@@ -37,7 +37,7 @@ func TestLogProcessor(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "orders:1234",
-						Amount:      100,
+						Amount:      NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -51,13 +51,13 @@ func TestLogProcessor(t *testing.T) {
 					{
 						Source:      "orders:1234",
 						Destination: "merchant:1234",
-						Amount:      90,
+						Amount:      NewMonetaryInt(90),
 						Asset:       "USD",
 					},
 					{
 						Source:      "orders:1234",
 						Destination: "fees",
-						Amount:      10,
+						Amount:      NewMonetaryInt(10),
 						Asset:       "USD",
 					},
 				},
@@ -103,7 +103,7 @@ func TestLogProcessor(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "orders:1234",
-							Amount:      100,
+							Amount:      NewMonetaryInt(100),
 							Asset:       "USD",
 						},
 					},
@@ -116,28 +116,28 @@ func TestLogProcessor(t *testing.T) {
 			PreCommitVolumes: AccountsAssetsVolumes{
 				"world": {
 					"USD": {
-						Input:  0,
-						Output: 0,
+						Input:  NewMonetaryInt(0),
+						Output: NewMonetaryInt(0),
 					},
 				},
 				"orders:1234": {
 					"USD": {
-						Input:  0,
-						Output: 0,
+						Input:  NewMonetaryInt(0),
+						Output: NewMonetaryInt(0),
 					},
 				},
 			},
 			PostCommitVolumes: AccountsAssetsVolumes{
 				"world": {
 					"USD": {
-						Input:  0,
-						Output: 100,
+						Input:  NewMonetaryInt(0),
+						Output: NewMonetaryInt(100),
 					},
 				},
 				"orders:1234": {
 					"USD": {
-						Input:  100,
-						Output: 0,
+						Input:  NewMonetaryInt(100),
+						Output: NewMonetaryInt(0),
 					},
 				},
 			},
@@ -149,13 +149,13 @@ func TestLogProcessor(t *testing.T) {
 						{
 							Source:      "orders:1234",
 							Destination: "merchant:1234",
-							Amount:      90,
+							Amount:      NewMonetaryInt(90),
 							Asset:       "USD",
 						},
 						{
 							Source:      "orders:1234",
 							Destination: "fees",
-							Amount:      10,
+							Amount:      NewMonetaryInt(10),
 							Asset:       "USD",
 						},
 					},
@@ -166,40 +166,40 @@ func TestLogProcessor(t *testing.T) {
 			PreCommitVolumes: AccountsAssetsVolumes{
 				"orders:1234": {
 					"USD": {
-						Input:  100,
-						Output: 0,
+						Input:  NewMonetaryInt(100),
+						Output: NewMonetaryInt(0),
 					},
 				},
 				"merchant:1234": {
 					"USD": {
-						Input:  0,
-						Output: 0,
+						Input:  NewMonetaryInt(0),
+						Output: NewMonetaryInt(0),
 					},
 				},
 				"fees": {
 					"USD": {
-						Input:  0,
-						Output: 0,
+						Input:  NewMonetaryInt(0),
+						Output: NewMonetaryInt(0),
 					},
 				},
 			},
 			PostCommitVolumes: AccountsAssetsVolumes{
 				"orders:1234": {
 					"USD": {
-						Input:  100,
-						Output: 100,
+						Input:  NewMonetaryInt(100),
+						Output: NewMonetaryInt(100),
 					},
 				},
 				"merchant:1234": {
 					"USD": {
-						Input:  90,
-						Output: 0,
+						Input:  NewMonetaryInt(90),
+						Output: NewMonetaryInt(0),
 					},
 				},
 				"fees": {
 					"USD": {
-						Input:  10,
-						Output: 0,
+						Input:  NewMonetaryInt(10),
+						Output: NewMonetaryInt(0),
 					},
 				},
 			},
@@ -208,30 +208,30 @@ func TestLogProcessor(t *testing.T) {
 	require.Equal(t, AccountsAssetsVolumes{
 		"world": {
 			"USD": {
-				Input:  0,
-				Output: 100,
+				Input:  NewMonetaryInt(0),
+				Output: NewMonetaryInt(100),
 			},
 		},
 		"orders:1234": {
 			"USD": {
-				Input:  100,
-				Output: 100,
+				Input:  NewMonetaryInt(100),
+				Output: NewMonetaryInt(100),
 			},
 		},
 		"merchant:1234": {
 			"USD": {
-				Input:  90,
-				Output: 0,
+				Input:  NewMonetaryInt(90),
+				Output: NewMonetaryInt(0),
 			},
 		},
 		"fees": {
 			"USD": {
-				Input:  10,
-				Output: 0,
+				Input:  NewMonetaryInt(10),
+				Output: NewMonetaryInt(0),
 			},
 		},
 	}, p.Volumes)
-	require.Equal(t, Accounts{
+	require.EqualValues(t, Accounts{
 		"world": {
 			Address:  "world",
 			Metadata: Metadata{},
