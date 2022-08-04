@@ -104,7 +104,7 @@ var tx1 = core.ExpandedTransaction{
 				{
 					Source:      "world",
 					Destination: "central_bank",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "USD",
 				},
 			},
@@ -141,7 +141,7 @@ var tx2 = core.ExpandedTransaction{
 				{
 					Source:      "world",
 					Destination: "central_bank",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "USD",
 				},
 			},
@@ -182,7 +182,7 @@ var tx3 = core.ExpandedTransaction{
 				{
 					Source:      "central_bank",
 					Destination: "users:1",
-					Amount:      1,
+					Amount:      core.NewMonetaryInt(1),
 					Asset:       "USD",
 				},
 			},
@@ -227,7 +227,7 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -257,7 +257,7 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -292,7 +292,7 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -327,7 +327,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -351,7 +351,7 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					},
 				},

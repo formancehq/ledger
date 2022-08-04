@@ -136,7 +136,7 @@ func (s *API) GetBalances(ctx context.Context, q storage.BalancesQuery) (shareda
 			if err != nil {
 				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
-			accountsBalances[currentAccount][asset] = balances
+			accountsBalances[currentAccount][asset] = core.MonetaryInt(balances)
 		}
 
 		accounts = append(accounts, accountsBalances)

@@ -29,7 +29,7 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      100,
+				Amount:      core.NewMonetaryInt(100),
 				Asset:       "USD",
 			},
 		},
@@ -59,7 +59,7 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank2",
-				Amount:      100,
+				Amount:      core.NewMonetaryInt(100),
 				Asset:       "USD",
 			},
 		},
@@ -91,13 +91,13 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      100,
+				Amount:      core.NewMonetaryInt(100),
 				Asset:       "USD",
 			},
 			{
 				Source:      "world",
 				Destination: "bank2",
-				Amount:      100,
+				Amount:      core.NewMonetaryInt(100),
 				Asset:       "USD",
 			},
 		},
@@ -141,13 +141,13 @@ var testCases = []testCase{
 			{
 				Source:      "bank",
 				Destination: "user:1",
-				Amount:      10,
+				Amount:      core.NewMonetaryInt(10),
 				Asset:       "USD",
 			},
 			{
 				Source:      "bank",
 				Destination: "user:2",
-				Amount:      90,
+				Amount:      core.NewMonetaryInt(90),
 				Asset:       "USDT",
 			},
 		},

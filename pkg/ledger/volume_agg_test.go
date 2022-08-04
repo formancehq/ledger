@@ -35,7 +35,7 @@ func TestVolumeAggregator(t *testing.T) {
 								{
 									Source:      "bob",
 									Destination: "zozo",
-									Amount:      100,
+									Amount:      core.NewMonetaryInt(100),
 									Asset:       "USD",
 								},
 							},
@@ -71,7 +71,7 @@ func TestVolumeAggregator(t *testing.T) {
 								{
 									Source:      "zozo",
 									Destination: "alice",
-									Amount:      100,
+									Amount:      core.NewMonetaryInt(100),
 									Asset:       "USD",
 								},
 							},

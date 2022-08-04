@@ -150,7 +150,7 @@ func TestEnoughFunds(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "user:001",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -183,7 +183,7 @@ func TestNotEnoughFunds(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "user:002",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -246,7 +246,7 @@ func TestMetadata(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "sales:042",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},

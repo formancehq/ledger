@@ -26,7 +26,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      150,
+							Amount:      core.NewMonetaryInt(150),
 							Asset:       "USD",
 						},
 					},
@@ -38,7 +38,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "bob",
-							Amount:      100,
+							Amount:      core.NewMonetaryInt(100),
 							Asset:       "USD",
 						},
 					},
@@ -87,7 +87,7 @@ func TestGetBalances(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      150,
+							Amount:      core.NewMonetaryInt(150),
 							Asset:       "USD",
 						},
 					},
@@ -99,7 +99,7 @@ func TestGetBalances(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "bob",
-							Amount:      100,
+							Amount:      core.NewMonetaryInt(100),
 							Asset:       "USD",
 						},
 					},
@@ -111,7 +111,7 @@ func TestGetBalances(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      200,
+							Amount:      core.NewMonetaryInt(200),
 							Asset:       "CAD",
 						},
 					},
@@ -123,7 +123,7 @@ func TestGetBalances(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      400,
+							Amount:      core.NewMonetaryInt(400),
 							Asset:       "EUR",
 						},
 					},

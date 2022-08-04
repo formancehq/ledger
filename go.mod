@@ -2,6 +2,8 @@ module github.com/numary/ledger
 
 go 1.18
 
+replace github.com/numary/machine => /Users/clement/numary/machine
+
 require (
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7

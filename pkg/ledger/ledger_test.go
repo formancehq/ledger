@@ -100,13 +100,13 @@ func TestMain(m *testing.M) {
 func TestTransaction(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
 		testsize := 1e4
-		total := 0
+		total := core.NewMonetaryInt(0)
 		batch := []core.TransactionData{}
 
 		for i := 1; i <= int(testsize); i++ {
 			user := fmt.Sprintf("users:%03d", 1+rand.Intn(100))
-			amount := 100
-			total += amount
+			amount := core.NewMonetaryInt(100)
+			total = total.Add(amount)
 
 			batch = append(batch, core.TransactionData{
 				Postings: []core.Posting{
@@ -340,7 +340,7 @@ func TestBalance(t *testing.T) {
 					{
 						Source:      "empty_wallet",
 						Destination: "world",
-						Amount:      1,
+						Amount:      core.NewMonetaryInt(1),
 						Asset:       "COIN",
 					},
 				},
@@ -359,7 +359,7 @@ func TestReference(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "payments:001",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -404,7 +404,7 @@ func TestAccountMetadata(t *testing.T) {
 					Postings: core.Postings{
 						{
 							Source:      "world",
-							Amount:      100,
+							Amount:      core.NewMonetaryInt(100),
 							Asset:       "USD",
 							Destination: "users:001",
 						},
@@ -432,7 +432,7 @@ func TestTransactionMetadata(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "payments:001",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -470,7 +470,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "payments:001",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -499,7 +499,7 @@ func TestGetTransaction(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "payments:001",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -523,7 +523,7 @@ func TestGetTransactions(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "test_get_transactions",
-					Amount:      100,
+					Amount:      core.NewMonetaryInt(100),
 					Asset:       "COIN",
 				},
 			},
@@ -568,7 +568,7 @@ func TestRevertTransaction(t *testing.T) {
 			{
 				Source:      "payments:001",
 				Destination: "world",
-				Amount:      100,
+				Amount:      core.NewMonetaryInt(100),
 				Asset:       "COIN",
 			},
 		}, revertTx.TransactionData.Postings)
@@ -606,7 +606,7 @@ func BenchmarkTransaction1(b *testing.B) {
 						Source:      "world",
 						Destination: "benchmark",
 						Asset:       "COIN",
-						Amount:      10,
+						Amount:      core.NewMonetaryInt(10),
 					},
 				},
 			})
@@ -630,7 +630,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 								Source:      "world",
 								Destination: "benchmark",
 								Asset:       "COIN",
-								Amount:      10,
+								Amount:      core.NewMonetaryInt(10),
 							},
 						},
 					})

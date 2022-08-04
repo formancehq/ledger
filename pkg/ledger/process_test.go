@@ -299,7 +299,7 @@ func TestLedger_processTx(t *testing.T) {
 					Postings: []core.Posting{{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      100,
+						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
 					}},
 					Timestamp: now.Add(-time.Second),

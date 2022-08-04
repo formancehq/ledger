@@ -28,7 +28,7 @@ func (v Volumes) Balance() MonetaryInt {
 	return v.Input - v.Output
 }
 
-type AssetsBalances map[string]int64
+type AssetsBalances map[string]MonetaryInt
 type AssetsVolumes map[string]Volumes
 
 type AccountsBalances map[string]AssetsBalances
@@ -70,7 +70,7 @@ func (a AccountsAssetsVolumes) AddInput(account, asset string, input MonetaryInt
 		}
 	} else {
 		volumes := assetsVolumes[asset]
-		volumes.Input += input
+		volumes.Input = volumes.Input.Add(input)
 		assetsVolumes[asset] = volumes
 	}
 }
@@ -84,7 +84,7 @@ func (a AccountsAssetsVolumes) AddOutput(account, asset string, output MonetaryI
 		}
 	} else {
 		volumes := assetsVolumes[asset]
-		volumes.Output += output
+		volumes.Output = volumes.Output.Add(output)
 		assetsVolumes[asset] = volumes
 	}
 }
