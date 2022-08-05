@@ -114,13 +114,13 @@ func TestTransaction(t *testing.T) {
 						Source:      "world",
 						Destination: "mint",
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(amount),
+						Amount:      amount,
 					},
 					{
 						Source:      "mint",
 						Destination: user,
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(amount),
+						Amount:      amount,
 					},
 				},
 			})
@@ -138,7 +138,7 @@ func TestTransaction(t *testing.T) {
 		world, err := l.GetAccount(context.Background(), "world")
 		require.NoError(t, err)
 
-		expected := core.MonetaryInt(-1 * total)
+		expected := total.Neg()
 		b := world.Balances["GEM"]
 		assert.Equalf(t, expected, b,
 			"wrong GEM balance for account world, expected: %d got: %d",
@@ -157,7 +157,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "world",
 						Destination: "player2",
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -167,7 +167,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "player",
 						Destination: "game",
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -177,7 +177,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -200,7 +200,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "world",
 							Destination: "player",
 							Asset:       "GEM",
-							Amount:      core.MonetaryInt(100),
+							Amount:      core.NewMonetaryInt(100),
 						},
 					},
 					Reference: "ref1",
@@ -211,7 +211,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "player",
 							Destination: "game",
 							Asset:       "GEM",
-							Amount:      core.MonetaryInt(100),
+							Amount:      core.NewMonetaryInt(100),
 						},
 					},
 					Reference: "ref2",
@@ -222,7 +222,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 							Source:      "player",
 							Destination: "player2",
 							Asset:       "GEM",
-							Amount:      core.MonetaryInt(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
+							Amount:      core.NewMonetaryInt(1000), // Should trigger an insufficient fund error but the conflict error has precedence over it
 						},
 					},
 					Reference: "ref1",
@@ -242,7 +242,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "GEM",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 				Reference: "ref1",
@@ -266,7 +266,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "USD",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -276,7 +276,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player",
 						Asset:       "EUR",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -286,7 +286,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "world",
 						Destination: "player2",
 						Asset:       "EUR",
-						Amount:      core.MonetaryInt(100),
+						Amount:      core.NewMonetaryInt(100),
 					},
 				},
 			},
@@ -296,7 +296,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 						Source:      "player",
 						Destination: "player2",
 						Asset:       "EUR",
-						Amount:      core.MonetaryInt(50),
+						Amount:      core.NewMonetaryInt(50),
 					},
 				},
 			},
@@ -308,24 +308,24 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
 			"world": core.AssetsVolumes{
 				"USD": {
-					Output: 100,
+					Output: core.NewMonetaryInt(100),
 				},
 				"EUR": {
-					Output: 200,
+					Output: core.NewMonetaryInt(200),
 				},
 			},
 			"player": core.AssetsVolumes{
 				"USD": {
-					Input: 100,
+					Input: core.NewMonetaryInt(100),
 				},
 				"EUR": {
-					Input:  100,
-					Output: 50,
+					Input:  core.NewMonetaryInt(100),
+					Output: core.NewMonetaryInt(50),
 				},
 			},
 			"player2": core.AssetsVolumes{
 				"EUR": {
-					Input: 150,
+					Input: core.NewMonetaryInt(150),
 				},
 			},
 		}, res.PostCommitVolumes)
@@ -541,7 +541,7 @@ func TestGetTransactions(t *testing.T) {
 
 func TestRevertTransaction(t *testing.T) {
 	runOnLedger(func(l *Ledger) {
-		revertAmt := core.MonetaryInt(100)
+		revertAmt := core.NewMonetaryInt(100)
 
 		res, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "foo",
@@ -589,7 +589,7 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		newBal := world.Balances["COIN"]
-		expectedBal := originalBal + revertAmt
+		expectedBal := originalBal.Add(revertAmt)
 		require.Equalf(t, expectedBal, newBal,
 			"COIN world balances expected %d, got %d", expectedBal, newBal)
 	})

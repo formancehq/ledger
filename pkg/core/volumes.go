@@ -6,29 +6,29 @@ import (
 )
 
 type Volumes struct {
-	Input  MonetaryInt `json:"input"`
-	Output MonetaryInt `json:"output"`
+	Input  *MonetaryInt `json:"input"`
+	Output *MonetaryInt `json:"output"`
 }
 
 type VolumesWithBalance struct {
-	Input   MonetaryInt `json:"input"`
-	Output  MonetaryInt `json:"output"`
-	Balance MonetaryInt `json:"balance"`
+	Input   *MonetaryInt `json:"input"`
+	Output  *MonetaryInt `json:"output"`
+	Balance *MonetaryInt `json:"balance"`
 }
 
 func (v Volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(VolumesWithBalance{
 		Input:   v.Input,
 		Output:  v.Output,
-		Balance: v.Input - v.Output,
+		Balance: v.Input.Sub(v.Output),
 	})
 }
 
-func (v Volumes) Balance() MonetaryInt {
-	return v.Input - v.Output
+func (v Volumes) Balance() *MonetaryInt {
+	return v.Input.Sub(v.Output)
 }
 
-type AssetsBalances map[string]MonetaryInt
+type AssetsBalances map[string]*MonetaryInt
 type AssetsVolumes map[string]Volumes
 
 type AccountsBalances map[string]AssetsBalances
@@ -36,7 +36,7 @@ type AccountsBalances map[string]AssetsBalances
 func (v AssetsVolumes) Balances() AssetsBalances {
 	balances := AssetsBalances{}
 	for asset, vv := range v {
-		balances[asset] = vv.Input - vv.Output
+		balances[asset] = vv.Input.Sub(vv.Output)
 	}
 	return balances
 }
@@ -61,7 +61,7 @@ func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes
 	}
 }
 
-func (a AccountsAssetsVolumes) AddInput(account, asset string, input MonetaryInt) {
+func (a AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryInt) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
@@ -75,7 +75,7 @@ func (a AccountsAssetsVolumes) AddInput(account, asset string, input MonetaryInt
 	}
 }
 
-func (a AccountsAssetsVolumes) AddOutput(account, asset string, output MonetaryInt) {
+func (a AccountsAssetsVolumes) AddOutput(account, asset string, output *MonetaryInt) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {

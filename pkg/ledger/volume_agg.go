@@ -22,7 +22,11 @@ func (tva *transactionVolumeAggregator) preCommitVolumes() core.AccountsAssetsVo
 	return tva.preVolumes
 }
 
-func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, asset string, amount uint64) error {
+func (tva *transactionVolumeAggregator) transfer(
+	ctx context.Context,
+	from, to, asset string,
+	amount *core.MonetaryInt,
+) error {
 	if tva.preVolumes == nil {
 		tva.preVolumes = core.AccountsAssetsVolumes{}
 	}
@@ -60,11 +64,11 @@ func (tva *transactionVolumeAggregator) transfer(ctx context.Context, from, to, 
 		}
 	}
 	v := tva.postVolumes[from][asset]
-	v.Output = v.Output.Add(core.MonetaryInt(amount))
+	v.Output = v.Output.Add(amount)
 	tva.postVolumes[from][asset] = v
 
 	v = tva.postVolumes[to][asset]
-	v.Input = v.Input.Add(core.MonetaryInt(amount))
+	v.Input = v.Input.Add(amount)
 	tva.postVolumes[to][asset] = v
 
 	return nil

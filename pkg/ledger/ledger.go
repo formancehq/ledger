@@ -9,6 +9,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var DefaultContracts = []core.Contract{
@@ -46,6 +47,7 @@ type CommitResult struct {
 }
 
 func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+	logrus.Info("Committing transactions", txsData)
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)

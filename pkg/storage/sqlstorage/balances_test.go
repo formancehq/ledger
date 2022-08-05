@@ -29,17 +29,17 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
-					"USD": -200,
+					"USD": core.NewMonetaryInt(-200),
 				},
 			},
 			{
 				"users:1": core.AssetsBalances{
-					"USD": 1,
+					"USD": core.NewMonetaryInt(1),
 				},
 			},
 			{
 				"central_bank": core.AssetsBalances{
-					"USD": 199,
+					"USD": core.NewMonetaryInt(199),
 				},
 			},
 		}, cursor.Data)
@@ -58,7 +58,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
-					"USD": -200,
+					"USD": core.NewMonetaryInt(-200),
 				},
 			},
 		}, cursor.Data)
@@ -78,7 +78,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": 1,
+					"USD": core.NewMonetaryInt(1),
 				},
 			},
 		}, cursor.Data)
@@ -98,12 +98,12 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": 1,
+					"USD": core.NewMonetaryInt(1),
 				},
 			},
 			{
 				"central_bank": core.AssetsBalances{
-					"USD": 199,
+					"USD": core.NewMonetaryInt(199),
 				},
 			},
 		}, cursor.Data)
@@ -124,7 +124,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": 1,
+					"USD": core.NewMonetaryInt(1),
 				},
 			},
 		}, cursor.Data)
@@ -141,6 +141,6 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	cursor, err := store.GetBalancesAggregated(context.Background(), q)
 	assert.NoError(t, err)
 	assert.Equal(t, core.AssetsBalances{
-		"USD": 0,
+		"USD": core.NewMonetaryInt(0),
 	}, cursor)
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func assertBalance(t *testing.T, l *Ledger, account, asset string, amount core.MonetaryInt) {
+func assertBalance(t *testing.T, l *Ledger, account, asset string, amount *core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)
 
@@ -86,7 +86,7 @@ func TestSend(t *testing.T) {
 		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		assertBalance(t, l, "user:001", "USD/2", 99)
+		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
 	})
 }
 
@@ -132,7 +132,7 @@ func TestVariables(t *testing.T) {
 		require.NoError(t, err)
 
 		b := user.Balances["CAD/2"]
-		assert.Equalf(t, core.MonetaryInt(42), b,
+		assert.Equalf(t, core.NewMonetaryInt(42), b,
 			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
 			42, b,
 		)
@@ -298,11 +298,11 @@ func TestMetadata(t *testing.T) {
 		_, err = l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		assertBalance(t, l, "sales:042", "COIN", 0)
+		assertBalance(t, l, "sales:042", "COIN", core.NewMonetaryInt(0))
 
-		assertBalance(t, l, "users:053", "COIN", 85)
+		assertBalance(t, l, "users:053", "COIN", core.NewMonetaryInt(85))
 
-		assertBalance(t, l, "platform", "COIN", 15)
+		assertBalance(t, l, "platform", "COIN", core.NewMonetaryInt(15))
 	})
 }
 

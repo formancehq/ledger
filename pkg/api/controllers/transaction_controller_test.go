@@ -74,7 +74,7 @@ func TestPostTransactions(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "central_bank",
-							Amount:      -1000,
+							Amount:      core.NewMonetaryInt(-1000),
 							Asset:       "USB",
 						},
 					},
@@ -316,12 +316,12 @@ func TestGetTransaction(t *testing.T) {
 					assert.EqualValues(t, core.AccountsAssetsVolumes{
 						"world": core.AssetsVolumes{
 							"USD": {
-								Output: 1000,
+								Output: core.NewMonetaryInt(1000),
 							},
 						},
 						"central_bank": core.AssetsVolumes{
 							"USD": {
-								Input: 1000,
+								Input: core.NewMonetaryInt(1000),
 							},
 						},
 					}, ret.PostCommitVolumes)
@@ -761,7 +761,7 @@ func TestTransactionsVolumes(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 
 				// Single posting - single asset
-				const worldAliceUSD core.MonetaryInt = 100
+				worldAliceUSD := core.NewMonetaryInt(100)
 
 				rsp := internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -798,7 +798,7 @@ func TestTransactionsVolumes(t *testing.T) {
 					"world": assetsVolumes{
 						"USD": core.VolumesWithBalance{
 							Output:  worldAliceUSD,
-							Balance: -worldAliceUSD,
+							Balance: worldAliceUSD.Neg(),
 						},
 					},
 				}
@@ -818,7 +818,7 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Single posting - single asset
 
-				const aliceBobUSD core.MonetaryInt = 93
+				aliceBobUSD := core.NewMonetaryInt(93)
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -849,8 +849,8 @@ func TestTransactionsVolumes(t *testing.T) {
 					"alice": assetsVolumes{
 						"USD": core.VolumesWithBalance{
 							Input:   prevVolAliceUSD.Input,
-							Output:  prevVolAliceUSD.Output + aliceBobUSD,
-							Balance: prevVolAliceUSD.Input - prevVolAliceUSD.Output - aliceBobUSD,
+							Output:  prevVolAliceUSD.Output.Add(aliceBobUSD),
+							Balance: prevVolAliceUSD.Input.Sub(prevVolAliceUSD.Output).Sub(aliceBobUSD),
 						},
 					},
 					"bob": assetsVolumes{
@@ -877,8 +877,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi posting - single asset
 
-				const worldBobEUR core.MonetaryInt = 156
-				const bobAliceEUR core.MonetaryInt = 3
+				worldBobEUR := core.NewMonetaryInt(156)
+				bobAliceEUR := core.NewMonetaryInt(3)
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -918,7 +918,7 @@ func TestTransactionsVolumes(t *testing.T) {
 					"alice": assetsVolumes{
 						"EUR": core.VolumesWithBalance{
 							Input:   bobAliceEUR,
-							Output:  0,
+							Output:  core.NewMonetaryInt(0),
 							Balance: bobAliceEUR,
 						},
 					},
@@ -926,14 +926,14 @@ func TestTransactionsVolumes(t *testing.T) {
 						"EUR": core.VolumesWithBalance{
 							Input:   worldBobEUR,
 							Output:  bobAliceEUR,
-							Balance: worldBobEUR - bobAliceEUR,
+							Balance: worldBobEUR.Sub(bobAliceEUR),
 						},
 					},
 					"world": assetsVolumes{
 						"EUR": core.VolumesWithBalance{
-							Input:   0,
+							Input:   core.NewMonetaryInt(0),
 							Output:  worldBobEUR,
-							Balance: -worldBobEUR,
+							Balance: worldBobEUR.Neg(),
 						},
 					},
 				}
@@ -954,8 +954,8 @@ func TestTransactionsVolumes(t *testing.T) {
 
 				// Multi postings - multi assets
 
-				const bobAliceUSD core.MonetaryInt = 1
-				const aliceBobEUR core.MonetaryInt = 2
+				bobAliceUSD := core.NewMonetaryInt(1)
+				aliceBobEUR := core.NewMonetaryInt(2)
 
 				rsp = internal.PostTransaction(t, api,
 					core.TransactionData{
@@ -994,25 +994,25 @@ func TestTransactionsVolumes(t *testing.T) {
 					"alice": assetsVolumes{
 						"EUR": core.VolumesWithBalance{
 							Input:   prevVolAliceEUR.Input,
-							Output:  prevVolAliceEUR.Output + aliceBobEUR,
-							Balance: prevVolAliceEUR.Balance - aliceBobEUR,
+							Output:  prevVolAliceEUR.Output.Add(aliceBobEUR),
+							Balance: prevVolAliceEUR.Balance.Sub(aliceBobEUR),
 						},
 						"USD": core.VolumesWithBalance{
-							Input:   prevVolAliceUSD.Input + bobAliceUSD,
+							Input:   prevVolAliceUSD.Input.Add(bobAliceUSD),
 							Output:  prevVolAliceUSD.Output,
-							Balance: prevVolAliceUSD.Balance + bobAliceUSD,
+							Balance: prevVolAliceUSD.Balance.Add(bobAliceUSD),
 						},
 					},
 					"bob": assetsVolumes{
 						"EUR": core.VolumesWithBalance{
-							Input:   prevVolBobEUR.Input + aliceBobEUR,
+							Input:   prevVolBobEUR.Input.Add(aliceBobEUR),
 							Output:  prevVolBobEUR.Output,
-							Balance: prevVolBobEUR.Balance + aliceBobEUR,
+							Balance: prevVolBobEUR.Balance.Add(aliceBobEUR),
 						},
 						"USD": core.VolumesWithBalance{
 							Input:   prevVolBobUSD.Input,
-							Output:  prevVolBobUSD.Output + bobAliceUSD,
-							Balance: prevVolBobUSD.Balance - bobAliceUSD,
+							Output:  prevVolBobUSD.Output.Add(bobAliceUSD),
+							Balance: prevVolBobUSD.Balance.Sub(bobAliceUSD),
 						},
 					},
 				}

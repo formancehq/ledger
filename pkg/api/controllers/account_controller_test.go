@@ -448,11 +448,11 @@ func TestGetAccount(t *testing.T) {
 							},
 						},
 						Balances: core.AssetsBalances{
-							"USD": 100,
+							"USD": core.NewMonetaryInt(100),
 						},
 						Volumes: core.AssetsVolumes{
 							"USD": {
-								Input: 100,
+								Input: core.NewMonetaryInt(100),
 							},
 						},
 					}, resp)

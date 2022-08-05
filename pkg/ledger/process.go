@@ -64,7 +64,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		txVolumeAggregator := volumeAggregator.nextTx()
 
 		for _, p := range t.Postings {
-			if p.Amount < 0 {
+			if p.Amount.Ltz() {
 				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
@@ -76,7 +76,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if !core.AssetIsValid(p.Asset) {
 				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, uint64(p.Amount))
+			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
 			if err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
