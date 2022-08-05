@@ -35,6 +35,14 @@ func (a *MonetaryInt) Neg() *MonetaryInt {
 	return (*MonetaryInt)(big.NewInt(0).Neg((*big.Int)(a)))
 }
 
+func (a *MonetaryInt) OrZero() *MonetaryInt {
+	if a == nil {
+		return NewMonetaryInt(0)
+	}
+
+	return a
+}
+
 func (a *MonetaryInt) Lte(b *MonetaryInt) bool {
 	return (*big.Int)(a).Cmp((*big.Int)(b)) <= 0
 }
@@ -59,6 +67,14 @@ func (a *MonetaryInt) Eq(b *MonetaryInt) bool {
 	return (*big.Int)(a).Cmp((*big.Int)(b)) == 0
 }
 
+func (a *MonetaryInt) Equal(b *MonetaryInt) bool {
+	return (*big.Int)(a).Cmp((*big.Int)(b)) == 0
+}
+
+func (a *MonetaryInt) Cmp(b *MonetaryInt) int {
+	return (*big.Int)(a).Cmp((*big.Int)(b))
+}
+
 func (a *MonetaryInt) Uint64() uint64 {
 	return (*big.Int)(a).Uint64()
 }
@@ -76,6 +92,9 @@ func (a *MonetaryInt) UnmarshalJSON(b []byte) error {
 }
 
 func (a *MonetaryInt) MarshalJSON() ([]byte, error) {
+	if a == nil {
+		return []byte("0"), nil
+	}
 	return (*big.Int)(a).MarshalJSON()
 }
 

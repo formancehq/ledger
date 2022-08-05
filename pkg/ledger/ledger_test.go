@@ -308,15 +308,18 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
 			"world": core.AssetsVolumes{
 				"USD": {
+					Input:  core.NewMonetaryInt(0),
 					Output: core.NewMonetaryInt(100),
 				},
 				"EUR": {
+					Input:  core.NewMonetaryInt(0),
 					Output: core.NewMonetaryInt(200),
 				},
 			},
 			"player": core.AssetsVolumes{
 				"USD": {
-					Input: core.NewMonetaryInt(100),
+					Input:  core.NewMonetaryInt(100),
+					Output: core.NewMonetaryInt(0),
 				},
 				"EUR": {
 					Input:  core.NewMonetaryInt(100),
@@ -325,7 +328,8 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 			"player2": core.AssetsVolumes{
 				"EUR": {
-					Input: core.NewMonetaryInt(150),
+					Input:  core.NewMonetaryInt(150),
+					Output: core.NewMonetaryInt(0),
 				},
 			},
 		}, res.PostCommitVolumes)

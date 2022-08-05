@@ -19,6 +19,13 @@ func (tva *transactionVolumeAggregator) postCommitVolumes() core.AccountsAssetsV
 }
 
 func (tva *transactionVolumeAggregator) preCommitVolumes() core.AccountsAssetsVolumes {
+	// for account, _ := range tva.preVolumes {
+	// 	for asset, _ := range tva.preVolumes[account] {
+	// 		if tva.preVolumes[account][asset].Input == nil {
+	// 			tva.preVolumes[account][asset].Input = core.NewMonetaryInt(0)
+	// 		}
+	// 	}
+	// }
 	return tva.preVolumes
 }
 
@@ -42,7 +49,10 @@ func (tva *transactionVolumeAggregator) transfer(
 			}
 			for current != nil {
 				if v, ok := current.postVolumes[addr][asset]; ok {
-					tva.preVolumes[addr][asset] = v
+					tva.preVolumes[addr][asset] = core.Volumes{
+						Input:  v.Input.OrZero(),
+						Output: v.Output.OrZero(),
+					}
 					found = true
 					break
 				}
@@ -53,7 +63,10 @@ func (tva *transactionVolumeAggregator) transfer(
 				if err != nil {
 					return err
 				}
-				tva.preVolumes[addr][asset] = v
+				tva.preVolumes[addr][asset] = core.Volumes{
+					Input:  v.Input.OrZero(),
+					Output: v.Output.OrZero(),
+				}
 			}
 		}
 		if _, ok := tva.postVolumes[addr][asset]; !ok {

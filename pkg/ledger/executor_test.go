@@ -15,7 +15,7 @@ func assertBalance(t *testing.T, l *Ledger, account, asset string, amount *core.
 	require.NoError(t, err)
 
 	b := user.Balances[asset]
-	assert.Equalf(t, amount, b,
+	assert.Equalf(t, amount.String(), b.String(),
 		"wrong %v balance for account %v, expected: %d got: %d",
 		asset, account,
 		amount, b,

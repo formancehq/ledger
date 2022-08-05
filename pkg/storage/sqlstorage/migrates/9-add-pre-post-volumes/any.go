@@ -56,27 +56,53 @@ func Upgrade(ctx context.Context, schema sqlstorage.Schema, sqlTx *sql.Tx) error
 		postCommitVolumes := core.AccountsAssetsVolumes{}
 		for _, posting := range tx.Postings {
 
-			preCommitVolumes.SetVolumes(posting.Source, posting.Asset,
-				aggregatedVolumes.GetVolumes(posting.Source, posting.Asset))
-			preCommitVolumes.SetVolumes(posting.Destination, posting.Asset,
-				aggregatedVolumes.GetVolumes(posting.Destination, posting.Asset))
+			preCommitVolumes.SetVolumes(
+				posting.Source,
+				posting.Asset,
+				aggregatedVolumes.GetVolumes(posting.Source, posting.Asset),
+			)
+
+			preCommitVolumes.SetVolumes(
+				posting.Destination,
+				posting.Asset,
+				aggregatedVolumes.GetVolumes(posting.Destination, posting.Asset),
+			)
 
 			if !postCommitVolumes.HasAccount(posting.Source) {
-				postCommitVolumes.SetVolumes(posting.Source, posting.Asset,
-					preCommitVolumes.GetVolumes(posting.Source, posting.Asset))
-			}
-			if !postCommitVolumes.HasAccount(posting.Destination) {
-				postCommitVolumes.SetVolumes(posting.Destination, posting.Asset,
-					preCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
+				postCommitVolumes.SetVolumes(
+					posting.Source,
+					posting.Asset,
+					preCommitVolumes.GetVolumes(posting.Source, posting.Asset),
+				)
 			}
 
-			postCommitVolumes.AddOutput(posting.Source, posting.Asset, posting.Amount)
-			postCommitVolumes.AddInput(posting.Destination, posting.Asset, posting.Amount)
+			if !postCommitVolumes.HasAccount(posting.Destination) {
+				postCommitVolumes.SetVolumes(
+					posting.Destination,
+					posting.Asset,
+					preCommitVolumes.GetVolumes(posting.Destination, posting.Asset),
+				)
+			}
+
+			postCommitVolumes.AddOutput(
+				posting.Source,
+				posting.Asset,
+				posting.Amount,
+			)
+
+			postCommitVolumes.AddInput(
+				posting.Destination,
+				posting.Asset,
+				posting.Amount,
+			)
 		}
 
 		for account, accountVolumes := range postCommitVolumes {
 			for asset, volumes := range accountVolumes {
-				aggregatedVolumes.SetVolumes(account, asset, volumes)
+				aggregatedVolumes.SetVolumes(account, asset, core.Volumes{
+					Input:  volumes.Input.OrZero(),
+					Output: volumes.Output.OrZero(),
+				})
 			}
 		}
 

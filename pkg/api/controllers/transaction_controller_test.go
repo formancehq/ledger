@@ -307,21 +307,29 @@ func TestGetTransaction(t *testing.T) {
 					assert.NotEmpty(t, ret.Timestamp)
 					assert.EqualValues(t, core.AccountsAssetsVolumes{
 						"world": core.AssetsVolumes{
-							"USD": {},
+							"USD": {
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(0),
+							},
 						},
 						"central_bank": core.AssetsVolumes{
-							"USD": {},
+							"USD": {
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(0),
+							},
 						},
 					}, ret.PreCommitVolumes)
 					assert.EqualValues(t, core.AccountsAssetsVolumes{
 						"world": core.AssetsVolumes{
 							"USD": {
+								Input:  core.NewMonetaryInt(0),
 								Output: core.NewMonetaryInt(1000),
 							},
 						},
 						"central_bank": core.AssetsVolumes{
 							"USD": {
-								Input: core.NewMonetaryInt(1000),
+								Input:  core.NewMonetaryInt(1000),
+								Output: core.NewMonetaryInt(0),
 							},
 						},
 					}, ret.PostCommitVolumes)

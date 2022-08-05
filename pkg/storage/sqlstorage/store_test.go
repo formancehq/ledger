@@ -115,21 +115,29 @@ var tx1 = core.ExpandedTransaction{
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
+				Input:  core.NewMonetaryInt(0),
 				Output: core.NewMonetaryInt(100),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input: core.NewMonetaryInt(100),
+				Input:  core.NewMonetaryInt(100),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
 	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
-			"USD": {},
+			"USD": {
+				Input:  core.NewMonetaryInt(0),
+				Output: core.NewMonetaryInt(0),
+			},
 		},
 		"central_bank": {
-			"USD": {},
+			"USD": {
+				Input:  core.NewMonetaryInt(0),
+				Output: core.NewMonetaryInt(0),
+			},
 		},
 	},
 }
@@ -152,24 +160,28 @@ var tx2 = core.ExpandedTransaction{
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
+				Input:  core.NewMonetaryInt(0),
 				Output: core.NewMonetaryInt(200),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input: core.NewMonetaryInt(200),
+				Input:  core.NewMonetaryInt(200),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
 	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
+				Input:  core.NewMonetaryInt(0),
 				Output: core.NewMonetaryInt(100),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input: core.NewMonetaryInt(100),
+				Input:  core.NewMonetaryInt(100),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
 	},
@@ -196,11 +208,15 @@ var tx3 = core.ExpandedTransaction{
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
-				Input: core.NewMonetaryInt(200),
+				Input:  core.NewMonetaryInt(200),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
 		"users:1": {
-			"USD": {},
+			"USD": {
+				Input:  core.NewMonetaryInt(0),
+				Output: core.NewMonetaryInt(0),
+			},
 		},
 	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
@@ -212,7 +228,8 @@ var tx3 = core.ExpandedTransaction{
 		},
 		"users:1": {
 			"USD": {
-				Input: core.NewMonetaryInt(1),
+				Input:  core.NewMonetaryInt(1),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
 	},
@@ -361,14 +378,16 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 		PostCommitVolumes: core.AccountsAssetsVolumes{
 			"central_bank": core.AssetsVolumes{
 				"USD": {
-					Input: core.NewMonetaryInt(100),
+					Input:  core.NewMonetaryInt(100),
+					Output: core.NewMonetaryInt(0),
 				},
 			},
 		},
 		PreCommitVolumes: core.AccountsAssetsVolumes{
 			"central_bank": core.AssetsVolumes{
 				"USD": {
-					Input: core.NewMonetaryInt(100),
+					Input:  core.NewMonetaryInt(100),
+					Output: core.NewMonetaryInt(0),
 				},
 			},
 		},
@@ -379,8 +398,8 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 	volumes, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
-	require.EqualValues(t, 100, volumes["USD"].Input)
-	require.EqualValues(t, 0, volumes["USD"].Output)
+	require.EqualValues(t, core.NewMonetaryInt(100), volumes["USD"].Input)
+	require.EqualValues(t, core.NewMonetaryInt(0), volumes["USD"].Output)
 }
 
 func testGetAccounts(t *testing.T, store *sqlstorage.Store) {

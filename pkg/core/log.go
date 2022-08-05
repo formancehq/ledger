@@ -1,11 +1,10 @@
 package core
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
-
-	json "github.com/gibson042/canonicaljson-go"
 )
 
 const SetMetadataType = "SET_METADATA"

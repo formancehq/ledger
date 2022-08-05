@@ -82,7 +82,13 @@ func NewScriptExec() *cobra.Command {
 			fmt.Printf("ID: %d\r\n", result.Transaction.ID)
 			fmt.Println("Postings:")
 			for _, p := range result.Transaction.Postings {
-				fmt.Printf("\t Source: %s, Destination: %s, Amount: %d, Asset: %s\r\n", p.Source, p.Destination, p.Amount, p.Asset)
+				fmt.Printf(
+					"\t Source: %s, Destination: %s, Amount: %s, Asset: %s\r\n",
+					p.Source,
+					p.Destination,
+					p.Amount.String(),
+					p.Asset,
+				)
 			}
 			if !viper.GetBool(previewFlag) {
 				fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",

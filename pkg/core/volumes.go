@@ -45,19 +45,31 @@ type AccountsAssetsVolumes map[string]AssetsVolumes
 
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	if assetsVolumes, ok := a[account]; !ok {
-		return Volumes{}
+		return Volumes{
+			Input:  NewMonetaryInt(0),
+			Output: NewMonetaryInt(0),
+		}
 	} else {
-		return assetsVolumes[asset]
+		return Volumes{
+			Input:  assetsVolumes[asset].Input.OrZero(),
+			Output: assetsVolumes[asset].Output.OrZero(),
+		}
 	}
 }
 
 func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
-			asset: volumes,
+			asset: {
+				Input:  volumes.Input.OrZero(),
+				Output: volumes.Output.OrZero(),
+			},
 		}
 	} else {
-		assetsVolumes[asset] = volumes
+		assetsVolumes[asset] = Volumes{
+			Input:  volumes.Input.OrZero(),
+			Output: volumes.Output.OrZero(),
+		}
 	}
 }
 
@@ -65,7 +77,7 @@ func (a AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryIn
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
-				Input: input,
+				Input: input.OrZero(),
 			},
 		}
 	} else {
@@ -79,7 +91,7 @@ func (a AccountsAssetsVolumes) AddOutput(account, asset string, output *Monetary
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
-				Output: output,
+				Output: output.OrZero(),
 			},
 		}
 	} else {

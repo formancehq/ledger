@@ -61,16 +61,34 @@ func TestLedger_processTx(t *testing.T) {
 
 			expectedPreCommitVol := core.AccountsAssetsVolumes{
 				"alice": core.AssetsVolumes{
-					"USD": {},
-					"EUR": {},
+					"USD": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
+					"EUR": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
 				},
 				"toto": core.AssetsVolumes{
-					"USD": {},
-					"EUR": {},
+					"USD": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
+					"EUR": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
 				},
 				"world": core.AssetsVolumes{
-					"USD": {},
-					"EUR": {},
+					"USD": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
+					"EUR": {
+						Input:  core.NewMonetaryInt(0),
+						Output: core.NewMonetaryInt(0),
+					},
 				},
 			}
 
@@ -81,12 +99,14 @@ func TestLedger_processTx(t *testing.T) {
 						Output: aliceTotoUSD,
 					},
 					"EUR": {
-						Input: worldAliceEUR.Add(totoAliceEUR),
+						Input:  worldAliceEUR.Add(totoAliceEUR),
+						Output: core.NewMonetaryInt(0),
 					},
 				},
 				"toto": core.AssetsVolumes{
 					"USD": {
-						Input: worldTotoUSD.Add(aliceTotoUSD),
+						Input:  worldTotoUSD.Add(aliceTotoUSD),
+						Output: core.NewMonetaryInt(0),
 					},
 					"EUR": {
 						Input:  worldTotoEUR,
@@ -95,9 +115,11 @@ func TestLedger_processTx(t *testing.T) {
 				},
 				"world": core.AssetsVolumes{
 					"USD": {
+						Input:  core.NewMonetaryInt(0),
 						Output: worldTotoUSD.Add(worldAliceUSD),
 					},
 					"EUR": {
+						Input:  core.NewMonetaryInt(0),
 						Output: worldTotoEUR.Add(worldAliceEUR),
 					},
 				},
@@ -266,8 +288,9 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
+				// b, _ := json.Marshal(expectedTxs)
+				// a, _ := json.Marshal(res.GeneratedTransactions)
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
-
 			})
 		})
 
