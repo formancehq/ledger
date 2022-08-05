@@ -13,14 +13,7 @@ import (
 
 var DefaultContracts = []core.Contract{
 	{
-		Expr: &core.ExprGte{
-			Op1: core.VariableExpr{
-				Name: "balance",
-			},
-			Op2: core.ConstantExpr{
-				Value: float64(0),
-			},
-		},
+		Name:    "default",
 		Account: "*", // world still an exception
 	},
 }
