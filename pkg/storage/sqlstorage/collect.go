@@ -6,7 +6,6 @@ import (
 	"embed"
 	"io/fs"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -47,7 +46,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 			engine := parts[0]
 			switch extension {
 			case "sql":
-				content, err := fs.ReadFile(migrationsFS, filepath.Join(migrationDirectoryName, unit.Name()))
+				content, err := fs.ReadFile(migrationsFS, path.Join(migrationDirectoryName, unit.Name()))
 				if err != nil {
 					return nil, err
 				}
