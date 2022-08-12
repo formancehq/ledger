@@ -65,6 +65,8 @@ const (
 	segmentWriteKey          = "segment-write-key"
 	segmentApplicationId     = "segment-application-id"
 	segmentHeartbeatInterval = "segment-heartbeat-interval"
+
+	allowPastTimestampsFlag = "allow-past-timestamps"
 )
 
 var (
@@ -170,6 +172,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
 	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
 	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
+	root.PersistentFlags().Bool(allowPastTimestampsFlag, false, "Allow transactions with timestamps prior to the last transaction to be committed")
 
 	internal.InitHTTPBasicFlags(root)
 

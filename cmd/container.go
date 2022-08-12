@@ -230,6 +230,18 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}(),
 	}))
 
+	options = append(options, fx.Provide(
+		fx.Annotate(func() []ledger.LedgerOption {
+			ledgerOptions := []ledger.LedgerOption{}
+
+			if v.GetBool(allowPastTimestampsFlag) {
+				ledgerOptions = append(ledgerOptions, ledger.WithPastTimestamps)
+			}
+
+			return ledgerOptions
+		}, fx.ResultTags(ledger.ResolverLedgerOptionsKey)),
+	))
+
 	// Handle resolver
 	options = append(options,
 		ledger.ResolveModule(),

@@ -305,8 +305,12 @@ func TestLedger_processTx(t *testing.T) {
 					Timestamp: now.Add(-time.Second),
 				},
 			})
-			assert.Error(t, err)
-			assert.True(t, IsValidationError(err))
+			if l.allowPastTimestamps {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.True(t, IsValidationError(err))
+			}
 		})
 	})
 }
