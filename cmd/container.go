@@ -234,7 +234,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		fx.Annotate(func() []ledger.LedgerOption {
 			ledgerOptions := []ledger.LedgerOption{}
 
-			if v.GetBool(allowPastTimestampsFlag) {
+			if v.GetString(commitPolicyFlag) == "allow-past-timestamps" {
 				ledgerOptions = append(ledgerOptions, ledger.WithPastTimestamps)
 			}
 

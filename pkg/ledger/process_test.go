@@ -305,12 +305,37 @@ func TestLedger_processTx(t *testing.T) {
 					Timestamp: now.Add(-time.Second),
 				},
 			})
-			if l.allowPastTimestamps {
-				assert.NoError(t, err)
-			} else {
-				assert.Error(t, err)
-				assert.True(t, IsValidationError(err))
-			}
+
+			assert.Error(t, err)
+			assert.True(t, IsValidationError(err))
 		})
 	})
+	runOnLedger(func(l *Ledger) {
+		t.Run("date in the past (allowed by policy)", func(t *testing.T) {
+			now := time.Now()
+			require.NoError(t, l.store.Commit(context.Background(), core.ExpandedTransaction{
+				Transaction: core.Transaction{
+					TransactionData: core.TransactionData{
+						Timestamp: now,
+					},
+					ID: 0,
+				},
+			}))
+
+			_, err := l.processTx(context.Background(), []core.TransactionData{
+				{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      100,
+						Asset:       "USD",
+					}},
+					Timestamp: now.Add(-time.Second),
+				},
+			})
+
+			assert.NoError(t, err)
+
+		})
+	}, WithPastTimestamps)
 }
