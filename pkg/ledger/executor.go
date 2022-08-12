@@ -22,7 +22,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 		return nil, NewScriptError(ScriptErrorCompilationFailed, err.Error())
 	}
 
-	m := vm.NewMachine(p)
+	m := vm.NewMachine(*p)
 
 	err = m.SetVarsFromJSON(script.Vars)
 	if err != nil {
@@ -73,10 +73,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 				return nil, fmt.Errorf("could not get account %q: %v", req.Account, err)
 			}
 			amt := account.Balances[req.Asset]
-			if amt < 0 {
-				amt = 0
-			}
-			req.Response <- uint64(amt)
+			req.Response <- *amt.OrZero()
 		}
 	}
 

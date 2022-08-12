@@ -48,7 +48,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 						{
 							Source:      "world",
 							Destination: fmt.Sprintf("accounts:%06d", i),
-							Amount:      10,
+							Amount:      core.NewMonetaryInt(10),
 							Asset:       "USD",
 						},
 					},

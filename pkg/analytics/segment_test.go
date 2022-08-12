@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -84,7 +84,7 @@ func EventuallyQueueNotEmpty[ITEM any](t *testing.T, queue *Queue[ITEM]) {
 }
 
 var emptyHttpResponse = &http.Response{
-	Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
+	Body:       io.NopCloser(bytes.NewReader([]byte{})),
 	StatusCode: http.StatusOK,
 }
 

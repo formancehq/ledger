@@ -35,7 +35,7 @@ func TestVolumeAggregator(t *testing.T) {
 								{
 									Source:      "bob",
 									Destination: "zozo",
-									Amount:      100,
+									Amount:      core.NewMonetaryInt(100),
 									Asset:       "USD",
 								},
 							},
@@ -43,21 +43,29 @@ func TestVolumeAggregator(t *testing.T) {
 					},
 					PreCommitVolumes: map[string]core.AssetsVolumes{
 						"bob": {
-							"USD": {},
+							"USD": {
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(0),
+							},
 						},
 						"zozo": {
-							"USD": {},
+							"USD": {
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(0),
+							},
 						},
 					},
 					PostCommitVolumes: map[string]core.AssetsVolumes{
 						"bob": {
 							"USD": {
-								Output: 100,
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(100),
 							},
 						},
 						"zozo": {
 							"USD": {
-								Input: 100,
+								Input:  core.NewMonetaryInt(100),
+								Output: core.NewMonetaryInt(0),
 							},
 						},
 					},
@@ -71,7 +79,7 @@ func TestVolumeAggregator(t *testing.T) {
 								{
 									Source:      "zozo",
 									Destination: "alice",
-									Amount:      100,
+									Amount:      core.NewMonetaryInt(100),
 									Asset:       "USD",
 								},
 							},
@@ -80,23 +88,28 @@ func TestVolumeAggregator(t *testing.T) {
 					PostCommitVolumes: map[string]core.AssetsVolumes{
 						"alice": {
 							"USD": {
-								Input: 100,
+								Input:  core.NewMonetaryInt(100),
+								Output: core.NewMonetaryInt(0),
 							},
 						},
 						"zozo": {
 							"USD": {
-								Input:  100,
-								Output: 100,
+								Input:  core.NewMonetaryInt(100),
+								Output: core.NewMonetaryInt(100),
 							},
 						},
 					},
 					PreCommitVolumes: map[string]core.AssetsVolumes{
 						"alice": {
-							"USD": {},
+							"USD": {
+								Input:  core.NewMonetaryInt(0),
+								Output: core.NewMonetaryInt(0),
+							},
 						},
 						"zozo": {
 							"USD": {
-								Input: 100,
+								Input:  core.NewMonetaryInt(100),
+								Output: core.NewMonetaryInt(0),
 							},
 						},
 					},
@@ -105,78 +118,91 @@ func TestVolumeAggregator(t *testing.T) {
 
 				volumeAggregator := newVolumeAggregator(store)
 				firstTx := volumeAggregator.nextTx()
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", 100))
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", 50))
+				require.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", core.NewMonetaryInt(100)))
+				require.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", core.NewMonetaryInt(50)))
 
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 250,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(250),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input: 200,
+							Input:  core.NewMonetaryInt(200),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 					"zoro": {
 						"USD": {
-							Input: 50,
+							Input:  core.NewMonetaryInt(50),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 				}, firstTx.postCommitVolumes())
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 100,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(100),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input: 100,
+							Input:  core.NewMonetaryInt(100),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 					"zoro": core.AssetsVolumes{
 						"USD": {
-							Input: 0,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 				}, firstTx.preCommitVolumes())
 
 				secondTx := volumeAggregator.nextTx()
-				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", 50))
-				require.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", 25))
+				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50)))
+				require.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", core.NewMonetaryInt(25)))
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 275,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(275),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input:  200,
-							Output: 50,
+							Input:  core.NewMonetaryInt(200),
+							Output: core.NewMonetaryInt(50),
 						},
 					},
 					"fred": core.AssetsVolumes{
 						"USD": {
-							Input: 75,
+							Input:  core.NewMonetaryInt(75),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 				}, secondTx.postCommitVolumes())
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 250,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(250),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input: 200,
+							Input:  core.NewMonetaryInt(200),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 					"fred": core.AssetsVolumes{
-						"USD": {},
+						"USD": {
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(0),
+						},
 					},
 				}, secondTx.preCommitVolumes())
 
@@ -184,24 +210,26 @@ func TestVolumeAggregator(t *testing.T) {
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 275,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(275),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input:  200,
-							Output: 50,
+							Input:  core.NewMonetaryInt(200),
+							Output: core.NewMonetaryInt(50),
 						},
 					},
 					"fred": core.AssetsVolumes{
 						"USD": {
-							Input: 75,
+							Input:  core.NewMonetaryInt(75),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 					"zoro": core.AssetsVolumes{
 						"USD": {
-							Input:  50,
-							Output: 0,
+							Input:  core.NewMonetaryInt(50),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 				}, aggregatedPostVolumes)
@@ -210,19 +238,27 @@ func TestVolumeAggregator(t *testing.T) {
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
-							Output: 100,
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(100),
 						},
 					},
 					"alice": core.AssetsVolumes{
 						"USD": {
-							Input: 100,
+							Input:  core.NewMonetaryInt(100),
+							Output: core.NewMonetaryInt(0),
 						},
 					},
 					"fred": core.AssetsVolumes{
-						"USD": {},
+						"USD": {
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(0),
+						},
 					},
 					"zoro": core.AssetsVolumes{
-						"USD": {},
+						"USD": {
+							Input:  core.NewMonetaryInt(0),
+							Output: core.NewMonetaryInt(0),
+						},
 					},
 				}, aggregatedPreVolumes)
 

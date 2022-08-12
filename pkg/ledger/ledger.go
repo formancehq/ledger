@@ -13,30 +13,41 @@ import (
 
 var DefaultContracts = []core.Contract{
 	{
-		Expr: &core.ExprGte{
-			Op1: core.VariableExpr{
-				Name: "balance",
-			},
-			Op2: core.ConstantExpr{
-				Value: float64(0),
-			},
-		},
+		Name:    "default",
 		Account: "*", // world still an exception
 	},
 }
 
 type Ledger struct {
-	locker  Locker
-	store   storage.Store
-	monitor Monitor
+	locker              Locker
+	store               storage.Store
+	monitor             Monitor
+	allowPastTimestamps bool
 }
 
-func NewLedger(store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
-	return &Ledger{
+type LedgerOption = func(*Ledger)
+
+func WithPastTimestamps(l *Ledger) {
+	l.allowPastTimestamps = true
+}
+
+func NewLedger(
+	store storage.Store,
+	locker Locker,
+	monitor Monitor,
+	options ...LedgerOption,
+) (*Ledger, error) {
+	l := &Ledger{
 		store:   store,
 		locker:  locker,
 		monitor: monitor,
-	}, nil
+	}
+
+	for _, option := range options {
+		option(l)
+	}
+
+	return l, nil
 }
 
 func (l *Ledger) Close(ctx context.Context) error {

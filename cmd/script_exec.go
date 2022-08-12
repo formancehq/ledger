@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +25,7 @@ func NewScriptExec() *cobra.Command {
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			b, err := ioutil.ReadFile(args[1])
+			b, err := os.ReadFile(args[1])
 			if err != nil {
 				logrus.Fatal(err)
 			}
@@ -82,7 +82,13 @@ func NewScriptExec() *cobra.Command {
 			fmt.Printf("ID: %d\r\n", result.Transaction.ID)
 			fmt.Println("Postings:")
 			for _, p := range result.Transaction.Postings {
-				fmt.Printf("\t Source: %s, Destination: %s, Amount: %d, Asset: %s\r\n", p.Source, p.Destination, p.Amount, p.Asset)
+				fmt.Printf(
+					"\t Source: %s, Destination: %s, Amount: %s, Asset: %s\r\n",
+					p.Source,
+					p.Destination,
+					p.Amount.String(),
+					p.Asset,
+				)
 			}
 			if !viper.GetBool(previewFlag) {
 				fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
