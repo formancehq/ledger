@@ -26,17 +26,35 @@ var DefaultContracts = []core.Contract{
 }
 
 type Ledger struct {
-	locker  Locker
-	store   storage.Store
-	monitor Monitor
+	locker              Locker
+	store               storage.Store
+	monitor             Monitor
+	allowPastTimestamps bool
 }
 
-func NewLedger(store storage.Store, locker Locker, monitor Monitor) (*Ledger, error) {
-	return &Ledger{
+type LedgerOption = func(*Ledger)
+
+func WithPastTimestamps(l *Ledger) {
+	l.allowPastTimestamps = true
+}
+
+func NewLedger(
+	store storage.Store,
+	locker Locker,
+	monitor Monitor,
+	options ...LedgerOption,
+) (*Ledger, error) {
+	l := &Ledger{
 		store:   store,
 		locker:  locker,
 		monitor: monitor,
-	}, nil
+	}
+
+	for _, option := range options {
+		option(l)
+	}
+
+	return l, nil
 }
 
 func (l *Ledger) Close(ctx context.Context) error {

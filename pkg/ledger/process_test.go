@@ -347,8 +347,36 @@ func TestLedger_processTx(t *testing.T) {
 					Timestamp: now.Add(-time.Second),
 				},
 			})
+
 			assert.Error(t, err)
 			assert.True(t, IsValidationError(err))
 		})
 	})
+	runOnLedger(func(l *Ledger) {
+		t.Run("date in the past (allowed by policy)", func(t *testing.T) {
+			now := time.Now()
+			log := core.NewTransactionLogWithDate(nil, core.Transaction{
+				TransactionData: core.TransactionData{
+					Timestamp: now,
+				},
+				ID: 0,
+			}, now)
+			require.NoError(t, l.store.AppendLog(context.Background(), log))
+
+			_, err := l.processTx(context.Background(), []core.TransactionData{
+				{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      100,
+						Asset:       "USD",
+					}},
+					Timestamp: now.Add(-time.Second),
+				},
+			})
+
+			assert.NoError(t, err)
+
+		})
+	}, WithPastTimestamps)
 }

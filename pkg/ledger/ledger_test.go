@@ -56,7 +56,7 @@ func withContainer(options ...fx.Option) {
 	}
 }
 
-func runOnLedger(f func(l *Ledger)) {
+func runOnLedger(f func(l *Ledger), ledgerOptions ...LedgerOption) {
 	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -69,7 +69,7 @@ func runOnLedger(f func(l *Ledger)) {
 				if err != nil {
 					return err
 				}
-				l, err := NewLedger(store, NewInMemoryLocker(), &noOpMonitor{})
+				l, err := NewLedger(store, NewInMemoryLocker(), &noOpMonitor{}, ledgerOptions...)
 				if err != nil {
 					panic(err)
 				}
