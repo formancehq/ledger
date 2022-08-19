@@ -65,16 +65,16 @@ const (
 	// deprecated
 	segmentEnabledFlag = "segment-enabled"
 	// deprecated
-	segmentWriteKey = "segment-write-key"
+	segmentWriteKeyFlag = "segment-write-key"
 	// deprecated
-	segmentApplicationId = "segment-application-id"
+	segmentApplicationIdFlag = "segment-application-id"
 	// deprecated
-	segmentHeartbeatInterval = "segment-heartbeat-interval"
+	segmentHeartbeatIntervalFlag = "segment-heartbeat-interval"
 
-	telemetryEnabledFlag       = "telemetry-enabled"
-	telemetryWriteKey          = "telemetry-write-key"
-	telemetryApplicationId     = "telemetry-application-id"
-	telemetryHeartbeatInterval = "telemetry-heartbeat-interval"
+	telemetryEnabledFlag           = "telemetry-enabled"
+	telemetryWriteKeyFlag          = "telemetry-write-key"
+	telemetryApplicationIdFlag     = "telemetry-application-id"
+	telemetryHeartbeatIntervalFlag = "telemetry-heartbeat-interval"
 
 	commitPolicyFlag = "commit-policy"
 )
@@ -179,13 +179,13 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
 	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
-	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
-	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
-	root.PersistentFlags().Duration(segmentHeartbeatInterval, 4*time.Hour, "Segment heartbeat interval")
+	root.PersistentFlags().String(segmentApplicationIdFlag, "", "Segment application id")
+	root.PersistentFlags().String(segmentWriteKeyFlag, DefaultSegmentWriteKey, "Segment write key")
+	root.PersistentFlags().Duration(segmentHeartbeatIntervalFlag, 4*time.Hour, "Segment heartbeat interval")
 	root.PersistentFlags().Bool(telemetryEnabledFlag, true, "Is telemetry enabled")
-	root.PersistentFlags().String(telemetryApplicationId, "", "telemetry application id")
-	root.PersistentFlags().String(telemetryWriteKey, DefaultSegmentWriteKey, "telemetry write key")
-	root.PersistentFlags().Duration(telemetryHeartbeatInterval, 4*time.Hour, "telemetry heartbeat interval")
+	root.PersistentFlags().String(telemetryApplicationIdFlag, "", "telemetry application id")
+	root.PersistentFlags().String(telemetryWriteKeyFlag, DefaultSegmentWriteKey, "telemetry write key")
+	root.PersistentFlags().Duration(telemetryHeartbeatIntervalFlag, 4*time.Hour, "telemetry heartbeat interval")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	internal.InitHTTPBasicFlags(root)
