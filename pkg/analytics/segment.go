@@ -110,7 +110,7 @@ func newHeartbeat(appIdProvider AppIdProvider, client analytics.Client, version 
 		interval:      interval,
 		client:        client,
 		appIdProvider: appIdProvider,
-		stopChan:      make(chan chan struct{}),
+		stopChan:      make(chan chan struct{}, 1),
 	}
 }
 
