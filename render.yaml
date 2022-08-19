@@ -18,4 +18,11 @@ services:
         value: true
       - key: NUMARY_AUTH_BASIC_CREDENTIALS
         sync: false
-   - type:
+  - type: redis
+    name: ledger-redis
+    plan: free
+
+databases:
+  - name: ledger-db
+    plan: starter
+
