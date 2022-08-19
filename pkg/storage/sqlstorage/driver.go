@@ -8,6 +8,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -104,6 +105,27 @@ func (d *Driver) Name() string {
 	return d.name
 }
 
+func (d *Driver) AppID(ctx context.Context) (string, error) {
+	q, args := sqlbuilder.
+		Select("app_id").
+		From(d.systemSchema.Table("telemetry")).
+		Limit(1).
+		BuildWithFlavor(d.systemSchema.Flavor())
+
+	row := d.systemSchema.QueryRowContext(ctx, q, args...)
+	if row.Err() != nil {
+		if row.Err() != sql.ErrNoRows {
+			return "", nil
+		}
+	}
+	var appId string
+	if err := row.Scan(&appId); err != nil {
+		return "", err
+	}
+
+	return appId, nil
+}
+
 func (d *Driver) Initialize(ctx context.Context) (err error) {
 	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
@@ -127,7 +149,38 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 		BuildWithFlavor(d.systemSchema.Flavor())
 
 	_, err = d.systemSchema.ExecContext(ctx, q, args...)
-	return
+	if err != nil {
+		return err
+	}
+
+	q, args = sqlbuilder.
+		CreateTable(d.systemSchema.Table("telemetry")).
+		Define("app_id varchar(36) primary key, addedAt timestamp").
+		IfNotExists().
+		BuildWithFlavor(d.systemSchema.Flavor())
+	_, err = d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+
+	appId, err := d.AppID(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if appId == "" {
+		q, args = sqlbuilder.
+			InsertInto(d.systemSchema.Table("telemetry")).
+			Cols("app_id", "addedAt").
+			Values(uuid.New(), time.Now().UTC().Truncate(time.Second)).
+			BuildWithFlavor(d.systemSchema.Flavor())
+
+		_, err = d.systemSchema.ExecContext(ctx, q, args...)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (d *Driver) DeleteStore(ctx context.Context, name string) error {

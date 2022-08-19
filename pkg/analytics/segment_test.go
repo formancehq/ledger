@@ -74,7 +74,14 @@ const (
 )
 
 var (
-	module = NewHeartbeatModule(applicationId, version, writeKey, interval)
+	module = fx.Options(
+		NewHeartbeatModule(version, writeKey, interval),
+		fx.Provide(func() AppIdProvider {
+			return AppIdProviderFn(func(ctx context.Context) (string, error) {
+				return "foo", nil
+			})
+		}),
+	)
 )
 
 func EventuallyQueueNotEmpty[ITEM any](t *testing.T, queue *Queue[ITEM]) {

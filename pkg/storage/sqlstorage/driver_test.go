@@ -7,6 +7,7 @@ import (
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewDriver(t *testing.T) {
@@ -16,6 +17,10 @@ func TestNewDriver(t *testing.T) {
 	})
 
 	assert.NoError(t, d.Initialize(context.Background()))
+
+	appId, err := d.AppID(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, appId)
 
 	defer func(d *Driver, ctx context.Context) {
 		assert.NoError(t, d.Close(ctx))
