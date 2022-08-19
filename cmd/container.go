@@ -209,9 +209,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}))
 
 	if v.GetBool(telemetryEnabledFlag) || v.GetBool(segmentEnabledFlag) {
-		applicationId := viper.GetString(telemetryApplicationId)
+		applicationId := viper.GetString(telemetryApplicationIdFlag)
 		if applicationId == "" {
-			applicationId = viper.GetString(segmentApplicationId)
+			applicationId = viper.GetString(segmentApplicationIdFlag)
 		}
 		var appIdProviderModule fx.Option
 		if applicationId == "" {
@@ -223,13 +223,13 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				})
 			})
 		}
-		writeKey := viper.GetString(telemetryWriteKey)
+		writeKey := viper.GetString(telemetryWriteKeyFlag)
 		if writeKey == "" {
-			writeKey = viper.GetString(segmentWriteKey)
+			writeKey = viper.GetString(segmentWriteKeyFlag)
 		}
-		interval := viper.GetDuration(telemetryHeartbeatInterval)
+		interval := viper.GetDuration(telemetryHeartbeatIntervalFlag)
 		if interval == 0 {
-			interval = viper.GetDuration(segmentHeartbeatInterval)
+			interval = viper.GetDuration(segmentHeartbeatIntervalFlag)
 		}
 		if writeKey == "" {
 			sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
