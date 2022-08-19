@@ -2,6 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	ErrConfigurationNotFound = errors.New("configuration not found")
 )
 
 type Driver interface {
@@ -11,12 +16,17 @@ type Driver interface {
 	List(ctx context.Context) ([]string, error)
 	DeleteStore(ctx context.Context, name string) error
 	Name() string
-	AppID(ctx context.Context) (string, error)
+	GetConfiguration(ctx context.Context, key string) (string, error)
+	InsertConfiguration(ctx context.Context, key, value string) error
 }
 
 type noOpDriver struct{}
 
-func (n noOpDriver) AppID(ctx context.Context) (string, error) {
+func (n noOpDriver) InsertConfiguration(ctx context.Context, key, value string) error {
+	return nil
+}
+
+func (n noOpDriver) GetConfiguration(ctx context.Context, key string) (string, error) {
 	return "", nil
 }
 

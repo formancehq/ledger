@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/pborman/uuid"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
 )
@@ -22,6 +24,25 @@ type AppIdProviderFn func(ctx context.Context) (string, error)
 
 func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
 	return fn(ctx)
+}
+
+func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
+	var appId string
+	return AppIdProviderFn(func(ctx context.Context) (string, error) {
+		if appId == "" {
+			appId, err := driver.GetConfiguration(ctx, "appId")
+			if err != nil && err != storage.ErrConfigurationNotFound {
+				return "", err
+			}
+			if err == storage.ErrConfigurationNotFound {
+				appId = uuid.New()
+				if err := driver.InsertConfiguration(ctx, "appId", appId); err != nil {
+					return "", err
+				}
+			}
+		}
+		return appId, nil
+	})
 }
 
 type heartbeat struct {

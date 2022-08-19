@@ -75,9 +75,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		applicationId := viper.GetString(segmentApplicationId)
 		var appIdProviderModule fx.Option
 		if applicationId == "" {
-			appIdProviderModule = fx.Provide(func(driver storage.Driver) analytics.AppIdProvider {
-				return driver
-			})
+			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
 		} else {
 			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
 				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
