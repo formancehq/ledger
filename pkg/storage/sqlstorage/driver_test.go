@@ -18,10 +18,6 @@ func TestNewDriver(t *testing.T) {
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
-	appId, err := d.AppID(context.Background())
-	require.NoError(t, err)
-	require.NotEmpty(t, appId)
-
 	defer func(d *Driver, ctx context.Context) {
 		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
@@ -37,4 +33,17 @@ func TestNewDriver(t *testing.T) {
 	_, err = store.(*Store).schema.QueryContext(context.Background(), "select * from transactions")
 	assert.Error(t, err)
 	assert.Equal(t, "sql: database is closed [UNKNOWN]", err.Error())
+}
+
+func TestConfiguration(t *testing.T) {
+	d := NewDriver("sqlite", &sqliteDB{
+		directory: os.TempDir(),
+		dbName:    uuid.New(),
+	})
+	require.NoError(t, d.Initialize(context.Background()))
+
+	require.NoError(t, d.InsertConfiguration(context.Background(), "foo", "bar"))
+	bar, err := d.GetConfiguration(context.Background(), "foo")
+	require.NoError(t, err)
+	require.Equal(t, "bar", bar)
 }
