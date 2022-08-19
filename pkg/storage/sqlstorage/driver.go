@@ -8,7 +8,6 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -38,6 +37,19 @@ type Driver struct {
 	name         string
 	db           DB
 	systemSchema Schema
+}
+
+func (d *Driver) InsertConfiguration(ctx context.Context, key, value string) error {
+	q, args := sqlbuilder.
+		InsertInto(d.systemSchema.Table("configuration")).
+		Cols("key", "value", "addedAt").
+		Values(key, value, time.Now().UTC().Truncate(time.Second)).
+		BuildWithFlavor(d.systemSchema.Flavor())
+	_, err := d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d *Driver) Register(ctx context.Context, ledger string) (bool, error) {
@@ -105,10 +117,12 @@ func (d *Driver) Name() string {
 	return d.name
 }
 
-func (d *Driver) AppID(ctx context.Context) (string, error) {
-	q, args := sqlbuilder.
-		Select("app_id").
-		From(d.systemSchema.Table("telemetry")).
+func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, error) {
+	builder := sqlbuilder.
+		Select("value").
+		From(d.systemSchema.Table("configuration"))
+	q, args := builder.
+		Where(builder.E("key", key)).
 		Limit(1).
 		BuildWithFlavor(d.systemSchema.Flavor())
 
@@ -118,12 +132,12 @@ func (d *Driver) AppID(ctx context.Context) (string, error) {
 			return "", nil
 		}
 	}
-	var appId string
-	if err := row.Scan(&appId); err != nil {
+	var value string
+	if err := row.Scan(&value); err != nil {
 		return "", err
 	}
 
-	return appId, nil
+	return value, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
@@ -154,30 +168,13 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 	}
 
 	q, args = sqlbuilder.
-		CreateTable(d.systemSchema.Table("telemetry")).
-		Define("app_id varchar(36) primary key, addedAt timestamp").
+		CreateTable(d.systemSchema.Table("configuration")).
+		Define("key varchar(255) primary key, value text, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
 	_, err = d.systemSchema.ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
-	}
-
-	appId, err := d.AppID(ctx)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
-	if appId == "" {
-		q, args = sqlbuilder.
-			InsertInto(d.systemSchema.Table("telemetry")).
-			Cols("app_id", "addedAt").
-			Values(uuid.New(), time.Now().UTC().Truncate(time.Second)).
-			BuildWithFlavor(d.systemSchema.Flavor())
-
-		_, err = d.systemSchema.ExecContext(ctx, q, args...)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -253,3 +250,5 @@ func NewDriver(name string, db DB) *Driver {
 		name: name,
 	}
 }
+
+var _ storage.Driver = (*Driver)(nil)
