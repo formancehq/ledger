@@ -11,9 +11,14 @@ type Driver interface {
 	List(ctx context.Context) ([]string, error)
 	DeleteStore(ctx context.Context, name string) error
 	Name() string
+	AppID(ctx context.Context) (string, error)
 }
 
 type noOpDriver struct{}
+
+func (n noOpDriver) AppID(ctx context.Context) (string, error) {
+	return "", nil
+}
 
 func (n noOpDriver) DeleteStore(ctx context.Context, name string) error {
 	return nil

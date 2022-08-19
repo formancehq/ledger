@@ -15,12 +15,21 @@ const (
 	VersionProperty = "version"
 )
 
+type AppIdProvider interface {
+	AppID(ctx context.Context) (string, error)
+}
+type AppIdProviderFn func(ctx context.Context) (string, error)
+
+func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
+	return fn(ctx)
+}
+
 type heartbeat struct {
-	version  string
-	interval time.Duration
-	client   analytics.Client
-	id       string
-	stopChan chan chan struct{}
+	version       string
+	interval      time.Duration
+	client        analytics.Client
+	stopChan      chan chan struct{}
+	appIdProvider AppIdProvider
 }
 
 func (m *heartbeat) Run(ctx context.Context) error {
@@ -60,32 +69,38 @@ func (m *heartbeat) Stop(ctx context.Context) error {
 }
 
 func (m *heartbeat) enqueue() error {
+
+	appId, err := m.appIdProvider.AppID(context.Background())
+	if err != nil {
+		return err
+	}
+
 	return m.client.Enqueue(&analytics.Track{
-		AnonymousId: m.id,
+		AnonymousId: appId,
 		Event:       ApplicationStartedEvent,
 		Properties: analytics.NewProperties().
 			Set(VersionProperty, m.version),
 	})
 }
 
-func newHeartbeat(applicationId string, client analytics.Client, version string, interval time.Duration) *heartbeat {
+func newHeartbeat(appIdProvider AppIdProvider, client analytics.Client, version string, interval time.Duration) *heartbeat {
 	return &heartbeat{
-		version:  version,
-		interval: interval,
-		client:   client,
-		id:       applicationId,
-		stopChan: make(chan chan struct{}),
+		version:       version,
+		interval:      interval,
+		client:        client,
+		appIdProvider: appIdProvider,
+		stopChan:      make(chan chan struct{}),
 	}
 }
 
-func NewHeartbeatModule(applicationId, version, writeKey string, interval time.Duration) fx.Option {
+func NewHeartbeatModule(version, writeKey string, interval time.Duration) fx.Option {
 	return fx.Options(
 		fx.Supply(analytics.Config{}), // Provide empty config to be able to replace (use fx.Replace) if necessary
 		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
 			return analytics.NewWithConfig(writeKey, cfg)
 		}),
-		fx.Provide(func(client analytics.Client) *heartbeat {
-			return newHeartbeat(applicationId, client, version, interval)
+		fx.Provide(func(client analytics.Client, provider AppIdProvider) *heartbeat {
+			return newHeartbeat(provider, client, version, interval)
 		}),
 		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
