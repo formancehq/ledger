@@ -28,7 +28,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
 
 FROM ubuntu:jammy
-RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /go/src/github.com/numary/ledger/numary /usr/local/bin/numary
 EXPOSE 3068
 ENTRYPOINT ["numary"]
