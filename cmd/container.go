@@ -36,7 +36,6 @@ import (
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/xdg-go/scram"
@@ -74,8 +73,17 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 
 	if v.GetBool(segmentEnabledFlag) {
 		applicationId := viper.GetString(segmentApplicationId)
+		var appIdProviderModule fx.Option
 		if applicationId == "" {
-			applicationId = uuid.New()
+			appIdProviderModule = fx.Provide(func(driver storage.Driver) analytics.AppIdProvider {
+				return driver
+			})
+		} else {
+			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
+				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
+					return applicationId, nil
+				})
+			})
 		}
 		writeKey := viper.GetString(segmentWriteKey)
 		interval := viper.GetDuration(segmentHeartbeatInterval)
@@ -88,7 +96,10 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 			if err != nil {
 				sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but version '%s' is not semver, skip", Version)
 			} else {
-				options = append(options, analytics.NewHeartbeatModule(applicationId, Version, writeKey, interval))
+				options = append(options,
+					appIdProviderModule,
+					analytics.NewHeartbeatModule(Version, writeKey, interval),
+				)
 			}
 		}
 	}
