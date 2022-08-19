@@ -2,6 +2,8 @@ package analytics
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
@@ -12,9 +14,12 @@ import (
 )
 
 const (
-	ApplicationStartedEvent = "Application started"
+	ApplicationStats = "Application stats"
 
-	VersionProperty = "version"
+	VersionProperty      = "version"
+	AccountsProperty     = "accounts"
+	TransactionsProperty = "transactions"
+	LedgersProperty      = "ledgers"
 )
 
 type AppIdProvider interface {
@@ -29,8 +34,9 @@ func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
 func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
 	var appId string
 	return AppIdProviderFn(func(ctx context.Context) (string, error) {
+		var err error
 		if appId == "" {
-			appId, err := driver.GetConfiguration(ctx, "appId")
+			appId, err = driver.GetConfiguration(ctx, "appId")
 			if err != nil && err != storage.ErrConfigurationNotFound {
 				return "", err
 			}
@@ -51,12 +57,13 @@ type heartbeat struct {
 	client        analytics.Client
 	stopChan      chan chan struct{}
 	appIdProvider AppIdProvider
+	driver        storage.Driver
 }
 
 func (m *heartbeat) Run(ctx context.Context) error {
 
 	enqueue := func() {
-		err := m.enqueue()
+		err := m.enqueue(ctx)
 		if err != nil {
 			sharedlogging.GetLogger(ctx).WithFields(map[string]interface{}{
 				"error": err,
@@ -89,26 +96,69 @@ func (m *heartbeat) Stop(ctx context.Context) error {
 	}
 }
 
-func (m *heartbeat) enqueue() error {
+func (m *heartbeat) enqueue(ctx context.Context) error {
 
-	appId, err := m.appIdProvider.AppID(context.Background())
+	appId, err := m.appIdProvider.AppID(ctx)
 	if err != nil {
 		return err
 	}
 
+	properties := analytics.NewProperties().
+		Set(VersionProperty, m.version)
+
+	ledgers, err := m.driver.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	ledgersProperty := map[string]any{}
+
+	for _, ledger := range ledgers {
+		properties := map[string]any{}
+		if err := func() error {
+			store, _, err := m.driver.GetStore(ctx, ledger, false)
+			if err != nil {
+				return err
+			}
+			transactions, err := store.CountTransactions(ctx, storage.TransactionsQuery{})
+			if err != nil {
+				return err
+			}
+			accounts, err := store.CountAccounts(ctx, storage.AccountsQuery{})
+			if err != nil {
+				return err
+			}
+			properties[TransactionsProperty] = transactions
+			properties[AccountsProperty] = accounts
+
+			return nil
+		}(); err != nil {
+			return err
+		}
+
+		digest := sha256.New()
+		digest.Write([]byte(ledger))
+		ledgerHash := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
+
+		ledgersProperty[ledgerHash] = properties
+	}
+	if len(ledgersProperty) > 0 {
+		properties.Set(LedgersProperty, ledgersProperty)
+	}
+
 	return m.client.Enqueue(&analytics.Track{
 		AnonymousId: appId,
-		Event:       ApplicationStartedEvent,
-		Properties: analytics.NewProperties().
-			Set(VersionProperty, m.version),
+		Event:       ApplicationStats,
+		Properties:  properties,
 	})
 }
 
-func newHeartbeat(appIdProvider AppIdProvider, client analytics.Client, version string, interval time.Duration) *heartbeat {
+func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver, client analytics.Client, version string, interval time.Duration) *heartbeat {
 	return &heartbeat{
 		version:       version,
 		interval:      interval,
 		client:        client,
+		driver:        driver,
 		appIdProvider: appIdProvider,
 		stopChan:      make(chan chan struct{}, 1),
 	}
@@ -120,8 +170,8 @@ func NewHeartbeatModule(version, writeKey string, interval time.Duration) fx.Opt
 		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
 			return analytics.NewWithConfig(writeKey, cfg)
 		}),
-		fx.Provide(func(client analytics.Client, provider AppIdProvider) *heartbeat {
-			return newHeartbeat(provider, client, version, interval)
+		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver) *heartbeat {
+			return newHeartbeat(provider, driver, client, version, interval)
 		}),
 		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
