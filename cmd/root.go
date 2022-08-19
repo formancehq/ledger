@@ -62,10 +62,19 @@ const (
 	authBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
 	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
 
-	segmentEnabledFlag       = "segment-enabled"
-	segmentWriteKey          = "segment-write-key"
-	segmentApplicationId     = "segment-application-id"
+	// deprecated
+	segmentEnabledFlag = "segment-enabled"
+	// deprecated
+	segmentWriteKey = "segment-write-key"
+	// deprecated
+	segmentApplicationId = "segment-application-id"
+	// deprecated
 	segmentHeartbeatInterval = "segment-heartbeat-interval"
+
+	telemetryEnabledFlag       = "telemetry-enabled"
+	telemetryWriteKey          = "telemetry-write-key"
+	telemetryApplicationId     = "telemetry-application-id"
+	telemetryHeartbeatInterval = "telemetry-heartbeat-interval"
 
 	commitPolicyFlag = "commit-policy"
 )
@@ -173,6 +182,10 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
 	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
 	root.PersistentFlags().Duration(segmentHeartbeatInterval, 4*time.Hour, "Segment heartbeat interval")
+	root.PersistentFlags().Bool(telemetryEnabledFlag, true, "Is telemetry enabled")
+	root.PersistentFlags().String(telemetryApplicationId, "", "telemetry application id")
+	root.PersistentFlags().String(telemetryWriteKey, DefaultSegmentWriteKey, "telemetry write key")
+	root.PersistentFlags().Duration(telemetryHeartbeatInterval, 4*time.Hour, "telemetry heartbeat interval")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	internal.InitHTTPBasicFlags(root)

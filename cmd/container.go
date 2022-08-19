@@ -208,8 +208,11 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}(),
 	}))
 
-	if v.GetBool(segmentEnabledFlag) {
-		applicationId := viper.GetString(segmentApplicationId)
+	if v.GetBool(telemetryEnabledFlag) || v.GetBool(segmentEnabledFlag) {
+		applicationId := viper.GetString(telemetryApplicationId)
+		if applicationId == "" {
+			applicationId = viper.GetString(segmentApplicationId)
+		}
 		var appIdProviderModule fx.Option
 		if applicationId == "" {
 			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
@@ -220,16 +223,22 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 				})
 			})
 		}
-		writeKey := viper.GetString(segmentWriteKey)
-		interval := viper.GetDuration(segmentHeartbeatInterval)
+		writeKey := viper.GetString(telemetryWriteKey)
 		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but no write key provided")
+			writeKey = viper.GetString(segmentWriteKey)
+		}
+		interval := viper.GetDuration(telemetryHeartbeatInterval)
+		if interval == 0 {
+			interval = viper.GetDuration(segmentHeartbeatInterval)
+		}
+		if writeKey == "" {
+			sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
 		} else if interval == 0 {
-			sharedlogging.GetLogger(context.Background()).Error("Segment heartbeat interval is 0")
+			sharedlogging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
 		} else {
 			_, err := semver.NewVersion(Version)
 			if err != nil {
-				sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but version '%s' is not semver, skip", Version)
+				sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but version '%s' is not semver, skip", Version)
 			} else {
 				options = append(options,
 					appIdProviderModule,
