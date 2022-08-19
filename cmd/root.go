@@ -172,7 +172,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
 	root.PersistentFlags().String(segmentApplicationId, "", "Segment application id")
 	root.PersistentFlags().String(segmentWriteKey, DefaultSegmentWriteKey, "Segment write key")
-	root.PersistentFlags().Duration(segmentHeartbeatInterval, 24*time.Hour, "Segment heartbeat interval")
+	root.PersistentFlags().Duration(segmentHeartbeatInterval, 4*time.Hour, "Segment heartbeat interval")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	internal.InitHTTPBasicFlags(root)

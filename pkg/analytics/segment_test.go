@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -81,6 +82,7 @@ var (
 				return "foo", nil
 			})
 		}),
+		ledgertesting.ProvideStorageDriver(),
 	)
 )
 
@@ -134,7 +136,7 @@ func TestSegment(t *testing.T) {
 				require.Len(t, batch.Batch, 1)
 
 				track := batch.Batch[0]
-				require.Equal(t, ApplicationStartedEvent, track.Event)
+				require.Equal(t, ApplicationStats, track.Event)
 				require.Equal(t, version, track.Properties[VersionProperty])
 				require.Equal(t, applicationId, track.AnonymousId)
 			}

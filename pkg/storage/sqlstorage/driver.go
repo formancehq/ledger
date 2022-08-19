@@ -134,6 +134,9 @@ func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, erro
 	}
 	var value string
 	if err := row.Scan(&value); err != nil {
+		if err == sql.ErrNoRows {
+			return "", storage.ErrConfigurationNotFound
+		}
 		return "", err
 	}
 

@@ -71,37 +71,6 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		mapping[parts[0]] = parts[1]
 	}
 
-	if v.GetBool(segmentEnabledFlag) {
-		applicationId := viper.GetString(segmentApplicationId)
-		var appIdProviderModule fx.Option
-		if applicationId == "" {
-			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
-		} else {
-			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
-				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
-					return applicationId, nil
-				})
-			})
-		}
-		writeKey := viper.GetString(segmentWriteKey)
-		interval := viper.GetDuration(segmentHeartbeatInterval)
-		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but no write key provided")
-		} else if interval == 0 {
-			sharedlogging.GetLogger(context.Background()).Error("Segment heartbeat interval is 0")
-		} else {
-			_, err := semver.NewVersion(Version)
-			if err != nil {
-				sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but version '%s' is not semver, skip", Version)
-			} else {
-				options = append(options,
-					appIdProviderModule,
-					analytics.NewHeartbeatModule(Version, writeKey, interval),
-				)
-			}
-		}
-	}
-
 	options = append(options, sharedpublish.Module(), bus.LedgerMonitorModule())
 	options = append(options, sharedpublish.TopicMapperPublisherModule(mapping))
 
@@ -238,6 +207,37 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 			}
 		}(),
 	}))
+
+	if v.GetBool(segmentEnabledFlag) {
+		applicationId := viper.GetString(segmentApplicationId)
+		var appIdProviderModule fx.Option
+		if applicationId == "" {
+			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
+		} else {
+			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
+				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
+					return applicationId, nil
+				})
+			})
+		}
+		writeKey := viper.GetString(segmentWriteKey)
+		interval := viper.GetDuration(segmentHeartbeatInterval)
+		if writeKey == "" {
+			sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but no write key provided")
+		} else if interval == 0 {
+			sharedlogging.GetLogger(context.Background()).Error("Segment heartbeat interval is 0")
+		} else {
+			_, err := semver.NewVersion(Version)
+			if err != nil {
+				sharedlogging.GetLogger(context.Background()).Infof("Segment enabled but version '%s' is not semver, skip", Version)
+			} else {
+				options = append(options,
+					appIdProviderModule,
+					analytics.NewHeartbeatModule(Version, writeKey, interval),
+				)
+			}
+		}
+	}
 
 	options = append(options, fx.Provide(
 		fx.Annotate(func() []ledger.LedgerOption {
