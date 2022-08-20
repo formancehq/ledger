@@ -7,11 +7,14 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -82,7 +85,14 @@ var (
 				return "foo", nil
 			})
 		}),
-		ledgertesting.ProvideStorageDriver(),
+		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
+			id := uuid.New()
+			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
+			lc.Append(fx.Hook{
+				OnStart: driver.Initialize,
+			})
+			return driver, nil
+		}),
 	)
 )
 
