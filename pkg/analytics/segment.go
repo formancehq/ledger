@@ -114,7 +114,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	ledgersProperty := map[string]any{}
 
 	for _, ledger := range ledgers {
-		properties := map[string]any{}
+		stats := map[string]any{}
 		if err := func() error {
 			store, _, err := m.driver.GetStore(ctx, ledger, false)
 			if err != nil {
@@ -128,8 +128,8 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			properties[TransactionsProperty] = transactions
-			properties[AccountsProperty] = accounts
+			stats[TransactionsProperty] = transactions
+			stats[AccountsProperty] = accounts
 
 			return nil
 		}(); err != nil {
@@ -140,7 +140,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		digest.Write([]byte(ledger))
 		ledgerHash := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
 
-		ledgersProperty[ledgerHash] = properties
+		ledgersProperty[ledgerHash] = stats
 	}
 	if len(ledgersProperty) > 0 {
 		properties.Set(LedgersProperty, ledgersProperty)
