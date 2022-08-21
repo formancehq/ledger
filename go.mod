@@ -46,6 +46,7 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.2
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.12
 	github.com/xdg-go/scram v1.1.0

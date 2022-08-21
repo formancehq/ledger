@@ -80,7 +80,7 @@ const (
 )
 
 var (
-	Version                = "develop"
+	Version                = "1.42.0"
 	BuildDate              = "-"
 	Commit                 = "-"
 	DefaultSegmentWriteKey = ""
