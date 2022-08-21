@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"runtime"
 	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pbnjay/memory"
 	"github.com/pborman/uuid"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -20,6 +22,11 @@ const (
 	AccountsProperty     = "accounts"
 	TransactionsProperty = "transactions"
 	LedgersProperty      = "ledgers"
+	OSProperty           = "os"
+	ArchProperty         = "arch"
+	TimeZoneProperty     = "tz"
+	CPUCountProperty     = "cpuCount"
+	TotalMemoryProperty  = "totalMemory"
 )
 
 type AppIdProvider interface {
@@ -103,8 +110,15 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		return err
 	}
 
+	tz, _ := time.Now().Local().Zone()
+
 	properties := analytics.NewProperties().
-		Set(VersionProperty, m.version)
+		Set(VersionProperty, m.version).
+		Set(OSProperty, runtime.GOOS).
+		Set(ArchProperty, runtime.GOARCH).
+		Set(TimeZoneProperty, tz).
+		Set(CPUCountProperty, runtime.NumCPU()).
+		Set(TotalMemoryProperty, memory.TotalMemory()/1024/1024)
 
 	ledgers, err := m.driver.List(ctx)
 	if err != nil {
