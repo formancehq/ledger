@@ -2,9 +2,7 @@ package internal
 
 import (
 	"fmt"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/numary/go-libs/sharedauth"
@@ -12,19 +10,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
-
-func withPrefix(flag string) string {
-	return strings.ToUpper(fmt.Sprintf("%s_%s", envPrefix, EnvVarReplacer.Replace(flag)))
-}
-
-func setEnvVar(key, value string) func() {
-	prefixedFlag := withPrefix(key)
-	oldEnv := os.Getenv(prefixedFlag)
-	os.Setenv(prefixedFlag, value)
-	return func() {
-		os.Setenv(prefixedFlag, oldEnv)
-	}
-}
 
 func TestViperEnvBinding(t *testing.T) {
 
