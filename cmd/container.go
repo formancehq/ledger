@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/Shopify/sarama"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -25,7 +23,6 @@ import (
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
 	"github.com/numary/ledger/cmd/internal"
-	"github.com/numary/ledger/pkg/analytics"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -208,45 +205,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}(),
 	}))
 
-	if v.GetBool(telemetryEnabledFlag) || v.GetBool(segmentEnabledFlag) {
-		applicationId := viper.GetString(telemetryApplicationIdFlag)
-		if applicationId == "" {
-			applicationId = viper.GetString(segmentApplicationIdFlag)
-		}
-		var appIdProviderModule fx.Option
-		if applicationId == "" {
-			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
-		} else {
-			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
-				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
-					return applicationId, nil
-				})
-			})
-		}
-		writeKey := viper.GetString(telemetryWriteKeyFlag)
-		if writeKey == "" {
-			writeKey = viper.GetString(segmentWriteKeyFlag)
-		}
-		interval := viper.GetDuration(telemetryHeartbeatIntervalFlag)
-		if interval == 0 {
-			interval = viper.GetDuration(segmentHeartbeatIntervalFlag)
-		}
-		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
-		} else if interval == 0 {
-			sharedlogging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
-		} else {
-			_, err := semver.NewVersion(Version)
-			if err != nil {
-				sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but version '%s' is not semver, skip", Version)
-			} else {
-				options = append(options,
-					appIdProviderModule,
-					analytics.NewHeartbeatModule(Version, writeKey, interval),
-				)
-			}
-		}
-	}
+	options = append(options, internal.NewAnalyticsModule(v, Version))
 
 	options = append(options, fx.Provide(
 		fx.Annotate(func() []ledger.LedgerOption {
