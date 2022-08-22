@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"time"
 
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
@@ -61,20 +60,6 @@ const (
 	authBearerAudienceFlag          = "auth-bearer-audience"
 	authBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
 	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
-
-	// deprecated
-	segmentEnabledFlag = "segment-enabled"
-	// deprecated
-	segmentWriteKeyFlag = "segment-write-key"
-	// deprecated
-	segmentApplicationIdFlag = "segment-application-id"
-	// deprecated
-	segmentHeartbeatIntervalFlag = "segment-heartbeat-interval"
-
-	telemetryEnabledFlag           = "telemetry-enabled"
-	telemetryWriteKeyFlag          = "telemetry-write-key"
-	telemetryApplicationIdFlag     = "telemetry-application-id"
-	telemetryHeartbeatIntervalFlag = "telemetry-heartbeat-interval"
 
 	commitPolicyFlag = "commit-policy"
 )
@@ -178,17 +163,10 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
 	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
 	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
-	root.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
-	root.PersistentFlags().String(segmentApplicationIdFlag, "", "Segment application id")
-	root.PersistentFlags().String(segmentWriteKeyFlag, DefaultSegmentWriteKey, "Segment write key")
-	root.PersistentFlags().Duration(segmentHeartbeatIntervalFlag, 4*time.Hour, "Segment heartbeat interval")
-	root.PersistentFlags().Bool(telemetryEnabledFlag, true, "Is telemetry enabled")
-	root.PersistentFlags().String(telemetryApplicationIdFlag, "", "telemetry application id")
-	root.PersistentFlags().String(telemetryWriteKeyFlag, DefaultSegmentWriteKey, "telemetry write key")
-	root.PersistentFlags().Duration(telemetryHeartbeatIntervalFlag, 4*time.Hour, "telemetry heartbeat interval")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	internal.InitHTTPBasicFlags(root)
+	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 
 	if err = viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)
