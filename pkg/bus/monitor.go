@@ -11,59 +11,8 @@ import (
 	"go.uber.org/fx"
 )
 
-const (
-	CommittedTransactions string = "COMMITTED_TRANSACTIONS"
-	SavedMetadata         string = "SAVED_METADATA"
-	UpdatedMapping        string = "UPDATED_MAPPING"
-	RevertedTransaction   string = "REVERTED_TRANSACTION"
-)
-
 type ledgerMonitor struct {
 	publisher *sharedpublish.TopicMapperPublisher
-}
-
-func (l *ledgerMonitor) publish(ctx context.Context, ledger string, et string, data interface{}) {
-	err := l.publisher.Publish(ctx, et, baseEvent{
-		Date:    time.Now(),
-		Type:    et,
-		Payload: data,
-		Ledger:  ledger,
-	})
-	if err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-		return
-	}
-}
-
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, result *ledger.CommitResult) {
-	l.publish(ctx, ledger, CommittedTransactions, committedTransactions{
-		Transactions:      result.GeneratedTransactions,
-		Volumes:           result.PostCommitVolumes,
-		PostCommitVolumes: result.PostCommitVolumes,
-		PreCommitVolumes:  result.PreCommitVolumes,
-	})
-}
-
-func (l ledgerMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {
-	l.publish(ctx, ledger, SavedMetadata, savedMetadata{
-		TargetType: targetType,
-		TargetID:   id,
-		Metadata:   metadata,
-	})
-}
-
-func (l ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	l.publish(ctx, ledger, UpdatedMapping, updatedMapping{
-		Mapping: mapping,
-	})
-}
-
-func (l ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
-	l.publish(ctx, ledger, RevertedTransaction,
-		revertedTransaction{
-			RevertedTransaction: *reverted,
-			RevertTransaction:   *revert,
-		})
 }
 
 var _ ledger.Monitor = &ledgerMonitor{}
@@ -87,4 +36,50 @@ func LedgerMonitorModule() fx.Option {
 			return ledger.WithMonitor(monitor)
 		}),
 	)
+}
+
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, res *ledger.CommitResult) {
+	publish(ctx, l, ledger, EventLedgerCommittedTransactions,
+		CommittedTransactions{
+			Transactions:      res.GeneratedTransactions,
+			Volumes:           res.PostCommitVolumes,
+			PostCommitVolumes: res.PostCommitVolumes,
+			PreCommitVolumes:  res.PreCommitVolumes,
+		})
+}
+
+func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
+	publish(ctx, l, ledger, EventLedgerSavedMetadata,
+		SavedMetadata{
+			TargetType: targetType,
+			TargetID:   targetID,
+			Metadata:   metadata,
+		})
+}
+
+func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
+	publish(ctx, l, ledger, EventLedgerUpdatedMapping,
+		UpdatedMapping{
+			Mapping: mapping,
+		})
+}
+
+func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
+	publish(ctx, l, ledger, EventLedgerRevertedTransaction,
+		RevertedTransaction{
+			RevertedTransaction: *reverted,
+			RevertTransaction:   *revert,
+		})
+}
+
+func publish[T any](ctx context.Context, l *ledgerMonitor, ledger, eventType string, payload T) {
+	if err := l.publisher.Publish(ctx, eventType,
+		EventLedgerMessage[T]{
+			Date:    time.Now().UTC(),
+			Type:    eventType,
+			Payload: payload,
+			Ledger:  ledger,
+		}); err != nil {
+		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
+	}
 }

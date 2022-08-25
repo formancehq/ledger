@@ -6,14 +6,21 @@ import (
 	"github.com/numary/ledger/pkg/core"
 )
 
-type baseEvent struct {
-	Date    time.Time   `json:"date"`
-	Type    string      `json:"type"`
-	Payload interface{} `json:"payload"`
-	Ledger  string      `json:"ledger"`
+const (
+	EventLedgerCommittedTransactions = "COMMITTED_TRANSACTIONS"
+	EventLedgerSavedMetadata         = "SAVED_METADATA"
+	EventLedgerUpdatedMapping        = "UPDATED_MAPPING"
+	EventLedgerRevertedTransaction   = "REVERTED_TRANSACTION"
+)
+
+type EventLedgerMessage[T any] struct {
+	Date    time.Time `json:"date"`
+	Type    string    `json:"type"`
+	Payload T         `json:"payload"`
+	Ledger  string    `json:"ledger"`
 }
 
-type committedTransactions struct {
+type CommittedTransactions struct {
 	Transactions []core.ExpandedTransaction `json:"transactions"`
 	// Deprecated (use postCommitVolumes)
 	Volumes           core.AccountsAssetsVolumes `json:"volumes"`
@@ -21,17 +28,17 @@ type committedTransactions struct {
 	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
-type savedMetadata struct {
+type SavedMetadata struct {
 	TargetType string        `json:"targetType"`
 	TargetID   string        `json:"targetId"`
 	Metadata   core.Metadata `json:"metadata"`
 }
 
-type revertedTransaction struct {
+type RevertedTransaction struct {
 	RevertedTransaction core.ExpandedTransaction `json:"revertedTransaction"`
 	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
 }
 
-type updatedMapping struct {
+type UpdatedMapping struct {
 	Mapping core.Mapping `json:"mapping"`
 }
