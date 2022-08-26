@@ -46,7 +46,7 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.5
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/numary/go-libs v0.0.0-20220826075524-cb04b561a84c
+	github.com/numary/go-libs v0.0.0-20220826085324-b95cf9e7006f
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220801164020-fc3e3280ca13
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
@@ -155,7 +155,6 @@ require (
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20220824171710-5757bc0c5503 // indirect
 	golang.org/x/net v0.0.0-20220822230855-b0a4917ee28c // indirect
-	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde // indirect
 	golang.org/x/sys v0.0.0-20220823224334-20c2bfdbfe24 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20220822174746-9e6da59bd2fc // indirect

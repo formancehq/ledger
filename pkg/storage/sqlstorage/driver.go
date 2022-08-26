@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -143,20 +144,27 @@ func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, erro
 	return value, nil
 }
 
-func (d *Driver) Initialize(ctx context.Context) (err error) {
+func (d *Driver) Initialize(ctx context.Context) error {
 	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
-	if err = d.db.Initialize(ctx); err != nil {
-		return
+	if err := d.db.Initialize(ctx); err != nil {
+		err = fmt.Errorf("db.Initialize: %w", err)
+		sharedlogging.GetLogger(ctx).Errorf(err.Error())
+		return err
 	}
 
+	var err error
 	d.systemSchema, err = d.db.Schema(ctx, SystemSchema)
 	if err != nil {
-		return
+		err = fmt.Errorf("db.Schema: %w", err)
+		sharedlogging.GetLogger(ctx).Errorf(err.Error())
+		return err
 	}
 
-	if err = d.systemSchema.Initialize(ctx); err != nil {
-		return
+	if err := d.systemSchema.Initialize(ctx); err != nil {
+		err = fmt.Errorf("systemSchema.Initialize: %w", err)
+		sharedlogging.GetLogger(ctx).Errorf(err.Error())
+		return err
 	}
 
 	q, args := sqlbuilder.
@@ -164,9 +172,9 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 		Define("ledger varchar(255) primary key, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
-
-	_, err = d.systemSchema.ExecContext(ctx, q, args...)
-	if err != nil {
+	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
+		err = fmt.Errorf("systemSchema.ExecContext ledgers: %w", err)
+		sharedlogging.GetLogger(ctx).Errorf(err.Error())
 		return err
 	}
 
@@ -175,8 +183,9 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 		Define("key varchar(255) primary key, value text, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
-	_, err = d.systemSchema.ExecContext(ctx, q, args...)
-	if err != nil {
+	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
+		err = fmt.Errorf("systemSchema.ExecContext configuration: %w", err)
+		sharedlogging.GetLogger(ctx).Errorf(err.Error())
 		return err
 	}
 

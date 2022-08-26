@@ -486,8 +486,8 @@ github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjY
 github.com/mrunalp/fileutils v0.5.0/go.mod h1:M1WthSahJixYnrXQl/DFQuteStB1weuxD2QJNHXfbSQ=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
-github.com/numary/go-libs v0.0.0-20220826075524-cb04b561a84c h1:lJKCT+eWBtLCOcH9wN/osukmmomgUSJYbHEoxLW6UNU=
-github.com/numary/go-libs v0.0.0-20220826075524-cb04b561a84c/go.mod h1:/nDz6oCcZUlcH4LsD4mZIMiI2uH8pFBVJJ9Slzz2rTk=
+github.com/numary/go-libs v0.0.0-20220826085324-b95cf9e7006f h1:+yEYUYUjmBz8CjFRj/9lYrSaiT+1j2rCNPZDLGyN4K4=
+github.com/numary/go-libs v0.0.0-20220826085324-b95cf9e7006f/go.mod h1:u9XNKBrHJSCwu13s85GkEg4TWfRm2CF3fknav4TTLn4=
 github.com/numary/go-libs/sharedotlp v0.0.0-20220801164020-fc3e3280ca13 h1:axI+XCZ03xg1Pym3MLwvT2Xw4wSZeCuxRbm6lIWheT8=
 github.com/numary/go-libs/sharedotlp v0.0.0-20220801164020-fc3e3280ca13/go.mod h1:AZTmSrMGpNL9GzacAKwYsbSs+1U2ItR9i074hNILq6o=
 github.com/numary/machine v1.2.0 h1:Jiy8FMPCJb4Cep5nACXyIQFzVPHse+t2w9Jzzqc7Ojk=
@@ -862,7 +862,6 @@ golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20201207232520-09787c993a3a/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde h1:ejfdSekXMDxDLbRrJMwUk6KnSLZ2McaUCVcIKM+N6jc=
-golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
