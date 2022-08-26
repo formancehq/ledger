@@ -28,10 +28,41 @@ type CommittedTransactions struct {
 	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
+func NewEventLedgerCommittedTransactions(payload CommittedTransactions, ledger string) EventLedgerMessage[CommittedTransactions] {
+	return EventLedgerMessage[CommittedTransactions]{
+		Date:    time.Now().UTC(),
+		Type:    EventLedgerCommittedTransactions,
+		Payload: payload,
+		Ledger:  ledger,
+	}
+}
+
 type SavedMetadata struct {
 	TargetType string        `json:"targetType"`
 	TargetID   string        `json:"targetId"`
 	Metadata   core.Metadata `json:"metadata"`
+}
+
+func NewEventLedgerSavedMetadata(payload SavedMetadata, ledger string) EventLedgerMessage[SavedMetadata] {
+	return EventLedgerMessage[SavedMetadata]{
+		Date:    time.Now().UTC(),
+		Type:    EventLedgerSavedMetadata,
+		Payload: payload,
+		Ledger:  ledger,
+	}
+}
+
+type UpdatedMapping struct {
+	Mapping core.Mapping `json:"mapping"`
+}
+
+func NewEventLedgerUpdatedMapping(payload UpdatedMapping, ledger string) EventLedgerMessage[UpdatedMapping] {
+	return EventLedgerMessage[UpdatedMapping]{
+		Date:    time.Now().UTC(),
+		Type:    EventLedgerUpdatedMapping,
+		Payload: payload,
+		Ledger:  ledger,
+	}
 }
 
 type RevertedTransaction struct {
@@ -39,6 +70,11 @@ type RevertedTransaction struct {
 	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
 }
 
-type UpdatedMapping struct {
-	Mapping core.Mapping `json:"mapping"`
+func NewEventLedgerRevertedTransaction(payload RevertedTransaction, ledger string) EventLedgerMessage[RevertedTransaction] {
+	return EventLedgerMessage[RevertedTransaction]{
+		Date:    time.Now().UTC(),
+		Type:    EventLedgerRevertedTransaction,
+		Payload: payload,
+		Ledger:  ledger,
+	}
 }

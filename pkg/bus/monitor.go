@@ -2,7 +2,6 @@ package bus
 
 import (
 	"context"
-	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedpublish"
@@ -51,15 +50,6 @@ func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string
 	}
 }
 
-func NewEventLedgerCommittedTransactions(payload CommittedTransactions, ledger string) EventLedgerMessage[CommittedTransactions] {
-	return EventLedgerMessage[CommittedTransactions]{
-		Date:    time.Now().UTC(),
-		Type:    EventLedgerCommittedTransactions,
-		Payload: payload,
-		Ledger:  ledger,
-	}
-}
-
 func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
 	if err := l.publisher.Publish(ctx, EventLedgerSavedMetadata,
 		NewEventLedgerSavedMetadata(SavedMetadata{
@@ -69,15 +59,6 @@ func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, t
 		}, ledger),
 	); err != nil {
 		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-	}
-}
-
-func NewEventLedgerSavedMetadata(payload SavedMetadata, ledger string) EventLedgerMessage[SavedMetadata] {
-	return EventLedgerMessage[SavedMetadata]{
-		Date:    time.Now().UTC(),
-		Type:    EventLedgerSavedMetadata,
-		Payload: payload,
-		Ledger:  ledger,
 	}
 }
 
@@ -91,15 +72,6 @@ func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mappi
 	}
 }
 
-func NewEventLedgerUpdatedMapping(payload UpdatedMapping, ledger string) EventLedgerMessage[UpdatedMapping] {
-	return EventLedgerMessage[UpdatedMapping]{
-		Date:    time.Now().UTC(),
-		Type:    EventLedgerUpdatedMapping,
-		Payload: payload,
-		Ledger:  ledger,
-	}
-}
-
 func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
 	if err := l.publisher.Publish(ctx, EventLedgerRevertedTransaction,
 		NewEventLedgerRevertedTransaction(RevertedTransaction{
@@ -108,14 +80,5 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 		}, ledger),
 	); err != nil {
 		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-	}
-}
-
-func NewEventLedgerRevertedTransaction(payload RevertedTransaction, ledger string) EventLedgerMessage[RevertedTransaction] {
-	return EventLedgerMessage[RevertedTransaction]{
-		Date:    time.Now().UTC(),
-		Type:    EventLedgerRevertedTransaction,
-		Payload: payload,
-		Ledger:  ledger,
 	}
 }
