@@ -46,7 +46,7 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.5
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/numary/go-libs v0.0.0-20220826085324-b95cf9e7006f
+	github.com/numary/go-libs v1.0.0
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220801164020-fc3e3280ca13
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
