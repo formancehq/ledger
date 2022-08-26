@@ -222,7 +222,7 @@ func TestContainers(t *testing.T) {
 				fx.Invoke(func(lc fx.Lifecycle, ch *gochannel.GoChannel, resolver *ledger.Resolver) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							messages, err := ch.Subscribe(ctx, core.EventLedgerSavedMetadata)
+							messages, err := ch.Subscribe(ctx, core.EventLedgerTypeSavedMetadata)
 							if err != nil {
 								return err
 							}
