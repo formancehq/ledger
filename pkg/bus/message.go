@@ -13,10 +13,10 @@ const (
 	EventLedgerRevertedTransaction   = "REVERTED_TRANSACTION"
 )
 
-type EventLedgerMessage[T any] struct {
+type EventLedgerMessage[P any] struct {
 	Date    time.Time `json:"date"`
 	Type    string    `json:"type"`
-	Payload T         `json:"payload"`
+	Payload P         `json:"payload"`
 	Ledger  string    `json:"ledger"`
 }
 
