@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"time"
 )
 
@@ -11,11 +12,33 @@ const (
 	EventLedgerRevertedTransaction   = "REVERTED_TRANSACTION"
 )
 
-type EventLedgerMessage[P any] struct {
+type EventLedgerMessage[T any] struct {
 	Date    time.Time `json:"date"`
 	Type    string    `json:"type"`
-	Payload P         `json:"payload"`
+	Payload T         `json:"payload"`
 	Ledger  string    `json:"ledger"`
+}
+
+var (
+	ErrMessageDateZero    = errors.New("message date cannot be zero")
+	ErrMessageTypeEmpty   = errors.New("message type cannot be empty")
+	ErrMessageLedgerEmpty = errors.New("message ledger cannot be empty")
+)
+
+func (e *EventLedgerMessage[T]) Validate() error {
+	if e.Date.IsZero() {
+		return ErrMessageDateZero
+	}
+
+	if e.Type == "" {
+		return ErrMessageTypeEmpty
+	}
+
+	if e.Ledger == "" {
+		return ErrMessageLedgerEmpty
+	}
+
+	return nil
 }
 
 type CommittedTransactions struct {
