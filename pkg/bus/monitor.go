@@ -38,8 +38,8 @@ func LedgerMonitorModule() fx.Option {
 }
 
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, res *ledger.CommitResult) {
-	if err := l.publisher.Publish(ctx, EventLedgerCommittedTransactions,
-		NewEventLedgerCommittedTransactions(CommittedTransactions{
+	if err := l.publisher.Publish(ctx, core.EventLedgerCommittedTransactions,
+		core.NewEventLedgerCommittedTransactions(core.CommittedTransactions{
 			Transactions:      res.GeneratedTransactions,
 			Volumes:           res.PostCommitVolumes,
 			PostCommitVolumes: res.PostCommitVolumes,
@@ -51,8 +51,8 @@ func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string
 }
 
 func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
-	if err := l.publisher.Publish(ctx, EventLedgerSavedMetadata,
-		NewEventLedgerSavedMetadata(SavedMetadata{
+	if err := l.publisher.Publish(ctx, core.EventLedgerSavedMetadata,
+		core.NewEventLedgerSavedMetadata(core.SavedMetadata{
 			TargetType: targetType,
 			TargetID:   targetID,
 			Metadata:   metadata,
@@ -63,8 +63,8 @@ func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, t
 }
 
 func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	if err := l.publisher.Publish(ctx, EventLedgerUpdatedMapping,
-		NewEventLedgerUpdatedMapping(UpdatedMapping{
+	if err := l.publisher.Publish(ctx, core.EventLedgerUpdatedMapping,
+		core.NewEventLedgerUpdatedMapping(core.UpdatedMapping{
 			Mapping: mapping,
 		}, ledger),
 	); err != nil {
@@ -73,8 +73,8 @@ func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mappi
 }
 
 func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
-	if err := l.publisher.Publish(ctx, EventLedgerRevertedTransaction,
-		NewEventLedgerRevertedTransaction(RevertedTransaction{
+	if err := l.publisher.Publish(ctx, core.EventLedgerRevertedTransaction,
+		core.NewEventLedgerRevertedTransaction(core.RevertedTransaction{
 			RevertedTransaction: *reverted,
 			RevertTransaction:   *revert,
 		}, ledger),

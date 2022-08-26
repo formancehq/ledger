@@ -13,7 +13,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
-	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
@@ -223,7 +222,7 @@ func TestContainers(t *testing.T) {
 				fx.Invoke(func(lc fx.Lifecycle, ch *gochannel.GoChannel, resolver *ledger.Resolver) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							messages, err := ch.Subscribe(ctx, bus.EventLedgerSavedMetadata)
+							messages, err := ch.Subscribe(ctx, core.EventLedgerSavedMetadata)
 							if err != nil {
 								return err
 							}

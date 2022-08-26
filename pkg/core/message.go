@@ -1,9 +1,7 @@
-package bus
+package core
 
 import (
 	"time"
-
-	"github.com/numary/ledger/pkg/core"
 )
 
 const (
@@ -21,11 +19,11 @@ type EventLedgerMessage[P any] struct {
 }
 
 type CommittedTransactions struct {
-	Transactions []core.ExpandedTransaction `json:"transactions"`
+	Transactions []ExpandedTransaction `json:"transactions"`
 	// Deprecated (use postCommitVolumes)
-	Volumes           core.AccountsAssetsVolumes `json:"volumes"`
-	PostCommitVolumes core.AccountsAssetsVolumes `json:"postCommitVolumes"`
-	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
+	Volumes           AccountsAssetsVolumes `json:"volumes"`
+	PostCommitVolumes AccountsAssetsVolumes `json:"postCommitVolumes"`
+	PreCommitVolumes  AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
 func NewEventLedgerCommittedTransactions(payload CommittedTransactions, ledger string) EventLedgerMessage[CommittedTransactions] {
@@ -38,9 +36,9 @@ func NewEventLedgerCommittedTransactions(payload CommittedTransactions, ledger s
 }
 
 type SavedMetadata struct {
-	TargetType string        `json:"targetType"`
-	TargetID   string        `json:"targetId"`
-	Metadata   core.Metadata `json:"metadata"`
+	TargetType string   `json:"targetType"`
+	TargetID   string   `json:"targetId"`
+	Metadata   Metadata `json:"metadata"`
 }
 
 func NewEventLedgerSavedMetadata(payload SavedMetadata, ledger string) EventLedgerMessage[SavedMetadata] {
@@ -53,7 +51,7 @@ func NewEventLedgerSavedMetadata(payload SavedMetadata, ledger string) EventLedg
 }
 
 type UpdatedMapping struct {
-	Mapping core.Mapping `json:"mapping"`
+	Mapping Mapping `json:"mapping"`
 }
 
 func NewEventLedgerUpdatedMapping(payload UpdatedMapping, ledger string) EventLedgerMessage[UpdatedMapping] {
@@ -66,8 +64,8 @@ func NewEventLedgerUpdatedMapping(payload UpdatedMapping, ledger string) EventLe
 }
 
 type RevertedTransaction struct {
-	RevertedTransaction core.ExpandedTransaction `json:"revertedTransaction"`
-	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
+	RevertedTransaction ExpandedTransaction `json:"revertedTransaction"`
+	RevertTransaction   ExpandedTransaction `json:"revertTransaction"`
 }
 
 func NewEventLedgerRevertedTransaction(payload RevertedTransaction, ledger string) EventLedgerMessage[RevertedTransaction] {
