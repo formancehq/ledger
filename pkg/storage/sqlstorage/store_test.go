@@ -81,10 +81,7 @@ func TestStore(t *testing.T) {
 				}),
 			)
 			go func() {
-				if err := app.Start(context.Background()); err != nil {
-					sharedlogging.Errorf("START ERR: %s", err)
-					t.Errorf("START ERR: %s", err)
-				}
+				require.NoError(t, app.Start(context.Background()))
 			}()
 			defer func(app *fx.App, ctx context.Context) {
 				require.NoError(t, app.Stop(ctx))

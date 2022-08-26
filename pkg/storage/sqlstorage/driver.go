@@ -148,23 +148,17 @@ func (d *Driver) Initialize(ctx context.Context) error {
 	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
 	if err := d.db.Initialize(ctx); err != nil {
-		err = fmt.Errorf("db.Initialize: %w", err)
-		sharedlogging.GetLogger(ctx).Errorf(err.Error())
-		return err
+		return fmt.Errorf("db.Initialize: %w", err)
 	}
 
 	var err error
 	d.systemSchema, err = d.db.Schema(ctx, SystemSchema)
 	if err != nil {
-		err = fmt.Errorf("db.Schema: %w", err)
-		sharedlogging.GetLogger(ctx).Errorf(err.Error())
-		return err
+		return fmt.Errorf("db.Schema: %w", err)
 	}
 
 	if err := d.systemSchema.Initialize(ctx); err != nil {
-		err = fmt.Errorf("systemSchema.Initialize: %w", err)
-		sharedlogging.GetLogger(ctx).Errorf(err.Error())
-		return err
+		return fmt.Errorf("systemSchema.Initialize: %w", err)
 	}
 
 	q, args := sqlbuilder.
@@ -173,9 +167,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
 	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
-		err = fmt.Errorf("systemSchema.ExecContext ledgers: %w", err)
-		sharedlogging.GetLogger(ctx).Errorf(err.Error())
-		return err
+		return fmt.Errorf("create table ledgers: %w", err)
 	}
 
 	q, args = sqlbuilder.
@@ -184,9 +176,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
 	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
-		err = fmt.Errorf("systemSchema.ExecContext configuration: %w", err)
-		sharedlogging.GetLogger(ctx).Errorf(err.Error())
-		return err
+		return fmt.Errorf("create table configuration: %w", err)
 	}
 
 	return nil
