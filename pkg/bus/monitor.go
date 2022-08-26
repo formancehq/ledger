@@ -6,7 +6,6 @@ import (
 
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedpublish"
-	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
@@ -40,8 +39,8 @@ func LedgerMonitorModule() fx.Option {
 }
 
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, res *ledger.CommitResult) {
-	publish(ctx, l, ledger, sharedpublishkafka.EventLedgerCommittedTransactions,
-		sharedpublishkafka.CommittedTransactions{
+	publish(ctx, l, ledger, EventLedgerCommittedTransactions,
+		CommittedTransactions{
 			Transactions:      res.GeneratedTransactions,
 			Volumes:           res.PostCommitVolumes,
 			PostCommitVolumes: res.PostCommitVolumes,
@@ -50,8 +49,8 @@ func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string
 }
 
 func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
-	publish(ctx, l, ledger, sharedpublishkafka.EventLedgerSavedMetadata,
-		sharedpublishkafka.SavedMetadata{
+	publish(ctx, l, ledger, EventLedgerSavedMetadata,
+		SavedMetadata{
 			TargetType: targetType,
 			TargetID:   targetID,
 			Metadata:   metadata,
@@ -59,15 +58,15 @@ func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, t
 }
 
 func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	publish(ctx, l, ledger, sharedpublishkafka.EventLedgerUpdatedMapping,
-		sharedpublishkafka.UpdatedMapping{
+	publish(ctx, l, ledger, EventLedgerUpdatedMapping,
+		UpdatedMapping{
 			Mapping: mapping,
 		})
 }
 
 func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
-	publish(ctx, l, ledger, sharedpublishkafka.EventLedgerRevertedTransaction,
-		sharedpublishkafka.RevertedTransaction{
+	publish(ctx, l, ledger, EventLedgerRevertedTransaction,
+		RevertedTransaction{
 			RevertedTransaction: *reverted,
 			RevertTransaction:   *revert,
 		})
@@ -75,7 +74,7 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 
 func publish[T any](ctx context.Context, l *ledgerMonitor, ledger, eventType string, payload T) {
 	if err := l.publisher.Publish(ctx, eventType,
-		sharedpublishkafka.EventLedgerMessage[T]{
+		EventLedgerMessage[T]{
 			Date:    time.Now().UTC(),
 			Type:    eventType,
 			Payload: payload,
