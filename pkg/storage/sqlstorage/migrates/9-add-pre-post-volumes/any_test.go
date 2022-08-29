@@ -177,10 +177,6 @@ var testCases = []testCase{
 					Input:  core.NewMonetaryInt(200),
 					Output: core.NewMonetaryInt(0),
 				},
-				// "USDT": {
-				// 	Input:  core.NewMonetaryInt(0),
-				// 	Output: core.NewMonetaryInt(0),
-				// },
 			},
 			"user:1": {
 				"USD": {
@@ -201,10 +197,6 @@ var testCases = []testCase{
 					Input:  core.NewMonetaryInt(200),
 					Output: core.NewMonetaryInt(100),
 				},
-				// "USDT": {
-				// 	Input:  core.NewMonetaryInt(0),
-				// 	Output: core.NewMonetaryInt(0),
-				// },
 			},
 			"user:1": {
 				"USD": {
