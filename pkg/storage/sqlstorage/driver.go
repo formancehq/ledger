@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -144,21 +143,20 @@ func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, erro
 	return value, nil
 }
 
-func (d *Driver) Initialize(ctx context.Context) error {
+func (d *Driver) Initialize(ctx context.Context) (err error) {
 	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
-	if err := d.db.Initialize(ctx); err != nil {
-		return fmt.Errorf("db.Initialize: %w", err)
+	if err = d.db.Initialize(ctx); err != nil {
+		return
 	}
 
-	var err error
 	d.systemSchema, err = d.db.Schema(ctx, SystemSchema)
 	if err != nil {
-		return fmt.Errorf("db.Schema: %w", err)
+		return
 	}
 
-	if err := d.systemSchema.Initialize(ctx); err != nil {
-		return fmt.Errorf("systemSchema.Initialize: %w", err)
+	if err = d.systemSchema.Initialize(ctx); err != nil {
+		return
 	}
 
 	q, args := sqlbuilder.
@@ -166,8 +164,10 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		Define("ledger varchar(255) primary key, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
-	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
-		return fmt.Errorf("create table ledgers: %w", err)
+
+	_, err = d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
 	}
 
 	q, args = sqlbuilder.
@@ -175,8 +175,9 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		Define("key varchar(255) primary key, value text, addedAt timestamp").
 		IfNotExists().
 		BuildWithFlavor(d.systemSchema.Flavor())
-	if _, err := d.systemSchema.ExecContext(ctx, q, args...); err != nil {
-		return fmt.Errorf("create table configuration: %w", err)
+	_, err = d.systemSchema.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
 	}
 
 	return nil
