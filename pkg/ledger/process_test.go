@@ -288,8 +288,6 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				// b, _ := json.Marshal(expectedTxs)
-				// a, _ := json.Marshal(res.GeneratedTransactions)
 				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
 			})
 		})
