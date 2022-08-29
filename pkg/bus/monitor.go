@@ -38,51 +38,46 @@ func LedgerMonitorModule() fx.Option {
 }
 
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, res *ledger.CommitResult) {
-	if err := l.publisher.Publish(ctx, core.EventLedgerTypeCommittedTransactions,
-		core.NewEventLedgerCommittedTransactions(core.CommittedTransactions{
+	l.publish(ctx, EventTypeCommittedTransactions,
+		NewEventCommittedTransactions(CommittedTransactions{
 			Ledger:            ledger,
 			Transactions:      res.GeneratedTransactions,
 			Volumes:           res.PostCommitVolumes,
 			PostCommitVolumes: res.PostCommitVolumes,
 			PreCommitVolumes:  res.PreCommitVolumes,
-		}),
-	); err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-	}
+		}))
 }
 
 func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
-	if err := l.publisher.Publish(ctx, core.EventLedgerTypeSavedMetadata,
-		core.NewEventLedgerSavedMetadata(core.SavedMetadata{
+	l.publish(ctx, EventTypeSavedMetadata,
+		NewEventSavedMetadata(SavedMetadata{
 			Ledger:     ledger,
 			TargetType: targetType,
 			TargetID:   targetID,
 			Metadata:   metadata,
-		}),
-	); err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-	}
+		}))
 }
 
 func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	if err := l.publisher.Publish(ctx, core.EventLedgerTypeUpdatedMapping,
-		core.NewEventLedgerUpdatedMapping(core.UpdatedMapping{
+	l.publish(ctx, EventTypeUpdatedMapping,
+		NewEventUpdatedMapping(UpdatedMapping{
 			Ledger:  ledger,
 			Mapping: mapping,
-		}),
-	); err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
-	}
+		}))
 }
 
 func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
-	if err := l.publisher.Publish(ctx, core.EventLedgerTypeRevertedTransaction,
-		core.NewEventLedgerRevertedTransaction(core.RevertedTransaction{
+	l.publish(ctx, EventTypeRevertedTransaction,
+		NewEventRevertedTransaction(RevertedTransaction{
 			Ledger:              ledger,
 			RevertedTransaction: *reverted,
 			RevertTransaction:   *revert,
-		}),
-	); err != nil {
+		}))
+}
+
+func (l *ledgerMonitor) publish(ctx context.Context, eventType string, ev EventMessage) {
+	if err := l.publisher.Publish(ctx, eventType, ev); err != nil {
 		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
+		return
 	}
 }
