@@ -19,13 +19,6 @@ func (tva *transactionVolumeAggregator) postCommitVolumes() core.AccountsAssetsV
 }
 
 func (tva *transactionVolumeAggregator) preCommitVolumes() core.AccountsAssetsVolumes {
-	// for account, _ := range tva.preVolumes {
-	// 	for asset, _ := range tva.preVolumes[account] {
-	// 		if tva.preVolumes[account][asset].Input == nil {
-	// 			tva.preVolumes[account][asset].Input = core.NewMonetaryInt(0)
-	// 		}
-	// 	}
-	// }
 	return tva.preVolumes
 }
 

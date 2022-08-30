@@ -86,7 +86,7 @@ func NewScriptExec() *cobra.Command {
 					"\t Source: %s, Destination: %s, Amount: %s, Asset: %s\r\n",
 					p.Source,
 					p.Destination,
-					p.Amount.String(),
+					p.Amount,
 					p.Asset,
 				)
 			}

@@ -112,7 +112,6 @@ func NewMonetaryInt(i int64) *MonetaryInt {
 
 func ParseMonetaryInt(s string) (*MonetaryInt, error) {
 	i, ok := big.NewInt(0).SetString(s, 10)
-
 	if !ok {
 		return nil, errors.New("invalid monetary int")
 	}
