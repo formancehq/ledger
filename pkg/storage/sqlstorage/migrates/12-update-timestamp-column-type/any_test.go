@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigrate11(t *testing.T) {
+func TestMigrate12(t *testing.T) {
 
 	driver, closeFunc, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
