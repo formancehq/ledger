@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"github.com/numary/ledger/pkg/health"
 	"go.uber.org/fx"
 )
 
@@ -25,7 +24,4 @@ var Module = fx.Options(
 	fx.Provide(NewTransactionController),
 	fx.Provide(NewBalanceController),
 	fx.Provide(NewMappingController),
-	fx.Provide(
-		fx.Annotate(NewHealthController, fx.ParamTags(health.HealthCheckKey)),
-	),
 )
