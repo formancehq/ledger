@@ -1,4 +1,4 @@
-package _2_update_timestamp_column_type
+package _12_update_timestamp_column_type
 
 import (
 	"context"
