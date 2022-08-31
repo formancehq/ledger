@@ -20,11 +20,11 @@ tasks:
 
   lint:
     cmds:
-      - golangci-lint run {{if eq .VERBOSE "1"}}-v{{end}} --fix
+      - golangci-lint run --fix {{if eq .VERBOSE "true"}}-v{{end}}
 
   tests:
     cmds:
-      - go test {{.TAGS}} {{if eq .VERBOSE "1"}}-v{{end}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
 
   tests:local:
     cmds:
@@ -34,7 +34,7 @@ tasks:
   tests:local:sqlite:
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "1"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -45,7 +45,7 @@ tasks:
     deps: [postgres]
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "1"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -57,7 +57,7 @@ tasks:
 
   bench:
     cmds:
-      - go test {{.TAGS}} {{if eq .VERBOSE "1"}}-v{{end}} -run=XXX -bench=. {{.PKG}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -run=XXX -bench=. {{.PKG}}
 
   print:coverage:
     cmds:
