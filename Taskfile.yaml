@@ -2,13 +2,15 @@
 
 version: "3"
 
+dotenv:
+- .env
+
 vars:
   PKG: "./..."
   FAILFAST: "-failfast"
   TIMEOUT: "10m"
   RUN: "''"
   TAGS: "-tags json1,netgo"
-  VERBOSE: "0"
 
 tasks:
   default:
@@ -18,7 +20,7 @@ tasks:
 
   lint:
     cmds:
-      - golangci-lint run -v --fix
+      - golangci-lint run {{if eq .VERBOSE "1"}}-v{{end}} --fix
 
   tests:
     cmds:
