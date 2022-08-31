@@ -256,7 +256,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
-		if v.GetBool(otelTracesFlag) {
+		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 			writer = io.Discard
 			res = append(res, opentelemetrytraces.Middleware())
 		}

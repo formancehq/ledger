@@ -46,7 +46,7 @@ require (
 	github.com/lib/pq v1.10.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
-	github.com/numary/go-libs/sharedhealth v0.0.0-20220801152411-b600be8e0d85
+	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220802090414-d0ae0613f325
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
@@ -122,7 +122,6 @@ require (
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.2 // indirect
