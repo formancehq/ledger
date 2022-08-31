@@ -10,7 +10,7 @@ require (
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/mattn/go-sqlite3 v1.14.9
-	github.com/numary/machine v1.2.0
+	github.com/numary/machine v1.2.1-0.20220811010804-0a87156a9a4b
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
@@ -40,14 +40,13 @@ require (
 	github.com/Shopify/sarama v1.32.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
-	github.com/gibson042/canonicaljson-go v1.0.3
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/lib/pq v1.10.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/numary/go-libs v0.0.0-20220609103351-69aecd5d4097
-	github.com/numary/go-libs/sharedhealth v0.0.0-20220801152411-b600be8e0d85
+	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220802090414-d0ae0613f325
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef

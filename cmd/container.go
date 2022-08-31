@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -258,7 +257,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
 		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
-			writer = ioutil.Discard
+			writer = io.Discard
 			res = append(res, opentelemetrytraces.Middleware())
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {

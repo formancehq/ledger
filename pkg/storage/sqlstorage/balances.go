@@ -47,10 +47,16 @@ func (s *API) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery
 
 	for rows.Next() {
 		var (
-			asset    string
-			balances int64
+			asset       string
+			balancesStr string
 		)
-		if err = rows.Scan(&asset, &balances); err != nil {
+		if err = rows.Scan(&asset, &balancesStr); err != nil {
+			return nil, s.error(err)
+		}
+
+		balances, err := core.ParseMonetaryInt(balancesStr)
+
+		if err != nil {
 			return nil, s.error(err)
 		}
 
@@ -136,7 +142,7 @@ func (s *API) GetBalances(ctx context.Context, q storage.BalancesQuery) (shareda
 			if err != nil {
 				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
-			accountsBalances[currentAccount][asset] = balances
+			accountsBalances[currentAccount][asset] = core.NewMonetaryInt(balances)
 		}
 
 		accounts = append(accounts, accountsBalances)

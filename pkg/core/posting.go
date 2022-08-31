@@ -7,10 +7,10 @@ import (
 )
 
 type Posting struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Amount      int64  `json:"amount"`
-	Asset       string `json:"asset"`
+	Source      string       `json:"source"`
+	Destination string       `json:"destination"`
+	Amount      *MonetaryInt `json:"amount"`
+	Asset       string       `json:"asset"`
 }
 
 type Postings []Posting

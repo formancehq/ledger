@@ -52,14 +52,27 @@ func (s *API) GetAssetsVolumes(ctx context.Context, accountAddress string) (core
 	volumes := core.AssetsVolumes{}
 	for rows.Next() {
 		var (
-			asset  string
-			input  int64
-			output int64
+			asset     string
+			inputStr  string
+			outputStr string
 		)
-		err = rows.Scan(&asset, &input, &output)
+		err = rows.Scan(&asset, &inputStr, &outputStr)
 		if err != nil {
 			return nil, s.error(err)
 		}
+
+		input, err := core.ParseMonetaryInt(inputStr)
+
+		if err != nil {
+			return nil, s.error(err)
+		}
+
+		output, err := core.ParseMonetaryInt(outputStr)
+
+		if err != nil {
+			return nil, s.error(err)
+		}
+
 		volumes[asset] = core.Volumes{
 			Input:  input,
 			Output: output,
@@ -84,11 +97,24 @@ func (s *API) GetVolumes(ctx context.Context, accountAddress, asset string) (cor
 		return core.Volumes{}, s.error(row.Err())
 	}
 
-	var input, output int64
-	if err := row.Scan(&input, &output); err != nil {
+	var inputStr, outputStr string
+
+	if err := row.Scan(&inputStr, &outputStr); err != nil {
 		if err == sql.ErrNoRows {
 			return core.Volumes{}, nil
 		}
+		return core.Volumes{}, s.error(err)
+	}
+
+	input, err := core.ParseMonetaryInt(inputStr)
+
+	if err != nil {
+		return core.Volumes{}, s.error(err)
+	}
+
+	output, err := core.ParseMonetaryInt(outputStr)
+
+	if err != nil {
 		return core.Volumes{}, s.error(err)
 	}
 
