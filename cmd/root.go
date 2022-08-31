@@ -5,6 +5,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
 	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
@@ -20,39 +22,26 @@ const (
 	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
 	// Deprecated
-	storageCacheFlag                     = "storage.cache"
-	serverHttpBindAddressFlag            = "server.http.bind_address"
-	uiHttpBindAddressFlag                = "ui.http.bind_address"
-	lockStrategyFlag                     = "lock-strategy"
-	lockStrategyRedisUrlFlag             = "lock-strategy-redis-url"
-	lockStrategyRedisDurationFlag        = "lock-strategy-redis-duration"
-	lockStrategyRedisRetryFlag           = "lock-strategy-redis-retry"
-	lockStrategyRedisTLSEnabledFlag      = "lock-strategy-redis-tls-enabled"
-	lockStrategyRedisTLSInsecureFlag     = "lock-strategy-redis-tls-insecure"
-	otelTracesFlag                       = "otel-traces"
-	otelTracesBatchFlag                  = "otel-traces-batch"
-	otelTracesExporterFlag               = "otel-traces-exporter"
-	otelTracesExporterJaegerEndpointFlag = "otel-traces-exporter-jaeger-endpoint"
-	otelTracesExporterJaegerUserFlag     = "otel-traces-exporter-jaeger-user"
-	otelTracesExporterJaegerPasswordFlag = "otel-traces-exporter-jaeger-password"
-	otelTracesExporterOTLPModeFlag       = "otel-traces-exporter-otlp-mode"
-	otelTracesExporterOTLPEndpointFlag   = "otel-traces-exporter-otlp-endpoint"
-	otelTracesExporterOTLPInsecureFlag   = "otel-traces-exporter-otlp-insecure"
-	otelMetricsFlag                      = "otel-metrics"
-	otelMetricsExporterFlag              = "otel-metrics-exporter"
-	otelMetricsExporterOTLPModeFlag      = "otel-metrics-exporter-otlp-mode"
-	otelMetricsExporterOTLPEndpointFlag  = "otel-metrics-exporter-otlp-endpoint"
-	otelMetricsExporterOTLPInsecureFlag  = "otel-metrics-exporter-otlp-insecure"
-	publisherKafkaEnabledFlag            = "publisher-kafka-enabled"
-	publisherKafkaBrokerFlag             = "publisher-kafka-broker"
-	publisherKafkaSASLEnabled            = "publisher-kafka-sasl-enabled"
-	publisherKafkaSASLUsername           = "publisher-kafka-sasl-username"
-	publisherKafkaSASLPassword           = "publisher-kafka-sasl-password"
-	publisherKafkaSASLMechanism          = "publisher-kafka-sasl-mechanism"
-	publisherKafkaSASLScramSHASize       = "publisher-kafka-sasl-scram-sha-size"
-	publisherKafkaTLSEnabled             = "publisher-kafka-tls-enabled"
-	publisherTopicMappingFlag            = "publisher-topic-mapping"
-	publisherHttpEnabledFlag             = "publisher-http-enabled"
+	storageCacheFlag                 = "storage.cache"
+	serverHttpBindAddressFlag        = "server.http.bind_address"
+	uiHttpBindAddressFlag            = "ui.http.bind_address"
+	lockStrategyFlag                 = "lock-strategy"
+	lockStrategyRedisUrlFlag         = "lock-strategy-redis-url"
+	lockStrategyRedisDurationFlag    = "lock-strategy-redis-duration"
+	lockStrategyRedisRetryFlag       = "lock-strategy-redis-retry"
+	lockStrategyRedisTLSEnabledFlag  = "lock-strategy-redis-tls-enabled"
+	lockStrategyRedisTLSInsecureFlag = "lock-strategy-redis-tls-insecure"
+
+	publisherKafkaEnabledFlag      = "publisher-kafka-enabled"
+	publisherKafkaBrokerFlag       = "publisher-kafka-broker"
+	publisherKafkaSASLEnabled      = "publisher-kafka-sasl-enabled"
+	publisherKafkaSASLUsername     = "publisher-kafka-sasl-username"
+	publisherKafkaSASLPassword     = "publisher-kafka-sasl-password"
+	publisherKafkaSASLMechanism    = "publisher-kafka-sasl-mechanism"
+	publisherKafkaSASLScramSHASize = "publisher-kafka-sasl-scram-sha-size"
+	publisherKafkaTLSEnabled       = "publisher-kafka-tls-enabled"
+	publisherTopicMappingFlag      = "publisher-topic-mapping"
+	publisherHttpEnabledFlag       = "publisher-http-enabled"
 
 	authBearerEnabledFlag           = "auth-bearer-enabled"
 	authBearerIntrospectUrlFlag     = "auth-bearer-introspect-url"
@@ -127,20 +116,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
-	root.PersistentFlags().Bool(otelTracesFlag, false, "Enable OpenTelemetry traces support")
-	root.PersistentFlags().Bool(otelTracesBatchFlag, false, "Use OpenTelemetry batching")
-	root.PersistentFlags().String(otelTracesExporterFlag, "stdout", "OpenTelemetry traces exporter")
-	root.PersistentFlags().String(otelTracesExporterJaegerEndpointFlag, "", "OpenTelemetry traces Jaeger exporter endpoint")
-	root.PersistentFlags().String(otelTracesExporterJaegerUserFlag, "", "OpenTelemetry traces Jaeger exporter user")
-	root.PersistentFlags().String(otelTracesExporterJaegerPasswordFlag, "", "OpenTelemetry traces Jaeger exporter password")
-	root.PersistentFlags().String(otelTracesExporterOTLPModeFlag, "grpc", "OpenTelemetry traces OTLP exporter mode (grpc|http)")
-	root.PersistentFlags().String(otelTracesExporterOTLPEndpointFlag, "", "OpenTelemetry traces grpc endpoint")
-	root.PersistentFlags().Bool(otelTracesExporterOTLPInsecureFlag, false, "OpenTelemetry traces grpc insecure")
-	root.PersistentFlags().Bool(otelMetricsFlag, false, "Enable OpenTelemetry metrics support")
-	root.PersistentFlags().String(otelMetricsExporterFlag, "stdout", "OpenTelemetry metrics exporter")
-	root.PersistentFlags().String(otelMetricsExporterOTLPModeFlag, "grpc", "OpenTelemetry metrics OTLP exporter mode (grpc|http)")
-	root.PersistentFlags().String(otelMetricsExporterOTLPEndpointFlag, "", "OpenTelemetry metrics grpc endpoint")
-	root.PersistentFlags().Bool(otelMetricsExporterOTLPInsecureFlag, false, "OpenTelemetry metrics grpc insecure")
 	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
 	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
 	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
@@ -164,6 +139,8 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
+	sharedotlptraces.InitOTLPTracesFlags(root.PersistentFlags())
+	sharedotlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 
