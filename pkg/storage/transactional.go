@@ -88,5 +88,5 @@ func RollbackTransaction(ctx context.Context) error {
 	if holder.transaction == nil {
 		return errors.New("transaction not initialized")
 	}
-	return holder.commit(ctx)
+	return holder.rollback(ctx)
 }
