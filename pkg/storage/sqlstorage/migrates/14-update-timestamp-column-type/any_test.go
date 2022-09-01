@@ -1,4 +1,4 @@
-package _13_update_timestamp_column_type
+package _14_update_timestamp_column_type
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigrate13(t *testing.T) {
+func TestMigrate14(t *testing.T) {
 	driver, closeFunc, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer closeFunc()
@@ -26,7 +26,7 @@ func TestMigrate13(t *testing.T) {
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
 
-	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:13]...)
+	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:14]...)
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -41,7 +41,7 @@ func TestMigrate13(t *testing.T) {
 	_, err = schema.ExecContext(context.Background(), sqlq, args...)
 	require.NoError(t, err)
 
-	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[13])
+	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[14])
 	require.NoError(t, err)
 	require.True(t, modified)
 
