@@ -349,7 +349,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				store := internal.GetStore(t, driver, context.Background())
+				store := internal.GetLedgerStore(t, driver, context.Background())
 
 				for i := 0; i < 3*controllers.MaxPageSize; i++ {
 					require.NoError(t, store.UpdateAccountMetadata(ctx, fmt.Sprintf("accounts:%06d", i), core.Metadata{

@@ -14,6 +14,18 @@ var (
 
 type noOpDriver struct{}
 
+func (n noOpDriver) DeleteLedger(ctx context.Context, name string) error {
+	return nil
+}
+
+func (n noOpDriver) GetSystemStore() storage.SystemStore {
+	return n
+}
+
+func (n noOpDriver) GetLedgerStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+	return noOpStore{}, false, nil
+}
+
 func (n noOpDriver) InsertConfiguration(ctx context.Context, key, value string) error {
 	return nil
 }
@@ -30,15 +42,11 @@ func (n noOpDriver) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
-	return nil, false, nil
-}
-
 func (n noOpDriver) Close(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpDriver) List(ctx context.Context) ([]string, error) {
+func (n noOpDriver) ListLedgers(ctx context.Context) ([]string, error) {
 	return nil, nil
 }
 

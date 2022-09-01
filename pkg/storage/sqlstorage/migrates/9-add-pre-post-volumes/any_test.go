@@ -220,7 +220,7 @@ func TestMigrate9(t *testing.T) {
 	defer closeFunc()
 
 	require.NoError(t, driver.Initialize(context.Background()))
-	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
 	schema := store.Schema()

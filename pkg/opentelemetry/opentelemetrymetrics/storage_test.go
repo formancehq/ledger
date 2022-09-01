@@ -13,7 +13,7 @@ import (
 
 func TestWrapStorageFactory(t *testing.T) {
 	f := WrapStorageDriver(noopstorage.NoOpDriver(), metric.NewNoopMeterProvider())
-	store, _, err := f.GetStore(context.Background(), "bar", true)
+	store, _, err := f.GetLedgerStore(context.Background(), "bar", true)
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)

@@ -18,7 +18,7 @@ func TestVolumeAggregator(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()
 
-				store, _, err := storageDriver.GetStore(context.Background(), name, true)
+				store, _, err := storageDriver.GetLedgerStore(context.Background(), name, true)
 				if err != nil {
 					return err
 				}

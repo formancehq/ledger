@@ -112,7 +112,7 @@ func (s SQLiteSchema) Delete(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return os.Remove(s.file)
+	return os.RemoveAll(s.file)
 }
 
 func (s *SQLiteSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {

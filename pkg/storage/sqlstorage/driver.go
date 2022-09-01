@@ -2,14 +2,11 @@ package sqlstorage
 
 import (
 	"context"
-	"database/sql"
-	"time"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pkg/errors"
 )
 
@@ -37,108 +34,51 @@ type Driver struct {
 	systemSchema Schema
 }
 
-func (d *Driver) InsertConfiguration(ctx context.Context, key, value string) error {
-	q, args := sqlbuilder.
-		InsertInto(d.systemSchema.Table("configuration")).
-		Cols("key", "value", "addedAt").
-		Values(key, value, time.Now().UTC().Truncate(time.Second)).
-		BuildWithFlavor(d.systemSchema.Flavor())
-	_, err := d.systemSchema.ExecContext(ctx, q, args...)
-	if err != nil {
-		return err
+func (d *Driver) GetSystemStore() storage.SystemStore {
+	return &SystemStore{
+		systemSchema: d.systemSchema,
 	}
-	return nil
 }
 
-func (d *Driver) Register(ctx context.Context, ledger string) (bool, error) {
-	q, args := sqlbuilder.
-		InsertInto(d.systemSchema.Table("ledgers")).
-		Cols("ledger", "addedAt").
-		Values(ledger, time.Now()).
-		SQL("ON CONFLICT DO NOTHING").
-		BuildWithFlavor(d.systemSchema.Flavor())
+func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (*Store, bool, error) {
+	if name == SystemSchema {
+		return nil, false, errors.New("reserved name")
+	}
 
-	ret, err := d.systemSchema.ExecContext(ctx, q, args...)
+	systemStore := &SystemStore{
+		systemSchema: d.systemSchema,
+	}
+	exists, err := systemStore.exists(ctx, name)
 	if err != nil {
-		return false, err
+		return nil, false, errors.Wrap(err, "checking ledger existence")
 	}
-	affected, err := ret.RowsAffected()
+	if !exists && !create {
+		return nil, false, errors.New("not exists")
+	}
+
+	schema, err := d.db.Schema(ctx, name)
 	if err != nil {
-		return false, err
+		return nil, false, errors.Wrap(err, "opening schema")
 	}
-	return affected > 0, nil
-}
 
-func (d *Driver) exists(ctx context.Context, ledger string) (bool, error) {
-	b := sqlbuilder.
-		Select("ledger").
-		From(d.systemSchema.Table("ledgers"))
-
-	q, args := b.Where(b.E("ledger", ledger)).BuildWithFlavor(d.systemSchema.Flavor())
-
-	ret := d.systemSchema.QueryRowContext(ctx, q, args...)
-	if ret.Err() != nil {
-		return false, nil
-	}
-	var t string
-	_ = ret.Scan(&t) // Trigger close
-	return true, nil
-}
-
-func (d *Driver) List(ctx context.Context) ([]string, error) {
-	q, args := sqlbuilder.
-		Select("ledger").
-		From(d.systemSchema.Table("ledgers")).
-		BuildWithFlavor(d.systemSchema.Flavor())
-	rows, err := d.systemSchema.QueryContext(ctx, q, args...)
+	created, err := systemStore.Register(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, false, errors.Wrap(err, "registering ledger")
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
 
-	res := make([]string, 0)
-	for rows.Next() {
-		var ledger string
-		if err := rows.Scan(&ledger); err != nil {
-			return nil, err
-		}
-		res = append(res, ledger)
+	if err = schema.Initialize(ctx); err != nil {
+		return nil, false, err
 	}
-	return res, nil
+
+	return NewStore(schema, func(ctx context.Context) error {
+		return schema.Close(context.Background())
+	}, func(ctx context.Context) error {
+		return d.GetSystemStore().DeleteLedger(ctx, name)
+	}), created, nil
 }
 
 func (d *Driver) Name() string {
 	return d.name
-}
-
-func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, error) {
-	builder := sqlbuilder.
-		Select("value").
-		From(d.systemSchema.Table("configuration"))
-	q, args := builder.
-		Where(builder.E("key", key)).
-		Limit(1).
-		BuildWithFlavor(d.systemSchema.Flavor())
-
-	row := d.systemSchema.QueryRowContext(ctx, q, args...)
-	if row.Err() != nil {
-		if row.Err() != sql.ErrNoRows {
-			return "", nil
-		}
-	}
-	var value string
-	if err := row.Scan(&value); err != nil {
-		if err == sql.ErrNoRows {
-			return "", noopstorage.ErrConfigurationNotFound
-		}
-		return "", err
-	}
-
-	return value, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
@@ -181,62 +121,6 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 	return nil
 }
 
-func (d *Driver) DeleteStore(ctx context.Context, name string) error {
-	if SystemSchema == name {
-		return errors.New("cannot delete system schema")
-	}
-	schema, err := d.db.Schema(ctx, name)
-	if err != nil {
-		return err
-	}
-
-	err = schema.Delete(ctx)
-	if err != nil {
-		return err
-	}
-
-	b := sqlbuilder.DeleteFrom(d.systemSchema.Table("ledgers"))
-	b = b.Where(b.E("ledger", name))
-	q, args := b.BuildWithFlavor(schema.Flavor())
-	_, err = d.systemSchema.ExecContext(ctx, q, args...)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *Driver) GetStore(ctx context.Context, name string, create bool) (*Store, bool, error) {
-	if name == SystemSchema {
-		return nil, false, errors.New("reserved name")
-	}
-
-	exists, err := d.exists(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "checking ledger existence")
-	}
-	if !exists && !create {
-		return nil, false, errors.New("not exists")
-	}
-
-	schema, err := d.db.Schema(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "opening schema")
-	}
-
-	created, err := d.Register(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "registering ledger")
-	}
-
-	if err = schema.Initialize(ctx); err != nil {
-		return nil, false, err
-	}
-
-	return NewStore(schema, func(ctx context.Context) error {
-		return schema.Close(context.Background())
-	}), created, nil
-}
-
 func (d *Driver) Close(ctx context.Context) error {
 	err := d.systemSchema.Close(ctx)
 	if err != nil {
@@ -255,17 +139,33 @@ func NewDriver(name string, db DB) *Driver {
 var _ storage.Driver[*Store] = (*Driver)(nil)
 
 type LedgerStorageDriver struct {
-	storage.Driver[*Store]
+	*Driver
 }
 
-func (d *LedgerStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
-	return d.Driver.GetStore(ctx, name, create)
+func (d *LedgerStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+	return d.Driver.GetLedgerStore(ctx, name, create)
 }
 
 var _ storage.Driver[ledger.Store] = (*LedgerStorageDriver)(nil)
 
-func NewLedgerStorageDriverFromRawDriver(driver storage.Driver[*Store]) *LedgerStorageDriver {
+func NewLedgerStorageDriverFromRawDriver(driver *Driver) storage.Driver[ledger.Store] {
 	return &LedgerStorageDriver{
+		Driver: driver,
+	}
+}
+
+type DefaultStorageDriver struct {
+	*Driver
+}
+
+func (d *DefaultStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (storage.LedgerStore, bool, error) {
+	return d.Driver.GetLedgerStore(ctx, name, create)
+}
+
+var _ storage.Driver[storage.LedgerStore] = (*DefaultStorageDriver)(nil)
+
+func NewDefaultStorageDriverFromRawDriver(driver *Driver) storage.Driver[storage.LedgerStore] {
+	return &DefaultStorageDriver{
 		Driver: driver,
 	}
 }

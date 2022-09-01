@@ -40,7 +40,7 @@ func NewConfigController(version string, storageDriver storage.Driver[ledger.Sto
 }
 
 func (ctl *ConfigController) GetInfo(c *gin.Context) {
-	ledgers, err := ctl.StorageDriver.List(c.Request.Context())
+	ledgers, err := ctl.StorageDriver.GetSystemStore().ListLedgers(c.Request.Context())
 	if err != nil {
 		panic(err)
 	}

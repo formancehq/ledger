@@ -45,13 +45,13 @@ func FromStorageAppIdProvider(driver storage.Driver[ledger.Store]) AppIdProvider
 	return AppIdProviderFn(func(ctx context.Context) (string, error) {
 		var err error
 		if appId == "" {
-			appId, err = driver.GetConfiguration(ctx, "appId")
+			appId, err = driver.GetSystemStore().GetConfiguration(ctx, "appId")
 			if err != nil && err != noopstorage.ErrConfigurationNotFound {
 				return "", err
 			}
 			if err == noopstorage.ErrConfigurationNotFound {
 				appId = uuid.New()
-				if err := driver.InsertConfiguration(ctx, "appId", appId); err != nil {
+				if err := driver.GetSystemStore().InsertConfiguration(ctx, "appId", appId); err != nil {
 					return "", err
 				}
 			}
@@ -122,7 +122,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		Set(CPUCountProperty, runtime.NumCPU()).
 		Set(TotalMemoryProperty, memory.TotalMemory()/1024/1024)
 
-	ledgers, err := m.driver.List(ctx)
+	ledgers, err := m.driver.GetSystemStore().ListLedgers(ctx)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	for _, l := range ledgers {
 		stats := map[string]any{}
 		if err := func() error {
-			store, _, err := m.driver.GetStore(ctx, l, false)
+			store, _, err := m.driver.GetLedgerStore(ctx, l, false)
 			if err != nil {
 				return err
 			}

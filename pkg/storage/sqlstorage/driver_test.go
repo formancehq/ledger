@@ -22,7 +22,7 @@ func TestNewDriver(t *testing.T) {
 		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
 
-	store, _, err := d.GetStore(context.Background(), "foo", true)
+	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
 	assert.NoError(t, err)
 
 	_, err = store.Initialize(context.Background())
@@ -42,8 +42,8 @@ func TestConfiguration(t *testing.T) {
 	})
 	require.NoError(t, d.Initialize(context.Background()))
 
-	require.NoError(t, d.InsertConfiguration(context.Background(), "foo", "bar"))
-	bar, err := d.GetConfiguration(context.Background(), "foo")
+	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))
+	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "bar", bar)
 }
