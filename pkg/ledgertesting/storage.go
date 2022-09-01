@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -65,7 +66,11 @@ func ProvideStorageDriver() fx.Option {
 func ProvideLedgerStorageDriver() fx.Option {
 	return fx.Options(
 		ProvideStorageDriver(),
-		fx.Provide(fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
-			fx.As(new(storage.Driver[ledger.Store])))),
+		fx.Provide(
+			fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
+				fx.As(new(storage.Driver[ledger.Store]))),
+			fx.Annotate(sqlstorage.NewIdempotencyStorageDriverFromRawDriver,
+				fx.As(new(storage.Driver[idempotency.Store]))),
+		),
 	)
 }

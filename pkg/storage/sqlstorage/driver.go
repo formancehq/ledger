@@ -6,6 +6,7 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -54,7 +55,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		return nil, false, errors.Wrap(err, "checking ledger existence")
 	}
 	if !exists && !create {
-		return nil, false, errors.New("not exists")
+		return nil, false, storage.ErrLedgerStoreNotFound
 	}
 
 	schema, err := d.db.Schema(ctx, name)
@@ -186,6 +187,22 @@ var _ storage.Driver[storage.LedgerStore] = (*DefaultStorageDriver)(nil)
 
 func NewDefaultStorageDriverFromRawDriver(driver *Driver) storage.Driver[storage.LedgerStore] {
 	return &DefaultStorageDriver{
+		Driver: driver,
+	}
+}
+
+type IdempotencyStorageDriver struct {
+	*Driver
+}
+
+func (d *IdempotencyStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (idempotency.Store, bool, error) {
+	return d.Driver.GetLedgerStore(ctx, name, create)
+}
+
+var _ storage.Driver[idempotency.Store] = (*IdempotencyStorageDriver)(nil)
+
+func NewIdempotencyStorageDriverFromRawDriver(driver *Driver) storage.Driver[idempotency.Store] {
+	return &IdempotencyStorageDriver{
 		Driver: driver,
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
+	"github.com/numary/ledger/pkg/api/errors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -36,7 +37,7 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 		*txQuery,
 	)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -55,20 +56,20 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			c.Query("account") != "" || c.Query("source") != "" ||
 			c.Query("destination") != "" || c.Query("start_time") != "" ||
 			c.Query("end_time") != "" || c.Query("page_size") != "" {
-			ResponseError(c, ledger.NewValidationError(
+			errors.ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
 		}
 
 		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
 		if decErr != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			errors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
 
 		token := sqlstorage.TxsPaginationToken{}
 		if err = json.Unmarshal(res, &token); err != nil {
-			ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			errors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
 			return
 		}
 
@@ -87,7 +88,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("after") != "" {
 			afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
 			if err != nil {
-				ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+				errors.ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
 				return
 			}
 		}
@@ -96,7 +97,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("start_time") != "" {
 			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
 			if err != nil {
-				ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+				errors.ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
 				return
 			}
 		}
@@ -104,14 +105,14 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 		if c.Query("end_time") != "" {
 			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
 			if err != nil {
-				ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+				errors.ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
 				return
 			}
 		}
 
 		pageSize, err := getPageSize(c)
 		if err != nil {
-			ResponseError(c, err)
+			errors.ResponseError(c, err)
 			return
 		}
 
@@ -129,7 +130,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 
 	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -145,11 +146,11 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	var txData core.TransactionData
 	if err := c.ShouldBindJSON(&txData); err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid transaction format"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid transaction format"))
 		return
 	}
 	if len(txData.Postings) == 0 {
-		ResponseError(c, ledger.NewValidationError("transaction has no postings"))
+		errors.ResponseError(c, ledger.NewValidationError("transaction has no postings"))
 		return
 	}
 
@@ -160,7 +161,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	res, err := fn(c.Request.Context(), []core.TransactionData{txData})
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -177,13 +178,13 @@ func (ctl *TransactionController) GetTransaction(c *gin.Context) {
 
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
 		return
 	}
 
 	tx, err := l.(*ledger.Ledger).GetTransaction(c.Request.Context(), txId)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -195,13 +196,13 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
 		return
 	}
 
 	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), txId)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -213,25 +214,25 @@ func (ctl *TransactionController) PostTransactionMetadata(c *gin.Context) {
 
 	var m core.Metadata
 	if err := c.ShouldBindJSON(&m); err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid metadata format"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 
 	txId, err := strconv.ParseUint(c.Param("txid"), 10, 64)
 	if err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid transaction ID"))
 		return
 	}
 
 	_, err = l.(*ledger.Ledger).GetTransaction(c.Request.Context(), txId)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
 	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
 		core.MetaTargetTypeTransaction, txId, m); err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -243,18 +244,18 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 
 	var txs core.Transactions
 	if err := c.ShouldBindJSON(&txs); err != nil {
-		ResponseError(c, ledger.NewValidationError("invalid transactions format"))
+		errors.ResponseError(c, ledger.NewValidationError("invalid transactions format"))
 		return
 	}
 
 	if len(txs.Transactions) == 0 {
-		ResponseError(c, ledger.NewValidationError("no transaction to insert"))
+		errors.ResponseError(c, ledger.NewValidationError("no transaction to insert"))
 		return
 	}
 
 	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
