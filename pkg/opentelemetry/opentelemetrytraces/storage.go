@@ -21,10 +21,6 @@ type openTelemetryStorage struct {
 	underlying ledger.Store
 }
 
-func (o *openTelemetryStorage) WithTX(ctx context.Context, callback func(api ledger.API) error) error {
-	return callback(o)
-}
-
 func (o *openTelemetryStorage) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) (err error) {
 	handlingErr := o.handle(ctx, "UpdateTransactionMetadata", func(ctx context.Context) error {
 		err = o.underlying.UpdateTransactionMetadata(ctx, id, metadata, at)
