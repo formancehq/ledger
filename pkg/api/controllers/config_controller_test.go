@@ -8,14 +8,14 @@ import (
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestGetInfo(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver ledger.StorageDriver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				rsp := internal.GetInfo(h)

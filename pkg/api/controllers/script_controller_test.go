@@ -13,7 +13,6 @@ import (
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 )
@@ -107,7 +106,7 @@ func TestPostScriptPreview(t *testing.T) {
 	  destination = @centralbank
 	)`
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				store := internal.GetStore(t, driver, ctx)
@@ -124,7 +123,7 @@ func TestPostScriptPreview(t *testing.T) {
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
-					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 					assert.NoError(t, err)
 					assert.Len(t, cursor.Data, 0)
 				})
@@ -141,7 +140,7 @@ func TestPostScriptPreview(t *testing.T) {
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
-					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 					assert.NoError(t, err)
 					assert.Len(t, cursor.Data, 1)
 				})
@@ -154,7 +153,7 @@ func TestPostScriptPreview(t *testing.T) {
 
 func TestPostScriptWithReference(t *testing.T) {
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				reference := "order_1234"
@@ -173,7 +172,7 @@ func TestPostScriptWithReference(t *testing.T) {
 				assert.Equal(t, reference, res.Transaction.Reference)
 
 				store := internal.GetStore(t, driver, ctx)
-				cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
+				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 				assert.NoError(t, err)
 				assert.Len(t, cursor.Data, 1)
 				assert.Equal(t, reference, cursor.Data[0].Reference)

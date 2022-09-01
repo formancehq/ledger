@@ -1,4 +1,4 @@
-package ledger
+package ledger_test
 
 import (
 	"context"
@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func assertBalance(t *testing.T, l *Ledger, account, asset string, amount *core.MonetaryInt) {
+func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)
 
@@ -23,29 +24,29 @@ func assertBalance(t *testing.T, l *Ledger, account, asset string, amount *core.
 }
 
 func TestNoScript(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{}
 
 		_, err := l.Execute(context.Background(), script)
-		assert.IsType(t, &ScriptError{}, err)
-		assert.Equal(t, ScriptErrorNoScript, err.(*ScriptError).Code)
+		assert.IsType(t, &ledger.ScriptError{}, err)
+		assert.Equal(t, ledger.ScriptErrorNoScript, err.(*ledger.ScriptError).Code)
 	})
 }
 
 func TestCompilationError(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
 			Plain: "willnotcompile",
 		}
 
 		_, err := l.Execute(context.Background(), script)
-		assert.IsType(t, &ScriptError{}, err)
-		assert.Equal(t, ScriptErrorCompilationFailed, err.(*ScriptError).Code)
+		assert.IsType(t, &ledger.ScriptError{}, err)
+		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
 	})
 }
 
 func TestTransactionInvalidScript(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
 			Plain: "this is not a valid script",
 		}
@@ -58,7 +59,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 }
 
 func TestTransactionFail(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
 			Plain: "fail",
 		}
@@ -71,8 +72,8 @@ func TestTransactionFail(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -91,7 +92,7 @@ func TestSend(t *testing.T) {
 }
 
 func TestNoVariables(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		var script core.Script
 		err := json.Unmarshal(
 			[]byte(`{
@@ -109,8 +110,8 @@ func TestNoVariables(t *testing.T) {
 }
 
 func TestVariables(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -140,8 +141,8 @@ func TestVariables(t *testing.T) {
 }
 
 func TestEnoughFunds(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -173,8 +174,8 @@ func TestEnoughFunds(t *testing.T) {
 }
 
 func TestNotEnoughFunds(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -206,8 +207,8 @@ func TestNotEnoughFunds(t *testing.T) {
 }
 
 func TestMissingMetadata(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -236,8 +237,8 @@ func TestMissingMetadata(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -357,12 +358,12 @@ func TestSetTxMeta(t *testing.T) {
 					"priority": "high",
 				},
 			},
-			expectedErrorCode: ScriptErrorMetadataOverride,
+			expectedErrorCode: ledger.ScriptErrorMetadataOverride,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			runOnLedger(func(l *Ledger) {
-				defer func(l *Ledger, ctx context.Context) {
+			runOnLedger(func(l *ledger.Ledger) {
+				defer func(l *ledger.Ledger, ctx context.Context) {
 					require.NoError(t, l.Close(ctx))
 				}(l, context.Background())
 
@@ -370,10 +371,10 @@ func TestSetTxMeta(t *testing.T) {
 
 				if tc.expectedErrorCode != "" {
 					require.Error(t, err)
-					require.True(t, IsScriptErrorWithCode(err, tc.expectedErrorCode))
+					require.True(t, ledger.IsScriptErrorWithCode(err, tc.expectedErrorCode))
 				} else {
 					require.NoError(t, err)
-					last, err := l.store.GetLastTransaction(context.Background())
+					last, err := l.GetStore().GetLastTransaction(context.Background())
 					require.NoError(t, err)
 					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
 				}
@@ -383,8 +384,8 @@ func TestSetTxMeta(t *testing.T) {
 }
 
 func TestScriptSetReference(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
-		defer func(l *Ledger, ctx context.Context) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
@@ -402,7 +403,7 @@ func TestScriptSetReference(t *testing.T) {
 		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		last, err := l.store.GetLastTransaction(context.Background())
+		last, err := l.GetStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		assert.Equal(t, script.Reference, last.Reference)

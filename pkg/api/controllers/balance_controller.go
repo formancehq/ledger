@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
@@ -24,7 +23,7 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 	var balances core.AssetsBalances
 	var err error
 
-	balancesQuery := storage.NewBalancesQuery().WithAddressFilter(c.Query("address"))
+	balancesQuery := ledger.NewBalancesQuery().WithAddressFilter(c.Query("address"))
 
 	balances, err = l.(*ledger.Ledger).GetBalancesAggregated(
 		c.Request.Context(),
@@ -42,7 +41,7 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 func (ctl *BalanceController) GetBalances(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	balancesQuery := storage.NewBalancesQuery()
+	balancesQuery := ledger.NewBalancesQuery()
 
 	if c.Query("pagination_token") != "" {
 		if c.Query("after") != "" ||

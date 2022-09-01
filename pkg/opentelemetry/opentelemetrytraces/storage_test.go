@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,7 +19,7 @@ func TestStore(t *testing.T) {
 
 	type testingFunction struct {
 		name string
-		fn   func(t *testing.T, store storage.Store)
+		fn   func(t *testing.T, store ledger.Store)
 	}
 
 	for _, tf := range []testingFunction{
@@ -56,7 +57,7 @@ func TestStore(t *testing.T) {
 		},
 	} {
 		t.Run(tf.name, func(t *testing.T) {
-			store := NewStorageDecorator(storage.NoOpStore())
+			store := NewStorageDecorator(noopstorage.NoOpStore())
 			defer func(store *openTelemetryStorage, ctx context.Context) {
 				if err := store.Close(ctx); err != nil {
 					panic(err)
@@ -71,47 +72,47 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func testAppendLog(t *testing.T, store storage.Store) {
+func testAppendLog(t *testing.T, store ledger.Store) {
 	err := store.Commit(context.Background(), core.ExpandedTransaction{})
 	assert.NoError(t, err)
 }
 
-func testLastLog(t *testing.T, store storage.Store) {
+func testLastLog(t *testing.T, store ledger.Store) {
 	_, err := store.LastLog(context.Background())
 	assert.NoError(t, err)
 }
 
-func testCountAccounts(t *testing.T, store storage.Store) {
-	_, err := store.CountAccounts(context.Background(), storage.AccountsQuery{})
+func testCountAccounts(t *testing.T, store ledger.Store) {
+	_, err := store.CountAccounts(context.Background(), ledger.AccountsQuery{})
 	assert.NoError(t, err)
 
 }
 
-func testAggregateVolumes(t *testing.T, store storage.Store) {
+func testAggregateVolumes(t *testing.T, store ledger.Store) {
 	_, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	assert.NoError(t, err)
 }
 
-func testGetAccounts(t *testing.T, store storage.Store) {
-	_, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
+func testGetAccounts(t *testing.T, store ledger.Store) {
+	_, err := store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }
 
-func testCountTransactions(t *testing.T, store storage.Store) {
-	_, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
+func testCountTransactions(t *testing.T, store ledger.Store) {
+	_, err := store.CountTransactions(context.Background(), ledger.TransactionsQuery{})
 	assert.NoError(t, err)
 }
 
-func testGetTransactions(t *testing.T, store storage.Store) {
-	_, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
+func testGetTransactions(t *testing.T, store ledger.Store) {
+	_, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 		PageSize: 1,
 	})
 	assert.NoError(t, err)
 }
 
-func testGetTransaction(t *testing.T, store storage.Store) {
+func testGetTransaction(t *testing.T, store ledger.Store) {
 	_, err := store.GetTransaction(context.Background(), 1)
 	assert.NoError(t, err)
 }

@@ -30,7 +30,6 @@ import (
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
 	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/redis"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -189,7 +188,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	)
 
 	options = append(options,
-		fx.Decorate(fx.Annotate(func(driver storage.Driver, mp metric.MeterProvider) storage.Driver {
+		fx.Decorate(fx.Annotate(func(driver ledger.StorageDriver, mp metric.MeterProvider) ledger.StorageDriver {
 			if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 				driver = opentelemetrytraces.WrapStorageDriver(driver)
 			}

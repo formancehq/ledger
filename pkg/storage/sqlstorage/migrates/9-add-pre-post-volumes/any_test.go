@@ -9,8 +9,8 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	add_pre_post_volumes "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
 	"github.com/pborman/uuid"
@@ -256,7 +256,7 @@ func TestMigrate9(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	count, err := store.CountTransactions(context.Background(), *storage.NewTransactionsQuery())
+	count, err := store.CountTransactions(context.Background(), *ledger.NewTransactionsQuery())
 	require.NoError(t, err)
 	require.Equal(t, count, uint64(len(testCases)))
 

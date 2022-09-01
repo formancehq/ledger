@@ -3,7 +3,7 @@ package sqlstorage
 import (
 	"time"
 
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
 type TxsPaginationToken struct {
@@ -19,13 +19,13 @@ type TxsPaginationToken struct {
 }
 
 type AccPaginationToken struct {
-	PageSize              uint                    `json:"page_size"`
-	Offset                uint                    `json:"offset"`
-	AfterAddress          string                  `json:"after,omitempty"`
-	AddressRegexpFilter   string                  `json:"address,omitempty"`
-	MetadataFilter        map[string]string       `json:"metadata,omitempty"`
-	BalanceFilter         string                  `json:"balance,omitempty"`
-	BalanceOperatorFilter storage.BalanceOperator `json:"balance_operator,omitempty"`
+	PageSize              uint                   `json:"page_size"`
+	Offset                uint                   `json:"offset"`
+	AfterAddress          string                 `json:"after,omitempty"`
+	AddressRegexpFilter   string                 `json:"address,omitempty"`
+	MetadataFilter        map[string]string      `json:"metadata,omitempty"`
+	BalanceFilter         string                 `json:"balance,omitempty"`
+	BalanceOperatorFilter ledger.BalanceOperator `json:"balance_operator,omitempty"`
 }
 
 type BalancesPaginationToken struct {

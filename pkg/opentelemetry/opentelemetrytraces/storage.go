@@ -8,8 +8,8 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
-	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -17,10 +17,10 @@ import (
 )
 
 type openTelemetryStorage struct {
-	underlying storage.Store
+	underlying ledger.Store
 }
 
-func (o *openTelemetryStorage) WithTX(ctx context.Context, callback func(api storage.API) error) error {
+func (o *openTelemetryStorage) WithTX(ctx context.Context, callback func(api ledger.API) error) error {
 	return callback(o)
 }
 
@@ -111,7 +111,7 @@ func (o *openTelemetryStorage) LastLog(ctx context.Context) (l *core.Log, err er
 	return
 }
 
-func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (count uint64, err error) {
+func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q ledger.TransactionsQuery) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountTransactions", func(ctx context.Context) error {
 		count, err = o.underlying.CountTransactions(ctx, q)
 		return err
@@ -122,7 +122,7 @@ func (o *openTelemetryStorage) CountTransactions(ctx context.Context, q storage.
 	return
 }
 
-func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (q sharedapi.Cursor[core.ExpandedTransaction], err error) {
+func (o *openTelemetryStorage) GetTransactions(ctx context.Context, query ledger.TransactionsQuery) (q sharedapi.Cursor[core.ExpandedTransaction], err error) {
 	handlingErr := o.handle(ctx, "GetTransactions", func(ctx context.Context) error {
 		q, err = o.underlying.GetTransactions(ctx, query)
 		return err
@@ -177,7 +177,7 @@ func (o *openTelemetryStorage) GetVolumes(ctx context.Context, accountAddress, a
 	return
 }
 
-func (o *openTelemetryStorage) GetBalances(ctx context.Context, q storage.BalancesQuery) (balances sharedapi.Cursor[core.AccountsBalances], err error) {
+func (o *openTelemetryStorage) GetBalances(ctx context.Context, q ledger.BalancesQuery) (balances sharedapi.Cursor[core.AccountsBalances], err error) {
 	handlingErr := o.handle(ctx, "GetBalances", func(ctx context.Context) error {
 		balances, err = o.underlying.GetBalances(ctx, q)
 		return err
@@ -188,7 +188,7 @@ func (o *openTelemetryStorage) GetBalances(ctx context.Context, q storage.Balanc
 	return
 }
 
-func (o *openTelemetryStorage) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (balances core.AssetsBalances, err error) {
+func (o *openTelemetryStorage) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery) (balances core.AssetsBalances, err error) {
 	handlingErr := o.handle(ctx, "GetBalancesAggregated", func(ctx context.Context) error {
 		balances, err = o.underlying.GetBalancesAggregated(ctx, q)
 		return err
@@ -199,7 +199,7 @@ func (o *openTelemetryStorage) GetBalancesAggregated(ctx context.Context, q stor
 	return
 }
 
-func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q storage.AccountsQuery) (count uint64, err error) {
+func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (count uint64, err error) {
 	handlingErr := o.handle(ctx, "CountAccounts", func(ctx context.Context) error {
 		count, err = o.underlying.CountAccounts(ctx, q)
 		return err
@@ -210,7 +210,7 @@ func (o *openTelemetryStorage) CountAccounts(ctx context.Context, q storage.Acco
 	return
 }
 
-func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query storage.AccountsQuery) (c sharedapi.Cursor[core.Account], err error) {
+func (o *openTelemetryStorage) GetAccounts(ctx context.Context, query ledger.AccountsQuery) (c sharedapi.Cursor[core.Account], err error) {
 	handlingErr := o.handle(ctx, "GetAccounts", func(ctx context.Context) error {
 		c, err = o.underlying.GetAccounts(ctx, query)
 		return err
@@ -259,28 +259,28 @@ func (o *openTelemetryStorage) Close(ctx context.Context) error {
 	})
 }
 
-var _ storage.Store = &openTelemetryStorage{}
+var _ ledger.Store = &openTelemetryStorage{}
 
-func NewStorageDecorator(underlying storage.Store) *openTelemetryStorage {
+func NewStorageDecorator(underlying ledger.Store) *openTelemetryStorage {
 	return &openTelemetryStorage{
 		underlying: underlying,
 	}
 }
 
 type openTelemetryStorageDriver struct {
-	storage.Driver
+	ledger.StorageDriver
 }
 
-func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+	store, created, err := o.StorageDriver.GetStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}
 	return NewStorageDecorator(store), created, nil
 }
 
-func WrapStorageDriver(underlying storage.Driver) *openTelemetryStorageDriver {
+func WrapStorageDriver(underlying ledger.StorageDriver) *openTelemetryStorageDriver {
 	return &openTelemetryStorageDriver{
-		Driver: underlying,
+		StorageDriver: underlying,
 	}
 }

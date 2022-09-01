@@ -1,18 +1,18 @@
-package ledger
+package ledger_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestVolumeAggregator(t *testing.T) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver ledger.StorageDriver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()
@@ -116,10 +116,10 @@ func TestVolumeAggregator(t *testing.T) {
 				}
 				require.NoError(t, store.Commit(context.Background(), tx1, tx2))
 
-				volumeAggregator := newVolumeAggregator(store)
-				firstTx := volumeAggregator.nextTx()
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "alice", "USD", core.NewMonetaryInt(100)))
-				require.NoError(t, firstTx.transfer(context.Background(), "bob", "zoro", "USD", core.NewMonetaryInt(50)))
+				volumeAggregator := ledger.NewVolumeAggregator(store)
+				firstTx := volumeAggregator.NextTx()
+				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "alice", "USD", core.NewMonetaryInt(100)))
+				require.NoError(t, firstTx.Transfer(context.Background(), "bob", "zoro", "USD", core.NewMonetaryInt(50)))
 
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
@@ -140,7 +140,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, firstTx.postCommitVolumes())
+				}, firstTx.PostCommitVolumes())
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -160,11 +160,11 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, firstTx.preCommitVolumes())
+				}, firstTx.PreCommitVolumes())
 
-				secondTx := volumeAggregator.nextTx()
-				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50)))
-				require.NoError(t, secondTx.transfer(context.Background(), "bob", "fred", "USD", core.NewMonetaryInt(25)))
+				secondTx := volumeAggregator.NextTx()
+				require.NoError(t, secondTx.Transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50)))
+				require.NoError(t, secondTx.Transfer(context.Background(), "bob", "fred", "USD", core.NewMonetaryInt(25)))
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -184,7 +184,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, secondTx.postCommitVolumes())
+				}, secondTx.PostCommitVolumes())
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -204,9 +204,9 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, secondTx.preCommitVolumes())
+				}, secondTx.PreCommitVolumes())
 
-				aggregatedPostVolumes := volumeAggregator.aggregatedPostCommitVolumes()
+				aggregatedPostVolumes := volumeAggregator.AggregatedPostCommitVolumes()
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -234,7 +234,7 @@ func TestVolumeAggregator(t *testing.T) {
 					},
 				}, aggregatedPostVolumes)
 
-				aggregatedPreVolumes := volumeAggregator.aggregatedPreCommitVolumes()
+				aggregatedPreVolumes := volumeAggregator.AggregatedPreCommitVolumes()
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {

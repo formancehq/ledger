@@ -7,7 +7,8 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pkg/errors"
 )
 
@@ -135,7 +136,7 @@ func (d *Driver) GetConfiguration(ctx context.Context, key string) (string, erro
 	var value string
 	if err := row.Scan(&value); err != nil {
 		if err == sql.ErrNoRows {
-			return "", storage.ErrConfigurationNotFound
+			return "", noopstorage.ErrConfigurationNotFound
 		}
 		return "", err
 	}
@@ -207,7 +208,7 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 	return nil
 }
 
-func (d *Driver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+func (d *Driver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -254,4 +255,4 @@ func NewDriver(name string, db DB) *Driver {
 	}
 }
 
-var _ storage.Driver = (*Driver)(nil)
+var _ ledger.StorageDriver = (*Driver)(nil)

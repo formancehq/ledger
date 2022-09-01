@@ -1,24 +1,15 @@
-package storage
+package noopstorage
 
 import (
 	"context"
 	"errors"
+
+	"github.com/numary/ledger/pkg/ledger"
 )
 
 var (
 	ErrConfigurationNotFound = errors.New("configuration not found")
 )
-
-type Driver interface {
-	Initialize(ctx context.Context) error
-	GetStore(ctx context.Context, name string, create bool) (Store, bool, error)
-	Close(ctx context.Context) error
-	List(ctx context.Context) ([]string, error)
-	DeleteStore(ctx context.Context, name string) error
-	Name() string
-	GetConfiguration(ctx context.Context, key string) (string, error)
-	InsertConfiguration(ctx context.Context, key, value string) error
-}
 
 type noOpDriver struct{}
 
@@ -38,7 +29,7 @@ func (n noOpDriver) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (n noOpDriver) GetStore(ctx context.Context, name string, create bool) (Store, bool, error) {
+func (n noOpDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
 	return nil, false, nil
 }
 
@@ -54,7 +45,7 @@ func (n noOpDriver) Name() string {
 	return ""
 }
 
-var _ Driver = &noOpDriver{}
+var _ ledger.StorageDriver = &noOpDriver{}
 
 func NoOpDriver() *noOpDriver {
 	return &noOpDriver{}

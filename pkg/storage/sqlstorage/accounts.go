@@ -13,11 +13,11 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
 
-func (s *API) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
+func (s *API) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
@@ -65,15 +65,15 @@ func (s *API) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBui
 
 		if balanceOperator != "" {
 			switch balanceOperator {
-			case storage.BalanceOperatorLte:
+			case ledger.BalanceOperatorLte:
 				sb.Where(sb.LessEqualThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorLt:
+			case ledger.BalanceOperatorLt:
 				sb.Where(sb.LessThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorGte:
+			case ledger.BalanceOperatorGte:
 				sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorGt:
+			case ledger.BalanceOperatorGt:
 				sb.Where(sb.GreaterThan(balanceOperation, balanceValue))
-			case storage.BalanceOperatorE:
+			case ledger.BalanceOperatorE:
 				sb.Where(sb.Equal(balanceOperation, balanceValue))
 			default:
 				// parameter is validated in the controller for now
@@ -87,7 +87,7 @@ func (s *API) buildAccountsQuery(p storage.AccountsQuery) (*sqlbuilder.SelectBui
 	return sb, t
 }
 
-func (s *API) GetAccounts(ctx context.Context, q storage.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *API) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {

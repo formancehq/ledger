@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
-	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 )
@@ -17,7 +17,7 @@ func transactionsCounter(m metric.Meter) (syncint64.Counter, error) {
 }
 
 type storageDecorator struct {
-	storage.Store
+	ledger.Store
 	transactionsCounter syncint64.Counter
 }
 
@@ -30,9 +30,9 @@ func (o *storageDecorator) Commit(ctx context.Context, txs ...core.ExpandedTrans
 	return nil
 }
 
-var _ storage.Store = &storageDecorator{}
+var _ ledger.Store = &storageDecorator{}
 
-func NewStorageDecorator(underlying storage.Store, counter syncint64.Counter) *storageDecorator {
+func NewStorageDecorator(underlying ledger.Store, counter syncint64.Counter) *storageDecorator {
 	return &storageDecorator{
 		Store:               underlying,
 		transactionsCounter: counter,
@@ -40,13 +40,13 @@ func NewStorageDecorator(underlying storage.Store, counter syncint64.Counter) *s
 }
 
 type openTelemetryStorageDriver struct {
-	storage.Driver
+	ledger.StorageDriver
 	meter               metric.Meter
 	transactionsCounter syncint64.Counter
 	once                sync.Once
 }
 
-func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (storage.Store, bool, error) {
+func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -57,7 +57,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
 	}
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+	store, created, err := o.StorageDriver.GetStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}
@@ -65,12 +65,12 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 }
 
 func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {
-	return o.Driver.Close(ctx)
+	return o.StorageDriver.Close(ctx)
 }
 
-func WrapStorageDriver(underlying storage.Driver, mp metric.MeterProvider) *openTelemetryStorageDriver {
+func WrapStorageDriver(underlying ledger.StorageDriver, mp metric.MeterProvider) *openTelemetryStorageDriver {
 	return &openTelemetryStorageDriver{
-		Driver: underlying,
-		meter:  mp.Meter(opentelemetry.StoreInstrumentationName),
+		StorageDriver: underlying,
+		meter:         mp.Meter(opentelemetry.StoreInstrumentationName),
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/numary/ledger/internal/pgtesting"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -20,7 +20,7 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
-func StorageDriver() (storage.Driver, func(), error) {
+func StorageDriver() (ledger.StorageDriver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
@@ -45,7 +45,7 @@ func StorageDriver() (storage.Driver, func(), error) {
 }
 
 func ProvideStorageDriver() fx.Option {
-	return fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
+	return fx.Provide(func(lc fx.Lifecycle) (ledger.StorageDriver, error) {
 		driver, stopFn, err := StorageDriver()
 		if err != nil {
 			return nil, err
