@@ -691,7 +691,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	// Use of external server, ignore this test
 	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" ||
 		ledgertesting.StorageDriverName() != "postgres" {
-		t.SkipNow()
+		return
 	}
 
 	for i := 0; i < pgtesting.MaxConnections; i++ {
