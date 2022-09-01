@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *API) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
@@ -73,7 +73,7 @@ func (s *API) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.Se
 	return sb, t
 }
 
-func (s *API) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
 	txs := make([]core.ExpandedTransaction, 0)
 
 	if q.PageSize == 0 {
@@ -90,8 +90,13 @@ func (s *API) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (
 	sb.Limit(int(q.PageSize + 2))
 	t.PageSize = q.PageSize
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return sharedapi.Cursor[core.ExpandedTransaction]{}, err
+	}
+
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, sqlq, args...)
+	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
@@ -159,15 +164,20 @@ func (s *API) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (
 	}, nil
 }
 
-func (s *API) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
+func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	sb.Where(sb.Equal("id", txId))
 	sb.OrderBy("id desc")
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq, args...)
+	row := executor.QueryRowContext(ctx, sqlq, args...)
 	if row.Err() != nil {
 		return nil, s.error(row.Err())
 	}
@@ -205,15 +215,20 @@ func (s *API) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTr
 	return &tx, nil
 }
 
-func (s *API) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
+func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	sb.OrderBy("id desc")
 	sb.Limit(1)
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq, args...)
+	row := executor.QueryRowContext(ctx, sqlq, args...)
 	if row.Err() != nil {
 		return nil, s.error(row.Err())
 	}
@@ -251,7 +266,7 @@ func (s *API) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction
 	return &tx, nil
 }
 
-func (s *API) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
+func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
 	var (
 		query string
 		args  []interface{}
@@ -353,14 +368,19 @@ func (s *API) insertTransactions(ctx context.Context, txs ...core.ExpandedTransa
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 
-	_, err := s.executor.ExecContext(ctx, query, args...)
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *API) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	ub := sqlbuilder.NewUpdateBuilder()
 
 	metadataData, err := json.Marshal(metadata)
@@ -379,8 +399,13 @@ func (s *API) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata
 		ub.Set(fmt.Sprintf("metadata = json_patch(metadata, %s)", placeholder))
 	}
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return err
+	}
+
 	sqlq, args := ub.BuildWithFlavor(s.schema.Flavor())
-	_, err = s.executor.ExecContext(ctx, sqlq, args...)
+	_, err = executor.ExecContext(ctx, sqlq, args...)
 	if err != nil {
 		return err
 	}

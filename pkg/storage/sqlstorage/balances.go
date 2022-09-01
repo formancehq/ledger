@@ -15,7 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-func (s *API) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery) (core.AssetsBalances, error) {
+func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
@@ -31,8 +31,13 @@ func (s *API) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery)
 		}
 	}
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	balanceAggregatedQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, balanceAggregatedQuery, args...)
+	rows, err := executor.QueryContext(ctx, balanceAggregatedQuery, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -69,7 +74,13 @@ func (s *API) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery)
 	return aggregatedBalances, nil
 }
 
-func (s *API) GetBalances(ctx context.Context, q ledger.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return sharedapi.Cursor[core.AccountsBalances]{}, err
+	}
+
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:
@@ -107,7 +118,7 @@ func (s *API) GetBalances(ctx context.Context, q ledger.BalancesQuery) (sharedap
 	sb.Offset(int(q.Offset))
 
 	balanceQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, balanceQuery, args...)
+	rows, err := executor.QueryContext(ctx, balanceQuery, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
 	}

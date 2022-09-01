@@ -10,35 +10,50 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 )
 
-func (s *API) CountTransactions(ctx context.Context, q ledger.TransactionsQuery) (uint64, error) {
+func (s *Store) CountTransactions(ctx context.Context, q ledger.TransactionsQuery) (uint64, error) {
 	var count uint64
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return 0, err
+	}
 
 	sb, _ := s.buildTransactionsQuery(q)
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	sqlq = fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, sqlq)
-	err := s.executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err = executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *API) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint64, error) {
+func (s *Store) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint64, error) {
 	var count uint64
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return 0, err
+	}
 
 	sb, _ := s.buildAccountsQuery(q)
 	sqlq, args := sb.Select("count(*)").BuildWithFlavor(s.schema.Flavor())
-	err := s.executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
+	err = executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
 	return count, s.error(err)
 }
 
-func (s *API) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
+func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "input", "output")
 	sb.From(s.schema.Table("volumes"))
 	sb.Where(sb.E("account", accountAddress))
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	q, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, q, args...)
+	rows, err := executor.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, s.error(err)
 	}
@@ -85,14 +100,19 @@ func (s *API) GetAssetsVolumes(ctx context.Context, accountAddress string) (core
 	return volumes, nil
 }
 
-func (s *API) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
+func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("input", "output")
 	sb.From(s.schema.Table("volumes"))
 	sb.Where(sb.And(sb.E("account", accountAddress), sb.E("asset", asset)))
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return core.Volumes{}, err
+	}
+
 	q, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, q, args...)
+	row := executor.QueryRowContext(ctx, q, args...)
 	if row.Err() != nil {
 		return core.Volumes{}, s.error(row.Err())
 	}

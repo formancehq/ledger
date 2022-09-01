@@ -77,6 +77,8 @@ type Routes struct {
 func Transaction() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
+		defer storage.CommitTransaction(c.Request.Context())
+		c.Next()
 	}
 }
 

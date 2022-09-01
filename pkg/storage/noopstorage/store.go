@@ -12,10 +12,6 @@ import (
 // A no op store. Useful for testing.
 type noOpStore struct{}
 
-func (n noOpStore) WithTX(ctx context.Context, callback func(api ledger.API) error) error {
-	return nil
-}
-
 func (n noOpStore) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error {
 	return nil
 }
