@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
@@ -85,13 +86,13 @@ var (
 				return "foo", nil
 			})
 		}),
-		fx.Provide(func(lc fx.Lifecycle) (ledger.StorageDriver, error) {
+		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
 			id := uuid.New()
 			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
 			lc.Append(fx.Hook{
 				OnStart: driver.Initialize,
 			})
-			return driver, nil
+			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
 		}),
 	)
 )

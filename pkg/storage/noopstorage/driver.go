@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 var (
@@ -45,7 +46,7 @@ func (n noOpDriver) Name() string {
 	return ""
 }
 
-var _ ledger.StorageDriver = &noOpDriver{}
+var _ storage.Driver[ledger.Store] = &noOpDriver{}
 
 func NoOpDriver() *noOpDriver {
 	return &noOpDriver{}

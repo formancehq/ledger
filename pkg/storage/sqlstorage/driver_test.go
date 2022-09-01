@@ -30,7 +30,7 @@ func TestNewDriver(t *testing.T) {
 
 	assert.NoError(t, store.Close(context.Background()))
 
-	_, err = store.(*Store).schema.QueryContext(context.Background(), "select * from transactions")
+	_, err = store.schema.QueryContext(context.Background(), "select * from transactions")
 	assert.Error(t, err)
 	assert.Equal(t, "sql: database is closed", err.Error())
 }

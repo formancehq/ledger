@@ -13,6 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 )
@@ -106,7 +107,7 @@ func TestPostScriptPreview(t *testing.T) {
 	  destination = @centralbank
 	)`
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				store := internal.GetStore(t, driver, ctx)
@@ -153,7 +154,7 @@ func TestPostScriptPreview(t *testing.T) {
 
 func TestPostScriptWithReference(t *testing.T) {
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				reference := "order_1234"

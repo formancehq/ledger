@@ -23,6 +23,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -217,7 +218,7 @@ func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Val
 	return rec
 }
 
-func GetStore(t *testing.T, driver ledger.StorageDriver, ctx context.Context) ledger.Store {
+func GetStore(t *testing.T, driver storage.Driver[ledger.Store], ctx context.Context) ledger.Store {
 	store, _, err := driver.GetStore(ctx, testingLedger, true)
 	require.NoError(t, err)
 	return store
@@ -236,8 +237,8 @@ func RunTest(t *testing.T, options ...fx.Option) {
 	options = append([]fx.Option{
 		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest", UseScopes: true}),
 		ledger.ResolveModule(),
-		ledgertesting.ProvideStorageDriver(),
-		fx.Invoke(func(driver ledger.StorageDriver, lc fx.Lifecycle) {
+		ledgertesting.ProvideLedgerStorageDriver(),
+		fx.Invoke(func(driver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					store, _, err := driver.GetStore(ctx, testingLedger, true)

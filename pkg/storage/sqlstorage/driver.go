@@ -8,6 +8,7 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pkg/errors"
 )
@@ -22,10 +23,6 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 	cfg := sqlDrivers[flavor]
 	cfg.driverName = name
 	sqlDrivers[flavor] = cfg
-}
-
-func SQLDriverName(f Flavor) string {
-	return sqlDrivers[f].driverName
 }
 
 func init() {
@@ -208,7 +205,7 @@ func (d *Driver) DeleteStore(ctx context.Context, name string) error {
 	return nil
 }
 
-func (d *Driver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+func (d *Driver) GetStore(ctx context.Context, name string, create bool) (*Store, bool, error) {
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -255,4 +252,20 @@ func NewDriver(name string, db DB) *Driver {
 	}
 }
 
-var _ ledger.StorageDriver = (*Driver)(nil)
+var _ storage.Driver[*Store] = (*Driver)(nil)
+
+type LedgerStorageDriver struct {
+	storage.Driver[*Store]
+}
+
+func (d *LedgerStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+	return d.Driver.GetStore(ctx, name, create)
+}
+
+var _ storage.Driver[ledger.Store] = (*LedgerStorageDriver)(nil)
+
+func NewLedgerStorageDriverFromRawDriver(driver storage.Driver[*Store]) *LedgerStorageDriver {
+	return &LedgerStorageDriver{
+		Driver: driver,
+	}
+}

@@ -6,13 +6,14 @@ import (
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestVolumeAggregator(t *testing.T) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver ledger.StorageDriver) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()

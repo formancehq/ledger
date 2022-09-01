@@ -21,6 +21,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -388,7 +389,7 @@ func TestPreviewTransaction(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()
@@ -672,7 +673,7 @@ func TestGetTransactions(t *testing.T) {
 }
 
 func TestGetTransactionsWithPageSize(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()
@@ -764,7 +765,7 @@ type accountsVolumes map[string]assetsVolumes
 type assetsVolumes map[string]core.VolumesWithBalance
 
 func TestTransactionsVolumes(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 
@@ -1160,7 +1161,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 }
 
 func TestTooManyClient(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				if ledgertesting.StorageDriverName() != "postgres" {
@@ -1193,7 +1194,7 @@ func TestTooManyClient(t *testing.T) {
 }
 
 func TestRevertTransaction(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				rsp := internal.PostTransaction(t, api, core.TransactionData{
@@ -1320,7 +1321,7 @@ func TestRevertTransaction(t *testing.T) {
 }
 
 func TestPostTransactionsBatch(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver ledger.StorageDriver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				t.Run("valid", func(t *testing.T) {

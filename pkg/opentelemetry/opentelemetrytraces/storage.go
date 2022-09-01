@@ -10,6 +10,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
+	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -268,19 +269,19 @@ func NewStorageDecorator(underlying ledger.Store) *openTelemetryStorage {
 }
 
 type openTelemetryStorageDriver struct {
-	ledger.StorageDriver
+	storage.Driver[ledger.Store]
 }
 
 func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
-	store, created, err := o.StorageDriver.GetStore(ctx, name, create)
+	store, created, err := o.Driver.GetStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}
 	return NewStorageDecorator(store), created, nil
 }
 
-func WrapStorageDriver(underlying ledger.StorageDriver) *openTelemetryStorageDriver {
+func WrapStorageDriver(underlying storage.Driver[ledger.Store]) *openTelemetryStorageDriver {
 	return &openTelemetryStorageDriver{
-		StorageDriver: underlying,
+		Driver: underlying,
 	}
 }

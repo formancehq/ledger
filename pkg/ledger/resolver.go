@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
@@ -37,7 +38,7 @@ var DefaultResolverOptions = []ResolverOption{
 }
 
 type Resolver struct {
-	storageDriver     StorageDriver
+	storageDriver     storage.Driver[Store]
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
@@ -46,7 +47,7 @@ type Resolver struct {
 }
 
 func NewResolver(
-	storageFactory StorageDriver,
+	storageFactory storage.Driver[Store],
 	ledgerOptions []LedgerOption,
 	options ...ResolverOption,
 ) *Resolver {

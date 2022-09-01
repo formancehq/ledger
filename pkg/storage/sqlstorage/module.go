@@ -7,6 +7,7 @@ import (
 
 	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
 
@@ -69,15 +70,19 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 	default:
 		panic("Unsupported driver: " + cfg.StorageDriver)
 	}
-	options = append(options, fx.Provide(func(driver *Driver) ledger.StorageDriver {
+	options = append(options, fx.Provide(func(driver *Driver) storage.Driver[*Store] {
 		return driver
 	}))
-	options = append(options, fx.Invoke(func(driver ledger.StorageDriver, lifecycle fx.Lifecycle) error {
+	options = append(options, fx.Invoke(func(driver storage.Driver[*Store], lifecycle fx.Lifecycle) error {
 		lifecycle.Append(fx.Hook{
 			OnStart: driver.Initialize,
 			OnStop:  driver.Close,
 		})
 		return nil
 	}))
+	options = append(options, fx.Provide(fx.Annotate(
+		NewLedgerStorageDriverFromRawDriver,
+		fx.As(new(storage.Driver[ledger.Store])),
+	)))
 	return fx.Options(options...)
 }

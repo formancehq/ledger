@@ -15,6 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +27,7 @@ func withContainer(options ...fx.Option) {
 	done := make(chan struct{})
 	opts := append([]fx.Option{
 		fx.NopLogger,
-		ledgertesting.ProvideStorageDriver(),
+		ledgertesting.ProvideLedgerStorageDriver(),
 	}, options...)
 	opts = append(opts, fx.Invoke(func(lc fx.Lifecycle) {
 		lc.Append(fx.Hook{
@@ -57,7 +58,7 @@ func withContainer(options ...fx.Option) {
 }
 
 func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver ledger.StorageDriver) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()

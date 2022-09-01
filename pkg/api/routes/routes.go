@@ -9,6 +9,7 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
 
@@ -71,6 +72,12 @@ type Routes struct {
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
 	useScopes             UseScopes
+}
+
+func Transaction() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
+	}
 }
 
 func NewRoutes(
@@ -149,11 +156,11 @@ func (r *Routes) Engine() *gin.Engine {
 		// TransactionController
 		router.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
-		router.POST("/transactions", r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite))
-		router.POST("/transactions/batch", r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
+		router.POST("/transactions", Transaction(), r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite)).Use()
+		router.POST("/transactions/batch", Transaction(), r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
 		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
-		router.POST("/transactions/:txid/revert", r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
-		router.POST("/transactions/:txid/metadata", r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/revert", Transaction(), r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/metadata", Transaction(), r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
 
 		// BalanceController
 		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeAccountsRead))
@@ -164,7 +171,7 @@ func (r *Routes) Engine() *gin.Engine {
 		router.PUT("/mapping", r.wrapWithScopes(r.mappingController.PutMapping, ScopeMappingWrite))
 
 		// ScriptController
-		router.POST("/script", r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
+		router.POST("/script", Transaction(), r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
 	}
 
 	return engine

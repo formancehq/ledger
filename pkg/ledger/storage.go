@@ -305,14 +305,3 @@ func (b *BalancesQuery) WithPageSize(pageSize uint) *BalancesQuery {
 	b.PageSize = pageSize
 	return b
 }
-
-type StorageDriver interface {
-	Initialize(ctx context.Context) error
-	GetStore(ctx context.Context, name string, create bool) (Store, bool, error)
-	Close(ctx context.Context) error
-	List(ctx context.Context) ([]string, error)
-	DeleteStore(ctx context.Context, name string) error
-	Name() string
-	GetConfiguration(ctx context.Context, key string) (string, error)
-	InsertConfiguration(ctx context.Context, key, value string) error
-}

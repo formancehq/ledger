@@ -15,6 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	ledger2 "github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
@@ -54,7 +55,7 @@ func TestStore(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.ProvideStorageDriver(),
-				fx.Invoke(func(driver ledger2.StorageDriver, lc fx.Lifecycle) {
+				fx.Invoke(func(driver storage.Driver[*sqlstorage.Store], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							defer func() {
@@ -74,7 +75,7 @@ func TestStore(t *testing.T) {
 								return err
 							}
 
-							tf.fn(t, store.(*sqlstorage.Store))
+							tf.fn(t, store)
 							return nil
 						},
 					})
@@ -716,7 +717,7 @@ func TestInitializeStore(t *testing.T) {
 	driver, stopFn, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer stopFn()
-	defer func(driver ledger2.StorageDriver, ctx context.Context) {
+	defer func(driver storage.Driver[*sqlstorage.Store], ctx context.Context) {
 		require.NoError(t, driver.Close(ctx))
 	}(driver, context.Background())
 

@@ -17,6 +17,7 @@ import (
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
 	"github.com/spf13/viper"
@@ -163,7 +164,7 @@ func TestContainers(t *testing.T) {
 				v.Set(storagePostgresConnectionStringFlag, pgServer.ConnString())
 			},
 			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver ledger.StorageDriver, storageFactory ledger.StorageDriver) {
+				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver[ledger.Store], storageFactory storage.Driver[ledger.Store]) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							store, _, err := storageFactory.GetStore(ctx, "testing", true)

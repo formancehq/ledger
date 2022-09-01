@@ -8,6 +8,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
+	"github.com/numary/ledger/pkg/storage"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 )
@@ -40,7 +41,7 @@ func NewStorageDecorator(underlying ledger.Store, counter syncint64.Counter) *st
 }
 
 type openTelemetryStorageDriver struct {
-	ledger.StorageDriver
+	storage.Driver[ledger.Store]
 	meter               metric.Meter
 	transactionsCounter syncint64.Counter
 	once                sync.Once
@@ -57,7 +58,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
 	}
-	store, created, err := o.StorageDriver.GetStore(ctx, name, create)
+	store, created, err := o.Driver.GetStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}
@@ -65,12 +66,12 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 }
 
 func (o *openTelemetryStorageDriver) Close(ctx context.Context) error {
-	return o.StorageDriver.Close(ctx)
+	return o.Driver.Close(ctx)
 }
 
-func WrapStorageDriver(underlying ledger.StorageDriver, mp metric.MeterProvider) *openTelemetryStorageDriver {
+func WrapStorageDriver(underlying storage.Driver[ledger.Store], mp metric.MeterProvider) *openTelemetryStorageDriver {
 	return &openTelemetryStorageDriver{
-		StorageDriver: underlying,
-		meter:         mp.Meter(opentelemetry.StoreInstrumentationName),
+		Driver: underlying,
+		meter:  mp.Meter(opentelemetry.StoreInstrumentationName),
 	}
 }

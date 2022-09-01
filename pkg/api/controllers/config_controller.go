@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,10 +29,10 @@ type LedgerStorage struct {
 
 type ConfigController struct {
 	Version       string
-	StorageDriver ledger.StorageDriver
+	StorageDriver storage.Driver[ledger.Store]
 }
 
-func NewConfigController(version string, storageDriver ledger.StorageDriver) ConfigController {
+func NewConfigController(version string, storageDriver storage.Driver[ledger.Store]) ConfigController {
 	return ConfigController{
 		Version:       version,
 		StorageDriver: storageDriver,
