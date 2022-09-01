@@ -82,6 +82,8 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 				ret = sqlTx
 				storage.RegisterTransaction(ctx, sqlTx, func(ctx context.Context) error {
 					return sqlTx.Commit()
+				}, func(ctx context.Context) error {
+					return sqlTx.Rollback()
 				})
 			} else {
 				ret = storage.RegisteredTransaction(ctx).(*sql.Tx)
