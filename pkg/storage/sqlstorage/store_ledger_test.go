@@ -55,14 +55,14 @@ func TestStore(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.ProvideStorageDriver(),
-				fx.Invoke(func(driver storage.Driver[*sqlstorage.Store], lc fx.Lifecycle) {
+				fx.Invoke(func(driver *sqlstorage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							defer func() {
 								close(done)
 							}()
 							ledger := uuid.New()
-							store, _, err := driver.GetStore(ctx, ledger, true)
+							store, _, err := driver.GetLedgerStore(ctx, ledger, true)
 							if err != nil {
 								return err
 							}
@@ -724,7 +724,7 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	require.NoError(t, err)
 
-	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())

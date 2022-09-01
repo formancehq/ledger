@@ -110,7 +110,7 @@ func TestPostScriptPreview(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				store := internal.GetStore(t, driver, ctx)
+				store := internal.GetLedgerStore(t, driver, ctx)
 
 				t.Run("true", func(t *testing.T) {
 					values := url.Values{}
@@ -172,7 +172,7 @@ func TestPostScriptWithReference(t *testing.T) {
 				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
 				assert.Equal(t, reference, res.Transaction.Reference)
 
-				store := internal.GetStore(t, driver, ctx)
+				store := internal.GetLedgerStore(t, driver, ctx)
 				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 				assert.NoError(t, err)
 				assert.Len(t, cursor.Data, 1)

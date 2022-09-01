@@ -6,7 +6,6 @@ import (
 	"os"
 
 	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
-	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
@@ -80,9 +79,9 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		})
 		return nil
 	}))
-	options = append(options, fx.Provide(fx.Annotate(
+	options = append(options, fx.Provide(
 		NewLedgerStorageDriverFromRawDriver,
-		fx.As(new(storage.Driver[ledger.Store])),
-	)))
+		NewDefaultStorageDriverFromRawDriver,
+	))
 	return fx.Options(options...)
 }

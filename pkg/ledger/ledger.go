@@ -56,7 +56,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *Ledger) GetStore() Store {
+func (l *Ledger) GetLedgerStore() Store {
 	return l.store
 }
 

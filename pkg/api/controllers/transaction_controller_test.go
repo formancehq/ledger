@@ -449,7 +449,7 @@ func TestGetTransactions(t *testing.T) {
 						},
 					},
 				}
-				store := internal.GetStore(t, driver, ctx)
+				store := internal.GetLedgerStore(t, driver, ctx)
 				err := store.Commit(context.Background(), tx1, tx2, tx3)
 				require.NoError(t, err)
 
@@ -677,7 +677,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()
-				store := internal.GetStore(t, driver, context.Background())
+				store := internal.GetLedgerStore(t, driver, context.Background())
 
 				for i := 0; i < 3*controllers.MaxPageSize; i++ {
 					tx := core.ExpandedTransaction{
@@ -1171,7 +1171,7 @@ func TestTooManyClient(t *testing.T) {
 					return nil
 				}
 
-				store, _, err := driver.GetStore(context.Background(), "quickstart", true)
+				store, _, err := driver.GetLedgerStore(context.Background(), "quickstart", true)
 				assert.NoError(t, err)
 
 				// Grab all potential connections

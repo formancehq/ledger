@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
@@ -28,7 +27,7 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := viper.GetString("name")
@@ -36,7 +35,7 @@ func NewStorageInit() *cobra.Command {
 								return errors.New("name is empty")
 							}
 							fmt.Printf("Creating ledger '%s'...", name)
-							s, created, err := storageDriver.GetStore(ctx, name, true)
+							s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
 							if err != nil {
 								return err
 							}
@@ -72,10 +71,10 @@ func NewStorageList() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							ledgers, err := storageDriver.List(ctx)
+							ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
 							if err != nil {
 								return err
 							}
@@ -105,11 +104,11 @@ func NewStorageUpgrade() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
-							store, _, err := storageDriver.GetStore(ctx, name, false)
+							store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
 							if err != nil {
 								return err
 							}
@@ -171,7 +170,8 @@ func NewStorageScan() *cobra.Command {
 									continue
 								}
 								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
-								created, err := driver.Register(cmd.Context(), ledgerName)
+								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
+									Register(cmd.Context(), ledgerName)
 								if err != nil {
 									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
 									continue
@@ -215,7 +215,8 @@ func NewStorageScan() *cobra.Command {
 									continue
 								}
 								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
-								created, err := driver.Register(cmd.Context(), ledgerName)
+								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
+									Register(cmd.Context(), ledgerName)
 								if err != nil {
 									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
 									continue
@@ -246,12 +247,15 @@ func NewStorageDelete() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
-							err := storageDriver.DeleteStore(ctx, name)
+							store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
 							if err != nil {
+								return err
+							}
+							if err := store.Delete(ctx); err != nil {
 								return err
 							}
 							fmt.Println("Storage deleted!")

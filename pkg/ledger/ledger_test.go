@@ -62,7 +62,7 @@ func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption)
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()
-				store, _, err := storageDriver.GetStore(context.Background(), name, true)
+				store, _, err := storageDriver.GetLedgerStore(context.Background(), name, true)
 				if err != nil {
 					return err
 				}
@@ -444,7 +444,7 @@ func TestTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.GetStore().GetLastTransaction(context.Background())
+		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
@@ -457,7 +457,7 @@ func TestTransactionMetadata(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		tx, err = l.GetStore().GetLastTransaction(context.Background())
+		tx, err = l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a random metadata"]
@@ -485,7 +485,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.GetStore().GetLastTransaction(context.Background())
+		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a metadata"]
@@ -511,7 +511,7 @@ func TestGetTransaction(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		last, err := l.GetStore().GetLastTransaction(context.Background())
+		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		tx, err := l.GetTransaction(context.Background(), last.ID)
