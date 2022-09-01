@@ -2,8 +2,6 @@ package ledger
 
 import (
 	"context"
-
-	"github.com/numary/ledger/pkg/storage"
 )
 
 type Stats struct {
@@ -14,12 +12,12 @@ type Stats struct {
 func (l *Ledger) Stats(ctx context.Context) (Stats, error) {
 	var stats Stats
 
-	transactions, err := l.store.CountTransactions(ctx, storage.TransactionsQuery{})
+	transactions, err := l.store.CountTransactions(ctx, TransactionsQuery{})
 	if err != nil {
 		return stats, err
 	}
 
-	accounts, err := l.store.CountAccounts(ctx, storage.AccountsQuery{})
+	accounts, err := l.store.CountAccounts(ctx, AccountsQuery{})
 	if err != nil {
 		return stats, err
 	}

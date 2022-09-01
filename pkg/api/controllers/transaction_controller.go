@@ -13,7 +13,6 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
@@ -26,7 +25,7 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	txQuery := storage.NewTransactionsQuery().
+	txQuery := ledger.NewTransactionsQuery().
 		WithReferenceFilter(c.Query("reference")).
 		WithAccountFilter(c.Query("account")).
 		WithSourceFilter(c.Query("source")).
@@ -48,7 +47,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.ExpandedTransaction]
-	var txQuery *storage.TransactionsQuery
+	var txQuery *ledger.TransactionsQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
@@ -73,7 +72,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		txQuery = storage.NewTransactionsQuery().
+		txQuery = ledger.NewTransactionsQuery().
 			WithAfterTxID(token.AfterTxID).
 			WithReferenceFilter(token.ReferenceFilter).
 			WithAccountFilter(token.AccountFilter).
@@ -116,7 +115,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		txQuery = storage.NewTransactionsQuery().
+		txQuery = ledger.NewTransactionsQuery().
 			WithAfterTxID(afterTxIDParsed).
 			WithReferenceFilter(c.Query("reference")).
 			WithAccountFilter(c.Query("account")).

@@ -1,4 +1,4 @@
-package ledger
+package ledger_test
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLedger_processTx(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
 			worldTotoUSD := core.NewMonetaryInt(43)
 			worldAliceUSD := core.NewMonetaryInt(98)
@@ -133,7 +134,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.processTx(context.Background(), txsData)
+				res, err := l.ProcessTx(context.Background(), txsData)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -179,7 +180,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.processTx(context.Background(), txsData)
+				res, err := l.ProcessTx(context.Background(), txsData)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -293,9 +294,9 @@ func TestLedger_processTx(t *testing.T) {
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.processTx(context.Background(), []core.TransactionData{})
+			result, err := l.ProcessTx(context.Background(), []core.TransactionData{})
 			assert.NoError(t, err)
-			assert.Equal(t, &CommitResult{
+			assert.Equal(t, &ledger.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
 				PostCommitVolumes:     core.AccountsAssetsVolumes{},
 				GeneratedTransactions: []core.ExpandedTransaction{},
@@ -304,7 +305,7 @@ func TestLedger_processTx(t *testing.T) {
 
 		t.Run("date in the past", func(t *testing.T) {
 			now := time.Now()
-			require.NoError(t, l.store.Commit(context.Background(), core.ExpandedTransaction{
+			require.NoError(t, l.GetStore().Commit(context.Background(), core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
@@ -313,7 +314,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.processTx(context.Background(), []core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), []core.TransactionData{
 				{
 					Postings: []core.Posting{{
 						Source:      "world",
@@ -326,13 +327,13 @@ func TestLedger_processTx(t *testing.T) {
 			})
 
 			assert.Error(t, err)
-			assert.True(t, IsValidationError(err))
+			assert.True(t, ledger.IsValidationError(err))
 		})
 	})
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("date in the past (allowed by policy)", func(t *testing.T) {
 			now := time.Now()
-			require.NoError(t, l.store.Commit(context.Background(), core.ExpandedTransaction{
+			require.NoError(t, l.GetStore().Commit(context.Background(), core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
@@ -341,7 +342,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.processTx(context.Background(), []core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), []core.TransactionData{
 				{
 					Postings: []core.Posting{{
 						Source:      "world",
@@ -356,5 +357,5 @@ func TestLedger_processTx(t *testing.T) {
 			assert.NoError(t, err)
 
 		})
-	}, WithPastTimestamps)
+	}, ledger.WithPastTimestamps)
 }

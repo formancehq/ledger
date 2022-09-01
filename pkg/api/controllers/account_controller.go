@@ -11,7 +11,6 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
@@ -24,7 +23,7 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) CountAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	accountsQuery := storage.NewAccountsQuery().
+	accountsQuery := ledger.NewAccountsQuery().
 		WithAddressFilter(c.Query("address")).
 		WithMetadataFilter(c.QueryMap("metadata"))
 
@@ -41,7 +40,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	var cursor sharedapi.Cursor[core.Account]
-	var accountsQuery *storage.AccountsQuery
+	var accountsQuery *ledger.AccountsQuery
 	var err error
 
 	if c.Query("pagination_token") != "" {
@@ -70,7 +69,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		accountsQuery = storage.NewAccountsQuery().
+		accountsQuery = ledger.NewAccountsQuery().
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
 			WithAddressFilter(token.AddressRegexpFilter).
@@ -89,10 +88,10 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		var balanceOperator = storage.DefaultBalanceOperator
+		var balanceOperator = ledger.DefaultBalanceOperator
 		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
 			var ok bool
-			if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
+			if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {
 				ResponseError(c, ledger.NewValidationError(
 					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
 				return
@@ -105,7 +104,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		accountsQuery = storage.NewAccountsQuery().
+		accountsQuery = ledger.NewAccountsQuery().
 			WithAfterAddress(c.Query("after")).
 			WithAddressFilter(c.Query("address")).
 			WithBalanceFilter(balance).

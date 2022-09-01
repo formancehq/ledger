@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
 )
 
 type transactionVolumeAggregator struct {
@@ -14,15 +13,15 @@ type transactionVolumeAggregator struct {
 	previousTx  *transactionVolumeAggregator
 }
 
-func (tva *transactionVolumeAggregator) postCommitVolumes() core.AccountsAssetsVolumes {
+func (tva *transactionVolumeAggregator) PostCommitVolumes() core.AccountsAssetsVolumes {
 	return tva.postVolumes
 }
 
-func (tva *transactionVolumeAggregator) preCommitVolumes() core.AccountsAssetsVolumes {
+func (tva *transactionVolumeAggregator) PreCommitVolumes() core.AccountsAssetsVolumes {
 	return tva.preVolumes
 }
 
-func (tva *transactionVolumeAggregator) transfer(
+func (tva *transactionVolumeAggregator) Transfer(
 	ctx context.Context,
 	from, to, asset string,
 	amount *core.MonetaryInt,
@@ -81,11 +80,11 @@ func (tva *transactionVolumeAggregator) transfer(
 }
 
 type volumeAggregator struct {
-	store storage.Store
+	store Store
 	txs   []*transactionVolumeAggregator
 }
 
-func (agg *volumeAggregator) nextTx() *transactionVolumeAggregator {
+func (agg *volumeAggregator) NextTx() *transactionVolumeAggregator {
 	var previousTx *transactionVolumeAggregator
 	if len(agg.txs) > 0 {
 		previousTx = agg.txs[len(agg.txs)-1]
@@ -98,11 +97,11 @@ func (agg *volumeAggregator) nextTx() *transactionVolumeAggregator {
 	return tva
 }
 
-func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AccountsAssetsVolumes {
+func (agg *volumeAggregator) AggregatedPostCommitVolumes() core.AccountsAssetsVolumes {
 	ret := core.AccountsAssetsVolumes{}
 	for i := len(agg.txs) - 1; i >= 0; i-- {
 		tx := agg.txs[i]
-		postVolumes := tx.postCommitVolumes()
+		postVolumes := tx.PostCommitVolumes()
 		for account, volumes := range postVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
@@ -117,11 +116,11 @@ func (agg *volumeAggregator) aggregatedPostCommitVolumes() core.AccountsAssetsVo
 	return ret
 }
 
-func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AccountsAssetsVolumes {
+func (agg *volumeAggregator) AggregatedPreCommitVolumes() core.AccountsAssetsVolumes {
 	ret := core.AccountsAssetsVolumes{}
 	for i := 0; i < len(agg.txs); i++ {
 		tx := agg.txs[i]
-		preVolumes := tx.preCommitVolumes()
+		preVolumes := tx.PreCommitVolumes()
 		for account, volumes := range preVolumes {
 			for asset, volume := range volumes {
 				if _, ok := ret[account]; !ok {
@@ -136,7 +135,7 @@ func (agg *volumeAggregator) aggregatedPreCommitVolumes() core.AccountsAssetsVol
 	return ret
 }
 
-func newVolumeAggregator(store storage.Store) *volumeAggregator {
+func NewVolumeAggregator(store Store) *volumeAggregator {
 	return &volumeAggregator{
 		store: store,
 	}

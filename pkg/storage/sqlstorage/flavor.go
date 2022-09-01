@@ -5,7 +5,7 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/jackc/pgconn"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
@@ -71,9 +71,9 @@ func init() {
 			case *pgconn.PgError:
 				switch eerr.Code {
 				case "23505":
-					return storage.NewError(storage.ConstraintFailed, err)
+					return ledger.NewError(ledger.ConstraintFailed, err)
 				case "53300":
-					return storage.NewError(storage.TooManyClient, err)
+					return ledger.NewError(ledger.TooManyClient, err)
 				}
 			}
 			return err

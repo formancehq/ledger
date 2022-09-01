@@ -5,12 +5,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 )
 
 const (
 	MaxPageSize     = 1000
-	DefaultPageSize = storage.QueryDefaultPageSize
+	DefaultPageSize = ledger.QueryDefaultPageSize
 )
 
 var (

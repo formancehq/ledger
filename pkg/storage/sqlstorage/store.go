@@ -6,7 +6,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
 const (
@@ -40,7 +40,7 @@ func (s *API) Name() string {
 	return s.schema.Name()
 }
 
-var _ storage.API = &API{}
+var _ ledger.API = &API{}
 
 type Store struct {
 	*API
@@ -78,7 +78,7 @@ func (s *Store) withSqlTx(ctx context.Context, callback func(tx *sql.Tx) error) 
 	return s.error(tx.Commit())
 }
 
-func (s *Store) WithTX(ctx context.Context, callback func(api storage.API) error) error {
+func (s *Store) WithTX(ctx context.Context, callback func(api ledger.API) error) error {
 	return s.withSqlTx(ctx, func(tx *sql.Tx) error {
 		return callback(NewAPI(s.schema, tx))
 	})
@@ -92,4 +92,4 @@ func NewStore(schema Schema, onClose func(ctx context.Context) error) *Store {
 	}
 }
 
-var _ storage.Store = &Store{}
+var _ ledger.Store = &Store{}

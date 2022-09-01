@@ -15,6 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
@@ -345,7 +346,7 @@ func TestGetAccounts(t *testing.T) {
 
 func TestGetAccountsWithPageSize(t *testing.T) {
 	now := time.Now()
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				store := internal.GetStore(t, driver, context.Background())

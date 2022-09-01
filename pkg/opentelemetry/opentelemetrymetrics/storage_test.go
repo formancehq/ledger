@@ -5,14 +5,14 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 )
 
 func TestWrapStorageFactory(t *testing.T) {
-	f := WrapStorageDriver(storage.NoOpDriver(), metric.NewNoopMeterProvider())
+	f := WrapStorageDriver(noopstorage.NoOpDriver(), metric.NewNoopMeterProvider())
 	store, _, err := f.GetStore(context.Background(), "bar", true)
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
@@ -25,7 +25,7 @@ func TestNewStorageDecorator(t *testing.T) {
 	transactionsCounter, err := transactionsCounter(m)
 	assert.NoError(t, err)
 
-	store := NewStorageDecorator(storage.NoOpStore(), transactionsCounter)
+	store := NewStorageDecorator(noopstorage.NoOpStore(), transactionsCounter)
 	assert.NotNil(t, store)
 	assert.IsType(t, new(storageDecorator), store)
 

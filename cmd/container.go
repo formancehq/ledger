@@ -189,7 +189,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	)
 
 	options = append(options,
-		fx.Decorate(fx.Annotate(func(driver storage.Driver, mp metric.MeterProvider) storage.Driver {
+		fx.Decorate(fx.Annotate(func(driver storage.Driver[ledger.Store], mp metric.MeterProvider) storage.Driver[ledger.Store] {
 			if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 				driver = opentelemetrytraces.WrapStorageDriver(driver)
 			}

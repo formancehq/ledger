@@ -5,11 +5,10 @@ import (
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) ProcessTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -24,7 +23,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 		nextTxId = lastTx.ID + 1
 	}
 
-	volumeAggregator := newVolumeAggregator(l.store)
+	volumeAggregator := NewVolumeAggregator(l.store)
 
 	generatedTxs := make([]core.ExpandedTransaction, 0)
 	accounts := make(map[string]*core.Account, 0)
@@ -50,7 +49,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if _, ok := usedReferences[t.Reference]; ok {
 				return nil, NewConflictError()
 			}
-			cursor, err := l.store.GetTransactions(ctx, *storage.NewTransactionsQuery().WithReferenceFilter(t.Reference))
+			cursor, err := l.store.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(t.Reference))
 			if err != nil {
 				return nil, err
 			}
@@ -66,7 +65,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
-		txVolumeAggregator := volumeAggregator.nextTx()
+		txVolumeAggregator := volumeAggregator.NextTx()
 
 		for _, p := range t.Postings {
 			if p.Amount.Ltz() {
@@ -81,13 +80,13 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			if !core.AssetIsValid(p.Asset) {
 				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
+			err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
 			if err != nil {
 				return nil, NewTransactionCommitError(i, err)
 			}
 		}
 
-		for addr, volumes := range txVolumeAggregator.postCommitVolumes() {
+		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
 			for asset, volume := range volumes {
 				if addr == "world" {
 					continue
@@ -117,8 +116,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 				TransactionData: t,
 				ID:              nextTxId,
 			},
-			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
-			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
+			PostCommitVolumes: txVolumeAggregator.PostCommitVolumes(),
+			PreCommitVolumes:  txVolumeAggregator.PreCommitVolumes(),
 		}
 		lastTx = &tx
 		generatedTxs = append(generatedTxs, tx)
@@ -126,8 +125,8 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 	}
 
 	return &CommitResult{
-		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
-		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
+		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
+		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
 	}, nil
 }
