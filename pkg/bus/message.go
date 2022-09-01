@@ -1,7 +1,6 @@
 package bus
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
@@ -18,11 +17,11 @@ const (
 )
 
 type EventMessage struct {
-	Date    time.Time       `json:"date"`
-	App     string          `json:"app"`
-	Version string          `json:"version"`
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
+	Date    time.Time `json:"date"`
+	App     string    `json:"app"`
+	Version string    `json:"version"`
+	Type    string    `json:"type"`
+	Payload any       `json:"payload"`
 	// TODO: deprecated in future version
 	Ledger string `json:"ledger"`
 }
@@ -36,18 +35,13 @@ type CommittedTransactions struct {
 	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
 }
 
-func NewEventCommittedTransactions(txs CommittedTransactions) EventMessage {
-	payload, err := json.Marshal(txs)
-	if err != nil {
-		panic(err)
-	}
-
+func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
 	return EventMessage{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeCommittedTransactions,
-		Payload: payload,
+		Payload: txs,
 		Ledger:  txs.Ledger,
 	}
 }
@@ -59,18 +53,13 @@ type SavedMetadata struct {
 	Metadata   core.Metadata `json:"metadata"`
 }
 
-func NewEventSavedMetadata(metadata SavedMetadata) EventMessage {
-	payload, err := json.Marshal(metadata)
-	if err != nil {
-		panic(err)
-	}
-
+func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
 	return EventMessage{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeSavedMetadata,
-		Payload: payload,
+		Payload: metadata,
 		Ledger:  metadata.Ledger,
 	}
 }
@@ -80,18 +69,13 @@ type UpdatedMapping struct {
 	Mapping core.Mapping `json:"mapping"`
 }
 
-func NewEventUpdatedMapping(mapping UpdatedMapping) EventMessage {
-	payload, err := json.Marshal(mapping)
-	if err != nil {
-		panic(err)
-	}
-
+func newEventUpdatedMapping(mapping UpdatedMapping) EventMessage {
 	return EventMessage{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeUpdatedMapping,
-		Payload: payload,
+		Payload: mapping,
 		Ledger:  mapping.Ledger,
 	}
 }
@@ -102,18 +86,13 @@ type RevertedTransaction struct {
 	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
 }
 
-func NewEventRevertedTransaction(tx RevertedTransaction) EventMessage {
-	payload, err := json.Marshal(tx)
-	if err != nil {
-		panic(err)
-	}
-
+func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
 	return EventMessage{
 		Date:    time.Now().UTC(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeRevertedTransaction,
-		Payload: payload,
+		Payload: tx,
 		Ledger:  tx.Ledger,
 	}
 }
