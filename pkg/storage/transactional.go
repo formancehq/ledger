@@ -9,6 +9,7 @@ type contextHolder struct {
 	transactional bool
 	transaction   any
 	commit        func(ctx context.Context) error
+	rollback      func(ctx context.Context) error
 }
 
 type contextHolderKeyStruct struct{}
@@ -35,13 +36,15 @@ func RegisteredTransaction(ctx context.Context) any {
 	return holder.transaction
 }
 
-func RegisterTransaction(ctx context.Context, transaction any, commitFn func(ctx context.Context) error) {
+func RegisterTransaction(ctx context.Context, transaction any,
+	commitFn func(ctx context.Context) error, rollbackFn func(ctx context.Context) error) {
 	holder := getContextHolder(ctx)
 	if holder == nil {
 		panic("no context holder")
 	}
 	holder.transaction = transaction
 	holder.commit = commitFn
+	holder.rollback = rollbackFn
 }
 
 func IsTransactionRegistered(ctx context.Context) bool {
@@ -67,6 +70,17 @@ func TransactionalContext(ctx context.Context) context.Context {
 }
 
 func CommitTransaction(ctx context.Context) error {
+	holder := getContextHolder(ctx)
+	if holder == nil {
+		panic("context holder is nil")
+	}
+	if holder.transaction == nil {
+		return errors.New("transaction not initialized")
+	}
+	return holder.commit(ctx)
+}
+
+func RollbackTransaction(ctx context.Context) error {
 	holder := getContextHolder(ctx)
 	if holder == nil {
 		panic("context holder is nil")

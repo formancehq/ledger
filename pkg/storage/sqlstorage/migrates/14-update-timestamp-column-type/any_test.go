@@ -18,10 +18,10 @@ func TestMigrate14(t *testing.T) {
 	defer closeFunc()
 
 	require.NoError(t, driver.Initialize(context.Background()))
-	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
+	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
-	schema := store.(*sqlstorage.Store).Schema()
+	schema := store.Schema()
 
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
