@@ -1,6 +1,9 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
+
+dotenv:
+- .env
 
 vars:
   PKG: "./..."
@@ -17,11 +20,11 @@ tasks:
 
   lint:
     cmds:
-      - golangci-lint run -v --fix
+      - golangci-lint run --fix {{if eq .VERBOSE "true"}}-v{{end}}
 
   tests:
     cmds:
-      - go test {{.TAGS}} -v -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
 
   tests:local:
     cmds:
@@ -31,7 +34,7 @@ tasks:
   tests:local:sqlite:
     cmds:
       - >
-        go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -42,7 +45,7 @@ tasks:
     deps: [postgres]
     cmds:
       - >
-        go test {{.TAGS}} -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
         -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -54,7 +57,7 @@ tasks:
 
   bench:
     cmds:
-      - go test {{.TAGS}} -run=XXX -bench=. {{.PKG}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -run=XXX -bench=. {{.PKG}}
 
   print:coverage:
     cmds:
@@ -88,7 +91,7 @@ tasks:
     desc: Extract templates
     dir: ./sdk
     preconditions:
-      - sh: "[ \"{{.CLI_ARGS}}\" != \"\" ]"
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
         msg: Please specify generator as first cli arg (ie "task template -- go")
     cmds:
       - >
@@ -99,7 +102,7 @@ tasks:
     desc: Generate client code
     dir: ./sdk
     preconditions:
-      - sh: "[ \"{{.CLI_ARGS}}\" != \"\" ]"
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
         msg: Please specify generator as first cli arg (ie "task generate -- go")
     cmds:
       - wget https://raw.githubusercontent.com/numary/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
@@ -118,7 +121,7 @@ tasks:
     desc: Test client code
     dir: ./sdk
     preconditions:
-      - sh: "[ \"{{.CLI_ARGS}}\" != \"\" ]"
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
         msg: Please specify generator as first cli arg (ie "task test -- go")
       - sh: "[[ -e sdks/{{.CLI_ARGS}}/Taskfile.yml ]]"
         msg: "Not Taskfile found. You have to create a taskfile in ./sdks/{{.CLI_ARGS}}/ with a 'test' task"
@@ -138,31 +141,31 @@ tasks:
   goreleaser:test:rpm:
     desc: Tests rpm packages
     vars:
-      rpm: 'rpm --nodeps -ivh'
+      rpm: "rpm --nodeps -ivh"
     cmds:
       - task: goreleaser:test:pkg
         vars:
-          Platform: 'amd64'
+          Platform: "amd64"
           Image: fedora
-          Cmd: '{{.rpm}} numary_*_linux_amd64.rpm'
+          Cmd: "{{.rpm}} numary_*_linux_amd64.rpm"
       - task: goreleaser:test:pkg
         vars:
-          Platform: 'arm64'
+          Platform: "arm64"
           Image: fedora
-          Cmd: '{{.rpm}} numary_*_linux_arm64.rpm'
+          Cmd: "{{.rpm}} numary_*_linux_arm64.rpm"
 
   goreleaser:test:deb:
     desc: Tests deb packages
     vars:
-      dpkg: 'dpkg --ignore-depends=git -i'
+      dpkg: "dpkg --ignore-depends=git -i"
     cmds:
       - task: goreleaser:test:pkg
         vars:
-          Platform: 'amd64'
+          Platform: "amd64"
           Image: ubuntu
-          Cmd: '{{.dpkg}} numary_*_linux_amd64.deb'
+          Cmd: "{{.dpkg}} numary_*_linux_amd64.deb"
       - task: goreleaser:test:pkg
         vars:
-          Platform: 'arm64'
+          Platform: "arm64"
           Image: ubuntu
-          Cmd: '{{.dpkg}} numary_*_linux_arm64.deb'
+          Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"

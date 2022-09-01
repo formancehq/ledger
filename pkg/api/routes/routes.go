@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedauth"
+	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
@@ -59,7 +60,7 @@ var AllScopes = []string{
 type Routes struct {
 	resolver              *ledger.Resolver
 	ledgerMiddleware      middlewares.LedgerMiddleware
-	healthController      controllers.HealthController
+	healthController      *sharedhealth.HealthController
 	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
@@ -84,7 +85,7 @@ func NewRoutes(
 	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
-	healthController controllers.HealthController,
+	healthController *sharedhealth.HealthController,
 	useScopes UseScopes,
 ) *Routes {
 	return &Routes{
@@ -126,7 +127,9 @@ func (r *Routes) Engine() *gin.Engine {
 
 	engine.Use(r.globalMiddlewares...)
 
-	engine.GET("/_health", r.healthController.Check)
+	engine.GET("/_health", func(context *gin.Context) {
+		r.healthController.Check(context.Writer, context.Request)
+	})
 	engine.GET("/swagger.yaml", r.configController.GetDocsAsYaml)
 	engine.GET("/swagger.json", r.configController.GetDocsAsJSON)
 

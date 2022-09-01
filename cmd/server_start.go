@@ -7,6 +7,7 @@ import (
 
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -23,7 +24,7 @@ func NewServerStart() *cobra.Command {
 			if viper.GetBool(debugFlag) {
 				l.Level = logrus.DebugLevel
 			}
-			if viper.GetBool(otelTracesFlag) {
+			if viper.GetBool(sharedotlptraces.OtelTracesFlag) {
 				l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
 					logrus.PanicLevel,
 					logrus.FatalLevel,

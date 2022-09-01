@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
@@ -55,8 +56,8 @@ func TestContainers(t *testing.T) {
 			name: "default-with-opentelemetry-traces-on-stdout",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelTracesFlag, true)
-				v.Set(otelTracesExporterFlag, "stdout")
+				v.Set(sharedotlptraces.OtelTracesFlag, true)
+				v.Set(sharedotlptraces.OtelTracesExporterFlag, "stdout")
 			},
 			options: []fx.Option{
 				fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
@@ -90,9 +91,9 @@ func TestContainers(t *testing.T) {
 			name: "default-with-opentelemetry-traces-on-stdout-and-batch",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelTracesFlag, true)
-				v.Set(otelTracesExporterFlag, "stdout")
-				v.Set(otelTracesBatchFlag, true)
+				v.Set(sharedotlptraces.OtelTracesFlag, true)
+				v.Set(sharedotlptraces.OtelTracesExporterFlag, "stdout")
+				v.Set(sharedotlptraces.OtelTracesBatchFlag, true)
 			},
 			options: []fx.Option{
 				fx.Invoke(fx.Annotate(func(lc fx.Lifecycle, t *testing.T, exp trace.SpanExporter, options ...trace.TracerProviderOption) {
@@ -128,32 +129,32 @@ func TestContainers(t *testing.T) {
 			name: "default-with-opentelemetry-traces-on-otlp",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelTracesFlag, true)
-				v.Set(otelTracesExporterFlag, "otlp")
+				v.Set(sharedotlptraces.OtelTracesFlag, true)
+				v.Set(sharedotlptraces.OtelTracesExporterFlag, "otlp")
 			},
 		},
 		{
 			name: "default-with-opentelemetry-traces-on-jaeger",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelTracesFlag, true)
-				v.Set(otelTracesExporterFlag, "jaeger")
+				v.Set(sharedotlptraces.OtelTracesFlag, true)
+				v.Set(sharedotlptraces.OtelTracesExporterFlag, "jaeger")
 			},
 		},
 		{
 			name: "default-with-opentelemetry-metrics-on-noop",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelMetricsFlag, true)
-				v.Set(otelMetricsExporterFlag, "noop")
+				v.Set(sharedotlpmetrics.OtelMetricsFlag, true)
+				v.Set(sharedotlpmetrics.OtelMetricsExporterFlag, "noop")
 			},
 		},
 		{
 			name: "default-with-opentelemetry-metrics-on-otlp",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(otelMetricsFlag, true)
-				v.Set(otelMetricsExporterFlag, "otlp")
+				v.Set(sharedotlpmetrics.OtelMetricsFlag, true)
+				v.Set(sharedotlpmetrics.OtelMetricsExporterFlag, "otlp")
 			},
 		},
 		{

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -43,5 +44,6 @@ func Module(cfg Config) fx.Option {
 		controllers.Module,
 		fx.Provide(NewAPI),
 		fx.Supply(routes.UseScopes(cfg.UseScopes)),
+		sharedhealth.Module(),
 	)
 }

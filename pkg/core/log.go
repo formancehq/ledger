@@ -1,11 +1,10 @@
 package core
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
-
-	json "github.com/gibson042/canonicaljson-go"
 )
 
 const SetMetadataType = "SET_METADATA"
@@ -111,5 +110,71 @@ func HydrateLog(_type string, data string) (interface{}, error) {
 		return sm, nil
 	default:
 		panic("unknown type " + _type)
+	}
+}
+
+type Accounts map[string]Account
+
+func (a Accounts) ensureExists(accounts ...string) {
+	for _, account := range accounts {
+		_, ok := a[account]
+		if !ok {
+			a[account] = Account{
+				Address:  account,
+				Metadata: Metadata{},
+			}
+		}
+	}
+}
+
+type LogProcessor struct {
+	Transactions []*ExpandedTransaction
+	Accounts     Accounts
+	Volumes      AccountsAssetsVolumes
+}
+
+func (m *LogProcessor) ProcessNextLog(logs ...Log) {
+	for _, log := range logs {
+		switch log.Type {
+		case NewTransactionType:
+			tx := ExpandedTransaction{
+				Transaction:       log.Data.(Transaction),
+				PreCommitVolumes:  AccountsAssetsVolumes{},
+				PostCommitVolumes: AccountsAssetsVolumes{},
+			}
+			m.Transactions = append(m.Transactions, &tx)
+			for _, posting := range tx.Postings {
+				tx.PreCommitVolumes.SetVolumes(posting.Source, posting.Asset, m.Volumes.GetVolumes(posting.Source, posting.Asset))
+				tx.PreCommitVolumes.SetVolumes(posting.Destination, posting.Asset, m.Volumes.GetVolumes(posting.Destination, posting.Asset))
+			}
+			for _, posting := range tx.Postings {
+				m.Accounts.ensureExists(posting.Source, posting.Destination)
+				m.Volumes.AddOutput(posting.Source, posting.Asset, posting.Amount)
+				m.Volumes.AddInput(posting.Destination, posting.Asset, posting.Amount)
+			}
+			for _, posting := range tx.Postings {
+				tx.PostCommitVolumes.SetVolumes(posting.Source, posting.Asset, m.Volumes.GetVolumes(posting.Source, posting.Asset))
+				tx.PostCommitVolumes.SetVolumes(posting.Destination, posting.Asset, m.Volumes.GetVolumes(posting.Destination, posting.Asset))
+			}
+		case SetMetadataType:
+			setMetadata := log.Data.(SetMetadata)
+			switch setMetadata.TargetType {
+			case MetaTargetTypeAccount:
+				account := setMetadata.TargetID.(string)
+				m.Accounts.ensureExists(account)
+				m.Accounts[account].Metadata.Merge(setMetadata.Metadata)
+			case MetaTargetTypeTransaction:
+				id := setMetadata.TargetID.(int)
+				m.Transactions[id].Metadata.Merge(setMetadata.Metadata)
+			}
+		}
+	}
+}
+
+func NewLogProcessor() *LogProcessor {
+	return &LogProcessor{
+		Transactions: make([]*ExpandedTransaction, 0),
+		Accounts:     Accounts{},
+		Volumes:      AccountsAssetsVolumes{},
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -17,8 +16,8 @@ import (
 	"github.com/numary/go-libs/sharedauth"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
-	"github.com/numary/go-libs/sharedotlp/sharedotlpmetrics"
-	"github.com/numary/go-libs/sharedotlp/sharedotlptraces"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/go-libs/sharedpublish"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
@@ -113,46 +112,11 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	// Handle OpenTelemetry
-	if v.GetBool(otelTracesFlag) {
-		options = append(options, sharedotlptraces.TracesModule(sharedotlptraces.ModuleConfig{
-			Batch:    v.GetBool(otelTracesBatchFlag),
-			Exporter: v.GetString(otelTracesExporterFlag),
-			JaegerConfig: func() *sharedotlptraces.JaegerConfig {
-				if v.GetString(otelTracesExporterFlag) != sharedotlptraces.JaegerExporter {
-					return nil
-				}
-				return &sharedotlptraces.JaegerConfig{
-					Endpoint: v.GetString(otelTracesExporterJaegerEndpointFlag),
-					User:     v.GetString(otelTracesExporterJaegerUserFlag),
-					Password: v.GetString(otelTracesExporterJaegerPasswordFlag),
-				}
-			}(),
-			OTLPConfig: func() *sharedotlptraces.OTLPConfig {
-				if v.GetString(otelTracesExporterFlag) != sharedotlptraces.OTLPExporter {
-					return nil
-				}
-				return &sharedotlptraces.OTLPConfig{
-					Mode:     v.GetString(otelTracesExporterOTLPModeFlag),
-					Endpoint: v.GetString(otelTracesExporterOTLPEndpointFlag),
-					Insecure: v.GetBool(otelTracesExporterOTLPInsecureFlag),
-				}
-			}(),
-		}))
+	if m := sharedotlptraces.CLITracesModule(v); m != nil {
+		options = append(options, m)
 	}
-	if v.GetBool(otelMetricsFlag) {
-		options = append(options, sharedotlpmetrics.MetricsModule(sharedotlpmetrics.MetricsModuleConfig{
-			Exporter: v.GetString(otelMetricsExporterFlag),
-			OTLPConfig: func() *sharedotlpmetrics.OTLPMetricsConfig {
-				if v.GetString(otelMetricsExporterFlag) != sharedotlpmetrics.OTLPMetricsExporter {
-					return nil
-				}
-				return &sharedotlpmetrics.OTLPMetricsConfig{
-					Mode:     v.GetString(otelMetricsExporterOTLPModeFlag),
-					Endpoint: v.GetString(otelMetricsExporterOTLPEndpointFlag),
-					Insecure: v.GetBool(otelMetricsExporterOTLPInsecureFlag),
-				}
-			}(),
-		}))
+	if m := sharedotlpmetrics.CLIMetricsModule(v); m != nil {
+		options = append(options, m)
 	}
 
 	switch v.GetString(lockStrategyFlag) {
@@ -226,10 +190,10 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 
 	options = append(options,
 		fx.Decorate(fx.Annotate(func(driver storage.Driver, mp metric.MeterProvider) storage.Driver {
-			if v.GetBool(otelTracesFlag) {
+			if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 				driver = opentelemetrytraces.WrapStorageDriver(driver)
 			}
-			if v.GetBool(otelMetricsFlag) {
+			if v.GetBool(sharedotlpmetrics.OtelMetricsFlag) {
 				driver = opentelemetrymetrics.WrapStorageDriver(driver, mp)
 			}
 			return driver
@@ -280,7 +244,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		cc.AddAllowHeaders("authorization")
 
 		res = append(res, cors.New(cc))
-		if v.GetBool(otelTracesFlag) {
+		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
 			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
 		} else {
 			res = append(res, func(context *gin.Context) {
@@ -292,8 +256,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}
 		res = append(res, middlewares.Log())
 		var writer io.Writer = os.Stderr
-		if v.GetBool(otelTracesFlag) {
-			writer = ioutil.Discard
+		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
+			writer = io.Discard
 			res = append(res, opentelemetrytraces.Middleware())
 		}
 		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {

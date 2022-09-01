@@ -3,55 +3,43 @@ module github.com/numary/ledger
 go 1.18
 
 require (
-	github.com/gin-contrib/cors v1.3.1
-	github.com/gin-gonic/gin v1.7.7
-	github.com/google/go-cmp v0.5.8
-	github.com/huandu/go-sqlbuilder v1.13.0
-	github.com/jackc/pgconn v1.10.1
-	github.com/jackc/pgx/v4 v4.14.1
-	github.com/mattn/go-sqlite3 v1.14.9
-	github.com/numary/machine v1.2.0
-	github.com/ory/dockertest/v3 v3.8.1
-	github.com/pborman/uuid v1.2.1
-	github.com/pkg/errors v0.9.1
-	github.com/sirupsen/logrus v1.9.0
-	github.com/spf13/cobra v1.5.0
-	github.com/spf13/viper v1.12.0
-	github.com/stretchr/testify v1.8.0
-	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.28.0
-	go.opentelemetry.io/otel v1.9.0
-	go.opentelemetry.io/otel/exporters/jaeger v1.9.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.31.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.31.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.31.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.9.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.9.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.9.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.9.0 // indirect
-	go.opentelemetry.io/otel/metric v0.31.0
-	go.opentelemetry.io/otel/sdk v1.9.0
-	go.opentelemetry.io/otel/sdk/metric v0.31.0 // indirect
-	go.opentelemetry.io/otel/trace v1.9.0
-	go.uber.org/fx v1.18.1
-)
-
-require (
 	github.com/Masterminds/semver/v3 v3.1.1
 	github.com/Shopify/sarama v1.36.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
-	github.com/gibson042/canonicaljson-go v1.0.3
+	github.com/gin-contrib/cors v1.3.1
+	github.com/gin-gonic/gin v1.7.7
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/google/go-cmp v0.5.8
+	github.com/huandu/go-sqlbuilder v1.13.0
+	github.com/jackc/pgconn v1.10.1
+	github.com/jackc/pgx/v4 v4.14.1
 	github.com/lib/pq v1.10.5
+	github.com/mattn/go-sqlite3 v1.14.9
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/numary/go-libs v1.0.0
-	github.com/numary/go-libs/sharedotlp v0.0.0-20220801164020-fc3e3280ca13
+	github.com/numary/go-libs v1.0.1
+	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
+	github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81
+	github.com/numary/machine v1.2.1-0.20220811010804-0a87156a9a4b
+	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
+	github.com/pborman/uuid v1.2.1
+	github.com/pkg/errors v0.9.1
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
+	github.com/sirupsen/logrus v1.9.0
+	github.com/spf13/cobra v1.5.0
+	github.com/spf13/viper v1.12.0
+	github.com/stretchr/testify v1.8.0
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.15
 	github.com/xdg-go/scram v1.1.1
+	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.28.0
+	go.opentelemetry.io/otel v1.9.0
+	go.opentelemetry.io/otel/metric v0.31.0
+	go.opentelemetry.io/otel/sdk v1.9.0
+	go.opentelemetry.io/otel/trace v1.9.0
+	go.uber.org/fx v1.18.1
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -94,7 +82,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -147,7 +135,16 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	go.opentelemetry.io/contrib/instrumentation/github.com/Shopify/sarama/otelsarama v0.34.0 // indirect
+	go.opentelemetry.io/otel/exporters/jaeger v1.9.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.9.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.31.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.31.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.31.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.9.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.9.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.9.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.9.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v0.31.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
