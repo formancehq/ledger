@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/ledger/pkg/api/errors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 )
@@ -20,13 +21,13 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 	mapping := &core.Mapping{}
 	err := c.ShouldBind(mapping)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
 	err = l.(*ledger.Ledger).SaveMapping(c.Request.Context(), *mapping)
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 
@@ -38,7 +39,7 @@ func (ctl *MappingController) GetMapping(c *gin.Context) {
 
 	mapping, err := l.(*ledger.Ledger).LoadMapping(c.Request.Context())
 	if err != nil {
-		ResponseError(c, err)
+		errors.ResponseError(c, err)
 		return
 	}
 

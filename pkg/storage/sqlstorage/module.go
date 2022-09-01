@@ -82,6 +82,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 	options = append(options, fx.Provide(
 		NewLedgerStorageDriverFromRawDriver,
 		NewDefaultStorageDriverFromRawDriver,
+		NewIdempotencyStorageDriverFromRawDriver,
 	))
 	return fx.Options(options...)
 }

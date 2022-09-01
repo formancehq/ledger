@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/api/errors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 )
@@ -58,7 +59,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	tx, err := fn(c.Request.Context(), script)
 	if err != nil {
 		var (
-			code    = ErrInternal
+			code    = errors.ErrInternal
 			message string
 		)
 		scriptError, ok := err.(*ledger.ScriptError)
