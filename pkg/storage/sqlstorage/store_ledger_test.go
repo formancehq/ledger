@@ -5,13 +5,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
@@ -50,6 +53,7 @@ func TestStore(t *testing.T) {
 		{name: "TooManyClient", fn: testTooManyClient},
 		{name: "GetBalances", fn: testGetBalances},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
+		{name: "CreateIK", fn: testIKS},
 	} {
 		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
 			done := make(chan struct{})
@@ -264,6 +268,29 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 	logs, err := store.Logs(context.Background())
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
+}
+
+func testIKS(t *testing.T, store *sqlstorage.Store) {
+	t.Run("Create and Read", func(t *testing.T) {
+		response := idempotency.Response{
+			RequestHash: "xxx",
+			StatusCode:  http.StatusAccepted,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: "Hello World!",
+		}
+		require.NoError(t, store.CreateIK(context.Background(), "foo", response))
+
+		fromDB, err := store.ReadIK(context.Background(), "foo")
+		require.NoError(t, err)
+		require.Equal(t, response, *fromDB)
+	})
+	t.Run("Not found", func(t *testing.T) {
+		_, err := store.ReadIK(context.Background(), uuid.New())
+		spew.Dump(err)
+		require.Equal(t, idempotency.ErrIKNotFound, err)
+	})
 }
 
 func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {

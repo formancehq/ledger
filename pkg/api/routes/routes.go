@@ -7,8 +7,10 @@ import (
 	"github.com/numary/go-libs/sharedauth"
 	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
 
@@ -71,6 +73,7 @@ type Routes struct {
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
 	useScopes             UseScopes
+	idempotencyStore      storage.Driver[idempotency.Store]
 }
 
 func NewRoutes(
@@ -87,6 +90,7 @@ func NewRoutes(
 	mappingController controllers.MappingController,
 	healthController *sharedhealth.HealthController,
 	useScopes UseScopes,
+	idempotencyStore storage.Driver[idempotency.Store],
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -102,6 +106,7 @@ func NewRoutes(
 		mappingController:     mappingController,
 		healthController:      healthController,
 		useScopes:             useScopes,
+		idempotencyStore:      idempotencyStore,
 	}
 }
 
@@ -144,16 +149,31 @@ func (r *Routes) Engine() *gin.Engine {
 		router.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
 		router.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
 		router.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
-		router.POST("/accounts/:address/metadata", r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
+		router.POST("/accounts/:address/metadata",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
 
 		// TransactionController
 		router.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
-		router.POST("/transactions", middlewares.Transaction(), r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite)).Use()
-		router.POST("/transactions/batch", middlewares.Transaction(), r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
+		router.POST("/transactions",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite)).Use()
+		router.POST("/transactions/batch",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
 		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
-		router.POST("/transactions/:txid/revert", middlewares.Transaction(), r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
-		router.POST("/transactions/:txid/metadata", middlewares.Transaction(), r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/revert",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
+		router.POST("/transactions/:txid/metadata",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
 
 		// BalanceController
 		router.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeAccountsRead))
@@ -164,7 +184,10 @@ func (r *Routes) Engine() *gin.Engine {
 		router.PUT("/mapping", r.wrapWithScopes(r.mappingController.PutMapping, ScopeMappingWrite))
 
 		// ScriptController
-		router.POST("/script", middlewares.Transaction(), r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
+		router.POST("/script",
+			middlewares.Transaction(),
+			idempotency.Middleware(r.idempotencyStore),
+			r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
 	}
 
 	return engine

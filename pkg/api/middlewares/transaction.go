@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/numary/ledger/pkg/api/errors"
 	"github.com/numary/ledger/pkg/storage"
 )
 
@@ -61,7 +61,7 @@ func Transaction() func(c *gin.Context) {
 		if c.Writer.Status() >= 200 && c.Writer.Status() < 300 &&
 			storage.IsTransactionRegistered(c.Request.Context()) {
 			if err := storage.CommitTransaction(c.Request.Context()); err != nil {
-				controllers.ResponseError(c, err)
+				errors.ResponseError(c, err)
 				return
 			}
 		}
