@@ -305,7 +305,7 @@ func TestLedger_processTx(t *testing.T) {
 
 		t.Run("date in the past", func(t *testing.T) {
 			now := time.Now()
-			require.NoError(t, l.GetStore().Commit(context.Background(), core.ExpandedTransaction{
+			require.NoError(t, l.GetLedgerStore().Commit(context.Background(), core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
@@ -333,7 +333,7 @@ func TestLedger_processTx(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("date in the past (allowed by policy)", func(t *testing.T) {
 			now := time.Now()
-			require.NoError(t, l.GetStore().Commit(context.Background(), core.ExpandedTransaction{
+			require.NoError(t, l.GetLedgerStore().Commit(context.Background(), core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,

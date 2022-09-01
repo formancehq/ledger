@@ -47,7 +47,7 @@ type openTelemetryStorageDriver struct {
 	once                sync.Once
 }
 
-func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+func (o *openTelemetryStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
 	var err error
 	o.once.Do(func() {
 		o.transactionsCounter, err = transactionsCounter(o.meter)
@@ -58,7 +58,7 @@ func (o *openTelemetryStorageDriver) GetStore(ctx context.Context, name string, 
 	if err != nil {
 		return nil, false, errors.New("error creating meters")
 	}
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+	store, created, err := o.Driver.GetLedgerStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}

@@ -164,10 +164,10 @@ func TestContainers(t *testing.T) {
 				v.Set(storagePostgresConnectionStringFlag, pgServer.ConnString())
 			},
 			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver[ledger.Store], storageFactory storage.Driver[ledger.Store]) {
+				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver[storage.LedgerStore], storageFactory storage.Driver[storage.LedgerStore]) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							store, _, err := storageFactory.GetStore(ctx, "testing", true)
+							store, _, err := storageFactory.GetLedgerStore(ctx, "testing", true)
 							if err != nil {
 								return err
 							}

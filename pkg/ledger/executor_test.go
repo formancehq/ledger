@@ -374,7 +374,7 @@ func TestSetTxMeta(t *testing.T) {
 					require.True(t, ledger.IsScriptErrorWithCode(err, tc.expectedErrorCode))
 				} else {
 					require.NoError(t, err)
-					last, err := l.GetStore().GetLastTransaction(context.Background())
+					last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 					require.NoError(t, err)
 					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
 				}
@@ -403,7 +403,7 @@ func TestScriptSetReference(t *testing.T) {
 		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		last, err := l.GetStore().GetLastTransaction(context.Background())
+		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		assert.Equal(t, script.Reference, last.Reference)

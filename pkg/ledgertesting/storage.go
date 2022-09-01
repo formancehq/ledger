@@ -21,7 +21,7 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
-func StorageDriver() (storage.Driver[*sqlstorage.Store], func(), error) {
+func StorageDriver() (*sqlstorage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
@@ -46,7 +46,7 @@ func StorageDriver() (storage.Driver[*sqlstorage.Store], func(), error) {
 }
 
 func ProvideStorageDriver() fx.Option {
-	return fx.Provide(func(lc fx.Lifecycle) (storage.Driver[*sqlstorage.Store], error) {
+	return fx.Provide(func(lc fx.Lifecycle) (*sqlstorage.Driver, error) {
 		driver, stopFn, err := StorageDriver()
 		if err != nil {
 			return nil, err

@@ -272,8 +272,8 @@ type openTelemetryStorageDriver struct {
 	storage.Driver[ledger.Store]
 }
 
-func (o openTelemetryStorageDriver) GetStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
-	store, created, err := o.Driver.GetStore(ctx, name, create)
+func (o openTelemetryStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
+	store, created, err := o.Driver.GetLedgerStore(ctx, name, create)
 	if err != nil {
 		return nil, false, err
 	}

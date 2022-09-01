@@ -68,7 +68,7 @@ func NewResolver(
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
-	store, _, err := r.storageDriver.GetStore(ctx, name, true)
+	store, _, err := r.storageDriver.GetLedgerStore(ctx, name, true)
 	if err != nil {
 		return nil, errors.Wrap(err, "retrieving ledger store")
 	}

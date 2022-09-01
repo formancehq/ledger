@@ -7,6 +7,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -44,8 +45,16 @@ var _ ledger.API = &API{}
 
 type Store struct {
 	*API
-	schema  Schema
-	onClose func(ctx context.Context) error
+	schema   Schema
+	onClose  func(ctx context.Context) error
+	onDelete func(ctx context.Context) error
+}
+
+func (s *Store) Delete(ctx context.Context) error {
+	if err := s.schema.Delete(ctx); err != nil {
+		return err
+	}
+	return errors.Wrap(s.onDelete(ctx), "deleting ledger store")
 }
 
 func (s *Store) Initialize(ctx context.Context) (bool, error) {
@@ -84,11 +93,12 @@ func (s *Store) WithTX(ctx context.Context, callback func(api ledger.API) error)
 	})
 }
 
-func NewStore(schema Schema, onClose func(ctx context.Context) error) *Store {
+func NewStore(schema Schema, onClose, onDelete func(ctx context.Context) error) *Store {
 	return &Store{
-		API:     NewAPI(schema, schema),
-		schema:  schema,
-		onClose: onClose,
+		API:      NewAPI(schema, schema),
+		schema:   schema,
+		onClose:  onClose,
+		onDelete: onDelete,
 	}
 }
 
