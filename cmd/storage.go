@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := viper.GetString("name")
@@ -71,7 +72,7 @@ func NewStorageList() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							ledgers, err := storageDriver.List(ctx)
@@ -104,7 +105,7 @@ func NewStorageUpgrade() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
@@ -245,7 +246,7 @@ func NewStorageDelete() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+				fx.Invoke(func(storageDriver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]

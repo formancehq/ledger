@@ -12,10 +12,10 @@ import (
 	"github.com/lib/pq"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
-func (s *API) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (s *API) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery) (core.AssetsBalances, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("asset", "sum(input - output)")
 	sb.From(s.schema.Table("volumes"))
@@ -69,7 +69,7 @@ func (s *API) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery
 	return aggregatedBalances, nil
 }
 
-func (s *API) GetBalances(ctx context.Context, q storage.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (s *API) GetBalances(ctx context.Context, q ledger.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	switch s.Schema().Flavor() {
 	case sqlbuilder.PostgreSQL:

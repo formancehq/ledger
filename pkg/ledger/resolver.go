@@ -38,7 +38,7 @@ var DefaultResolverOptions = []ResolverOption{
 }
 
 type Resolver struct {
-	storageDriver     storage.Driver
+	storageDriver     storage.Driver[Store]
 	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
@@ -47,7 +47,7 @@ type Resolver struct {
 }
 
 func NewResolver(
-	storageFactory storage.Driver,
+	storageFactory storage.Driver[Store],
 	ledgerOptions []LedgerOption,
 	options ...ResolverOption,
 ) *Resolver {

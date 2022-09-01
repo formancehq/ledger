@@ -23,7 +23,7 @@ func TestMigrate(t *testing.T) {
 	store, _, err := driver.GetStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
-	schema := store.(*sqlstorage.Store).Schema()
+	schema := store.Schema()
 
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)

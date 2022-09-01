@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -123,13 +124,13 @@ func TestAnalyticsModule(t *testing.T) {
 	module := NewAnalyticsModule(v, "1.0.0")
 	app := fx.New(
 		module,
-		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
+		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
 			id := uuid.New()
 			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
 			lc.Append(fx.Hook{
 				OnStart: driver.Initialize,
 			})
-			return driver, nil
+			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
 		}),
 		fx.Replace(analytics.Config{
 			BatchSize: 1,

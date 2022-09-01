@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/numary/go-libs/sharedlogging"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pbnjay/memory"
 	"github.com/pborman/uuid"
 	"go.uber.org/fx"
@@ -38,16 +40,16 @@ func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
 	return fn(ctx)
 }
 
-func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
+func FromStorageAppIdProvider(driver storage.Driver[ledger.Store]) AppIdProvider {
 	var appId string
 	return AppIdProviderFn(func(ctx context.Context) (string, error) {
 		var err error
 		if appId == "" {
 			appId, err = driver.GetConfiguration(ctx, "appId")
-			if err != nil && err != storage.ErrConfigurationNotFound {
+			if err != nil && err != noopstorage.ErrConfigurationNotFound {
 				return "", err
 			}
-			if err == storage.ErrConfigurationNotFound {
+			if err == noopstorage.ErrConfigurationNotFound {
 				appId = uuid.New()
 				if err := driver.InsertConfiguration(ctx, "appId", appId); err != nil {
 					return "", err
@@ -64,7 +66,7 @@ type heartbeat struct {
 	client        analytics.Client
 	stopChan      chan chan struct{}
 	appIdProvider AppIdProvider
-	driver        storage.Driver
+	driver        storage.Driver[ledger.Store]
 }
 
 func (m *heartbeat) Run(ctx context.Context) error {
@@ -127,18 +129,18 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 
 	ledgersProperty := map[string]any{}
 
-	for _, ledger := range ledgers {
+	for _, l := range ledgers {
 		stats := map[string]any{}
 		if err := func() error {
-			store, _, err := m.driver.GetStore(ctx, ledger, false)
+			store, _, err := m.driver.GetStore(ctx, l, false)
 			if err != nil {
 				return err
 			}
-			transactions, err := store.CountTransactions(ctx, storage.TransactionsQuery{})
+			transactions, err := store.CountTransactions(ctx, ledger.TransactionsQuery{})
 			if err != nil {
 				return err
 			}
-			accounts, err := store.CountAccounts(ctx, storage.AccountsQuery{})
+			accounts, err := store.CountAccounts(ctx, ledger.AccountsQuery{})
 			if err != nil {
 				return err
 			}
@@ -151,7 +153,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		}
 
 		digest := sha256.New()
-		digest.Write([]byte(ledger))
+		digest.Write([]byte(l))
 		ledgerHash := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
 
 		ledgersProperty[ledgerHash] = stats
@@ -167,7 +169,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	})
 }
 
-func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver, client analytics.Client, version string, interval time.Duration) *heartbeat {
+func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver[ledger.Store], client analytics.Client, version string, interval time.Duration) *heartbeat {
 	return &heartbeat{
 		version:       version,
 		interval:      interval,
@@ -184,7 +186,7 @@ func NewHeartbeatModule(version, writeKey string, interval time.Duration) fx.Opt
 		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
 			return analytics.NewWithConfig(writeKey, cfg)
 		}),
-		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver) *heartbeat {
+		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver[ledger.Store]) *heartbeat {
 			return newHeartbeat(provider, driver, client, version, interval)
 		}),
 		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {

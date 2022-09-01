@@ -7,10 +7,10 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 )
 
-func (s *API) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
+func (s *API) CountTransactions(ctx context.Context, q ledger.TransactionsQuery) (uint64, error) {
 	var count uint64
 
 	sb, _ := s.buildTransactionsQuery(q)
@@ -21,7 +21,7 @@ func (s *API) CountTransactions(ctx context.Context, q storage.TransactionsQuery
 	return count, s.error(err)
 }
 
-func (s *API) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
+func (s *API) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint64, error) {
 	var count uint64
 
 	sb, _ := s.buildAccountsQuery(q)

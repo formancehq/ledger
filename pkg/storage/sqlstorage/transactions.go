@@ -13,11 +13,11 @@ import (
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
 
-func (s *API) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *API) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
@@ -73,7 +73,7 @@ func (s *API) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.S
 	return sb, t
 }
 
-func (s *API) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+func (s *API) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
 	txs := make([]core.ExpandedTransaction, 0)
 
 	if q.PageSize == 0 {

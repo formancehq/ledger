@@ -1,4 +1,4 @@
-package ledger
+package ledger_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
@@ -26,7 +27,7 @@ func withContainer(options ...fx.Option) {
 	done := make(chan struct{})
 	opts := append([]fx.Option{
 		fx.NopLogger,
-		ledgertesting.ProvideStorageDriver(),
+		ledgertesting.ProvideLedgerStorageDriver(),
 	}, options...)
 	opts = append(opts, fx.Invoke(func(lc fx.Lifecycle) {
 		lc.Append(fx.Hook{
@@ -56,8 +57,8 @@ func withContainer(options ...fx.Option) {
 	}
 }
 
-func runOnLedger(f func(l *Ledger), ledgerOptions ...LedgerOption) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver) {
+func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
+	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				name := uuid.New()
@@ -69,7 +70,7 @@ func runOnLedger(f func(l *Ledger), ledgerOptions ...LedgerOption) {
 				if err != nil {
 					return err
 				}
-				l, err := NewLedger(store, NewInMemoryLocker(), &noOpMonitor{}, ledgerOptions...)
+				l, err := ledger.NewLedger(store, ledger.NewInMemoryLocker(), ledger.NewNoOpMonitor(), ledgerOptions...)
 				if err != nil {
 					panic(err)
 				}
@@ -98,7 +99,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestTransaction(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		testsize := 1e4
 		total := core.NewMonetaryInt(0)
 		batch := []core.TransactionData{}
@@ -149,7 +150,7 @@ func TestTransaction(t *testing.T) {
 }
 
 func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		batch := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -185,14 +186,14 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 
 		_, err := l.Commit(context.Background(), batch)
 		assert.Error(t, err)
-		assert.IsType(t, new(TransactionCommitError), err)
-		assert.IsType(t, new(InsufficientFundError), errors.Unwrap(err))
+		assert.IsType(t, new(ledger.TransactionCommitError), err)
+		assert.IsType(t, new(ledger.InsufficientFundError), errors.Unwrap(err))
 	})
 }
 
 func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	t.Run("With conflict reference on transaction set", func(t *testing.T) {
-		runOnLedger(func(l *Ledger) {
+		runOnLedger(func(l *ledger.Ledger) {
 			batch := []core.TransactionData{
 				{
 					Postings: []core.Posting{
@@ -231,11 +232,11 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 
 			_, err := l.Commit(context.Background(), batch)
 			assert.Error(t, err)
-			assert.IsType(t, new(ConflictError), err)
+			assert.IsType(t, new(ledger.ConflictError), err)
 		})
 	})
 	t.Run("with conflict reference on database", func(t *testing.T) {
-		runOnLedger(func(l *Ledger) {
+		runOnLedger(func(l *ledger.Ledger) {
 			txData := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -252,13 +253,13 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 
 			_, err = l.Commit(context.Background(), []core.TransactionData{txData})
 			assert.Error(t, err)
-			assert.IsType(t, new(ConflictError), err)
+			assert.IsType(t, new(ledger.ConflictError), err)
 		})
 	})
 }
 
 func TestTransactionExpectedVolumes(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		batch := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -337,7 +338,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 }
 
 func TestBalance(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -356,7 +357,7 @@ func TestBalance(t *testing.T) {
 }
 
 func TestReference(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		tx := core.TransactionData{
 			Reference: "payment_processor_id_01",
 			Postings: []core.Posting{
@@ -378,7 +379,7 @@ func TestReference(t *testing.T) {
 }
 
 func TestAccountMetadata(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 
 		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": "old value",
@@ -430,7 +431,7 @@ func TestAccountMetadata(t *testing.T) {
 }
 
 func TestTransactionMetadata(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
@@ -443,7 +444,7 @@ func TestTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.store.GetLastTransaction(context.Background())
+		tx, err := l.GetStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
@@ -456,7 +457,7 @@ func TestTransactionMetadata(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		tx, err = l.store.GetLastTransaction(context.Background())
+		tx, err = l.GetStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a random metadata"]
@@ -468,7 +469,7 @@ func TestTransactionMetadata(t *testing.T) {
 }
 
 func TestSaveTransactionMetadata(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{
 				{
@@ -484,7 +485,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		tx, err := l.store.GetLastTransaction(context.Background())
+		tx, err := l.GetStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		meta, ok := tx.Metadata["a metadata"]
@@ -496,7 +497,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{{
 			Reference: "bar",
 			Postings: []core.Posting{
@@ -510,7 +511,7 @@ func TestGetTransaction(t *testing.T) {
 		}})
 		require.NoError(t, err)
 
-		last, err := l.store.GetLastTransaction(context.Background())
+		last, err := l.GetStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
 		tx, err := l.GetTransaction(context.Background(), last.ID)
@@ -521,7 +522,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestGetTransactions(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -536,7 +537,7 @@ func TestGetTransactions(t *testing.T) {
 		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
 		require.NoError(t, err)
 
-		res, err := l.GetTransactions(context.Background(), *storage.NewTransactionsQuery())
+		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
 		require.NoError(t, err)
 
 		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
@@ -544,7 +545,7 @@ func TestGetTransactions(t *testing.T) {
 }
 
 func TestRevertTransaction(t *testing.T) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		revertAmt := core.NewMonetaryInt(100)
 
 		res, err := l.Commit(context.Background(), []core.TransactionData{{
@@ -600,7 +601,7 @@ func TestRevertTransaction(t *testing.T) {
 }
 
 func BenchmarkTransaction1(b *testing.B) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
 			txs := []core.TransactionData{}
 
@@ -622,7 +623,7 @@ func BenchmarkTransaction1(b *testing.B) {
 }
 
 func BenchmarkTransaction_20_1k(b *testing.B) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
 			for i := 0; i < 20; i++ {
 				txs := []core.TransactionData{}
@@ -648,7 +649,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 }
 
 func BenchmarkGetAccount(b *testing.B) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		for i := 0; i < b.N; i++ {
 			_, err := l.GetAccount(context.Background(), "users:013")
 			require.NoError(b, err)
@@ -657,9 +658,9 @@ func BenchmarkGetAccount(b *testing.B) {
 }
 
 func BenchmarkGetTransactions(b *testing.B) {
-	runOnLedger(func(l *Ledger) {
+	runOnLedger(func(l *ledger.Ledger) {
 		for i := 0; i < b.N; i++ {
-			_, err := l.GetTransactions(context.Background(), storage.TransactionsQuery{})
+			_, err := l.GetTransactions(context.Background(), ledger.TransactionsQuery{})
 			require.NoError(b, err)
 		}
 	})
