@@ -7,7 +7,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 )
 
-func (s *API) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
+func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
 	for account, accountVolumes := range volumes {
 		for asset, volumes := range accountVolumes {
 			ib := sqlbuilder.NewInsertBuilder()
@@ -21,7 +21,12 @@ func (s *API) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolu
 
 			sqlq, args := ib.BuildWithFlavor(s.schema.Flavor())
 
-			_, err := s.executor.ExecContext(ctx, sqlq, args...)
+			executor, err := s.executorProvider(ctx)
+			if err != nil {
+				return err
+			}
+
+			_, err = executor.ExecContext(ctx, sqlq, args...)
 			if err != nil {
 				return s.error(err)
 			}

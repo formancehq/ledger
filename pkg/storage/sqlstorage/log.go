@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
+func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 	var (
 		query string
 		args  []interface{}
@@ -60,15 +60,20 @@ func (s *API) appendLog(ctx context.Context, log ...core.Log) error {
 		}
 	}
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return err
+	}
+
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
-	_, err := s.executor.ExecContext(ctx, query, args...)
+	_, err = executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
 	}
 	return nil
 }
 
-func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
+func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	var (
 		l    core.Log
 		data sql.NullString
@@ -80,8 +85,13 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	sb.OrderBy("id desc")
 	sb.Limit(1)
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	row := s.executor.QueryRowContext(ctx, sqlq)
+	row := executor.QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -90,7 +100,6 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	}
 	l.Date = l.Date.UTC()
 
-	var err error
 	l.Data, err = core.HydrateLog(l.Type, data.String)
 	if err != nil {
 		return nil, err
@@ -100,14 +109,19 @@ func (s *API) LastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *API) Logs(ctx context.Context) ([]core.Log, error) {
+func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.OrderBy("id desc")
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := s.executor.QueryContext(ctx, sqlq)
+	rows, err := executor.QueryContext(ctx, sqlq)
 	if err != nil {
 		return nil, s.error(err)
 	}

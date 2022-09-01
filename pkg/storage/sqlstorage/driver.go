@@ -2,6 +2,7 @@ package sqlstorage
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedlogging"
@@ -70,7 +71,24 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		return nil, false, err
 	}
 
-	return NewStore(schema, func(ctx context.Context) error {
+	return NewStore(schema, func(ctx context.Context) (executor, error) {
+		var ret executor = schema
+		if storage.IsTransactional(ctx) {
+			if !storage.IsTransactionRegistered(ctx) {
+				sqlTx, err := schema.BeginTx(ctx, &sql.TxOptions{})
+				if err != nil {
+					return nil, err
+				}
+				ret = sqlTx
+				storage.RegisterTransaction(ctx, sqlTx, func(ctx context.Context) error {
+					return sqlTx.Commit()
+				})
+			} else {
+				ret = storage.RegisteredTransaction(ctx).(*sql.Tx)
+			}
+		}
+		return ret, nil
+	}, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	}, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
