@@ -33,24 +33,25 @@ func init() {
 // defaultExecutorProvider use the context to register and manage a sql transaction (if the context is mark as transactional)
 func defaultExecutorProvider(schema Schema) func(ctx context.Context) (executor, error) {
 	return func(ctx context.Context) (executor, error) {
-		var ret executor = schema
-		if storage.IsTransactional(ctx) {
-			if !storage.IsTransactionRegistered(ctx) {
-				sqlTx, err := schema.BeginTx(ctx, &sql.TxOptions{})
-				if err != nil {
-					return nil, err
-				}
-				ret = sqlTx
-				storage.RegisterTransaction(ctx, sqlTx, func(ctx context.Context) error {
-					return sqlTx.Commit()
-				}, func(ctx context.Context) error {
-					return sqlTx.Rollback()
-				})
-			} else {
-				ret = storage.RegisteredTransaction(ctx).(*sql.Tx)
-			}
+		if !storage.IsTransactional(ctx) {
+			return schema, nil
 		}
-		return ret, nil
+
+		if storage.IsTransactionRegistered(ctx) {
+			return storage.RegisteredTransaction(ctx).(*sql.Tx), nil
+		}
+
+		sqlTx, err := schema.BeginTx(ctx, &sql.TxOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		storage.RegisterTransaction(ctx, sqlTx, func(ctx context.Context) error {
+			return sqlTx.Commit()
+		}, func(ctx context.Context) error {
+			return sqlTx.Rollback()
+		})
+		return sqlTx, nil
 	}
 }
 
