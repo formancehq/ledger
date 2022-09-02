@@ -2,7 +2,7 @@ package opentelemetrytraces
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -14,7 +14,7 @@ func Middleware() func(context *gin.Context) {
 			for _, e := range context.Errors {
 				span.RecordError(e)
 			}
-			if code := errors.ErrorCode(context); code != "" {
+			if code := apierrors.ErrorCode(context); code != "" {
 				span.SetAttributes(attribute.KeyValue{
 					Key:   "http.error_code",
 					Value: attribute.StringValue(code),

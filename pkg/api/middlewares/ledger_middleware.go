@@ -3,7 +3,7 @@ package middlewares
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/ledger"
 )
 
@@ -29,7 +29,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 
 		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
-			errors.ResponseError(c, err)
+			apierrors.ResponseError(c, err)
 			return
 		}
 		defer func() {

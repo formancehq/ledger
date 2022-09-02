@@ -6,8 +6,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -26,13 +27,13 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 		// Do not create the store if it doesn't exist
 		store, _, err := driver.GetLedgerStore(c.Request.Context(), c.Param("ledger"), false)
 		if err != nil && err != storage.ErrLedgerStoreNotFound {
-			errors.ResponseError(c, err)
+			apierrors.ResponseError(c, err)
 			return
 		}
 
 		data, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			errors.ResponseError(c, err)
+			apierrors.ResponseError(c, err)
 			return
 		}
 		c.Request.Body = io.NopCloser(bytes.NewReader(data))
@@ -41,7 +42,7 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 		if store != nil {
 			response, err := store.ReadIK(c.Request.Context(), ik)
 			if err != nil && err != ErrIKNotFound {
-				errors.ResponseError(c, err)
+				apierrors.ResponseError(c, err)
 				return
 			}
 			if err == nil {
@@ -65,7 +66,7 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 			if store == nil {
 				store, _, err = driver.GetLedgerStore(c.Request.Context(), c.Param("ledger"), true)
 				if err != nil {
-					errors.ResponseError(c, err)
+					_ = c.Error(errors.Wrap(err, "retrieving ledger store to save IK"))
 					return
 				}
 			}
@@ -75,7 +76,7 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 				Header:      c.Writer.Header(),
 				Body:        string(rw.Bytes()),
 			}); err != nil {
-				panic(err)
+				_ = c.Error(errors.Wrap(err, "persisting IK to database"))
 			}
 		}
 	}
