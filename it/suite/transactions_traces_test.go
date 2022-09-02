@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	. "github.com/numary/ledger/it/internal"
+	ledgerclient "github.com/numary/ledger/it/internal/client"
 	. "github.com/numary/ledger/it/internal/otlpinterceptor"
-	ledgerclient "github.com/numary/numary-sdk-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

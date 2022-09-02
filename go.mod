@@ -47,6 +47,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.9.0
 	go.uber.org/fx v1.18.1
 	go.uber.org/zap v1.23.0
+	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -193,7 +194,6 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/crypto v0.0.0-20220824171710-5757bc0c5503 // indirect
 	golang.org/x/net v0.0.0-20220822230855-b0a4917ee28c // indirect
-	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5 // indirect
 	golang.org/x/sys v0.0.0-20220823224334-20c2bfdbfe24 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

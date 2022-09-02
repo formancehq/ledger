@@ -13,7 +13,6 @@ import (
 	"github.com/numary/ledger/it/internal/ledgerclient"
 	"github.com/numary/ledger/it/internal/otlpinterceptor"
 	"github.com/numary/ledger/it/internal/pgserver"
-	ledgerclient2 "github.com/numary/numary-sdk-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
@@ -90,6 +89,6 @@ func WithNewLedger(text string, callback func(ledger *string)) {
 	})
 }
 
-func Client() *ledgerclient2.APIClient {
+func Client() *ledgerclient.APIClient {
 	return ledgerclient.Client()
 }

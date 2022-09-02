@@ -3,8 +3,8 @@ package ledgerclient
 import (
 	"net/http"
 
+	ledgerclient "github.com/numary/ledger/it/internal/client"
 	"github.com/numary/ledger/it/internal/openapi3"
-	ledgerclient "github.com/numary/numary-sdk-go"
 )
 
 var globalClient *ledgerclient.APIClient
@@ -12,6 +12,8 @@ var globalClient *ledgerclient.APIClient
 func Set(client *ledgerclient.APIClient) {
 	globalClient = client
 }
+
+type APIClient = ledgerclient.APIClient
 
 func Client() *ledgerclient.APIClient {
 	return globalClient

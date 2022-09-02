@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	. "github.com/numary/ledger/it/internal"
-	ledgerclient "github.com/numary/numary-sdk-go"
+	ledgerclient "github.com/numary/ledger/it/internal/client"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

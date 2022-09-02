@@ -4,10 +4,10 @@ import (
 	"context"
 
 	. "github.com/numary/ledger/it/internal"
+	ledgerclient "github.com/numary/ledger/it/internal/client"
 	. "github.com/numary/ledger/it/internal/httplistener"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
-	ledgerclient "github.com/numary/numary-sdk-go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
