@@ -32,6 +32,8 @@ type Client interface {
 	CreateTransaction() ledgerclient.ApiCreateTransactionRequest
 	ListTransactions() ledgerclient.ApiListTransactionsRequest
 	GetInfo() ledgerclient.ApiGetInfoRequest
+	GetSwaggerAsJSON() (*http.Response, error)
+	GetSwaggerAsYAML() (*http.Response, error)
 }
 
 type defaultClient struct {
@@ -50,6 +52,14 @@ func (d defaultClient) CreateTransaction() ledgerclient.ApiCreateTransactionRequ
 	return d.underlying.TransactionsApi.CreateTransaction(context.Background(), CurrentLedger())
 }
 
+func (d defaultClient) GetSwaggerAsJSON() (*http.Response, error) {
+	return http.DefaultClient.Get(d.underlying.GetConfig().Servers[0].URL + "/swagger.json")
+}
+
+func (d defaultClient) GetSwaggerAsYAML() (*http.Response, error) {
+	return http.DefaultClient.Get(d.underlying.GetConfig().Servers[0].URL + "/swagger.yaml")
+}
+
 var _ Client = &defaultClient{}
 
 func GetClient() Client {
@@ -64,6 +74,14 @@ func ListTransactions() ledgerclient.ApiListTransactionsRequest {
 
 func GetInfo() ledgerclient.ApiGetInfoRequest {
 	return GetClient().GetInfo()
+}
+
+func GetSwaggerAsJSON() (*http.Response, error) {
+	return GetClient().GetSwaggerAsJSON()
+}
+
+func GetSwaggerAsYAML() (*http.Response, error) {
+	return GetClient().GetSwaggerAsYAML()
 }
 
 func CreateTransaction() ledgerclient.ApiCreateTransactionRequest {

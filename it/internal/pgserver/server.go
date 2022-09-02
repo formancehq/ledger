@@ -10,6 +10,10 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
+const (
+	DefaultDatabase = "ledger"
+)
+
 type PGServer struct {
 	url   string
 	close func() error
@@ -39,7 +43,7 @@ func PostgresServer() (*PGServer, error) {
 		Env: []string{
 			"POSTGRES_USER=root",
 			"POSTGRES_PASSWORD=root",
-			"POSTGRES_DB=ledger",
+			"POSTGRES_DB=" + DefaultDatabase,
 		},
 	})
 	if err != nil {
@@ -51,7 +55,7 @@ func PostgresServer() (*PGServer, error) {
 	try := time.Duration(0)
 	delay := 200 * time.Millisecond
 	for try*delay < 5*time.Second {
-		conn, err := pgx.Connect(context.Background(), fmt.Sprintf("%s/ledger", url))
+		conn, err := pgx.Connect(context.Background(), fmt.Sprintf("%s/%s", url, DefaultDatabase))
 		if err != nil {
 			try++
 			<-time.After(delay)
@@ -70,7 +74,7 @@ func PostgresServer() (*PGServer, error) {
 }
 
 func CreateDatabase(name string) string {
-	conn, err := pgx.Connect(context.Background(), ConnString("ledger"))
+	conn, err := pgx.Connect(context.Background(), ConnString(DefaultDatabase))
 	Expect(err).WithOffset(1).To(BeNil())
 	defer func() {
 		Expect(conn.Close(context.Background())).To(BeNil())
