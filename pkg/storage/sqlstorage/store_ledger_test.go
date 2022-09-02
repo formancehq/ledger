@@ -259,7 +259,7 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 
 	err = store.Commit(context.Background(), tx)
 	require.Error(t, err)
-	require.True(t, ledger2.IsErrorCode(err, ledger2.ConstraintFailed))
+	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
 
 	logs, err := store.Logs(context.Background())
 	require.NoError(t, err)
@@ -705,8 +705,8 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 
 	_, err := store.CountTransactions(context.Background(), ledger2.TransactionsQuery{})
 	require.Error(t, err)
-	require.IsType(t, new(ledger2.Error), err)
-	require.Equal(t, ledger2.TooManyClient, err.(*ledger2.Error).Code)
+	require.IsType(t, new(storage.Error), err)
+	require.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
 }
 
 func TestInitializeStore(t *testing.T) {
