@@ -50,7 +50,7 @@ func TestIdempotency(t *testing.T) {
 			}
 			called = true
 			c.Writer.WriteHeader(http.StatusAccepted)
-			c.Writer.Write([]byte(body))
+			_, _ = c.Writer.Write([]byte(body))
 		})
 
 		ik := "foo"
@@ -90,7 +90,7 @@ func TestIdempotency(t *testing.T) {
 			called = true
 			store = NewInMemoryStore()
 			c.Writer.WriteHeader(http.StatusAccepted)
-			c.Writer.Write([]byte(body))
+			_, _ = c.Writer.Write([]byte(body))
 		})
 
 		ik := "foo"
