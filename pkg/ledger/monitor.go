@@ -16,9 +16,11 @@ type Monitor interface {
 type noOpMonitor struct{}
 
 func (n noOpMonitor) CommittedTransactions(ctx context.Context, s string, result *CommitResult) {}
-func (n noOpMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {}
+func (n noOpMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {
+}
 func (n noOpMonitor) UpdatedMapping(ctx context.Context, s string, mapping core.Mapping) {}
-func (n noOpMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {}
+func (n noOpMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
+}
 
 var _ Monitor = &noOpMonitor{}
 
