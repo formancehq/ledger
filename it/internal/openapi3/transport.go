@@ -3,7 +3,7 @@ package openapi3
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -42,11 +42,11 @@ func (t transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		requestData []byte
 	)
 	if request.Body != nil {
-		requestData, err = ioutil.ReadAll(request.Body)
+		requestData, err = io.ReadAll(request.Body)
 		if err != nil {
 			return nil, err
 		}
-		request.Body = ioutil.NopCloser(bytes.NewBuffer(requestData))
+		request.Body = io.NopCloser(bytes.NewBuffer(requestData))
 	}
 
 	response, err := t.underlying.RoundTrip(request)
@@ -60,7 +60,7 @@ func (t transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 
 	if request.Body != nil {
-		request.Body = ioutil.NopCloser(bytes.NewBuffer(requestData))
+		request.Body = io.NopCloser(bytes.NewBuffer(requestData))
 	}
 
 	options := &openapi3filter.Options{
@@ -80,17 +80,17 @@ func (t transport) RoundTrip(request *http.Request) (*http.Response, error) {
 		openapi3filter.ValidateRequest(context.Background(), input),
 	)).WithOffset(8).To(BeNil())
 
-	responseBody, err := ioutil.ReadAll(response.Body)
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
-	response.Body = ioutil.NopCloser(bytes.NewBuffer(responseBody))
+	response.Body = io.NopCloser(bytes.NewBuffer(responseBody))
 
 	err = openapi3filter.ValidateResponse(context.Background(), &openapi3filter.ResponseValidationInput{
 		RequestValidationInput: input,
 		Status:                 response.StatusCode,
 		Header:                 response.Header,
-		Body:                   ioutil.NopCloser(bytes.NewBuffer(responseBody)),
+		Body:                   io.NopCloser(bytes.NewBuffer(responseBody)),
 		Options:                options,
 	})
 	Expect(newStringerError(err)).WithOffset(8).To(BeNil())

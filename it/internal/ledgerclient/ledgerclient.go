@@ -18,7 +18,8 @@ func Client() *ledgerclient.APIClient {
 }
 
 func Init(ledgerUrl string) {
-	httpClient := &(*http.DefaultClient)
+	cp := *http.DefaultClient
+	httpClient := &cp
 	httpClient.Transport = openapi3.NewTransport(ledgerUrl)
 
 	clientConfiguration := ledgerclient.NewConfiguration()

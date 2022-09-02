@@ -23,10 +23,12 @@ func StartCollector() {
 	exporterFactories, err := component.MakeExporterFactoryMap(
 		componenttest.NewNopExporterFactory(),
 	)
+	Expect(err).To(BeNil())
 
 	receiverFactories, err := component.MakeReceiverFactoryMap(
 		otlpreceiver.NewFactory(),
 	)
+	Expect(err).To(BeNil())
 
 	collector, err = service.New(service.CollectorSettings{
 		BuildInfo: component.BuildInfo{
