@@ -61,8 +61,8 @@ func TestStore(t *testing.T) {
 							defer func() {
 								close(done)
 							}()
-							ledger := uuid.New()
-							store, _, err := driver.GetLedgerStore(ctx, ledger, true)
+							ledgerName := uuid.New()
+							store, _, err := driver.GetLedgerStore(ctx, ledgerName, true)
 							if err != nil {
 								return err
 							}
