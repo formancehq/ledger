@@ -13,7 +13,7 @@ import (
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/core"
-	ledger2 "github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -66,7 +66,7 @@ func TestStore(t *testing.T) {
 							if err != nil {
 								return err
 							}
-							defer func(store ledger2.Store, ctx context.Context) {
+							defer func(store ledger.Store, ctx context.Context) {
 								require.NoError(t, store.Close(ctx))
 							}(store, context.Background())
 
@@ -356,7 +356,7 @@ func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
 	err := store.Commit(context.Background(), tx)
 	require.NoError(t, err)
 
-	countAccounts, err := store.CountAccounts(context.Background(), ledger2.AccountsQuery{})
+	countAccounts, err := store.CountAccounts(context.Background(), ledger.AccountsQuery{})
 	require.NoError(t, err)
 	require.EqualValues(t, 2, countAccounts) // world + central_bank
 }
@@ -419,23 +419,23 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
 	}, now))
 
-	accounts, err := store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err := store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 1,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, accounts.PageSize)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize:     1,
 		AfterAddress: accounts.Data[0].Address,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
-		Filters: ledger2.AccountsQueryFilters{
+		Filters: ledger.AccountsQueryFilters{
 			Address: ".*der.*",
 		},
 	})
@@ -443,9 +443,9 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	require.Len(t, accounts.Data, 2)
 	require.Equal(t, 10, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
-		Filters: ledger2.AccountsQueryFilters{
+		Filters: ledger.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"foo": "bar",
 			},
@@ -454,9 +454,9 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
-		Filters: ledger2.AccountsQueryFilters{
+		Filters: ledger.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"number": "3",
 			},
@@ -465,9 +465,9 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
-		Filters: ledger2.AccountsQueryFilters{
+		Filters: ledger.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"boolean": "true",
 			},
@@ -476,9 +476,9 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), ledger2.AccountsQuery{
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
-		Filters: ledger2.AccountsQueryFilters{
+		Filters: ledger.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"a.super.nested.key": "hello",
 			},
@@ -493,13 +493,13 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 
 	t.Run("Count", func(t *testing.T) {
-		count, err := store.CountTransactions(context.Background(), ledger2.TransactionsQuery{})
+		count, err := store.CountTransactions(context.Background(), ledger.TransactionsQuery{})
 		require.NoError(t, err)
 		// Should get all the transactions
 		require.EqualValues(t, 3, count)
 
-		count, err = store.CountTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		count, err = store.CountTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Account: "world",
 			},
 		})
@@ -507,8 +507,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get the two first transactions involving the 'world' account.
 		require.EqualValues(t, 2, count)
 
-		count, err = store.CountTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		count, err = store.CountTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Account:   "world",
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now.Add(-1 * time.Hour),
@@ -518,8 +518,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		require.EqualValues(t, 1, count)
 
-		count, err = store.CountTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		count, err = store.CountTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Metadata: map[string]string{
 					"priority": "high",
 				},
@@ -530,14 +530,14 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
-		cursor, err := store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
+		cursor, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			PageSize: 1,
 		})
 		require.NoError(t, err)
 		// Should get only the first transaction.
 		require.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			AfterTxID: cursor.Data[0].ID,
 			PageSize:  1,
 		})
@@ -545,8 +545,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the second transaction.
 		require.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Account:   "world",
 				Reference: "tx1",
 			},
@@ -557,8 +557,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the first transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Account: "users:.*",
 			},
 			PageSize: 10,
@@ -567,8 +567,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		require.Equal(t, 10, cursor.PageSize)
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Source: "central_bank",
 			},
 			PageSize: 10,
@@ -578,8 +578,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Destination: "users:1",
 			},
 			PageSize: 10,
@@ -589,8 +589,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Destination: "users:.*", // Use regex
 			},
 			PageSize: 10,
@@ -600,8 +600,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Destination: ".*:1", // Use regex
 			},
 			PageSize: 10,
@@ -611,8 +611,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Source: ".*bank", // Use regex
 			},
 			PageSize: 10,
@@ -622,8 +622,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		assert.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now.Add(-1 * time.Hour),
 			},
@@ -634,8 +634,8 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger2.TransactionsQuery{
-			Filters: ledger2.TransactionsQueryFilters{
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
 				Metadata: map[string]string{
 					"priority": "high",
 				},
@@ -703,7 +703,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 		}(tx)
 	}
 
-	_, err := store.CountTransactions(context.Background(), ledger2.TransactionsQuery{})
+	_, err := store.CountTransactions(context.Background(), ledger.TransactionsQuery{})
 	require.Error(t, err)
 	require.IsType(t, new(storage.Error), err)
 	require.Equal(t, storage.TooManyClient, err.(*storage.Error).Code)
