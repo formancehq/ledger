@@ -14,13 +14,13 @@ type haveTriggeredEvent[T bus.Payload] struct {
 }
 
 func (a *haveTriggeredEvent[T]) Match(actual interface{}) (success bool, err error) {
-	ledger, ok := actual.(*string)
+	ledger, ok := actual.(string)
 	if !ok {
 		return false, errors.New("have trace expect an object of type *string")
 	}
 
 	a.foundEvent, err = PickEvent[T](func(ledgerEvent string, payload T) bool {
-		return ledgerEvent == *ledger
+		return ledgerEvent == ledger
 	})
 	if err != nil {
 		return false, err

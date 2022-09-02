@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -47,7 +48,10 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 			}
 			if err == nil {
 				if hashRequest(c.Request.URL.String(), string(data)) != response.RequestHash {
-					c.AbortWithStatus(http.StatusBadRequest)
+					c.AbortWithStatusJSON(http.StatusBadRequest, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrInternal,
+						ErrorMessage: "IK hash not matching",
+					})
 					return
 				}
 

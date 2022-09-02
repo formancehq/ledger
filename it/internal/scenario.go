@@ -10,7 +10,6 @@ import (
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd"
 	"github.com/numary/ledger/it/internal/httplistener"
-	"github.com/numary/ledger/it/internal/ledgerclient"
 	"github.com/numary/ledger/it/internal/otlpinterceptor"
 	"github.com/numary/ledger/it/internal/pgserver"
 	. "github.com/onsi/ginkgo/v2"
@@ -67,10 +66,10 @@ func Scenario(text string, callback func()) bool {
 
 			ledgerUrl := fmt.Sprintf("http://localhost:%d", cmd.Port(ctx))
 
-			ledgerclient.Init(ledgerUrl)
+			Init(ledgerUrl)
 
 			Eventually(func() error {
-				_, _, err := ledgerclient.Client().ServerApi.GetInfo(ctx).Execute()
+				_, _, err := GetClient().GetInfo().Execute()
 				return err
 			}).Should(BeNil())
 		})
@@ -78,17 +77,23 @@ func Scenario(text string, callback func()) bool {
 	})
 }
 
-func WithNewLedger(text string, callback func(ledger *string)) {
-	Describe(text, func() {
-		emptyString := ""
-		ledger := &emptyString
-		BeforeEach(func() {
-			*ledger = uuid.New()
-		})
-		callback(ledger)
-	})
+var (
+	currentLedger string
+)
+
+func CurrentLedger() string {
+	return currentLedger
 }
 
-func Client() *ledgerclient.APIClient {
-	return ledgerclient.Client()
+func WithNewLedger(callback func()) {
+	var oldLedger string
+
+	BeforeEach(func() {
+		oldLedger = currentLedger
+		currentLedger = uuid.New()
+	})
+	AfterEach(func() {
+		currentLedger = oldLedger
+	})
+	callback()
 }

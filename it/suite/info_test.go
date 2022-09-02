@@ -1,7 +1,6 @@
 package suite
 
 import (
-	"context"
 	"net/http"
 
 	. "github.com/numary/ledger/it/internal"
@@ -16,13 +15,9 @@ var _ = Scenario("Server API", func() {
 		var (
 			response     ledgerclient.ConfigInfoResponse
 			httpResponse *http.Response
-			err          error
 		)
 		BeforeEach(func() {
-			response, httpResponse, err = Client().ServerApi.
-				GetInfo(context.Background()).
-				Execute()
-			Expect(err).To(BeNil())
+			response, httpResponse = MustExecute[ledgerclient.ConfigInfoResponse](GetInfo())
 		})
 		It("should respond with the correct configuration", func() {
 			Expect(response.Data).To(Equal(ledgerclient.ConfigInfo{
