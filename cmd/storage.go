@@ -170,6 +170,8 @@ func NewStorageScan() *cobra.Command {
 									continue
 								}
 								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
+								// This command is dedicated to upgrade ledger version before 1.4
+								// It will be removed in a near future, so we can assert the system store type without risk
 								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
 									Register(cmd.Context(), ledgerName)
 								if err != nil {
