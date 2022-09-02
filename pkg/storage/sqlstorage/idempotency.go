@@ -21,7 +21,7 @@ func (s *Store) CreateIK(ctx context.Context, key string, response idempotency.R
 	ib := sqlbuilder.NewInsertBuilder()
 	q, args := ib.
 		InsertInto(s.schema.Table("idempotency")).
-		Cols("key", "date", "statusCode", "headers", "body", "requestHash").
+		Cols("key", "date", "status_code", "headers", "body", "request_hash").
 		Values(key, time.Now().UTC(), response.StatusCode, string(data), response.Body, response.RequestHash).
 		BuildWithFlavor(s.schema.Flavor())
 
@@ -37,7 +37,7 @@ func (s *Store) CreateIK(ctx context.Context, key string, response idempotency.R
 func (s *Store) ReadIK(ctx context.Context, key string) (*idempotency.Response, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	q, args := sb.
-		Select("statusCode", "headers", "body", "requestHash").
+		Select("status_code", "headers", "body", "request_hash").
 		From(s.schema.Table("idempotency")).
 		Where(sb.Equal("key", key)).
 		BuildWithFlavor(s.schema.Flavor())
