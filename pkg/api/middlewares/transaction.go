@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
 )
 
 type bufferedResponseWriter struct {
@@ -65,8 +64,6 @@ func Transaction() func(c *gin.Context) {
 				apierrors.ResponseError(c, err)
 				return
 			}
-		} else {
-			c.Error(errors.New("transaction will be rollbacked as "))
 		}
 
 		if err := bufferedWriter.WriteResponse(); err != nil {
