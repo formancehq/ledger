@@ -62,13 +62,16 @@ tasks:
   print:coverage:
     cmds:
       - go tool cover -html=coverage.out -o coverage.html
+      - cov-report ./coverage.out
       - echo "To open the html coverage file, use one of the following commands:"
       - echo "open coverage.html on mac"
       - echo "xdg-open coverage.html on linux"
     silent: true
 
   install:
-    deps: [install:golangci-lint]
+    deps:
+    - install:golangci-lint
+    - install:cov-report
 
   install:golangci-lint:
     cmds:
@@ -76,6 +79,10 @@ tasks:
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
         sh -s -- -b $(go env GOPATH)/bin latest
       - golangci-lint --version
+
+  install:cov-report:
+    cmds:
+    - go install github.com/go-phorce/cov-report/cmd/cov-report
 
   postgres:
     cmds:
