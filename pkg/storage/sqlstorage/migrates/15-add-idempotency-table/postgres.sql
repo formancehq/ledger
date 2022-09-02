@@ -1,11 +1,11 @@
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME"."idempotency" (
+CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".idempotency (
     "key" varchar,
     "date" varchar,
-    "statusCode" int,
+    "status_code" int,
     "headers" varchar,
     "body" varchar,
-    "requestHash" varchar,
+    "request_hash" varchar,
 
     PRIMARY KEY("key")
 );
