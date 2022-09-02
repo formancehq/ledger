@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/ledger"
 )
 
@@ -19,7 +19,7 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 
 	stats, err := l.(*ledger.Ledger).Stats(c.Request.Context())
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 	respondWithData[ledger.Stats](c, http.StatusOK, stats)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -30,7 +30,7 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 
 	count, err := l.(*ledger.Ledger).CountAccounts(c.Request.Context(), *accountsQuery)
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 
@@ -51,21 +51,21 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			c.Query("balance") != "" ||
 			c.Query("balance_operator") != "" ||
 			c.Query("page_size") != "" {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
 		}
 
 		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
 		if decErr != nil {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
 
 		token := sqlstorage.AccPaginationToken{}
 		if err = json.Unmarshal(res, &token); err != nil {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
@@ -83,7 +83,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		balance := c.Query("balance")
 		if balance != "" {
 			if _, err := strconv.ParseInt(balance, 10, 64); err != nil {
-				errors.ResponseError(c, ledger.NewValidationError(
+				apierrors.ResponseError(c, ledger.NewValidationError(
 					"invalid parameter 'balance', should be a number"))
 				return
 			}
@@ -93,7 +93,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
 			var ok bool
 			if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {
-				errors.ResponseError(c, ledger.NewValidationError(
+				apierrors.ResponseError(c, ledger.NewValidationError(
 					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
 				return
 			}
@@ -101,7 +101,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 
 		pageSize, err := getPageSize(c)
 		if err != nil {
-			errors.ResponseError(c, err)
+			apierrors.ResponseError(c, err)
 			return
 		}
 
@@ -117,7 +117,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
 
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 
@@ -128,7 +128,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	if !core.ValidateAddress(c.Param("address")) {
-		errors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
+		apierrors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
@@ -136,7 +136,7 @@ func (ctl *AccountController) GetAccount(c *gin.Context) {
 		c.Request.Context(),
 		c.Param("address"))
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 
@@ -147,19 +147,19 @@ func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	if !core.ValidateAddress(c.Param("address")) {
-		errors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
+		apierrors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
 	var m core.Metadata
 	if err := c.ShouldBindJSON(&m); err != nil {
-		errors.ResponseError(c, ledger.NewValidationError("invalid metadata format"))
+		apierrors.ResponseError(c, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 
 	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
 		core.MetaTargetTypeAccount, c.Param("address"), m); err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 

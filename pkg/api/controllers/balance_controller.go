@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -32,7 +32,7 @@ func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 	)
 
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 
@@ -48,21 +48,21 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
 			c.Query("page_size") != "" {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"no other query params can be set with 'pagination_token'"))
 			return
 		}
 
 		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
 		if decErr != nil {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
 
 		token := sqlstorage.BalancesPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			errors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(c, ledger.NewValidationError(
 				"invalid query value 'pagination_token'"))
 			return
 		}
@@ -77,7 +77,7 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 
 		pageSize, err := getPageSize(c)
 		if err != nil {
-			errors.ResponseError(c, err)
+			apierrors.ResponseError(c, err)
 			return
 		}
 
@@ -90,7 +90,7 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 	cursor, err := l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)
 
 	if err != nil {
-		errors.ResponseError(c, err)
+		apierrors.ResponseError(c, err)
 		return
 	}
 

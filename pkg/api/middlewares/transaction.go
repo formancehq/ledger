@@ -5,8 +5,9 @@ import (
 	"io"
 
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg/api/errors"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/pkg/errors"
 )
 
 type bufferedResponseWriter struct {
@@ -61,9 +62,11 @@ func Transaction() func(c *gin.Context) {
 		if c.Writer.Status() >= 200 && c.Writer.Status() < 300 &&
 			storage.IsTransactionRegistered(c.Request.Context()) {
 			if err := storage.CommitTransaction(c.Request.Context()); err != nil {
-				errors.ResponseError(c, err)
+				apierrors.ResponseError(c, err)
 				return
 			}
+		} else {
+			c.Error(errors.New("transaction will be rollbacked as "))
 		}
 
 		if err := bufferedWriter.WriteResponse(); err != nil {
