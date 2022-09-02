@@ -14,7 +14,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -86,13 +86,13 @@ func TestPostScript(t *testing.T) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					rsp := internal.PostScript(t, api, tc.script, url.Values{})
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 					res := controllers.ScriptResponse{}
-					assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
 
 					res.Transaction = nil
-					assert.EqualValues(t, tc.expectedResponse, res)
+					require.EqualValues(t, tc.expectedResponse, res)
 					return nil
 				},
 			})
@@ -120,13 +120,13 @@ func TestPostScriptPreview(t *testing.T) {
 						Plain: script,
 					}, values)
 
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
 					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-					assert.NoError(t, err)
-					assert.Len(t, cursor.Data, 0)
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 0)
 				})
 
 				t.Run("false", func(t *testing.T) {
@@ -137,13 +137,13 @@ func TestPostScriptPreview(t *testing.T) {
 						Plain: script,
 					}, values)
 
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					res := controllers.ScriptResponse{}
 					internal.Decode(t, rsp.Body, &res)
 
 					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-					assert.NoError(t, err)
-					assert.Len(t, cursor.Data, 1)
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 1)
 				})
 
 				return nil
@@ -166,17 +166,17 @@ func TestPostScriptWithReference(t *testing.T) {
 						)`,
 					Reference: reference,
 				}, url.Values{})
-				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				res := controllers.ScriptResponse{}
-				assert.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-				assert.Equal(t, reference, res.Transaction.Reference)
+				require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+				require.Equal(t, reference, res.Transaction.Reference)
 
 				store := internal.GetLedgerStore(t, driver, ctx)
 				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-				assert.NoError(t, err)
-				assert.Len(t, cursor.Data, 1)
-				assert.Equal(t, reference, cursor.Data[0].Reference)
+				require.NoError(t, err)
+				require.Len(t, cursor.Data, 1)
+				require.Equal(t, reference, cursor.Data[0].Reference)
 
 				return nil
 			},
