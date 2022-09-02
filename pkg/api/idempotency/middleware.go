@@ -74,7 +74,8 @@ func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) 
 				RequestHash: hashRequest(c.Request.URL.String(), string(data)),
 				StatusCode:  c.Writer.Status(),
 				Header:      c.Writer.Header(),
-				Body:        string(rw.Bytes()),
+				// TODO: Check if PG accept big documents
+				Body: string(rw.Bytes()),
 			}); err != nil {
 				_ = c.Error(errors.Wrap(err, "persisting IK to database"))
 			}
