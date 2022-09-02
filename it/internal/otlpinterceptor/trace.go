@@ -78,18 +78,18 @@ func (s Span) AddSubSpans(spans ...Span) Span {
 	return s
 }
 
-func (t Span) check(allTraces Traces, otelTrace ptrace.Traces) (bool, error) {
+func (t Span) check(allTraces Traces, rootTrace ptrace.Traces) (bool, error) {
 
-	span := otelTrace.
+	rootSpan := rootTrace.
 		ResourceSpans().At(0).
 		ScopeSpans().At(0).
 		Spans().At(0)
 
-	if t.Name != span.Name() {
-		return false, fmt.Errorf("expected name '%s', got '%s'", t.Name, span.Name())
+	if t.Name != rootSpan.Name() {
+		return false, fmt.Errorf("expected name '%s', got '%s'", t.Name, rootSpan.Name())
 	}
 
-	rawSpanAttributes := span.Attributes().AsRaw()
+	rawSpanAttributes := rootSpan.Attributes().AsRaw()
 	for k, v := range t.Attributes {
 		if rawSpanAttributes[k] == nil {
 			return false, fmt.Errorf("attribute '%s' not found", k)
@@ -99,7 +99,7 @@ func (t Span) check(allTraces Traces, otelTrace ptrace.Traces) (bool, error) {
 		}
 	}
 
-	subTraces := allTraces.FilterSpanID(span.SpanID())
+	subTraces := allTraces.FilterSpanID(rootSpan.SpanID())
 	if len(t.SubSpans) != len(subTraces) {
 		return false, fmt.Errorf("expected %d sub spans and got %d", len(t.SubSpans), len(subTraces))
 	}

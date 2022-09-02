@@ -44,7 +44,7 @@ func PickEvent[T bus.Payload](filter func(ledger string, payload T) bool) (*T, e
 	var zeroT T
 
 	for _, eventStr := range events {
-		e := &bus.Event[T]{}
+		e := &bus.EventMessage[T]{}
 		err := json.Unmarshal([]byte(eventStr), e)
 		if err != nil {
 			return nil, err

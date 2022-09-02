@@ -68,12 +68,11 @@ var _ = Scenario("Transactions api", func() {
 						AddSubSpans(
 							NewSpan("Initialize"),
 							NewSpan("LoadMapping"),
-							NewSpan("LastLog"),
 							NewSpan("GetLastTransaction"),
 							NewSpan("GetVolumes"),
 							NewSpan("GetVolumes"),
 							NewSpan("GetAccount"),
-							NewSpan("AppendLog"),
+							NewSpan("Commit"),
 							NewSpan("Close"),
 						),
 				))

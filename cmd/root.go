@@ -16,40 +16,40 @@ import (
 )
 
 const (
-	debugFlag                           = "debug"
-	storageDirFlag                      = "storage.dir"
-	storageDriverFlag                   = "storage.driver"
-	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
-	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
+	DebugFlag                           = "debug"
+	StorageDirFlag                      = "storage.dir"
+	StorageDriverFlag                   = "storage.driver"
+	StorageSQLiteDBNameFlag             = "storage.sqlite.db_name"
+	StoragePostgresConnectionStringFlag = "storage.postgres.conn_string"
 	// Deprecated
-	storageCacheFlag                 = "storage.cache"
-	serverHttpBindAddressFlag        = "server.http.bind_address"
-	uiHttpBindAddressFlag            = "ui.http.bind_address"
-	lockStrategyFlag                 = "lock-strategy"
-	lockStrategyRedisUrlFlag         = "lock-strategy-redis-url"
-	lockStrategyRedisDurationFlag    = "lock-strategy-redis-duration"
-	lockStrategyRedisRetryFlag       = "lock-strategy-redis-retry"
-	lockStrategyRedisTLSEnabledFlag  = "lock-strategy-redis-tls-enabled"
-	lockStrategyRedisTLSInsecureFlag = "lock-strategy-redis-tls-insecure"
+	StorageCacheFlag                 = "storage.cache"
+	ServerHttpBindAddressFlag        = "server.http.bind_address"
+	UiHttpBindAddressFlag            = "ui.http.bind_address"
+	LockStrategyFlag                 = "lock-strategy"
+	LockStrategyRedisUrlFlag         = "lock-strategy-redis-url"
+	LockStrategyRedisDurationFlag    = "lock-strategy-redis-duration"
+	LockStrategyRedisRetryFlag       = "lock-strategy-redis-retry"
+	LockStrategyRedisTLSEnabledFlag  = "lock-strategy-redis-tls-enabled"
+	LockStrategyRedisTLSInsecureFlag = "lock-strategy-redis-tls-insecure"
 
-	publisherKafkaEnabledFlag      = "publisher-kafka-enabled"
-	publisherKafkaBrokerFlag       = "publisher-kafka-broker"
-	publisherKafkaSASLEnabled      = "publisher-kafka-sasl-enabled"
-	publisherKafkaSASLUsername     = "publisher-kafka-sasl-username"
-	publisherKafkaSASLPassword     = "publisher-kafka-sasl-password"
-	publisherKafkaSASLMechanism    = "publisher-kafka-sasl-mechanism"
-	publisherKafkaSASLScramSHASize = "publisher-kafka-sasl-scram-sha-size"
-	publisherKafkaTLSEnabled       = "publisher-kafka-tls-enabled"
-	publisherTopicMappingFlag      = "publisher-topic-mapping"
-	publisherHttpEnabledFlag       = "publisher-http-enabled"
+	PublisherKafkaEnabledFlag      = "publisher-kafka-enabled"
+	PublisherKafkaBrokerFlag       = "publisher-kafka-broker"
+	PublisherKafkaSASLEnabled      = "publisher-kafka-sasl-enabled"
+	PublisherKafkaSASLUsername     = "publisher-kafka-sasl-username"
+	PublisherKafkaSASLPassword     = "publisher-kafka-sasl-password"
+	PublisherKafkaSASLMechanism    = "publisher-kafka-sasl-mechanism"
+	PublisherKafkaSASLScramSHASize = "publisher-kafka-sasl-scram-sha-size"
+	PublisherKafkaTLSEnabled       = "publisher-kafka-tls-enabled"
+	PublisherTopicMappingFlag      = "publisher-topic-mapping"
+	PublisherHttpEnabledFlag       = "publisher-http-enabled"
 
-	authBearerEnabledFlag           = "auth-bearer-enabled"
-	authBearerIntrospectUrlFlag     = "auth-bearer-introspect-url"
-	authBearerAudienceFlag          = "auth-bearer-audience"
-	authBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
-	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
+	AuthBearerEnabledFlag           = "auth-bearer-enabled"
+	AuthBearerIntrospectUrlFlag     = "auth-bearer-introspect-url"
+	AuthBearerAudienceFlag          = "auth-bearer-audience"
+	AuthBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
+	AuthBearerUseScopesFlag         = "auth-bearer-use-scopes"
 
-	commitPolicyFlag = "commit-policy"
+	CommitPolicyFlag = "commit-policy"
 )
 
 var (
@@ -67,7 +67,7 @@ func NewRootCommand() *cobra.Command {
 		Short:             "Numary",
 		DisableAutoGenTag: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			err := os.MkdirAll(viper.GetString(storageDirFlag), 0700)
+			err := os.MkdirAll(viper.GetString(StorageDirFlag), 0700)
 			if err != nil {
 				return errors.Wrap(err, "creating storage directory")
 			}
@@ -108,36 +108,36 @@ func NewRootCommand() *cobra.Command {
 		home = "/root"
 	}
 
-	root.PersistentFlags().Bool(debugFlag, false, "Debug mode")
-	root.PersistentFlags().String(storageDriverFlag, "sqlite", "Storage driver")
-	root.PersistentFlags().String(storageDirFlag, path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
-	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
-	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
-	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
-	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
-	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
-	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
-	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
-	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
-	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
-	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
-	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
-	root.PersistentFlags().Bool(publisherKafkaEnabledFlag, false, "Publish write events to kafka")
-	root.PersistentFlags().StringSlice(publisherKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
-	root.PersistentFlags().StringSlice(publisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
-	root.PersistentFlags().Bool(publisherHttpEnabledFlag, false, "Sent write event to http endpoint")
-	root.PersistentFlags().Bool(publisherKafkaSASLEnabled, false, "Enable SASL authentication on kafka publisher")
-	root.PersistentFlags().String(publisherKafkaSASLUsername, "", "SASL username")
-	root.PersistentFlags().String(publisherKafkaSASLPassword, "", "SASL password")
-	root.PersistentFlags().String(publisherKafkaSASLMechanism, "", "SASL authentication mechanism")
-	root.PersistentFlags().Int(publisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
-	root.PersistentFlags().Bool(publisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
-	root.PersistentFlags().Bool(authBearerEnabledFlag, false, "Enable bearer auth")
-	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
-	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
-	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
-	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
-	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
+	root.PersistentFlags().Bool(DebugFlag, false, "Debug mode")
+	root.PersistentFlags().String(StorageDriverFlag, "sqlite", "Storage driver")
+	root.PersistentFlags().String(StorageDirFlag, path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
+	root.PersistentFlags().String(StorageSQLiteDBNameFlag, "numary", "SQLite database name")
+	root.PersistentFlags().String(StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
+	root.PersistentFlags().Bool(StorageCacheFlag, true, "Storage cache")
+	root.PersistentFlags().String(ServerHttpBindAddressFlag, "localhost:3068", "API bind address")
+	root.PersistentFlags().String(UiHttpBindAddressFlag, "localhost:3068", "UI bind address")
+	root.PersistentFlags().String(LockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
+	root.PersistentFlags().String(LockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
+	root.PersistentFlags().Duration(LockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
+	root.PersistentFlags().Duration(LockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
+	root.PersistentFlags().Bool(LockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
+	root.PersistentFlags().Bool(LockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
+	root.PersistentFlags().Bool(PublisherKafkaEnabledFlag, false, "Publish write events to kafka")
+	root.PersistentFlags().StringSlice(PublisherKafkaBrokerFlag, []string{}, "Kafka address is kafka enabled")
+	root.PersistentFlags().StringSlice(PublisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
+	root.PersistentFlags().Bool(PublisherHttpEnabledFlag, false, "Sent write event to http endpoint")
+	root.PersistentFlags().Bool(PublisherKafkaSASLEnabled, false, "Enable SASL authentication on kafka publisher")
+	root.PersistentFlags().String(PublisherKafkaSASLUsername, "", "SASL username")
+	root.PersistentFlags().String(PublisherKafkaSASLPassword, "", "SASL password")
+	root.PersistentFlags().String(PublisherKafkaSASLMechanism, "", "SASL authentication mechanism")
+	root.PersistentFlags().Int(PublisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
+	root.PersistentFlags().Bool(PublisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
+	root.PersistentFlags().Bool(AuthBearerEnabledFlag, false, "Enable bearer auth")
+	root.PersistentFlags().String(AuthBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
+	root.PersistentFlags().StringSlice(AuthBearerAudienceFlag, []string{}, "Allowed audiences")
+	root.PersistentFlags().Bool(AuthBearerAudiencesWildcardFlag, false, "Don't check audience")
+	root.PersistentFlags().Bool(AuthBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
+	root.PersistentFlags().String(CommitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	sharedotlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	sharedotlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())

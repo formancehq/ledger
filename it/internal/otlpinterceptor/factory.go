@@ -22,7 +22,7 @@ func NewFactory() component.ProcessorFactory {
 	return component.NewProcessorFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesProcessorAndStabilityLevel(
+		component.WithTracesProcessor(
 			createTraceProcessor,
 			component.StabilityLevelInDevelopment,
 		),

@@ -51,7 +51,7 @@ func NewServerStart() *cobra.Command {
 		Use: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			l := logrus.New()
-			if viper.GetBool(debugFlag) {
+			if viper.GetBool(DebugFlag) {
 				l.Level = logrus.DebugLevel
 			}
 			if viper.GetBool(sharedotlptraces.OtelTracesFlag) {
@@ -75,7 +75,7 @@ func NewServerStart() *cobra.Command {
 					)
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							listener, err = net.Listen("tcp", viper.GetString(serverHttpBindAddressFlag))
+							listener, err = net.Listen("tcp", viper.GetString(ServerHttpBindAddressFlag))
 							if err != nil {
 								return err
 							}

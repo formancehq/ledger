@@ -7,6 +7,7 @@ import (
 	"os"
 
 	_ "github.com/getkin/kin-openapi/openapi3"
+	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd"
 	"github.com/numary/ledger/it/internal/httplistener"
 	"github.com/numary/ledger/it/internal/ledgerclient"
@@ -46,11 +47,11 @@ func Scenario(text string, callback func()) bool {
 				flag(cmd.StoragePostgresConnectionStringFlag, connString),
 				flag(cmd.StorageDirFlag, os.TempDir()),
 				flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
-				boolFlag(cmd.OtelTracesFlag),
-				flag(cmd.OtelTracesExporterFlag, "otlp"),
-				flag(cmd.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
-				boolFlag(cmd.OtelTracesExporterOTLPInsecureFlag),
-				flag(cmd.OtelTracesExporterOTLPModeFlag, "http"),
+				boolFlag(sharedotlptraces.OtelTracesFlag),
+				flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
+				flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
+				boolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
+				flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
 				flag(cmd.ServerHttpBindAddressFlag, ":0"),
 				boolFlag(cmd.PublisherHttpEnabledFlag),
 				flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),

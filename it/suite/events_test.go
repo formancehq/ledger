@@ -33,28 +33,31 @@ var _ = Scenario("Transactions api", func() {
 			})
 			It("Should trigger an event", func() {
 				Expect(ledger).To(HaveTriggeredEvent(bus.CommittedTransactions{
-					Transactions: []core.Transaction{
+					Ledger: *ledger,
+					Transactions: []core.ExpandedTransaction{
 						{
-							TransactionData: core.NewTransactionData(core.NewPosting("world", "bank", "USD", 100)).
-								SetReference("").
-								SetTimestamp(response.Data[0].Timestamp),
+							Transaction: core.Transaction{
+								TransactionData: core.NewTransactionData(core.NewPosting("world", "bank", "USD", core.NewMonetaryInt(100))).
+									SetReference("").
+									SetTimestamp(response.Data[0].Timestamp),
+							},
 							PreCommitVolumes: core.NewAccountsAssetsVolumes().
-								SetVolumes("world", "USD", core.NewVolumes(0, 0)).
-								SetVolumes("bank", "USD", core.NewVolumes(0, 0)),
+								SetVolumes("world", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(0))).
+								SetVolumes("bank", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(0))),
 							PostCommitVolumes: core.NewAccountsAssetsVolumes().
-								SetVolumes("world", "USD", core.NewVolumes(0, 100)).
-								SetVolumes("bank", "USD", core.NewVolumes(100, 0)),
+								SetVolumes("world", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(100))).
+								SetVolumes("bank", "USD", core.NewVolumes(core.NewMonetaryInt(100), core.NewMonetaryInt(0))),
 						},
 					},
 					Volumes: core.NewAccountsAssetsVolumes().
-						SetVolumes("bank", "USD", core.NewVolumes(100, 0)).
-						SetVolumes("world", "USD", core.NewVolumes(0, 100)),
+						SetVolumes("bank", "USD", core.NewVolumes(core.NewMonetaryInt(100), core.NewMonetaryInt(0))).
+						SetVolumes("world", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(100))),
 					PostCommitVolumes: core.NewAccountsAssetsVolumes().
-						SetVolumes("bank", "USD", core.NewVolumes(100, 0)).
-						SetVolumes("world", "USD", core.NewVolumes(0, 100)),
+						SetVolumes("bank", "USD", core.NewVolumes(core.NewMonetaryInt(100), core.NewMonetaryInt(0))).
+						SetVolumes("world", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(100))),
 					PreCommitVolumes: core.NewAccountsAssetsVolumes().
-						SetVolumes("bank", "USD", core.NewVolumes(0, 0)).
-						SetVolumes("world", "USD", core.NewVolumes(0, 0)),
+						SetVolumes("bank", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(0))).
+						SetVolumes("world", "USD", core.NewVolumes(core.NewMonetaryInt(0), core.NewMonetaryInt(0))),
 				}))
 			})
 		})

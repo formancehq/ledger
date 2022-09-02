@@ -44,7 +44,7 @@ func NewScriptExec() *cobra.Command {
 			logrus.Debugln(string(b))
 
 			req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/%s/script",
-				viper.Get(serverHttpBindAddressFlag),
+				viper.Get(ServerHttpBindAddressFlag),
 				args[0]), bytes.NewReader(b))
 			if err != nil {
 				logrus.Fatal(err)
@@ -92,7 +92,7 @@ func NewScriptExec() *cobra.Command {
 			}
 			if !viper.GetBool(previewFlag) {
 				fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
-					viper.Get(serverHttpBindAddressFlag),
+					viper.Get(ServerHttpBindAddressFlag),
 					args[0],
 					result.Transaction.ID)
 			}

@@ -147,6 +147,10 @@ func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	}
 }
 
+func NewAccountsAssetsVolumes() AccountsAssetsVolumes {
+	return AccountsAssetsVolumes{}
+}
+
 func AggregatePostCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
 	ret := AccountsAssetsVolumes{}
 	for i := len(txs) - 1; i >= 0; i-- {
