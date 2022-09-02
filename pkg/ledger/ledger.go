@@ -68,15 +68,6 @@ type CommitResult struct {
 }
 
 func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
-
-	if len(txsData) == 0 {
-		return &CommitResult{
-			PreCommitVolumes:      core.AccountsAssetsVolumes{},
-			PostCommitVolumes:     core.AccountsAssetsVolumes{},
-			GeneratedTransactions: []core.ExpandedTransaction{},
-		}, nil
-	}
-
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
