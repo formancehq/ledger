@@ -17,7 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Scenario("Transactions create api", func() {
+var _ = DescribeServerExecute("Transactions create api", func() {
 	WithNewLedger(func() {
 		When("creating a new transactions from world to a 'bank' account", func() {
 			var (

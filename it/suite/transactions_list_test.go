@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Scenario("Transactions list", func() {
+var _ = DescribeServerExecute("Transactions list", func() {
 	WithNewLedger(func() {
 		When("listing transactions", func() {
 			var (

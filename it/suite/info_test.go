@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Scenario("Server API", func() {
+var _ = DescribeServerExecute("Server API", func() {
 	When("reading server configuration", func() {
 		var (
 			response     ledgerclient.ConfigInfoResponse
