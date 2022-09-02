@@ -10,7 +10,6 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pbnjay/memory"
 	"github.com/pborman/uuid"
 	"go.uber.org/fx"
@@ -46,10 +45,10 @@ func FromStorageAppIdProvider(driver storage.Driver[ledger.Store]) AppIdProvider
 		var err error
 		if appId == "" {
 			appId, err = driver.GetSystemStore().GetConfiguration(ctx, "appId")
-			if err != nil && err != noopstorage.ErrConfigurationNotFound {
+			if err != nil && err != storage.ErrConfigurationNotFound {
 				return "", err
 			}
-			if err == noopstorage.ErrConfigurationNotFound {
+			if err == storage.ErrConfigurationNotFound {
 				appId = uuid.New()
 				if err := driver.GetSystemStore().InsertConfiguration(ctx, "appId", appId); err != nil {
 					return "", err

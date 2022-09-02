@@ -2,14 +2,9 @@ package noopstorage
 
 import (
 	"context"
-	"errors"
 
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
-)
-
-var (
-	ErrConfigurationNotFound = errors.New("configuration not found")
 )
 
 type noOpDriver struct{}

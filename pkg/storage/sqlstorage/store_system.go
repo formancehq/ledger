@@ -7,7 +7,6 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/noopstorage"
 	"github.com/pkg/errors"
 )
 
@@ -33,7 +32,7 @@ func (s *SystemStore) GetConfiguration(ctx context.Context, key string) (string,
 	var value string
 	if err := row.Scan(&value); err != nil {
 		if err == sql.ErrNoRows {
-			return "", noopstorage.ErrConfigurationNotFound
+			return "", storage.ErrConfigurationNotFound
 		}
 		return "", err
 	}
