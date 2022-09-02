@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/numary/go-libs/sharedlogging"
 )
 
 type Response struct {
@@ -20,5 +21,7 @@ func (r Response) write(c *gin.Context) {
 		}
 	}
 	c.Writer.WriteHeader(r.StatusCode)
-	c.Writer.WriteString(r.Body)
+	if _, err := c.Writer.WriteString(r.Body); err != nil {
+		sharedlogging.GetLogger(c.Request.Context()).Errorf("Error writing stored response: %s", err)
+	}
 }
