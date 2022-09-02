@@ -170,7 +170,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, status, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, status, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -259,5 +259,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }

@@ -133,7 +133,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Expande
 		return nil, err
 	}
 
-	return &res.GeneratedTransactions[0], nil
+	return &res[0], nil
 }
 
 func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
@@ -147,5 +147,5 @@ func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.
 		return nil, err
 	}
 
-	return &res.GeneratedTransactions[0], nil
+	return &res[0], nil
 }

@@ -303,8 +303,10 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 		}
 
 		res, err := l.Commit(context.Background(), batch)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		require.NotNil(t, res)
 
+		postCommitVolumes := core.AggregatePostCommitVolumes(res...)
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
 			"world": core.AssetsVolumes{
 				"USD": {
@@ -332,7 +334,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: core.NewMonetaryInt(0),
 				},
 			},
-		}, res.PostCommitVolumes)
+		}, postCommitVolumes)
 	})
 }
 
@@ -565,7 +567,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		require.Equal(t, core.Postings{
@@ -577,10 +579,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf("%d", res.GeneratedTransactions[0].ID),
+		require.EqualValues(t, fmt.Sprintf("%d", res[0].ID),
 			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
-		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}

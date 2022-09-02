@@ -140,7 +140,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, firstTx.postCommitVolumes())
+				}, firstTx.postCommitVolumes)
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -160,7 +160,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, firstTx.preCommitVolumes())
+				}, firstTx.preCommitVolumes)
 
 				secondTx := volumeAggregator.nextTx()
 				require.NoError(t, secondTx.transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50)))
@@ -184,7 +184,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, secondTx.postCommitVolumes())
+				}, secondTx.postCommitVolumes)
 				require.Equal(t, core.AccountsAssetsVolumes{
 					"bob": core.AssetsVolumes{
 						"USD": {
@@ -204,63 +204,7 @@ func TestVolumeAggregator(t *testing.T) {
 							Output: core.NewMonetaryInt(0),
 						},
 					},
-				}, secondTx.preCommitVolumes())
-
-				aggregatedPostVolumes := volumeAggregator.aggregatedPostCommitVolumes()
-				require.Equal(t, core.AccountsAssetsVolumes{
-					"bob": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(0),
-							Output: core.NewMonetaryInt(275),
-						},
-					},
-					"alice": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(200),
-							Output: core.NewMonetaryInt(50),
-						},
-					},
-					"fred": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(75),
-							Output: core.NewMonetaryInt(0),
-						},
-					},
-					"zoro": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(50),
-							Output: core.NewMonetaryInt(0),
-						},
-					},
-				}, aggregatedPostVolumes)
-
-				aggregatedPreVolumes := volumeAggregator.aggregatedPreCommitVolumes()
-				require.Equal(t, core.AccountsAssetsVolumes{
-					"bob": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(0),
-							Output: core.NewMonetaryInt(100),
-						},
-					},
-					"alice": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(100),
-							Output: core.NewMonetaryInt(0),
-						},
-					},
-					"fred": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(0),
-							Output: core.NewMonetaryInt(0),
-						},
-					},
-					"zoro": core.AssetsVolumes{
-						"USD": {
-							Input:  core.NewMonetaryInt(0),
-							Output: core.NewMonetaryInt(0),
-						},
-					},
-				}, aggregatedPreVolumes)
+				}, secondTx.preCommitVolumes)
 
 				return nil
 			},

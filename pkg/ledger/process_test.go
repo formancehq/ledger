@@ -136,8 +136,10 @@ func TestLedger_processTx(t *testing.T) {
 				res, err := l.processTx(context.Background(), txsData)
 				assert.NoError(t, err)
 
-				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
-				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 
 				expectedTxs := []core.ExpandedTransaction{{
 					Transaction: core.Transaction{
@@ -147,7 +149,7 @@ func TestLedger_processTx(t *testing.T) {
 					PreCommitVolumes:  expectedPreCommitVol,
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				assert.Equal(t, expectedTxs, res)
 			})
 
 			t.Run("multi transactions single postings", func(t *testing.T) {
@@ -182,8 +184,10 @@ func TestLedger_processTx(t *testing.T) {
 				res, err := l.processTx(context.Background(), txsData)
 				assert.NoError(t, err)
 
-				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
-				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 
 				expectedTxs := []core.ExpandedTransaction{
 					{
@@ -288,18 +292,14 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				assert.Equal(t, expectedTxs, res)
 			})
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
 			result, err := l.processTx(context.Background(), []core.TransactionData{})
 			assert.NoError(t, err)
-			assert.Equal(t, &CommitResult{
-				PreCommitVolumes:      core.AccountsAssetsVolumes{},
-				PostCommitVolumes:     core.AccountsAssetsVolumes{},
-				GeneratedTransactions: []core.ExpandedTransaction{},
-			}, result)
+			assert.Equal(t, []core.ExpandedTransaction{}, result)
 		})
 
 		t.Run("date in the past", func(t *testing.T) {

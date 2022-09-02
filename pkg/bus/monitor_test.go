@@ -8,7 +8,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/numary/go-libs/sharedpublish"
-	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -29,7 +28,7 @@ func TestMonitor(t *testing.T) {
 		"*": "testing",
 	})
 	m := NewLedgerMonitor(p)
-	go m.CommittedTransactions(context.Background(), uuid.New(), &ledger.CommitResult{})
+	go m.CommittedTransactions(context.Background(), uuid.New())
 
 	select {
 	case m := <-messages:

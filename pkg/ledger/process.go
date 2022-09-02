@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) ([]core.ExpandedTransaction, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -87,7 +87,7 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 			}
 		}
 
-		for addr, volumes := range txVolumeAggregator.postCommitVolumes() {
+		for addr, volumes := range txVolumeAggregator.postCommitVolumes {
 			for asset, volume := range volumes {
 				if addr == "world" {
 					continue
@@ -117,17 +117,13 @@ func (l *Ledger) processTx(ctx context.Context, ts []core.TransactionData) (*Com
 				TransactionData: t,
 				ID:              nextTxId,
 			},
-			PostCommitVolumes: txVolumeAggregator.postCommitVolumes(),
-			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes(),
+			PostCommitVolumes: txVolumeAggregator.postCommitVolumes,
+			PreCommitVolumes:  txVolumeAggregator.preCommitVolumes,
 		}
 		lastTx = &tx
 		generatedTxs = append(generatedTxs, tx)
 		nextTxId++
 	}
 
-	return &CommitResult{
-		PreCommitVolumes:      volumeAggregator.aggregatedPreCommitVolumes(),
-		PostCommitVolumes:     volumeAggregator.aggregatedPostCommitVolumes(),
-		GeneratedTransactions: generatedTxs,
-	}, nil
+	return generatedTxs, nil
 }

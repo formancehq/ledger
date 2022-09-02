@@ -57,13 +57,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
-type CommitResult struct {
-	PreCommitVolumes      core.AccountsAssetsVolumes
-	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.ExpandedTransaction
-}
-
-func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) ([]core.ExpandedTransaction, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
@@ -76,7 +70,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 	}
 
 	if err := l.store.WithTX(ctx, func(api storage.API) error {
-		return l.store.Commit(ctx, result.GeneratedTransactions...)
+		return l.store.Commit(ctx, result...)
 	}); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
@@ -86,11 +80,11 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), result...)
 	return result, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) ([]core.ExpandedTransaction, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
@@ -159,7 +153,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	if err != nil {
 		return nil, err
 	}
-	revert := result.GeneratedTransactions[0]
+	revert := result[0]
 
 	err = l.store.WithTX(ctx, func(api storage.API) error {
 		err := api.Commit(ctx, revert)
@@ -173,8 +167,8 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		return nil, err
 	}
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result.GeneratedTransactions[0])
-	return &result.GeneratedTransactions[0], nil
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result[0])
+	return &result[0], nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
