@@ -16,7 +16,7 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/mattn/go-sqlite3"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 func init() {
@@ -26,7 +26,7 @@ func init() {
 			return err
 		}
 		if eerr.Code == sqlite3.ErrConstraint {
-			return ledger.NewError(ledger.ConstraintFailed, err)
+			return storage.NewError(storage.ConstraintFailed, err)
 		}
 		return err
 	}

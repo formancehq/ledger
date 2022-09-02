@@ -7,6 +7,7 @@ import (
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
@@ -89,7 +90,7 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 
 	if err := l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
 		switch {
-		case IsErrorCode(err, ConstraintFailed):
+		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
 		default:
 			return nil, err

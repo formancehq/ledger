@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
@@ -50,7 +51,7 @@ func coreErrorToErrorCode(err error) (int, string) {
 		return http.StatusNotFound, ErrNotFound
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled
-	case ledger.IsError(err):
+	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore
 	default:
 		return http.StatusInternalServerError, ErrInternal
