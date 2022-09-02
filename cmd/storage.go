@@ -27,6 +27,7 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
+
 				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{

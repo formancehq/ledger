@@ -48,11 +48,16 @@ type ApiRunScriptRequest struct {
 	ApiService ScriptApi
 	ledger string
 	script *Script
+	idempotencyKey *string
 	preview *bool
 }
 
 func (r ApiRunScriptRequest) Script(script Script) ApiRunScriptRequest {
 	r.script = &script
+	return r
+}
+func (r ApiRunScriptRequest) IdempotencyKey(idempotencyKey string) ApiRunScriptRequest {
+	r.idempotencyKey = &idempotencyKey
 	return r
 }
 // Set the preview mode. Preview mode doesn&#39;t add the logs to the database or publish a message to the message broker.
@@ -124,6 +129,9 @@ func (a *ScriptApiService) RunScriptExecute(r ApiRunScriptRequest) (ScriptResult
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	// body params
 	localVarPostBody = r.script

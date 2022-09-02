@@ -228,6 +228,11 @@ paths:
       tags:
         - accounts
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -328,6 +333,11 @@ paths:
       operationId: runScript
       summary: Execute a Numscript.
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -566,6 +576,11 @@ paths:
       summary: Create a new transaction to a ledger.
       operationId: createTransaction
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -695,6 +710,11 @@ paths:
       summary: Set the metadata of a transaction by its ID.
       operationId: addMetadataOnTransaction
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -757,6 +777,11 @@ paths:
       operationId: revertTransaction
       summary: Revert a ledger transaction by its ID.
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -816,6 +841,11 @@ paths:
       summary: Create a new batch of transactions to a ledger.
       operationId: CreateTransactions
       parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
         - name: ledger
           in: path
           description: Name of the ledger.

@@ -90,11 +90,16 @@ type ApiAddMetadataToAccountRequest struct {
 	ledger string
 	address string
 	requestBody *map[string]interface{}
+	idempotencyKey *string
 }
 
 // metadata
 func (r ApiAddMetadataToAccountRequest) RequestBody(requestBody map[string]interface{}) ApiAddMetadataToAccountRequest {
 	r.requestBody = &requestBody
+	return r
+}
+func (r ApiAddMetadataToAccountRequest) IdempotencyKey(idempotencyKey string) ApiAddMetadataToAccountRequest {
+	r.idempotencyKey = &idempotencyKey
 	return r
 }
 
@@ -159,6 +164,9 @@ func (a *AccountsApiService) AddMetadataToAccountExecute(r ApiAddMetadataToAccou
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	// body params
 	localVarPostBody = r.requestBody

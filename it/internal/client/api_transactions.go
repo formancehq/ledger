@@ -129,9 +129,14 @@ type ApiAddMetadataOnTransactionRequest struct {
 	ApiService TransactionsApi
 	ledger string
 	txid int32
+	idempotencyKey *string
 	requestBody *map[string]interface{}
 }
 
+func (r ApiAddMetadataOnTransactionRequest) IdempotencyKey(idempotencyKey string) ApiAddMetadataOnTransactionRequest {
+	r.idempotencyKey = &idempotencyKey
+	return r
+}
 // metadata
 func (r ApiAddMetadataOnTransactionRequest) RequestBody(requestBody map[string]interface{}) ApiAddMetadataOnTransactionRequest {
 	r.requestBody = &requestBody
@@ -196,6 +201,9 @@ func (a *TransactionsApiService) AddMetadataOnTransactionExecute(r ApiAddMetadat
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	// body params
 	localVarPostBody = r.requestBody
@@ -387,11 +395,16 @@ type ApiCreateTransactionRequest struct {
 	ApiService TransactionsApi
 	ledger string
 	transactionData *TransactionData
+	idempotencyKey *string
 	preview *bool
 }
 
 func (r ApiCreateTransactionRequest) TransactionData(transactionData TransactionData) ApiCreateTransactionRequest {
 	r.transactionData = &transactionData
+	return r
+}
+func (r ApiCreateTransactionRequest) IdempotencyKey(idempotencyKey string) ApiCreateTransactionRequest {
+	r.idempotencyKey = &idempotencyKey
 	return r
 }
 // Set the preview mode. Preview mode doesn&#39;t add the logs to the database or publish a message to the message broker.
@@ -463,6 +476,9 @@ func (a *TransactionsApiService) CreateTransactionExecute(r ApiCreateTransaction
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	// body params
 	localVarPostBody = r.transactionData
@@ -537,10 +553,15 @@ type ApiCreateTransactionsRequest struct {
 	ApiService TransactionsApi
 	ledger string
 	transactions *Transactions
+	idempotencyKey *string
 }
 
 func (r ApiCreateTransactionsRequest) Transactions(transactions Transactions) ApiCreateTransactionsRequest {
 	r.transactions = &transactions
+	return r
+}
+func (r ApiCreateTransactionsRequest) IdempotencyKey(idempotencyKey string) ApiCreateTransactionsRequest {
+	r.idempotencyKey = &idempotencyKey
 	return r
 }
 
@@ -604,6 +625,9 @@ func (a *TransactionsApiService) CreateTransactionsExecute(r ApiCreateTransactio
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	// body params
 	localVarPostBody = r.transactions
@@ -996,8 +1020,13 @@ type ApiRevertTransactionRequest struct {
 	ApiService TransactionsApi
 	ledger string
 	txid int32
+	idempotencyKey *string
 }
 
+func (r ApiRevertTransactionRequest) IdempotencyKey(idempotencyKey string) ApiRevertTransactionRequest {
+	r.idempotencyKey = &idempotencyKey
+	return r
+}
 
 func (r ApiRevertTransactionRequest) Execute() (TransactionResponse, *_nethttp.Response, error) {
 	return r.ApiService.RevertTransactionExecute(r)
@@ -1059,6 +1088,9 @@ func (a *TransactionsApiService) RevertTransactionExecute(r ApiRevertTransaction
 	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	if r.idempotencyKey != nil {
+		localVarHeaderParams["Idempotency-Key"] = parameterToString(*r.idempotencyKey, "")
 	}
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {

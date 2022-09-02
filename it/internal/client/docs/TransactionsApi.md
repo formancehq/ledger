@@ -16,7 +16,7 @@ Method | HTTP request | Description
 
 ## AddMetadataOnTransaction
 
-> AddMetadataOnTransaction(ctx, ledger, txid).RequestBody(requestBody).Execute()
+> AddMetadataOnTransaction(ctx, ledger, txid).IdempotencyKey(idempotencyKey).RequestBody(requestBody).Execute()
 
 Set the metadata of a transaction by its ID.
 
@@ -35,11 +35,12 @@ import (
 func main() {
     ledger := "ledger001" // string | Name of the ledger.
     txid := int32(1234) // int32 | Transaction ID.
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
     requestBody := map[string]interface{}{"key": interface{}(123)} // map[string]interface{} | metadata (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.TransactionsApi.AddMetadataOnTransaction(context.Background(), ledger, txid).RequestBody(requestBody).Execute()
+    resp, r, err := api_client.TransactionsApi.AddMetadataOnTransaction(context.Background(), ledger, txid).IdempotencyKey(idempotencyKey).RequestBody(requestBody).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `TransactionsApi.AddMetadataOnTransaction``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -65,6 +66,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
 
+ **idempotencyKey** | **string** |  | 
  **requestBody** | **map[string]interface{}** | metadata | 
 
 ### Return type
@@ -163,7 +165,7 @@ Name | Type | Description  | Notes
 
 ## CreateTransaction
 
-> TransactionsResponse CreateTransaction(ctx, ledger).TransactionData(transactionData).Preview(preview).Execute()
+> TransactionsResponse CreateTransaction(ctx, ledger).TransactionData(transactionData).IdempotencyKey(idempotencyKey).Preview(preview).Execute()
 
 Create a new transaction to a ledger.
 
@@ -182,11 +184,12 @@ import (
 func main() {
     ledger := "ledger001" // string | Name of the ledger.
     transactionData := *client.NewTransactionData([]client.Posting{*client.NewPosting(int32(100), "COIN", "users:002", "users:001")}) // TransactionData | 
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
     preview := true // bool | Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker. (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.TransactionsApi.CreateTransaction(context.Background(), ledger).TransactionData(transactionData).Preview(preview).Execute()
+    resp, r, err := api_client.TransactionsApi.CreateTransaction(context.Background(), ledger).TransactionData(transactionData).IdempotencyKey(idempotencyKey).Preview(preview).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `TransactionsApi.CreateTransaction``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -213,6 +216,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
  **transactionData** | [**TransactionData**](TransactionData.md) |  | 
+ **idempotencyKey** | **string** |  | 
  **preview** | **bool** | Set the preview mode. Preview mode doesn&#39;t add the logs to the database or publish a message to the message broker. | 
 
 ### Return type
@@ -235,7 +239,7 @@ Name | Type | Description  | Notes
 
 ## CreateTransactions
 
-> TransactionsResponse CreateTransactions(ctx, ledger).Transactions(transactions).Execute()
+> TransactionsResponse CreateTransactions(ctx, ledger).Transactions(transactions).IdempotencyKey(idempotencyKey).Execute()
 
 Create a new batch of transactions to a ledger.
 
@@ -254,10 +258,11 @@ import (
 func main() {
     ledger := "ledger001" // string | Name of the ledger.
     transactions := *client.NewTransactions([]client.TransactionData{*client.NewTransactionData([]client.Posting{*client.NewPosting(int32(100), "COIN", "users:002", "users:001")})}) // Transactions | 
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.TransactionsApi.CreateTransactions(context.Background(), ledger).Transactions(transactions).Execute()
+    resp, r, err := api_client.TransactionsApi.CreateTransactions(context.Background(), ledger).Transactions(transactions).IdempotencyKey(idempotencyKey).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `TransactionsApi.CreateTransactions``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -284,6 +289,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
  **transactions** | [**Transactions**](Transactions.md) |  | 
+ **idempotencyKey** | **string** |  | 
 
 ### Return type
 
@@ -466,7 +472,7 @@ Name | Type | Description  | Notes
 
 ## RevertTransaction
 
-> TransactionResponse RevertTransaction(ctx, ledger, txid).Execute()
+> TransactionResponse RevertTransaction(ctx, ledger, txid).IdempotencyKey(idempotencyKey).Execute()
 
 Revert a ledger transaction by its ID.
 
@@ -485,10 +491,11 @@ import (
 func main() {
     ledger := "ledger001" // string | Name of the ledger.
     txid := int32(1234) // int32 | Transaction ID.
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.TransactionsApi.RevertTransaction(context.Background(), ledger, txid).Execute()
+    resp, r, err := api_client.TransactionsApi.RevertTransaction(context.Background(), ledger, txid).IdempotencyKey(idempotencyKey).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `TransactionsApi.RevertTransaction``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -516,6 +523,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
 
+ **idempotencyKey** | **string** |  | 
 
 ### Return type
 

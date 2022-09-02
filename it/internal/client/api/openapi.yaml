@@ -228,6 +228,13 @@ paths:
     post:
       operationId: addMetadataToAccount
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path
@@ -325,6 +332,13 @@ paths:
     post:
       operationId: runScript
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path
@@ -596,6 +610,13 @@ paths:
     post:
       operationId: createTransaction
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path
@@ -697,6 +718,13 @@ paths:
     post:
       operationId: addMetadataOnTransaction
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path
@@ -744,6 +772,13 @@ paths:
     post:
       operationId: revertTransaction
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path
@@ -788,6 +823,13 @@ paths:
     post:
       operationId: CreateTransactions
       parameters:
+      - explode: false
+        in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        style: simple
       - description: Name of the ledger.
         explode: false
         in: path

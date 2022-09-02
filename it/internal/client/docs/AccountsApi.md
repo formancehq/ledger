@@ -13,7 +13,7 @@ Method | HTTP request | Description
 
 ## AddMetadataToAccount
 
-> AddMetadataToAccount(ctx, ledger, address).RequestBody(requestBody).Execute()
+> AddMetadataToAccount(ctx, ledger, address).RequestBody(requestBody).IdempotencyKey(idempotencyKey).Execute()
 
 Add metadata to an account.
 
@@ -33,10 +33,11 @@ func main() {
     ledger := "ledger001" // string | Name of the ledger.
     address := "users:001" // string | Exact address of the account. It must match the following regular expressions pattern: ``` ^\\w+(:\\w+)*$ ``` 
     requestBody := map[string]interface{}{"key": interface{}(123)} // map[string]interface{} | metadata
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.AccountsApi.AddMetadataToAccount(context.Background(), ledger, address).RequestBody(requestBody).Execute()
+    resp, r, err := api_client.AccountsApi.AddMetadataToAccount(context.Background(), ledger, address).RequestBody(requestBody).IdempotencyKey(idempotencyKey).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `AccountsApi.AddMetadataToAccount``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -63,6 +64,7 @@ Name | Type | Description  | Notes
 
 
  **requestBody** | **map[string]interface{}** | metadata | 
+ **idempotencyKey** | **string** |  | 
 
 ### Return type
 

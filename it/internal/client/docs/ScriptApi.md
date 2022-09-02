@@ -10,7 +10,7 @@ Method | HTTP request | Description
 
 ## RunScript
 
-> ScriptResult RunScript(ctx, ledger).Script(script).Preview(preview).Execute()
+> ScriptResult RunScript(ctx, ledger).Script(script).IdempotencyKey(idempotencyKey).Preview(preview).Execute()
 
 Execute a Numscript.
 
@@ -36,11 +36,12 @@ send [COIN 10] (
 	destination = $user
 )
 ") // Script | 
+    idempotencyKey := "idempotencyKey_example" // string |  (optional)
     preview := true // bool | Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker. (optional)
 
     configuration := client.NewConfiguration()
     api_client := client.NewAPIClient(configuration)
-    resp, r, err := api_client.ScriptApi.RunScript(context.Background(), ledger).Script(script).Preview(preview).Execute()
+    resp, r, err := api_client.ScriptApi.RunScript(context.Background(), ledger).Script(script).IdempotencyKey(idempotencyKey).Preview(preview).Execute()
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error when calling `ScriptApi.RunScript``: %v\n", err)
         fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", r)
@@ -67,6 +68,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
 
  **script** | [**Script**](Script.md) |  | 
+ **idempotencyKey** | **string** |  | 
  **preview** | **bool** | Set the preview mode. Preview mode doesn&#39;t add the logs to the database or publish a message to the message broker. | 
 
 ### Return type

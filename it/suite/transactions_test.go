@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/google/uuid"
 	. "github.com/numary/ledger/it/internal"
 	ledgerclient "github.com/numary/ledger/it/internal/client"
+	"github.com/numary/ledger/pkg/api/idempotency"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -30,18 +32,21 @@ var _ = Scenario("Transactions api", func() {
 		When("creating a new transactions from world to a 'bank' account", func() {
 			var (
 				err      error
+				request  ledgerclient.ApiCreateTransactionRequest
 				response ledgerclient.TransactionsResponse
 				postings = []ledgerclient.Posting{
 					*ledgerclient.NewPosting(100, "USD", "bank", "world"),
 				}
 			)
 			BeforeEach(func() {
-				response, _, err = Client().TransactionsApi.
+				request = Client().TransactionsApi.
 					CreateTransaction(context.Background(), *ledger).
 					TransactionData(ledgerclient.TransactionData{
 						Postings: postings,
-					}).
-					Execute()
+					})
+			})
+			JustBeforeEach(func() {
+				response, _, err = request.Execute()
 				Expect(err).To(BeNil())
 			})
 			It("should return a complete transaction", func() {
@@ -64,7 +69,7 @@ var _ = Scenario("Transactions api", func() {
 					cursorResponse ledgerclient.ListTransactions200Response
 					httpResponse   *http.Response
 				)
-				BeforeEach(func() {
+				JustBeforeEach(func() {
 					cursorResponse, httpResponse, err = Client().TransactionsApi.
 						ListTransactions(context.Background(), *ledger).
 						Execute()
@@ -73,6 +78,25 @@ var _ = Scenario("Transactions api", func() {
 				It("should return 1 transaction", func() {
 					Expect(cursorResponse.Cursor.Data).To(HaveLen(1))
 					_ = httpResponse
+				})
+			})
+			Context("with an idempotency key", func() {
+				var (
+					ik           string
+					httpResponse *http.Response
+				)
+				BeforeEach(func() {
+					ik = uuid.NewString()
+					request = request.IdempotencyKey(ik)
+				})
+				Context("Then replay request", func() {
+					JustBeforeEach(func() {
+						response, httpResponse, err = request.Execute()
+					})
+					It("Should return response using idempotency key hit", func() {
+						Expect(err).To(BeNil())
+						Expect(httpResponse.Header.Get(idempotency.HeaderIdempotencyHit)).To(Equal("true"))
+					})
 				})
 			})
 		})
