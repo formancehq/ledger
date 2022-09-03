@@ -120,9 +120,9 @@ func NewStorageUpgrade() *cobra.Command {
 								return err
 							}
 							if modified {
-								fmt.Printf("Storage '%s' migrated\r\n", name)
+								fmt.Fprintf(cmd.OutOrStdout(), "Storage '%s' migrated\r\n", name)
 							} else {
-								fmt.Printf("Storage '%s' left in place\r\n", name)
+								fmt.Fprintf(cmd.OutOrStdout(), "Storage '%s' left in place\r\n", name)
 							}
 							return nil
 						},
@@ -172,19 +172,19 @@ func NewStorageScan() *cobra.Command {
 								if ledgerName == sqlstorage.SystemSchema {
 									continue
 								}
-								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
+								fmt.Fprintf(cmd.OutOrStdout(), "Registering ledger '%s'\r\n", ledgerName)
 								// This command is dedicated to upgrade ledger version before 1.4
 								// It will be removed in a near future, so we can assert the system store type without risk
 								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
 									Register(cmd.Context(), ledgerName)
 								if err != nil {
-									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
+									fmt.Fprintf(cmd.OutOrStdout(), "Error registering ledger '%s': %s\r\n", ledgerName, err)
 									continue
 								}
 								if created {
-									fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
+									fmt.Fprintf(cmd.OutOrStdout(), "Ledger '%s' registered\r\n", ledgerName)
 								} else {
-									fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
+									fmt.Fprintf(cmd.OutOrStdout(), "Ledger '%s' already registered\r\n", ledgerName)
 								}
 							}
 
@@ -202,34 +202,34 @@ func NewStorageScan() *cobra.Command {
 							}
 							for _, f := range files {
 								if !strings.HasSuffix(f.Name(), ".db") {
-									fmt.Println("Skip file " + f.Name())
+									fmt.Fprintln(cmd.OutOrStdout(), "Skip file "+f.Name())
 									continue
 								}
 								f := strings.TrimSuffix(f.Name(), ".db")
 								parts := strings.SplitN(f, "_", 2)
 								if len(parts) != 2 {
-									fmt.Println("Skip file " + f + ".db : Bad name")
+									fmt.Fprintln(cmd.OutOrStdout(), "Skip file "+f+".db : Bad name")
 									continue
 								}
 								if parts[0] != viper.GetString(StorageSQLiteDBNameFlag) {
-									fmt.Println("Skip file " + f + ".db : DB name not mathing")
+									fmt.Fprintln(cmd.OutOrStdout(), "Skip file "+f+".db : DB name not mathing")
 									continue
 								}
 								ledgerName := parts[1]
 								if ledgerName == sqlstorage.SystemSchema {
 									continue
 								}
-								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
+								fmt.Fprintf(cmd.OutOrStdout(), "Registering ledger '%s'\r\n", ledgerName)
 								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
 									Register(cmd.Context(), ledgerName)
 								if err != nil {
-									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
+									fmt.Fprintf(cmd.OutOrStdout(), "Error registering ledger '%s': %s\r\n", ledgerName, err)
 									continue
 								}
 								if created {
-									fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
+									fmt.Fprintf(cmd.OutOrStdout(), "Ledger '%s' registered\r\n", ledgerName)
 								} else {
-									fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
+									fmt.Fprintf(cmd.OutOrStdout(), "Ledger '%s' already registered\r\n", ledgerName)
 								}
 							}
 							return nil
@@ -264,7 +264,7 @@ func NewStorageDelete() *cobra.Command {
 							if err := store.Delete(ctx); err != nil {
 								return err
 							}
-							fmt.Println("Storage deleted!")
+							fmt.Fprintln(cmd.OutOrStdout(), "Storage deleted!")
 							return nil
 						},
 					})
