@@ -23,6 +23,11 @@ func (t TransactionData) SetTimestamp(ts time.Time) TransactionData {
 	return t
 }
 
+func (t TransactionData) SetMetadata(metadata Metadata) TransactionData {
+	t.Metadata = metadata
+	return t
+}
+
 func (t *TransactionData) Reverse() TransactionData {
 	postings := make(Postings, len(t.Postings))
 	copy(postings, t.Postings)
@@ -45,6 +50,7 @@ func (t TransactionData) SetReference(reference string) TransactionData {
 func NewTransactionData(postings ...Posting) TransactionData {
 	return TransactionData{
 		Postings: postings,
+		Metadata: Metadata{},
 	}
 }
 

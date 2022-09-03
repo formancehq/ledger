@@ -41,6 +41,7 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 				Expect(response.Data[0]).To(Equal(ledgerclient.Transaction{
 					Postings:  postings,
 					Timestamp: response.Data[0].Timestamp,
+					Metadata:  core.Metadata{},
 					Reference: ledgerclient.PtrString(""), // TODO: Fix that in ledger
 					PreCommitVolumes: ledgerclient.NewAggregatedVolumes().
 						SetVolumes("world", "USD", ledgerclient.NewVolume(0, 0, 0)).

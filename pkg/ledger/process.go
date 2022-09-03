@@ -45,6 +45,9 @@ func (l *Ledger) ProcessTx(ctx context.Context, ts []core.TransactionData) (*Com
 				past = true
 			}
 		}
+		if t.Metadata == nil {
+			t.Metadata = core.Metadata{}
+		}
 		if t.Reference != "" {
 			if _, ok := usedReferences[t.Reference]; ok {
 				return nil, NewConflictError()

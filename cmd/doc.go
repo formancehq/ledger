@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -25,7 +24,7 @@ func NewDocFlagCommand() *cobra.Command {
 		Use: "flags",
 		Run: func(cmd *cobra.Command, args []string) {
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 1, ' ', tabwriter.Debug)
 			defer func(w *tabwriter.Writer) {
 				if err := w.Flush(); err != nil {
 					panic(err)

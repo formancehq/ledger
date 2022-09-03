@@ -131,6 +131,7 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Postings:  postings,
 						Timestamp: time.Now().UTC().Round(time.Second),
+						Metadata:  core.Metadata{},
 					},
 				}
 
@@ -192,6 +193,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Timestamp: now,
 								Postings:  core.Postings{postings[0]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 0,
 						},
@@ -207,6 +209,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Postings:  core.Postings{postings[1]},
 								Timestamp: now.Add(time.Second),
+								Metadata:  core.Metadata{},
 							},
 							ID: 1,
 						},
@@ -224,6 +227,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Timestamp: now.Add(2 * time.Second),
 								Postings:  core.Postings{postings[2]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 2,
 						},
@@ -241,6 +245,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Timestamp: now.Add(3 * time.Second),
 								Postings:  core.Postings{postings[3]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 3,
 						},
@@ -258,6 +263,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Timestamp: now.Add(4 * time.Second),
 								Postings:  core.Postings{postings[4]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 4,
 						},
@@ -275,6 +281,7 @@ func TestLedger_processTx(t *testing.T) {
 							TransactionData: core.TransactionData{
 								Timestamp: now.Add(5 * time.Second),
 								Postings:  core.Postings{postings[5]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 5,
 						},

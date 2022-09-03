@@ -174,6 +174,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	if err := l.store.Commit(ctx, revert); err != nil {
 		return nil, err
 	}
+	if revertedTx.Metadata == nil {
+		revertedTx.Metadata = core.Metadata{}
+	}
+	revertedTx.Metadata.Merge(core.RevertedMetadata(revert.ID))
+
 	if err := l.store.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp); err != nil {
 		return nil, err
 	}

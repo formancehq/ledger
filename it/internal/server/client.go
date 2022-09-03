@@ -8,14 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type Client interface {
-	CreateTransaction() ledgerclient.ApiCreateTransactionRequest
-	ListTransactions() ledgerclient.ApiListTransactionsRequest
-	GetInfo() ledgerclient.ApiGetInfoRequest
-	GetSwaggerAsJSON() (*http.Response, error)
-	GetSwaggerAsYAML() (*http.Response, error)
-}
-
 type defaultClient struct {
 	underlying *ledgerclient.APIClient
 }
@@ -40,9 +32,11 @@ func (d defaultClient) GetSwaggerAsYAML() (*http.Response, error) {
 	return http.DefaultClient.Get(d.underlying.GetConfig().Servers[0].URL + "/swagger.yaml")
 }
 
-var _ Client = &defaultClient{}
+func (d defaultClient) RevertTransaction(id int32) ledgerclient.ApiRevertTransactionRequest {
+	return d.underlying.TransactionsApi.RevertTransaction(context.Background(), CurrentLedger(), id)
+}
 
-func GetClient() Client {
+func GetClient() *defaultClient {
 	return &defaultClient{
 		underlying: globalClient,
 	}
@@ -66,6 +60,10 @@ func GetSwaggerAsYAML() (*http.Response, error) {
 
 func CreateTransaction() ledgerclient.ApiCreateTransactionRequest {
 	return GetClient().CreateTransaction()
+}
+
+func RevertTransaction(id int32) ledgerclient.ApiRevertTransactionRequest {
+	return GetClient().RevertTransaction(id)
 }
 
 func MustExecute[T any](request interface {

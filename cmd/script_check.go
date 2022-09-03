@@ -23,7 +23,7 @@ func NewScriptCheck() *cobra.Command {
 			if err != nil {
 				logrus.Fatal(err)
 			} else {
-				fmt.Println("Script is correct ✅")
+				fmt.Fprintln(cmd.OutOrStdout(), "Script is correct ✅")
 			}
 		},
 	}
