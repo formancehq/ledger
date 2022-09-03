@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	. "github.com/numary/ledger/it/internal"
 	ledgerclient "github.com/numary/ledger/it/internal/client"
 	. "github.com/numary/ledger/it/internal/httplistener"
 	. "github.com/numary/ledger/it/internal/otlpinterceptor"
+	. "github.com/numary/ledger/it/internal/server"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/bus"

@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/numary/ledger/cmd"
-	. "github.com/numary/ledger/it/internal"
+	. "github.com/numary/ledger/it/internal/command"
+	. "github.com/numary/ledger/it/internal/server"
 	"github.com/numary/ledger/pkg/ledger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

@@ -6,7 +6,8 @@ import (
 	"io"
 
 	"github.com/numary/ledger/cmd"
-	. "github.com/numary/ledger/it/internal"
+	. "github.com/numary/ledger/it/internal/command"
+	. "github.com/numary/ledger/it/internal/database"
 	"github.com/numary/ledger/it/internal/pgserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

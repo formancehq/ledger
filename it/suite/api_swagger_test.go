@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	. "github.com/numary/ledger/it/internal"
+	. "github.com/numary/ledger/it/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v3"
