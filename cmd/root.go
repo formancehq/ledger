@@ -152,9 +152,7 @@ func NewRootCommand() *cobra.Command {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("$HOME/.numary")
 	viper.AddConfigPath("/etc/numary")
-	if err = viper.ReadInConfig(); err != nil {
-		//fmt.Printf("loading config file: %s\n", err)
-	}
+	_ = viper.ReadInConfig()
 
 	internal.BindEnv(viper.GetViper())
 
