@@ -19,7 +19,8 @@ type TransactionData struct {
 }
 
 func (t *TransactionData) Reverse() TransactionData {
-	postings := t.Postings
+	postings := make(Postings, len(t.Postings))
+	copy(postings, t.Postings)
 	postings.Reverse()
 
 	ret := TransactionData{
