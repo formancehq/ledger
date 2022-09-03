@@ -88,7 +88,7 @@ func AppendArgs(newArgs ...string) {
 	actualArgs = append(actualArgs, newArgs...)
 }
 
-func WithCommand(callback func()) {
+func PrepareCommand(callback func()) {
 	var (
 		oldCommand *cobra.Command
 		oldArgs    []string
@@ -106,7 +106,7 @@ func WithCommand(callback func()) {
 	callback()
 }
 
-func Execute(callback func()) {
+func ExecuteCommand(callback func()) {
 	var (
 		ctx           context.Context
 		cancel        func()
@@ -116,17 +116,8 @@ func Execute(callback func()) {
 		ctx, cancel = context.WithCancel(context.Background())
 		ctx = cmd.NewContext(ctx)
 
-		appId := uuid.New()
-		connString := pgserver.CreateDatabase(appId)
-
-		args := append(actualArgs,
-			Flag(cmd.StorageDriverFlag, "postgres"),
-			Flag(cmd.StoragePostgresConnectionStringFlag, connString),
-			Flag(cmd.StorageDirFlag, os.TempDir()),
-			Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
-		)
-		Debug("Execute command with args: %s", strings.Join(args, " "))
-		actualCommand.SetArgs(args)
+		Debug("Execute command with args: %s", strings.Join(actualArgs, " "))
+		actualCommand.SetArgs(actualArgs)
 		if !testing.Verbose() {
 			actualCommand.SetOut(io.Discard)
 			actualCommand.SetErr(io.Discard)
@@ -154,10 +145,19 @@ func Execute(callback func()) {
 }
 
 func ServerExecute(callback func()) {
-	WithCommand(func() {
+	PrepareCommand(func() {
 		BeforeEach(func() {
+
+			appId := uuid.New()
+			connString := pgserver.CreateDatabase(appId)
+			SetDatabase(appId)
+
 			AppendArgs(
 				"server", "start",
+				Flag(cmd.StorageDriverFlag, "postgres"),
+				Flag(cmd.StoragePostgresConnectionStringFlag, connString),
+				Flag(cmd.StorageDirFlag, os.TempDir()),
+				Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
 				BoolFlag(sharedotlptraces.OtelTracesFlag),
 				Flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
 				Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
@@ -168,7 +168,7 @@ func ServerExecute(callback func()) {
 				Flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
 			)
 		})
-		Execute(func() {
+		ExecuteCommand(func() {
 			BeforeEach(func() {
 				Eventually(func() any {
 					return cmd.Port(actualCommand.Context())
