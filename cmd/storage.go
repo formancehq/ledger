@@ -27,7 +27,6 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := NewContainer(
 				viper.GetViper(),
-
 				cmd.OutOrStdout(),
 				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
@@ -36,14 +35,14 @@ func NewStorageInit() *cobra.Command {
 							if name == "" {
 								return errors.New("name is empty")
 							}
-							fmt.Printf("Creating ledger '%s'...", name)
+							fmt.Fprintf(cmd.OutOrStdout(), "Creating ledger '%s'...", name)
 							s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
 							if err != nil {
 								return err
 							}
 
 							if !created {
-								fmt.Printf("Already initialized!\r\n")
+								fmt.Fprintf(cmd.OutOrStdout(), "Already initialized!\r\n")
 								return nil
 							}
 
@@ -51,7 +50,7 @@ func NewStorageInit() *cobra.Command {
 							if err != nil {
 								return err
 							}
-							fmt.Printf(" OK\r\n")
+							fmt.Fprintf(cmd.OutOrStdout(), " OK\r\n")
 							return nil
 						},
 					})
@@ -82,12 +81,12 @@ func NewStorageList() *cobra.Command {
 								return err
 							}
 							if len(ledgers) == 0 {
-								fmt.Println("No ledger found.")
+								fmt.Fprintln(cmd.OutOrStdout(), "No ledger found.")
 								return nil
 							}
-							fmt.Println("Ledgers:")
+							fmt.Fprintln(cmd.OutOrStdout(), "Ledgers:")
 							for _, l := range ledgers {
-								fmt.Println("- " + l)
+								fmt.Fprintln(cmd.OutOrStdout(), "- "+l)
 							}
 							return nil
 						},

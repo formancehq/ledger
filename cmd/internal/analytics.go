@@ -64,7 +64,7 @@ func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
 			interval = viper.GetDuration(segmentHeartbeatIntervalFlag)
 		}
 		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
+			sharedlogging.GetLogger(context.Background()).Debug("telemetry enabled but no write key provided")
 		} else if interval == 0 {
 			sharedlogging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
 		} else {

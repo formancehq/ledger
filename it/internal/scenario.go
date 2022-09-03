@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -61,10 +62,12 @@ func Debug(format string, args ...interface{}) {
 }
 
 var (
-	actualArgs    []string
-	actualCommand *cobra.Command
-	terminated    chan struct{}
-	err           error
+	actualArgs           []string
+	actualCommand        *cobra.Command
+	currentCommandStdout *bytes.Buffer
+	currentCommandStderr *bytes.Buffer
+	terminated           chan struct{}
+	commandError         error
 )
 
 func CommandTerminated() bool {
@@ -77,7 +80,15 @@ func CommandTerminated() bool {
 }
 
 func CommandError() error {
-	return err
+	return commandError
+}
+
+func CommandStdout() *bytes.Buffer {
+	return currentCommandStdout
+}
+
+func CommandStderr() *bytes.Buffer {
+	return currentCommandStderr
 }
 
 func ActualCommand() *cobra.Command {
@@ -111,6 +122,8 @@ func ExecuteCommand(callback func()) {
 		ctx           context.Context
 		cancel        func()
 		oldTerminated chan struct{}
+		oldStdout     *bytes.Buffer
+		oldStderr     *bytes.Buffer
 	)
 	BeforeEach(func() {
 		ctx, cancel = context.WithCancel(context.Background())
@@ -118,20 +131,29 @@ func ExecuteCommand(callback func()) {
 
 		Debug("Execute command with args: %s", strings.Join(actualArgs, " "))
 		actualCommand.SetArgs(actualArgs)
-		if !testing.Verbose() {
-			actualCommand.SetOut(io.Discard)
-			actualCommand.SetErr(io.Discard)
-		} else {
-			actualCommand.SetOut(os.Stdout)
-			actualCommand.SetErr(os.Stderr)
+
+		oldStdout = currentCommandStdout
+		oldStderr = currentCommandStderr
+
+		stdout := io.Discard
+		stderr := io.Discard
+		if testing.Verbose() {
+			stdout = os.Stdout
+			stderr = os.Stderr
 		}
+
+		currentCommandStdout = bytes.NewBuffer(make([]byte, 0))
+		currentCommandStderr = bytes.NewBuffer(make([]byte, 0))
+
+		actualCommand.SetOut(io.MultiWriter(currentCommandStdout, stdout))
+		actualCommand.SetErr(io.MultiWriter(currentCommandStderr, stderr))
 
 		actualCommand.SetContext(ctx)
 		oldTerminated = terminated
 		terminated = make(chan struct{})
 
 		go func() {
-			err = actualCommand.Execute()
+			commandError = actualCommand.Execute()
 			close(terminated)
 		}()
 
@@ -140,6 +162,10 @@ func ExecuteCommand(callback func()) {
 			<-terminated
 			terminated = oldTerminated
 		})
+	})
+	AfterEach(func() {
+		currentCommandStdout = oldStdout
+		currentCommandStderr = oldStderr
 	})
 	callback()
 }
