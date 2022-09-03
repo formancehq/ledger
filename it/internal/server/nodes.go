@@ -38,40 +38,49 @@ func WithNewLedger(callback func()) {
 	callback()
 }
 
-func ServerExecute(callback func()) {
-	PrepareCommand(func() {
-		WithNewDatabase(func() {
-			BeforeEach(func() {
-				AppendArgs(
-					"server", "start",
-					Flag(cmd.StorageDriverFlag, "postgres"),
-					Flag(cmd.StoragePostgresConnectionStringFlag, pgserver.ConnString(ActualDatabaseName())),
-					Flag(cmd.StorageDirFlag, os.TempDir()),
-					Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
-					BoolFlag(sharedotlptraces.OtelTracesFlag),
-					Flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
-					Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
-					BoolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
-					Flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
-					Flag(cmd.ServerHttpBindAddressFlag, ":0"),
-					BoolFlag(cmd.PublisherHttpEnabledFlag),
-					Flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
-				)
-			})
-			ExecuteCommand(func() {
-				BeforeEach(func() {
-					Eventually(func() any {
-						return cmd.Port(ActualCommand().Context())
-					}).Should(BeNumerically(">", 0))
+func With(fns ...interface{}) {
+	switch first := fns[0].(type) {
+	case func(callback func()):
+		first(func() {
+			With(fns[1:]...)
+		})
+	case func():
+		first()
+	}
+}
 
-					Init(fmt.Sprintf("http://localhost:%d", cmd.Port(ActualCommand().Context())))
-					Eventually(func() error {
-						_, _, err := GetClient().GetInfo().Execute()
-						return err
-					}).Should(BeNil())
-				})
-				callback()
+func ServerExecute(callback func()) {
+	With(NewCommand, NewDatabase, func() {
+		BeforeEach(func() {
+			AppendArgs(
+				"server", "start",
+				Flag(cmd.StorageDriverFlag, "postgres"),
+				Flag(cmd.StoragePostgresConnectionStringFlag, pgserver.ConnString(ActualDatabaseName())),
+				Flag(cmd.StorageDirFlag, os.TempDir()),
+				Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
+				BoolFlag(sharedotlptraces.OtelTracesFlag),
+				Flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
+				Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
+				BoolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
+				Flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
+				Flag(cmd.ServerHttpBindAddressFlag, ":0"),
+				BoolFlag(cmd.PublisherHttpEnabledFlag),
+				Flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
+			)
+		})
+		ExecuteCommand(func() {
+			BeforeEach(func() {
+				Eventually(func() any {
+					return cmd.Port(ActualCommand().Context())
+				}).Should(BeNumerically(">", 0))
+
+				Init(fmt.Sprintf("http://localhost:%d", cmd.Port(ActualCommand().Context())))
+				Eventually(func() error {
+					_, _, err := GetInfo().Execute()
+					return err
+				}).Should(BeNil())
 			})
+			callback()
 		})
 	})
 }

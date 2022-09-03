@@ -52,7 +52,7 @@ func AppendArgs(newArgs ...string) {
 	actualArgs = append(actualArgs, newArgs...)
 }
 
-func PrepareCommand(callback func()) {
+func NewCommand(callback func()) {
 	var (
 		oldCommand *cobra.Command
 		oldArgs    []string

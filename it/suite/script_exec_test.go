@@ -25,7 +25,7 @@ var _ = DescribeServerExecute("Execute numscript", func() {
 		port = cmd.Port(ActualCommand().Context())
 	})
 	WithNewLedger(func() {
-		PrepareCommand(func() {
+		NewCommand(func() {
 			var (
 				path string
 			)

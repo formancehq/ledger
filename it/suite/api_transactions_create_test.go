@@ -42,7 +42,7 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 					Postings:  postings,
 					Timestamp: response.Data[0].Timestamp,
 					Metadata:  core.Metadata{},
-					Reference: ledgerclient.PtrString(""), // TODO: Fix that in ledger
+					Reference: ledgerclient.PtrString(""), // TODO: Fix that in ledger (empty reference returns)
 					PreCommitVolumes: ledgerclient.NewAggregatedVolumes().
 						SetVolumes("world", "USD", ledgerclient.NewVolume(0, 0, 0)).
 						SetVolumes("bank", "USD", ledgerclient.NewVolume(0, 0, 0)),

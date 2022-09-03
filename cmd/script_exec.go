@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -24,10 +25,10 @@ func NewScriptExec() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:  "exec [ledger] [script]",
 		Args: cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			b, err := os.ReadFile(args[1])
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 
 			r := regexp.MustCompile(`^\n`)
@@ -38,10 +39,10 @@ func NewScriptExec() *cobra.Command {
 				"plain": s,
 			})
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 
-			logrus.Debugln(string(b))
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
 
 			req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/%s/script",
 				viper.Get(ServerHttpBindAddressFlag),
@@ -59,30 +60,31 @@ func NewScriptExec() *cobra.Command {
 
 			res, err := http.DefaultClient.Do(req)
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 
 			result := controllers.ScriptResponse{}
 			err = json.NewDecoder(res.Body).Decode(&result)
 			if err != nil {
-				logrus.Fatal(err)
+				return err
 			}
 
 			if result.ErrorCode != "" {
 				switch result.ErrorCode {
 				case "INTERNAL":
-					logrus.Fatal("unexpected error occured")
+					return errors.New("unexpected error occured")
 				default:
-					logrus.Fatal(result.ErrorCode, result.ErrorMessage)
+					return fmt.Errorf("unexpected error (%d): %s", result.ErrorCode, result.ErrorMessage)
 				}
 			}
 
-			fmt.Println("Script ran successfully ✅")
-			fmt.Println("Tx resume:")
-			fmt.Printf("ID: %d\r\n", result.Transaction.ID)
-			fmt.Println("Postings:")
+			fmt.Fprintln(cmd.OutOrStdout(), "Script ran successfully ✅")
+			fmt.Fprintln(cmd.OutOrStdout(), "Tx resume:")
+			fmt.Fprintf(cmd.OutOrStdout(), "ID: %d\r\n", result.Transaction.ID)
+			fmt.Fprintln(cmd.OutOrStdout(), "Postings:")
 			for _, p := range result.Transaction.Postings {
-				fmt.Printf(
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
 					"\t Source: %s, Destination: %s, Amount: %s, Asset: %s\r\n",
 					p.Source,
 					p.Destination,
@@ -91,11 +93,13 @@ func NewScriptExec() *cobra.Command {
 				)
 			}
 			if !viper.GetBool(previewFlag) {
-				fmt.Printf("Created transaction: http://%s/%s/transactions/%d\r\n",
+				fmt.Fprintf(cmd.OutOrStdout(), "Created transaction: http://%s/%s/transactions/%d\r\n",
 					viper.Get(ServerHttpBindAddressFlag),
 					args[0],
 					result.Transaction.ID)
 			}
+
+			return nil
 		},
 	}
 	cmd.Flags().Bool(previewFlag, false, "Preview mode (does not save transactions)")

@@ -3,9 +3,7 @@ package httplistener
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
-	"github.com/kr/pretty"
 	"github.com/numary/ledger/pkg/bus"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -47,7 +45,7 @@ func (a *haveTriggeredEvent[T]) Match(actual interface{}) (success bool, err err
 		panic(err)
 	}
 
-	fmt.Println(pretty.Diff(eventAsMap, foundEventAsMap))
+	//fmt.Println(pretty.Diff(eventAsMap, foundEventAsMap))
 
 	return Equal(eventAsMap).Match(foundEventAsMap)
 }

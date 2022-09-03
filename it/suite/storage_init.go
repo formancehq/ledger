@@ -12,8 +12,8 @@ import (
 )
 
 var _ = Describe("Init storage", func() {
-	WithNewDatabase(func() {
-		PrepareCommand(func() {
+	NewDatabase(func() {
+		NewCommand(func() {
 			BeforeEach(func() {
 				AppendArgs("storage", "init",
 					Flag(cmd.StorageDriverFlag, "postgres"),

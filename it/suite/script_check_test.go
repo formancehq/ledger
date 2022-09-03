@@ -11,7 +11,7 @@ import (
 )
 
 var _ = DescribeServerExecute("Check numscript", func() {
-	PrepareCommand(func() {
+	NewCommand(func() {
 		var (
 			path string
 		)

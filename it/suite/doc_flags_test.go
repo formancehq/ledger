@@ -7,7 +7,7 @@ import (
 )
 
 var _ = Describe("List flags", func() {
-	PrepareCommand(func() {
+	NewCommand(func() {
 		BeforeEach(func() {
 			AppendArgs("doc", "flags")
 		})

@@ -24,7 +24,7 @@ func StorageDriver() *sqlstorage.Driver {
 	return driver
 }
 
-func WithNewDatabase(callback func()) {
+func NewDatabase(callback func()) {
 	var (
 		oldDatabaseName string
 	)

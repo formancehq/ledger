@@ -13,7 +13,7 @@ import (
 )
 
 var _ = Describe("Delete storage", func() {
-	WithNewDatabase(func() {
+	NewDatabase(func() {
 		Describe("Given one registered ledger", func() {
 			var (
 				ledgerName string
@@ -23,7 +23,7 @@ var _ = Describe("Delete storage", func() {
 				_, _, err := StorageDriver().GetLedgerStore(context.Background(), ledgerName, true)
 				Expect(err).To(BeNil())
 			})
-			PrepareCommand(func() {
+			NewCommand(func() {
 				BeforeEach(func() {
 					AppendArgs("storage", "delete", ledgerName,
 						Flag(cmd.StorageDriverFlag, "postgres"),
