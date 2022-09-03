@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	_ "github.com/getkin/kin-openapi/openapi3"
@@ -24,11 +25,11 @@ func init() {
 	format.UseStringerRepresentation = true
 }
 
-func boolFlag(flag string) string {
+func BoolFlag(flag string) string {
 	return fmt.Sprintf("--%s", flag)
 }
 
-func flag(flag, value string) string {
+func Flag(flag, value string) string {
 	return fmt.Sprintf("--%s=%s", flag, value)
 }
 
@@ -53,43 +54,79 @@ func WithNewLedger(callback func()) {
 	callback()
 }
 
+func Debug(format string, args ...interface{}) {
+	if testing.Verbose() {
+		fmt.Printf(format+"\r\n", args...)
+	}
+}
+
 var (
-	args          []string
+	actualArgs    []string
 	actualCommand *cobra.Command
+	terminated    chan struct{}
+	err           error
 )
 
+func Terminated() bool {
+	select {
+	case <-terminated:
+		return true
+	default:
+		return false
+	}
+}
+
+func Error() error {
+	return err
+}
+
+func ActualCommand() *cobra.Command {
+	return actualCommand
+}
+
 func AppendArgs(newArgs ...string) {
-	args = append(args, newArgs...)
+	actualArgs = append(actualArgs, newArgs...)
 }
 
 func WithCommand(callback func()) {
 	var (
 		oldCommand *cobra.Command
+		oldArgs    []string
 	)
 	BeforeEach(func() {
 		oldCommand = actualCommand
+		oldArgs = actualArgs
+		actualArgs = make([]string, 0)
 		actualCommand = cmd.NewRootCommand()
 	})
 	AfterEach(func() {
 		actualCommand = oldCommand
+		actualArgs = oldArgs
 	})
 	callback()
 }
 
 func Execute(callback func()) {
+	var (
+		ctx           context.Context
+		cancel        func()
+		oldTerminated chan struct{}
+	)
 	BeforeEach(func() {
-		ctx := context.Background()
+		ctx, cancel = context.WithCancel(context.Background())
 		ctx = cmd.NewContext(ctx)
 
 		appId := uuid.New()
 		connString := pgserver.CreateDatabase(appId)
 
-		actualCommand.SetArgs(append(args,
-			flag(cmd.StorageDriverFlag, "postgres"),
-			flag(cmd.StoragePostgresConnectionStringFlag, connString),
-			flag(cmd.StorageDirFlag, os.TempDir()),
-			flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
-		))
+		args := append(actualArgs,
+			Flag(cmd.StorageDriverFlag, "postgres"),
+			Flag(cmd.StoragePostgresConnectionStringFlag, connString),
+			Flag(cmd.StorageDirFlag, os.TempDir()),
+			Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
+		)
+		Debug("Execute command with args: %s", strings.Join(args, " "))
+		actualCommand.SetArgs(args)
 		if !testing.Verbose() {
 			actualCommand.SetOut(io.Discard)
 			actualCommand.SetErr(io.Discard)
@@ -99,10 +136,19 @@ func Execute(callback func()) {
 		}
 
 		actualCommand.SetContext(ctx)
+		oldTerminated = terminated
+		terminated = make(chan struct{})
 
 		go func() {
-			Expect(actualCommand.Execute()).To(BeNil())
+			err = actualCommand.Execute()
+			close(terminated)
 		}()
+
+		DeferCleanup(func() {
+			cancel()
+			<-terminated
+			terminated = oldTerminated
+		})
 	})
 	callback()
 }
@@ -112,14 +158,14 @@ func ServerExecute(callback func()) {
 		BeforeEach(func() {
 			AppendArgs(
 				"server", "start",
-				boolFlag(sharedotlptraces.OtelTracesFlag),
-				flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
-				flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
-				boolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
-				flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
-				flag(cmd.ServerHttpBindAddressFlag, ":0"),
-				boolFlag(cmd.PublisherHttpEnabledFlag),
-				flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
+				BoolFlag(sharedotlptraces.OtelTracesFlag),
+				Flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
+				Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
+				BoolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
+				Flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
+				Flag(cmd.ServerHttpBindAddressFlag, ":0"),
+				BoolFlag(cmd.PublisherHttpEnabledFlag),
+				Flag(cmd.PublisherTopicMappingFlag, fmt.Sprintf("*:%s", httplistener.URL())),
 			)
 		})
 		Execute(func() {
