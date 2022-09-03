@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/numary/ledger/it/internal/pgserver"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -15,7 +14,6 @@ var (
 )
 
 func SetDatabase(database string) {
-	fmt.Println("storage driver connect to", pgserver.ConnString(database))
 	sqlDB, err := sql.Open("pgx", pgserver.ConnString(database))
 	Expect(err).To(BeNil())
 

@@ -31,7 +31,6 @@ var _ = DescribeServerExecute("Execute numscript", func() {
 			BeforeEach(func() {
 				path = filepath.Join(os.TempDir(), "numscript.num")
 				Expect(os.WriteFile(path, []byte(numscript), 0666)).To(BeNil())
-				fmt.Println("Create on ledger", CurrentLedger())
 				AppendArgs("exec", CurrentLedger(), path,
 					Flag(cmd.ServerHttpBindAddressFlag, fmt.Sprintf("localhost:%d", port)))
 			})
@@ -40,8 +39,8 @@ var _ = DescribeServerExecute("Execute numscript", func() {
 			})
 			ExecuteCommand(func() {
 				It("Should create a transaction on database", func() {
-					Eventually(Terminated).Should(BeTrue())
-					Expect(Error()).Should(BeNil())
+					Eventually(CommandTerminated).Should(BeTrue())
+					Expect(CommandError()).Should(BeNil())
 
 					count, err := GetLedgerStore().CountTransactions(context.Background(), *ledger.NewTransactionsQuery())
 					Expect(err).To(BeNil())
