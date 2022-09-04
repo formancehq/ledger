@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	. "github.com/numary/ledger/it/internal/database"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	. "github.com/numary/ledger/tests/internal/database"
 	. "github.com/onsi/gomega"
 )
 

@@ -101,7 +101,7 @@ func (t transport) RoundTrip(request *http.Request) (*http.Response, error) {
 var _ http.RoundTripper = &transport{}
 
 func NewTransport(ledgerUrl string) http.RoundTripper {
-	data, err := os.ReadFile(filepath.Join("..", "..", "pkg", "api", "controllers", "swagger.yaml"))
+	data, err := os.ReadFile(filepath.Join("..", "pkg", "api", "controllers", "swagger.yaml"))
 	if err != nil {
 		panic(err)
 	}

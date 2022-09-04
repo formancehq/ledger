@@ -1,18 +1,18 @@
-package suite_test
+package tests_test
 
 import (
 	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
-	ledgerclient "github.com/numary/ledger/it/internal/client"
-	. "github.com/numary/ledger/it/internal/httplistener"
-	. "github.com/numary/ledger/it/internal/otlpinterceptor"
-	. "github.com/numary/ledger/it/internal/server"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
+	ledgerclient "github.com/numary/ledger/tests/internal/client"
+	. "github.com/numary/ledger/tests/internal/httplistener"
+	. "github.com/numary/ledger/tests/internal/otlpinterceptor"
+	. "github.com/numary/ledger/tests/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

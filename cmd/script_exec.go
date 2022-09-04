@@ -74,7 +74,7 @@ func NewScriptExec() *cobra.Command {
 				case "INTERNAL":
 					return errors.New("unexpected error occured")
 				default:
-					return fmt.Errorf("unexpected error (%d): %s", result.ErrorCode, result.ErrorMessage)
+					return fmt.Errorf("unexpected error (%s): %s", result.ErrorCode, result.ErrorMessage)
 				}
 			}
 

@@ -1,11 +1,11 @@
-package suite
+package tests
 
 import (
 	"net/http"
 
-	ledgerclient "github.com/numary/ledger/it/internal/client"
-	. "github.com/numary/ledger/it/internal/otlpinterceptor"
-	. "github.com/numary/ledger/it/internal/server"
+	ledgerclient "github.com/numary/ledger/tests/internal/client"
+	. "github.com/numary/ledger/tests/internal/otlpinterceptor"
+	. "github.com/numary/ledger/tests/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

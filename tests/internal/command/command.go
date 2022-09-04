@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/cmd"
-	"github.com/numary/ledger/it/internal/debug"
-	"github.com/onsi/ginkgo/v2"
+	"github.com/numary/ledger/tests/internal/debug"
+	. "github.com/onsi/ginkgo/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -57,13 +57,13 @@ func NewCommand(callback func()) {
 		oldCommand *cobra.Command
 		oldArgs    []string
 	)
-	ginkgo.BeforeEach(func() {
+	BeforeEach(func() {
 		oldCommand = actualCommand
 		oldArgs = actualArgs
 		actualArgs = make([]string, 0)
 		actualCommand = cmd.NewRootCommand()
 	})
-	ginkgo.AfterEach(func() {
+	AfterEach(func() {
 		actualCommand = oldCommand
 		actualArgs = oldArgs
 	})
@@ -78,7 +78,7 @@ func ExecuteCommand(callback func()) {
 		oldStdout     *bytes.Buffer
 		oldStderr     *bytes.Buffer
 	)
-	ginkgo.BeforeEach(func() {
+	BeforeEach(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		ctx = cmd.NewContext(ctx)
 
@@ -110,13 +110,13 @@ func ExecuteCommand(callback func()) {
 			close(terminated)
 		}()
 
-		ginkgo.DeferCleanup(func() {
+		DeferCleanup(func() {
 			cancel()
 			<-terminated
 			terminated = oldTerminated
 		})
 	})
-	ginkgo.AfterEach(func() {
+	AfterEach(func() {
 		currentCommandStdout = oldStdout
 		currentCommandStderr = oldStderr
 	})
@@ -124,7 +124,7 @@ func ExecuteCommand(callback func()) {
 }
 
 func WhenExecuteCommand(text string, callback func()) bool {
-	return ginkgo.Describe(text, func() {
+	return Describe(text, func() {
 		ExecuteCommand(callback)
 	})
 }

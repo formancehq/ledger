@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	ledgerclient "github.com/numary/ledger/it/internal/client"
-	"github.com/numary/ledger/it/internal/openapi3"
+	ledgerclient "github.com/numary/ledger/tests/internal/client"
+	"github.com/numary/ledger/tests/internal/openapi3"
 )
 
 var globalClient *ledgerclient.APIClient

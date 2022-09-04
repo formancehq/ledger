@@ -1,10 +1,10 @@
-package suite
+package tests
 
 import (
 	"encoding/json"
 	"net/http"
 
-	. "github.com/numary/ledger/it/internal/server"
+	. "github.com/numary/ledger/tests/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v3"

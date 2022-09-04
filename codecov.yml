@@ -2,4 +2,4 @@ ignore:
   - "docs"
   - ".github"
   - ".devcontainer"
-  - "./it"
+  - "./tests"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	ledgerclient "github.com/numary/ledger/it/internal/client"
+	ledgerclient "github.com/numary/ledger/tests/internal/client"
 	. "github.com/onsi/gomega"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/numary/ledger/it/internal/pgserver"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/numary/ledger/tests/internal/pgserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/pborman/uuid"

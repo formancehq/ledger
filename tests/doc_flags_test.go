@@ -1,7 +1,7 @@
-package suite
+package tests
 
 import (
-	. "github.com/numary/ledger/it/internal/command"
+	. "github.com/numary/ledger/tests/internal/command"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

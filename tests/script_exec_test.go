@@ -1,4 +1,4 @@
-package suite
+package tests
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/numary/ledger/cmd"
-	. "github.com/numary/ledger/it/internal/command"
-	. "github.com/numary/ledger/it/internal/server"
 	"github.com/numary/ledger/pkg/ledger"
+	. "github.com/numary/ledger/tests/internal/command"
+	. "github.com/numary/ledger/tests/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
