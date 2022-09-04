@@ -1,4 +1,4 @@
-package tests_test
+package tests
 
 import (
 	"testing"
@@ -6,6 +6,7 @@ import (
 	"github.com/numary/ledger/tests/internal/httplistener"
 	"github.com/numary/ledger/tests/internal/otlpinterceptor"
 	"github.com/numary/ledger/tests/internal/pgserver"
+	"github.com/numary/ledger/tests/internal/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -15,18 +16,34 @@ func TestIt(t *testing.T) {
 	RunSpecs(t, "It Suite")
 }
 
-var _ = BeforeSuite(func() {
+var _ = SynchronizedBeforeSuite(func() []byte {
+	DeferCleanup(pgserver.StopServer)
+	return []byte(pgserver.StartServer())
+}, func(url []byte) {
+	pgserver.SetUrl(string(url))
 	otlpinterceptor.StartCollector()
 	httplistener.StartServer()
-	pgserver.StartServer()
 })
 
 var _ = AfterSuite(func() {
-	pgserver.StopServer()
 	httplistener.StopServer()
 	otlpinterceptor.StopCollector()
 })
 
 func Then(text string, args ...interface{}) bool {
-	return Describe(text, args...)
+	return Describe("then "+text, args...)
+}
+
+func With(text string, args ...interface{}) bool {
+	return Describe("with "+text, args...)
+}
+
+func Given(text string, args ...interface{}) bool {
+	return Describe("given "+text, args...)
+}
+
+func WithNewLedger(callback func()) bool {
+	return With("new ledger", func() {
+		server.NewLedger(callback)
+	})
 }

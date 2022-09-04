@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	. "github.com/onsi/ginkgo/v2"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
@@ -30,7 +31,7 @@ func (c *ConfigProvider) Get(ctx context.Context, factories component.Factories)
 				ReceiverSettings: config.NewReceiverSettings(config.NewComponentID("otlp")),
 				Protocols: otlpreceiver.Protocols{
 					HTTP: &confighttp.HTTPServerSettings{
-						Endpoint: fmt.Sprintf("0.0.0.0:%d", HTTPPort),
+						Endpoint: fmt.Sprintf("0.0.0.0:%d", HTTPPort+GinkgoParallelProcess()),
 					},
 				},
 			},
@@ -65,7 +66,7 @@ func (c *ConfigProvider) Get(ctx context.Context, factories component.Factories)
 				},
 				Metrics: telemetry.MetricsConfig{
 					Level:   configtelemetry.LevelBasic,
-					Address: ":9093",
+					Address: ":0",
 				},
 			},
 		},

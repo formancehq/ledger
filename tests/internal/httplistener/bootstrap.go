@@ -30,6 +30,9 @@ func StartServer() {
 }
 
 func StopServer() {
+	if server == nil {
+		return
+	}
 	server.Close()
 }
 

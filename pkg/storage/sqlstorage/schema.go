@@ -78,7 +78,7 @@ func (s *PGSchema) Flavor() sqlbuilder.Flavor {
 }
 
 func (s *PGSchema) Delete(ctx context.Context) error {
-	_, err := s.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA \"%s\"", s.name))
+	_, err := s.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA \"%s\" CASCADE", s.name))
 	return err
 }
 

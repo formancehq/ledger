@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"time"
 
 	_ "github.com/getkin/kin-openapi/openapi3"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
@@ -25,7 +26,7 @@ func CurrentLedger() string {
 	return currentLedger
 }
 
-func WithNewLedger(callback func()) {
+func NewLedger(callback func()) bool {
 	var oldLedger string
 
 	BeforeEach(func() {
@@ -36,13 +37,14 @@ func WithNewLedger(callback func()) {
 		currentLedger = oldLedger
 	})
 	callback()
+	return true
 }
 
-func With(fns ...interface{}) {
+func WithNodes(fns ...interface{}) {
 	switch first := fns[0].(type) {
 	case func(callback func()):
 		first(func() {
-			With(fns[1:]...)
+			WithNodes(fns[1:]...)
 		})
 	case func():
 		first()
@@ -50,7 +52,7 @@ func With(fns ...interface{}) {
 }
 
 func ServerExecute(callback func()) {
-	With(NewCommand, NewDatabase, func() {
+	WithNodes(NewCommand, NewDatabase, func() {
 		BeforeEach(func() {
 			AppendArgs(
 				"server", "start",
@@ -60,7 +62,7 @@ func ServerExecute(callback func()) {
 				Flag(cmd.StorageSQLiteDBNameFlag, uuid.New()),
 				BoolFlag(sharedotlptraces.OtelTracesFlag),
 				Flag(sharedotlptraces.OtelTracesExporterFlag, "otlp"),
-				Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort)),
+				Flag(sharedotlptraces.OtelTracesExporterOTLPEndpointFlag, fmt.Sprintf("127.0.0.1:%d", otlpinterceptor.HTTPPort+GinkgoParallelProcess())),
 				BoolFlag(sharedotlptraces.OtelTracesExporterOTLPInsecureFlag),
 				Flag(sharedotlptraces.OtelTracesExporterOTLPModeFlag, "http"),
 				Flag(cmd.ServerHttpBindAddressFlag, ":0"),
@@ -74,6 +76,7 @@ func ServerExecute(callback func()) {
 					return cmd.Port(ActualCommand().Context())
 				}).Should(BeNumerically(">", 0))
 
+				<-time.After(time.Second)
 				Init(fmt.Sprintf("http://localhost:%d", cmd.Port(ActualCommand().Context())))
 				Eventually(func() error {
 					_, _, err := GetInfo().Execute()

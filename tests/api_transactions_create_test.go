@@ -1,4 +1,4 @@
-package tests_test
+package tests
 
 import (
 	"fmt"
@@ -100,7 +100,7 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 						),
 				))
 			})
-			Context("with an idempotency key", func() {
+			With("an idempotency key", func() {
 				var (
 					ik           string
 					httpResponse *http.Response
@@ -109,15 +109,15 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 					ik = uuid.NewString()
 					request = request.IdempotencyKey(ik)
 				})
-				Context("Then replay request", func() {
+				Then("replay request", func() {
 					JustBeforeEach(func() {
 						response, httpResponse = MustExecute[ledgerclient.TransactionsResponse](request)
 					})
-					It("Should return response using idempotency key hit", func() {
+					It("should return response using idempotency key hit", func() {
 						Expect(httpResponse.Header.Get(idempotency.HeaderIdempotencyHit)).To(Equal("true"))
 					})
 				})
-				Context("Then reusing IK with another request", func() {
+				Then("reusing IK with another request", func() {
 					var (
 						httpResponse *http.Response
 						err          error
@@ -135,7 +135,7 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 							IdempotencyKey(ik).
 							Execute()
 					})
-					It("Should return a 400 status code", func() {
+					It("should return a 400 status code", func() {
 						Expect(httpResponse.StatusCode).To(Equal(http.StatusBadRequest))
 						Expect(err).To(HaveLedgerErrorCode(apierrors.ErrInternal))
 					})

@@ -124,7 +124,7 @@ func ExecuteCommand(callback func()) {
 }
 
 func WhenExecuteCommand(text string, callback func()) bool {
-	return Describe(text, func() {
+	return When("execute command"+text, func() {
 		ExecuteCommand(callback)
 	})
 }

@@ -20,7 +20,7 @@ var _ = Describe("Init storage", func() {
 					Flag(cmd.StoragePostgresConnectionStringFlag, pgserver.ConnString(ActualDatabaseName())),
 				)
 			})
-			WhenExecuteCommand("initializing storage using CLI", func() {
+			WhenExecuteCommand("storage init", func() {
 				It("Should be ok", func() {
 					Eventually(CommandTerminated).Should(BeTrue())
 					Expect(CommandError()).Should(BeNil())

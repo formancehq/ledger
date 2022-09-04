@@ -1,4 +1,4 @@
-package tests_test
+package tests
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 var _ = DescribeServerExecute("Transactions create api", func() {
 	WithNewLedger(func() {
-		Describe("Given a ledger with a transaction registered", func() {
+		With("a transaction registered", func() {
 			var (
 				tx core.ExpandedTransaction
 			)
@@ -35,14 +35,14 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 				}
 				Expect(GetLedgerStore().Commit(context.Background(), tx)).To(BeNil())
 			})
-			When("Reverting it", func() {
+			When("reverting it", func() {
 				var (
 					response ledgerclient.TransactionResponse
 				)
 				BeforeEach(func() {
 					response, _ = MustExecute[ledgerclient.TransactionResponse](RevertTransaction(int32(tx.ID)))
 				})
-				It("Should be ok", func() {
+				It("should create a new tx", func() {
 					Expect(response.Data.Txid).To(BeEquivalentTo(1))
 
 					count, err := GetLedgerStore().CountTransactions(context.Background(), *ledger.NewTransactionsQuery())
@@ -56,7 +56,7 @@ var _ = DescribeServerExecute("Transactions create api", func() {
 						Output: core.NewMonetaryInt(100),
 					}))
 				})
-				It("Should trigger an event", func() {
+				It("should trigger an event", func() {
 					tx.Metadata = core.RevertedMetadata(uint64(response.Data.Txid))
 					Expect(CurrentLedger()).To(HaveTriggeredEvent(bus.RevertedTransaction{
 						Ledger:              CurrentLedger(),

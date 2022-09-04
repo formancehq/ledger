@@ -3,6 +3,8 @@ package otlpinterceptor
 import (
 	"context"
 
+	"github.com/numary/ledger/tests/internal/debug"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -17,6 +19,7 @@ var (
 )
 
 func StartCollector() {
+	debug.Debug("Start collector on port %d", HTTPPort+GinkgoParallelProcess())
 	processorFactories, err := component.MakeProcessorFactoryMap(NewFactory())
 	Expect(err).WithOffset(1).To(BeNil())
 
@@ -53,9 +56,12 @@ func StartCollector() {
 	go func() {
 		collectorErr <- collector.Run(context.Background())
 	}()
+
+	Eventually(collector.GetState).Should(Equal(service.Running))
 }
 
 func StopCollector() {
+	debug.Debug("Stop collector on port %d\r\n", HTTPPort+GinkgoParallelProcess())
 	collector.Shutdown()
 	Expect(<-collectorErr).To(BeNil())
 }
