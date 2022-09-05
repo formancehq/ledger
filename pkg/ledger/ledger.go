@@ -167,6 +167,11 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		return nil, err
 	}
 
+	if revertedTx.Metadata == nil {
+		revertedTx.Metadata = core.Metadata{}
+	}
+	revertedTx.Metadata.Merge(core.RevertedMetadata(revert.ID))
+
 	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result[0])
 	return &result[0], nil
 }
