@@ -57,27 +57,6 @@ func (s *Store) Close(ctx context.Context) error {
 	return s.onClose(ctx)
 }
 
-//func (s *Store) withSqlTx(ctx context.Context, callback func(tx *sql.Tx) error) error {
-//	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
-//	if err != nil {
-//		return s.error(err)
-//	}
-//	defer func() {
-//		_ = tx.Rollback()
-//	}()
-//	err = callback(tx)
-//	if err != nil {
-//		return s.error(err)
-//	}
-//	return s.error(tx.Commit())
-//}
-//
-//func (s *Store) WithTX(ctx context.Context, callback func(api ledger.API) error) error {
-//	return s.withSqlTx(ctx, func(tx *sql.Tx) error {
-//		return callback(NewAPI(s.schema, tx))
-//	})
-//}
-
 func NewStore(schema Schema, executorProvider func(ctx context.Context) (executor, error),
 	onClose, onDelete func(ctx context.Context) error) *Store {
 	return &Store{
