@@ -4,43 +4,22 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"runtime"
-	"time"
 
-	"github.com/numary/go-libs/sharedlogging"
+	sharedanalytics "github.com/numary/go-libs/sharedanalytics/pkg"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pbnjay/memory"
 	"github.com/pborman/uuid"
-	"go.uber.org/fx"
-	"gopkg.in/segmentio/analytics-go.v3"
+	analytics2 "github.com/segmentio/analytics-go"
 )
 
 const (
-	ApplicationStats = "Application stats"
-
-	VersionProperty      = "version"
 	AccountsProperty     = "accounts"
 	TransactionsProperty = "transactions"
 	LedgersProperty      = "ledgers"
-	OSProperty           = "os"
-	ArchProperty         = "arch"
-	TimeZoneProperty     = "tz"
-	CPUCountProperty     = "cpuCount"
-	TotalMemoryProperty  = "totalMemory"
 )
 
-type AppIdProvider interface {
-	AppID(ctx context.Context) (string, error)
-}
-type AppIdProviderFn func(ctx context.Context) (string, error)
-
-func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
-	return fn(ctx)
-}
-
-func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
+func FromStorageAppIdProvider(driver storage.Driver) sharedanalytics.AppIdProvider {
 	var appId string
-	return AppIdProviderFn(func(ctx context.Context) (string, error) {
+	return sharedanalytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
 		var err error
 		if appId == "" {
 			appId, err = driver.GetConfiguration(ctx, "appId")
@@ -58,69 +37,12 @@ func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
 	})
 }
 
-type heartbeat struct {
-	version       string
-	interval      time.Duration
-	client        analytics.Client
-	stopChan      chan chan struct{}
-	appIdProvider AppIdProvider
-	driver        storage.Driver
+type LedgerStatsPropertiesEnricher struct {
+	driver storage.Driver
 }
 
-func (m *heartbeat) Run(ctx context.Context) error {
-
-	enqueue := func() {
-		err := m.enqueue(ctx)
-		if err != nil {
-			sharedlogging.GetLogger(ctx).WithFields(map[string]interface{}{
-				"error": err,
-			}).Error("enqueuing analytics")
-		}
-	}
-
-	enqueue()
-	for {
-		select {
-		case ch := <-m.stopChan:
-			ch <- struct{}{}
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(m.interval):
-			enqueue()
-		}
-	}
-}
-
-func (m *heartbeat) Stop(ctx context.Context) error {
-	ch := make(chan struct{})
-	m.stopChan <- ch
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-ch:
-		return nil
-	}
-}
-
-func (m *heartbeat) enqueue(ctx context.Context) error {
-
-	appId, err := m.appIdProvider.AppID(ctx)
-	if err != nil {
-		return err
-	}
-
-	tz, _ := time.Now().Local().Zone()
-
-	properties := analytics.NewProperties().
-		Set(VersionProperty, m.version).
-		Set(OSProperty, runtime.GOOS).
-		Set(ArchProperty, runtime.GOARCH).
-		Set(TimeZoneProperty, tz).
-		Set(CPUCountProperty, runtime.NumCPU()).
-		Set(TotalMemoryProperty, memory.TotalMemory()/1024/1024)
-
-	ledgers, err := m.driver.List(ctx)
+func (l LedgerStatsPropertiesEnricher) Enrich(ctx context.Context, p analytics2.Properties) error {
+	ledgers, err := l.driver.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -130,7 +52,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	for _, ledger := range ledgers {
 		stats := map[string]any{}
 		if err := func() error {
-			store, _, err := m.driver.GetStore(ctx, ledger, false)
+			store, _, err := l.driver.GetStore(ctx, ledger, false)
 			if err != nil {
 				return err
 			}
@@ -156,59 +78,14 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 
 		ledgersProperty[ledgerHash] = stats
 	}
-	if len(ledgersProperty) > 0 {
-		properties.Set(LedgersProperty, ledgersProperty)
-	}
-
-	return m.client.Enqueue(&analytics.Track{
-		AnonymousId: appId,
-		Event:       ApplicationStats,
-		Properties:  properties,
-	})
+	p.Set(LedgersProperty, ledgersProperty)
+	return nil
 }
 
-func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver, client analytics.Client, version string, interval time.Duration) *heartbeat {
-	return &heartbeat{
-		version:       version,
-		interval:      interval,
-		client:        client,
-		driver:        driver,
-		appIdProvider: appIdProvider,
-		stopChan:      make(chan chan struct{}, 1),
-	}
-}
+var _ sharedanalytics.PropertiesEnricher = &LedgerStatsPropertiesEnricher{}
 
-func NewHeartbeatModule(version, writeKey string, interval time.Duration) fx.Option {
-	return fx.Options(
-		fx.Supply(analytics.Config{}), // Provide empty config to be able to replace (use fx.Replace) if necessary
-		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
-			return analytics.NewWithConfig(writeKey, cfg)
-		}),
-		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver) *heartbeat {
-			return newHeartbeat(provider, driver, client, version, interval)
-		}),
-		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					go func() {
-						err := m.Run(context.Background())
-						if err != nil {
-							panic(err)
-						}
-					}()
-					return nil
-				},
-				OnStop: func(ctx context.Context) error {
-					return m.Stop(ctx)
-				},
-			})
-		}),
-		fx.Invoke(func(lc fx.Lifecycle, client analytics.Client) {
-			lc.Append(fx.Hook{
-				OnStop: func(ctx context.Context) error {
-					return client.Close()
-				},
-			})
-		}),
-	)
+func NewLedgerStatsPropertiesProvider(driver storage.Driver) *LedgerStatsPropertiesEnricher {
+	return &LedgerStatsPropertiesEnricher{
+		driver: driver,
+	}
 }

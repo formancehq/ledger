@@ -13,6 +13,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/oauth2/oauth2introspect"
+	sharedanalytics "github.com/numary/go-libs/sharedanalytics/pkg"
 	"github.com/numary/go-libs/sharedauth"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
@@ -22,6 +23,7 @@ import (
 	"github.com/numary/go-libs/sharedpublish/sharedpublishhttp"
 	"github.com/numary/go-libs/sharedpublish/sharedpublishkafka"
 	"github.com/numary/ledger/cmd/internal"
+	"github.com/numary/ledger/pkg/analytics"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -169,7 +171,10 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		}(),
 	}))
 
-	options = append(options, internal.NewAnalyticsModule(v, Version))
+	options = append(options,
+		sharedanalytics.NewAnalyticsModule(v, Version, true),
+		analytics.CustomizeAnalyticsModule(),
+	)
 
 	options = append(options, fx.Provide(
 		fx.Annotate(func() []ledger.LedgerOption {

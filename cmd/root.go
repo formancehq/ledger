@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 
+	sharedanalytics "github.com/numary/go-libs/sharedanalytics/pkg"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd/internal"
@@ -142,7 +143,7 @@ func NewRootCommand() *cobra.Command {
 	sharedotlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	sharedotlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)
-	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
+	sharedanalytics.InitAnalyticsFlags(root, DefaultSegmentWriteKey, true)
 
 	if err = viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)

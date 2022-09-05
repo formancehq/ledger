@@ -12,12 +12,13 @@ import (
 	"testing"
 	"time"
 
+	sharedanalytics "github.com/numary/go-libs/sharedanalytics/pkg"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
+	"github.com/segmentio/analytics-go"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"gopkg.in/segmentio/analytics-go.v3"
 )
 
 type transport func(*http.Request) (*http.Response, error)
@@ -71,20 +72,16 @@ type segmentBatch struct {
 }
 
 const (
-	interval      = 10 * time.Millisecond
-	version       = "100.0.0"
-	applicationId = "foo"
-	writeKey      = "key"
+	interval = 10 * time.Millisecond
+	version  = "100.0.0"
+	writeKey = "key"
 )
 
 var (
 	module = fx.Options(
-		NewHeartbeatModule(version, writeKey, interval),
-		fx.Provide(func() AppIdProvider {
-			return AppIdProviderFn(func(ctx context.Context) (string, error) {
-				return "foo", nil
-			})
-		}),
+		CustomizeAnalyticsModule(),
+		fx.NopLogger,
+		sharedanalytics.NewHeartbeatModule(version, writeKey, interval),
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
 			id := uuid.New()
 			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
@@ -146,9 +143,8 @@ func TestSegment(t *testing.T) {
 				require.Len(t, batch.Batch, 1)
 
 				track := batch.Batch[0]
-				require.Equal(t, ApplicationStats, track.Event)
-				require.Equal(t, version, track.Properties[VersionProperty])
-				require.Equal(t, applicationId, track.AnonymousId)
+				require.Equal(t, sharedanalytics.ApplicationStats, track.Event)
+				require.Equal(t, map[string]any{}, batch.Batch[0].Properties[LedgersProperty])
 			}
 		})
 	})
