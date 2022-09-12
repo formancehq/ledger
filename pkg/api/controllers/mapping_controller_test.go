@@ -2,6 +2,7 @@ package controllers_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
@@ -21,6 +23,14 @@ func TestMapping(t *testing.T) {
 						{
 							Name:    "default",
 							Account: "*",
+							Expr: &core.ExprGt{
+								Op1: core.VariableExpr{
+									Name: "balance",
+								},
+								Op2: core.ConstantExpr{
+									Value: 0,
+								},
+							},
 						},
 					},
 				}
@@ -32,7 +42,17 @@ func TestMapping(t *testing.T) {
 
 				m2, _ := internal.DecodeSingleResponse[core.Mapping](t, rsp.Body)
 
-				assert.EqualValues(t, m, m2)
+				data, err := json.Marshal(m)
+				require.NoError(t, err)
+				m1AsMap := make(map[string]any)
+				require.NoError(t, json.Unmarshal(data, &m1AsMap))
+
+				data, err = json.Marshal(m2)
+				require.NoError(t, err)
+				m2AsMap := make(map[string]any)
+				require.NoError(t, json.Unmarshal(data, &m2AsMap))
+
+				assert.EqualValues(t, m1AsMap, m2AsMap)
 				return nil
 			},
 		})

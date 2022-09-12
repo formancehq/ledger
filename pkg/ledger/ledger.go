@@ -15,6 +15,14 @@ var DefaultContracts = []core.Contract{
 	{
 		Name:    "default",
 		Account: "*", // world still an exception
+		Expr: &core.ExprGte{
+			Op1: core.VariableExpr{
+				Name: "balance",
+			},
+			Op2: core.ConstantExpr{
+				Value: core.NewMonetaryInt(0),
+			},
+		},
 	},
 }
 

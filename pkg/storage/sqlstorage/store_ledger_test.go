@@ -680,28 +680,31 @@ func testMapping(t *testing.T, store *sqlstorage.Store) {
 	m := core.Mapping{
 		Contracts: []core.Contract{
 			{
-				Name:    "contract",
+				Expr: &core.ExprGt{
+					Op1: core.VariableExpr{Name: "balance"},
+					Op2: core.ConstantExpr{Value: core.NewMonetaryInt(0)},
+				},
 				Account: "orders:*",
 			},
 		},
 	}
 	err := store.SaveMapping(context.Background(), m)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	mapping, err := store.LoadMapping(context.Background())
-	require.NoError(t, err)
-	require.Len(t, mapping.Contracts, 1)
-	require.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 1)
+	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
 
 	m2 := core.Mapping{
 		Contracts: []core.Contract{},
 	}
 	err = store.SaveMapping(context.Background(), m2)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	mapping, err = store.LoadMapping(context.Background())
-	require.NoError(t, err)
-	require.Len(t, mapping.Contracts, 0)
+	assert.NoError(t, err)
+	assert.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
