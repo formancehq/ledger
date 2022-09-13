@@ -137,11 +137,11 @@ release:
 
 brews:
   - tap:
-      owner: numary
+      owner: formancehq
       name: homebrew-tap
     name: numary
     folder: Formula
-    homepage: https://numary.com
+    homepage: https://formance.com
     skip_upload: auto
     test: |
       system "#{bin}/numary version"
@@ -155,8 +155,8 @@ nfpms:
     builds:
       - numary_linux_amd64
       - numary_linux_arm64
-    homepage: https://numary.com
-    maintainer: Maxence Maireaux <maxence@numary.com>
+    homepage: https://formance.com
+    maintainer: Maxence Maireaux <maxence@formance.com>
     formats:
       - deb
       - rpm
