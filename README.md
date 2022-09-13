@@ -14,7 +14,7 @@ Numary is a programmable financial ledger that provides a foundation for money-m
 
 # Getting started
 
-Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.numary.com/docs/installation-1).
+Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum, nix or docker are also [available](https://docs.numary.com/docs/installation-1).
 
 ```SHELL
 
