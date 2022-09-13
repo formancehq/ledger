@@ -20,7 +20,7 @@ services:
       - postgres:/data/postgres
 
   ledger:
-    image: "ghcr.io/numary/ledger:latest"
+    image: "ghcr.io/formancehq/ledger:latest"
     healthcheck:
       test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
       interval: 10s
@@ -43,7 +43,7 @@ services:
     - "3068:3068"
 
   control:
-    image: "ghcr.io/numary/ledger:latest"
+    image: "ghcr.io/formancehq/ledger:latest"
     command: numary ui
     depends_on:
       ledger:

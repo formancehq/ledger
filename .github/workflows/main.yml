@@ -11,10 +11,10 @@ name: Main
 jobs:
   Pr:
     if: github.event_name == 'pull_request'
-    uses: numary/gh-workflows/.github/workflows/pr-style.yml@main
+    uses: formancehq/gh-workflows/.github/workflows/pr-style.yml@main
 
   Lint:
-    uses: numary/gh-workflows/.github/workflows/golang-lint.yml@main
+    uses: formancehq/gh-workflows/.github/workflows/golang-lint.yml@main
 
   Control:
     name: 'Control'
@@ -25,10 +25,10 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   Test_postgres:
-    uses: numary/gh-workflows/.github/workflows/golang-test-postgres.yml@main
+    uses: formancehq/gh-workflows/.github/workflows/golang-test-postgres.yml@main
 
   Test_sqlite:
-    uses: numary/gh-workflows/.github/workflows/golang-test.yml@main
+    uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
 
   GoReleaserBuild:
     if: github.event_name != 'release'

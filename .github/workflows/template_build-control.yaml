@@ -16,7 +16,7 @@ jobs:
         id: control_release
         env:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          repository: "numary/control"
+          repository: "formancehq/control"
           type: "stable"
       - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
       - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
