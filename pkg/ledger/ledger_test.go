@@ -606,7 +606,7 @@ func TestVeryBigTransaction(t *testing.T) {
 		amount, err := core.ParseMonetaryInt("199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		tx, err := l.Commit(context.Background(), []core.TransactionData{core.TransactionData{
+		tx, err := l.Commit(context.Background(), []core.TransactionData{{
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
