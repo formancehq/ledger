@@ -1247,16 +1247,16 @@ components:
       properties:
         page_size:
           type: integer
-          example: 1
+          example: 15
         has_more:
           type: boolean
           example: false
         previous:
           type: string
-          example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+          example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
         next:
           type: string
-          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          example: ""
 
     TransactionsResponse:
       type: object
