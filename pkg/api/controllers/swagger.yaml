@@ -1,16 +1,7 @@
 openapi: 3.0.3
 info:
   title: Ledger API
-  contact: {}
   version: "LEDGER_VERSION"
-
-servers:
-- url: https://{organization}.o.numary.cloud/ledger
-  description: Production server
-  variables:
-    organization:
-      description: The organization on which the ledger is located
-      default: ""
 
 paths:
   /_info:
@@ -50,11 +41,10 @@ paths:
       - name: metadata
         in: query
         description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
-        style: deepObject
-        explode: true
         schema:
           type: object
-          properties: {}
+        style: deepObject
+        explode: true
         example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
@@ -80,7 +70,6 @@ paths:
         - name: page_size
           in: query
           description: 'The maximum number of results to return per page'
-          example: 100
           schema:
             type: integer
             maximum: 1000
@@ -101,11 +90,10 @@ paths:
         - name: metadata
           in: query
           description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
-          style: deepObject
-          explode: true
           schema:
             type: object
-            properties: {}
+          style: deepObject
+          explode: true
           example: metadata[key]=value1&metadata[a.nested.key]=value2
         - name: balance
           in: query
@@ -422,11 +410,10 @@ paths:
       - name: metadata
         in: query
         description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
-        style: deepObject
-        explode: true
         schema:
           type: object
-          properties: { }
+        style: deepObject
+        explode: true
         example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
@@ -452,7 +439,6 @@ paths:
         - name: page_size
           in: query
           description: 'The maximum number of results to return per page'
-          example: 100
           schema:
             type: integer
             maximum: 1000
@@ -518,11 +504,10 @@ paths:
         - name: metadata
           in: query
           description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
-          style: deepObject
-          explode: true
           schema:
             type: object
-            properties: { }
+          style: deepObject
+          explode: true
           example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
@@ -990,9 +975,6 @@ paths:
                     type: string
                     example: "invalid address"
 
-security:
-  - basicAuth: []
-
 components:
   securitySchemes:
     basicAuth:
@@ -1337,20 +1319,6 @@ components:
             input: 100
             output: 10
             balance: 90
-    ErrorCode:
-      type: string
-      enum:
-        - INTERNAL
-        - INSUFFICIENT_FUND
-        - VALIDATION
-        - CONFLICT
-    ErrorResponse:
-      type: object
-      required:
-        - error_code
-      properties:
-        error_code:
-          $ref: '#/components/schemas/ErrorCode'
-        error_message:
-          type: string
-          example: internal error
+
+security:
+  - basicAuth: []
