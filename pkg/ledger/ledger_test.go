@@ -600,6 +600,28 @@ func TestRevertTransaction(t *testing.T) {
 	})
 }
 
+func TestVeryBigTransaction(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+
+		amount, err := core.ParseMonetaryInt("199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
+		require.NoError(t, err)
+
+		tx, err := l.Commit(context.Background(), []core.TransactionData{{
+			Postings: []core.Posting{{
+				Source:      "world",
+				Destination: "bank",
+				Asset:       "ETH/18",
+				Amount:      amount,
+			}},
+		}})
+		require.NoError(t, err)
+
+		txFromDB, err := l.GetTransaction(context.Background(), tx.GeneratedTransactions[0].ID)
+		require.NoError(t, err)
+		require.Equal(t, txFromDB.Postings[0].Amount, amount)
+	})
+}
+
 func BenchmarkTransaction1(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {

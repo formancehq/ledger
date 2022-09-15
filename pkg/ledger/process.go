@@ -102,7 +102,13 @@ func (l *Ledger) ProcessTx(ctx context.Context, ts []core.TransactionData) (*Com
 							}
 							accounts[addr] = account
 						}
-						if !expectedBalance.Gte(core.NewMonetaryInt(0)) {
+						if ok := contract.Expr.Eval(core.EvalContext{
+							Variables: map[string]interface{}{
+								"balance": expectedBalance,
+							},
+							Metadata: accounts[addr].Metadata,
+							Asset:    asset,
+						}); !ok {
 							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 						}
 						break
