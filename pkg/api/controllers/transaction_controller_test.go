@@ -56,6 +56,22 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
+			name:               "asset-with-digit",
+			expectedStatusCode: http.StatusOK,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "central_bank",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "US1234D",
+						},
+					},
+				},
+			},
+		},
+		{
 			name:               "no-postings",
 			expectedStatusCode: http.StatusBadRequest,
 			transactions: []core.TransactionData{
@@ -83,7 +99,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name:               "wrong-asset",
+			name:               "wrong-asset-with-symbol",
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  apierrors.ErrValidation,
 			transactions: []core.TransactionData{
@@ -94,6 +110,23 @@ func TestPostTransactions(t *testing.T) {
 							Destination: "central_bank",
 							Amount:      core.NewMonetaryInt(1000),
 							Asset:       "@TOK",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:               "wrong-asset-with-digit-as-first-char",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  apierrors.ErrValidation,
+			transactions: []core.TransactionData{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "central_bank",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "1TOK",
 						},
 					},
 				},
