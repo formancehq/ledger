@@ -5,12 +5,12 @@ info:
   version: "LEDGER_VERSION"
 
 servers:
-- url: https://{organization}.o.numary.cloud/ledger
-  description: Production server
-  variables:
-    organization:
-      description: The organization on which the ledger is located
-      default: ""
+  - url: https://{organization}.o.numary.cloud/ledger
+    description: Production server
+    variables:
+      organization:
+        description: The organization on which the ledger is located
+        default: ""
 
 paths:
   /_info:
@@ -32,30 +32,30 @@ paths:
       summary: Count the accounts from a ledger.
       operationId: countAccounts
       tags:
-      - accounts
+        - accounts
       parameters:
-      - name: ledger
-        in: path
-        description: Name of the ledger.
-        required: true
-        schema:
-          type: string
-          example: ledger001
-      - name: address
-        in: query
-        description: Filter accounts by address pattern (regular expression placed between ^ and $).
-        schema:
-          type: string
-          example: users:.+
-      - name: metadata
-        in: query
-        description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
-        style: deepObject
-        explode: true
-        schema:
-          type: object
-          properties: {}
-        example: metadata[key]=value1&metadata[a.nested.key]=value2
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: query
+          description: Filter accounts by address pattern (regular expression placed between ^ and $).
+          schema:
+            type: string
+            example: users:.+
+        - name: metadata
+          in: query
+          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties: {}
+          example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
           description: OK
@@ -320,7 +320,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MappingResponse'
-      
+
   /{ledger}/script:
     post:
       tags:
@@ -354,7 +354,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScriptResult'
-      
+
   /{ledger}/stats:
     get:
       tags:
@@ -383,51 +383,51 @@ paths:
   /{ledger}/transactions:
     head:
       tags:
-      - transactions
+        - transactions
       summary: Count the transactions from a ledger.
       operationId: countTransactions
       parameters:
-      - name: ledger
-        in: path
-        description: Name of the ledger.
-        required: true
-        schema:
-          type: string
-          example: ledger001
-      - name: reference
-        in: query
-        description: Filter transactions by reference field.
-        schema:
-          type: string
-          example: ref:001
-      - name: account
-        in: query
-        description: Filter transactions with postings involving given account, either
-          as source or destination (regular expression placed between ^ and $).
-        schema:
-          type: string
-          example: users:001
-      - name: source
-        in: query
-        description: Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
-        schema:
-          type: string
-          example: users:001
-      - name: destination
-        in: query
-        description: Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
-        schema:
-          type: string
-          example: users:001
-      - name: metadata
-        in: query
-        description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
-        style: deepObject
-        explode: true
-        schema:
-          type: object
-          properties: { }
-        example: metadata[key]=value1&metadata[a.nested.key]=value2
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: reference
+          in: query
+          description: Filter transactions by reference field.
+          schema:
+            type: string
+            example: ref:001
+        - name: account
+          in: query
+          description: Filter transactions with postings involving given account, either
+            as source or destination (regular expression placed between ^ and $).
+          schema:
+            type: string
+            example: users:001
+        - name: source
+          in: query
+          description: Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
+          schema:
+            type: string
+            example: users:001
+        - name: destination
+          in: query
+          description: Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
+          schema:
+            type: string
+            example: users:001
+        - name: metadata
+          in: query
+          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            properties: { }
+          example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
           description: OK
@@ -1247,16 +1247,16 @@ components:
       properties:
         page_size:
           type: integer
-          example: 1
+          example: 15
         has_more:
           type: boolean
           example: false
         previous:
           type: string
-          example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+          example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
         next:
           type: string
-          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          example: ""
 
     TransactionsResponse:
       type: object
@@ -1303,8 +1303,8 @@ components:
         balance:
           type: number
       required:
-      - input
-      - output
+        - input
+        - output
       example:
         input: 100
         output: 20

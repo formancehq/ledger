@@ -112,7 +112,7 @@ tasks:
       - sh: '[ "{{.CLI_ARGS}}" != "" ]'
         msg: Please specify generator as first cli arg (ie "task generate -- go")
     cmds:
-      - wget https://raw.githubusercontent.com/numary/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
+      - wget https://raw.githubusercontent.com/formancehq/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
       - sed -i -e "s/LEDGER_VERSION/{{.VERSION}}/g" swagger.yaml
       - >
         docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest generate
@@ -120,7 +120,7 @@ tasks:
         -g {{ (split "-" .CLI_ARGS)._0 }}
         -c ./configs/{{.CLI_ARGS}}.yaml
         -o ./sdks/{{.CLI_ARGS}}
-        --git-user-id=numary
+        --git-user-id=formancehq
         --git-repo-id=numary-sdk-{{.CLI_ARGS}}
         -p packageVersion={{.VERSION}}
 
