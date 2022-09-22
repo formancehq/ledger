@@ -44,7 +44,7 @@ services:
 
   control:
     image: "ghcr.io/formancehq/ledger:latest"
-    command: numary ui
+    command: ui
     depends_on:
       ledger:
         condition: service_healthy
