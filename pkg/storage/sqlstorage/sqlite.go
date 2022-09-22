@@ -56,13 +56,17 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account", func(v string, act string) (bool, error) {
+				r, err := regexp.Compile("^" + act + "$")
+				if err != nil {
+					return false, err
+				}
 				postings := core.Postings{}
 				err = json.Unmarshal([]byte(v), &postings)
 				if err != nil {
 					return false, nil
 				}
 				for _, p := range postings {
-					if act == p.Source || act == p.Destination {
+					if r.MatchString(p.Source) || r.MatchString(p.Destination) {
 						return true, nil
 					}
 				}
@@ -72,13 +76,17 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account_as_source", func(v string, act string) (bool, error) {
+				r, err := regexp.Compile("^" + act + "$")
+				if err != nil {
+					return false, err
+				}
 				postings := core.Postings{}
 				err = json.Unmarshal([]byte(v), &postings)
 				if err != nil {
 					return false, nil
 				}
 				for _, p := range postings {
-					if act == p.Source {
+					if r.MatchString(p.Source) {
 						return true, nil
 					}
 				}
@@ -88,13 +96,17 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account_as_destination", func(v string, act string) (bool, error) {
+				r, err := regexp.Compile("^" + act + "$")
+				if err != nil {
+					return false, err
+				}
 				postings := core.Postings{}
 				err = json.Unmarshal([]byte(v), &postings)
 				if err != nil {
 					return false, nil
 				}
 				for _, p := range postings {
-					if act == p.Destination {
+					if r.MatchString(p.Destination) {
 						return true, nil
 					}
 				}

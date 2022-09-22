@@ -554,13 +554,22 @@ func TestGetTransactions(t *testing.T) {
 					require.Equal(t, cursor.Data[1].ID, uint64(0))
 				})
 
-				t.Run("account filter should be exact", func(t *testing.T) {
+				t.Run("account no result", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
 						"account": []string{"central"},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.Len(t, cursor.Data, 0)
+				})
+
+				t.Run("account regex expr", func(t *testing.T) {
+					rsp = internal.GetTransactions(api, url.Values{
+						"account": []string{"central.*"},
+					})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+					require.Len(t, cursor.Data, 3)
 				})
 
 				t.Run("time range", func(t *testing.T) {
