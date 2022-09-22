@@ -98,21 +98,24 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
 <table>
-  <tr>
-    <td align="center"><a href="https://github.com/Azorlogh"><img src="https://avatars.githubusercontent.com/u/17968319?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Alix Bott</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=Azorlogh" title="Code">💻</a></td>
-    <td align="center"><a href="https://www.flemzord.fr/"><img src="https://avatars.githubusercontent.com/u/1952914?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Maxence Maireaux</b></sub></a><br /><a href="#infra-flemzord" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a> <a href="#platform-flemzord" title="Packaging/porting to new platform">📦</a> <a href="https://github.com/numary/ledger/commits?author=flemzord" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/henry-jackson"><img src="https://avatars.githubusercontent.com/u/34102861?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Henry Jackson</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=henry-jackson" title="Code">💻</a></td>
-    <td align="center"><a href="https://matias.insaurral.de/"><img src="https://avatars.githubusercontent.com/u/20110?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Matias Insaurralde</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=matiasinsaurralde" title="Code">💻</a> <a href="https://github.com/numary/ledger/pulls?q=is%3Apr+reviewed-by%3Amatiasinsaurralde" title="Reviewed Pull Requests">👀</a></td>
-    <td align="center"><a href="https://github.com/S0c5"><img src="https://avatars.githubusercontent.com/u/5241972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David barinas</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=S0c5" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=djimnz" title="Code">💻</a></td>
-    <td align="center"><a href="http://32b6.com/"><img src="https://avatars.githubusercontent.com/u/1770991?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Clément Salaün</b></sub></a><br /><a href="#ideas-altitude" title="Ideas, Planning, & Feedback">🤔</a></td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://karmanyaah.malhotra.cc/"><img src="https://avatars.githubusercontent.com/u/32671690?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Karmanyaah Malhotra</b></sub></a><br /><a href="#userTesting-karmanyaahm" title="User Testing">📓</a></td>
-    <td align="center"><a href="https://www.linkedin.com/in/antoinegelloz/"><img src="https://avatars.githubusercontent.com/u/42968436?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Antoine Gelloz</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=antoinegelloz" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/jdupas22"><img src="https://avatars.githubusercontent.com/u/106673437?v=4?s=100" width="100px;" alt=""/><br /><sub><b>jdupas22</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=jdupas22" title="Code">💻</a></td>
-    <td align="center"><a href="https://edwardpoot.com"><img src="https://avatars.githubusercontent.com/u/1686739?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Edward Poot</b></sub></a><br /><a href="https://github.com/numary/ledger/commits?author=edwardmp" title="Code">💻</a></td>
-  </tr>
+  <tbody>
+    <tr>
+      <td align="center"><a href="https://github.com/Azorlogh"><img src="https://avatars.githubusercontent.com/u/17968319?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Alix Bott</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=Azorlogh" title="Code">💻</a></td>
+      <td align="center"><a href="https://www.flemzord.fr/"><img src="https://avatars.githubusercontent.com/u/1952914?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Maxence Maireaux</b></sub></a><br /><a href="#infra-flemzord" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a> <a href="#platform-flemzord" title="Packaging/porting to new platform">📦</a> <a href="https://github.com/formancehq/ledger/commits?author=flemzord" title="Code">💻</a></td>
+      <td align="center"><a href="https://github.com/henry-jackson"><img src="https://avatars.githubusercontent.com/u/34102861?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Henry Jackson</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=henry-jackson" title="Code">💻</a></td>
+      <td align="center"><a href="https://matias.insaurral.de/"><img src="https://avatars.githubusercontent.com/u/20110?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Matias Insaurralde</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=matiasinsaurralde" title="Code">💻</a> <a href="https://github.com/formancehq/ledger/pulls?q=is%3Apr+reviewed-by%3Amatiasinsaurralde" title="Reviewed Pull Requests">👀</a></td>
+      <td align="center"><a href="https://github.com/S0c5"><img src="https://avatars.githubusercontent.com/u/5241972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David barinas</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=S0c5" title="Code">💻</a></td>
+      <td align="center"><a href="https://github.com/djimnz"><img src="https://avatars.githubusercontent.com/u/949997?v=4?s=100" width="100px;" alt=""/><br /><sub><b>David Jimenez</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=djimnz" title="Code">💻</a></td>
+      <td align="center"><a href="http://32b6.com/"><img src="https://avatars.githubusercontent.com/u/1770991?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Clément Salaün</b></sub></a><br /><a href="#ideas-altitude" title="Ideas, Planning, & Feedback">🤔</a></td>
+    </tr>
+    <tr>
+      <td align="center"><a href="https://karmanyaah.malhotra.cc/"><img src="https://avatars.githubusercontent.com/u/32671690?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Karmanyaah Malhotra</b></sub></a><br /><a href="#userTesting-karmanyaahm" title="User Testing">📓</a></td>
+      <td align="center"><a href="https://www.linkedin.com/in/antoinegelloz/"><img src="https://avatars.githubusercontent.com/u/42968436?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Antoine Gelloz</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=antoinegelloz" title="Code">💻</a></td>
+      <td align="center"><a href="https://github.com/jdupas22"><img src="https://avatars.githubusercontent.com/u/106673437?v=4?s=100" width="100px;" alt=""/><br /><sub><b>jdupas22</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=jdupas22" title="Code">💻</a></td>
+      <td align="center"><a href="https://edwardpoot.com"><img src="https://avatars.githubusercontent.com/u/1686739?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Edward Poot</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=edwardmp" title="Code">💻</a></td>
+      <td align="center"><a href="https://github.com/nicoabie"><img src="https://avatars.githubusercontent.com/u/2797992?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Nico Gallinal</b></sub></a><br /><a href="https://github.com/formancehq/ledger/issues?q=author%3Anicoabie" title="Bug reports">🐛</a></td>
+    </tr>
+  </tbody>
 </table>
 
 <!-- markdownlint-restore -->

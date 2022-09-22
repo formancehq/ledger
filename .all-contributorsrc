@@ -1,6 +1,6 @@
 {
   "projectName": "ledger",
-  "projectOwner": "numary",
+  "projectOwner": "formancehq",
   "repoType": "github",
   "repoHost": "https://github.com",
   "files": [
@@ -110,6 +110,15 @@
       "profile": "https://edwardpoot.com",
       "contributions": [
         "code"
+      ]
+    },
+    {
+      "login": "nicoabie",
+      "name": "Nico Gallinal",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2797992?v=4",
+      "profile": "https://github.com/nicoabie",
+      "contributions": [
+        "bug"
       ]
     }
   ],
