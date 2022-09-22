@@ -56,7 +56,7 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account", func(v string, act string) (bool, error) {
-				r, err := regexp.Compile(act)
+				r, err := regexp.Compile("^" + act + "$")
 				if err != nil {
 					return false, err
 				}
@@ -76,7 +76,7 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account_as_source", func(v string, act string) (bool, error) {
-				r, err := regexp.Compile(act)
+				r, err := regexp.Compile("^" + act + "$")
 				if err != nil {
 					return false, err
 				}
@@ -96,7 +96,7 @@ func init() {
 				return err
 			}
 			err = conn.RegisterFunc("use_account_as_destination", func(v string, act string) (bool, error) {
-				r, err := regexp.Compile(act)
+				r, err := regexp.Compile("^" + act + "$")
 				if err != nil {
 					return false, err
 				}
