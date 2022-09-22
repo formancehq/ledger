@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -288,7 +287,6 @@ func testIKS(t *testing.T, store *sqlstorage.Store) {
 	})
 	t.Run("Not found", func(t *testing.T) {
 		_, err := store.ReadIK(context.Background(), uuid.New())
-		spew.Dump(err)
 		require.Equal(t, idempotency.ErrIKNotFound, err)
 	})
 }
