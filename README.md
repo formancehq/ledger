@@ -114,6 +114,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
       <td align="center"><a href="https://github.com/jdupas22"><img src="https://avatars.githubusercontent.com/u/106673437?v=4?s=100" width="100px;" alt=""/><br /><sub><b>jdupas22</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=jdupas22" title="Code">💻</a></td>
       <td align="center"><a href="https://edwardpoot.com"><img src="https://avatars.githubusercontent.com/u/1686739?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Edward Poot</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=edwardmp" title="Code">💻</a></td>
       <td align="center"><a href="https://github.com/nicoabie"><img src="https://avatars.githubusercontent.com/u/2797992?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Nico Gallinal</b></sub></a><br /><a href="https://github.com/formancehq/ledger/issues?q=author%3Anicoabie" title="Bug reports">🐛</a></td>
+      <td align="center"><a href="https://github.com/gfyrag"><img src="https://avatars.githubusercontent.com/u/9094799?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Ragot Geoffrey</b></sub></a><br /><a href="https://github.com/formancehq/ledger/commits?author=gfyrag" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
