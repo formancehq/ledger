@@ -14,7 +14,7 @@ Formance Ledger (fka Numary) is a programmable financial ledger that provides a 
 
 # Getting started
 
-Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.numary.com/docs/installation-1).
+Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.formance.com/docs/installation-1).
 
 ```SHELL
 
@@ -64,7 +64,7 @@ numary ui
 
 <img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
 
-Alternatively, you can use the dashboard by heading to [control.numary.com](https://control.numary.com) which provides a hosted version that can connect to any ledger instance.
+Alternatively, you can use the dashboard by heading to [control.formance.com](https://control.formance.com) which provides a hosted version that can connect to any ledger instance.
 
 # Roadmap & Community
 
