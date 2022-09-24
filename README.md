@@ -1,4 +1,4 @@
-# Formance Ledger [![test](https://github.com/numary/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/numary/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/numary/ledger)](https://goreportcard.com/report/github.com/numary/ledger) [![discord](https://img.shields.io/discord/846686859869814784?label=chat%20@%20discord)](https://discord.gg/xyHvcbzk4w) [![codecov](https://codecov.io/gh/numary/ledger/branch/main/graph/badge.svg?token=3PUKLWIKX3)](https://codecov.io/gh/numary/ledger)
+# Formance Ledger [![test](https://github.com/formancehq/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/formancehq/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/formancehq/ledger)](https://goreportcard.com/report/github.com/formancehq/ledger) [![discord](https://img.shields.io/discord/846686859869814784?label=chat%20@%20discord)](https://discord.gg/xyHvcbzk4w) [![codecov](https://codecov.io/gh/formancehq/ledger/branch/main/graph/badge.svg?token=3PUKLWIKX3)](https://codecov.io/gh/formancehq/ledger)
 
 <p>
   <img src="https://user-images.githubusercontent.com/1770991/167574970-45d1ab7e-6c57-45a5-9b46-0e849c62f98c.svg"/>
@@ -14,7 +14,7 @@ Formance Ledger (fka Numary) is a programmable financial ledger that provides a 
 
 # Getting started
 
-Numary works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/numary/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.numary.com/docs/installation-1).
+Formance Ledger works as a standalone binary, the latest of which can be downloaded from the [releases page](https://github.com/formancehq/ledger/releases). You can move the binary to any executable path, such as to `/usr/local/bin`. Installations using brew, apt, yum or docker are also [available](https://docs.formance.com/docs/installation-1).
 
 ```SHELL
 
@@ -52,11 +52,11 @@ curl -X GET http://localhost:3068/quickstart/transactions
 
 # Documentation
 
-You can find the complete Numary documentation at [docs.numary.com](https://docs.numary.com)
+You can find the complete Numary documentation at [docs.formance.com](https://docs.formance.com)
 
 # Dashboard
 
-A simple [dashboard](https://github.com/numary/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
+A simple [dashboard](https://github.com/formancehq/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
 
 ```SHELL
 numary ui
@@ -64,7 +64,7 @@ numary ui
 
 <img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
 
-Alternatively, you can use the dashboard by heading to [control.numary.com](https://control.numary.com) which provides a hosted version that can connect to any ledger instance.
+Alternatively, you can use the dashboard by heading to [control.formance.com](https://control.formance.com) which provides a hosted version that can connect to any ledger instance.
 
 # Roadmap & Community
 
@@ -78,17 +78,17 @@ If you need help, want to show us what you built or just hang out and chat about
 
 Want to give a shot to the latest version? You can easily deploy a test instance with Heroku and the button below:
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/numary/ledger)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/formancehq/ledger)
 
 # How to contribute
 
-Want to contribute to the project? Please read the [CONTRIBUTING.md](https://github.com/numary/ledger/blob/main/CONTRIBUTING.md) file.
+Want to contribute to the project? Please read the [CONTRIBUTING.md](https://github.com/formancehq/ledger/blob/main/CONTRIBUTING.md) file.
 
 We are using [Task](https://taskfile.dev) to easily lint or test the project locally. You can install it with:
 ```SHELL
 go install github.com/go-task/task/v3/cmd/task@latest
 ```
-Then you can run `task` to run both the linters and the tests. You will find other tasks in the [Taskfile](https://github.com/numary/ledger/blob/main/Taskfile.yaml).
+Then you can run `task` to run both the linters and the tests. You will find other tasks in the [Taskfile](https://github.com/formancehq/ledger/blob/main/Taskfile.yaml).
 
 # Contributors ✨
 
