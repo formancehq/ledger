@@ -22,7 +22,7 @@ require (
 	github.com/numary/go-libs v1.0.1
 	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81
-	github.com/numary/machine v1.2.1-0.20220811010804-0a87156a9a4b
+	github.com/numary/machine v1.2.1
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pborman/uuid v1.2.1
