@@ -30,6 +30,32 @@ jobs:
   Test_sqlite:
     uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
 
+  bench:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13-alpine
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Install task
+        uses: arduino/setup-task@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+      - name: Run bench
+        run: task install:perf bench:postgres
+
   GoReleaserBuild:
     if: github.event_name != 'release'
     name: 'GoReleaser Build'

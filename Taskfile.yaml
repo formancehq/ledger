@@ -9,8 +9,12 @@ vars:
   PKG: "./..."
   FAILFAST: "-failfast"
   TIMEOUT: "10m"
-  RUN: "''"
+  RUN: ".*"
   TAGS: "-tags json1,netgo"
+  BENCH_RESULTS_DIR: "/tmp/benchmarks"
+  BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
+  BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
+  BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
 
 tasks:
   default:
@@ -55,9 +59,47 @@ tasks:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
-  bench:
+  bench:sqlite:
     cmds:
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -run=XXX -bench=. {{.PKG}}
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+
+  bench:postgres:
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:profile:sqlite:
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} | tee {{.BENCH_RESULTS_FILE}}
+      - lsof -ti tcp:9090 | xargs kill -9 2> /dev/null
+      - lsof -ti tcp:9191 | xargs kill -9 2> /dev/null
+      - benchstat {{.BENCH_RESULTS_FILE}}
+
+  bench:profile:postgres:
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} | tee {{.BENCH_RESULTS_FILE}}
+      - lsof -ti tcp:9090 | xargs kill -9 2> /dev/null
+      - lsof -ti tcp:9191 | xargs kill -9 2> /dev/null
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:cpu:
+    cmds:
+      - go tool pprof -http=:9090 {{.BENCH_CPU_PROFILE}}
+
+  bench:mem:
+    cmds:
+      - go tool pprof -http=:9191 {{.BENCH_MEM_PROFILE}}
 
   print:coverage:
     cmds:
@@ -72,6 +114,7 @@ tasks:
     deps:
     - install:golangci-lint
     - install:cov-report
+    - install:perf
 
   install:golangci-lint:
     cmds:
@@ -83,6 +126,9 @@ tasks:
   install:cov-report:
     cmds:
     - go install github.com/go-phorce/cov-report/cmd/cov-report
+
+  install:perf:
+    - go install golang.org/x/perf/cmd/...@latest
 
   postgres:
     cmds:
