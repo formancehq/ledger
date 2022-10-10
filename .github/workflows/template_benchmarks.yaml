@@ -1,6 +1,6 @@
 name: Benchmarks
 on:
-  workflow_dispatch:
+  workflow_call
 
 jobs:
   bench:
