@@ -101,13 +101,6 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
 
-  bench:
-    needs:
-      - Control
-      - Test_sqlite
-      - Test_postgres
-    uses: ./.github/workflows/template_benchmarks.yaml
-
 #  Check-pkgs:
 #    if: github.event_name == 'release'
 #    runs-on: ubuntu-latest
