@@ -45,7 +45,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 						return err
 					}
 
-					getTransactions(b, store)
+					getTransactions(b, store, 12, 500)
 					return nil
 				},
 			})
@@ -57,14 +57,13 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 	}(app, context.Background())
 }
 
-func getTransactions(b *testing.B, store *sqlstorage.Store) {
-	pages := 120
-	pageSize := 500
+func getTransactions(b *testing.B, store *sqlstorage.Store, pages, pageSize int) {
 	id := uint64(0)
+	var txs []core.ExpandedTransaction
 	for i := 0; i < pages; i++ {
 		for j := 0; j < pageSize; j++ {
-			acc := uuid.NewString() + ":main:" + uuid.NewString() + ":" + uuid.NewString()
-			tx := core.ExpandedTransaction{
+			acc := uuid.NewString() + ":key1:" + uuid.NewString() + ":key2:" + uuid.NewString()
+			txs = append(txs, core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					ID: id,
 					TransactionData: core.TransactionData{
@@ -108,11 +107,16 @@ func getTransactions(b *testing.B, store *sqlstorage.Store) {
 						},
 					},
 				},
-			}
-			err := store.Commit(context.Background(), tx)
-			require.NoError(b, err)
+			})
 			id++
 		}
+		if len(txs) >= 1000 {
+			require.NoError(b, store.Commit(context.Background(), txs...))
+			txs = []core.ExpandedTransaction{}
+		}
+	}
+	if len(txs) > 0 {
+		require.NoError(b, store.Commit(context.Background(), txs...))
 	}
 
 	nb, err := store.CountTransactions(context.Background(), ledger.TransactionsQuery{})
@@ -124,7 +128,7 @@ func getTransactions(b *testing.B, store *sqlstorage.Store) {
 	for n := 0; n < b.N; n++ {
 		cursor, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			Filters: ledger.TransactionsQueryFilters{
-				Source: ".*:main:.*:.*",
+				Source: ".*:key1:.*:key2:.*",
 			},
 			PageSize: uint(pageSize),
 		})
