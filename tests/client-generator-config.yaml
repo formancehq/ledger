@@ -1,0 +1,10 @@
+templateDir: sdk/templates/go
+additionalProperties:
+  packageName: ledgerclient
+  goImportAlias: client
+  generateInterfaces: true
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
+  model_aggregated_volumes.mustache:
+    destinationFilename: model_aggregated_volumes.go

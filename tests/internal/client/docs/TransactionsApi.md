@@ -405,9 +405,9 @@ func main() {
     pageSize := int32(100) // int32 | The maximum number of results to return per page (optional) (default to 15)
     after := "1234" // string | Pagination cursor, will return transactions after given txid (in descending order). (optional)
     reference := "ref:001" // string | Find transactions by reference field. (optional)
-    account := "users:001" // string | Find transactions with postings involving given account, either as source or destination. (optional)
-    source := "users:001" // string | Find transactions with postings involving given account at source. (optional)
-    destination := "users:001" // string | Find transactions with postings involving given account at destination. (optional)
+    account := "users:001" // string | Filter transactions with postings involving given account, either as source or destination (regular expression placed between ^ and $). (optional)
+    source := "users:001" // string | Filter transactions with postings involving given account at source (regular expression placed between ^ and $). (optional)
+    destination := "users:001" // string | Filter transactions with postings involving given account at destination (regular expression placed between ^ and $). (optional)
     startTime := "startTime_example" // string | Filter transactions that occurred after this timestamp. The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).  (optional)
     endTime := "endTime_example" // string | Filter transactions that occurred before this timestamp. The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).  (optional)
     paginationToken := "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==" // string | Parameter used in pagination requests. Maximum page size is set to 15. Set to the value of next for the next page of results.  Set to the value of previous for the previous page of results. No other parameters can be set when the pagination token is set.  (optional)
@@ -444,9 +444,9 @@ Name | Type | Description  | Notes
  **pageSize** | **int32** | The maximum number of results to return per page | [default to 15]
  **after** | **string** | Pagination cursor, will return transactions after given txid (in descending order). | 
  **reference** | **string** | Find transactions by reference field. | 
- **account** | **string** | Find transactions with postings involving given account, either as source or destination. | 
- **source** | **string** | Find transactions with postings involving given account at source. | 
- **destination** | **string** | Find transactions with postings involving given account at destination. | 
+ **account** | **string** | Filter transactions with postings involving given account, either as source or destination (regular expression placed between ^ and $). | 
+ **source** | **string** | Filter transactions with postings involving given account at source (regular expression placed between ^ and $). | 
+ **destination** | **string** | Filter transactions with postings involving given account at destination (regular expression placed between ^ and $). | 
  **startTime** | **string** | Filter transactions that occurred after this timestamp. The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).  | 
  **endTime** | **string** | Filter transactions that occurred before this timestamp. The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).  | 
  **paginationToken** | **string** | Parameter used in pagination requests. Maximum page size is set to 15. Set to the value of next for the next page of results.  Set to the value of previous for the previous page of results. No other parameters can be set when the pagination token is set.  | 

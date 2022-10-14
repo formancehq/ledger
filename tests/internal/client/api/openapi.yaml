@@ -446,8 +446,8 @@ paths:
           example: ref:001
           type: string
         style: form
-      - description: "Find transactions with postings involving given account, either\
-          \ as source or destination."
+      - description: "Filter transactions with postings involving given account, either\
+          \ as source or destination (regular expression placed between ^ and $)."
         explode: true
         in: query
         name: account
@@ -456,7 +456,8 @@ paths:
           example: users:001
           type: string
         style: form
-      - description: Find transactions with postings involving given account at source.
+      - description: Filter transactions with postings involving given account at
+          source (regular expression placed between ^ and $).
         explode: true
         in: query
         name: source
@@ -465,7 +466,8 @@ paths:
           example: users:001
           type: string
         style: form
-      - description: Find transactions with postings involving given account at destination.
+      - description: Filter transactions with postings involving given account at
+          destination (regular expression placed between ^ and $).
         explode: true
         in: query
         name: destination
@@ -474,19 +476,20 @@ paths:
           example: users:001
           type: string
         style: form
-      - description: "Filter transactions that occurred after this timestamp.\nThe\
-          \ format is RFC3339 and is inclusive (for example, 12:00:01 includes the\
-          \ first second of the minute).\n"
+      - description: |
+          Filter transactions that occurred after this timestamp.
+          The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).
         explode: true
         in: query
         name: start_time
         required: false
         schema:
           type: string
+          example: null
         style: form
-      - description: "Filter transactions that occurred before this timestamp.\nThe\
-          \ format is RFC3339 and is exclusive (for example, 12:00:01 excludes the\
-          \ first second of the minute).\n"
+      - description: |
+          Filter transactions that occurred before this timestamp.
+          The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
         explode: true
         in: query
         name: end_time
@@ -1472,7 +1475,7 @@ components:
     Cursor:
       properties:
         page_size:
-          example: 1
+          example: 15
           type: integer
         has_more:
           example: false
@@ -1481,7 +1484,7 @@ components:
           example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
           type: string
         next:
-          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          example: ""
           type: string
       required:
       - page_size

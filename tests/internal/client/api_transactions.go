@@ -843,17 +843,17 @@ func (r ApiListTransactionsRequest) Reference(reference string) ApiListTransacti
 	r.reference = &reference
 	return r
 }
-// Find transactions with postings involving given account, either as source or destination.
+// Filter transactions with postings involving given account, either as source or destination (regular expression placed between ^ and $).
 func (r ApiListTransactionsRequest) Account(account string) ApiListTransactionsRequest {
 	r.account = &account
 	return r
 }
-// Find transactions with postings involving given account at source.
+// Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
 func (r ApiListTransactionsRequest) Source(source string) ApiListTransactionsRequest {
 	r.source = &source
 	return r
 }
-// Find transactions with postings involving given account at destination.
+// Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
 func (r ApiListTransactionsRequest) Destination(destination string) ApiListTransactionsRequest {
 	r.destination = &destination
 	return r
