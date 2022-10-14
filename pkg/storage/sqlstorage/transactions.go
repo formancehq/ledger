@@ -41,9 +41,9 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.
 	if source != "" {
 		arg := sb.Args.Add(source)
 		// WHERE (ele->>'source')::text ~ '^.*:.*:withdrawals:.*$' ORDER BY id DESC LIMIT 500
-		sb.Join("CROSS JOIN LATERAL jsonb_array_elements(postings) source(ele)")
-		sb.Where("(ele->>'source')::text ~ ' " + arg + "'")
-		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+		sb.SQL("CROSS JOIN LATERAL jsonb_array_elements(postings) source(ele)")
+		sb.Where("(ele->>'source')::text ~ " + arg)
+		//sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
 		t.SourceFilter = source
 	}
 	if destination != "" {

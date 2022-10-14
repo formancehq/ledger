@@ -86,18 +86,16 @@ CREATE INDEX IF NOT EXISTS volumes_account ON "VAR_LEDGER_NAME".volumes ("accoun
 UPDATE "VAR_LEDGER_NAME".transactions
 SET postings = (
     SELECT ('[' || string_agg(v.j, ',') || ']')::json
-    FROM (
-             SELECT '{' ||
-                    '"amount":' || amount || ',' ||
-                    '"asset":"' || asset || '",' ||
-                    '"destination":"' || destination || '",' ||
-                    '"source":"' || source || '"' ||
-                    '}' as j,
-                    txid
-             FROM "VAR_LEDGER_NAME".postings
-             WHERE txid::bigint = transactions.id
-             ORDER BY txid DESC
-         ) v
+    FROM (SELECT '{' ||
+                 '"amount":' || amount || ',' ||
+                 '"asset":"' || asset || '",' ||
+                 '"destination":"' || destination || '",' ||
+                 '"source":"' || source || '"' ||
+                 '}' as j,
+                 txid
+          FROM "VAR_LEDGER_NAME".postings
+          WHERE txid::bigint = transactions.id
+          ORDER BY txid DESC) v
 );
 --statement
 CREATE SEQUENCE "VAR_LEDGER_NAME".log_seq START WITH 0 MINVALUE 0;
