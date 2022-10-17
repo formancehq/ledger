@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: 'go.mod'
       - name: Run bench
-        run: task install:perf bench:postgres
+        run: task install:perf bench

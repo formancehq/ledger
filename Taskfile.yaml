@@ -8,7 +8,7 @@ dotenv:
 vars:
   PKG: "./..."
   FAILFAST: "-failfast"
-  TIMEOUT: "1h"
+  TIMEOUT: "10m"
   RUN: ".*"
   TAGS: "-tags json1,netgo"
   BENCH_RESULTS_DIR: "/tmp/benchmarks"
@@ -39,7 +39,8 @@ tasks:
   tests:local:sqlite:
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
         -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -50,7 +51,8 @@ tasks:
     deps: [postgres]
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
         -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
@@ -60,48 +62,6 @@ tasks:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
-  bench:sqlite:
-    cmds:
-      - mkdir -p {{.BENCH_RESULTS_DIR}}
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} | tee {{.BENCH_RESULTS_FILE}}
-      - benchstat {{.BENCH_RESULTS_FILE}}
-
-  bench:postgres:
-    cmds:
-      - mkdir -p {{.BENCH_RESULTS_DIR}}
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} | tee {{.BENCH_RESULTS_FILE}}
-      - benchstat {{.BENCH_RESULTS_FILE}}
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  bench:profile:sqlite:
-    cmds:
-      - mkdir -p {{.BENCH_RESULTS_DIR}}
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} | tee {{.BENCH_RESULTS_FILE}}
-      - lsof -ti tcp:9090 | xargs kill -9 2> /dev/null
-      - lsof -ti tcp:9191 | xargs kill -9 2> /dev/null
-      - benchstat {{.BENCH_RESULTS_FILE}}
-
-  bench:profile:postgres:
-    cmds:
-      - mkdir -p {{.BENCH_RESULTS_DIR}}
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}} -run XXX -bench={{.RUN}} -benchmem -timeout {{.TIMEOUT}} -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} | tee {{.BENCH_RESULTS_FILE}}
-      - lsof -ti tcp:9090 | xargs kill -9 2> /dev/null
-      - lsof -ti tcp:9191 | xargs kill -9 2> /dev/null
-      - benchstat {{.BENCH_RESULTS_FILE}}
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  bench:cpu:
-    cmds:
-      - go tool pprof -http=:9090 {{.BENCH_CPU_PROFILE}}
-
-  bench:mem:
-    cmds:
-      - go tool pprof -http=:9191 {{.BENCH_MEM_PROFILE}}
-
   print:coverage:
     cmds:
       - go tool cover -html=coverage.out -o coverage.html
@@ -110,6 +70,28 @@ tasks:
       - echo "open coverage.html on mac"
       - echo "xdg-open coverage.html on linux"
     silent: true
+
+  bench:
+    deps: [postgres]
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - >
+        go test {{.TAGS}} ./pkg/storage/sqlstorage 
+        -run=XXX -bench={{.RUN}} -benchmem -timeout 1h 
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} 
+        | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:cpu:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_CPU_PROFILE}}
+
+  bench:mem:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_MEM_PROFILE}}
 
   install:
     deps:
@@ -223,3 +205,22 @@ tasks:
           Platform: "arm64"
           Image: ubuntu
           Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"
+
+  run:
+    cmds:
+      - docker compose up -d --remove-orphans
+
+  stop:
+    cmds:
+      - docker compose stop
+
+  ps:
+    cmds:
+      - docker compose ps
+
+  rm:
+    deps: [stop]
+    cmds:
+      - docker compose rm -f
+      - docker volume prune -f
+      - rm {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}
