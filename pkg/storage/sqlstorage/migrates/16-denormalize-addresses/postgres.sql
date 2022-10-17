@@ -5,8 +5,6 @@ alter table "VAR_LEDGER_NAME".transactions add column sources text;
 --statement
 alter table "VAR_LEDGER_NAME".transactions add column destinations text;
 --statement
-insert into "VAR_LEDGER_NAME".transactions select * from "VAR_LEDGER_NAME".transactions;
---statement
 create index transactions_sources ON "VAR_LEDGER_NAME".transactions USING GIN (sources gin_trgm_ops);
 --statement
 create index transactions_destinations ON "VAR_LEDGER_NAME".transactions USING GIN (destinations gin_trgm_ops);
