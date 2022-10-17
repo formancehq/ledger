@@ -1,6 +1,4 @@
 --statement
-create extension if not exists pg_trgm;
---statement
 alter table "VAR_LEDGER_NAME".transactions add column sources text;
 --statement
 alter table "VAR_LEDGER_NAME".transactions add column destinations text;
