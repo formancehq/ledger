@@ -34,18 +34,24 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	if account != "" {
-		arg := sb.Args.Add(account)
-		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", account)
+		arg := sb.Args.Add(r)
+		sb.Where(sb.Or("sources ~ "+arg, "destinations ~ "+arg))
+		//sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 		t.AccountFilter = account
 	}
 	if source != "" {
-		arg := sb.Args.Add(source)
-		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", source)
+		arg := sb.Args.Add(r)
+		sb.Where("sources ~ " + arg)
+		//sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
 		t.SourceFilter = source
 	}
 	if destination != "" {
-		arg := sb.Args.Add(destination)
-		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", destination)
+		arg := sb.Args.Add(r)
+		sb.Where("destinations ~ " + arg)
+		//sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
 		t.DestinationFilter = destination
 	}
 	if reference != "" {
@@ -276,7 +282,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	case sqlbuilder.SQLite:
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto(s.schema.Table("transactions"))
-		ib.Cols("id", "timestamp", "reference", "postings", "metadata", "pre_commit_volumes", "post_commit_volumes")
+		ib.Cols("id", "timestamp", "reference", "postings", "metadata",
+			"pre_commit_volumes", "post_commit_volumes")
 		for _, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
 			if err != nil {
@@ -319,6 +326,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		metadataDataSet := make([]string, len(txs))
 		preCommitVolumesDataSet := make([]string, len(txs))
 		postCommitVolumesDataSet := make([]string, len(txs))
+		sources := make([]string, len(txs))
+		destinations := make([]string, len(txs))
 
 		for i, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
@@ -344,6 +353,22 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				panic(err)
 			}
 
+			computedSources := ""
+			for _, p := range tx.Postings {
+				computedSources = fmt.Sprintf("%s;%s", computedSources, p.Source)
+			}
+			if len(computedSources) > 0 {
+				computedSources = computedSources[1:] // Strip leading ;
+			}
+
+			computedDestinations := ""
+			for _, p := range tx.Postings {
+				computedDestinations = fmt.Sprintf("%s;%s", computedDestinations, p.Destination)
+			}
+			if len(computedDestinations) > 0 {
+				computedDestinations = computedDestinations[1:]
+			}
+
 			ids[i] = tx.ID
 			timestamps[i] = tx.Timestamp
 			postingDataSet[i] = string(postingsData)
@@ -351,6 +376,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			preCommitVolumesDataSet[i] = string(preCommitVolumesData)
 			postCommitVolumesDataSet[i] = string(postCommitVolumesData)
 			references[i] = nil
+			sources[i] = computedSources
+			destinations[i] = computedDestinations
 			if tx.Reference != "" {
 				cp := tx.Reference
 				references[i] = &cp
@@ -358,11 +385,22 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		}
 
 		query = fmt.Sprintf(
-			`INSERT INTO "%s".transactions (id, timestamp, reference, postings, metadata, pre_commit_volumes, post_commit_volumes) (SELECT * FROM unnest($1::int[], $2::timestamp[], $3::varchar[], $4::jsonb[], $5::jsonb[], $6::jsonb[], $7::jsonb[]))`,
+			`INSERT INTO "%s".transactions (id, timestamp, reference, postings, metadata, pre_commit_volumes, 
+                               post_commit_volumes, sources, destinations) (SELECT * FROM unnest(
+                                   $1::int[], 
+                                   $2::timestamp[], 
+                                   $3::varchar[], 
+                                   $4::jsonb[], 
+                                   $5::jsonb[], 
+                                   $6::jsonb[], 
+                                   $7::jsonb[],
+                                   $8::varchar[],
+                                   $9::varchar[]))`,
 			s.schema.Name())
 		args = []interface{}{
 			ids, timestamps, references, postingDataSet,
 			metadataDataSet, preCommitVolumesDataSet, postCommitVolumesDataSet,
+			sources, destinations,
 		}
 	}
 
