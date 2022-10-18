@@ -36,16 +36,20 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					ledgerName := uuid.NewString()
-					store, _, err := driver.GetLedgerStore(ctx, ledgerName, true)
-					if err != nil {
-						return err
+					var store *sqlstorage.Store
+					var err error
+					for store == nil {
+						store, _, err = driver.GetLedgerStore(ctx, ledgerName, true)
+						if err != nil {
+							fmt.Printf("sqlstorage.Driver.GetLedgerStore: %s\n", err.Error())
+							time.Sleep(3 * time.Second)
+						}
 					}
 					defer func(store ledger.Store, ctx context.Context) {
 						require.NoError(b, store.Close(ctx))
 					}(store, context.Background())
 
-					_, err = store.Initialize(context.Background())
-					if err != nil {
+					if _, err = store.Initialize(context.Background()); err != nil {
 						return err
 					}
 
@@ -130,82 +134,156 @@ func benchGetTransactions(b *testing.B, store *sqlstorage.Store) {
 	require.NoError(b, err)
 	require.Equal(b, uint64(numTxs), nb)
 
+	firstQ1, midQ1, lastQ1 := getTxQueries(b, store, 1, maxPages*maxPageSize)
+	firstQ50, midQ50, lastQ50 := getTxQueries(b, store, 50, maxPages*maxPageSize)
+	firstQ500, midQ500, lastQ500 := getTxQueries(b, store, 500, maxPages*maxPageSize)
+	var cursor sharedapi.Cursor[core.ExpandedTransaction]
+
 	b.ResetTimer()
 	b.StartTimer()
 
-	b.Run(fmt.Sprintf("only first page of size %d out of %d txs", 1, numTxs),
-		func(b *testing.B) { getFirstPage(b, store, 1) })
-	b.Run(fmt.Sprintf("only first page of size %d out of %d txs", 10, numTxs),
-		func(b *testing.B) { getFirstPage(b, store, 10) })
-	b.Run(fmt.Sprintf("only first page of size %d out of %d txs", 50, numTxs),
-		func(b *testing.B) { getFirstPage(b, store, 50) })
-	b.Run(fmt.Sprintf("only first page of size %d out of %d txs", 500, numTxs),
-		func(b *testing.B) { getFirstPage(b, store, 500) })
+	b.Run("firstQ1", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *firstQ1)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 1, cursor.PageSize)
+		require.Len(b, cursor.Data, 1)
+		require.Equal(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
 
-	b.Run(fmt.Sprintf("all pages of size %d out of %d txs", 1, numTxs),
-		func(b *testing.B) { getAllPages(b, store, 1, maxPages*maxPageSize) })
-	b.Run(fmt.Sprintf("all pages of size %d out of %d txs", 10, numTxs),
-		func(b *testing.B) { getAllPages(b, store, 10, maxPages*maxPageSize) })
-	b.Run(fmt.Sprintf("all pages of size %d out of %d txs", 50, numTxs),
-		func(b *testing.B) { getAllPages(b, store, 50, maxPages*maxPageSize) })
-	b.Run(fmt.Sprintf("all pages of size %d out of %d txs", 500, numTxs),
-		func(b *testing.B) { getAllPages(b, store, 500, maxPages*maxPageSize) })
+	b.Run("midQ1", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *midQ1)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 1, cursor.PageSize)
+		require.Len(b, cursor.Data, 1)
+		require.NotEqual(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
+
+	b.Run("lastQ1", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *lastQ1)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 1, cursor.PageSize)
+		require.Len(b, cursor.Data, 1)
+		require.NotEqual(b, "", cursor.Previous)
+		require.Equal(b, "", cursor.Next)
+	})
+
+	b.Run("firstQ50", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *firstQ50)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 50, cursor.PageSize)
+		require.Len(b, cursor.Data, 50)
+		require.Equal(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
+
+	b.Run("midQ50", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *midQ50)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 50, cursor.PageSize)
+		require.Len(b, cursor.Data, 50)
+		require.NotEqual(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
+
+	b.Run("lastQ50", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *lastQ50)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 50, cursor.PageSize)
+		require.Len(b, cursor.Data, 50)
+		require.NotEqual(b, "", cursor.Previous)
+		require.Equal(b, "", cursor.Next)
+	})
+
+	b.Run("firstQ500", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *firstQ500)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 500, cursor.PageSize)
+		require.Len(b, cursor.Data, 500)
+		require.Equal(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
+
+	b.Run("midQ500", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *midQ500)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 500, cursor.PageSize)
+		require.Len(b, cursor.Data, 500)
+		require.NotEqual(b, "", cursor.Previous)
+		require.NotEqual(b, "", cursor.Next)
+	})
+
+	b.Run("lastQ500", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cursor, err = store.GetTransactions(context.Background(), *lastQ500)
+			require.NoError(b, err)
+		}
+		require.Equal(b, 500, cursor.PageSize)
+		require.Len(b, cursor.Data, 500)
+		require.NotEqual(b, "", cursor.Previous)
+		require.Equal(b, "", cursor.Next)
+	})
 }
 
-func getFirstPage(b *testing.B, store *sqlstorage.Store, pageSize int) {
-	for n := 0; n < b.N; n++ {
-		cursor, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Source: ".*:key1:.*:key2:.*",
-			},
-			PageSize: uint(pageSize),
-		})
+func getTxQueries(b *testing.B, store *sqlstorage.Store, pageSize, maxNumTxs int) (firstQ, midQ, lastQ *ledger.TransactionsQuery) {
+	numTxs := 0
+	txQuery := &ledger.TransactionsQuery{
+		Filters: ledger.TransactionsQueryFilters{
+			Source: ".*:key1:.*:key2:.*",
+		},
+		PageSize: uint(pageSize),
+	}
+	firstQ = txQuery
+	cursor := sharedapi.Cursor[core.ExpandedTransaction]{
+		HasMore: true,
+	}
+	var err error
+	for cursor.HasMore {
+		if cursor.Next != "" {
+			res, decErr := base64.RawURLEncoding.DecodeString(cursor.Next)
+			if decErr != nil {
+				return
+			}
+
+			token := sqlstorage.TxsPaginationToken{}
+			if err = json.Unmarshal(res, &token); err != nil {
+				return
+			}
+
+			txQuery = ledger.NewTransactionsQuery().
+				WithAfterTxID(token.AfterTxID).
+				WithSourceFilter(token.SourceFilter).
+				WithPageSize(token.PageSize)
+		}
+
+		cursor, err = store.GetTransactions(context.Background(), *txQuery)
 		require.NoError(b, err)
 		require.Equal(b, pageSize, cursor.PageSize)
 		require.Len(b, cursor.Data, pageSize)
-	}
-}
+		numTxs += len(cursor.Data)
 
-func getAllPages(b *testing.B, store *sqlstorage.Store, pageSize, maxNumTxs int) {
-	for n := 0; n < b.N; n++ {
-		numTxs := 0
-		var txQuery *ledger.TransactionsQuery
-		cursor := sharedapi.Cursor[core.ExpandedTransaction]{
-			HasMore: true,
+		if midQ == nil && numTxs > maxNumTxs/2 {
+			midQ = txQuery
 		}
-		var err error
-		for cursor.HasMore {
-			if cursor.Next != "" {
-				res, decErr := base64.RawURLEncoding.DecodeString(cursor.Next)
-				if decErr != nil {
-					return
-				}
-
-				token := sqlstorage.TxsPaginationToken{}
-				if err = json.Unmarshal(res, &token); err != nil {
-					return
-				}
-
-				txQuery = ledger.NewTransactionsQuery().
-					WithAfterTxID(token.AfterTxID).
-					WithSourceFilter(token.SourceFilter).
-					WithPageSize(token.PageSize)
-			} else {
-				txQuery = &ledger.TransactionsQuery{
-					Filters: ledger.TransactionsQueryFilters{
-						Source: ".*:key1:.*:key2:.*",
-					},
-					PageSize: uint(pageSize),
-				}
-			}
-
-			cursor, err = store.GetTransactions(context.Background(), *txQuery)
-			require.NoError(b, err)
-			require.Equal(b, pageSize, cursor.PageSize)
-			require.Len(b, cursor.Data, pageSize)
-			numTxs += len(cursor.Data)
-		}
-
-		require.Equal(b, maxNumTxs, numTxs)
 	}
+	lastQ = txQuery
+	require.Equal(b, maxNumTxs, numTxs)
+	return
 }
