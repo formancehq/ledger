@@ -323,6 +323,7 @@ paths:
 
   /{ledger}/script:
     post:
+      deprecated: true
       tags:
         - script
       operationId: runScript
@@ -565,6 +566,10 @@ paths:
         - transactions
       summary: Create a new transaction to a ledger.
       operationId: createTransaction
+      description: >
+        The body must contain one of the following objects:
+          - `postings`: suitable for simple transactions
+          - `script`: enabling more complex transactions
       parameters:
         - name: ledger
           in: path
@@ -583,7 +588,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionData'
+              $ref: '#/components/schemas/PostTransaction'
         required: true
       responses:
         "200":
@@ -1230,6 +1235,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TransactionData'
+    PostTransaction:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Posting'
+        script:
+          type: object
+          properties:
+            plain:
+              type: string
+              example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
+            vars:
+              type: object
+              properties: {}
+              example: {
+                "vars": {
+                  "user": "users:042"
+                }
+              }
+          required:
+            - plain
+        reference:
+          type: string
+          example: ref:001
+        metadata:
+          $ref: '#/components/schemas/Metadata'
     Stats:
       type: object
       properties:
