@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/internal/pgtesting"
@@ -555,6 +556,15 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
+
+		rows, err := store.Schema().QueryContext(context.Background(), fmt.Sprintf(`select transaction_id, segment_parts from "%s".segments`, store.Name()))
+		require.NoError(t, err)
+		for rows.Next() {
+			var segmentParts, transactionId string
+			require.NoError(t, rows.Scan(&transactionId, &segmentParts))
+			spew.Dump(transactionId, segmentParts)
+		}
+
 		cursor, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			PageSize: 1,
 		})

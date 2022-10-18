@@ -309,6 +309,12 @@ func TestLedger_processTx(t *testing.T) {
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
+						Postings: []core.Posting{{
+							Source:      "world",
+							Destination: "bank",
+							Amount:      core.NewMonetaryInt(100),
+							Asset:       "USD",
+						}},
 					},
 					ID: 0,
 				},
@@ -337,6 +343,12 @@ func TestLedger_processTx(t *testing.T) {
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
+						Postings: []core.Posting{{
+							Source:      "world",
+							Destination: "bank",
+							Amount:      core.NewMonetaryInt(100),
+							Asset:       "USD",
+						}},
 					},
 					ID: 0,
 				},

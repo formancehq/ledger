@@ -32,26 +32,47 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.
 	)
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
+	sb.Distinct()
 	sb.From(s.schema.Table("transactions"))
-	if account != "" {
-		arg := sb.Args.Add(account)
-		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
-		t.AccountFilter = account
-	}
-	if source != "" {
-		arg := sb.Args.Add(source)
-		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
-		t.SourceFilter = source
-	}
-	if destination != "" {
-		arg := sb.Args.Add(destination)
-		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
-		t.DestinationFilter = destination
+	/**
+	explain select distinct tx.*
+	from maxence.transactions4 tx
+	join maxence.segments s
+	on s.transaction_id = tx.id and ((s.segment_parts[2] = 'adyen' and s.is_source = true) or (s.segment_parts[3] = 'wallet' and s.is_source = false))
+	limit 500;
+	*/
+	if source != "" || destination != "" || account != "" {
+		computeSegments := func(v string) []string {
+			exprs := make([]string, 0)
+			for segmentIndex, segmentValue := range strings.Split(v, ":") {
+				if segmentValue == "" || segmentValue == ".*" {
+					continue
+				}
+				segmentArg := sb.Args.Add("^" + segmentValue + "$")
+				exprs = append(exprs, fmt.Sprintf("segment_parts[%d] ~ %s", segmentIndex+1, segmentArg))
+			}
+			return exprs
+		}
+		joinExprs := make([]string, 0)
+		if source != "" {
+			joinExprs = append(joinExprs, sb.And(append(computeSegments(source), sb.E("is_source", true))...))
+		}
+		if destination != "" {
+			joinExprs = append(joinExprs, sb.And(append(computeSegments(destination), sb.E("is_source", false))...))
+		}
+		if account != "" {
+			joinExprs = append(joinExprs, sb.And(computeSegments(account)...))
+		}
+		sb.Join(s.schema.Table("segments"), sb.And(
+			"transaction_id = transactions.id",
+			sb.Or(joinExprs...),
+		))
 	}
 	if reference != "" {
 		sb.Where(sb.E("reference", reference))
 		t.ReferenceFilter = reference
 	}
+	_ = reference
 	if !startTime.IsZero() {
 		sb.Where(sb.GE("timestamp", startTime.UTC()))
 		t.StartTime = startTime
@@ -364,6 +385,81 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			ids, timestamps, references, postingDataSet,
 			metadataDataSet, preCommitVolumesDataSet, postCommitVolumesDataSet,
 		}
+	}
+
+	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = executor.ExecContext(ctx, query, args...)
+	if err != nil {
+		return s.error(err)
+	}
+	return errors.Wrap(s.insertSegments(ctx, txs...), "inserting segments")
+}
+
+func (s *Store) insertSegments(ctx context.Context, txs ...core.ExpandedTransaction) error {
+	var (
+		query string
+		args  []interface{}
+	)
+
+	switch s.Schema().Flavor() {
+	case sqlbuilder.SQLite:
+		//ib := sqlbuilder.NewInsertBuilder()
+		//ib.InsertInto(s.schema.Table("segments"))
+		//ib.Cols("segment_name", "segment_index", "transaction_id", "posting_index", "is_source")
+		//for _, tx := range txs {
+		//	for postingIndex, posting := range tx.Postings {
+		//		var computeSegmentsAddresses = func(v string, isSource bool) {
+		//			for segmentIndex, segmentValue := range strings.Split(v, ":") {
+		//				ib.Values(segmentValue, segmentIndex, tx.ID, postingIndex, isSource)
+		//			}
+		//		}
+		//		computeSegmentsAddresses(posting.Source, true)
+		//		computeSegmentsAddresses(posting.Destination, false)
+		//	}
+		//}
+		//query, args = ib.BuildWithFlavor(s.schema.Flavor())
+		panic("not implemented")
+	case sqlbuilder.PostgreSQL:
+		type segment struct {
+			Parts        []string `json:"segment_parts"`
+			TxID         uint64   `json:"transaction_id"`
+			IsSource     bool     `json:"is_source"`
+			PostingIndex int      `json:"posting_index"`
+		}
+		a := make([]segment, 0)
+
+		for _, tx := range txs {
+			for postingIndex, posting := range tx.Postings {
+				var computeSegmentsAddresses = func(v string, isSource bool) {
+					a = append(a, segment{
+						Parts:        strings.Split(v, ":"),
+						TxID:         tx.ID,
+						IsSource:     isSource,
+						PostingIndex: postingIndex,
+					})
+				}
+				computeSegmentsAddresses(posting.Source, true)
+				computeSegmentsAddresses(posting.Destination, false)
+			}
+		}
+
+		query = fmt.Sprintf(
+			`INSERT INTO "%s".segments (segment_parts, transaction_id, posting_index, is_source) 
+    				(SELECT * FROM json_to_recordset($1::json) as e(segment_parts varchar[], transaction_id int, posting_index int, is_source boolean))`,
+			s.schema.Name())
+
+		data, err := json.Marshal(a)
+		if err != nil {
+			panic(err)
+		}
+
+		args = []interface{}{string(data)}
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
