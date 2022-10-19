@@ -17,35 +17,45 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
 	var (
-		destination = p.Filters.Destination
-		source      = p.Filters.Source
-		account     = p.Filters.Account
-		reference   = p.Filters.Reference
-		startTime   = p.Filters.StartTime
-		endTime     = p.Filters.EndTime
-		metadata    = p.Filters.Metadata
+		destination   = p.Filters.Destination
+		source        = p.Filters.Source
+		account       = p.Filters.Account
+		reference     = p.Filters.Reference
+		startTime     = p.Filters.StartTime
+		endTime       = p.Filters.EndTime
+		metadata      = p.Filters.Metadata
+		regexOperator = "~"
 	)
+	if flavor == SQLite {
+		regexOperator = "REGEXP"
+	}
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	if account != "" {
-		arg := sb.Args.Add(account)
-		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", account)
+		arg := sb.Args.Add(r)
+		sb.Where(sb.Or(
+			fmt.Sprintf("sources %s %s", regexOperator, arg),
+			fmt.Sprintf("destinations %s %s", regexOperator, arg),
+		))
 		t.AccountFilter = account
 	}
 	if source != "" {
-		arg := sb.Args.Add(source)
-		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", source)
+		arg := sb.Args.Add(r)
+		sb.Where(fmt.Sprintf("sources %s %s", regexOperator, arg))
 		t.SourceFilter = source
 	}
 	if destination != "" {
-		arg := sb.Args.Add(destination)
-		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
+		r := fmt.Sprintf("(^|;)%s($|;)", destination)
+		arg := sb.Args.Add(r)
+		sb.Where(fmt.Sprintf("destinations %s %s", regexOperator, arg))
 		t.DestinationFilter = destination
 	}
 	if reference != "" {
@@ -80,7 +90,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		return sharedapi.Cursor[core.ExpandedTransaction]{Data: txs}, nil
 	}
 
-	sb, t := s.buildTransactionsQuery(q)
+	sb, t := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
 	sb.OrderBy("id").Desc()
 	if q.AfterTxID > 0 {
 		sb.Where(sb.LE("id", q.AfterTxID))
@@ -276,7 +286,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	case sqlbuilder.SQLite:
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto(s.schema.Table("transactions"))
-		ib.Cols("id", "timestamp", "reference", "postings", "metadata", "pre_commit_volumes", "post_commit_volumes")
+		ib.Cols("id", "timestamp", "reference", "postings", "metadata",
+			"pre_commit_volumes", "post_commit_volumes", "sources", "destinations")
 		for _, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
 			if err != nil {
@@ -300,6 +311,14 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			if err != nil {
 				panic(err)
 			}
+			sources := ""
+			destinations := ""
+			for _, p := range tx.Postings {
+				sources = fmt.Sprintf("%s;%s", sources, p.Source)
+				destinations = fmt.Sprintf("%s;%s", destinations, p.Destination)
+			}
+			sources = sources[1:]
+			destinations = destinations[1:]
 
 			var reference *string
 			if tx.Reference != "" {
@@ -308,7 +327,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			}
 
 			ib.Values(tx.ID, tx.Timestamp, reference, postingsData,
-				metadataData, preCommitVolumesData, postCommitVolumesData)
+				metadataData, preCommitVolumesData, postCommitVolumesData,
+				sources, destinations)
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
 	case sqlbuilder.PostgreSQL:
@@ -319,6 +339,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		metadataDataSet := make([]string, len(txs))
 		preCommitVolumesDataSet := make([]string, len(txs))
 		postCommitVolumesDataSet := make([]string, len(txs))
+		sources := make([]string, len(txs))
+		destinations := make([]string, len(txs))
 
 		for i, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
@@ -344,6 +366,18 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				panic(err)
 			}
 
+			computedSources := ""
+			for _, p := range tx.Postings {
+				computedSources = fmt.Sprintf("%s;%s", computedSources, p.Source)
+			}
+			computedSources = computedSources[1:] // Strip leading ;
+
+			computedDestinations := ""
+			for _, p := range tx.Postings {
+				computedDestinations = fmt.Sprintf("%s;%s", computedDestinations, p.Destination)
+			}
+			computedDestinations = computedDestinations[1:]
+
 			ids[i] = tx.ID
 			timestamps[i] = tx.Timestamp
 			postingDataSet[i] = string(postingsData)
@@ -351,6 +385,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			preCommitVolumesDataSet[i] = string(preCommitVolumesData)
 			postCommitVolumesDataSet[i] = string(postCommitVolumesData)
 			references[i] = nil
+			sources[i] = computedSources
+			destinations[i] = computedDestinations
 			if tx.Reference != "" {
 				cp := tx.Reference
 				references[i] = &cp
@@ -358,11 +394,22 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		}
 
 		query = fmt.Sprintf(
-			`INSERT INTO "%s".transactions (id, timestamp, reference, postings, metadata, pre_commit_volumes, post_commit_volumes) (SELECT * FROM unnest($1::int[], $2::timestamp[], $3::varchar[], $4::jsonb[], $5::jsonb[], $6::jsonb[], $7::jsonb[]))`,
+			`INSERT INTO "%s".transactions (id, timestamp, reference, postings, metadata, pre_commit_volumes, 
+                               post_commit_volumes, sources, destinations) (SELECT * FROM unnest(
+                                   $1::int[], 
+                                   $2::timestamp[], 
+                                   $3::varchar[], 
+                                   $4::jsonb[], 
+                                   $5::jsonb[], 
+                                   $6::jsonb[], 
+                                   $7::jsonb[],
+                                   $8::varchar[],
+                                   $9::varchar[]))`,
 			s.schema.Name())
 		args = []interface{}{
 			ids, timestamps, references, postingDataSet,
 			metadataDataSet, preCommitVolumesDataSet, postCommitVolumesDataSet,
+			sources, destinations,
 		}
 	}
 

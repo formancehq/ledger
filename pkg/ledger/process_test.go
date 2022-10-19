@@ -309,6 +309,7 @@ func TestLedger_processTx(t *testing.T) {
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
+						Postings:  []core.Posting{{}},
 					},
 					ID: 0,
 				},
@@ -337,6 +338,7 @@ func TestLedger_processTx(t *testing.T) {
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
 						Timestamp: now,
+						Postings:  []core.Posting{{}},
 					},
 					ID: 0,
 				},
