@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
@@ -48,8 +49,8 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.
 				if segmentValue == "" || segmentValue == ".*" {
 					continue
 				}
-				segmentArg := sb.Args.Add("^" + segmentValue + "$")
-				exprs = append(exprs, fmt.Sprintf("segment_parts[%d] ~ %s", segmentIndex+1, segmentArg))
+				segmentArg := sb.Args.Add(segmentValue)
+				exprs = append(exprs, fmt.Sprintf("segment_parts[%d] = %s", segmentIndex+1, segmentArg))
 			}
 			return exprs
 		}
@@ -90,6 +91,8 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.
 		))
 	}
 	t.MetadataFilter = metadata
+
+	spew.Dump(sb.Build())
 
 	return sb, t
 }

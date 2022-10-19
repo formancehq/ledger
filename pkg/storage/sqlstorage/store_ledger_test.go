@@ -648,17 +648,6 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 
 		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			Filters: ledger.TransactionsQueryFilters{
-				Source: ".*bank", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now.Add(-1 * time.Hour),
 			},
