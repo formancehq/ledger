@@ -11,7 +11,7 @@ vars:
   TIMEOUT: "10m"
   RUN: "''"
   TAGS: "-tags json1,netgo"
-  VERBOSE: "true"
+  VERBOSE: "false"
 
 tasks:
   default:

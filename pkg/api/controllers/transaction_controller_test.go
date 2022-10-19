@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"net/http"
 	"net/url"
 	"os"
@@ -1458,16 +1457,15 @@ func TestPostTransactionsBatch(t *testing.T) {
 
 func TestPostTransactionsScript(t *testing.T) {
 	type testCase struct {
-		name               string
-		payload            []core.PostTransaction
-		expectedStatusCode int
-		expectedErrorCode  string
+		name             string
+		payload          core.PostTransaction
+		expectedResponse controllers.ScriptResponse
 	}
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			payload: []core.PostTransaction{{
+			payload: core.PostTransaction{
 				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
@@ -1479,68 +1477,65 @@ func TestPostTransactionsScript(t *testing.T) {
 					  destination = @users:001
 					)`,
 				},
-			}},
-			expectedStatusCode: http.StatusOK,
+			},
 		},
-		/*
-			{
-				name: "failure with insufficient funds",
-				payload: []core.PostTransaction{{
-					Script: core.ScriptCore{
-						Plain: `
+		{
+			name: "failure with insufficient funds",
+			payload: core.PostTransaction{
+				Script: core.ScriptCore{
+					Plain: `
 						send [COIN 100] (
 						  source = @centralbank
 						  destination = @users:001
 						)`,
-					},
-				}},
-				expectedErrorCode:  apierrors.ErrInsufficientFund,
-				expectedStatusCode: http.StatusInternalServerError,
+				},
 			},
-				{
-					name: "failure with metadata override",
-					payload: []core.PostTransaction{{
-						Script: core.ScriptCore{
-							Plain: `
+			expectedResponse: controllers.ScriptResponse{
+				ErrorResponse: sharedapi.ErrorResponse{
+					ErrorCode:    ledger.ScriptErrorInsufficientFund,
+					ErrorMessage: "account had insufficient funds",
+				},
+				Link: controllers.EncodeLink("account had insufficient funds"),
+			},
+		},
+		{
+			name: "failure with metadata override",
+			payload: core.PostTransaction{
+				Script: core.ScriptCore{
+					Plain: `
 							set_tx_meta("priority", "low")
 
 							send [USD/2 99] (
 								source=@world
 								destination=@user:001
 							)`,
-						},
-						Metadata: core.Metadata{
-							"priority": json.RawMessage(`"high"`),
-						},
-					}},
-					expectedErrorCode:  apierrors.ErrScriptMetadataOverride,
-					expectedStatusCode: http.StatusInternalServerError,
 				},
-		*/
+				Metadata: core.Metadata{
+					"priority": json.RawMessage(`"high"`),
+				},
+			},
+			expectedResponse: controllers.ScriptResponse{
+				ErrorResponse: sharedapi.ErrorResponse{
+					ErrorCode:    ledger.ScriptErrorMetadataOverride,
+					ErrorMessage: "cannot override metadata from script",
+				},
+				Link: controllers.EncodeLink("cannot override metadata from script"),
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					for i := 0; i < len(tc.payload)-1; i++ {
-						rsp := internal.PostTransaction(t, api, tc.payload[i], false)
-						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-						if !tc.payload[i].Timestamp.IsZero() {
-							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-							require.True(t, ok)
-							require.Len(t, txs, 1)
-							require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
-						}
-					}
-					rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
-					require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+					rsp := internal.PostTransaction(t, api, tc.payload, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					spew.Dump(tc)
-					err := sharedapi.ErrorResponse{}
-					if internal.Decode(t, rsp.Body, &err) {
-						require.Equal(t, tc.expectedErrorCode, err.ErrorCode)
-					}
+					res := controllers.ScriptResponse{}
+					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+
+					res.Transaction = nil
+					require.EqualValues(t, tc.expectedResponse, res)
 					return nil
 				},
 			})
@@ -1548,7 +1543,6 @@ func TestPostTransactionsScript(t *testing.T) {
 	}
 }
 
-/*
 func TestPostTransactionsScriptPreview(t *testing.T) {
 	script := `
 	send [COIN 100] (
@@ -1567,10 +1561,10 @@ func TestPostTransactionsScriptPreview(t *testing.T) {
 							Plain: script,
 						},
 					}, true)
-					require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
-					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-					require.True(t, ok)
-					require.Len(t, txs, 1)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+					require.NotNil(t, res.Transaction)
 
 					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 					require.NoError(t, err)
@@ -1584,9 +1578,9 @@ func TestPostTransactionsScriptPreview(t *testing.T) {
 						},
 					}, false)
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-					require.True(t, ok)
-					require.Len(t, txs, 1)
+					res := controllers.ScriptResponse{}
+					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+					require.NotNil(t, res.Transaction)
 
 					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
 					require.NoError(t, err)
@@ -1598,7 +1592,6 @@ func TestPostTransactionsScriptPreview(t *testing.T) {
 		})
 	}))
 }
-*/
 
 func TestPostTransactionsScriptWithReference(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
@@ -1616,10 +1609,9 @@ func TestPostTransactionsScriptWithReference(t *testing.T) {
 					Reference: reference,
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-				require.True(t, ok)
-				require.Len(t, txs, 1)
-				require.Equal(t, reference, txs[0].Reference)
+				res := controllers.ScriptResponse{}
+				require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+				require.Equal(t, reference, res.Transaction.Reference)
 
 				store := internal.GetLedgerStore(t, driver, ctx)
 				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())

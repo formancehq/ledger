@@ -225,7 +225,7 @@ func GetLedgerStore(t *testing.T, driver storage.Driver[ledger.Store], ctx conte
 func RunTest(t *testing.T, options ...fx.Option) {
 	l := logrus.New()
 	if testing.Verbose() {
-		l.Level = logrus.InfoLevel
+		l.Level = logrus.DebugLevel
 	}
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
