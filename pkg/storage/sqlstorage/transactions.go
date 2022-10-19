@@ -370,17 +370,13 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			for _, p := range tx.Postings {
 				computedSources = fmt.Sprintf("%s;%s", computedSources, p.Source)
 			}
-			if len(computedSources) > 0 {
-				computedSources = computedSources[1:] // Strip leading ;
-			}
+			computedSources = computedSources[1:] // Strip leading ;
 
 			computedDestinations := ""
 			for _, p := range tx.Postings {
 				computedDestinations = fmt.Sprintf("%s;%s", computedDestinations, p.Destination)
 			}
-			if len(computedDestinations) > 0 {
-				computedDestinations = computedDestinations[1:]
-			}
+			computedDestinations = computedDestinations[1:]
 
 			ids[i] = tx.ID
 			timestamps[i] = tx.Timestamp
