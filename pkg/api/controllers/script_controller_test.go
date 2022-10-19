@@ -29,25 +29,29 @@ func TestPostScript(t *testing.T) {
 		{
 			name: "nominal",
 			script: core.Script{
-				Plain: `
-				send [COIN 100] (
-				  source = @world
-				  destination = @centralbank
-				)
-				send [COIN 100] (
-				  source = @centralbank
-				  destination = @users:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @centralbank
+					)
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
 			},
 		},
 		{
-			name: "failure with insufficient funcs",
+			name: "failure with insufficient funds",
 			script: core.Script{
-				Plain: `
-				send [COIN 100] (
-				  source = @centralbank
-				  destination = @users:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
 			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
@@ -60,13 +64,15 @@ func TestPostScript(t *testing.T) {
 		{
 			name: "failure with metadata override",
 			script: core.Script{
-				Plain: `
-				set_tx_meta("priority", "low")
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					set_tx_meta("priority", "low")
 
-				send [USD/2 99] (
-					source=@world
-					destination=@user:001
-				)`,
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
 				Metadata: core.Metadata{
 					"priority": json.RawMessage(`"high"`),
 				},
@@ -117,7 +123,7 @@ func TestPostScriptPreview(t *testing.T) {
 					values.Set("preview", "true")
 
 					rsp := internal.PostScript(t, api, core.Script{
-						Plain: script,
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -134,7 +140,7 @@ func TestPostScriptPreview(t *testing.T) {
 					values.Set("preview", "false")
 
 					rsp := internal.PostScript(t, api, core.Script{
-						Plain: script,
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -159,11 +165,12 @@ func TestPostScriptWithReference(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 				reference := "order_1234"
 				rsp := internal.PostScript(t, api, core.Script{
-					Plain: `
+					ScriptCore: core.ScriptCore{
+						Plain: `
 						send [COIN 100] (
 						  	source = @world
 						  	destination = @centralbank
-						)`,
+						)`},
 					Reference: reference,
 				}, url.Values{})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)

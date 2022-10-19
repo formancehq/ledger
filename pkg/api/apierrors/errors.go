@@ -2,6 +2,7 @@ package apierrors
 
 import (
 	"context"
+	"github.com/davecgh/go-spew/spew"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,13 +13,14 @@ import (
 )
 
 const (
-	ErrInternal         = "INTERNAL"
-	ErrConflict         = "CONFLICT"
-	ErrInsufficientFund = "INSUFFICIENT_FUND"
-	ErrValidation       = "VALIDATION"
-	ErrContextCancelled = "CONTEXT_CANCELLED"
-	ErrStore            = "STORE"
-	ErrNotFound         = "NOT_FOUND"
+	ErrInternal               = "INTERNAL"
+	ErrConflict               = "CONFLICT"
+	ErrInsufficientFund       = "INSUFFICIENT_FUND"
+	ErrValidation             = "VALIDATION"
+	ErrContextCancelled       = "CONTEXT_CANCELLED"
+	ErrStore                  = "STORE"
+	ErrNotFound               = "NOT_FOUND"
+	ErrScriptMetadataOverride = "METADATA_OVERRIDE"
 
 	errorCodeKey = "_errorCode"
 )
@@ -47,9 +49,11 @@ func ErrorCode(c *gin.Context) string {
 }
 
 func ResponseError(c *gin.Context, err error) {
+	spew.Dump("ERR", err)
 	_ = c.Error(err)
 	status, code := coreErrorToErrorCode(err)
 	c.Set(errorCodeKey, code)
+	spew.Dump(status, code)
 
 	if status < 500 {
 		c.AbortWithStatusJSON(status, sharedapi.ErrorResponse{

@@ -144,24 +144,20 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok &&
 		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
-	var txData core.TransactionData
-	if err := c.ShouldBindJSON(&txData); err != nil {
+	var payload core.PostTransaction
+	if err := c.ShouldBindJSON(&payload); err != nil {
 		apierrors.ResponseError(c, ledger.NewValidationError("invalid transaction format"))
 		return
 	}
-	if len(txData.Postings) == 0 {
-		apierrors.ResponseError(c, ledger.NewValidationError("transaction has no postings"))
+
+	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
+		apierrors.ResponseError(c, ledger.NewValidationError(
+			"either postings or script should be sent in the payload"))
 		return
 	}
 
-	fn := l.(*ledger.Ledger).Commit
-	if preview {
-		fn = l.(*ledger.Ledger).CommitPreview
-	}
-
-	res, err := fn(c.Request.Context(), []core.TransactionData{txData})
-	if err != nil {
-		apierrors.ResponseError(c, err)
+	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
+		apierrors.ResponseError(c, ledger.NewValidationError("transaction has no postings or script"))
 		return
 	}
 
@@ -170,7 +166,39 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, status, res.GeneratedTransactions)
+	if len(payload.Postings) > 0 {
+		fn := l.(*ledger.Ledger).Commit
+		if preview {
+			fn = l.(*ledger.Ledger).CommitPreview
+		}
+		res, err := fn(c.Request.Context(), []core.TransactionData{{
+			Postings:  payload.Postings,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
+			Timestamp: payload.Timestamp,
+		}})
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
+		}
+		respondWithData[[]core.ExpandedTransaction](c, status, res.GeneratedTransactions)
+	} else {
+		fn := l.(*ledger.Ledger).Execute
+		if preview {
+			fn = l.(*ledger.Ledger).ExecutePreview
+		}
+
+		tx, err := fn(c.Request.Context(), core.Script{
+			ScriptCore: payload.Script,
+			Reference:  payload.Reference,
+			Metadata:   payload.Metadata,
+		})
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
+		}
+		respondWithData[[]core.ExpandedTransaction](c, status, []core.ExpandedTransaction{*tx})
+	}
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {

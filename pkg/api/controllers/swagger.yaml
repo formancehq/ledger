@@ -566,10 +566,6 @@ paths:
         - transactions
       summary: Create a new transaction to a ledger.
       operationId: createTransaction
-      description: >
-        The body must contain one of the following objects:
-          - `postings`: suitable for simple transactions
-          - `script`: enabling more complex transactions
       parameters:
         - name: ledger
           in: path
@@ -585,11 +581,15 @@ paths:
             type: boolean
             example: true
       requestBody:
+        required: true
+        description: >
+          The request body must contain one of the following objects:
+            - `postings`: suitable for simple transactions
+            - `script`: enabling more complex transactions with Numscript
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/PostTransaction'
-        required: true
       responses:
         "200":
           description: OK

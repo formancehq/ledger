@@ -28,7 +28,7 @@ func TestGetAccounts(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.TransactionData{
+				rsp := internal.PostTransaction(t, api, core.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -37,10 +37,10 @@ func TestGetAccounts(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.TransactionData{
+				rsp = internal.PostTransaction(t, api, core.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -49,7 +49,7 @@ func TestGetAccounts(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				meta := core.Metadata{
@@ -419,7 +419,7 @@ func TestGetAccount(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.TransactionData{
+				rsp := internal.PostTransaction(t, api, core.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -428,7 +428,7 @@ func TestGetAccount(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				rsp = internal.PostAccountMetadata(t, api, "alice",
@@ -497,7 +497,7 @@ func TestPostAccountMetadata(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.TransactionData{
+				rsp := internal.PostTransaction(t, api, core.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -506,7 +506,7 @@ func TestPostAccountMetadata(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				t.Run("valid request", func(t *testing.T) {
