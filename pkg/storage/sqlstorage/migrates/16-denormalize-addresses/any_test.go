@@ -32,10 +32,6 @@ func TestMigrate16(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	/**
-	select tx.id, tx.postings, json_extract(json_each.value, '$.source') from transactions tx, json_each(tx.postings);
-	*/
-
 	ib := sqlbuilder.NewInsertBuilder()
 	sqlq, args := ib.
 		InsertInto(schema.Table("transactions")).
