@@ -17,41 +17,45 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
 	var (
-		destination = p.Filters.Destination
-		source      = p.Filters.Source
-		account     = p.Filters.Account
-		reference   = p.Filters.Reference
-		startTime   = p.Filters.StartTime
-		endTime     = p.Filters.EndTime
-		metadata    = p.Filters.Metadata
+		destination   = p.Filters.Destination
+		source        = p.Filters.Source
+		account       = p.Filters.Account
+		reference     = p.Filters.Reference
+		startTime     = p.Filters.StartTime
+		endTime       = p.Filters.EndTime
+		metadata      = p.Filters.Metadata
+		regexOperator = "~"
 	)
+	if flavor == SQLite {
+		regexOperator = "REGEXP"
+	}
 
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 	sb.From(s.schema.Table("transactions"))
 	if account != "" {
 		r := fmt.Sprintf("(^|;)%s($|;)", account)
 		arg := sb.Args.Add(r)
-		sb.Where(sb.Or("sources ~ "+arg, "destinations ~ "+arg))
-		//sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
+		sb.Where(sb.Or(
+			fmt.Sprintf("sources %s %s", regexOperator, arg),
+			fmt.Sprintf("destinations %s %s", regexOperator, arg),
+		))
 		t.AccountFilter = account
 	}
 	if source != "" {
 		r := fmt.Sprintf("(^|;)%s($|;)", source)
 		arg := sb.Args.Add(r)
-		sb.Where("sources ~ " + arg)
-		//sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+		sb.Where(fmt.Sprintf("sources %s %s", regexOperator, arg))
 		t.SourceFilter = source
 	}
 	if destination != "" {
 		r := fmt.Sprintf("(^|;)%s($|;)", destination)
 		arg := sb.Args.Add(r)
-		sb.Where("destinations ~ " + arg)
-		//sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
+		sb.Where(fmt.Sprintf("destinations %s %s", regexOperator, arg))
 		t.DestinationFilter = destination
 	}
 	if reference != "" {
@@ -86,7 +90,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		return sharedapi.Cursor[core.ExpandedTransaction]{Data: txs}, nil
 	}
 
-	sb, t := s.buildTransactionsQuery(q)
+	sb, t := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
 	sb.OrderBy("id").Desc()
 	if q.AfterTxID > 0 {
 		sb.Where(sb.LE("id", q.AfterTxID))
@@ -283,7 +287,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto(s.schema.Table("transactions"))
 		ib.Cols("id", "timestamp", "reference", "postings", "metadata",
-			"pre_commit_volumes", "post_commit_volumes")
+			"pre_commit_volumes", "post_commit_volumes", "sources", "destinations")
 		for _, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
 			if err != nil {
@@ -307,6 +311,14 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			if err != nil {
 				panic(err)
 			}
+			sources := ""
+			destinations := ""
+			for _, p := range tx.Postings {
+				sources = fmt.Sprintf("%s;%s", sources, p.Source)
+				destinations = fmt.Sprintf("%s;%s", destinations, p.Destination)
+			}
+			sources = sources[1:]
+			destinations = destinations[1:]
 
 			var reference *string
 			if tx.Reference != "" {
@@ -315,7 +327,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			}
 
 			ib.Values(tx.ID, tx.Timestamp, reference, postingsData,
-				metadataData, preCommitVolumesData, postCommitVolumesData)
+				metadataData, preCommitVolumesData, postCommitVolumesData,
+				sources, destinations)
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
 	case sqlbuilder.PostgreSQL:

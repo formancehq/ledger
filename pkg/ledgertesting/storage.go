@@ -2,6 +2,7 @@ package ledgertesting
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/numary/ledger/internal/pgtesting"
@@ -26,6 +27,7 @@ func StorageDriver() (*sqlstorage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
+		fmt.Println(os.TempDir(), id)
 		return sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id)), func() {}, nil
 	case "postgres":
 		pgServer, err := pgtesting.PostgresServer()

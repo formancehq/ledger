@@ -26,16 +26,16 @@ jobs:
 
   Test_postgres:
     uses: formancehq/gh-workflows/.github/workflows/golang-test-postgres.yml@main
-#
-#  Test_sqlite:
-#    uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
+
+  Test_sqlite:
+    uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
 
   GoReleaserBuild:
     if: github.event_name != 'release'
     name: 'GoReleaser Build'
     needs:
       - Control
-#      - Test_sqlite
+      - Test_sqlite
       - Test_postgres
     uses: ./.github/workflows/template_goreleaser-build.yaml
     secrets:
@@ -47,7 +47,7 @@ jobs:
     name: 'GoReleaser Release'
     needs:
       - Control
-#      - Test_sqlite
+      - Test_sqlite
       - Test_postgres
     uses: ./.github/workflows/template_goreleaser-release.yaml
     secrets:
@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/template_docker.yaml
     needs:
       - Control
-#      - Test_sqlite
+      - Test_sqlite
       - Test_postgres
     with:
       VERSION: ${{ github.event.release.tag_name }}
@@ -91,7 +91,7 @@ jobs:
     uses: ./.github/workflows/template_docker.yaml
     needs:
       - Control
-#      - Test_sqlite
+      - Test_sqlite
       - Test_postgres
     with:
       VERSION: develop
