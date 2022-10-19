@@ -18,7 +18,7 @@ func (s *Store) CountTransactions(ctx context.Context, q ledger.TransactionsQuer
 		return 0, err
 	}
 
-	sb, _ := s.buildTransactionsQuery(q)
+	sb, _ := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	sqlq = fmt.Sprintf(`SELECT count(*) FROM (%s) AS t`, sqlq)
 	err = executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)

@@ -146,6 +146,10 @@ func (p *postgresDB) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	_, err = p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
