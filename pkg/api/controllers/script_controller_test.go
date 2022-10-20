@@ -88,23 +88,26 @@ func TestPostScript(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					rsp := internal.PostScript(t, api, tc.script, url.Values{})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				for _, tc := range testCases {
+					t.Run(tc.name, func(t *testing.T) {
+						rsp := internal.PostScript(t, api, tc.script, url.Values{})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					res := controllers.ScriptResponse{}
-					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+						res := controllers.ScriptResponse{}
+						require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
 
-					res.Transaction = nil
-					require.EqualValues(t, tc.expectedResponse, res)
-					return nil
-				},
-			})
-		}))
-	}
+						res.Transaction = nil
+						require.EqualValues(t, tc.expectedResponse, res)
+					})
+				}
+
+				return nil
+			},
+		})
+	}))
 }
 
 func TestPostScriptPreview(t *testing.T) {
@@ -160,7 +163,6 @@ func TestPostScriptPreview(t *testing.T) {
 }
 
 func TestPostScriptWithReference(t *testing.T) {
-
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {

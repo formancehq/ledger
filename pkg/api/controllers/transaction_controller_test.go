@@ -421,45 +421,47 @@ func TestPostTransactions(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					for i := 0; i < len(tc.payload)-1; i++ {
-						rsp := internal.PostTransaction(t, api, tc.payload[i], false)
-						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-						txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-						require.True(t, ok)
-						require.Len(t, txs, 1)
-						if !tc.payload[i].Timestamp.IsZero() {
-							require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				for _, tc := range testCases {
+					t.Run(tc.name, func(t *testing.T) {
+						for i := 0; i < len(tc.payload)-1; i++ {
+							rsp := internal.PostTransaction(t, api, tc.payload[i], false)
+							require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+							require.True(t, ok)
+							require.Len(t, txs, 1)
+							if !tc.payload[i].Timestamp.IsZero() {
+								require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
+							}
 						}
-					}
-					rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
-					require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+						rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
+						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
 
-					if tc.expectedStatusCode != http.StatusOK {
-						actualErr := apierrors.ErrorResponse{}
-						if internal.Decode(t, rsp.Body, &actualErr) {
-							require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode)
-							require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
-							require.Equal(t, tc.expectedErr.Details, actualErr.Details)
+						if tc.expectedStatusCode != http.StatusOK {
+							actualErr := apierrors.ErrorResponse{}
+							if internal.Decode(t, rsp.Body, &actualErr) {
+								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode)
+								require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
+								require.Equal(t, tc.expectedErr.Details, actualErr.Details)
+							}
+						} else {
+							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+							require.True(t, ok)
+							require.Len(t, txs, 1)
+							require.Equal(t, (*tc.expectedRes.Data)[0].TransactionData.Postings, txs[0].TransactionData.Postings)
+							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
+								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
+							}
 						}
-					} else {
-						txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-						require.True(t, ok)
-						require.Len(t, txs, 1)
-						require.Equal(t, (*tc.expectedRes.Data)[0].TransactionData.Postings, txs[0].TransactionData.Postings)
-						if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
-							require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
-						}
-					}
+					})
+				}
 
-					return nil
-				},
-			})
-		}))
-	}
+				return nil
+			},
+		})
+	}))
 }
 
 func TestPostTransactionsPreview(t *testing.T) {
