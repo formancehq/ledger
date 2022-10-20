@@ -604,12 +604,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionsResponse'
-        "304":
-          description: Not modified (when preview is enabled)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionsResponse'
         "400":
           description: Bad Request
           content:

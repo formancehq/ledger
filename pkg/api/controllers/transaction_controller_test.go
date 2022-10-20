@@ -487,7 +487,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 							},
 						},
 					}, true)
-					require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 					require.Len(t, txs, 1)
@@ -503,7 +503,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 							Plain: script,
 						},
 					}, true)
-					require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 					require.Len(t, txs, 1)

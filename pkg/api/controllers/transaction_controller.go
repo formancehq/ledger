@@ -161,11 +161,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	status := http.StatusOK
-	if preview {
-		status = http.StatusNotModified
-	}
-
 	var res []core.ExpandedTransaction
 
 	// With postings
@@ -207,7 +202,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		res = []core.ExpandedTransaction{*tx}
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, status, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
