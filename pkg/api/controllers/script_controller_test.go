@@ -9,6 +9,7 @@ import (
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
@@ -55,10 +56,10 @@ func TestPostScript(t *testing.T) {
 			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:    ledger.ScriptErrorInsufficientFund,
+					ErrorCode:    apierrors.ErrInsufficientFund,
 					ErrorMessage: "account had insufficient funds",
 				},
-				Link: controllers.EncodeLink("account had insufficient funds"),
+				Details: apierrors.EncodeLink("account had insufficient funds"),
 			},
 		},
 		{
@@ -82,7 +83,7 @@ func TestPostScript(t *testing.T) {
 					ErrorCode:    ledger.ScriptErrorMetadataOverride,
 					ErrorMessage: "cannot override metadata from script",
 				},
-				Link: controllers.EncodeLink("cannot override metadata from script"),
+				Details: apierrors.EncodeLink("cannot override metadata from script"),
 			},
 		},
 	}

@@ -33,15 +33,53 @@ func TestPostTransactions(t *testing.T) {
 		name               string
 		payload            []core.PostTransaction
 		expectedStatusCode int
-		expectedErrorCode  string
+		expectedRes        sharedapi.BaseResponse[[]core.ExpandedTransaction]
+		expectedErr        apierrors.ErrorResponse
 	}
 
 	var now = time.Now().Round(time.Second).UTC()
 
 	testCases := []testCase{
 		{
-			name:               "nominal",
-			expectedStatusCode: http.StatusOK,
+			name: "no postings or script",
+			payload: []core.PostTransaction{
+				{
+					Postings: core.Postings{},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "transaction has no postings or script",
+			},
+		},
+		{
+			name: "postings and script",
+			payload: []core.PostTransaction{{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "centralbank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+				Script: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @centralbank
+					)`,
+				}},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "either postings or script should be sent in the payload",
+			},
+		},
+		{
+			name: "postings nominal",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -54,10 +92,26 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "central_bank",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "USB",
+								},
+							},
+						},
+					},
+				}},
+			},
 		},
 		{
-			name:               "asset-with-digit",
-			expectedStatusCode: http.StatusOK,
+			name: "postings asset with digit",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -70,21 +124,26 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
-		},
-		{
-			name:               "no-postings",
-			expectedStatusCode: http.StatusBadRequest,
-			payload: []core.PostTransaction{
-				{
-					Postings: core.Postings{},
-				},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "central_bank",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "US1234D",
+								},
+							},
+						},
+					},
+				}},
 			},
-			expectedErrorCode: apierrors.ErrValidation,
 		},
 		{
-			name:               "negative-amount",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrValidation,
+			name: "postings negative amount",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -97,11 +156,14 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "processing tx 0: negative amount",
+			},
 		},
 		{
-			name:               "wrong-asset-with-symbol",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrValidation,
+			name: "postings wrong asset with symbol",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -114,11 +176,14 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "processing tx 0: invalid asset",
+			},
 		},
 		{
-			name:               "wrong-asset-with-digit-as-first-char",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrValidation,
+			name: "postings wrong asset with digit as first char",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -131,11 +196,14 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "processing tx 0: invalid asset",
+			},
 		},
 		{
-			name:               "bad-address",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrValidation,
+			name: "postings bad address",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -148,11 +216,14 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "processing tx 0: invalid destination address",
+			},
 		},
 		{
-			name:               "missing-funds",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrInsufficientFund,
+			name: "postings insufficient funds",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -165,11 +236,14 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrInsufficientFund,
+				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
+			},
 		},
 		{
-			name:               "reference-conflict",
-			expectedStatusCode: http.StatusConflict,
-			expectedErrorCode:  apierrors.ErrConflict,
+			name: "postings reference conflict",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -194,10 +268,14 @@ func TestPostTransactions(t *testing.T) {
 					Reference: "ref",
 				},
 			},
+			expectedStatusCode: http.StatusConflict,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrConflict,
+				ErrorMessage: "conflict error on reference",
+			},
 		},
 		{
-			name:               "with specified timestamp",
-			expectedStatusCode: http.StatusOK,
+			name: "postings with specified timestamp",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -211,11 +289,26 @@ func TestPostTransactions(t *testing.T) {
 					Timestamp: now,
 				},
 			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
 		},
 		{
-			name:               "with specified timestamp prior to last tx",
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  apierrors.ErrValidation,
+			name: "postings with specified timestamp prior to last tx",
 			payload: []core.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -240,6 +333,91 @@ func TestPostTransactions(t *testing.T) {
 					Timestamp: now.Add(-time.Second),
 				},
 			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "processing tx 0: cannot pass a date prior to the last transaction",
+			},
+		},
+		{
+			name: "script nominal",
+			payload: []core.PostTransaction{{
+				Script: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @centralbank
+					)
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "centralbank",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+								{
+									Source:      "centralbank",
+									Destination: "users:001",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "script failure with insufficient funds",
+			payload: []core.PostTransaction{{
+				Script: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
+			}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrInsufficientFund,
+				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+				Details:      apierrors.EncodeLink("account had insufficient funds"),
+			},
+		},
+		{
+			name: "script failure with metadata override",
+			payload: []core.PostTransaction{{
+				Script: core.ScriptCore{
+					Plain: `
+					set_tx_meta("priority", "low")
+
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
+				Metadata: core.Metadata{
+					"priority": json.RawMessage(`"high"`),
+				},
+			}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrScriptMetadataOverride,
+				ErrorMessage: "[METADATA_OVERRIDE] cannot override metadata from script",
+				Details:      apierrors.EncodeLink("cannot override metadata from script"),
+			},
 		},
 	}
 
@@ -250,20 +428,33 @@ func TestPostTransactions(t *testing.T) {
 					for i := 0; i < len(tc.payload)-1; i++ {
 						rsp := internal.PostTransaction(t, api, tc.payload[i], false)
 						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+						require.True(t, ok)
+						require.Len(t, txs, 1)
 						if !tc.payload[i].Timestamp.IsZero() {
-							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
-							require.True(t, ok)
-							require.Len(t, txs, 1)
 							require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
 						}
 					}
 					rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
 					require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
 
-					err := sharedapi.ErrorResponse{}
-					if internal.Decode(t, rsp.Body, &err) {
-						require.Equal(t, tc.expectedErrorCode, err.ErrorCode)
+					if tc.expectedStatusCode != http.StatusOK {
+						actualErr := apierrors.ErrorResponse{}
+						if internal.Decode(t, rsp.Body, &actualErr) {
+							require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode)
+							require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
+							require.Equal(t, tc.expectedErr.Details, actualErr.Details)
+						}
+					} else {
+						txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+						require.True(t, ok)
+						require.Len(t, txs, 1)
+						require.Equal(t, (*tc.expectedRes.Data)[0].TransactionData.Postings, txs[0].TransactionData.Postings)
+						if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
+							require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
+						}
 					}
+
 					return nil
 				},
 			})
@@ -271,7 +462,103 @@ func TestPostTransactions(t *testing.T) {
 	}
 }
 
-func TestPostTransactionInvalid(t *testing.T) {
+func TestPostTransactionsPreview(t *testing.T) {
+	script := `
+	send [COIN 100] (
+	  source = @world
+	  destination = @centralbank
+	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				store := internal.GetLedgerStore(t, driver, ctx)
+
+				t.Run("postings true", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      core.NewMonetaryInt(1000),
+								Asset:       "USD",
+							},
+						},
+					}, true)
+					require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 0)
+				})
+
+				t.Run("script true", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+						Script: core.ScriptCore{
+							Plain: script,
+						},
+					}, true)
+					require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 0)
+				})
+
+				t.Run("postings false", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "central_bank",
+								Amount:      core.NewMonetaryInt(1000),
+								Asset:       "USD",
+							},
+						},
+						Reference: "refPostings",
+					}, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 1)
+					require.Equal(t, "refPostings", cursor.Data[0].Reference)
+				})
+
+				t.Run("script false", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+						Script: core.ScriptCore{
+							Plain: script,
+						},
+						Reference: "refScript",
+					}, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+
+					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					require.NoError(t, err)
+					require.Len(t, cursor.Data, 2)
+					require.Equal(t, "refScript", cursor.Data[0].Reference)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionInvalidBody(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -296,6 +583,96 @@ func TestPostTransactionInvalid(t *testing.T) {
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    apierrors.ErrValidation,
 						ErrorMessage: "transaction has no postings or script",
+					}, err)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionMetadata(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "central_bank",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "USD",
+						},
+					},
+				}, false)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				t.Run("valid", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
+					require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+
+					rsp = internal.GetTransaction(api, 0)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
+					require.EqualValues(t, core.Metadata{
+						"foo": "bar",
+					}, ret.Metadata)
+				})
+
+				t.Run("different metadata on same key should replace it", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
+						"foo": "baz",
+					})
+					require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+
+					rsp = internal.GetTransaction(api, 0)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
+					require.EqualValues(t, core.Metadata{
+						"foo": "baz",
+					}, ret.Metadata)
+				})
+
+				t.Run("transaction not found", func(t *testing.T) {
+					rsp = internal.PostTransactionMetadata(t, api, 42, core.Metadata{
+						"foo": "baz",
+					})
+					require.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrNotFound,
+						ErrorMessage: "transaction not found",
+					}, err)
+				})
+
+				t.Run("no JSON", func(t *testing.T) {
+					rsp = internal.NewPostOnLedger(t, api, "/transactions/0/metadata", "invalid")
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: "invalid metadata format",
+					}, err)
+				})
+
+				t.Run("invalid txid", func(t *testing.T) {
+					rsp = internal.NewPostOnLedger(t, api, "/transactions/invalid/metadata", core.Metadata{
+						"foo": json.RawMessage(`"bar"`),
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: "invalid transaction ID",
 					}, err)
 				})
 
@@ -393,28 +770,6 @@ func TestGetTransaction(t *testing.T) {
 					}, err)
 				})
 
-				return nil
-			},
-		})
-	}))
-}
-
-func TestPreviewTransaction(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "USD",
-						},
-					},
-					Reference: "ref",
-				}, true)
-				require.Equal(t, http.StatusNotModified, rsp.Result().StatusCode)
 				return nil
 			},
 		})
@@ -1121,96 +1476,6 @@ func TestTransactionsVolumes(t *testing.T) {
 	}))
 }
 
-func TestPostTransactionMetadata(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "central_bank",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "USD",
-						},
-					},
-				}, false)
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-				t.Run("valid", func(t *testing.T) {
-					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
-						"foo": json.RawMessage(`"bar"`),
-					})
-					require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
-
-					rsp = internal.GetTransaction(api, 0)
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
-					require.EqualValues(t, core.Metadata{
-						"foo": "bar",
-					}, ret.Metadata)
-				})
-
-				t.Run("different metadata on same key should replace it", func(t *testing.T) {
-					rsp = internal.PostTransactionMetadata(t, api, 0, core.Metadata{
-						"foo": "baz",
-					})
-					require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
-
-					rsp = internal.GetTransaction(api, 0)
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					ret, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
-					require.EqualValues(t, core.Metadata{
-						"foo": "baz",
-					}, ret.Metadata)
-				})
-
-				t.Run("transaction not found", func(t *testing.T) {
-					rsp = internal.PostTransactionMetadata(t, api, 42, core.Metadata{
-						"foo": "baz",
-					})
-					require.Equal(t, http.StatusNotFound, rsp.Result().StatusCode)
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrNotFound,
-						ErrorMessage: "transaction not found",
-					}, err)
-				})
-
-				t.Run("no JSON", func(t *testing.T) {
-					rsp = internal.NewPostOnLedger(t, api, "/transactions/0/metadata", "invalid")
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid metadata format",
-					}, err)
-				})
-
-				t.Run("invalid txid", func(t *testing.T) {
-					rsp = internal.NewPostOnLedger(t, api, "/transactions/invalid/metadata", core.Metadata{
-						"foo": json.RawMessage(`"bar"`),
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transaction ID",
-					}, err)
-				})
-
-				return nil
-			},
-		})
-	}))
-}
-
 func TestTooManyClient(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
@@ -1448,176 +1713,6 @@ func TestPostTransactionsBatch(t *testing.T) {
 						ErrorMessage: "invalid transactions format",
 					}, err)
 				})
-
-				return nil
-			},
-		})
-	}))
-}
-
-func TestPostTransactionsScript(t *testing.T) {
-	type testCase struct {
-		name             string
-		payload          core.PostTransaction
-		expectedResponse controllers.ScriptResponse
-	}
-
-	testCases := []testCase{
-		{
-			name: "nominal",
-			payload: core.PostTransaction{
-				Script: core.ScriptCore{
-					Plain: `
-					send [COIN 100] (
-					  source = @world
-					  destination = @centralbank
-					)
-					send [COIN 100] (
-					  source = @centralbank
-					  destination = @users:001
-					)`,
-				},
-			},
-		},
-		{
-			name: "failure with insufficient funds",
-			payload: core.PostTransaction{
-				Script: core.ScriptCore{
-					Plain: `
-						send [COIN 100] (
-						  source = @centralbank
-						  destination = @users:001
-						)`,
-				},
-			},
-			expectedResponse: controllers.ScriptResponse{
-				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:    ledger.ScriptErrorInsufficientFund,
-					ErrorMessage: "account had insufficient funds",
-				},
-				Link: controllers.EncodeLink("account had insufficient funds"),
-			},
-		},
-		{
-			name: "failure with metadata override",
-			payload: core.PostTransaction{
-				Script: core.ScriptCore{
-					Plain: `
-							set_tx_meta("priority", "low")
-
-							send [USD/2 99] (
-								source=@world
-								destination=@user:001
-							)`,
-				},
-				Metadata: core.Metadata{
-					"priority": json.RawMessage(`"high"`),
-				},
-			},
-			expectedResponse: controllers.ScriptResponse{
-				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:    ledger.ScriptErrorMetadataOverride,
-					ErrorMessage: "cannot override metadata from script",
-				},
-				Link: controllers.EncodeLink("cannot override metadata from script"),
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					rsp := internal.PostTransaction(t, api, tc.payload, false)
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-					res := controllers.ScriptResponse{}
-					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-
-					res.Transaction = nil
-					require.EqualValues(t, tc.expectedResponse, res)
-					return nil
-				},
-			})
-		}))
-	}
-}
-
-func TestPostTransactionsScriptPreview(t *testing.T) {
-	script := `
-	send [COIN 100] (
-	  source = @world
-	  destination = @centralbank
-	)`
-
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				store := internal.GetLedgerStore(t, driver, ctx)
-
-				t.Run("true", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
-						Script: core.ScriptCore{
-							Plain: script,
-						},
-					}, true)
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					res := controllers.ScriptResponse{}
-					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-					require.NotNil(t, res.Transaction)
-
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-					require.NoError(t, err)
-					require.Len(t, cursor.Data, 0)
-				})
-
-				t.Run("false", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
-						Script: core.ScriptCore{
-							Plain: script,
-						},
-					}, false)
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					res := controllers.ScriptResponse{}
-					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-					require.NotNil(t, res.Transaction)
-
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-					require.NoError(t, err)
-					require.Len(t, cursor.Data, 1)
-				})
-
-				return nil
-			},
-		})
-	}))
-}
-
-func TestPostTransactionsScriptWithReference(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				reference := "order_1234"
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
-					Script: core.ScriptCore{
-						Plain: `
-						send [COIN 100] (
-						  	source = @world
-						  	destination = @centralbank
-						)`,
-					},
-					Reference: reference,
-				}, false)
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				res := controllers.ScriptResponse{}
-				require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-				require.Equal(t, reference, res.Transaction.Reference)
-
-				store := internal.GetLedgerStore(t, driver, ctx)
-				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
-				require.NoError(t, err)
-				require.Len(t, cursor.Data, 1)
-				require.Equal(t, reference, cursor.Data[0].Reference)
 
 				return nil
 			},

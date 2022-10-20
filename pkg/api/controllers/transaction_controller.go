@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/go-libs/sharedapi"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -167,13 +166,16 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		status = http.StatusNotModified
 	}
 
+	var res []core.ExpandedTransaction
+
 	// With postings
 	if len(payload.Postings) > 0 {
 		fn := l.(*ledger.Ledger).Commit
 		if preview {
 			fn = l.(*ledger.Ledger).CommitPreview
 		}
-		res, err := fn(c.Request.Context(), []core.TransactionData{{
+
+		commitRes, err := fn(c.Request.Context(), []core.TransactionData{{
 			Postings:  payload.Postings,
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
@@ -184,48 +186,28 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			return
 		}
 
-		respondWithData[[]core.ExpandedTransaction](c, status, res.GeneratedTransactions)
-		return
+		res = commitRes.GeneratedTransactions
+
+	} else { // With script
+		fn := l.(*ledger.Ledger).Execute
+		if preview {
+			fn = l.(*ledger.Ledger).ExecutePreview
+		}
+
+		tx, err := fn(c.Request.Context(), core.Script{
+			ScriptCore: payload.Script,
+			Reference:  payload.Reference,
+			Metadata:   payload.Metadata,
+		})
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
+		}
+
+		res = []core.ExpandedTransaction{*tx}
 	}
 
-	// With script
-	fn := l.(*ledger.Ledger).Execute
-	if preview {
-		fn = l.(*ledger.Ledger).ExecutePreview
-	}
-
-	res := ScriptResponse{}
-	tx, err := fn(c.Request.Context(), core.Script{
-		ScriptCore: payload.Script,
-		Reference:  payload.Reference,
-		Metadata:   payload.Metadata,
-	})
-	if err != nil {
-		var (
-			code    = apierrors.ErrInternal
-			message string
-		)
-		scriptError, ok := err.(*ledger.ScriptError)
-		if ok {
-			code = scriptError.Code
-			message = scriptError.Message
-		} else {
-			sharedlogging.GetLogger(c.Request.Context()).Errorf(
-				"internal errors executing script: %s", err)
-		}
-		res.ErrorResponse = sharedapi.ErrorResponse{
-			ErrorCode:    code,
-			ErrorMessage: message,
-		}
-		if message != "" {
-			res.Link = EncodeLink(message)
-		}
-	}
-	if tx != nil {
-		res.Transaction = tx
-	}
-
-	c.JSON(http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, status, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
