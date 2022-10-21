@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
@@ -21,7 +22,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -33,7 +34,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -82,7 +83,7 @@ func TestGetBalances(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -94,7 +95,7 @@ func TestGetBalances(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -106,7 +107,7 @@ func TestGetBalances(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -118,7 +119,7 @@ func TestGetBalances(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",

@@ -19,6 +19,7 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -79,7 +80,7 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	return req, rec
 }
 
-func PostTransaction(t *testing.T, handler http.Handler, payload core.PostTransaction, preview bool) *httptest.ResponseRecorder {
+func PostTransaction(t *testing.T, handler http.Handler, payload controllers.PostTransaction, preview bool) *httptest.ResponseRecorder {
 	path := fmt.Sprintf("/%s/transactions", testingLedger)
 	if preview {
 		path += "?preview=true"

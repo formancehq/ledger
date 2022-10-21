@@ -91,11 +91,3 @@ func Hash(t1, t2 interface{}) string {
 
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
-
-type PostTransaction struct {
-	Timestamp time.Time  `json:"timestamp"`
-	Postings  Postings   `json:"postings"`
-	Script    ScriptCore `json:"script"`
-	Reference string     `json:"reference"`
-	Metadata  Metadata   `json:"metadata" swaggertype:"object"`
-}

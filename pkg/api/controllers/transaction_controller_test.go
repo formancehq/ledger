@@ -31,7 +31,7 @@ import (
 func TestPostTransactions(t *testing.T) {
 	type testCase struct {
 		name               string
-		payload            []core.PostTransaction
+		payload            []controllers.PostTransaction
 		expectedStatusCode int
 		expectedRes        sharedapi.BaseResponse[[]core.ExpandedTransaction]
 		expectedErr        apierrors.ErrorResponse
@@ -42,7 +42,7 @@ func TestPostTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "no postings or script",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{},
 				},
@@ -55,7 +55,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings and script",
-			payload: []core.PostTransaction{{
+			payload: []controllers.PostTransaction{{
 				Postings: core.Postings{
 					{
 						Source:      "world",
@@ -80,7 +80,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings nominal",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -112,7 +112,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings asset with digit",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -144,7 +144,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings negative amount",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -164,7 +164,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings wrong asset with symbol",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -184,7 +184,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings wrong asset with digit as first char",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -204,7 +204,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings bad address",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -224,7 +224,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings insufficient funds",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -244,7 +244,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings reference conflict",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -276,7 +276,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings with specified timestamp",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -309,7 +309,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "postings with specified timestamp prior to last tx",
-			payload: []core.PostTransaction{
+			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
 						{
@@ -341,7 +341,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "script nominal",
-			payload: []core.PostTransaction{{
+			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
@@ -380,7 +380,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "script failure with insufficient funds",
-			payload: []core.PostTransaction{{
+			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
@@ -398,7 +398,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "script failure with metadata override",
-			payload: []core.PostTransaction{{
+			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
 					Plain: `
 					set_tx_meta("priority", "low")
@@ -477,7 +477,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 				store := internal.GetLedgerStore(t, driver, ctx)
 
 				t.Run("postings true", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "world",
@@ -498,7 +498,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 				})
 
 				t.Run("script true", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 						Script: core.ScriptCore{
 							Plain: script,
 						},
@@ -514,7 +514,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 				})
 
 				t.Run("postings false", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "world",
@@ -537,7 +537,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 				})
 
 				t.Run("script false", func(t *testing.T) {
-					rsp := internal.PostTransaction(t, api, core.PostTransaction{
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 						Script: core.ScriptCore{
 							Plain: script,
 						},
@@ -598,7 +598,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -688,7 +688,7 @@ func TestGetTransaction(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -1181,7 +1181,7 @@ func TestTransactionsVolumes(t *testing.T) {
 				worldAliceUSD := core.NewMonetaryInt(100)
 
 				rsp := internal.PostTransaction(t, api,
-					core.PostTransaction{
+					controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "world",
@@ -1248,7 +1248,7 @@ func TestTransactionsVolumes(t *testing.T) {
 				aliceBobUSD := core.NewMonetaryInt(93)
 
 				rsp = internal.PostTransaction(t, api,
-					core.PostTransaction{
+					controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "alice",
@@ -1313,7 +1313,7 @@ func TestTransactionsVolumes(t *testing.T) {
 				bobAliceEUR := core.NewMonetaryInt(3)
 
 				rsp = internal.PostTransaction(t, api,
-					core.PostTransaction{
+					controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "world",
@@ -1402,7 +1402,7 @@ func TestTransactionsVolumes(t *testing.T) {
 				aliceBobEUR := core.NewMonetaryInt(2)
 
 				rsp = internal.PostTransaction(t, api,
-					core.PostTransaction{
+					controllers.PostTransaction{
 						Postings: core.Postings{
 							{
 								Source:      "bob",
@@ -1515,7 +1515,7 @@ func TestRevertTransaction(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, api, core.PostTransaction{
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -1531,7 +1531,7 @@ func TestRevertTransaction(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -1547,7 +1547,7 @@ func TestRevertTransaction(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, api, core.PostTransaction{
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "alice",

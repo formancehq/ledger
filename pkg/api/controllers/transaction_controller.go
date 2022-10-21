@@ -137,6 +137,14 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	respondWithCursor[core.ExpandedTransaction](c, http.StatusOK, cursor)
 }
 
+type PostTransaction struct {
+	Timestamp time.Time       `json:"timestamp"`
+	Postings  core.Postings   `json:"postings"`
+	Script    core.ScriptCore `json:"script"`
+	Reference string          `json:"reference"`
+	Metadata  core.Metadata   `json:"metadata" swaggertype:"object"`
+}
+
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -144,7 +152,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok &&
 		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
-	var payload core.PostTransaction
+	var payload PostTransaction
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		apierrors.ResponseError(c, ledger.NewValidationError("invalid transaction format"))
 		return
