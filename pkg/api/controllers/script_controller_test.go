@@ -9,6 +9,7 @@ import (
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
@@ -29,44 +30,50 @@ func TestPostScript(t *testing.T) {
 		{
 			name: "nominal",
 			script: core.Script{
-				Plain: `
-				send [COIN 100] (
-				  source = @world
-				  destination = @centralbank
-				)
-				send [COIN 100] (
-				  source = @centralbank
-				  destination = @users:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @centralbank
+					)
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
 			},
 		},
 		{
-			name: "failure with insufficient funcs",
+			name: "failure with insufficient funds",
 			script: core.Script{
-				Plain: `
-				send [COIN 100] (
-				  source = @centralbank
-				  destination = @users:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = @users:001
+					)`,
+				},
 			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:    ledger.ScriptErrorInsufficientFund,
+					ErrorCode:    apierrors.ErrInsufficientFund,
 					ErrorMessage: "account had insufficient funds",
 				},
-				Link: controllers.EncodeLink("account had insufficient funds"),
+				Details: apierrors.EncodeLink("account had insufficient funds"),
 			},
 		},
 		{
 			name: "failure with metadata override",
 			script: core.Script{
-				Plain: `
-				set_tx_meta("priority", "low")
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					set_tx_meta("priority", "low")
 
-				send [USD/2 99] (
-					source=@world
-					destination=@user:001
-				)`,
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
 				Metadata: core.Metadata{
 					"priority": json.RawMessage(`"high"`),
 				},
@@ -76,28 +83,31 @@ func TestPostScript(t *testing.T) {
 					ErrorCode:    ledger.ScriptErrorMetadataOverride,
 					ErrorMessage: "cannot override metadata from script",
 				},
-				Link: controllers.EncodeLink("cannot override metadata from script"),
+				Details: apierrors.EncodeLink("cannot override metadata from script"),
 			},
 		},
 	}
 
-	for _, tc := range testCases {
-		internal.RunSubTest(t, tc.name, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					rsp := internal.PostScript(t, api, tc.script, url.Values{})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				for _, tc := range testCases {
+					t.Run(tc.name, func(t *testing.T) {
+						rsp := internal.PostScript(t, api, tc.script, url.Values{})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-					res := controllers.ScriptResponse{}
-					require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+						res := controllers.ScriptResponse{}
+						require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
 
-					res.Transaction = nil
-					require.EqualValues(t, tc.expectedResponse, res)
-					return nil
-				},
-			})
-		}))
-	}
+						res.Transaction = nil
+						require.EqualValues(t, tc.expectedResponse, res)
+					})
+				}
+
+				return nil
+			},
+		})
+	}))
 }
 
 func TestPostScriptPreview(t *testing.T) {
@@ -117,7 +127,7 @@ func TestPostScriptPreview(t *testing.T) {
 					values.Set("preview", "true")
 
 					rsp := internal.PostScript(t, api, core.Script{
-						Plain: script,
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -134,7 +144,7 @@ func TestPostScriptPreview(t *testing.T) {
 					values.Set("preview", "false")
 
 					rsp := internal.PostScript(t, api, core.Script{
-						Plain: script,
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -153,17 +163,17 @@ func TestPostScriptPreview(t *testing.T) {
 }
 
 func TestPostScriptWithReference(t *testing.T) {
-
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				reference := "order_1234"
 				rsp := internal.PostScript(t, api, core.Script{
-					Plain: `
+					ScriptCore: core.ScriptCore{
+						Plain: `
 						send [COIN 100] (
 						  	source = @world
 						  	destination = @centralbank
-						)`,
+						)`},
 					Reference: reference,
 				}, url.Values{})
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)

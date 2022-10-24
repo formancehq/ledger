@@ -323,6 +323,7 @@ paths:
 
   /{ledger}/script:
     post:
+      deprecated: true
       tags:
         - script
       operationId: runScript
@@ -342,14 +343,21 @@ paths:
             type: boolean
             example: true
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/Script'
-        required: true
       responses:
         "200":
-          description: OK
+          description: >
+            On success, it will return a 200 status code, and the resulting transaction under the `transaction` field.
+            
+            
+            On failure, it will also return a 200 status code, and the following fields:
+              - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.
+              - `error_code`: contains the string code of the error
+              - `error_message`: contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.
           content:
             application/json:
               schema:
@@ -580,20 +588,18 @@ paths:
             type: boolean
             example: true
       requestBody:
+        required: true
+        description: >
+          The request body must contain one of the following objects:
+            - `postings`: suitable for simple transactions
+            - `script`: enabling more complex transactions with Numscript
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionData'
-        required: true
+              $ref: '#/components/schemas/PostTransaction'
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionsResponse'
-        "304":
-          description: Not modified (when preview is enabled)
           content:
             application/json:
               schema:
@@ -1041,6 +1047,7 @@ components:
       properties:
         details:
           type: string
+          example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
         error_code:
           type: string
           enum:
@@ -1048,8 +1055,11 @@ components:
             - INSUFFICIENT_FUND
             - COMPILATION_FAILED
             - NO_SCRIPT
+            - METADATA_OVERRIDE
+          example: INSUFFICIENT_FUND
         error_message:
           type: string
+          example: "account had insufficient funds"
         transaction:
           $ref: '#/components/schemas/Transaction'
     Account:
@@ -1160,12 +1170,6 @@ components:
     Script:
       type: object
       properties:
-        reference:
-          type: string
-          example: order_1234
-          description: Reference to attach to the generated transaction
-        metadata:
-          $ref: '#/components/schemas/Metadata'
         plain:
           type: string
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
@@ -1177,6 +1181,12 @@ components:
               "user": "users:042"
             }
           }
+        reference:
+          type: string
+          example: order_1234
+          description: Reference to attach to the generated transaction
+        metadata:
+          $ref: '#/components/schemas/Metadata'
       required:
         - plain
     Transaction:
@@ -1230,6 +1240,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TransactionData'
+    PostTransaction:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Posting'
+        script:
+          type: object
+          properties:
+            plain:
+              type: string
+              example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
+            vars:
+              type: object
+              properties: {}
+              example: {
+                "vars": {
+                  "user": "users:042"
+                }
+              }
+          required:
+            - plain
+        reference:
+          type: string
+          example: ref:001
+        metadata:
+          $ref: '#/components/schemas/Metadata'
     Stats:
       type: object
       properties:

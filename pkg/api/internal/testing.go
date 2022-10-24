@@ -19,6 +19,7 @@ import (
 	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -79,20 +80,18 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	return req, rec
 }
 
-func PostTransaction(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions", testingLedger), Buffer(t, tx))
+func PostTransaction(t *testing.T, handler http.Handler, payload controllers.PostTransaction, preview bool) *httptest.ResponseRecorder {
+	path := fmt.Sprintf("/%s/transactions", testingLedger)
+	if preview {
+		path += "?preview=true"
+	}
+	req, rec := NewRequest(http.MethodPost, path, Buffer(t, payload))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostTransactionBatch(t *testing.T, handler http.Handler, txs core.Transactions) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions/batch", Buffer(t, txs))
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
-func PostTransactionPreview(t *testing.T, handler http.Handler, tx core.TransactionData) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions?preview=true", testingLedger), Buffer(t, tx))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
