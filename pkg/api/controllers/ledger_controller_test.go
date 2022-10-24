@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -17,7 +18,7 @@ func TestGetStats(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostTransaction(t, h, core.TransactionData{
+				rsp := internal.PostTransaction(t, h, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -26,10 +27,10 @@ func TestGetStats(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.PostTransaction(t, h, core.TransactionData{
+				rsp = internal.PostTransaction(t, h, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -38,7 +39,7 @@ func TestGetStats(t *testing.T) {
 							Asset:       "USD",
 						},
 					},
-				})
+				}, false)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				rsp = internal.GetStats(h)

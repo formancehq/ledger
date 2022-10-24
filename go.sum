@@ -489,8 +489,6 @@ github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81 h1:VhH
 github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81/go.mod h1:DzBUp4HCdWscgXmt8/5F/KlCSktv0OwgOwDfRdz5Hzo=
 github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81 h1:4ENnzCeXQGAAXGD7CSM8CZkKvQb78q1qNJ/Gonrb5Zs=
 github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81/go.mod h1:4QEZTmjeQbNMjWd/pKADguTjxTvAuWgh+ZBWzJ7xDiI=
-github.com/numary/machine v1.2.1-0.20220811010804-0a87156a9a4b h1:dw6XcO2+7gETGB9JnugRfTyXm5WVQSkzHjYn+AYvxSw=
-github.com/numary/machine v1.2.1-0.20220811010804-0a87156a9a4b/go.mod h1:Urkud39TPaMxmSwOd6H3hCqob710Et/tcWSv0QjbyGo=
 github.com/numary/machine v1.2.1 h1:eabGjbMzSbgRG08ZEEt/+ZU/UL3QL01tZuaD7xDXpOE=
 github.com/numary/machine v1.2.1/go.mod h1:Urkud39TPaMxmSwOd6H3hCqob710Et/tcWSv0QjbyGo=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=

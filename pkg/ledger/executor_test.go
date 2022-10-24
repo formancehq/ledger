@@ -36,7 +36,7 @@ func TestNoScript(t *testing.T) {
 func TestCompilationError(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
-			Plain: "willnotcompile",
+			ScriptCore: core.ScriptCore{Plain: "willnotcompile"},
 		}
 
 		_, err := l.Execute(context.Background(), script)
@@ -48,7 +48,7 @@ func TestCompilationError(t *testing.T) {
 func TestTransactionInvalidScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
-			Plain: "this is not a valid script",
+			ScriptCore: core.ScriptCore{Plain: "this is not a valid script"},
 		}
 
 		_, err := l.Execute(context.Background(), script)
@@ -61,7 +61,7 @@ func TestTransactionInvalidScript(t *testing.T) {
 func TestTransactionFail(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{
-			Plain: "fail",
+			ScriptCore: core.ScriptCore{Plain: "fail"},
 		}
 
 		_, err := l.Execute(context.Background(), script)
@@ -78,10 +78,12 @@ func TestSend(t *testing.T) {
 		}(l, context.Background())
 
 		script := core.Script{
-			Plain: `send [USD/2 99] (
+			ScriptCore: core.ScriptCore{
+				Plain: `
+				send [USD/2 99] (
 				source=@world
 				destination=@user:001
-			)`,
+			)`},
 		}
 
 		_, err := l.Execute(context.Background(), script)
@@ -225,9 +227,11 @@ func TestMissingMetadata(t *testing.T) {
 		`
 
 		script := core.Script{
-			Plain: plain,
-			Vars: map[string]json.RawMessage{
-				"sale": json.RawMessage(`"sales:042"`),
+			ScriptCore: core.ScriptCore{
+				Plain: plain,
+				Vars: map[string]json.RawMessage{
+					"sale": json.RawMessage(`"sales:042"`),
+				},
 			},
 		}
 
@@ -290,9 +294,11 @@ func TestMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		script := core.Script{
-			Plain: plain,
-			Vars: map[string]json.RawMessage{
-				"sale": json.RawMessage(`"sales:042"`),
+			ScriptCore: core.ScriptCore{
+				Plain: plain,
+				Vars: map[string]json.RawMessage{
+					"sale": json.RawMessage(`"sales:042"`),
+				},
 			},
 		}
 
@@ -318,10 +324,13 @@ func TestSetTxMeta(t *testing.T) {
 		{
 			name: "nominal",
 			script: core.Script{
-				Plain: `send [USD/2 99] (
-					source=@world
-					destination=@user:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
 				Metadata: core.Metadata{
 					"priority": "low",
 				},
@@ -333,12 +342,15 @@ func TestSetTxMeta(t *testing.T) {
 		{
 			name: "define metadata on script",
 			script: core.Script{
-				Plain: `
-                set_tx_meta("priority", "low")
-                send [COIN 10] (
-                    source = @world
-                    destination = @user:001
-				)`,
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					set_tx_meta("priority", "low")
+
+					send [COIN 10] (
+						source = @world
+						destination = @user:001
+					)`,
+				},
 			},
 			expectedMetadata: core.Metadata{
 				"priority": map[string]any{"type": "string", "value": "low"},
@@ -347,13 +359,15 @@ func TestSetTxMeta(t *testing.T) {
 		{
 			name: "override metadata of script",
 			script: core.Script{
-				Plain: `
-				set_tx_meta("priority", "low")
+				ScriptCore: core.ScriptCore{
+					Plain: `
+					set_tx_meta("priority", "low")
 
-				send [USD/2 99] (
-					source=@world
-					destination=@user:001
-				)`,
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
 				Metadata: core.Metadata{
 					"priority": "high",
 				},
@@ -389,14 +403,17 @@ func TestScriptSetReference(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		plain := `send [USD/2 99] (
-			source=@world
-			destination=@user:001
-		)`
+		plain := `
+			send [USD/2 99] (
+				source=@world
+				destination=@user:001
+			)`
 
 		script := core.Script{
-			Plain:     plain,
-			Vars:      map[string]json.RawMessage{},
+			ScriptCore: core.ScriptCore{
+				Plain: plain,
+				Vars:  map[string]json.RawMessage{},
+			},
 			Reference: "tx_ref",
 		}
 
