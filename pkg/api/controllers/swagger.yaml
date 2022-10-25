@@ -1016,7 +1016,12 @@ components:
       type: object
       nullable: true
       additionalProperties: {}
-      example: { admin: true, a: { nested: { key: value}} }
+      example: { admin: true, a: { nested: { key: value } } }
+    AdditionalOperations:
+      type: object
+      nullable: true
+      additionalProperties: {}
+      example: { set_account_meta: { users:001: { a: { nested: { key: value } } } } }
     ConfigInfo:
       type: object
       properties:
@@ -1271,6 +1276,8 @@ components:
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
+        additional_operations:
+          $ref: '#/components/schemas/AdditionalOperations'
     Stats:
       type: object
       properties:
