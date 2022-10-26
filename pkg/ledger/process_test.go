@@ -134,7 +134,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), txsData)
+				res, err := l.ProcessTxsData(context.Background(), nil, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -180,7 +180,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), txsData)
+				res, err := l.ProcessTxsData(context.Background(), nil, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -294,7 +294,7 @@ func TestLedger_processTx(t *testing.T) {
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.ProcessTx(context.Background(), []core.TransactionData{})
+			result, err := l.ProcessTxsData(context.Background(), nil)
 			assert.NoError(t, err)
 			assert.Equal(t, &ledger.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
@@ -315,16 +315,14 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), []core.TransactionData{
-				{
-					Postings: []core.Posting{{
-						Source:      "world",
-						Destination: "bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					}},
-					Timestamp: now.Add(-time.Second),
-				},
+			_, err := l.ProcessTxsData(context.Background(), nil, core.TransactionData{
+				Postings: []core.Posting{{
+					Source:      "world",
+					Destination: "bank",
+					Amount:      core.NewMonetaryInt(100),
+					Asset:       "USD",
+				}},
+				Timestamp: now.Add(-time.Second),
 			})
 
 			assert.Error(t, err)
@@ -344,16 +342,14 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), []core.TransactionData{
-				{
-					Postings: []core.Posting{{
-						Source:      "world",
-						Destination: "bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					}},
-					Timestamp: now.Add(-time.Second),
-				},
+			_, err := l.ProcessTxsData(context.Background(), nil, core.TransactionData{
+				Postings: []core.Posting{{
+					Source:      "world",
+					Destination: "bank",
+					Amount:      core.NewMonetaryInt(100),
+					Asset:       "USD",
+				}},
+				Timestamp: now.Add(-time.Second),
 			})
 
 			assert.NoError(t, err)

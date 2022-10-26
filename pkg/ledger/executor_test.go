@@ -25,9 +25,9 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 
 func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.Script{}
+		script := core.ScriptData{}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorNoScript, err.(*ledger.ScriptError).Code)
 	})
@@ -35,11 +35,11 @@ func TestNoScript(t *testing.T) {
 
 func TestCompilationError(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.Script{
-			ScriptCore: core.ScriptCore{Plain: "willnotcompile"},
+		script := core.ScriptData{
+			Script: core.Script{Plain: "willnotcompile"},
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
 	})
@@ -47,11 +47,11 @@ func TestCompilationError(t *testing.T) {
 
 func TestTransactionInvalidScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.Script{
-			ScriptCore: core.ScriptCore{Plain: "this is not a valid script"},
+		script := core.ScriptData{
+			Script: core.Script{Plain: "this is not a valid script"},
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		assert.Error(t, err, "script was invalid yet the transaction was committed")
 
 		require.NoError(t, l.Close(context.Background()))
@@ -60,11 +60,11 @@ func TestTransactionInvalidScript(t *testing.T) {
 
 func TestTransactionFail(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.Script{
-			ScriptCore: core.ScriptCore{Plain: "fail"},
+		script := core.ScriptData{
+			Script: core.Script{Plain: "fail"},
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		assert.Error(t, err, "script failed yet the transaction was committed")
 
 		require.NoError(t, l.Close(context.Background()))
@@ -77,8 +77,8 @@ func TestSend(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		script := core.Script{
-			ScriptCore: core.ScriptCore{
+		script := core.ScriptData{
+			Script: core.Script{
 				Plain: `
 				send [USD/2 99] (
 				source=@world
@@ -86,7 +86,7 @@ func TestSend(t *testing.T) {
 			)`},
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
@@ -95,7 +95,7 @@ func TestSend(t *testing.T) {
 
 func TestNoVariables(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		var script core.Script
+		var script core.ScriptData
 		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
@@ -104,7 +104,7 @@ func TestNoVariables(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), nil, script)
 		assert.Error(t, err, "variables were not provided but the transaction was committed")
 
 		require.NoError(t, l.Close(context.Background()))
@@ -117,7 +117,7 @@ func TestVariables(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		var script core.Script
+		var script core.ScriptData
 		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
@@ -128,7 +128,7 @@ func TestVariables(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
 		user, err := l.GetAccount(context.Background(), "user:042")
@@ -159,10 +159,10 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.Script
+		var script core.ScriptData
 		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
@@ -170,7 +170,7 @@ func TestEnoughFunds(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), nil, script)
 		assert.NoError(t, err)
 	})
 }
@@ -192,10 +192,10 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.Script
+		var script core.ScriptData
 		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
@@ -203,7 +203,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), nil, script)
 		assert.Error(t, err, "error wasn't supposed to be nil")
 	})
 }
@@ -226,8 +226,8 @@ func TestMissingMetadata(t *testing.T) {
 			)
 		`
 
-		script := core.Script{
-			ScriptCore: core.ScriptCore{
+		script := core.ScriptData{
+			Script: core.Script{
 				Plain: plain,
 				Vars: map[string]json.RawMessage{
 					"sale": json.RawMessage(`"sales:042"`),
@@ -235,7 +235,7 @@ func TestMissingMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		assert.Error(t, err, "expected an error because of missing metadata")
 	})
 }
@@ -257,7 +257,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
@@ -293,8 +293,8 @@ func TestMetadata(t *testing.T) {
 		`
 		require.NoError(t, err)
 
-		script := core.Script{
-			ScriptCore: core.ScriptCore{
+		script := core.ScriptData{
+			Script: core.Script{
 				Plain: plain,
 				Vars: map[string]json.RawMessage{
 					"sale": json.RawMessage(`"sales:042"`),
@@ -302,7 +302,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err = l.Execute(context.Background(), script)
+		_, err = l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "sales:042", "COIN", core.NewMonetaryInt(0))
@@ -316,15 +316,15 @@ func TestMetadata(t *testing.T) {
 func TestSetTxMeta(t *testing.T) {
 	type testCase struct {
 		name              string
-		script            core.Script
+		script            core.ScriptData
 		expectedMetadata  core.Metadata
 		expectedErrorCode string
 	}
 	for _, tc := range []testCase{
 		{
 			name: "nominal",
-			script: core.Script{
-				ScriptCore: core.ScriptCore{
+			script: core.ScriptData{
+				Script: core.Script{
 					Plain: `
 					send [USD/2 99] (
 						source=@world
@@ -341,8 +341,8 @@ func TestSetTxMeta(t *testing.T) {
 		},
 		{
 			name: "define metadata on script",
-			script: core.Script{
-				ScriptCore: core.ScriptCore{
+			script: core.ScriptData{
+				Script: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -358,8 +358,8 @@ func TestSetTxMeta(t *testing.T) {
 		},
 		{
 			name: "override metadata of script",
-			script: core.Script{
-				ScriptCore: core.ScriptCore{
+			script: core.ScriptData{
+				Script: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -381,7 +381,7 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, l.Close(ctx))
 				}(l, context.Background())
 
-				_, err := l.Execute(context.Background(), tc.script)
+				_, err := l.Execute(context.Background(), nil, tc.script)
 
 				if tc.expectedErrorCode != "" {
 					require.Error(t, err)
@@ -409,15 +409,15 @@ func TestScriptSetReference(t *testing.T) {
 				destination=@user:001
 			)`
 
-		script := core.Script{
-			ScriptCore: core.ScriptCore{
+		script := core.ScriptData{
+			Script: core.Script{
 				Plain: plain,
 				Vars:  map[string]json.RawMessage{},
 			},
 			Reference: "tx_ref",
 		}
 
-		_, err := l.Execute(context.Background(), script)
+		_, err := l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())

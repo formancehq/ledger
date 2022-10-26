@@ -55,7 +55,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 					Reference: fmt.Sprintf("ref:%06d", i),
 				}
 			}
-			rsp := internal.PostTransactionBatch(t, api, core.Transactions{Transactions: txsData})
+			rsp := internal.PostTransactionBatch(t, api, core.Transactions{TxsData: txsData})
 			require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
 		}
 

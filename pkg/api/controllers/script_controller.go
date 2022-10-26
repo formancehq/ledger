@@ -27,7 +27,7 @@ func NewScriptController() ScriptController {
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var script core.Script
+	var script core.ScriptData
 	if err := c.ShouldBindJSON(&script); err != nil {
 		panic(err)
 	}
@@ -41,7 +41,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	}
 
 	res := ScriptResponse{}
-	tx, err := fn(c.Request.Context(), script)
+	tx, err := fn(c.Request.Context(), nil, script)
 	if err != nil {
 		var (
 			code    = apierrors.ErrInternal
@@ -63,7 +63,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		}
 	}
 	if tx != nil {
-		res.Transaction = tx
+		res.Transaction = &tx.GeneratedTransactions[0]
 	}
 
 	c.JSON(http.StatusOK, res)

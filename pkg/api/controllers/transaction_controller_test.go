@@ -64,7 +64,7 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -340,9 +340,47 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
+			name: "postings with additional_operations",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "TOK",
+						},
+					},
+					AdditionalOperations: &core.AdditionalOperations{
+						AccountMeta: map[string]core.Metadata{
+							"bar": {
+								"foo": "bar",
+							},
+						}},
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -381,7 +419,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -399,7 +437,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with metadata override",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -455,6 +493,15 @@ func TestPostTransactions(t *testing.T) {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
 							}
 						}
+
+						if tc.payload[len(tc.payload)-1].AdditionalOperations != nil {
+							for addr, m := range tc.payload[len(tc.payload)-1].AdditionalOperations.AccountMeta {
+								rsp := internal.GetAccount(api, addr)
+								require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+								acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
+								require.Equal(t, m, acc.Metadata)
+							}
+						}
 					})
 				}
 
@@ -499,7 +546,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script true", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						Script: core.Script{
 							Plain: script,
 						},
 					}, true)
@@ -538,7 +585,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script false", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						Script: core.Script{
 							Plain: script,
 						},
 						Reference: "refScript",
@@ -1667,7 +1714,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 					}
 
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
-						Transactions: txs,
+						TxsData: txs,
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					res, _ := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
@@ -1678,7 +1725,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 
 				t.Run("no postings in second tx", func(t *testing.T) {
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
-						Transactions: []core.TransactionData{
+						TxsData: []core.TransactionData{
 							{
 								Postings: core.Postings{
 									{

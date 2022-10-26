@@ -12,7 +12,7 @@ import (
 	"github.com/numary/machine/vm"
 )
 
-func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
+func (l *Ledger) execute(ctx context.Context, script core.ScriptData) (*core.TransactionData, error) {
 	if script.Plain == "" {
 		return nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
@@ -122,30 +122,20 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	return t, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
-	t, err := l.execute(ctx, script)
+func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
+	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := l.Commit(ctx, []core.TransactionData{*t})
-	if err != nil {
-		return nil, err
-	}
-
-	return &res.GeneratedTransactions[0], nil
+	return l.Commit(ctx, ops, *txData)
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
-	t, err := l.execute(ctx, script)
+func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
+	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := l.CommitPreview(ctx, []core.TransactionData{*t})
-	if err != nil {
-		return nil, err
-	}
-
-	return &res.GeneratedTransactions[0], nil
+	return l.CommitPreview(ctx, ops, *txData)
 }

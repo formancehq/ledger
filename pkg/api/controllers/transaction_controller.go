@@ -138,11 +138,12 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 type PostTransaction struct {
-	Timestamp time.Time       `json:"timestamp"`
-	Postings  core.Postings   `json:"postings"`
-	Script    core.ScriptCore `json:"script"`
-	Reference string          `json:"reference"`
-	Metadata  core.Metadata   `json:"metadata" swaggertype:"object"`
+	Timestamp            time.Time                  `json:"timestamp"`
+	Postings             core.Postings              `json:"postings"`
+	Script               core.Script                `json:"script"`
+	Reference            string                     `json:"reference"`
+	Metadata             core.Metadata              `json:"metadata" swaggertype:"object"`
+	AdditionalOperations *core.AdditionalOperations `json:"additional_operations" swaggertype:"object"`
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -169,7 +170,8 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	var res []core.ExpandedTransaction
+	var commitRes *ledger.CommitResult
+	var err error
 
 	// With postings
 	if len(payload.Postings) > 0 {
@@ -178,39 +180,38 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			fn = l.(*ledger.Ledger).CommitPreview
 		}
 
-		commitRes, err := fn(c.Request.Context(), []core.TransactionData{{
-			Postings:  payload.Postings,
-			Reference: payload.Reference,
-			Metadata:  payload.Metadata,
-			Timestamp: payload.Timestamp,
-		}})
+		commitRes, err = fn(c.Request.Context(),
+			payload.AdditionalOperations,
+			core.TransactionData{
+				Postings:  payload.Postings,
+				Reference: payload.Reference,
+				Metadata:  payload.Metadata,
+				Timestamp: payload.Timestamp,
+			})
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-
-		res = commitRes.GeneratedTransactions
-
 	} else { // With script
 		fn := l.(*ledger.Ledger).Execute
 		if preview {
 			fn = l.(*ledger.Ledger).ExecutePreview
 		}
 
-		tx, err := fn(c.Request.Context(), core.Script{
-			ScriptCore: payload.Script,
-			Reference:  payload.Reference,
-			Metadata:   payload.Metadata,
-		})
+		commitRes, err = fn(c.Request.Context(),
+			payload.AdditionalOperations,
+			core.ScriptData{
+				Script:    payload.Script,
+				Reference: payload.Reference,
+				Metadata:  payload.Metadata,
+			})
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-
-		res = []core.ExpandedTransaction{*tx}
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -288,12 +289,12 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	if len(txs.Transactions) == 0 {
+	if len(txs.TxsData) == 0 {
 		apierrors.ResponseError(c, ledger.NewValidationError("no transaction to insert"))
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.TxsData...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

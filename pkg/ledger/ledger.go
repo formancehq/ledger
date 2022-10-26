@@ -75,19 +75,19 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) Commit(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	result, err := l.ProcessTx(ctx, txsData)
+	commitRes, err := l.ProcessTxsData(ctx, ops, txsData...)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
+	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
@@ -96,18 +96,29 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
-	return result, nil
+	if ops != nil {
+		for addr, m := range ops.AccountMeta {
+			if err := l.store.UpdateAccountMetadata(ctx,
+				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
+				return nil, err
+			}
+
+			l.monitor.SavedMetadata(ctx, l.store.Name(), core.MetaTargetTypeAccount, addr, m)
+		}
+	}
+
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
+	return commitRes, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) CommitPreview(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
 		return nil, NewLockError(err)
 	}
 	defer unlock(ctx)
 
-	return l.ProcessTx(ctx, txsData)
+	return l.ProcessTxsData(ctx, ops, txsData...)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -165,7 +176,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	}
 	defer unlock(ctx)
 
-	result, err := l.ProcessTx(ctx, []core.TransactionData{rt})
+	result, err := l.ProcessTxsData(ctx, nil, rt)
 	if err != nil {
 		return nil, err
 	}
