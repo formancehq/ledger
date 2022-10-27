@@ -340,7 +340,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with additional_operations",
+			name: "postings with set_account_meta",
 			payload: []controllers.PostTransaction{
 				{
 					Postings: core.Postings{
@@ -352,7 +352,7 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 					AdditionalOperations: &core.AdditionalOperations{
-						AccountMeta: map[string]core.Metadata{
+						SetAccountMeta: map[string]core.Metadata{
 							"bar": {
 								"foo": "bar",
 							},
@@ -375,6 +375,30 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 				}},
+			},
+		},
+		{
+			name: "postings with set_account_meta invalid address",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "TOK",
+						},
+					},
+					AdditionalOperations: &core.AdditionalOperations{
+						SetAccountMeta: map[string]core.Metadata{
+							"unknown:address": {"foo": "bar"},
+						}},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "set_account_meta: unknown account 'unknown:address'",
 			},
 		},
 		{
@@ -495,11 +519,15 @@ func TestPostTransactions(t *testing.T) {
 						}
 
 						if tc.payload[len(tc.payload)-1].AdditionalOperations != nil {
-							for addr, m := range tc.payload[len(tc.payload)-1].AdditionalOperations.AccountMeta {
+							for addr, m := range tc.payload[len(tc.payload)-1].AdditionalOperations.SetAccountMeta {
 								rsp := internal.GetAccount(api, addr)
 								require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 								acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
-								require.Equal(t, m, acc.Metadata)
+								if tc.expectedStatusCode == http.StatusOK {
+									require.Equal(t, m, acc.Metadata)
+								} else {
+									require.Equal(t, core.Metadata{}, acc.Metadata)
+								}
 							}
 						}
 					})

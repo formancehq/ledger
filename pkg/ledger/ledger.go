@@ -97,7 +97,7 @@ func (l *Ledger) Commit(ctx context.Context, ops *core.AdditionalOperations, txs
 	}
 
 	if ops != nil {
-		for addr, m := range ops.AccountMeta {
+		for addr, m := range ops.SetAccountMeta {
 			if err := l.store.UpdateAccountMetadata(ctx,
 				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
 				return nil, err

@@ -147,7 +147,7 @@ func validateAdditionalOperations(ops *core.AdditionalOperations, accounts map[s
 		return nil
 	}
 
-	for addr := range ops.AccountMeta {
+	for addr := range ops.SetAccountMeta {
 		if _, ok := accounts[addr]; !ok {
 			return fmt.Errorf("set_account_meta: unknown account '%s'", addr)
 		}
