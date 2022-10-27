@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLedger_processTx(t *testing.T) {
+func TestLedger_ProcessTxsData(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
 			worldTotoUSD := core.NewMonetaryInt(43)
@@ -328,7 +328,102 @@ func TestLedger_processTx(t *testing.T) {
 			assert.Error(t, err)
 			assert.True(t, ledger.IsValidationError(err))
 		})
+
+		t.Run("set_account_meta valid address", func(t *testing.T) {
+			_, err := l.ProcessTxsData(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{
+						"bank": core.Metadata{"foo": "bar"},
+					}},
+				core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+					}},
+				})
+			assert.NoError(t, err)
+		})
+
+		t.Run("set_account_meta empty", func(t *testing.T) {
+			_, err := l.ProcessTxsData(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{}},
+				core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+					}},
+				})
+			assert.NoError(t, err)
+		})
+
+		t.Run("set_account_meta invalid address", func(t *testing.T) {
+			_, err := l.ProcessTxsData(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{
+						"unknown:address": core.Metadata{"foo": "bar"},
+					}},
+				core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+					}},
+				})
+			assert.Error(t, err)
+			assert.True(t, ledger.IsValidationError(err))
+		})
+
+		t.Run("set_account_meta multiple valid addresses", func(t *testing.T) {
+			_, err := l.ProcessTxsData(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{
+						"bank":  core.Metadata{"foo": "bar"},
+						"alice": core.Metadata{"foo": "bar"},
+					}},
+				core.TransactionData{
+					Postings: []core.Posting{
+						{
+							Source:      "world",
+							Destination: "bank",
+							Amount:      core.NewMonetaryInt(100),
+							Asset:       "USD",
+						},
+						{
+							Source:      "bank",
+							Destination: "alice",
+							Amount:      core.NewMonetaryInt(10),
+							Asset:       "USD",
+						},
+					},
+				})
+			assert.NoError(t, err)
+		})
+
+		t.Run("set_account_meta multiple invalid addresses", func(t *testing.T) {
+			_, err := l.ProcessTxsData(context.Background(),
+				&core.AdditionalOperations{SetAccountMeta: core.AccountsMeta{
+					"bank":            core.Metadata{"foo": "bar"},
+					"unknown:address": core.Metadata{"foo": "bar"},
+				}},
+				core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+					}},
+				})
+			assert.Error(t, err)
+			assert.True(t, ledger.IsValidationError(err))
+		})
 	})
+
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("date in the past (allowed by policy)", func(t *testing.T) {
 			now := time.Now()

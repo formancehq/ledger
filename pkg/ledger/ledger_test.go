@@ -406,9 +406,9 @@ func TestAccountMetadata(t *testing.T) {
 				Postings: core.Postings{
 					{
 						Source:      "world",
+						Destination: "users:001",
 						Amount:      core.NewMonetaryInt(100),
 						Asset:       "USD",
-						Destination: "users:001",
 					},
 				},
 			})
@@ -416,13 +416,67 @@ func TestAccountMetadata(t *testing.T) {
 
 			acc, err := l.GetAccount(context.Background(), "users:001")
 			assert.NoError(t, err)
-			require.True(t, acc.Address == "users:001", "no account returned by get account")
+			require.True(t, acc.Address == "users:001")
 
-			meta, ok := acc.Metadata["a random metadata"]
-			assert.True(t, ok)
-			assert.Equalf(t, meta, "new value",
-				"metadata entry did not match in find: expected \"new value\", got %v", meta)
+			meta := acc.Metadata["a random metadata"]
+			assert.Equal(t, meta, "new value")
 		}
+
+		t.Run("set_account_meta valid", func(t *testing.T) {
+			_, err := l.Commit(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{
+						"users:001": core.Metadata{"foo": "bar"},
+					}},
+				core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "users:001",
+							Amount:      core.NewMonetaryInt(100),
+							Asset:       "USD",
+						},
+					},
+				})
+			require.NoError(t, err)
+
+			acc, err := l.GetAccount(context.Background(), "users:001")
+			require.NoError(t, err)
+			require.True(t, acc.Address == "users:001")
+
+			require.Equal(t, core.Metadata{
+				"a random metadata": "new value",
+				"foo":               "bar",
+			}, acc.Metadata)
+		})
+
+		t.Run("set_account_meta invalid", func(t *testing.T) {
+			_, err := l.Commit(context.Background(),
+				&core.AdditionalOperations{
+					SetAccountMeta: core.AccountsMeta{
+						"unknown:address": core.Metadata{},
+					}},
+				core.TransactionData{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "users:001",
+							Amount:      core.NewMonetaryInt(100),
+							Asset:       "USD",
+						},
+					},
+				})
+			require.Error(t, err)
+
+			acc, err := l.GetAccount(context.Background(), "users:001")
+			require.NoError(t, err)
+			require.True(t, acc.Address == "users:001")
+
+			require.Equal(t, core.Metadata{
+				"a random metadata": "new value",
+				"foo":               "bar",
+			}, acc.Metadata)
+		})
 	})
 }
 
