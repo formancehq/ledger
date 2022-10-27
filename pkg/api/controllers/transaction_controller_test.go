@@ -352,10 +352,8 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: map[string]core.Metadata{
-							"bar": {
-								"foo": "bar",
-							},
+						SetAccountMeta: core.AccountsMeta{
+							"bar": {"foo": "bar"},
 						}},
 				},
 			},
@@ -370,6 +368,11 @@ func TestPostTransactions(t *testing.T) {
 									Destination: "bar",
 									Amount:      core.NewMonetaryInt(1000),
 									Asset:       "TOK",
+								},
+							},
+							Metadata: core.Metadata{
+								"set_account_meta": core.AccountsMeta{
+									"bar": {"foo": "bar"},
 								},
 							},
 						},
@@ -390,7 +393,7 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: map[string]core.Metadata{
+						SetAccountMeta: core.AccountsMeta{
 							"unknown:address": {"foo": "bar"},
 						}},
 				},
@@ -512,7 +515,8 @@ func TestPostTransactions(t *testing.T) {
 							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
 							require.True(t, ok)
 							require.Len(t, txs, 1)
-							require.Equal(t, (*tc.expectedRes.Data)[0].TransactionData.Postings, txs[0].TransactionData.Postings)
+							require.Equal(t, (*tc.expectedRes.Data)[0].Postings, txs[0].Postings)
+							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
 							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
 							}
