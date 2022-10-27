@@ -330,11 +330,12 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 		})
 
 		t.Run("set_account_meta valid address", func(t *testing.T) {
-			_, err := l.ProcessTxsData(context.Background(),
+			m := core.AccountsMeta{
+				"bank": core.Metadata{"foo": "bar"},
+			}
+			res, err := l.ProcessTxsData(context.Background(),
 				&core.AdditionalOperations{
-					SetAccountMeta: core.AccountsMeta{
-						"bank": core.Metadata{"foo": "bar"},
-					}},
+					SetAccountMeta: m},
 				core.TransactionData{
 					Postings: []core.Posting{{
 						Source:      "world",
@@ -343,13 +344,17 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 						Asset:       "USD",
 					}},
 				})
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": m,
+			}, res.GeneratedTransactions[0].Metadata)
 		})
 
 		t.Run("set_account_meta empty", func(t *testing.T) {
-			_, err := l.ProcessTxsData(context.Background(),
+			m := core.AccountsMeta{}
+			res, err := l.ProcessTxsData(context.Background(),
 				&core.AdditionalOperations{
-					SetAccountMeta: core.AccountsMeta{}},
+					SetAccountMeta: m},
 				core.TransactionData{
 					Postings: []core.Posting{{
 						Source:      "world",
@@ -358,7 +363,8 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 						Asset:       "USD",
 					}},
 				})
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			require.Nil(t, res.GeneratedTransactions[0].Metadata)
 		})
 
 		t.Run("set_account_meta invalid address", func(t *testing.T) {
@@ -380,12 +386,13 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 		})
 
 		t.Run("set_account_meta multiple valid addresses", func(t *testing.T) {
-			_, err := l.ProcessTxsData(context.Background(),
+			m := core.AccountsMeta{
+				"bank":  core.Metadata{"foo": "bar"},
+				"alice": core.Metadata{"foo": "bar"},
+			}
+			res, err := l.ProcessTxsData(context.Background(),
 				&core.AdditionalOperations{
-					SetAccountMeta: core.AccountsMeta{
-						"bank":  core.Metadata{"foo": "bar"},
-						"alice": core.Metadata{"foo": "bar"},
-					}},
+					SetAccountMeta: m},
 				core.TransactionData{
 					Postings: []core.Posting{
 						{
@@ -402,7 +409,10 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 						},
 					},
 				})
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": m,
+			}, res.GeneratedTransactions[0].Metadata)
 		})
 
 		t.Run("set_account_meta multiple invalid addresses", func(t *testing.T) {

@@ -131,8 +131,11 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, ops *core.AdditionalOperati
 		nextTxId++
 	}
 
-	if err := validateAdditionalOperations(ops, accounts); err != nil {
-		return nil, NewValidationError(err.Error())
+	if ops != nil {
+		generatedTxs, err = processAdditionalOperations(ops, accounts, generatedTxs)
+		if err != nil {
+			return nil, NewValidationError(err.Error())
+		}
 	}
 
 	return &CommitResult{
@@ -142,16 +145,22 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, ops *core.AdditionalOperati
 	}, nil
 }
 
-func validateAdditionalOperations(ops *core.AdditionalOperations, accounts map[string]*core.Account) error {
-	if ops == nil {
-		return nil
-	}
-
+func processAdditionalOperations(ops *core.AdditionalOperations, accounts map[string]*core.Account, txs []core.ExpandedTransaction) ([]core.ExpandedTransaction, error) {
 	for addr := range ops.SetAccountMeta {
 		if _, ok := accounts[addr]; !ok {
-			return fmt.Errorf("set_account_meta: unknown account '%s'", addr)
+			return nil, fmt.Errorf("set_account_meta: unknown account '%s'", addr)
 		}
 	}
 
-	return nil
+	res := txs
+	if len(ops.SetAccountMeta) > 0 {
+		for i := range txs {
+			if res[i].Metadata == nil {
+				res[i].Metadata = core.Metadata{}
+			}
+			res[i].Metadata["set_account_meta"] = ops.SetAccountMeta
+		}
+	}
+
+	return res, nil
 }
