@@ -426,3 +426,28 @@ func TestScriptSetReference(t *testing.T) {
 		assert.Equal(t, script.Reference, last.Reference)
 	})
 }
+
+func TestSetAccountMeta(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
+
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+				send [USD/2 99] (
+				source = @world
+				destination = @platform
+				)
+
+				set_account_meta(@platform, "fees", 15%)
+				`},
+		}
+
+		_, err := l.Execute(context.Background(), nil, script)
+		require.NoError(t, err)
+
+		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
+	})
+}
