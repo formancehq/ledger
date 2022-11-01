@@ -1320,7 +1320,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
 						Transactions: txs,
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 					res, _ := internal.DecodeSingleResponse[[]core.Transaction](t, rsp.Body)
 					assert.Len(t, res, 2)
 					assert.Equal(t, txs[0].Postings, res[0].Postings)
