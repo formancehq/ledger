@@ -74,9 +74,8 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 					continue
 				}
 
-				// @todo: fix segment injection as arg
-				// arg := sb.Args.Add(segment)
-				sb.Where(fmt.Sprintf("postings.source @@ '$[%d] == \"%s\"'", i, segment))
+				arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
 	}
@@ -95,9 +94,8 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 					continue
 				}
 
-				// @todo: fix segment injection as arg
-				// arg := sb.Args.Add(segment)
-				sb.Where(fmt.Sprintf("postings.destination @@ '$[%d] == \"%s\"'", i, segment))
+				arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
 	}
