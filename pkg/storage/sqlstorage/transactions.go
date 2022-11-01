@@ -29,22 +29,57 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		metadata    = p.Filters.Metadata
 	)
 
-	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
+	sb.Select(
+		"id",
+		"timestamp",
+		"reference",
+		"metadata",
+		"postings",
+		"pre_commit_volumes",
+		"post_commit_volumes",
+	)
 	sb.From(s.schema.Table("transactions"))
 	if account != "" {
 		arg := sb.Args.Add(account)
 		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 		t.AccountFilter = account
 	}
+
 	if source != "" {
-		arg := sb.Args.Add(source)
-		sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
-		t.SourceFilter = source
+		sb.Join(fmt.Sprintf(
+			"%s postings on postings.txid = %s.id",
+			s.schema.Table("postings"),
+			s.schema.Table("transactions"),
+		))
+
+		src := strings.Split(source, ":")
+		for i, segment := range src {
+			if segment == ".*" || segment == "*" || segment == "" {
+				continue
+			}
+
+			// @todo: fix segment injection as arg
+			// arg := sb.Args.Add(segment)
+			sb.Where(fmt.Sprintf("postings.source @@ '$[%d] == \"%s\"'", i, segment))
+		}
 	}
 	if destination != "" {
-		arg := sb.Args.Add(destination)
-		sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
-		t.DestinationFilter = destination
+		sb.Join(fmt.Sprintf(
+			"%s postings on postings.txid = %s.id",
+			s.schema.Table("postings"),
+			s.schema.Table("transactions"),
+		))
+
+		dst := strings.Split(destination, ":")
+		for i, segment := range dst {
+			if segment == ".*" || segment == "*" || segment == "" {
+				continue
+			}
+
+			// @todo: fix segment injection as arg
+			// arg := sb.Args.Add(segment)
+			sb.Where(fmt.Sprintf("postings.destination @@ '$[%d] == \"%s\"'", i, segment))
+		}
 	}
 	if reference != "" {
 		sb.Where(sb.E("reference", reference))
