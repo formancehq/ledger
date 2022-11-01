@@ -50,7 +50,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 		t.AccountFilter = account
 	}
-	if source != "" || destination != "" {
+	if (source != "" || destination != "") && s.schema.Flavor() == sqlbuilder.PostgreSQL {
 		// new wildcard handling
 		sb.Join(fmt.Sprintf(
 			"%s postings on postings.txid = %s.id",
@@ -59,7 +59,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		))
 	}
 	if source != "" {
-		if !addressQueryRegexp.MatchString(source) {
+		if !addressQueryRegexp.MatchString(source) || s.schema.Flavor() == sqlbuilder.SQLite {
 			// deprecated regex handling
 			arg := sb.Args.Add(source)
 			sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
@@ -80,7 +80,7 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		}
 	}
 	if destination != "" {
-		if !addressQueryRegexp.MatchString(destination) {
+		if !addressQueryRegexp.MatchString(destination) || s.schema.Flavor() == sqlbuilder.SQLite {
 			// deprecated regex handling
 			arg := sb.Args.Add(destination)
 			sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
