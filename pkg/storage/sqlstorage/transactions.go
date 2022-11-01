@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +15,11 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 )
+
+// this regexp is used to distinguish between deprecated regex queries for
+// source, destination and account params and the new wildcard query
+// which allows segmentized address pattern matching, e.g; "foo:bar:*"
+var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*)(:(\w+|\*))*$`)
 
 func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
@@ -37,48 +43,62 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*sqlbuilder
 		"postings",
 		"pre_commit_volumes",
 		"post_commit_volumes",
-	)
+	).Distinct()
 	sb.From(s.schema.Table("transactions"))
 	if account != "" {
 		arg := sb.Args.Add(account)
 		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 		t.AccountFilter = account
 	}
-
-	if source != "" {
+	if source != "" || destination != "" {
+		// new wildcard handling
 		sb.Join(fmt.Sprintf(
 			"%s postings on postings.txid = %s.id",
 			s.schema.Table("postings"),
 			s.schema.Table("transactions"),
 		))
+	}
+	if source != "" {
+		if !addressQueryRegexp.MatchString(source) {
+			// deprecated regex handling
+			arg := sb.Args.Add(source)
+			sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
+			t.SourceFilter = source
+		} else {
+			// new wildcard handling
+			src := strings.Split(source, ":")
+			sb.Where(fmt.Sprintf("jsonb_array_length(postings.source) = %d", len(src)))
 
-		src := strings.Split(source, ":")
-		for i, segment := range src {
-			if segment == ".*" || segment == "*" || segment == "" {
-				continue
+			for i, segment := range src {
+				if segment == ".*" || segment == "*" || segment == "" {
+					continue
+				}
+
+				// @todo: fix segment injection as arg
+				// arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("postings.source @@ '$[%d] == \"%s\"'", i, segment))
 			}
-
-			// @todo: fix segment injection as arg
-			// arg := sb.Args.Add(segment)
-			sb.Where(fmt.Sprintf("postings.source @@ '$[%d] == \"%s\"'", i, segment))
 		}
 	}
 	if destination != "" {
-		sb.Join(fmt.Sprintf(
-			"%s postings on postings.txid = %s.id",
-			s.schema.Table("postings"),
-			s.schema.Table("transactions"),
-		))
+		if !addressQueryRegexp.MatchString(destination) {
+			// deprecated regex handling
+			arg := sb.Args.Add(destination)
+			sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
+			t.DestinationFilter = destination
+		} else {
+			// new wildcard handling
+			dst := strings.Split(destination, ":")
+			sb.Where(fmt.Sprintf("jsonb_array_length(postings.destination) = %d", len(dst)))
+			for i, segment := range dst {
+				if segment == ".*" || segment == "*" || segment == "" {
+					continue
+				}
 
-		dst := strings.Split(destination, ":")
-		for i, segment := range dst {
-			if segment == ".*" || segment == "*" || segment == "" {
-				continue
+				// @todo: fix segment injection as arg
+				// arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("postings.destination @@ '$[%d] == \"%s\"'", i, segment))
 			}
-
-			// @todo: fix segment injection as arg
-			// arg := sb.Args.Add(segment)
-			sb.Where(fmt.Sprintf("postings.destination @@ '$[%d] == \"%s\"'", i, segment))
 		}
 	}
 	if reference != "" {

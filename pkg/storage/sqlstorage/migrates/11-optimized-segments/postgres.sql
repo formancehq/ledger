@@ -5,8 +5,18 @@ create table "VAR_LEDGER_NAME".postings (
   source jsonb,
   destination jsonb
 );
+--statement
 create index postings_src on "VAR_LEDGER_NAME".postings using GIN(source);
 create index postings_dest on "VAR_LEDGER_NAME".postings using GIN(destination);
+--statement
+insert into "VAR_LEDGER_NAME".postings(txid, posting_index, source, destination)
+select
+    txs.id as txid,
+    i - 1 as posting_index,
+    array_to_json(string_to_array(t.posting->>'source', ':'))::jsonb as source,
+    array_to_json(string_to_array(t.posting->>'destination', ':'))::jsonb as destination
+from "VAR_LEDGER_NAME".transactions txs
+left join lateral jsonb_array_elements(txs.postings) with ordinality as t(posting, i) on true;
 --statement
 CREATE OR REPLACE FUNCTION "VAR_LEDGER_NAME".handle_log_entry()
     RETURNS TRIGGER
