@@ -428,26 +428,89 @@ func TestScriptSetReference(t *testing.T) {
 }
 
 func TestSetAccountMeta(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
+	type testCase struct {
+		name              string
+		script            core.ScriptData
+		expectedMetadata  core.Metadata
+		expectedErrorCode string
+	}
+	for _, tc := range []testCase{
+		{
+			name: "nominal",
+			script: core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					send [USD/2 99] (
+						source=@world
+						destination=@users:001
+					)
+					set_account_meta(@users:001, "foo", "bar")`,
+				},
+				Metadata: core.Metadata{
+					"priority": "low",
+				},
+			},
+			expectedMetadata: core.Metadata{
+				"priority": "low",
+				"set_account_meta": core.AccountsMeta{
+					"users:001": {"foo": "bar"},
+				},
+			},
+		},
+		{
+			name: "define metadata on script",
+			script: core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					set_tx_meta("priority", "low")
 
-		script := core.ScriptData{
-			Script: core.Script{
-				Plain: `
-				send [USD/2 99] (
-				source = @world
-				destination = @platform
-				)
+					send [COIN 10] (
+						source = @world
+						destination = @user:001
+					)`,
+				},
+			},
+			expectedMetadata: core.Metadata{
+				"priority": map[string]any{"type": "string", "value": "low"},
+			},
+		},
+		{
+			name: "override metadata of script",
+			script: core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					set_tx_meta("priority", "low")
 
-				set_account_meta(@platform, "fees", 15%)
-				`},
-		}
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+				},
+				Metadata: core.Metadata{
+					"priority": "high",
+				},
+			},
+			expectedErrorCode: ledger.ScriptErrorMetadataOverride,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runOnLedger(func(l *ledger.Ledger) {
+				defer func(l *ledger.Ledger, ctx context.Context) {
+					require.NoError(t, l.Close(ctx))
+				}(l, context.Background())
 
-		_, err := l.Execute(context.Background(), nil, script)
-		require.NoError(t, err)
+				_, err := l.Execute(context.Background(), nil, tc.script)
 
-		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
-	})
+				if tc.expectedErrorCode != "" {
+					require.Error(t, err)
+					require.True(t, ledger.IsScriptErrorWithCode(err, tc.expectedErrorCode))
+				} else {
+					require.NoError(t, err)
+					last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
+					require.NoError(t, err)
+					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
+				}
+			})
+		})
+	}
 }
