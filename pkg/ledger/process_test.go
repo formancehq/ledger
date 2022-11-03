@@ -330,6 +330,12 @@ func TestLedger_processTx(t *testing.T) {
 			now := time.Now()
 			log := core.NewTransactionLogWithDate(nil, core.Transaction{
 				TransactionData: core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      100,
+						Asset:       "USD",
+					}},
 					Timestamp: now,
 				},
 				ID: 0,
@@ -357,6 +363,12 @@ func TestLedger_processTx(t *testing.T) {
 			now := time.Now()
 			log := core.NewTransactionLogWithDate(nil, core.Transaction{
 				TransactionData: core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      100,
+						Asset:       "USD",
+					}},
 					Timestamp: now,
 				},
 				ID: 0,
