@@ -8,6 +8,7 @@ create table "VAR_LEDGER_NAME".postings (
 --statement
 create index postings_src on "VAR_LEDGER_NAME".postings using GIN(source);
 create index postings_dest on "VAR_LEDGER_NAME".postings using GIN(destination);
+create index postings_txid on "VAR_LEDGER_NAME".postings (txid asc);
 --statement
 insert into "VAR_LEDGER_NAME".postings(txid, posting_index, source, destination)
 select
