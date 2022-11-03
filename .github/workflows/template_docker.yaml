@@ -50,7 +50,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/numary/ledger:latest,ghcr.io/numary/ledger:${{ inputs.VERSION }}
+          tags: ghcr.io/formancehq/ledger:latest,ghcr.io/formancehq/ledger:${{ inputs.VERSION }}
           build-args: |
             APP_SHA=${{ inputs.APP_SHA }}
             VERSION=${{ inputs.VERSION }}
@@ -62,7 +62,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/numary/ledger:${{ inputs.VERSION }}
+          tags: ghcr.io/formancehq/ledger:${{ inputs.VERSION }}
           build-args: |
             APP_SHA=${{ inputs.APP_SHA }}
             VERSION=${{ inputs.VERSION }}
@@ -74,7 +74,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/numary/ledger:${{ inputs.APP_SHA }}
+          tags: ghcr.io/formancehq/ledger:${{ inputs.APP_SHA }}
           build-args: |
             APP_SHA=${{ inputs.APP_SHA }}
             VERSION=${{ inputs.VERSION }}
