@@ -449,34 +449,6 @@ func TestAccountMetadata(t *testing.T) {
 				"foo":               "bar",
 			}, acc.Metadata)
 		})
-
-		t.Run("set_account_meta invalid", func(t *testing.T) {
-			_, err := l.Commit(context.Background(),
-				&core.AdditionalOperations{
-					SetAccountMeta: core.AccountsMeta{
-						"unknown:address": core.Metadata{},
-					}},
-				core.TransactionData{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "users:001",
-							Amount:      core.NewMonetaryInt(100),
-							Asset:       "USD",
-						},
-					},
-				})
-			require.Error(t, err)
-
-			acc, err := l.GetAccount(context.Background(), "users:001")
-			require.NoError(t, err)
-			require.True(t, acc.Address == "users:001")
-
-			require.Equal(t, core.Metadata{
-				"a random metadata": "new value",
-				"foo":               "bar",
-			}, acc.Metadata)
-		})
 	})
 }
 

@@ -11,18 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
-	user, err := l.GetAccount(context.Background(), account)
-	require.NoError(t, err)
-
-	b := user.Balances[asset]
-	assert.Equalf(t, amount.String(), b.String(),
-		"wrong %v balance for account %v, expected: %s got: %s",
-		asset, account,
-		amount, b,
-	)
-}
-
 func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.ScriptData{}
@@ -42,32 +30,6 @@ func TestCompilationError(t *testing.T) {
 		_, err := l.Execute(context.Background(), nil, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
-	})
-}
-
-func TestTransactionInvalidScript(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{
-			Script: core.Script{Plain: "this is not a valid script"},
-		}
-
-		_, err := l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "script was invalid yet the transaction was committed")
-
-		require.NoError(t, l.Close(context.Background()))
-	})
-}
-
-func TestTransactionFail(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{
-			Script: core.Script{Plain: "fail"},
-		}
-
-		_, err := l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "script failed yet the transaction was committed")
-
-		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
@@ -427,27 +389,14 @@ func TestScriptSetReference(t *testing.T) {
 	})
 }
 
-func TestSetAccountMeta(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
+func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
+	user, err := l.GetAccount(context.Background(), account)
+	require.NoError(t, err)
 
-		script := core.ScriptData{
-			Script: core.Script{
-				Plain: `
-				send [USD/2 99] (
-				source = @world
-				destination = @platform
-				)
-
-				set_account_meta(@platform, "fees", 15%)
-				`},
-		}
-
-		_, err := l.Execute(context.Background(), nil, script)
-		require.NoError(t, err)
-
-		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
-	})
+	b := user.Balances[asset]
+	assert.Equalf(t, amount.String(), b.String(),
+		"wrong %v balance for account %v, expected: %s got: %s",
+		asset, account,
+		amount, b,
+	)
 }

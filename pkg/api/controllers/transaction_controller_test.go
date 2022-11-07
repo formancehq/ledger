@@ -381,30 +381,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with set_account_meta invalid address",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: core.AccountsMeta{
-							"unknown:address": {"foo": "bar"},
-						}},
-				},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "set_account_meta: unknown account 'unknown:address'",
-			},
-		},
-		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
@@ -520,17 +496,20 @@ func TestPostTransactions(t *testing.T) {
 							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
 							}
-						}
 
-						if tc.payload[len(tc.payload)-1].AdditionalOperations != nil {
-							for addr, m := range tc.payload[len(tc.payload)-1].AdditionalOperations.SetAccountMeta {
-								rsp := internal.GetAccount(api, addr)
-								require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-								acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
-								if tc.expectedStatusCode == http.StatusOK {
-									require.Equal(t, m, acc.Metadata)
-								} else {
-									require.Equal(t, core.Metadata{}, acc.Metadata)
+							if (*tc.expectedRes.Data)[0].Metadata != nil {
+								expectedAccountsMeta, ok := (*tc.expectedRes.Data)[0].Metadata["set_account_meta"]
+								if ok {
+									for addr, m := range expectedAccountsMeta.(core.AccountsMeta) {
+										rsp := internal.GetAccount(api, addr)
+										require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+										acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
+										if tc.expectedStatusCode == http.StatusOK {
+											require.Equal(t, m, acc.Metadata)
+										} else {
+											require.Equal(t, core.Metadata{}, acc.Metadata)
+										}
+									}
 								}
 							}
 						}
