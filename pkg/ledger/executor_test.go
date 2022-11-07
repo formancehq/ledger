@@ -5,23 +5,12 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
-	user, err := l.GetAccount(context.Background(), account)
-	require.NoError(t, err)
-
-	b := user.Balances[asset]
-	assert.Equalf(t, amount.String(), b.String(),
-		"wrong %v balance for account %v, expected: %s got: %s",
-		asset, account,
-		amount, b,
-	)
-}
 
 func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
@@ -45,32 +34,6 @@ func TestCompilationError(t *testing.T) {
 	})
 }
 
-func TestTransactionInvalidScript(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{
-			Script: core.Script{Plain: "this is not a valid script"},
-		}
-
-		_, err := l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "script was invalid yet the transaction was committed")
-
-		require.NoError(t, l.Close(context.Background()))
-	})
-}
-
-func TestTransactionFail(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{
-			Script: core.Script{Plain: "fail"},
-		}
-
-		_, err := l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "script failed yet the transaction was committed")
-
-		require.NoError(t, l.Close(context.Background()))
-	})
-}
-
 func TestSend(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
@@ -80,32 +43,40 @@ func TestSend(t *testing.T) {
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
-				send [USD/2 99] (
-				source=@world
-				destination=@user:001
-			)`},
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+			},
 		}
 
 		_, err := l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
-		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
+		assertBalance(t, l, "user:001",
+			"USD/2", core.NewMonetaryInt(99))
 	})
 }
 
 func TestNoVariables(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		var script core.ScriptData
-		err := json.Unmarshal(
-			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
-				"vars": {}
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					vars {
+						account $dest
+					}
 
-		_, err = l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "variables were not provided but the transaction was committed")
+					send [CAD/2 42] (
+						source = @world
+						destination = $dest
+					)`,
+				Vars: map[string]json.RawMessage{},
+			},
+		}
+
+		_, err := l.Execute(context.Background(), nil, script)
+		assert.Error(t, err)
 
 		require.NoError(t, l.Close(context.Background()))
 	})
@@ -117,28 +88,28 @@ func TestVariables(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		var script core.ScriptData
-		err := json.Unmarshal(
-			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
-				"vars": {
-					"dest": "user:042"
-				}
-			}`),
-			&script)
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					vars {
+						account $dest
+					}
+
+					send [CAD/2 42] (
+						source = @world
+						destination = $dest
+					)`,
+				Vars: map[string]json.RawMessage{
+					"dest": json.RawMessage(`"user:042"`),
+				},
+			},
+		}
+
+		_, err := l.Execute(context.Background(), nil, script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), nil, script)
-		require.NoError(t, err)
-
-		user, err := l.GetAccount(context.Background(), "user:042")
-		require.NoError(t, err)
-
-		b := user.Balances["CAD/2"]
-		assert.Equalf(t, core.NewMonetaryInt(42), b,
-			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
-			42, b,
-		)
+		assertBalance(t, l, "user:042",
+			"CAD/2", core.NewMonetaryInt(42))
 	})
 }
 
@@ -162,13 +133,15 @@ func TestEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.ScriptData
-		err = json.Unmarshal(
-			[]byte(`{
-				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					send [COIN 95] (
+						source = @user:001
+						destination = @world
+					)`,
+			},
+		}
 
 		_, err = l.Execute(context.Background(), nil, script)
 		assert.NoError(t, err)
@@ -195,16 +168,18 @@ func TestNotEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.ScriptData
-		err = json.Unmarshal(
-			[]byte(`{
-				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					send [COIN 105] (
+						source = @user:002
+						destination = @world
+					)`,
+			},
+		}
 
 		_, err = l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "error wasn't supposed to be nil")
+		assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrInsufficientFund))
 	})
 }
 
@@ -223,9 +198,7 @@ func TestMissingMetadata(t *testing.T) {
 			send [COIN *] (
 				source = $sale
 				destination = $seller
-			)
-		`
-
+			)`
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: plain,
@@ -236,7 +209,7 @@ func TestMissingMetadata(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), nil, script)
-		assert.Error(t, err, "expected an error because of missing metadata")
+		assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
 	})
 }
 
@@ -260,20 +233,24 @@ func TestMetadata(t *testing.T) {
 		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
-			"seller": json.RawMessage(`{
-				"type":  "account",
-				"value": "users:053"
-			}`),
-		})
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
+			"sales:042",
+			core.Metadata{
+				"seller": json.RawMessage(`{
+					"type":  "account",
+					"value": "users:053"
+				}`),
+			})
 		require.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:053", core.Metadata{
-			"commission": json.RawMessage(`{
-				"type":  "portion",
-				"value": "15.5%"
-			}`),
-		})
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
+			"users:053",
+			core.Metadata{
+				"commission": json.RawMessage(`{
+					"type":  "portion",
+					"value": "15.5%"
+				}`),
+			})
 		require.NoError(t, err)
 
 		plain := `
@@ -428,85 +405,105 @@ func TestScriptSetReference(t *testing.T) {
 }
 
 func TestSetAccountMeta(t *testing.T) {
-	type testCase struct {
-		name              string
-		script            core.ScriptData
-		expectedMetadata  core.Metadata
-		expectedErrorCode string
-	}
-	for _, tc := range []testCase{
-		{
-			name: "nominal",
-			script: core.ScriptData{
-				Script: core.Script{
-					Plain: `
+	runOnLedger(func(l *ledger.Ledger) {
+		t.Run("set_account_meta valid address", func(t *testing.T) {
+			res, err := l.ProcessScript(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `
 					send [USD/2 99] (
-						source=@world
-						destination=@users:001
-					)`,
-				},
-				Metadata: core.Metadata{
-					"priority": "low",
-				},
-			},
-			expectedMetadata: core.Metadata{
-				"priority": "low",
-			},
-		},
-		{
-			name: "define metadata on script",
-			script: core.ScriptData{
-				Script: core.Script{
-					Plain: `
-					set_tx_meta("priority", "low")
-
-					send [COIN 10] (
 						source = @world
-						destination = @user:001
-					)`,
+						destination = @platform
+					)
+					set_account_meta(@platform, "fees", "15 percent")`,
 				},
-			},
-			expectedMetadata: core.Metadata{
-				"priority": map[string]any{"type": "string", "value": "low"},
-			},
-		},
-		{
-			name: "override metadata of script",
-			script: core.ScriptData{
-				Script: core.Script{
-					Plain: `
-					set_tx_meta("priority", "low")
-
-					send [USD/2 99] (
-						source=@world
-						destination=@user:001
-					)`,
-				},
-				Metadata: core.Metadata{
-					"priority": "high",
-				},
-			},
-			expectedErrorCode: ledger.ScriptErrorMetadataOverride,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			runOnLedger(func(l *ledger.Ledger) {
-				defer func(l *ledger.Ledger, ctx context.Context) {
-					require.NoError(t, l.Close(ctx))
-				}(l, context.Background())
-
-				_, err := l.Execute(context.Background(), nil, tc.script)
-
-				if tc.expectedErrorCode != "" {
-					require.Error(t, err)
-					require.True(t, ledger.IsScriptErrorWithCode(err, tc.expectedErrorCode))
-				} else {
-					require.NoError(t, err)
-					last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
-					require.NoError(t, err)
-					assert.True(t, last.Metadata.IsEquivalentTo(tc.expectedMetadata))
-				}
 			})
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": core.AccountsMeta{
+					"platform": core.Metadata{
+						"fees": map[string]any{"type": "string", "value": "15 percent"},
+					},
+				},
+			}, res.Metadata)
 		})
-	}
+
+		t.Run("set_account_meta multiple addresses", func(t *testing.T) {
+			res, err := l.ProcessScript(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `
+					send [USD/2 99] (
+						source = @world
+						destination = {
+							75% to @alice
+							remaining to @bob
+					)
+					set_account_meta(@bob, "is", "great")
+					set_account_meta(@alice, "is", "awesome")`,
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": core.AccountsMeta{
+					"alice": core.Metadata{
+						"is": map[string]any{"type": "string", "value": "awesome"},
+					},
+					"bob": core.Metadata{
+						"is": map[string]any{"type": "string", "value": "great"},
+					},
+				},
+			}, res.Metadata)
+		})
+
+		t.Run("set_account_meta multiple types", func(t *testing.T) {
+			res, err := l.ProcessScript(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `
+					send [USD/2 99] (
+						source = @world
+						destination = @alice
+					)
+					set_account_meta(@alice, "aaa", "string meta")
+					set_account_meta(@alice, "bbb", 42)
+					set_account_meta(@alice, "ccc", COIN)
+					set_account_meta(@alice, "ddd", [COIN 30])
+					set_account_meta(@alice, "eee", @bob)
+				`,
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": core.AccountsMeta{
+					"alice": core.Metadata{
+						"aaa": map[string]any{"type": "string", "value": "string meta"},
+						"bbb": map[string]any{"type": "number", "value": 42},
+						"ccc": map[string]any{"type": "asset", "value": "COIN"},
+						"ddd": map[string]any{"type": "monetary", "value": map[string]any{"asset": "COIN", "amount": 30}},
+						"eee": map[string]any{"type": "account", "value": "bob"},
+					},
+				},
+			}, res.Metadata)
+		})
+
+		t.Run("set_account_meta invalid syntax", func(t *testing.T) {
+			_, err := l.ProcessScript(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `
+					send [USD/2 99] (
+						source = @world
+						destination = @bob
+					)
+					set_account_meta(@bob, "is")`,
+				},
+			})
+			require.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
+		})
+	})
+}
+
+func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
+	user, err := l.GetAccount(context.Background(), account)
+	require.NoError(t, err)
+
+	b := user.Balances[asset]
+	assert.Equalf(t, amount.String(), b.String(),
+		"wrong %v balance for account %v, expected: %s got: %s",
+		asset, account,
+		amount, b,
+	)
 }

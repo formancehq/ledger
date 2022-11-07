@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
@@ -132,10 +131,7 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, ops *core.AdditionalOperati
 	}
 
 	if ops != nil {
-		generatedTxs, err = processAdditionalOperations(ops, accounts, generatedTxs)
-		if err != nil {
-			return nil, NewValidationError(err.Error())
-		}
+		generatedTxs = processAdditionalOperations(ops, generatedTxs)
 	}
 
 	return &CommitResult{
@@ -145,13 +141,7 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, ops *core.AdditionalOperati
 	}, nil
 }
 
-func processAdditionalOperations(ops *core.AdditionalOperations, accounts map[string]*core.Account, txs []core.ExpandedTransaction) ([]core.ExpandedTransaction, error) {
-	for addr := range ops.SetAccountMeta {
-		if _, ok := accounts[addr]; !ok {
-			return nil, fmt.Errorf("set_account_meta: unknown account '%s'", addr)
-		}
-	}
-
+func processAdditionalOperations(ops *core.AdditionalOperations, txs []core.ExpandedTransaction) []core.ExpandedTransaction {
 	res := txs
 	if len(ops.SetAccountMeta) > 0 {
 		for i := range txs {
@@ -162,5 +152,5 @@ func processAdditionalOperations(ops *core.AdditionalOperations, accounts map[st
 		}
 	}
 
-	return res, nil
+	return res
 }

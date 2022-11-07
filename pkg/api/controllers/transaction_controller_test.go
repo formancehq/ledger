@@ -381,30 +381,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with set_account_meta invalid address",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: core.AccountsMeta{
-							"unknown:address": {"foo": "bar"},
-						}},
-				},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "set_account_meta: unknown account 'unknown:address'",
-			},
-		},
-		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
@@ -441,61 +417,6 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 				}},
-			},
-		},
-		{
-			name: "script with set_account_meta",
-			payload: []controllers.PostTransaction{{
-				Script: core.Script{
-					Plain: `
-					send [TOK 1000] (
-					  source = @world
-					  destination = @bar
-					)
-					set_account_meta(@bar, "foo", "bar")
-					`,
-				},
-			}},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-							Metadata: core.Metadata{
-								"set_account_meta": core.AccountsMeta{
-									"bar": {"foo": "bar"},
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
-			name: "script with set_account_meta invalid address",
-			payload: []controllers.PostTransaction{{
-				Script: core.Script{
-					Plain: `
-					send [TOK 1000] (
-					  source = @world
-					  destination = @bar
-					)
-					set_account_meta(@unknown:address, "foo", "bar")
-					`,
-				},
-			}},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "set_account_meta: unknown account 'unknown:address'",
 			},
 		},
 		{
@@ -537,6 +458,42 @@ func TestPostTransactions(t *testing.T) {
 				ErrorCode:    apierrors.ErrScriptMetadataOverride,
 				ErrorMessage: "[METADATA_OVERRIDE] cannot override metadata from script",
 				Details:      apierrors.EncodeLink("cannot override metadata from script"),
+			},
+		},
+		{
+			name: "script with set_account_meta",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					send [TOK 1000] (
+					  source = @world
+					  destination = @bar
+					)
+					set_account_meta(@bar, "foo", "bar")
+					`,
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+							Metadata: core.Metadata{
+								"set_account_meta": core.AccountsMeta{
+									"bar": {"foo": "bar"},
+								},
+							},
+						},
+					},
+				}},
 			},
 		},
 	}

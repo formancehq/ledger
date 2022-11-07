@@ -24,9 +24,9 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 
 	m := vm.NewMachine(*p)
 
-	err = m.SetVarsFromJSON(script.Vars)
-	if err != nil {
-		return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("could not set variables: %v", err))
+	if err = m.SetVarsFromJSON(script.Vars); err != nil {
+		return nil, NewScriptError(ScriptErrorCompilationFailed,
+			fmt.Sprintf("could not set variables: %v", err))
 	}
 
 	{
@@ -36,7 +36,8 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 		}
 		for req := range ch {
 			if req.Error != nil {
-				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("could not resolve program resources: %v", req.Error))
+				return nil, NewScriptError(ScriptErrorCompilationFailed,
+					fmt.Sprintf("could not resolve program resources: %v", req.Error))
 			}
 			account, err := l.GetAccount(ctx, req.Account)
 			if err != nil {
@@ -45,7 +46,8 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 			meta := account.Metadata
 			entry, ok := meta[req.Key]
 			if !ok {
-				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
+				return nil, NewScriptError(ScriptErrorCompilationFailed,
+					fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
 			}
 			data, err := json.Marshal(entry)
 			if err != nil {
@@ -53,7 +55,8 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 			}
 			value, err := machine.NewValueFromTypedJSON(data)
 			if err != nil {
-				return nil, NewScriptError(ScriptErrorCompilationFailed, fmt.Sprintf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err))
+				return nil, NewScriptError(ScriptErrorCompilationFailed,
+					fmt.Sprintf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err))
 			}
 			req.Response <- *value
 		}
@@ -89,8 +92,10 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 		case vm.EXIT_FAIL_INVALID:
 			return nil, errors.New("internal error: compiled script was invalid")
 		case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
-			// TODO: If the machine can provide the asset which is failing, we should be able to use InsufficientFundError{} instead of error code
-			return nil, NewScriptError(ScriptErrorInsufficientFund, "account had insufficient funds")
+			// TODO: If the machine can provide the asset which is failing
+			// we should be able to use InsufficientFundError{} instead of error code
+			return nil, NewScriptError(ScriptErrorInsufficientFund,
+				"account had insufficient funds")
 		default:
 			return nil, errors.New("script execution failed")
 		}
@@ -108,7 +113,8 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 	for k, v := range script.Metadata {
 		_, ok := metadata[k]
 		if ok {
-			return nil, NewScriptError(ScriptErrorMetadataOverride, "cannot override metadata from script")
+			return nil, NewScriptError(ScriptErrorMetadataOverride,
+				"cannot override metadata from script")
 		}
 		metadata[k] = v
 	}
