@@ -443,8 +443,7 @@ func TestSetAccountMeta(t *testing.T) {
 					send [USD/2 99] (
 						source=@world
 						destination=@users:001
-					)
-					set_account_meta(@users:001, "foo", "bar")`,
+					)`,
 				},
 				Metadata: core.Metadata{
 					"priority": "low",
@@ -452,9 +451,6 @@ func TestSetAccountMeta(t *testing.T) {
 			},
 			expectedMetadata: core.Metadata{
 				"priority": "low",
-				"set_account_meta": core.AccountsMeta{
-					"users:001": {"foo": "bar"},
-				},
 			},
 		},
 		{
