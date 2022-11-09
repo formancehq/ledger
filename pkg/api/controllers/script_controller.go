@@ -43,7 +43,9 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 
 	var script core.Script
 	if err := c.ShouldBindJSON(&script); err != nil {
-		panic(err)
+		ResponseError(c, ledger.NewValidationError(
+			"invalid payload"))
+		return
 	}
 
 	value, ok := c.GetQuery("preview")

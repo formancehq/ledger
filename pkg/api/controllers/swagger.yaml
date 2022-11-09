@@ -272,6 +272,20 @@ paths:
                   error_message:
                     type: string
                     example: "invalid account address format"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
 
   /{ledger}/mapping:
     get:
@@ -354,7 +368,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScriptResult'
-      
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "invalid payload"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
+
   /{ledger}/stats:
     get:
       tags:
@@ -749,6 +792,20 @@ paths:
                   error_message:
                     type: string
                     example: "transaction not found"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
 
   /{ledger}/transactions/{txid}/revert:
     post:
@@ -808,6 +865,20 @@ paths:
                   error_message:
                     type: string
                     example: "transaction not found"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "CONFLICT"
+                  error_message:
+                    type: string
 
   /{ledger}/transactions/batch:
     post:
