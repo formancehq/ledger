@@ -9,11 +9,13 @@ import (
 
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
@@ -177,6 +179,48 @@ func TestPostScriptWithReference(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, cursor.Data, 1)
 				require.Equal(t, reference, cursor.Data[0].Reference)
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostScriptConflict(t *testing.T) {
+	script := `
+ 	send [COIN 100] (
+ 	  source = @world
+ 	  destination = @centralbank
+ 	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("first should succeed", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain:     script,
+						Reference: "1234",
+					}, url.Values{})
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+					assert.Equal(t, "", res.ErrorCode)
+					assert.Equal(t, "", res.ErrorMessage)
+					assert.NotNil(t, res.Transaction)
+				})
+
+				t.Run("second should fail", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain:     script,
+						Reference: "1234",
+					}, url.Values{})
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+					assert.Equal(t, apierrors.ErrConflict, res.ErrorCode)
+				})
 
 				return nil
 			},
