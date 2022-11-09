@@ -183,3 +183,45 @@ func TestPostScriptWithReference(t *testing.T) {
 		})
 	}))
 }
+
+func TestPostScriptConflict(t *testing.T) {
+	script := `
+	send [COIN 100] (
+	  source = @world
+	  destination = @centralbank
+	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("first should succeed", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain:     script,
+						Reference: "1234",
+					}, url.Values{})
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+					assert.Equal(t, "", res.ErrorCode)
+					assert.Equal(t, "", res.ErrorMessage)
+					assert.NotNil(t, res.Transaction)
+				})
+
+				t.Run("second should fail", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain:     script,
+						Reference: "1234",
+					}, url.Values{})
+
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					res := controllers.ScriptResponse{}
+					internal.Decode(t, rsp.Body, &res)
+					assert.Equal(t, controllers.ErrConflict, res.ErrorCode)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
