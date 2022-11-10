@@ -25,7 +25,8 @@ const (
 
 func coreErrorToErrorCode(err error) (int, string) {
 	switch {
-	case ledger.IsConflictError(err):
+	case ledger.IsConflictError(err) ||
+		storage.IsErrorCode(err, storage.ConstraintFailed):
 		return http.StatusConflict, ErrConflict
 	case ledger.IsInsufficientFundError(err):
 		return http.StatusBadRequest, ErrInsufficientFund
