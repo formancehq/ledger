@@ -406,92 +406,40 @@ func TestScriptSetReference(t *testing.T) {
 
 func TestSetAccountMeta(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		t.Run("set_account_meta valid address", func(t *testing.T) {
-			res, err := l.ProcessScript(context.Background(), core.ScriptData{
+		t.Run("valid", func(t *testing.T) {
+			res, _, err := l.ProcessScript(context.Background(), nil, core.ScriptData{
 				Script: core.Script{Plain: `
-					send [USD/2 99] (
-						source = @world
-						destination = @platform
-					)
-					set_account_meta(@platform, "fees", "15 percent")`,
-				},
-			})
-			require.NoError(t, err)
-			require.Equal(t, core.Metadata{
-				"set_account_meta": core.AccountsMeta{
-					"platform": core.Metadata{
-						"fees": map[string]any{"type": "string", "value": "15 percent"},
-					},
-				},
-			}, res.Metadata)
-		})
-
-		t.Run("set_account_meta multiple addresses", func(t *testing.T) {
-			res, err := l.ProcessScript(context.Background(), core.ScriptData{
-				Script: core.Script{Plain: `
-					send [USD/2 99] (
-						source = @world
-						destination = {
-							75% to @alice
-							remaining to @bob
-					)
-					set_account_meta(@bob, "is", "great")
-					set_account_meta(@alice, "is", "awesome")`,
-				},
-			})
-			require.NoError(t, err)
-			require.Equal(t, core.Metadata{
-				"set_account_meta": core.AccountsMeta{
-					"alice": core.Metadata{
-						"is": map[string]any{"type": "string", "value": "awesome"},
-					},
-					"bob": core.Metadata{
-						"is": map[string]any{"type": "string", "value": "great"},
-					},
-				},
-			}, res.Metadata)
-		})
-
-		t.Run("set_account_meta multiple types", func(t *testing.T) {
-			res, err := l.ProcessScript(context.Background(), core.ScriptData{
-				Script: core.Script{Plain: `
-					send [USD/2 99] (
-						source = @world
-						destination = @alice
-					)
 					set_account_meta(@alice, "aaa", "string meta")
 					set_account_meta(@alice, "bbb", 42)
 					set_account_meta(@alice, "ccc", COIN)
 					set_account_meta(@alice, "ddd", [COIN 30])
 					set_account_meta(@alice, "eee", @bob)
-				`,
+					`,
 				},
 			})
 			require.NoError(t, err)
 			require.Equal(t, core.Metadata{
-				"set_account_meta": core.AccountsMeta{
-					"alice": core.Metadata{
+				"set_account_meta": map[string]any{
+					"@alice": map[string]any{
 						"aaa": map[string]any{"type": "string", "value": "string meta"},
-						"bbb": map[string]any{"type": "number", "value": 42},
+						"bbb": map[string]any{"type": "number", "value": 42.},
 						"ccc": map[string]any{"type": "asset", "value": "COIN"},
-						"ddd": map[string]any{"type": "monetary", "value": map[string]any{"asset": "COIN", "amount": 30}},
+						"ddd": map[string]any{"type": "monetary",
+							"value": map[string]any{"asset": "COIN", "amount": 30.}},
 						"eee": map[string]any{"type": "account", "value": "bob"},
 					},
 				},
 			}, res.Metadata)
 		})
 
-		t.Run("set_account_meta invalid syntax", func(t *testing.T) {
-			_, err := l.ProcessScript(context.Background(), core.ScriptData{
+		t.Run("invalid syntax", func(t *testing.T) {
+			_, _, err := l.ProcessScript(context.Background(), nil, core.ScriptData{
 				Script: core.Script{Plain: `
-					send [USD/2 99] (
-						source = @world
-						destination = @bob
-					)
 					set_account_meta(@bob, "is")`,
 				},
 			})
-			require.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
+			require.True(t, ledger.IsScriptErrorWithCode(err,
+				ledger.ScriptErrorCompilationFailed))
 		})
 	})
 }
