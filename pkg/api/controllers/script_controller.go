@@ -27,7 +27,7 @@ func NewScriptController() ScriptController {
 func (ctl *ScriptController) PostScript(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var script core.ScriptData
+	var script core.Script
 	if err := c.ShouldBindJSON(&script); err != nil {
 		panic(err)
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessTxsData(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) ProcessTx(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")

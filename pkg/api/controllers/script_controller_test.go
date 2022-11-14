@@ -22,15 +22,15 @@ import (
 func TestPostScript(t *testing.T) {
 	type testCase struct {
 		name             string
-		script           core.ScriptData
+		script           core.Script
 		expectedResponse controllers.ScriptResponse
 	}
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -45,8 +45,8 @@ func TestPostScript(t *testing.T) {
 		},
 		{
 			name: "failure with insufficient funds",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -64,8 +64,8 @@ func TestPostScript(t *testing.T) {
 		},
 		{
 			name: "failure with metadata override",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -126,8 +126,8 @@ func TestPostScriptPreview(t *testing.T) {
 					values := url.Values{}
 					values.Set("preview", "true")
 
-					rsp := internal.PostScript(t, api, core.ScriptData{
-						Script: core.Script{Plain: script},
+					rsp := internal.PostScript(t, api, core.Script{
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -143,8 +143,8 @@ func TestPostScriptPreview(t *testing.T) {
 					values := url.Values{}
 					values.Set("preview", "false")
 
-					rsp := internal.PostScript(t, api, core.ScriptData{
-						Script: core.Script{Plain: script},
+					rsp := internal.PostScript(t, api, core.Script{
+						ScriptCore: core.ScriptCore{Plain: script},
 					}, values)
 
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -167,8 +167,8 @@ func TestPostScriptWithReference(t *testing.T) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				reference := "order_1234"
-				rsp := internal.PostScript(t, api, core.ScriptData{
-					Script: core.Script{
+				rsp := internal.PostScript(t, api, core.Script{
+					ScriptCore: core.ScriptCore{
 						Plain: `
 						send [COIN 100] (
 						  	source = @world
@@ -198,8 +198,8 @@ func TestPostScriptWithSetAccountMeta(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				rsp := internal.PostScript(t, api, core.ScriptData{
-					Script: core.Script{
+				rsp := internal.PostScript(t, api, core.Script{
+					ScriptCore: core.ScriptCore{
 						Plain: `
 						send [COIN 100] (
 						  	source = @world

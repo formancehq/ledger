@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLedger_ProcessTxsData(t *testing.T) {
+func TestLedger_processTx(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
 			worldTotoUSD := core.NewMonetaryInt(43)
@@ -134,7 +134,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTxsData(context.Background(), nil, txsData...)
+				res, err := l.ProcessTx(context.Background(), nil, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -180,7 +180,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTxsData(context.Background(), nil, txsData...)
+				res, err := l.ProcessTx(context.Background(), nil, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -294,7 +294,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.ProcessTxsData(context.Background(), nil)
+			result, err := l.ProcessTx(context.Background(), nil)
 			assert.NoError(t, err)
 			assert.Equal(t, &ledger.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
@@ -315,7 +315,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTxsData(context.Background(), nil, core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), nil, core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",
@@ -333,7 +333,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 			m := core.AccountsMeta{
 				"bank": core.Metadata{"foo": "bar"},
 			}
-			res, err := l.ProcessTxsData(context.Background(),
+			res, err := l.ProcessTx(context.Background(),
 				&core.AdditionalOperations{
 					SetAccountMeta: m},
 				core.TransactionData{
@@ -352,7 +352,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 
 		t.Run("set_account_meta empty", func(t *testing.T) {
 			m := core.AccountsMeta{}
-			res, err := l.ProcessTxsData(context.Background(),
+			res, err := l.ProcessTx(context.Background(),
 				&core.AdditionalOperations{
 					SetAccountMeta: m},
 				core.TransactionData{
@@ -372,7 +372,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 				"bank":  core.Metadata{"foo": "bar"},
 				"alice": core.Metadata{"foo": "bar"},
 			}
-			res, err := l.ProcessTxsData(context.Background(),
+			res, err := l.ProcessTx(context.Background(),
 				&core.AdditionalOperations{
 					SetAccountMeta: m},
 				core.TransactionData{
@@ -411,7 +411,7 @@ func TestLedger_ProcessTxsData(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTxsData(context.Background(), nil, core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), nil, core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",

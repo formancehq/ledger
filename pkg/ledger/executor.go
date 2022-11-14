@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessScript(ctx context.Context, addOps *core.AdditionalOperations, script core.ScriptData) (*core.TransactionData, *core.AdditionalOperations, error) {
+func (l *Ledger) ProcessScript(ctx context.Context, addOps *core.AdditionalOperations, script core.Script) (*core.TransactionData, *core.AdditionalOperations, error) {
 	if script.Plain == "" {
 		return nil, nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
@@ -119,9 +119,6 @@ func (l *Ledger) ProcessScript(ctx context.Context, addOps *core.AdditionalOpera
 		txMeta[k] = v
 	}
 
-	if addOps == nil {
-		addOps = &core.AdditionalOperations{SetAccountMeta: core.AccountsMeta{}}
-	}
 	accMeta := core.Metadata{}
 	for account, meta := range m.GetAccountsMetaJSON() {
 		meta := meta.(map[string][]byte)
@@ -141,11 +138,13 @@ func (l *Ledger) ProcessScript(ctx context.Context, addOps *core.AdditionalOpera
 			}
 			accMeta["set_account_meta"].(map[string]any)[account].(map[string]any)[k] = asMapAny
 
+			if addOps == nil {
+				addOps = &core.AdditionalOperations{SetAccountMeta: core.AccountsMeta{}}
+			}
 			if _, ok := addOps.SetAccountMeta[account]; !ok {
 				addOps.SetAccountMeta[account] = map[string]any{}
 			}
 			addOps.SetAccountMeta[account][k] = asMapAny
-			fmt.Printf("ADDOPS:%+v\n", addOps)
 		}
 	}
 
@@ -167,7 +166,7 @@ func (l *Ledger) ProcessScript(ctx context.Context, addOps *core.AdditionalOpera
 	}, addOps, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
+func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
 	txData, ops, err := l.ProcessScript(ctx, ops, script)
 	if err != nil {
 		return nil, err
@@ -176,7 +175,7 @@ func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, sc
 	return l.Commit(ctx, ops, *txData)
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
+func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
 	txData, ops, err := l.ProcessScript(ctx, ops, script)
 	if err != nil {
 		return nil, err

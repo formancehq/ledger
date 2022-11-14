@@ -210,7 +210,7 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func PostScript(t *testing.T, handler http.Handler, s core.ScriptData, query url.Values) *httptest.ResponseRecorder {
+func PostScript(t *testing.T, handler http.Handler, s core.Script, query url.Values) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/script", testingLedger), Buffer(t, s))
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)

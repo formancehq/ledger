@@ -140,7 +140,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 type PostTransaction struct {
 	Timestamp            time.Time                  `json:"timestamp"`
 	Postings             core.Postings              `json:"postings"`
-	Script               core.Script                `json:"script"`
+	Script               core.ScriptCore            `json:"script"`
 	Reference            string                     `json:"reference"`
 	Metadata             core.Metadata              `json:"metadata" swaggertype:"object"`
 	AdditionalOperations *core.AdditionalOperations `json:"additional_operations" swaggertype:"object"`
@@ -200,10 +200,10 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 		commitRes, err = fn(c.Request.Context(),
 			payload.AdditionalOperations,
-			core.ScriptData{
-				Script:    payload.Script,
-				Reference: payload.Reference,
-				Metadata:  payload.Metadata,
+			core.Script{
+				ScriptCore: payload.Script,
+				Reference:  payload.Reference,
+				Metadata:   payload.Metadata,
 			})
 		if err != nil {
 			apierrors.ResponseError(c, err)
@@ -289,12 +289,12 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	if len(txs.TxsData) == 0 {
+	if len(txs.Transactions) == 0 {
 		apierrors.ResponseError(c, ledger.NewValidationError("no transaction to insert"))
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.TxsData...)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

@@ -82,7 +82,7 @@ func (l *Ledger) Commit(ctx context.Context, ops *core.AdditionalOperations, txs
 	}
 	defer unlock(ctx)
 
-	commitRes, err := l.ProcessTxsData(ctx, ops, txsData...)
+	commitRes, err := l.ProcessTx(ctx, ops, txsData...)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (l *Ledger) CommitPreview(ctx context.Context, ops *core.AdditionalOperatio
 	}
 	defer unlock(ctx)
 
-	return l.ProcessTxsData(ctx, ops, txsData...)
+	return l.ProcessTx(ctx, ops, txsData...)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -179,7 +179,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	}
 	defer unlock(ctx)
 
-	result, err := l.ProcessTxsData(ctx, nil, rt)
+	result, err := l.ProcessTx(ctx, nil, rt)
 	if err != nil {
 		return nil, err
 	}
