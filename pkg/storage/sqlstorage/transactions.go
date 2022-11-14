@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/go-libs/sharedlogging"
@@ -332,7 +331,6 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				sources, destinations)
 		}
 		query, args = ib.BuildWithFlavor(s.schema.Flavor())
-		spew.Dump(query, args)
 	case sqlbuilder.PostgreSQL:
 		ids := make([]uint64, len(txs))
 		timestamps := make([]time.Time, len(txs))
@@ -417,13 +415,11 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 
-	fmt.Println("get provider")
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(query, args)
 	_, err = executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
