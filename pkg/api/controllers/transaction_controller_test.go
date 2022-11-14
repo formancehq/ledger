@@ -64,7 +64,7 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: core.Script{
+				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -383,7 +383,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
-				Script: core.Script{
+				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -422,7 +422,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
-				Script: core.Script{
+				Script: core.ScriptCore{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -440,7 +440,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with metadata override",
 			payload: []controllers.PostTransaction{{
-				Script: core.Script{
+				Script: core.ScriptCore{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -557,7 +557,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script true", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.Script{
+						Script: core.ScriptCore{
 							Plain: script,
 						},
 					}, true)
@@ -596,7 +596,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script false", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.Script{
+						Script: core.ScriptCore{
 							Plain: script,
 						},
 						Reference: "refScript",
@@ -1725,7 +1725,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 					}
 
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
-						TxsData: txs,
+						Transactions: txs,
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					res, _ := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
@@ -1736,7 +1736,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 
 				t.Run("no postings in second tx", func(t *testing.T) {
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
-						TxsData: []core.TransactionData{
+						Transactions: []core.TransactionData{
 							{
 								Postings: core.Postings{
 									{

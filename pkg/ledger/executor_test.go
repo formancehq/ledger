@@ -13,7 +13,7 @@ import (
 
 func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{}
+		script := core.Script{}
 
 		_, err := l.Execute(context.Background(), nil, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
@@ -23,8 +23,8 @@ func TestNoScript(t *testing.T) {
 
 func TestCompilationError(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		script := core.ScriptData{
-			Script: core.Script{Plain: "willnotcompile"},
+		script := core.Script{
+			ScriptCore: core.ScriptCore{Plain: "willnotcompile"},
 		}
 
 		_, err := l.Execute(context.Background(), nil, script)
@@ -39,8 +39,8 @@ func TestSend(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		script := core.ScriptData{
-			Script: core.Script{
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
 				Plain: `
 				send [USD/2 99] (
 				source=@world
@@ -57,7 +57,7 @@ func TestSend(t *testing.T) {
 
 func TestNoVariables(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		var script core.ScriptData
+		var script core.Script
 		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
@@ -79,7 +79,7 @@ func TestVariables(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		var script core.ScriptData
+		var script core.Script
 		err := json.Unmarshal(
 			[]byte(`{
 				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
@@ -124,7 +124,7 @@ func TestEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.ScriptData
+		var script core.Script
 		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
@@ -157,7 +157,7 @@ func TestNotEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		var script core.ScriptData
+		var script core.Script
 		err = json.Unmarshal(
 			[]byte(`{
 				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
@@ -188,8 +188,8 @@ func TestMissingMetadata(t *testing.T) {
 			)
 		`
 
-		script := core.ScriptData{
-			Script: core.Script{
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
 				Plain: plain,
 				Vars: map[string]json.RawMessage{
 					"sale": json.RawMessage(`"sales:042"`),
@@ -255,8 +255,8 @@ func TestMetadata(t *testing.T) {
 		`
 		require.NoError(t, err)
 
-		script := core.ScriptData{
-			Script: core.Script{
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
 				Plain: plain,
 				Vars: map[string]json.RawMessage{
 					"sale": json.RawMessage(`"sales:042"`),
@@ -278,15 +278,15 @@ func TestMetadata(t *testing.T) {
 func TestSetTxMeta(t *testing.T) {
 	type testCase struct {
 		name              string
-		script            core.ScriptData
+		script            core.Script
 		expectedMetadata  core.Metadata
 		expectedErrorCode string
 	}
 	for _, tc := range []testCase{
 		{
 			name: "nominal",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					send [USD/2 99] (
 						source=@world
@@ -303,8 +303,8 @@ func TestSetTxMeta(t *testing.T) {
 		},
 		{
 			name: "define metadata on script",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -320,8 +320,8 @@ func TestSetTxMeta(t *testing.T) {
 		},
 		{
 			name: "override metadata of script",
-			script: core.ScriptData{
-				Script: core.Script{
+			script: core.Script{
+				ScriptCore: core.ScriptCore{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -371,8 +371,8 @@ func TestScriptSetReference(t *testing.T) {
 				destination=@user:001
 			)`
 
-		script := core.ScriptData{
-			Script: core.Script{
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
 				Plain: plain,
 				Vars:  map[string]json.RawMessage{},
 			},

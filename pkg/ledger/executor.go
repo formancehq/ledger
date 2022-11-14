@@ -12,7 +12,7 @@ import (
 	"github.com/numary/machine/vm"
 )
 
-func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*core.TransactionData, error) {
+func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
 	if script.Plain == "" {
 		return nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
@@ -128,8 +128,8 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.ScriptData) (*co
 	return t, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
-	txData, err := l.ProcessScript(ctx, script)
+func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
+	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}
@@ -137,8 +137,8 @@ func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, sc
 	return l.Commit(ctx, ops, *txData)
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.ScriptData) (*CommitResult, error) {
-	txData, err := l.ProcessScript(ctx, script)
+func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
+	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}

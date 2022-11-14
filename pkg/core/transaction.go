@@ -8,7 +8,7 @@ import (
 )
 
 type Transactions struct {
-	TxsData []TransactionData `json:"transactions" binding:"required,dive"`
+	Transactions []TransactionData `json:"transactions" binding:"required,dive"`
 }
 
 type TransactionData struct {
