@@ -1,22 +1,15 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Ledger API
   contact: {}
   version: "LEDGER_VERSION"
 
-servers:
-  - url: https://{organization}.o.numary.cloud/ledger
-    description: Production server
-    variables:
-      organization:
-        description: The organization on which the ledger is located
-        default: ""
 
 paths:
   /_info:
     get:
       tags:
-        - server
+        - Server
       summary: Show server information.
       operationId: getInfo
       responses:
@@ -32,7 +25,7 @@ paths:
       summary: Count the accounts from a ledger.
       operationId: countAccounts
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -68,7 +61,7 @@ paths:
       description: List accounts from a ledger, sorted by address in descending order.
       operationId: listAccounts
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -172,7 +165,7 @@ paths:
       summary: Get account by its address.
       operationId: getAccount
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -226,7 +219,7 @@ paths:
       summary: Add metadata to an account.
       operationId: addMetadataToAccount
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -276,7 +269,7 @@ paths:
   /{ledger}/mapping:
     get:
       tags:
-        - mapping
+        - Mapping
       operationId: getMapping
       summary: Get the mapping of a ledger.
       parameters:
@@ -296,7 +289,7 @@ paths:
                 $ref: '#/components/schemas/MappingResponse'
     put:
       tags:
-        - mapping
+        - Mapping
       operationId: updateMapping
       summary: Update the mapping of a ledger.
       parameters:
@@ -325,7 +318,7 @@ paths:
     post:
       deprecated: true
       tags:
-        - script
+        - Script
       operationId: runScript
       summary: Execute a Numscript.
       parameters:
@@ -366,7 +359,7 @@ paths:
   /{ledger}/stats:
     get:
       tags:
-        - stats
+        - Stats
       operationId: readStats
       summary: Get Stats
       description: |
@@ -391,7 +384,7 @@ paths:
   /{ledger}/transactions:
     head:
       tags:
-        - transactions
+        - Transactions
       summary: Count the transactions from a ledger.
       operationId: countTransactions
       parameters:
@@ -445,7 +438,7 @@ paths:
                 type: integer
     get:
       tags:
-        - transactions
+        - Transactions
       summary: List transactions from a ledger.
       description: List transactions from a ledger, sorted by txid in descending order.
       operationId: listTransactions
@@ -570,7 +563,7 @@ paths:
                     example: "no other query params can be set with 'pagination_token'"
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Create a new transaction to a ledger.
       operationId: createTransaction
       parameters:
@@ -638,7 +631,7 @@ paths:
   /{ledger}/transactions/{txid}:
     get:
       tags:
-        - transactions
+        - Transactions
       summary: Get transaction from a ledger by its ID.
       operationId: getTransaction
       parameters:
@@ -697,7 +690,7 @@ paths:
   /{ledger}/transactions/{txid}/metadata:
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Set the metadata of a transaction by its ID.
       operationId: addMetadataOnTransaction
       parameters:
@@ -759,7 +752,7 @@ paths:
   /{ledger}/transactions/{txid}/revert:
     post:
       tags:
-        - transactions
+        - Transactions
       operationId: revertTransaction
       summary: Revert a ledger transaction by its ID.
       parameters:
@@ -818,7 +811,7 @@ paths:
   /{ledger}/transactions/batch:
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Create a new batch of transactions to a ledger.
       operationId: CreateTransactions
       parameters:
@@ -876,7 +869,7 @@ paths:
   /{ledger}/balances:
     get:
       tags:
-        - balances
+        - Balances
       summary: Get the balances from a ledger's account
       operationId: getBalances
       parameters:
@@ -950,7 +943,7 @@ paths:
   /{ledger}/aggregate/balances:
     get:
       tags:
-        - balances
+        - Balances
       summary: Get the aggregated balances from selected accounts
       operationId: getBalancesAggregated
       parameters:
@@ -996,14 +989,7 @@ paths:
                     type: string
                     example: "invalid address"
 
-security:
-  - basicAuth: []
-
 components:
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
   schemas:
     Config:
       type: object
