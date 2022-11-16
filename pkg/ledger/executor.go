@@ -123,6 +123,17 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 }
 
 func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
+
+	if script.Reference != "" {
+		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(script.Reference))
+		if err != nil {
+			return nil, err
+		}
+		if len(txs.Data) > 0 {
+			return nil, NewConflictError()
+		}
+	}
+
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
@@ -137,6 +148,17 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*core.Expande
 }
 
 func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*core.ExpandedTransaction, error) {
+
+	if script.Reference != "" {
+		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(script.Reference))
+		if err != nil {
+			return nil, err
+		}
+		if len(txs.Data) > 0 {
+			return nil, NewConflictError()
+		}
+	}
+
 	t, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
