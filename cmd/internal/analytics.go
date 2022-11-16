@@ -29,7 +29,7 @@ const (
 )
 
 func InitAnalyticsFlags(cmd *cobra.Command, defaultWriteKey string) {
-	cmd.PersistentFlags().Bool(segmentEnabledFlag, true, "Is segment enabled")
+	cmd.PersistentFlags().Bool(segmentEnabledFlag, false, "Is segment enabled")
 	cmd.PersistentFlags().String(segmentApplicationIdFlag, "", "Segment application id")
 	cmd.PersistentFlags().String(segmentWriteKeyFlag, defaultWriteKey, "Segment write key")
 	cmd.PersistentFlags().Duration(segmentHeartbeatIntervalFlag, 4*time.Hour, "Segment heartbeat interval")
