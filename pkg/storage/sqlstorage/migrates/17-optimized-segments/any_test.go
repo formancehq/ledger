@@ -1,4 +1,4 @@
-package _14_update_timestamp_column_type
+package _17_optimized_segments
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigrate14(t *testing.T) {
+func TestMigrate17(t *testing.T) {
 	driver, closeFunc, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer closeFunc()
@@ -26,7 +26,7 @@ func TestMigrate14(t *testing.T) {
 	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
 	require.NoError(t, err)
 
-	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:14]...)
+	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:17]...)
 	require.NoError(t, err)
 	require.True(t, modified)
 
@@ -36,17 +36,34 @@ func TestMigrate14(t *testing.T) {
 	sqlq, args := ib.
 		InsertInto(schema.Table("transactions")).
 		Cols("id", "timestamp", "postings", "metadata").
-		Values(0, now.Format(time.RFC3339), `[{"source": "world", "destination": "bank", "asset": "USD", "amount": 100}]`, "{}").
+		Values(0, now.Format(time.RFC3339), `[
+			{"source": "world", "destination": "users:001", "asset": "USD", "amount": 100}
+		]`, "{}").
 		BuildWithFlavor(schema.Flavor())
 	_, err = schema.ExecContext(context.Background(), sqlq, args...)
 	require.NoError(t, err)
 
-	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[14])
+	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[17])
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	tx, err := store.GetTransaction(context.Background(), 0)
-	require.NoError(t, err)
-	require.Equal(t, now, tx.Timestamp)
-	require.Len(t, tx.Postings, 1)
+	sqlq, args = sqlbuilder.
+		Select("txid", "posting_index", "source", "destination").
+		From(schema.Table("postings")).
+		Where("txid = 0").
+		BuildWithFlavor(schema.Flavor())
+
+	row := store.Schema().QueryRowContext(context.Background(), sqlq, args...)
+	require.NoError(t, row.Err())
+
+	if ledgertesting.StorageDriverName() == "postgres" {
+		var txid uint64
+		var postingIndex int
+		var source, destination string
+		require.NoError(t, err, row.Scan(&txid, &postingIndex, &source, &destination))
+		require.Equal(t, uint64(0), txid)
+		require.Equal(t, 0, postingIndex)
+		require.Equal(t, `["world"]`, source)
+		require.Equal(t, `["users", "001"]`, destination)
+	}
 }

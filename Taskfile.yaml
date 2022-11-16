@@ -15,7 +15,7 @@ vars:
   BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
   BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
   BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
-  VERBOSE: "false"
+  VERBOSE: "true"
 
 tasks:
   default:

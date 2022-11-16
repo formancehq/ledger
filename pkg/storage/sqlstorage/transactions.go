@@ -316,6 +316,11 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	var queryPostings string
 	var argsPostings []any
 
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return err
+	}
+
 	switch s.Schema().Flavor() {
 	case sqlbuilder.SQLite:
 		ibTxs := sqlbuilder.NewInsertBuilder()
@@ -325,7 +330,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 		ibPostings := sqlbuilder.NewInsertBuilder()
 		ibPostings.InsertInto(s.schema.Table("postings"))
-		ibPostings.Cols("txid", "postingIndex", "source", "destination")
+		ibPostings.Cols("txid", "posting_index", "source", "destination")
 
 		for _, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
@@ -369,7 +374,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				if err != nil {
 					panic(err)
 				}
-				ibPostings.Values(tx.ID, i, sources, destinations)
+				ibPostings.Values(tx.ID, i, string(sources), string(destinations))
 			}
 		}
 		queryTxs, argsTxs = ibTxs.BuildWithFlavor(s.schema.Flavor())
@@ -460,7 +465,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		}
 
 		queryPostings = fmt.Sprintf(
-			`INSERT INTO "%s".postings (txid, postingIndex, 
+			`INSERT INTO "%s".postings (txid, posting_index, 
                            source, destination) (SELECT * FROM unnest(
                                    $1::int[], 
                                    $2::int[], 
@@ -470,11 +475,6 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		argsPostings = []any{
 			postingTxIds, postingIndices, sources, destinations,
 		}
-	}
-
-	executor, err := s.executorProvider(ctx)
-	if err != nil {
-		return err
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
