@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +41,7 @@ type Lock struct {
 	retry        time.Duration
 }
 
-func (l Lock) tryLock(ctx context.Context, name string) (bool, ledger.Unlock, error) {
+func (l Lock) tryLock(ctx context.Context, name string) (bool, middlewares.Unlock, error) {
 	rv, err := randomString()
 	if err != nil {
 		return false, nil, errors.Wrap(err, "generating random string")
@@ -77,7 +77,7 @@ func (l Lock) tryLock(ctx context.Context, name string) (bool, ledger.Unlock, er
 	}, nil
 }
 
-func (l Lock) Lock(ctx context.Context, name string) (ledger.Unlock, error) {
+func (l Lock) Lock(ctx context.Context, name string) (middlewares.Unlock, error) {
 	for {
 		ok, unlock, err := l.tryLock(ctx, name)
 		if err != nil {
@@ -95,7 +95,7 @@ func (l Lock) Lock(ctx context.Context, name string) (ledger.Unlock, error) {
 	}
 }
 
-var _ ledger.Locker = &Lock{}
+var _ middlewares.Locker = &Lock{}
 
 func NewLock(client Client, lockDuration, retry time.Duration) *Lock {
 	return &Lock{
