@@ -74,6 +74,7 @@ type Routes struct {
 	perLedgerMiddlewares  []gin.HandlerFunc
 	useScopes             UseScopes
 	idempotencyStore      storage.Driver[idempotency.Store]
+	locker                middlewares.Locker
 }
 
 func NewRoutes(
@@ -91,6 +92,7 @@ func NewRoutes(
 	healthController *sharedhealth.HealthController,
 	useScopes UseScopes,
 	idempotencyStore storage.Driver[idempotency.Store],
+	locker middlewares.Locker,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -107,6 +109,7 @@ func NewRoutes(
 		healthController:      healthController,
 		useScopes:             useScopes,
 		idempotencyStore:      idempotencyStore,
+		locker:                locker,
 	}
 }
 
@@ -150,7 +153,7 @@ func (r *Routes) Engine() *gin.Engine {
 		router.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
 		router.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
 		router.POST("/accounts/:address/metadata",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
 
@@ -158,20 +161,20 @@ func (r *Routes) Engine() *gin.Engine {
 		router.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.POST("/transactions",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite)).Use()
 		router.POST("/transactions/batch",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
 		router.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/revert",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
 		router.POST("/transactions/:txid/metadata",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
 
@@ -185,7 +188,7 @@ func (r *Routes) Engine() *gin.Engine {
 
 		// ScriptController
 		router.POST("/script",
-			middlewares.Transaction(),
+			middlewares.Transaction(r.locker),
 			idempotency.Middleware(r.idempotencyStore),
 			r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
 	}
