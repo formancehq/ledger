@@ -40,12 +40,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
 		Distinct()
 	sb.From(s.schema.Table("transactions"))
-	if account != "" {
-		arg := sb.Args.Add(account)
-		sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
-		t.AccountFilter = account
-	}
-	if (source != "" || destination != "") && flavor == PostgreSQL {
+	if (source != "" || destination != "" || account != "") && flavor == PostgreSQL {
 		// new wildcard handling
 		sb.Join(fmt.Sprintf(
 			"%s postings on postings.txid = %s.id",
@@ -91,6 +86,26 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 
 				arg := sb.Args.Add(segment)
 				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
+			}
+		}
+	}
+	if account != "" {
+		if !addressQueryRegexp.MatchString(account) || flavor == SQLite {
+			// deprecated regex handling
+			arg := sb.Args.Add(account)
+			sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
+			t.AccountFilter = account
+		} else {
+			// new wildcard handling
+			dst := strings.Split(account, ":")
+			sb.Where(fmt.Sprintf("(jsonb_array_length(postings.destination) = %d OR jsonb_array_length(postings.source) = %d)", len(dst), len(dst)))
+			for i, segment := range dst {
+				if segment == ".*" || segment == "*" || segment == "" {
+					continue
+				}
+
+				arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath)", i, arg, i, arg))
 			}
 		}
 	}
