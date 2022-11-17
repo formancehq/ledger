@@ -1,11 +1,15 @@
 --statement
 drop trigger if exists log_entry on "VAR_LEDGER_NAME".log;
+--statement
 drop trigger if exists volumes_changed on "VAR_LEDGER_NAME".log;
 
 --statement
 alter table "VAR_LEDGER_NAME".transactions drop column if exists sources;
+--statement
 alter table "VAR_LEDGER_NAME".transactions drop column if exists destinations;
+--statement
 drop index if exists transactions_sources;
+--statement
 drop index if exists transactions_destinations;
 
 --statement
@@ -18,7 +22,9 @@ create table if not exists "VAR_LEDGER_NAME".postings (
 
 --statement
 create index postings_src on "VAR_LEDGER_NAME".postings using GIN(source);
+--statement
 create index postings_dest on "VAR_LEDGER_NAME".postings using GIN(destination);
+--statement
 create index postings_txid on "VAR_LEDGER_NAME".postings (txid asc);
 
 --statement

@@ -13,6 +13,10 @@ import (
 )
 
 func TestMigrate17(t *testing.T) {
+	if ledgertesting.StorageDriverName() != "postgres" {
+		t.Skip()
+	}
+
 	driver, closeFunc, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer closeFunc()
@@ -56,14 +60,12 @@ func TestMigrate17(t *testing.T) {
 	row := store.Schema().QueryRowContext(context.Background(), sqlq, args...)
 	require.NoError(t, row.Err())
 
-	if ledgertesting.StorageDriverName() == "postgres" {
-		var txid uint64
-		var postingIndex int
-		var source, destination string
-		require.NoError(t, err, row.Scan(&txid, &postingIndex, &source, &destination))
-		require.Equal(t, uint64(0), txid)
-		require.Equal(t, 0, postingIndex)
-		require.Equal(t, `["world"]`, source)
-		require.Equal(t, `["users", "001"]`, destination)
-	}
+	var txid uint64
+	var postingIndex int
+	var source, destination string
+	require.NoError(t, err, row.Scan(&txid, &postingIndex, &source, &destination))
+	require.Equal(t, uint64(0), txid)
+	require.Equal(t, 0, postingIndex)
+	require.Equal(t, `["world"]`, source)
+	require.Equal(t, `["users", "001"]`, destination)
 }

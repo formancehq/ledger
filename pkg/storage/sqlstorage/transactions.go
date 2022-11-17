@@ -313,8 +313,6 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransacti
 func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
 	var queryTxs string
 	var argsTxs []any
-	var queryPostings string
-	var argsPostings []any
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
@@ -327,10 +325,6 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		ibTxs.InsertInto(s.schema.Table("transactions"))
 		ibTxs.Cols("id", "timestamp", "reference", "postings", "metadata",
 			"pre_commit_volumes", "post_commit_volumes")
-
-		ibPostings := sqlbuilder.NewInsertBuilder()
-		ibPostings.InsertInto(s.schema.Table("postings"))
-		ibPostings.Cols("txid", "posting_index", "source", "destination")
 
 		for _, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
@@ -364,21 +358,10 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 			ibTxs.Values(tx.ID, tx.Timestamp, reference, postingsData,
 				metadataData, preCommitVolumesData, postCommitVolumesData)
-
-			for i, p := range tx.Postings {
-				sources, err := json.Marshal(strings.Split(p.Source, ":"))
-				if err != nil {
-					panic(err)
-				}
-				destinations, err := json.Marshal(strings.Split(p.Destination, ":"))
-				if err != nil {
-					panic(err)
-				}
-				ibPostings.Values(tx.ID, i, string(sources), string(destinations))
-			}
 		}
+
 		queryTxs, argsTxs = ibTxs.BuildWithFlavor(s.schema.Flavor())
-		queryPostings, argsPostings = ibPostings.BuildWithFlavor(s.schema.Flavor())
+
 	case sqlbuilder.PostgreSQL:
 		txIds := make([]uint64, len(txs))
 		timestamps := make([]time.Time, len(txs))
@@ -464,7 +447,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			preCommitVolumesDataSet, postCommitVolumesDataSet,
 		}
 
-		queryPostings = fmt.Sprintf(
+		queryPostings := fmt.Sprintf(
 			`INSERT INTO "%s".postings (txid, posting_index, 
                            source, destination) (SELECT * FROM unnest(
                                    $1::int[], 
@@ -472,19 +455,19 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
                                    $3::jsonb[], 
                                    $4::jsonb[]))`,
 			s.schema.Name())
-		argsPostings = []any{
+		argsPostings := []any{
 			postingTxIds, postingIndices, sources, destinations,
+		}
+
+		sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
+		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
+		if err != nil {
+			return s.error(err)
 		}
 	}
 
 	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
 	_, err = executor.ExecContext(ctx, queryTxs, argsTxs...)
-	if err != nil {
-		return s.error(err)
-	}
-
-	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
-	_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
 	if err != nil {
 		return s.error(err)
 	}
