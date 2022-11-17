@@ -416,27 +416,23 @@ func TestScriptReferenceConflict(t *testing.T) {
 		}(l, context.Background())
 
 		_, err := l.Execute(context.Background(), core.Script{
-			ScriptCore: core.ScriptCore{
-				Plain: `
+			Plain: `
 				send [USD/2 99] (
 					source=@world
 					destination=@user:001
 				)`,
-				Vars: map[string]json.RawMessage{},
-			},
+			Vars:      map[string]json.RawMessage{},
 			Reference: "tx_ref",
 		})
 		require.NoError(t, err)
 
 		_, err = l.Execute(context.Background(), core.Script{
-			ScriptCore: core.ScriptCore{
-				Plain: `
+			Plain: `
 				send [USD/2 99] (
 					source=@unexists
 					destination=@user:001
 				)`,
-				Vars: map[string]json.RawMessage{},
-			},
+			Vars:      map[string]json.RawMessage{},
 			Reference: "tx_ref",
 		})
 		require.Error(t, err)
