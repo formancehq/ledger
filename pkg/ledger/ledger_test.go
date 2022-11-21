@@ -376,6 +376,56 @@ func TestReference(t *testing.T) {
 	})
 }
 
+func TestAccountMetadata(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+
+		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
+			"a random metadata": "old value",
+		})
+		assert.NoError(t, err)
+
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
+			"a random metadata": "new value",
+		})
+		assert.NoError(t, err)
+
+		{
+			acc, err := l.GetAccount(context.Background(), "users:001")
+			require.NoError(t, err)
+
+			meta, ok := acc.Metadata["a random metadata"]
+			require.True(t, ok)
+
+			assert.Equalf(t, meta, "new value",
+				"metadata entry did not match in get: expected \"new value\", got %v", meta)
+		}
+
+		{
+			// We have to create at least one transaction to retrieve an account from GetAccounts store method
+			_, err := l.Commit(context.Background(), core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+						Destination: "users:001",
+					},
+				},
+			})
+			assert.NoError(t, err)
+
+			acc, err := l.GetAccount(context.Background(), "users:001")
+			assert.NoError(t, err)
+			require.True(t, acc.Address == "users:001", "no account returned by get account")
+
+			meta, ok := acc.Metadata["a random metadata"]
+			assert.True(t, ok)
+			assert.Equalf(t, meta, "new value",
+				"metadata entry did not match in find: expected \"new value\", got %v", meta)
+		}
+	})
+}
+
 func TestTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		_, err := l.Commit(context.Background(), core.TransactionData{
