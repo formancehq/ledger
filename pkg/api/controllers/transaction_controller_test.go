@@ -340,47 +340,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with set_account_meta",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: core.AccountsMeta{
-							"bar": {"foo": "bar"},
-						}},
-				},
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-							Metadata: core.Metadata{
-								"set_account_meta": core.AccountsMeta{
-									"bar": {"foo": "bar"},
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{

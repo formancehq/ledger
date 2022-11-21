@@ -128,20 +128,20 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 	return t, nil
 }
 
-func (l *Ledger) Execute(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
+func (l *Ledger) Execute(ctx context.Context, script core.Script) (*CommitResult, error) {
 	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}
 
-	return l.Commit(ctx, ops, *txData)
+	return l.Commit(ctx, *txData)
 }
 
-func (l *Ledger) ExecutePreview(ctx context.Context, ops *core.AdditionalOperations, script core.Script) (*CommitResult, error) {
+func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*CommitResult, error) {
 	txData, err := l.execute(ctx, script)
 	if err != nil {
 		return nil, err
 	}
 
-	return l.CommitPreview(ctx, ops, *txData)
+	return l.CommitPreview(ctx, *txData)
 }

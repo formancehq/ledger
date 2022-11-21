@@ -207,7 +207,7 @@ func TestContainers(t *testing.T) {
 							if err != nil {
 								return err
 							}
-							_, err = l.Commit(ctx, nil)
+							_, err = l.Commit(ctx)
 							if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
 								return err
 							}

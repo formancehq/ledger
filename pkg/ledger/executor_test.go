@@ -15,7 +15,7 @@ func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.Script{}
 
-		_, err := l.Execute(context.Background(), nil, script)
+		_, err := l.Execute(context.Background(), script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorNoScript, err.(*ledger.ScriptError).Code)
 	})
@@ -27,7 +27,7 @@ func TestCompilationError(t *testing.T) {
 			ScriptCore: core.ScriptCore{Plain: "willnotcompile"},
 		}
 
-		_, err := l.Execute(context.Background(), nil, script)
+		_, err := l.Execute(context.Background(), script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
 	})
@@ -48,7 +48,7 @@ func TestSend(t *testing.T) {
 			)`},
 		}
 
-		_, err := l.Execute(context.Background(), nil, script)
+		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
@@ -66,7 +66,7 @@ func TestNoVariables(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), nil, script)
+		_, err = l.Execute(context.Background(), script)
 		assert.Error(t, err, "variables were not provided but the transaction was committed")
 
 		require.NoError(t, l.Close(context.Background()))
@@ -90,7 +90,7 @@ func TestVariables(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), nil, script)
+		_, err = l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
 		user, err := l.GetAccount(context.Background(), "user:042")
@@ -121,7 +121,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), nil, tx)
+		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
 		var script core.Script
@@ -132,7 +132,7 @@ func TestEnoughFunds(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), nil, script)
+		_, err = l.Execute(context.Background(), script)
 		assert.NoError(t, err)
 	})
 }
@@ -154,7 +154,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), nil, tx)
+		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
 		var script core.Script
@@ -165,7 +165,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			&script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), nil, script)
+		_, err = l.Execute(context.Background(), script)
 		assert.Error(t, err, "error wasn't supposed to be nil")
 	})
 }
@@ -197,7 +197,7 @@ func TestMissingMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), nil, script)
+		_, err := l.Execute(context.Background(), script)
 		assert.Error(t, err, "expected an error because of missing metadata")
 	})
 }
@@ -219,7 +219,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), nil, tx)
+		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
@@ -264,7 +264,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err = l.Execute(context.Background(), nil, script)
+		_, err = l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "sales:042", "COIN", core.NewMonetaryInt(0))
@@ -343,7 +343,7 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, l.Close(ctx))
 				}(l, context.Background())
 
-				_, err := l.Execute(context.Background(), nil, tc.script)
+				_, err := l.Execute(context.Background(), tc.script)
 
 				if tc.expectedErrorCode != "" {
 					require.Error(t, err)
@@ -379,7 +379,7 @@ func TestScriptSetReference(t *testing.T) {
 			Reference: "tx_ref",
 		}
 
-		_, err := l.Execute(context.Background(), nil, script)
+		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
