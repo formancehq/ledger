@@ -455,22 +455,6 @@ func TestPostTransactions(t *testing.T) {
 							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
 							}
-
-							if (*tc.expectedRes.Data)[0].Metadata != nil {
-								expectedAccountsMeta, ok := (*tc.expectedRes.Data)[0].Metadata["set_account_meta"]
-								if ok {
-									for addr, m := range expectedAccountsMeta.(core.AccountsMeta) {
-										rsp := internal.GetAccount(api, addr)
-										require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-										acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
-										if tc.expectedStatusCode == http.StatusOK {
-											require.Equal(t, m, acc.Metadata)
-										} else {
-											require.Equal(t, core.Metadata{}, acc.Metadata)
-										}
-									}
-								}
-							}
 						}
 					})
 				}
