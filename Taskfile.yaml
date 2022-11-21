@@ -9,8 +9,12 @@ vars:
   PKG: "./..."
   FAILFAST: "-failfast"
   TIMEOUT: "10m"
-  RUN: "''"
+  RUN: ".*"
   TAGS: "-tags json1,netgo"
+  BENCH_RESULTS_DIR: "/tmp/benchmarks"
+  BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
+  BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
+  BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
   VERBOSE: "false"
 
 tasks:
@@ -35,8 +39,9 @@ tasks:
   tests:local:sqlite:
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
-        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
+        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
         sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
@@ -46,8 +51,9 @@ tasks:
     deps: [postgres]
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic
-        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
+        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
         sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
@@ -55,10 +61,6 @@ tasks:
     env:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  bench:
-    cmds:
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -run=XXX -bench=. {{.PKG}}
 
   print:coverage:
     cmds:
@@ -69,10 +71,33 @@ tasks:
       - echo "xdg-open coverage.html on linux"
     silent: true
 
+  bench:
+    deps: [postgres]
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - >
+        go test {{.TAGS}} ./pkg/storage/sqlstorage 
+        -run=XXX -bench={{.RUN}} -benchmem -timeout 1h 
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} 
+        | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:cpu:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_CPU_PROFILE}}
+
+  bench:mem:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_MEM_PROFILE}}
+
   install:
     deps:
     - install:golangci-lint
     - install:cov-report
+    - install:perf
 
   install:golangci-lint:
     cmds:
@@ -84,6 +109,9 @@ tasks:
   install:cov-report:
     cmds:
     - go install github.com/go-phorce/cov-report/cmd/cov-report
+
+  install:perf:
+    - go install golang.org/x/perf/cmd/...@latest
 
   postgres:
     cmds:
@@ -177,3 +205,22 @@ tasks:
           Platform: "arm64"
           Image: ubuntu
           Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"
+
+  run:
+    cmds:
+      - docker compose up -d --remove-orphans
+
+  stop:
+    cmds:
+      - docker compose stop
+
+  ps:
+    cmds:
+      - docker compose ps
+
+  rm:
+    deps: [stop]
+    cmds:
+      - docker compose rm -f
+      - docker volume prune -f
+      - rm {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}

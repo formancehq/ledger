@@ -389,6 +389,41 @@ func TestScriptSetReference(t *testing.T) {
 	})
 }
 
+func TestScriptReferenceConflict(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
+
+		_, err := l.Execute(context.Background(), core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+				send [USD/2 99] (
+					source=@world
+					destination=@user:001
+				)`,
+				Vars: map[string]json.RawMessage{},
+			},
+			Reference: "tx_ref",
+		})
+		require.NoError(t, err)
+
+		_, err = l.Execute(context.Background(), core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+				send [USD/2 99] (
+					source=@unexists
+					destination=@user:001
+				)`,
+				Vars: map[string]json.RawMessage{},
+			},
+			Reference: "tx_ref",
+		})
+		require.Error(t, err)
+		require.True(t, ledger.IsConflictError(err))
+	})
+}
+
 func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)

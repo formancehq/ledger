@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/api/middlewares"
 	"go.uber.org/fx"
 )
 
@@ -39,12 +39,12 @@ func Module(cfg Config) fx.Option {
 			options.TLSConfig = cfg.TLSConfig
 			return redis.NewClient(options), nil
 		}),
-		ledger.ProvideResolverOption(func(redisClient Client) ledger.ResolverOption {
-			return ledger.WithLocker(NewLock(
+		fx.Decorate(func(redisClient Client) middlewares.Locker {
+			return NewLock(
 				redisClient,
 				cfg.LockDuration,
 				cfg.LockRetry,
-			))
+			)
 		}),
 	)
 }

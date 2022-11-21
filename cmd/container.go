@@ -120,10 +120,6 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	switch v.GetString(lockStrategyFlag) {
-	case "memory":
-		options = append(options, ledger.MemoryLockModule())
-	case "none":
-		options = append(options, ledger.NoLockModule())
 	case "redis":
 		var tlsConfig *tls.Config
 		if v.GetBool(lockStrategyRedisTLSEnabledFlag) {

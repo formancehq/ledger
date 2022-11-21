@@ -70,7 +70,7 @@ func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption)
 				if err != nil {
 					return err
 				}
-				l, err := ledger.NewLedger(store, ledger.NewInMemoryLocker(), ledger.NewNoOpMonitor(), ledgerOptions...)
+				l, err := ledger.NewLedger(store, ledger.NewNoOpMonitor(), ledgerOptions...)
 				if err != nil {
 					panic(err)
 				}

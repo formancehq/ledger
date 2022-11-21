@@ -14,9 +14,11 @@ import (
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pborman/uuid"
@@ -200,17 +202,10 @@ func TestContainers(t *testing.T) {
 				v.Set(lockStrategyRedisUrlFlag, "redis://redis:6789")
 			},
 			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver) {
+				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver, locker middlewares.Locker) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
-							l, err := resolver.GetLedger(ctx, uuid.New())
-							if err != nil {
-								return err
-							}
-							_, err = l.Commit(ctx)
-							if !ledger.IsLockError(err) { // No redis in test, it should trigger a lock error
-								return err
-							}
+							require.IsType(t, locker, &redis.Lock{})
 							return nil
 						},
 					})

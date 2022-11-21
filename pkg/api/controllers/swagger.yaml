@@ -4,19 +4,12 @@ info:
   contact: {}
   version: "LEDGER_VERSION"
 
-servers:
-  - url: https://{organization}.o.numary.cloud/ledger
-    description: Production server
-    variables:
-      organization:
-        description: The organization on which the ledger is located
-        default: ""
 
 paths:
   /_info:
     get:
       tags:
-        - server
+        - Server
       summary: Show server information.
       operationId: getInfo
       responses:
@@ -32,7 +25,7 @@ paths:
       summary: Count the accounts from a ledger.
       operationId: countAccounts
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -68,7 +61,7 @@ paths:
       description: List accounts from a ledger, sorted by address in descending order.
       operationId: listAccounts
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -125,7 +118,7 @@ paths:
           in: query
           description: |
             Parameter used in pagination requests. Maximum page size is set to 15.
-            Set to the value of next for the next page of results. 
+            Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when the pagination token is set.
           schema:
@@ -172,7 +165,7 @@ paths:
       summary: Get account by its address.
       operationId: getAccount
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -226,7 +219,7 @@ paths:
       summary: Add metadata to an account.
       operationId: addMetadataToAccount
       tags:
-        - accounts
+        - Accounts
       parameters:
         - name: ledger
           in: path
@@ -276,7 +269,7 @@ paths:
   /{ledger}/mapping:
     get:
       tags:
-        - mapping
+        - Mapping
       operationId: getMapping
       summary: Get the mapping of a ledger.
       parameters:
@@ -296,7 +289,7 @@ paths:
                 $ref: '#/components/schemas/MappingResponse'
     put:
       tags:
-        - mapping
+        - Mapping
       operationId: updateMapping
       summary: Update the mapping of a ledger.
       parameters:
@@ -325,7 +318,7 @@ paths:
     post:
       deprecated: true
       tags:
-        - script
+        - Script
       operationId: runScript
       summary: Execute a Numscript.
       parameters:
@@ -352,8 +345,8 @@ paths:
         "200":
           description: >
             On success, it will return a 200 status code, and the resulting transaction under the `transaction` field.
-            
-            
+
+
             On failure, it will also return a 200 status code, and the following fields:
               - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.
               - `error_code`: contains the string code of the error
@@ -366,7 +359,7 @@ paths:
   /{ledger}/stats:
     get:
       tags:
-        - stats
+        - Stats
       operationId: readStats
       summary: Get Stats
       description: |
@@ -391,7 +384,7 @@ paths:
   /{ledger}/transactions:
     head:
       tags:
-        - transactions
+        - Transactions
       summary: Count the transactions from a ledger.
       operationId: countTransactions
       parameters:
@@ -445,7 +438,7 @@ paths:
                 type: integer
     get:
       tags:
-        - transactions
+        - Transactions
       summary: List transactions from a ledger.
       description: List transactions from a ledger, sorted by txid in descending order.
       operationId: listTransactions
@@ -517,7 +510,7 @@ paths:
           in: query
           description: |
             Parameter used in pagination requests. Maximum page size is set to 15.
-            Set to the value of next for the next page of results. 
+            Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when the pagination token is set.
           schema:
@@ -570,7 +563,7 @@ paths:
                     example: "no other query params can be set with 'pagination_token'"
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Create a new transaction to a ledger.
       operationId: createTransaction
       parameters:
@@ -638,7 +631,7 @@ paths:
   /{ledger}/transactions/{txid}:
     get:
       tags:
-        - transactions
+        - Transactions
       summary: Get transaction from a ledger by its ID.
       operationId: getTransaction
       parameters:
@@ -697,7 +690,7 @@ paths:
   /{ledger}/transactions/{txid}/metadata:
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Set the metadata of a transaction by its ID.
       operationId: addMetadataOnTransaction
       parameters:
@@ -759,7 +752,7 @@ paths:
   /{ledger}/transactions/{txid}/revert:
     post:
       tags:
-        - transactions
+        - Transactions
       operationId: revertTransaction
       summary: Revert a ledger transaction by its ID.
       parameters:
@@ -818,7 +811,7 @@ paths:
   /{ledger}/transactions/batch:
     post:
       tags:
-        - transactions
+        - Transactions
       summary: Create a new batch of transactions to a ledger.
       operationId: CreateTransactions
       parameters:
@@ -876,7 +869,7 @@ paths:
   /{ledger}/balances:
     get:
       tags:
-        - balances
+        - Balances
       summary: Get the balances from a ledger's account
       operationId: getBalances
       parameters:
@@ -903,8 +896,8 @@ paths:
         - name: pagination_token
           in: query
           description: |-
-            Parameter used in pagination requests. 
-            Set to the value of next for the next page of results. 
+            Parameter used in pagination requests.
+            Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
           schema:
             type: string
@@ -950,7 +943,7 @@ paths:
   /{ledger}/aggregate/balances:
     get:
       tags:
-        - balances
+        - Balances
       summary: Get the aggregated balances from selected accounts
       operationId: getBalancesAggregated
       parameters:
@@ -996,14 +989,7 @@ paths:
                     type: string
                     example: "invalid address"
 
-security:
-  - basicAuth: []
-
 components:
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
   schemas:
     Config:
       type: object
@@ -1017,11 +1003,6 @@ components:
       nullable: true
       additionalProperties: {}
       example: { admin: true, a: { nested: { key: value } } }
-    AdditionalOperations:
-      type: object
-      nullable: true
-      additionalProperties: {}
-      example: { set_account_meta: { users:001: { a: { nested: { key: value } } } } }
     ConfigInfo:
       type: object
       properties:
@@ -1276,8 +1257,6 @@ components:
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
-        additional_operations:
-          $ref: '#/components/schemas/AdditionalOperations'
     Stats:
       type: object
       properties:

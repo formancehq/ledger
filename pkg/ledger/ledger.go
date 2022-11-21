@@ -27,7 +27,6 @@ var DefaultContracts = []core.Contract{
 }
 
 type Ledger struct {
-	locker              Locker
 	store               Store
 	monitor             Monitor
 	allowPastTimestamps bool
@@ -41,13 +40,11 @@ func WithPastTimestamps(l *Ledger) {
 
 func NewLedger(
 	store Store,
-	locker Locker,
 	monitor Monitor,
 	options ...LedgerOption,
 ) (*Ledger, error) {
 	l := &Ledger{
 		store:   store,
-		locker:  locker,
 		monitor: monitor,
 	}
 
@@ -76,12 +73,6 @@ type CommitResult struct {
 }
 
 func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
-
 	commitRes, err := l.ProcessTx(ctx, txsData...)
 	if err != nil {
 		return nil, err
@@ -101,12 +92,6 @@ func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*
 }
 
 func (l *Ledger) CommitPreview(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
-
 	return l.ProcessTx(ctx, txsData...)
 }
 
@@ -158,12 +143,6 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt := revertedTx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
-
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
 
 	result, err := l.ProcessTx(ctx, rt)
 	if err != nil {
@@ -222,11 +201,6 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (co
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return NewLockError(err)
-	}
-	defer unlock(ctx)
 
 	if targetType == "" {
 		return NewValidationError("empty target type")
@@ -236,6 +210,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return NewValidationError("empty target id")
 	}
 
+	var err error
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
 		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())

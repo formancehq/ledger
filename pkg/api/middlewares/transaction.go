@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"bytes"
+	"context"
 	"io"
 
 	"github.com/gin-gonic/gin"
@@ -47,8 +48,14 @@ func newBufferedWriter(rw gin.ResponseWriter) *bufferedResponseWriter {
 	}
 }
 
-func Transaction() func(c *gin.Context) {
+func Transaction(locker Locker) func(c *gin.Context) {
 	return func(c *gin.Context) {
+		unlock, err := locker.Lock(c.Request.Context(), c.Param("ledger"))
+		if err != nil {
+			panic(err)
+		}
+		defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
+
 		bufferedWriter := newBufferedWriter(c.Writer)
 		c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
 		c.Writer = bufferedWriter
