@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"

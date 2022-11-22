@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"time"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/go-redis/redis/v8"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/pkg/errors"
 )

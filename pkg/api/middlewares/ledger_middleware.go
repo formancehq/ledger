@@ -1,8 +1,8 @@
 package middlewares
 
 import (
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/ledger"
 )

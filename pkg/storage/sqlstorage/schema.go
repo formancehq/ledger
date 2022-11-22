@@ -7,8 +7,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
 )
 
 type Schema interface {

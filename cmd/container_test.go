@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
-	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
+	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlpmetrics"
+	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/bus"

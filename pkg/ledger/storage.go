@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/numary/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 )
 

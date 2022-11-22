@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/numary/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/analytics"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

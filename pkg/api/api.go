@@ -4,8 +4,8 @@ import (
 	_ "embed"
 	"net/http"
 
+	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
 	"github.com/gin-gonic/gin"
-	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"

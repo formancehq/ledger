@@ -5,8 +5,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
-	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
+	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlpmetrics"
+	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
 	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"

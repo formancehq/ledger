@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
 )
 
 type HandlersByEngine map[string][]MigrationFunc
