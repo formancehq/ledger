@@ -3,7 +3,6 @@ package cmd
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/sharedauth"
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/formancehq/go-libs/sharedpublish"
 	"github.com/formancehq/go-libs/sharedpublish/sharedpublishhttp"
@@ -27,16 +25,11 @@ import (
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrymetrics"
-	"github.com/numary/ledger/pkg/opentelemetry/opentelemetrytraces"
 	"github.com/numary/ledger/pkg/redis"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/xdg-go/scram"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
@@ -112,12 +105,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	// Handle OpenTelemetry
-	if m := sharedotlptraces.CLITracesModule(v); m != nil {
-		options = append(options, m)
-	}
-	if m := sharedotlpmetrics.CLIMetricsModule(v); m != nil {
-		options = append(options, m)
-	}
+	options = append(options, sharedotlptraces.CLITracesModule(v))
 
 	switch v.GetString(lockStrategyFlag) {
 	case "redis":
@@ -180,21 +168,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	))
 
 	// Handle resolver
-	options = append(options,
-		ledger.ResolveModule(),
-	)
-
-	options = append(options,
-		fx.Decorate(fx.Annotate(func(driver storage.Driver[ledger.Store], mp metric.MeterProvider) storage.Driver[ledger.Store] {
-			if v.GetBool(sharedotlptraces.OtelTracesFlag) {
-				driver = opentelemetrytraces.WrapStorageDriver(driver)
-			}
-			if v.GetBool(sharedotlpmetrics.OtelMetricsFlag) {
-				driver = opentelemetrymetrics.WrapStorageDriver(driver, mp)
-			}
-			return driver
-		}, fx.ParamTags(``, `optional:"true"`))),
-	)
+	options = append(options, ledger.ResolveModule())
 
 	// Api middlewares
 	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {
@@ -240,23 +214,14 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		cc.AddAllowHeaders("authorization")
 
 		res = append(res, cors.New(cc))
-		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
-			res = append(res, otelgin.Middleware(ServiceName, otelgin.WithTracerProvider(tp)))
-		} else {
-			res = append(res, func(context *gin.Context) {
-				context.Next()
-				for _, err := range context.Errors {
-					sharedlogging.GetLogger(context.Request.Context()).Error(err)
-				}
-			})
-		}
+		res = append(res, func(context *gin.Context) {
+			context.Next()
+			for _, err := range context.Errors {
+				sharedlogging.GetLogger(context.Request.Context()).Error(err)
+			}
+		})
 		res = append(res, middlewares.Log())
-		var writer io.Writer = os.Stderr
-		if v.GetBool(sharedotlptraces.OtelTracesFlag) {
-			writer = io.Discard
-			res = append(res, opentelemetrytraces.Middleware())
-		}
-		res = append(res, gin.CustomRecoveryWithWriter(writer, func(c *gin.Context, err interface{}) {
+		res = append(res, gin.CustomRecoveryWithWriter(os.Stderr, func(c *gin.Context, err interface{}) {
 			switch eerr := err.(type) {
 			case error:
 				_ = c.AbortWithError(http.StatusInternalServerError, eerr)
