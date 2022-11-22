@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/opentelemetry"
 )
 
 type HandlersByEngine map[string][]MigrationFunc
@@ -44,6 +45,10 @@ func (m Migrations) Swap(i, j int) {
 var _ sort.Interface = &Migrations{}
 
 func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool, error) {
+
+	ctx, span := opentelemetry.Start(ctx, "Migrate")
+	defer span.End()
+
 	logger := sharedlogging.GetLogger(ctx)
 
 	q, args := sqlbuilder.
