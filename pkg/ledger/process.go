@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessTx(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -130,27 +130,9 @@ func (l *Ledger) ProcessTx(ctx context.Context, ops *core.AdditionalOperations, 
 		nextTxId++
 	}
 
-	if ops != nil {
-		generatedTxs = processAdditionalOperations(ops, generatedTxs)
-	}
-
 	return &CommitResult{
 		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
 		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
 	}, nil
-}
-
-func processAdditionalOperations(ops *core.AdditionalOperations, txs []core.ExpandedTransaction) []core.ExpandedTransaction {
-	res := txs
-	if len(ops.SetAccountMeta) > 0 {
-		for i := range txs {
-			if res[i].Metadata == nil {
-				res[i].Metadata = core.Metadata{}
-			}
-			res[i].Metadata["set_account_meta"] = ops.SetAccountMeta
-		}
-	}
-
-	return res
 }

@@ -18,13 +18,6 @@ func (fn ResolveOptionFn) apply(r *Resolver) error {
 	return fn(r)
 }
 
-func WithLocker(locker Locker) ResolveOptionFn {
-	return func(r *Resolver) error {
-		r.locker = locker
-		return nil
-	}
-}
-
 func WithMonitor(monitor Monitor) ResolveOptionFn {
 	return func(r *Resolver) error {
 		r.monitor = monitor
@@ -33,13 +26,11 @@ func WithMonitor(monitor Monitor) ResolveOptionFn {
 }
 
 var DefaultResolverOptions = []ResolverOption{
-	WithLocker(NewInMemoryLocker()),
 	WithMonitor(&noOpMonitor{}),
 }
 
 type Resolver struct {
 	storageDriver     storage.Driver[Store]
-	locker            Locker
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
 	monitor           Monitor
@@ -77,7 +68,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	_, ok := r.initializedStores[name]
 	r.lock.RUnlock()
 	if ok {
-		return NewLedger(store, r.locker, r.monitor, r.ledgerOptions...)
+		return NewLedger(store, r.monitor, r.ledgerOptions...)
 	}
 
 	r.lock.Lock()
@@ -91,7 +82,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.initializedStores[name] = struct{}{}
 	}
 
-	return NewLedger(store, r.locker, r.monitor, r.ledgerOptions...)
+	return NewLedger(store, r.monitor, r.ledgerOptions...)
 }
 
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`
@@ -108,21 +99,5 @@ func ResolveModule() fx.Option {
 		fx.Provide(
 			fx.Annotate(NewResolver, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
 		),
-	)
-}
-
-func MemoryLockModule() fx.Option {
-	return fx.Options(
-		ProvideResolverOption(func() ResolverOption {
-			return WithLocker(NewInMemoryLocker())
-		}),
-	)
-}
-
-func NoLockModule() fx.Option {
-	return fx.Options(
-		ProvideResolverOption(func() ResolverOption {
-			return WithLocker(NoOpLocker)
-		}),
 	)
 }

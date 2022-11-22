@@ -27,7 +27,6 @@ var DefaultContracts = []core.Contract{
 }
 
 type Ledger struct {
-	locker              Locker
 	store               Store
 	monitor             Monitor
 	allowPastTimestamps bool
@@ -41,13 +40,11 @@ func WithPastTimestamps(l *Ledger) {
 
 func NewLedger(
 	store Store,
-	locker Locker,
 	monitor Monitor,
 	options ...LedgerOption,
 ) (*Ledger, error) {
 	l := &Ledger{
 		store:   store,
-		locker:  locker,
 		monitor: monitor,
 	}
 
@@ -75,25 +72,10 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
-
-	commitRes, err := l.ProcessTx(ctx, ops, txsData...)
+func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
+	commitRes, err := l.ProcessTx(ctx, txsData...)
 	if err != nil {
 		return nil, err
-	}
-
-	if ops != nil {
-		for addr, m := range ops.SetAccountMeta {
-			if err := l.store.UpdateAccountMetadata(ctx,
-				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-				return nil, err
-			}
-		}
 	}
 
 	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
@@ -105,23 +87,30 @@ func (l *Ledger) Commit(ctx context.Context, ops *core.AdditionalOperations, txs
 		}
 	}
 
+	for _, t := range txsData {
+		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
+			for addr, m := range accMeta.(map[string]any) {
+				if err := l.store.UpdateAccountMetadata(ctx,
+					addr, m.(map[string]any), time.Now().Round(time.Second).UTC()); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
-	if ops != nil {
-		for addr, m := range ops.SetAccountMeta {
-			l.monitor.SavedMetadata(ctx, l.store.Name(), core.MetaTargetTypeAccount, addr, m)
+	for _, t := range txsData {
+		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
+			for addr, m := range accMeta.(map[string]any) {
+				l.monitor.SavedMetadata(ctx, l.store.Name(), core.MetaTargetTypeAccount, addr, m.(map[string]any))
+			}
 		}
 	}
 	return commitRes, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, ops *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
-
-	return l.ProcessTx(ctx, ops, txsData...)
+func (l *Ledger) CommitPreview(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
+	return l.ProcessTx(ctx, txsData...)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -173,13 +162,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return nil, NewLockError(err)
-	}
-	defer unlock(ctx)
-
-	result, err := l.ProcessTx(ctx, nil, rt)
+	result, err := l.ProcessTx(ctx, rt)
 	if err != nil {
 		return nil, err
 	}
@@ -236,11 +219,6 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (co
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
-	unlock, err := l.locker.Lock(ctx, l.store.Name())
-	if err != nil {
-		return NewLockError(err)
-	}
-	defer unlock(ctx)
 
 	if targetType == "" {
 		return NewValidationError("empty target type")
@@ -250,6 +228,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return NewValidationError("empty target id")
 	}
 
+	var err error
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
 		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())

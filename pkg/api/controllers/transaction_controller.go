@@ -138,12 +138,11 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 type PostTransaction struct {
-	Timestamp            time.Time                  `json:"timestamp"`
-	Postings             core.Postings              `json:"postings"`
-	Script               core.ScriptCore            `json:"script"`
-	Reference            string                     `json:"reference"`
-	Metadata             core.Metadata              `json:"metadata" swaggertype:"object"`
-	AdditionalOperations *core.AdditionalOperations `json:"additional_operations" swaggertype:"object"`
+	Timestamp time.Time       `json:"timestamp"`
+	Postings  core.Postings   `json:"postings"`
+	Script    core.ScriptCore `json:"script"`
+	Reference string          `json:"reference"`
+	Metadata  core.Metadata   `json:"metadata" swaggertype:"object"`
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -181,7 +180,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 
 		commitRes, err = fn(c.Request.Context(),
-			payload.AdditionalOperations,
 			core.TransactionData{
 				Postings:  payload.Postings,
 				Reference: payload.Reference,
@@ -199,7 +197,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		}
 
 		commitRes, err = fn(c.Request.Context(),
-			payload.AdditionalOperations,
 			core.Script{
 				ScriptCore: payload.Script,
 				Reference:  payload.Reference,
@@ -294,7 +291,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.Transactions...)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

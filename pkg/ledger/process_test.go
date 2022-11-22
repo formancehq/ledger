@@ -134,7 +134,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), nil, txsData...)
+				res, err := l.ProcessTx(context.Background(), txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -180,7 +180,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), nil, txsData...)
+				res, err := l.ProcessTx(context.Background(), txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -294,7 +294,7 @@ func TestLedger_processTx(t *testing.T) {
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.ProcessTx(context.Background(), nil)
+			result, err := l.ProcessTx(context.Background())
 			assert.NoError(t, err)
 			assert.Equal(t, &ledger.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
@@ -315,7 +315,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), nil, core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",
@@ -327,74 +327,6 @@ func TestLedger_processTx(t *testing.T) {
 
 			assert.Error(t, err)
 			assert.True(t, ledger.IsValidationError(err))
-		})
-
-		t.Run("set_account_meta valid", func(t *testing.T) {
-			m := core.AccountsMeta{
-				"bank": core.Metadata{"foo": "bar"},
-			}
-			res, err := l.ProcessTx(context.Background(),
-				&core.AdditionalOperations{
-					SetAccountMeta: m},
-				core.TransactionData{
-					Postings: []core.Posting{{
-						Source:      "world",
-						Destination: "bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					}},
-				})
-			require.NoError(t, err)
-			require.Equal(t, core.Metadata{
-				"set_account_meta": m,
-			}, res.GeneratedTransactions[0].Metadata)
-		})
-
-		t.Run("set_account_meta empty", func(t *testing.T) {
-			m := core.AccountsMeta{}
-			res, err := l.ProcessTx(context.Background(),
-				&core.AdditionalOperations{
-					SetAccountMeta: m},
-				core.TransactionData{
-					Postings: []core.Posting{{
-						Source:      "world",
-						Destination: "bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					}},
-				})
-			require.NoError(t, err)
-			require.Nil(t, res.GeneratedTransactions[0].Metadata)
-		})
-
-		t.Run("set_account_meta multiple addresses", func(t *testing.T) {
-			m := core.AccountsMeta{
-				"bank":  core.Metadata{"foo": "bar"},
-				"alice": core.Metadata{"foo": "bar"},
-			}
-			res, err := l.ProcessTx(context.Background(),
-				&core.AdditionalOperations{
-					SetAccountMeta: m},
-				core.TransactionData{
-					Postings: []core.Posting{
-						{
-							Source:      "world",
-							Destination: "bank",
-							Amount:      core.NewMonetaryInt(100),
-							Asset:       "USD",
-						},
-						{
-							Source:      "bank",
-							Destination: "alice",
-							Amount:      core.NewMonetaryInt(10),
-							Asset:       "USD",
-						},
-					},
-				})
-			require.NoError(t, err)
-			require.Equal(t, core.Metadata{
-				"set_account_meta": m,
-			}, res.GeneratedTransactions[0].Metadata)
 		})
 	})
 
@@ -411,7 +343,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), nil, core.TransactionData{
+			_, err := l.ProcessTx(context.Background(), core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",

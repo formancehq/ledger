@@ -340,47 +340,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with set_account_meta",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					AdditionalOperations: &core.AdditionalOperations{
-						SetAccountMeta: core.AccountsMeta{
-							"bar": {"foo": "bar"},
-						}},
-				},
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-							Metadata: core.Metadata{
-								"set_account_meta": core.AccountsMeta{
-									"bar": {"foo": "bar"},
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
@@ -487,8 +446,12 @@ func TestPostTransactions(t *testing.T) {
 								},
 							},
 							Metadata: core.Metadata{
-								"set_account_meta": core.AccountsMeta{
-									"bar": {"foo": map[string]any{"type": "string", "value": "bar"}},
+								"set_account_meta": map[string]core.Metadata{
+									"bar": {
+										"foo": map[string]any{
+											"type": "string", "value": "bar",
+										},
+									},
 								},
 							},
 						},
@@ -531,22 +494,6 @@ func TestPostTransactions(t *testing.T) {
 							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
 							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
-							}
-
-							if (*tc.expectedRes.Data)[0].Metadata != nil {
-								expectedAccountsMeta, ok := (*tc.expectedRes.Data)[0].Metadata["set_account_meta"]
-								if ok {
-									for addr, m := range expectedAccountsMeta.(core.AccountsMeta) {
-										rsp := internal.GetAccount(api, addr)
-										require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-										acc, _ := internal.DecodeSingleResponse[core.AccountWithVolumes](t, rsp.Body)
-										if tc.expectedStatusCode == http.StatusOK {
-											require.Equal(t, m, acc.Metadata)
-										} else {
-											require.Equal(t, core.Metadata{}, acc.Metadata)
-										}
-									}
-								}
 							}
 						}
 					})

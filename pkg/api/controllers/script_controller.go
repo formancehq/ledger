@@ -41,7 +41,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	}
 
 	res := ScriptResponse{}
-	tx, err := fn(c.Request.Context(), nil, script)
+	tx, err := fn(c.Request.Context(), script)
 	if err != nil {
 		var (
 			code    = apierrors.ErrInternal
