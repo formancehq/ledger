@@ -3,7 +3,7 @@ package internal
 import (
 	"strings"
 
-	"github.com/numary/go-libs/sharedauth"
+	"github.com/formancehq/go-libs/sharedauth"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

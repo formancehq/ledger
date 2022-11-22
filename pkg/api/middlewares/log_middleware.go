@@ -3,8 +3,8 @@ package middlewares
 import (
 	"time"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedlogging"
 )
 
 func Log() gin.HandlerFunc {

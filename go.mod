@@ -7,12 +7,15 @@ require (
 	github.com/Shopify/sarama v1.36.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
+	github.com/formancehq/go-libs v1.1.0
+	github.com/formancehq/go-libs/sharedhealth v0.0.0-20221118095941-c137790c3362
+	github.com/formancehq/go-libs/sharedotlp v0.0.0-20221118095941-c137790c3362
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/google/go-cmp v0.5.8
+	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/huandu/go-sqlbuilder v1.13.0
 	github.com/jackc/pgconn v1.10.1
@@ -20,9 +23,6 @@ require (
 	github.com/lib/pq v1.10.5
 	github.com/mattn/go-sqlite3 v1.14.9
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/numary/go-libs v1.0.1
-	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
-	github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81
 	github.com/numary/machine v1.2.1
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -36,10 +36,10 @@ require (
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.15
 	github.com/xdg-go/scram v1.1.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.28.0
-	go.opentelemetry.io/otel v1.9.0
-	go.opentelemetry.io/otel/metric v0.31.0
+	go.opentelemetry.io/otel v1.11.1
+	go.opentelemetry.io/otel/metric v0.33.0
 	go.opentelemetry.io/otel/sdk v1.9.0
-	go.opentelemetry.io/otel/trace v1.9.0
+	go.opentelemetry.io/otel/trace v1.11.1
 	go.uber.org/fx v1.18.1
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -135,6 +135,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	go.opentelemetry.io/contrib/instrumentation/github.com/Shopify/sarama/otelsarama v0.34.0 // indirect
+	go.opentelemetry.io/contrib/propagators/b3 v1.11.1 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.9.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.9.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.31.0 // indirect

@@ -3,9 +3,9 @@ package routes
 import (
 	"net/http"
 
+	"github.com/formancehq/go-libs/sharedauth"
+	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedauth"
-	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/api/middlewares"
