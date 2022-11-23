@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
@@ -42,32 +43,40 @@ func TestSend(t *testing.T) {
 		script := core.Script{
 			ScriptCore: core.ScriptCore{
 				Plain: `
-				send [USD/2 99] (
-				source=@world
-				destination=@user:001
-			)`},
+					send [USD/2 99] (
+						source=@world
+						destination=@user:001
+					)`,
+			},
 		}
 
 		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(99))
+		assertBalance(t, l, "user:001",
+			"USD/2", core.NewMonetaryInt(99))
 	})
 }
 
 func TestNoVariables(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		var script core.Script
-		err := json.Unmarshal(
-			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
-				"vars": {}
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+					vars {
+						account $dest
+					}
 
-		_, err = l.Execute(context.Background(), script)
-		assert.Error(t, err, "variables were not provided but the transaction was committed")
+					send [CAD/2 42] (
+						source = @world
+						destination = $dest
+					)`,
+				Vars: map[string]json.RawMessage{},
+			},
+		}
+
+		_, err := l.Execute(context.Background(), script)
+		assert.Error(t, err)
 
 		require.NoError(t, l.Close(context.Background()))
 	})
@@ -79,28 +88,28 @@ func TestVariables(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		var script core.Script
-		err := json.Unmarshal(
-			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
-				"vars": {
-					"dest": "user:042"
-				}
-			}`),
-			&script)
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+					vars {
+						account $dest
+					}
+
+					send [CAD/2 42] (
+						source = @world
+						destination = $dest
+					)`,
+				Vars: map[string]json.RawMessage{
+					"dest": json.RawMessage(`"user:042"`),
+				},
+			},
+		}
+
+		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
-		require.NoError(t, err)
-
-		user, err := l.GetAccount(context.Background(), "user:042")
-		require.NoError(t, err)
-
-		b := user.Balances["CAD/2"]
-		assert.Equalf(t, core.NewMonetaryInt(42), b,
-			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
-			42, b,
-		)
+		assertBalance(t, l, "user:042",
+			"CAD/2", core.NewMonetaryInt(42))
 	})
 }
 
@@ -124,13 +133,15 @@ func TestEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
-		var script core.Script
-		err = json.Unmarshal(
-			[]byte(`{
-				"plain": "send [COIN 95] (\n source=@user:001 \n destination=@world \n)"
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+					send [COIN 95] (
+						source = @user:001
+						destination = @world
+					)`,
+			},
+		}
 
 		_, err = l.Execute(context.Background(), script)
 		assert.NoError(t, err)
@@ -157,16 +168,18 @@ func TestNotEnoughFunds(t *testing.T) {
 		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
-		var script core.Script
-		err = json.Unmarshal(
-			[]byte(`{
-				"plain": "send [COIN 105] (\n source=@user:002 \n destination=@world \n)"
-			}`),
-			&script)
-		require.NoError(t, err)
+		script := core.Script{
+			ScriptCore: core.ScriptCore{
+				Plain: `
+					send [COIN 105] (
+						source = @user:002
+						destination = @world
+					)`,
+			},
+		}
 
 		_, err = l.Execute(context.Background(), script)
-		assert.Error(t, err, "error wasn't supposed to be nil")
+		assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrInsufficientFund))
 	})
 }
 
@@ -185,9 +198,7 @@ func TestMissingMetadata(t *testing.T) {
 			send [COIN *] (
 				source = $sale
 				destination = $seller
-			)
-		`
-
+			)`
 		script := core.Script{
 			ScriptCore: core.ScriptCore{
 				Plain: plain,
@@ -198,7 +209,7 @@ func TestMissingMetadata(t *testing.T) {
 		}
 
 		_, err := l.Execute(context.Background(), script)
-		assert.Error(t, err, "expected an error because of missing metadata")
+		assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
 	})
 }
 
@@ -222,20 +233,24 @@ func TestMetadata(t *testing.T) {
 		_, err := l.Commit(context.Background(), tx)
 		require.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "sales:042", core.Metadata{
-			"seller": json.RawMessage(`{
-				"type":  "account",
-				"value": "users:053"
-			}`),
-		})
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
+			"sales:042",
+			core.Metadata{
+				"seller": json.RawMessage(`{
+					"type":  "account",
+					"value": "users:053"
+				}`),
+			})
 		require.NoError(t, err)
 
-		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:053", core.Metadata{
-			"commission": json.RawMessage(`{
-				"type":  "portion",
-				"value": "15.5%"
-			}`),
-		})
+		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
+			"users:053",
+			core.Metadata{
+				"commission": json.RawMessage(`{
+					"type":  "portion",
+					"value": "15.5%"
+				}`),
+			})
 		require.NoError(t, err)
 
 		plain := `
@@ -421,6 +436,46 @@ func TestScriptReferenceConflict(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.True(t, ledger.IsConflictError(err))
+	})
+}
+
+func TestSetAccountMeta(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		t.Run("valid", func(t *testing.T) {
+			res, err := l.ProcessScript(context.Background(), core.Script{
+				ScriptCore: core.ScriptCore{Plain: `
+					set_account_meta(@alice, "aaa", "string meta")
+					set_account_meta(@alice, "bbb", 42)
+					set_account_meta(@alice, "ccc", COIN)
+					set_account_meta(@alice, "ddd", [COIN 30])
+					set_account_meta(@alice, "eee", @bob)
+					`,
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": map[string]any{
+					"alice": map[string]any{
+						"aaa": map[string]any{"type": "string", "value": "string meta"},
+						"bbb": map[string]any{"type": "number", "value": 42.},
+						"ccc": map[string]any{"type": "asset", "value": "COIN"},
+						"ddd": map[string]any{"type": "monetary",
+							"value": map[string]any{"asset": "COIN", "amount": 30.}},
+						"eee": map[string]any{"type": "account", "value": "bob"},
+					},
+				},
+			}, res.Metadata)
+		})
+
+		t.Run("invalid syntax", func(t *testing.T) {
+			_, err := l.ProcessScript(context.Background(), core.Script{
+				ScriptCore: core.ScriptCore{Plain: `
+					set_account_meta(@bob, "is")`,
+				},
+			})
+			require.True(t, ledger.IsScriptErrorWithCode(err,
+				ledger.ScriptErrorCompilationFailed))
+		})
 	})
 }
 

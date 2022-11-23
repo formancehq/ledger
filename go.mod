@@ -7,6 +7,7 @@ require (
 	github.com/Shopify/sarama v1.36.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
+	github.com/formancehq/machine v1.3.0
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-redis/redis/v8 v8.11.4
@@ -23,7 +24,6 @@ require (
 	github.com/numary/go-libs v1.0.1
 	github.com/numary/go-libs/sharedhealth v0.0.0-20220829123039-3eeb76619d81
 	github.com/numary/go-libs/sharedotlp v0.0.0-20220829123039-3eeb76619d81
-	github.com/numary/machine v1.2.1
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pborman/uuid v1.2.1

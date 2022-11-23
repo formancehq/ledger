@@ -87,7 +87,25 @@ func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*
 		}
 	}
 
+	for _, t := range txsData {
+		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
+			for addr, m := range accMeta.(map[string]any) {
+				if err := l.store.UpdateAccountMetadata(ctx,
+					addr, m.(map[string]any), time.Now().Round(time.Second).UTC()); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
+	for _, t := range txsData {
+		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
+			for addr, m := range accMeta.(map[string]any) {
+				l.monitor.SavedMetadata(ctx, l.store.Name(), core.MetaTargetTypeAccount, addr, m.(map[string]any))
+			}
+		}
+	}
 	return commitRes, nil
 }
 

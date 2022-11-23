@@ -3,16 +3,16 @@ package ledger
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
+	machine "github.com/formancehq/machine/core"
+	"github.com/formancehq/machine/script/compiler"
+	"github.com/formancehq/machine/vm"
 	"github.com/numary/ledger/pkg/core"
-	machine "github.com/numary/machine/core"
-	"github.com/numary/machine/script/compiler"
-	"github.com/numary/machine/vm"
+	"github.com/pkg/errors"
 )
 
-func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
+func (l *Ledger) ProcessScript(ctx context.Context, script core.Script) (*core.TransactionData, error) {
 	if script.Reference != "" {
 		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(script.Reference))
 		if err != nil {
@@ -22,6 +22,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 			return nil, NewConflictError()
 		}
 	}
+
 	if script.Plain == "" {
 		return nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
@@ -33,7 +34,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 
 	m := vm.NewMachine(*p)
 
-	if err := m.SetVarsFromJSON(script.Vars); err != nil {
+	if err = m.SetVarsFromJSON(script.Vars); err != nil {
 		return nil, NewScriptError(ScriptErrorCompilationFailed,
 			fmt.Sprintf("could not set variables: %v", err))
 	}
@@ -60,7 +61,7 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 			}
 			data, err := json.Marshal(entry)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrap(err, "json.Marshal")
 			}
 			value, err := machine.NewValueFromTypedJSON(data)
 			if err != nil {
@@ -84,8 +85,9 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 			if err != nil {
 				return nil, fmt.Errorf("could not get account %q: %v", req.Account, err)
 			}
-			amt := account.Balances[req.Asset]
-			req.Response <- *amt.OrZero()
+			amt := account.Balances[req.Asset].OrZero()
+			resp := machine.MonetaryInt(*amt)
+			req.Response <- &resp
 		}
 	}
 
@@ -110,35 +112,64 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 		}
 	}
 
-	metadata := m.GetTxMetaJson()
-	for k, v := range metadata {
+	txMeta := m.GetTxMetaJSON()
+	for k, v := range txMeta {
 		asMapAny := make(map[string]any)
-		err := json.Unmarshal(v.([]byte), &asMapAny)
-		if err != nil {
+		if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
 			panic(err)
 		}
-		metadata[k] = asMapAny
+		txMeta[k] = asMapAny
 	}
 	for k, v := range script.Metadata {
-		_, ok := metadata[k]
+		_, ok := txMeta[k]
 		if ok {
 			return nil, NewScriptError(ScriptErrorMetadataOverride,
 				"cannot override metadata from script")
 		}
-		metadata[k] = v
+		txMeta[k] = v
 	}
 
-	t := &core.TransactionData{
-		Postings:  m.Postings,
-		Metadata:  metadata,
+	accMeta := core.Metadata{}
+	for account, meta := range m.GetAccountsMetaJSON() {
+		meta := meta.(map[string][]byte)
+		for k, v := range meta {
+			asMapAny := make(map[string]any)
+			if err := json.Unmarshal(v, &asMapAny); err != nil {
+				return nil, errors.Wrap(err, "json.Unmarshal")
+			}
+			if _, ok := accMeta["set_account_meta"]; !ok {
+				accMeta["set_account_meta"] = map[string]any{}
+			}
+			if account[0] == '@' {
+				account = account[1:]
+			}
+			if _, ok := accMeta["set_account_meta"].(map[string]any)[account]; !ok {
+				accMeta["set_account_meta"].(map[string]any)[account] = map[string]any{}
+			}
+			accMeta["set_account_meta"].(map[string]any)[account].(map[string]any)[k] = asMapAny
+		}
+	}
+
+	postings := make([]core.Posting, len(m.Postings))
+	for i, p := range m.Postings {
+		amt := core.MonetaryInt(*p.Amount)
+		postings[i] = core.Posting{
+			Source:      p.Source,
+			Destination: p.Destination,
+			Amount:      &amt,
+			Asset:       p.Asset,
+		}
+	}
+
+	return &core.TransactionData{
+		Postings:  postings,
+		Metadata:  core.Metadata(txMeta).Merge(accMeta),
 		Reference: script.Reference,
-	}
-
-	return t, nil
+	}, nil
 }
 
 func (l *Ledger) Execute(ctx context.Context, script core.Script) (*CommitResult, error) {
-	txData, err := l.execute(ctx, script)
+	txData, err := l.ProcessScript(ctx, script)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +178,7 @@ func (l *Ledger) Execute(ctx context.Context, script core.Script) (*CommitResult
 }
 
 func (l *Ledger) ExecutePreview(ctx context.Context, script core.Script) (*CommitResult, error) {
-	txData, err := l.execute(ctx, script)
+	txData, err := l.ProcessScript(ctx, script)
 	if err != nil {
 		return nil, err
 	}

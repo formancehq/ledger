@@ -193,3 +193,50 @@ func TestPostScriptWithReference(t *testing.T) {
 		})
 	}))
 }
+
+func TestPostScriptWithSetAccountMeta(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostScript(t, api, core.Script{
+					ScriptCore: core.ScriptCore{
+						Plain: `
+						send [COIN 100] (
+						  	source = @world
+						  	destination = @centralbank
+						)
+						set_account_meta(@centralbank, "fees", "15 percent")`},
+				}, url.Values{})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				res := controllers.ScriptResponse{}
+				require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
+				require.Equal(t, core.Metadata{
+					"set_account_meta": map[string]any{
+						"centralbank": map[string]any{
+							"fees": map[string]any{
+								"type":  "string",
+								"value": "15 percent",
+							},
+						},
+					},
+				}, res.Transaction.Metadata)
+
+				store := internal.GetLedgerStore(t, driver, ctx)
+				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+				require.NoError(t, err)
+				require.Len(t, cursor.Data, 1)
+
+				acc, err := store.GetAccount(ctx, "centralbank")
+				require.NoError(t, err)
+				require.Equal(t, core.Metadata{
+					"fees": map[string]any{
+						"type":  "string",
+						"value": "15 percent",
+					}}, acc.Metadata)
+
+				return nil
+			},
+		})
+	}))
+}
