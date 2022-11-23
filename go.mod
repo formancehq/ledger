@@ -7,7 +7,7 @@ require (
 	github.com/Shopify/sarama v1.36.0
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
-	github.com/formancehq/machine v1.2.2-0.20221110175219-a829ef1e76df
+	github.com/formancehq/machine v1.3.0
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-redis/redis/v8 v8.11.4
