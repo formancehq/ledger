@@ -112,9 +112,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	// Handle OpenTelemetry
-	if m := sharedotlptraces.CLITracesModule(v); m != nil {
-		options = append(options, m)
-	}
+	options = append(options, sharedotlptraces.CLITracesModule(v))
 	if m := sharedotlpmetrics.CLIMetricsModule(v); m != nil {
 		options = append(options, m)
 	}
