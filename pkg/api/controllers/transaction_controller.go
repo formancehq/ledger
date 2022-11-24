@@ -138,11 +138,11 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 type PostTransaction struct {
-	Timestamp time.Time       `json:"timestamp"`
-	Postings  core.Postings   `json:"postings"`
-	Script    core.ScriptCore `json:"script"`
-	Reference string          `json:"reference"`
-	Metadata  core.Metadata   `json:"metadata" swaggertype:"object"`
+	Postings   core.Postings `json:"postings"`
+	ScriptCore core.Script   `json:"script"`
+	Timestamp  time.Time     `json:"timestamp"`
+	Reference  string        `json:"reference"`
+	Metadata   core.Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -152,63 +152,65 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok &&
 		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
-	var payload PostTransaction
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		apierrors.ResponseError(c, ledger.NewValidationError("invalid transaction format"))
+	payload, err := validatePayload(c)
+	if err != nil {
+		apierrors.ResponseError(c, err)
 		return
 	}
 
-	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
-		apierrors.ResponseError(c, ledger.NewValidationError(
-			"either postings or script should be sent in the payload"))
-		return
-	}
-
-	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		apierrors.ResponseError(c, ledger.NewValidationError("transaction has no postings or script"))
-		return
-	}
-
-	var commitRes *ledger.CommitResult
-	var err error
+	var script core.ScriptData
 
 	// With postings
 	if len(payload.Postings) > 0 {
-		fn := l.(*ledger.Ledger).Commit
-		if preview {
-			fn = l.(*ledger.Ledger).CommitPreview
+		txData := core.TransactionData{
+			Postings:  payload.Postings,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
 		}
-
-		commitRes, err = fn(c.Request.Context(),
-			core.TransactionData{
-				Postings:  payload.Postings,
-				Reference: payload.Reference,
-				Metadata:  payload.Metadata,
-				Timestamp: payload.Timestamp,
-			})
+		i, err := l.(*ledger.Ledger).ValidateTxsData(c.Request.Context(), txData)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
 			return
 		}
+		script = core.TxsToScriptsData(txData)[0]
+
 	} else { // With script
-		fn := l.(*ledger.Ledger).Execute
-		if preview {
-			fn = l.(*ledger.Ledger).ExecutePreview
-		}
-
-		commitRes, err = fn(c.Request.Context(),
-			core.Script{
-				ScriptCore: payload.Script,
-				Reference:  payload.Reference,
-				Metadata:   payload.Metadata,
-			})
-		if err != nil {
-			apierrors.ResponseError(c, err)
-			return
+		script = core.ScriptData{
+			Script:    payload.ScriptCore,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
 		}
 	}
 
+	commitRes, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
+	if err != nil {
+		apierrors.ResponseError(c, err)
+		return
+	}
+
 	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
+}
+
+func validatePayload(c *gin.Context) (PostTransaction, error) {
+	payload := PostTransaction{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		return PostTransaction{},
+			ledger.NewValidationError("invalid transaction format")
+	}
+
+	if len(payload.Postings) > 0 && payload.ScriptCore.Plain != "" {
+		return PostTransaction{},
+			ledger.NewValidationError("either postings or script should be sent in the payload")
+	}
+
+	if len(payload.Postings) == 0 && payload.ScriptCore.Plain == "" {
+		return PostTransaction{},
+			ledger.NewValidationError("transaction has no postings or script")
+	}
+
+	return payload, nil
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -291,7 +293,14 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions...)
+	i, err := l.(*ledger.Ledger).ValidateTxsData(c.Request.Context(), txs.Transactions...)
+	if err != nil {
+		apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
+		return
+	}
+
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), false,
+		core.TxsToScriptsData(txs.Transactions...)...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

@@ -64,7 +64,7 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: core.ScriptCore{
+				ScriptCore: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -239,7 +239,8 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: apierrors.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
-				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
+				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+				Details:      "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
 			},
 		},
 		{
@@ -342,7 +343,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				ScriptCore: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -381,7 +382,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				ScriptCore: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -399,7 +400,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with metadata override",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				ScriptCore: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -422,7 +423,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script with set_account_meta",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				ScriptCore: core.Script{
 					Plain: `
 					send [TOK 1000] (
 					  source = @world
@@ -540,7 +541,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script true", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						ScriptCore: core.Script{
 							Plain: script,
 						},
 					}, true)
@@ -579,7 +580,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script false", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						ScriptCore: core.Script{
 							Plain: script,
 						},
 						Reference: "refScript",

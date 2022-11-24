@@ -29,7 +29,7 @@ func TestMonitor(t *testing.T) {
 		"*": "testing",
 	})
 	m := NewLedgerMonitor(p)
-	go m.CommittedTransactions(context.Background(), uuid.New(), &ledger.CommitResult{})
+	go m.CommittedTransactions(context.Background(), uuid.New(), ledger.CommitResult{})
 
 	select {
 	case m := <-messages:

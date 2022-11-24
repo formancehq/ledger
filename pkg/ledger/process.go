@@ -8,16 +8,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "loading mapping")
+		return CommitResult{}, errors.Wrap(err, "loading mapping")
 	}
 
 	var nextTxId uint64
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
-		return nil, err
+		return CommitResult{}, err
 	}
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
@@ -45,44 +45,46 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 				past = true
 			}
 		}
+
 		if t.Reference != "" {
 			if _, ok := usedReferences[t.Reference]; ok {
-				return nil, NewConflictError()
+				return CommitResult{}, NewConflictError()
 			}
 			cursor, err := l.store.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(t.Reference))
 			if err != nil {
-				return nil, err
+				return CommitResult{}, err
 			}
 			if len(cursor.Data) > 0 {
-				return nil, NewConflictError()
+				return CommitResult{}, NewConflictError()
 			}
 			usedReferences[t.Reference] = struct{}{}
 		}
+
 		if len(t.Postings) == 0 {
-			return nil, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
+			return CommitResult{}, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
 		}
+
 		if past && !l.allowPastTimestamps {
-			return nil, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
+			return CommitResult{}, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
 		}
 
 		txVolumeAggregator := volumeAggregator.NextTx()
 
 		for _, p := range t.Postings {
 			if p.Amount.Ltz() {
-				return nil, NewTransactionCommitError(i, NewValidationError("negative amount"))
+				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("negative amount"))
 			}
 			if !core.ValidateAddress(p.Source) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid source address"))
+				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid source address"))
 			}
 			if !core.ValidateAddress(p.Destination) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
+				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
 			}
 			if !core.AssetIsValid(p.Asset) {
-				return nil, NewTransactionCommitError(i, NewValidationError("invalid asset"))
+				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid asset"))
 			}
-			err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount)
-			if err != nil {
-				return nil, NewTransactionCommitError(i, err)
+			if err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount); err != nil {
+				return CommitResult{}, NewTransactionCommitError(i, err)
 			}
 		}
 
@@ -98,7 +100,7 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 						if _, ok := accounts[addr]; !ok {
 							account, err := l.store.GetAccount(ctx, addr)
 							if err != nil {
-								return nil, err
+								return CommitResult{}, err
 							}
 							accounts[addr] = account
 						}
@@ -109,7 +111,7 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 							Metadata: accounts[addr].Metadata,
 							Asset:    asset,
 						}); !ok {
-							return nil, NewTransactionCommitError(i, NewInsufficientFundError(asset))
+							return CommitResult{}, NewTransactionCommitError(i, NewInsufficientFundError(asset))
 						}
 						break
 					}
@@ -130,9 +132,52 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 		nextTxId++
 	}
 
-	return &CommitResult{
+	return CommitResult{
 		PreCommitVolumes:      volumeAggregator.AggregatedPreCommitVolumes(),
 		PostCommitVolumes:     volumeAggregator.AggregatedPostCommitVolumes(),
 		GeneratedTransactions: generatedTxs,
 	}, nil
+}
+
+func (l *Ledger) ValidateTxsData(ctx context.Context, txsData ...core.TransactionData) (int, error) {
+	lastTx, err := l.store.GetLastTransaction(ctx)
+	if err != nil {
+		return 0, errors.Wrap(err, "GetLastTransaction")
+	}
+
+	for i, t := range txsData {
+		past := false
+		if t.Timestamp.IsZero() {
+			// Until v1.5.0, dates was stored as string using rfc3339 format
+			// So round the date to the second to keep the same behaviour
+			t.Timestamp = time.Now().UTC().Truncate(time.Second)
+		} else {
+			if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
+				past = true
+			}
+		}
+		if len(t.Postings) == 0 {
+			return i, NewValidationError("transaction has no postings")
+		}
+		if past && !l.allowPastTimestamps {
+			return i, NewValidationError("cannot pass a date prior to the last transaction")
+		}
+
+		for _, p := range t.Postings {
+			if p.Amount.Ltz() {
+				return i, NewValidationError("negative amount")
+			}
+			if !core.ValidateAddress(p.Source) {
+				return i, NewValidationError("invalid source address")
+			}
+			if !core.ValidateAddress(p.Destination) {
+				return i, NewValidationError("invalid destination address")
+			}
+			if !core.AssetIsValid(p.Asset) {
+				return i, NewValidationError("invalid asset")
+			}
+		}
+	}
+
+	return 0, nil
 }
