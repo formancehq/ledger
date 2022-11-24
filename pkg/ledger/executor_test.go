@@ -441,6 +441,44 @@ func TestScriptReferenceConflict(t *testing.T) {
 	})
 }
 
+func TestSetAccountMeta(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		t.Run("valid", func(t *testing.T) {
+			res, err := l.ProcessScripts(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `
+ 					set_account_meta(@alice, "aaa", "string meta")
+ 					set_account_meta(@alice, "bbb", 42)
+ 					set_account_meta(@alice, "ccc", COIN)
+ 					set_account_meta(@alice, "ddd", [COIN 30])
+ 					set_account_meta(@alice, "eee", @bob)
+ 					`,
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"set_account_meta": map[string]any{
+					"alice": map[string]any{
+						"aaa": map[string]any{"type": "string", "value": "string meta"},
+						"bbb": map[string]any{"type": "number", "value": 42.},
+						"ccc": map[string]any{"type": "asset", "value": "COIN"},
+						"ddd": map[string]any{"type": "monetary",
+							"value": map[string]any{"asset": "COIN", "amount": 30.}},
+						"eee": map[string]any{"type": "account", "value": "bob"},
+					},
+				},
+			}, res[0].Metadata)
+		})
+
+		t.Run("invalid syntax", func(t *testing.T) {
+			_, err := l.ProcessScripts(context.Background(), core.ScriptData{
+				Script: core.Script{Plain: `set_account_meta(@bob, "is")`},
+			})
+			require.True(t, ledger.IsScriptErrorWithCode(err,
+				ledger.ScriptErrorCompilationFailed))
+		})
+	})
+}
+
 func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)

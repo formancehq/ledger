@@ -9,6 +9,10 @@ import (
 )
 
 func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
+	if i, err := l.ValidatePostings(ctx, txsData...); err != nil {
+		return CommitResult{}, NewTransactionCommitError(i, err)
+	}
+
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return CommitResult{}, errors.Wrap(err, "loading mapping")
@@ -35,15 +39,10 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 
 	usedReferences := make(map[string]struct{})
 	for i, t := range txsData {
-		past := false
 		if t.Timestamp.IsZero() {
 			// Until v1.5.0, dates was stored as string using rfc3339 format
 			// So round the date to the second to keep the same behaviour
 			t.Timestamp = time.Now().UTC().Truncate(time.Second)
-		} else {
-			if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
-				past = true
-			}
 		}
 
 		if t.Reference != "" {
@@ -60,29 +59,9 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 			usedReferences[t.Reference] = struct{}{}
 		}
 
-		if len(t.Postings) == 0 {
-			return CommitResult{}, NewTransactionCommitError(i, NewValidationError("transaction has no postings"))
-		}
-
-		if past && !l.allowPastTimestamps {
-			return CommitResult{}, NewTransactionCommitError(i, NewValidationError("cannot pass a date prior to the last transaction"))
-		}
-
 		txVolumeAggregator := volumeAggregator.NextTx()
 
 		for _, p := range t.Postings {
-			if p.Amount.Ltz() {
-				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("negative amount"))
-			}
-			if !core.ValidateAddress(p.Source) {
-				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid source address"))
-			}
-			if !core.ValidateAddress(p.Destination) {
-				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid destination address"))
-			}
-			if !core.AssetIsValid(p.Asset) {
-				return CommitResult{}, NewTransactionCommitError(i, NewValidationError("invalid asset"))
-			}
 			if err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount); err != nil {
 				return CommitResult{}, NewTransactionCommitError(i, err)
 			}
@@ -139,7 +118,7 @@ func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData)
 	}, nil
 }
 
-func (l *Ledger) ValidateTxsData(ctx context.Context, txsData ...core.TransactionData) (int, error) {
+func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.TransactionData) (int, error) {
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
 		return 0, errors.Wrap(err, "GetLastTransaction")
@@ -147,11 +126,7 @@ func (l *Ledger) ValidateTxsData(ctx context.Context, txsData ...core.Transactio
 
 	for i, t := range txsData {
 		past := false
-		if t.Timestamp.IsZero() {
-			// Until v1.5.0, dates was stored as string using rfc3339 format
-			// So round the date to the second to keep the same behaviour
-			t.Timestamp = time.Now().UTC().Truncate(time.Second)
-		} else {
+		if !t.Timestamp.IsZero() {
 			if lastTx != nil && t.Timestamp.Before(lastTx.Timestamp) {
 				past = true
 			}

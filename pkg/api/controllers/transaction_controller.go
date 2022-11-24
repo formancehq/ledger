@@ -152,9 +152,22 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok &&
 		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
-	payload, err := validatePayload(c)
-	if err != nil {
-		apierrors.ResponseError(c, err)
+	payload := PostTransaction{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		apierrors.ResponseError(c,
+			ledger.NewValidationError("invalid transaction format"))
+		return
+	}
+
+	if len(payload.Postings) > 0 && payload.ScriptCore.Plain != "" {
+		apierrors.ResponseError(c, ledger.NewValidationError(
+			"either postings or script should be sent in the payload"))
+		return
+	}
+
+	if len(payload.Postings) == 0 && payload.ScriptCore.Plain == "" {
+		apierrors.ResponseError(c, ledger.NewValidationError(
+			"transaction has no postings or script"))
 		return
 	}
 
@@ -168,7 +181,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		i, err := l.(*ledger.Ledger).ValidateTxsData(c.Request.Context(), txData)
+		i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txData)
 		if err != nil {
 			apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
 			return
@@ -191,26 +204,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	}
 
 	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
-}
-
-func validatePayload(c *gin.Context) (PostTransaction, error) {
-	payload := PostTransaction{}
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		return PostTransaction{},
-			ledger.NewValidationError("invalid transaction format")
-	}
-
-	if len(payload.Postings) > 0 && payload.ScriptCore.Plain != "" {
-		return PostTransaction{},
-			ledger.NewValidationError("either postings or script should be sent in the payload")
-	}
-
-	if len(payload.Postings) == 0 && payload.ScriptCore.Plain == "" {
-		return PostTransaction{},
-			ledger.NewValidationError("transaction has no postings or script")
-	}
-
-	return payload, nil
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -293,7 +286,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	i, err := l.(*ledger.Ledger).ValidateTxsData(c.Request.Context(), txs.Transactions...)
+	i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
 		return
