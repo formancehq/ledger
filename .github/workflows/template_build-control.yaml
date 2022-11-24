@@ -11,16 +11,9 @@ jobs:
     name: 'Build Control'
     runs-on: ubuntu-latest
     steps:
-      - name: Get latest release of Numary/Control
-        uses: rez0n/actions-github-release@main
-        id: control_release
-        env:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          repository: "formancehq/control"
-          type: "stable"
-      - run: curl -OL ${{ steps.control_release.outputs.browser_download_url }}
-      - run: tar -zxvf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
-      - run: rm -rf numary-control-${{ steps.control_release.outputs.release }}.tar.gz
+      - run: curl -OL https://github.com/numary/control/releases/download/1.2.0/numary-control-1.2.0.tar.gz
+      - run: tar -zxvf numary-control-1.2.0.tar.gz
+      - run: rm -rf numary-control-1.2.0.tar.gz
       - uses: actions/upload-artifact@v2
         with:
           name: control-dist
