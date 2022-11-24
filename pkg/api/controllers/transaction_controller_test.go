@@ -64,7 +64,7 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				ScriptCore: core.Script{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -343,7 +343,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
-				ScriptCore: core.Script{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -382,7 +382,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
-				ScriptCore: core.Script{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -400,7 +400,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with metadata override",
 			payload: []controllers.PostTransaction{{
-				ScriptCore: core.Script{
+				Script: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -423,7 +423,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script with set_account_meta",
 			payload: []controllers.PostTransaction{{
-				ScriptCore: core.Script{
+				Script: core.Script{
 					Plain: `
 					send [TOK 1000] (
 					  source = @world
@@ -541,7 +541,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script true", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						ScriptCore: core.Script{
+						Script: core.Script{
 							Plain: script,
 						},
 					}, true)
@@ -580,7 +580,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script false", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						ScriptCore: core.Script{
+						Script: core.Script{
 							Plain: script,
 						},
 						Reference: "refScript",

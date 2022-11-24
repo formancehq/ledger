@@ -138,11 +138,11 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 type PostTransaction struct {
-	Postings   core.Postings `json:"postings"`
-	ScriptCore core.Script   `json:"script"`
-	Timestamp  time.Time     `json:"timestamp"`
-	Reference  string        `json:"reference"`
-	Metadata   core.Metadata `json:"metadata" swaggertype:"object"`
+	Postings  core.Postings `json:"postings"`
+	Script    core.Script   `json:"script"`
+	Timestamp time.Time     `json:"timestamp"`
+	Reference string        `json:"reference"`
+	Metadata  core.Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -159,13 +159,13 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	if len(payload.Postings) > 0 && payload.ScriptCore.Plain != "" {
+	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
 		apierrors.ResponseError(c, ledger.NewValidationError(
 			"either postings or script should be sent in the payload"))
 		return
 	}
 
-	if len(payload.Postings) == 0 && payload.ScriptCore.Plain == "" {
+	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
 		apierrors.ResponseError(c, ledger.NewValidationError(
 			"transaction has no postings or script"))
 		return
@@ -190,7 +190,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 
 	} else { // With script
 		script = core.ScriptData{
-			Script:    payload.ScriptCore,
+			Script:    payload.Script,
 			Timestamp: payload.Timestamp,
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
