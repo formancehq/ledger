@@ -13,6 +13,11 @@ import (
 )
 
 func (l *Ledger) Execute(ctx context.Context, preview bool, scripts ...core.ScriptData) (CommitResult, error) {
+	if len(scripts) == 0 {
+		return CommitResult{}, NewScriptError(ScriptErrorNoScript,
+			"no script to execute")
+	}
+
 	txsData, err := l.ProcessScripts(ctx, scripts...)
 	if err != nil {
 		return CommitResult{}, err
@@ -26,9 +31,10 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 
 	for _, script := range scripts {
 		if script.Reference != "" {
-			txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(script.Reference))
+			txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
+				WithReferenceFilter(script.Reference))
 			if err != nil {
-				return []core.TransactionData{}, err
+				return []core.TransactionData{}, errors.Wrap(err, "GetTransactions")
 			}
 			if len(txs.Data) > 0 {
 				return []core.TransactionData{}, NewConflictError()
@@ -36,34 +42,38 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 		}
 
 		if script.Plain == "" {
-			return []core.TransactionData{}, NewScriptError(ScriptErrorNoScript, "no script to execute")
+			return []core.TransactionData{}, NewScriptError(ScriptErrorNoScript,
+				"no script to execute")
 		}
 
 		p, err := compiler.Compile(script.Plain)
 		if err != nil {
-			return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed, err.Error())
+			return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed,
+				err.Error())
 		}
 
 		m := vm.NewMachine(*p)
 
 		if err = m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed,
-				fmt.Sprintf("could not set variables: %v", err))
+				errors.Wrap(err, "could not set variables").Error())
 		}
 
 		{
 			ch, err := m.ResolveResources()
 			if err != nil {
-				return []core.TransactionData{}, fmt.Errorf("could not resolve program resources: %v", err)
+				return []core.TransactionData{}, errors.Wrap(err,
+					"could not resolve program resources")
 			}
 			for req := range ch {
 				if req.Error != nil {
 					return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed,
-						fmt.Sprintf("could not resolve program resources: %v", req.Error))
+						errors.Wrap(req.Error, "could not resolve program resources").Error())
 				}
 				account, err := l.GetAccount(ctx, req.Account)
 				if err != nil {
-					return []core.TransactionData{}, fmt.Errorf("could not get account %q: %v", req.Account, err)
+					return []core.TransactionData{}, errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
 				}
 				meta := account.Metadata
 				entry, ok := meta[req.Key]
@@ -78,7 +88,9 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 				value, err := machine.NewValueFromTypedJSON(data)
 				if err != nil {
 					return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed,
-						fmt.Sprintf("invalid format for metadata at key %v for account %v: %v", req.Key, req.Account, err))
+						errors.Wrap(err, fmt.Sprintf(
+							"invalid format for metadata at key %v for account %v",
+							req.Key, req.Account)).Error())
 				}
 				req.Response <- *value
 			}
@@ -87,15 +99,18 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 		{
 			ch, err := m.ResolveBalances()
 			if err != nil {
-				return []core.TransactionData{}, fmt.Errorf("could not resolve balances: %v", err)
+				return []core.TransactionData{}, errors.Wrap(err,
+					"could not resolve balances")
 			}
 			for req := range ch {
 				if req.Error != nil {
-					return []core.TransactionData{}, fmt.Errorf("could not resolve balances: %v", err)
+					return []core.TransactionData{}, NewScriptError(ScriptErrorCompilationFailed,
+						errors.Wrap(req.Error, "could not resolve program balances").Error())
 				}
 				account, err := l.GetAccount(ctx, req.Account)
 				if err != nil {
-					return []core.TransactionData{}, fmt.Errorf("could not get account %q: %v", req.Account, err)
+					return []core.TransactionData{}, errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
 				}
 				amt := account.Balances[req.Asset].OrZero()
 				resp := machine.MonetaryInt(*amt)
@@ -105,7 +120,7 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 
 		exitCode, err := m.Execute()
 		if err != nil {
-			return []core.TransactionData{}, fmt.Errorf("script execution failed: %v", err)
+			return []core.TransactionData{}, errors.Wrap(err, "script execution failed")
 		}
 
 		if exitCode != vm.EXIT_OK {
@@ -128,7 +143,7 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 		for k, v := range txMeta {
 			asMapAny := make(map[string]any)
 			if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
-				panic(err)
+				return []core.TransactionData{}, errors.Wrap(err, "json.Unmarshal")
 			}
 			txMeta[k] = asMapAny
 		}

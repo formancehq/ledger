@@ -159,21 +159,13 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
-		apierrors.ResponseError(c, ledger.NewValidationError(
-			"either postings or script should be sent in the payload"))
-		return
+	script := core.ScriptData{
+		Script:    payload.Script,
+		Timestamp: payload.Timestamp,
+		Reference: payload.Reference,
+		Metadata:  payload.Metadata,
 	}
 
-	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		apierrors.ResponseError(c, ledger.NewValidationError(
-			"transaction has no postings or script"))
-		return
-	}
-
-	var script core.ScriptData
-
-	// With postings
 	if len(payload.Postings) > 0 {
 		txData := core.TransactionData{
 			Postings:  payload.Postings,
@@ -186,15 +178,8 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
 			return
 		}
-		script = core.TxsToScriptsData(txData)[0]
-
-	} else { // With script
-		script = core.ScriptData{
-			Script:    payload.Script,
-			Timestamp: payload.Timestamp,
-			Reference: payload.Reference,
-			Metadata:  payload.Metadata,
-		}
+		postingsScript := core.TxsToScriptsData(txData)[0]
+		script.Plain = postingsScript.Plain + script.Plain
 	}
 
 	commitRes, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)

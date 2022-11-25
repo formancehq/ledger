@@ -38,7 +38,7 @@ func TestGetAccounts(t *testing.T) {
 						},
 					},
 				}, false)
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 
 				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{

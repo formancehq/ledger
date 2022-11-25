@@ -43,39 +43,13 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "no postings or script",
 			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{},
-				},
+				{},
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "transaction has no postings or script",
-			},
-		},
-		{
-			name: "postings and script",
-			payload: []controllers.PostTransaction{{
-				Postings: core.Postings{
-					{
-						Source:      "world",
-						Destination: "centralbank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "COIN",
-					},
-				},
-				Script: core.Script{
-					Plain: `
-					send [COIN 100] (
-					  source = @world
-					  destination = @centralbank
-					)`,
-				}},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "either postings or script should be sent in the payload",
+				ErrorCode:    apierrors.ErrScriptNoScript,
+				ErrorMessage: "[NO_SCRIPT] no script to execute",
+				Details:      "https://play.numscript.org/?payload=eyJlcnJvciI6Im5vIHNjcmlwdCB0byBleGVjdXRlIn0=",
 			},
 		},
 		{
@@ -460,6 +434,49 @@ func TestPostTransactions(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "postings and script",
+			payload: []controllers.PostTransaction{{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "alice",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+				Script: core.Script{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @bob
+					)`,
+				}},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "alice",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+								{
+									Source:      "world",
+									Destination: "bob",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
@@ -477,8 +494,12 @@ func TestPostTransactions(t *testing.T) {
 								require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
 							}
 						}
-						rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
-						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+						tcIndex := 0
+						if len(tc.payload) > 0 {
+							tcIndex = len(tc.payload) - 1
+						}
+						rsp := internal.PostTransaction(t, api, tc.payload[tcIndex], false)
+						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode, rsp.Body.String())
 
 						if tc.expectedStatusCode != http.StatusOK {
 							actualErr := apierrors.ErrorResponse{}
@@ -493,8 +514,8 @@ func TestPostTransactions(t *testing.T) {
 							require.Len(t, txs, 1)
 							require.Equal(t, (*tc.expectedRes.Data)[0].Postings, txs[0].Postings)
 							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
-							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
-								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
+							if !tc.payload[tcIndex].Timestamp.IsZero() {
+								require.Equal(t, tc.payload[tcIndex].Timestamp, txs[0].Timestamp)
 							}
 						}
 					})
@@ -625,8 +646,8 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "transaction has no postings or script",
+						ErrorCode:    apierrors.ErrScriptNoScript,
+						ErrorMessage: "[NO_SCRIPT] no script to execute",
 					}, err)
 				})
 
