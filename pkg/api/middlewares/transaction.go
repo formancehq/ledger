@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 )
 
@@ -50,6 +51,12 @@ func newBufferedWriter(rw gin.ResponseWriter) *bufferedResponseWriter {
 
 func Transaction(locker Locker) func(c *gin.Context) {
 	return func(c *gin.Context) {
+
+		ctx, span := opentelemetry.Start(c.Request.Context(), "Ledger locking")
+		defer span.End()
+
+		c.Request = c.Request.WithContext(ctx)
+
 		unlock, err := locker.Lock(c.Request.Context(), c.Param("ledger"))
 		if err != nil {
 			panic(err)

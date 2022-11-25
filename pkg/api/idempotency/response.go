@@ -3,8 +3,8 @@ package idempotency
 import (
 	"net/http"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedlogging"
 )
 
 type Response struct {

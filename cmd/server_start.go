@@ -5,9 +5,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/numary/go-libs/sharedlogging"
-	"github.com/numary/go-libs/sharedlogging/sharedlogginglogrus"
-	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
+	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

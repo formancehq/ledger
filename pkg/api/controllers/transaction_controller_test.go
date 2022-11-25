@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/numary/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"

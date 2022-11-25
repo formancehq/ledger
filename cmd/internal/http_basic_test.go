@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/numary/go-libs/sharedauth"
+	"github.com/formancehq/go-libs/sharedauth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"

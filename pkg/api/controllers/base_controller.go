@@ -3,8 +3,8 @@ package controllers
 import (
 	"net/http"
 
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedapi"
 )
 
 func respondWithNoContent(c *gin.Context) {

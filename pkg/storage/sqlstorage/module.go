@@ -3,9 +3,10 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 
-	sharedhealth "github.com/numary/go-libs/sharedhealth/pkg"
+	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
 	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
@@ -28,7 +29,7 @@ type ModuleConfig struct {
 func OpenSQLDB(flavor Flavor, dataSourceName string) (*sql.DB, error) {
 	c, ok := sqlDrivers[flavor]
 	if !ok {
-		panic("PostgresSQL driver not found")
+		panic(fmt.Sprintf("Driver '%s' not found", flavor))
 	}
 	return sql.Open(c.driverName, dataSourceName)
 }

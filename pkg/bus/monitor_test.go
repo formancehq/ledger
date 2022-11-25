@@ -7,7 +7,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/numary/go-libs/sharedpublish"
+	"github.com/formancehq/go-libs/sharedpublish"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
