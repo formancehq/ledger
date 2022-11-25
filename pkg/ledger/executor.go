@@ -12,18 +12,23 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) Execute(ctx context.Context, preview bool, scripts ...core.ScriptData) (CommitResult, error) {
+func (l *Ledger) Execute(ctx context.Context, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
 	if len(scripts) == 0 {
-		return CommitResult{}, NewScriptError(ScriptErrorNoScript,
-			"no script to execute")
+		return []core.ExpandedTransaction{},
+			NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
 
 	txsData, err := l.ProcessScripts(ctx, scripts...)
 	if err != nil {
-		return CommitResult{}, err
+		return []core.ExpandedTransaction{}, err
 	}
 
-	return l.Commit(ctx, preview, txsData...)
+	txs, err := l.Commit(ctx, preview, txsData...)
+	if err != nil {
+		return []core.ExpandedTransaction{}, err
+	}
+
+	return txs, nil
 }
 
 func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData) ([]core.TransactionData, error) {

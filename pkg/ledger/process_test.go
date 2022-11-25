@@ -134,7 +134,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), txsData...)
+				res, err := l.ProcessTxsData(context.Background(), txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -180,7 +180,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTx(context.Background(), txsData...)
+				res, err := l.ProcessTxsData(context.Background(), txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
@@ -294,7 +294,7 @@ func TestLedger_processTx(t *testing.T) {
 		})
 
 		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.ProcessTx(context.Background())
+			result, err := l.ProcessTxsData(context.Background())
 			assert.NoError(t, err)
 			assert.Equal(t, ledger.CommitResult{
 				PreCommitVolumes:      core.AccountsAssetsVolumes{},
@@ -315,7 +315,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), core.TransactionData{
+			_, err := l.ProcessTxsData(context.Background(), core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",
@@ -343,7 +343,7 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ProcessTx(context.Background(), core.TransactionData{
+			_, err := l.ProcessTxsData(context.Background(), core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",

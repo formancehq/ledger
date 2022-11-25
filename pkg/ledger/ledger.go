@@ -72,22 +72,22 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.TransactionData) (CommitResult, error) {
-	commitRes, err := l.ProcessTx(ctx, txsData...)
+func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
+	commitRes, err := l.ProcessTxsData(ctx, txsData...)
 	if err != nil {
-		return CommitResult{}, err
+		return []core.ExpandedTransaction{}, err
 	}
 
 	if preview {
-		return commitRes, nil
+		return commitRes.GeneratedTransactions, nil
 	}
 
 	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return CommitResult{}, NewConflictError()
+			return []core.ExpandedTransaction{}, NewConflictError()
 		default:
-			return CommitResult{}, err
+			return []core.ExpandedTransaction{}, err
 		}
 	}
 
@@ -96,7 +96,7 @@ func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.Trans
 			for addr, m := range accMeta.(map[string]any) {
 				if err := l.store.UpdateAccountMetadata(ctx,
 					addr, m.(map[string]any), time.Now().Round(time.Second).UTC()); err != nil {
-					return CommitResult{}, err
+					return []core.ExpandedTransaction{}, err
 				}
 			}
 		}
@@ -111,7 +111,7 @@ func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.Trans
 		}
 	}
 
-	return commitRes, nil
+	return commitRes.GeneratedTransactions, nil
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -163,7 +163,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	result, err := l.ProcessTx(ctx, rt)
+	result, err := l.ProcessTxsData(ctx, rt)
 	if err != nil {
 		return nil, err
 	}

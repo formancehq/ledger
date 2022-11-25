@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
+func (l *Ledger) ProcessTxsData(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
 	if i, err := l.ValidatePostings(ctx, txsData...); err != nil {
 		return CommitResult{}, NewTransactionCommitError(i, err)
 	}

@@ -182,13 +182,13 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		script.Plain = postingsScript.Plain + script.Plain
 	}
 
-	commitRes, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -284,5 +284,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }

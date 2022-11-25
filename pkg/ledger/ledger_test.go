@@ -260,7 +260,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 
 func TestTransactionExpectedVolumes(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		batch := []core.TransactionData{
+		txsData := []core.TransactionData{
 			{
 				Postings: []core.Posting{
 					{
@@ -303,7 +303,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 		}
 
-		res, err := l.Commit(context.Background(), false, batch...)
+		commitRes, err := l.ProcessTxsData(context.Background(), txsData...)
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
@@ -333,7 +333,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: core.NewMonetaryInt(0),
 				},
 			},
-		}, res.PostCommitVolumes)
+		}, commitRes.PostCommitVolumes)
 	})
 }
 
@@ -562,7 +562,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		require.Equal(t, core.Postings{
@@ -574,10 +574,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf("%d", res.GeneratedTransactions[0].ID),
+		require.EqualValues(t, fmt.Sprintf("%d", res[0].ID),
 			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
-		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
@@ -602,7 +602,7 @@ func TestVeryBigTransaction(t *testing.T) {
 		amount, err := core.ParseMonetaryInt("199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		tx, err := l.Commit(context.Background(), false, core.TransactionData{
+		txs, err := l.Commit(context.Background(), false, core.TransactionData{
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
@@ -612,7 +612,7 @@ func TestVeryBigTransaction(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		txFromDB, err := l.GetTransaction(context.Background(), tx.GeneratedTransactions[0].ID)
+		txFromDB, err := l.GetTransaction(context.Background(), txs[0].ID)
 		require.NoError(t, err)
 		require.Equal(t, txFromDB.Postings[0].Amount, amount)
 	})
