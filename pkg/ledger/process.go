@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/numary/ledger/pkg/core"
@@ -11,11 +12,6 @@ import (
 func (l *Ledger) ProcessTxsData(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
 	if i, err := l.ValidatePostings(ctx, txsData...); err != nil {
 		return CommitResult{}, NewTransactionCommitError(i, err)
-	}
-
-	mapping, err := l.store.LoadMapping(ctx)
-	if err != nil {
-		return CommitResult{}, errors.Wrap(err, "loading mapping")
 	}
 
 	var nextTxId uint64
@@ -30,12 +26,6 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, txsData ...core.Transaction
 	volumeAggregator := NewVolumeAggregator(l.store)
 
 	generatedTxs := make([]core.ExpandedTransaction, 0)
-	accounts := make(map[string]*core.Account, 0)
-	contracts := make([]core.Contract, 0)
-	if mapping != nil {
-		contracts = append(contracts, mapping.Contracts...)
-	}
-	contracts = append(contracts, DefaultContracts...)
 
 	usedReferences := make(map[string]struct{})
 	for i, t := range txsData {
@@ -67,37 +57,6 @@ func (l *Ledger) ProcessTxsData(ctx context.Context, txsData ...core.Transaction
 			}
 		}
 
-		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
-			for asset, volume := range volumes {
-				if addr == "world" {
-					continue
-				}
-
-				expectedBalance := volume.Balance()
-				for _, contract := range contracts {
-					if contract.Match(addr) {
-						if _, ok := accounts[addr]; !ok {
-							account, err := l.store.GetAccount(ctx, addr)
-							if err != nil {
-								return CommitResult{}, err
-							}
-							accounts[addr] = account
-						}
-						if ok := contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": expectedBalance,
-							},
-							Metadata: accounts[addr].Metadata,
-							Asset:    asset,
-						}); !ok {
-							return CommitResult{}, NewTransactionCommitError(i, NewInsufficientFundError(asset))
-						}
-						break
-					}
-				}
-			}
-		}
-
 		tx := core.ExpandedTransaction{
 			Transaction: core.Transaction{
 				TransactionData: t,
@@ -123,6 +82,18 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 	if err != nil {
 		return 0, errors.Wrap(err, "GetLastTransaction")
 	}
+
+	mapping, err := l.store.LoadMapping(ctx)
+	if err != nil {
+		return 0, errors.Wrap(err, "loading mapping")
+	}
+	contracts := make([]core.Contract, 0)
+	if mapping != nil {
+		contracts = append(contracts, mapping.Contracts...)
+	}
+	contracts = append(contracts, DefaultContracts...)
+
+	volumeAggregator := NewVolumeAggregator(l.store)
 
 	for i, t := range txsData {
 		past := false
@@ -150,6 +121,40 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 			}
 			if !core.AssetIsValid(p.Asset) {
 				return i, NewValidationError("invalid asset")
+			}
+		}
+
+		txVolumeAggregator := volumeAggregator.NextTx()
+
+		accounts := make(map[string]*core.Account, 0)
+		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
+			for asset, volume := range volumes {
+				if addr == "world" {
+					continue
+				}
+
+				expectedBalance := volume.Balance()
+				for _, contract := range contracts {
+					if contract.Match(addr) {
+						if _, ok := accounts[addr]; !ok {
+							account, err := l.store.GetAccount(ctx, addr)
+							if err != nil {
+								return 0, errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr))
+							}
+							accounts[addr] = account
+						}
+						if ok := contract.Expr.Eval(core.EvalContext{
+							Variables: map[string]interface{}{
+								"balance": expectedBalance,
+							},
+							Metadata: accounts[addr].Metadata,
+							Asset:    asset,
+						}); !ok {
+							return 0, NewTransactionCommitError(i, NewInsufficientFundError(asset))
+						}
+						break
+					}
+				}
 			}
 		}
 	}
