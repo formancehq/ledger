@@ -130,7 +130,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), false, tx)
+		_, err := l.Commit(context.Background(), false, nil, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -165,7 +165,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), false, tx)
+		_, err := l.Commit(context.Background(), false, nil, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -230,7 +230,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), false, tx)
+		_, err := l.Commit(context.Background(), false, nil, tx)
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
@@ -444,7 +444,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 func TestSetAccountMeta(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("valid", func(t *testing.T) {
-			res, err := l.ProcessScripts(context.Background(), core.ScriptData{
+			_, addOps, err := l.ProcessScripts(context.Background(), core.ScriptData{
 				Script: core.Script{Plain: `
  					set_account_meta(@alice, "aaa", "string meta")
  					set_account_meta(@alice, "bbb", 42)
@@ -464,11 +464,11 @@ func TestSetAccountMeta(t *testing.T) {
 						"value": map[string]any{"asset": "COIN", "amount": 30.}},
 					"eee": map[string]any{"type": "account", "value": "bob"},
 				},
-			}, res[0].AddOps.SetAccountMeta)
+			}, addOps.SetAccountMeta)
 		})
 
 		t.Run("invalid syntax", func(t *testing.T) {
-			_, err := l.ProcessScripts(context.Background(), core.ScriptData{
+			_, _, err := l.ProcessScripts(context.Background(), core.ScriptData{
 				Script: core.Script{Plain: `set_account_meta(@bob, "is")`},
 			})
 			require.True(t, ledger.IsScriptErrorWithCode(err,

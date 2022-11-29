@@ -72,7 +72,7 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
+func (l *Ledger) Commit(ctx context.Context, preview bool, addOps *core.AdditionalOperations, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
 	commitRes, err := l.ProcessTxsData(ctx, txsData...)
 	if err != nil {
 		return []core.ExpandedTransaction{}, err
@@ -91,24 +91,20 @@ func (l *Ledger) Commit(ctx context.Context, preview bool, txsData ...core.Trans
 		}
 	}
 
-	for _, t := range txsData {
-		if t.AddOps != nil && t.AddOps.SetAccountMeta != nil {
-			for addr, m := range t.AddOps.SetAccountMeta {
-				if err := l.store.UpdateAccountMetadata(ctx,
-					addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-					return []core.ExpandedTransaction{}, err
-				}
+	if addOps != nil && addOps.SetAccountMeta != nil {
+		for addr, m := range addOps.SetAccountMeta {
+			if err := l.store.UpdateAccountMetadata(ctx,
+				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
+				return []core.ExpandedTransaction{}, err
 			}
 		}
 	}
 
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
-	for _, t := range txsData {
-		if t.AddOps != nil && t.AddOps.SetAccountMeta != nil {
-			for addr, m := range t.AddOps.SetAccountMeta {
-				l.monitor.SavedMetadata(ctx,
-					l.store.Name(), core.MetaTargetTypeAccount, addr, m)
-			}
+	if addOps != nil && addOps.SetAccountMeta != nil {
+		for addr, m := range addOps.SetAccountMeta {
+			l.monitor.SavedMetadata(ctx,
+				l.store.Name(), core.MetaTargetTypeAccount, addr, m)
 		}
 	}
 
