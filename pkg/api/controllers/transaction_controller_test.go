@@ -379,6 +379,37 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
+			name: "script with set_account_meta",
+			payload: []controllers.PostTransaction{{
+				Script: core.ScriptCore{
+					Plain: `
+					send [TOK 1000] (
+					  source = @world
+					  destination = @bar
+					)
+					set_account_meta(@bar, "foo", "bar")
+					`,
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
@@ -419,46 +450,6 @@ func TestPostTransactions(t *testing.T) {
 				Details:      apierrors.EncodeLink("cannot override metadata from script"),
 			},
 		},
-		{
-			name: "script with set_account_meta",
-			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
-					Plain: `
-					send [TOK 1000] (
-					  source = @world
-					  destination = @bar
-					)
-					set_account_meta(@bar, "foo", "bar")
-					`,
-				},
-			}},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-							Metadata: core.Metadata{
-								"set_account_meta": map[string]core.Metadata{
-									"bar": {
-										"foo": map[string]any{
-											"type": "string", "value": "bar",
-										},
-									},
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
@@ -482,7 +473,7 @@ func TestPostTransactions(t *testing.T) {
 						if tc.expectedStatusCode != http.StatusOK {
 							actualErr := apierrors.ErrorResponse{}
 							if internal.Decode(t, rsp.Body, &actualErr) {
-								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode)
+								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode, actualErr.ErrorMessage)
 								require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
 								require.Equal(t, tc.expectedErr.Details, actualErr.Details)
 							}

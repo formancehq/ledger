@@ -88,10 +88,10 @@ func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*
 	}
 
 	for _, t := range txsData {
-		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
-			for addr, m := range accMeta.(map[string]any) {
+		if t.AddOps != nil && t.AddOps.SetAccountMeta != nil {
+			for addr, m := range t.AddOps.SetAccountMeta {
 				if err := l.store.UpdateAccountMetadata(ctx,
-					addr, m.(map[string]any), time.Now().Round(time.Second).UTC()); err != nil {
+					addr, m, time.Now().Round(time.Second).UTC()); err != nil {
 					return nil, err
 				}
 			}
@@ -100,12 +100,14 @@ func (l *Ledger) Commit(ctx context.Context, txsData ...core.TransactionData) (*
 
 	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
 	for _, t := range txsData {
-		if accMeta, ok := t.Metadata["set_account_meta"]; ok {
-			for addr, m := range accMeta.(map[string]any) {
-				l.monitor.SavedMetadata(ctx, l.store.Name(), core.MetaTargetTypeAccount, addr, m.(map[string]any))
+		if t.AddOps != nil && t.AddOps.SetAccountMeta != nil {
+			for addr, m := range t.AddOps.SetAccountMeta {
+				l.monitor.SavedMetadata(ctx,
+					l.store.Name(), core.MetaTargetTypeAccount, addr, m)
 			}
 		}
 	}
+
 	return commitRes, nil
 }
 

@@ -112,24 +112,24 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.Script) (*core.T
 		}
 	}
 
-	txMeta := m.GetTxMetaJSON()
-	for k, v := range txMeta {
+	metadata := m.GetTxMetaJSON()
+	for k, v := range metadata {
 		asMapAny := make(map[string]any)
 		if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
 			panic(err)
 		}
-		txMeta[k] = asMapAny
+		metadata[k] = asMapAny
 	}
 	for k, v := range script.Metadata {
-		_, ok := txMeta[k]
+		_, ok := metadata[k]
 		if ok {
 			return nil, NewScriptError(ScriptErrorMetadataOverride,
 				"cannot override metadata from script")
 		}
-		txMeta[k] = v
+		metadata[k] = v
 	}
 
-	accMeta := core.Metadata{}
+	addOps := new(core.AdditionalOperations)
 	for account, meta := range m.GetAccountsMetaJSON() {
 		meta := meta.(map[string][]byte)
 		for k, v := range meta {
@@ -137,16 +137,16 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.Script) (*core.T
 			if err := json.Unmarshal(v, &asMapAny); err != nil {
 				return nil, errors.Wrap(err, "json.Unmarshal")
 			}
-			if _, ok := accMeta["set_account_meta"]; !ok {
-				accMeta["set_account_meta"] = map[string]any{}
-			}
 			if account[0] == '@' {
 				account = account[1:]
 			}
-			if _, ok := accMeta["set_account_meta"].(map[string]any)[account]; !ok {
-				accMeta["set_account_meta"].(map[string]any)[account] = map[string]any{}
+			if addOps.SetAccountMeta == nil {
+				addOps.SetAccountMeta = core.AccountsMeta{}
 			}
-			accMeta["set_account_meta"].(map[string]any)[account].(map[string]any)[k] = asMapAny
+			if _, ok := addOps.SetAccountMeta[account]; !ok {
+				addOps.SetAccountMeta[account] = core.Metadata{}
+			}
+			addOps.SetAccountMeta[account][k] = asMapAny
 		}
 	}
 
@@ -163,8 +163,9 @@ func (l *Ledger) ProcessScript(ctx context.Context, script core.Script) (*core.T
 
 	return &core.TransactionData{
 		Postings:  postings,
-		Metadata:  core.Metadata(txMeta).Merge(accMeta),
+		Metadata:  core.Metadata(metadata),
 		Reference: script.Reference,
+		AddOps:    addOps,
 	}, nil
 }
 
