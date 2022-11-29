@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/middlewares"
@@ -141,22 +140,6 @@ func TestContainers(t *testing.T) {
 				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(sharedotlptraces.OtelTracesFlag, true)
 				v.Set(sharedotlptraces.OtelTracesExporterFlag, "jaeger")
-			},
-		},
-		{
-			name: "default-with-opentelemetry-metrics-on-noop",
-			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(sharedotlpmetrics.OtelMetricsFlag, true)
-				v.Set(sharedotlpmetrics.OtelMetricsExporterFlag, "noop")
-			},
-		},
-		{
-			name: "default-with-opentelemetry-metrics-on-otlp",
-			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-				v.Set(sharedotlpmetrics.OtelMetricsFlag, true)
-				v.Set(sharedotlpmetrics.OtelMetricsExporterFlag, "otlp")
 			},
 		},
 		{

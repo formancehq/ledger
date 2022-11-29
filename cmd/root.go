@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
@@ -140,7 +139,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	sharedotlptraces.InitOTLPTracesFlags(root.PersistentFlags())
-	sharedotlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 
