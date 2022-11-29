@@ -49,7 +49,7 @@ func TestPostTransactions(t *testing.T) {
 			expectedErr: apierrors.ErrorResponse{
 				ErrorCode:    apierrors.ErrScriptNoScript,
 				ErrorMessage: "[NO_SCRIPT] no script to execute",
-				Details:      "https://play.numscript.org/?payload=eyJlcnJvciI6Im5vIHNjcmlwdCB0byBleGVjdXRlIn0=",
+				Details:      apierrors.EncodeLink("no script to execute"),
 			},
 		},
 		{
@@ -214,7 +214,7 @@ func TestPostTransactions(t *testing.T) {
 			expectedErr: apierrors.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
 				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
-				Details:      "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+				Details:      apierrors.EncodeLink("account had insufficient funds"),
 			},
 		},
 		{
@@ -1764,6 +1764,80 @@ func TestPostTransactionsBatch(t *testing.T) {
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    apierrors.ErrValidation,
 						ErrorMessage: "processing tx 1: transaction has no postings",
+					}, err)
+				})
+
+				t.Run("insufficient fund", func(t *testing.T) {
+					batch := []core.TransactionData{
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "empty_wallet",
+									Destination: "world",
+									Amount:      core.NewMonetaryInt(1),
+									Asset:       "COIN",
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: batch,
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrInsufficientFund,
+						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+					}, err)
+				})
+
+				t.Run("insufficient fund middle of batch", func(t *testing.T) {
+					batch := []core.TransactionData{
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "world",
+									Destination: "player2",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "player",
+									Destination: "game",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "world",
+									Destination: "player",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: batch,
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrInsufficientFund,
+						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
 					}, err)
 				})
 

@@ -2,7 +2,6 @@ package ledger_test
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -149,48 +148,6 @@ func TestTransaction(t *testing.T) {
 	})
 }
 
-func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		batch := []core.TransactionData{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player2",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "player",
-						Destination: "game",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-		}
-
-		_, err := l.Commit(context.Background(), false, batch...)
-		assert.Error(t, err)
-		assert.IsType(t, new(ledger.TransactionCommitError), err)
-		assert.IsType(t, new(ledger.InsufficientFundError), errors.Unwrap(err))
-	})
-}
-
 func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	t.Run("With conflict reference on transaction set", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
@@ -334,23 +291,6 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 				},
 			},
 		}, commitRes.PostCommitVolumes)
-	})
-}
-
-func TestBalance(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), false, core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "empty_wallet",
-					Destination: "world",
-					Amount:      core.NewMonetaryInt(1),
-					Asset:       "COIN",
-				},
-			},
-		})
-		assert.Error(t, err,
-			"balance was insufficient yet the transaction was committed")
 	})
 }
 
