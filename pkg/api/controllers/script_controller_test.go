@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/numary/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -211,16 +211,7 @@ func TestPostScriptWithSetAccountMeta(t *testing.T) {
 
 				res := controllers.ScriptResponse{}
 				require.NoError(t, json.Unmarshal(rsp.Body.Bytes(), &res))
-				require.Equal(t, core.Metadata{
-					"set_account_meta": map[string]any{
-						"centralbank": map[string]any{
-							"fees": map[string]any{
-								"type":  "string",
-								"value": "15 percent",
-							},
-						},
-					},
-				}, res.Transaction.Metadata)
+				require.Equal(t, core.Metadata{}, res.Transaction.Metadata)
 
 				store := internal.GetLedgerStore(t, driver, ctx)
 				cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())

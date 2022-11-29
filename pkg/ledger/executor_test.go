@@ -455,18 +455,16 @@ func TestSetAccountMeta(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			require.Equal(t, core.Metadata{
-				"set_account_meta": map[string]any{
-					"alice": map[string]any{
-						"aaa": map[string]any{"type": "string", "value": "string meta"},
-						"bbb": map[string]any{"type": "number", "value": 42.},
-						"ccc": map[string]any{"type": "asset", "value": "COIN"},
-						"ddd": map[string]any{"type": "monetary",
-							"value": map[string]any{"asset": "COIN", "amount": 30.}},
-						"eee": map[string]any{"type": "account", "value": "bob"},
-					},
+			require.Equal(t, core.AccountsMeta{
+				"alice": map[string]any{
+					"aaa": map[string]any{"type": "string", "value": "string meta"},
+					"bbb": map[string]any{"type": "number", "value": 42.},
+					"ccc": map[string]any{"type": "asset", "value": "COIN"},
+					"ddd": map[string]any{"type": "monetary",
+						"value": map[string]any{"asset": "COIN", "amount": 30.}},
+					"eee": map[string]any{"type": "account", "value": "bob"},
 				},
-			}, res[0].Metadata)
+			}, res[0].AddOps.SetAccountMeta)
 		})
 
 		t.Run("invalid syntax", func(t *testing.T) {

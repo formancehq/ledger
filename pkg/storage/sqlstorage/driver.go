@@ -3,13 +3,17 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
+	"go.nhat.io/otelsql"
 )
 
 const SystemSchema = "_system"
@@ -18,15 +22,53 @@ var sqlDrivers = map[Flavor]struct {
 	driverName string
 }{}
 
+type otelSQLDriverWithCheckNamedValueDisabled struct {
+	driver.Driver
+}
+
+func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedValue) error {
+	return nil
+}
+
+var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
+
 func UpdateSQLDriverMapping(flavor Flavor, name string) {
+
+	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
+	// pgx implements this interface and just return nil
+	// so, we need to manually wrap the driver to implements this interface and return a nil error
+
+	db, err := sql.Open(name, "")
+	if err != nil {
+		panic(err)
+	}
+
+	dri := db.Driver()
+
+	if err = db.Close(); err != nil {
+		panic(err)
+	}
+
+	wrappedDriver := otelsql.Wrap(dri,
+		otelsql.AllowRoot(),
+		otelsql.TraceQueryWithArgs(),
+		otelsql.TraceRowsAffected(),
+		otelsql.TraceRowsClose(),
+		otelsql.TraceRowsNext(),
+	)
+
+	driverName := fmt.Sprintf("otel-%s", name)
+	sql.Register(driverName, otelSQLDriverWithCheckNamedValueDisabled{
+		wrappedDriver,
+	})
+
 	cfg := sqlDrivers[flavor]
-	cfg.driverName = name
+	cfg.driverName = driverName
 	sqlDrivers[flavor] = cfg
 }
 
 func init() {
 	// Default mapping for app driver/sql driver
-	UpdateSQLDriverMapping(SQLite, "sqlite3")
 	UpdateSQLDriverMapping(PostgreSQL, "pgx")
 }
 
@@ -71,6 +113,9 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
+
+	ctx, span := opentelemetry.Start(ctx, "Load store")
+	defer span.End()
 
 	systemStore := &SystemStore{
 		systemSchema: d.systemSchema,
