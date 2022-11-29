@@ -12,11 +12,10 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings  Postings              `json:"postings"`
-	Reference string                `json:"reference"`
-	Metadata  Metadata              `json:"metadata" swaggertype:"object"`
-	Timestamp time.Time             `json:"timestamp"`
-	AddOps    *AdditionalOperations `json:"additional_operations,omitempty"`
+	Postings  Postings  `json:"postings"`
+	Reference string    `json:"reference"`
+	Metadata  Metadata  `json:"metadata" swaggertype:"object"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 func (t *TransactionData) Reverse() TransactionData {

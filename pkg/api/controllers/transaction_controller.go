@@ -179,7 +179,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			fn = l.(*ledger.Ledger).CommitPreview
 		}
 
-		commitRes, err = fn(c.Request.Context(),
+		commitRes, err = fn(c.Request.Context(), nil,
 			core.TransactionData{
 				Postings:  payload.Postings,
 				Reference: payload.Reference,
@@ -291,7 +291,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions...)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
