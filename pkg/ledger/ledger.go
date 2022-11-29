@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/numary/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"

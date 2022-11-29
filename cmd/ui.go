@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/numary/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/lib/pq"
-	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 )

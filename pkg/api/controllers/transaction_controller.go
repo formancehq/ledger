@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/go-libs/sharedapi"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"

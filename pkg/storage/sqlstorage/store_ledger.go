@@ -3,8 +3,8 @@ package sqlstorage
 import (
 	"context"
 
+	"github.com/formancehq/go-libs/sharedlogging"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
