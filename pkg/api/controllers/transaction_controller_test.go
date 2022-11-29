@@ -971,6 +971,13 @@ func TestGetTransactions(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 					// 1 transaction: txid 1
 					require.Len(t, cursor.Data, 1)
+
+					rsp = internal.CountTransactions(api, url.Values{
+						"start_time": []string{tx1Timestamp.Format(time.RFC3339)},
+						"end_time":   []string{tx2Timestamp.Format(time.RFC3339)},
+					})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, "1", rsp.Header().Get("Count"))
 				})
 
 				t.Run("only start time", func(t *testing.T) {
