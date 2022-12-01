@@ -72,14 +72,13 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
-
-	result, err := l.ProcessTx(ctx, txsData)
+func (l *Ledger) Commit(ctx context.Context, addOps *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
+	commitRes, err := l.ProcessTx(ctx, txsData...)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := l.store.Commit(ctx, result.GeneratedTransactions...); err != nil {
+	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return nil, NewConflictError()
@@ -88,12 +87,28 @@ func (l *Ledger) Commit(ctx context.Context, txsData []core.TransactionData) (*C
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), result)
-	return result, nil
+	if addOps != nil && addOps.SetAccountMeta != nil {
+		for addr, m := range addOps.SetAccountMeta {
+			if err := l.store.UpdateAccountMetadata(ctx,
+				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
+	if addOps != nil && addOps.SetAccountMeta != nil {
+		for addr, m := range addOps.SetAccountMeta {
+			l.monitor.SavedMetadata(ctx,
+				l.store.Name(), core.MetaTargetTypeAccount, addr, m)
+		}
+	}
+
+	return commitRes, nil
 }
 
-func (l *Ledger) CommitPreview(ctx context.Context, txsData []core.TransactionData) (*CommitResult, error) {
-	return l.ProcessTx(ctx, txsData)
+func (l *Ledger) CommitPreview(ctx context.Context, _ *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
+	return l.ProcessTx(ctx, txsData...)
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -145,7 +160,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	result, err := l.ProcessTx(ctx, []core.TransactionData{rt})
+	result, err := l.ProcessTx(ctx, rt)
 	if err != nil {
 		return nil, err
 	}

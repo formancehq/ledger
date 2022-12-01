@@ -1017,7 +1017,7 @@ components:
       type: object
       nullable: true
       additionalProperties: {}
-      example: { admin: true, a: { nested: { key: value}} }
+      example: { admin: true, a: { nested: { key: value } } }
     ConfigInfo:
       type: object
       properties:

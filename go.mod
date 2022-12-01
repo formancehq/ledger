@@ -10,6 +10,7 @@ require (
 	github.com/formancehq/go-libs v1.2.0
 	github.com/formancehq/go-libs/sharedhealth v0.0.0-20221123112229-2c8ab193c63c
 	github.com/formancehq/go-libs/sharedotlp v0.0.0-20221123112229-2c8ab193c63c
+	github.com/formancehq/machine v1.3.0
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-redis/redis/v8 v8.11.5
@@ -23,7 +24,6 @@ require (
 	github.com/lib/pq v1.10.7
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/numary/machine v1.2.1
 	github.com/ory/dockertest/v3 v3.8.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pborman/uuid v1.2.1
@@ -77,7 +77,7 @@ require (
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
-	github.com/goccy/go-json v0.9.11 // indirect
+	github.com/goccy/go-json v0.10.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

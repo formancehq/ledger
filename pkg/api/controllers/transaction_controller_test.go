@@ -379,6 +379,37 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
+			name: "script with set_account_meta",
+			payload: []controllers.PostTransaction{{
+				Script: core.ScriptCore{
+					Plain: `
+					send [TOK 1000] (
+					  source = @world
+					  destination = @bar
+					)
+					set_account_meta(@bar, "foo", "bar")
+					`,
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
 				Script: core.ScriptCore{
@@ -442,7 +473,7 @@ func TestPostTransactions(t *testing.T) {
 						if tc.expectedStatusCode != http.StatusOK {
 							actualErr := apierrors.ErrorResponse{}
 							if internal.Decode(t, rsp.Body, &actualErr) {
-								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode)
+								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode, actualErr.ErrorMessage)
 								require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
 								require.Equal(t, tc.expectedErr.Details, actualErr.Details)
 							}
@@ -450,7 +481,8 @@ func TestPostTransactions(t *testing.T) {
 							txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
 							require.True(t, ok)
 							require.Len(t, txs, 1)
-							require.Equal(t, (*tc.expectedRes.Data)[0].TransactionData.Postings, txs[0].TransactionData.Postings)
+							require.Equal(t, (*tc.expectedRes.Data)[0].Postings, txs[0].Postings)
+							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
 							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
 								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
 							}

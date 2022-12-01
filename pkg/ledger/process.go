@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ProcessTx(ctx context.Context, ts []core.TransactionData) (*CommitResult, error) {
+func (l *Ledger) ProcessTx(ctx context.Context, txsData ...core.TransactionData) (*CommitResult, error) {
 	mapping, err := l.store.LoadMapping(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading mapping")
@@ -34,7 +34,7 @@ func (l *Ledger) ProcessTx(ctx context.Context, ts []core.TransactionData) (*Com
 	contracts = append(contracts, DefaultContracts...)
 
 	usedReferences := make(map[string]struct{})
-	for i, t := range ts {
+	for i, t := range txsData {
 		past := false
 		if t.Timestamp.IsZero() {
 			// Until v1.5.0, dates was stored as string using rfc3339 format

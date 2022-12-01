@@ -130,7 +130,7 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			_, err := l.Commit(context.Background(), batch)
+			_, err := l.Commit(context.Background(), nil, batch...)
 			require.NoError(t, err)
 
 			batch = []core.TransactionData{}
@@ -184,7 +184,7 @@ func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), batch)
+		_, err := l.Commit(context.Background(), nil, batch...)
 		assert.Error(t, err)
 		assert.IsType(t, new(ledger.TransactionCommitError), err)
 		assert.IsType(t, new(ledger.InsufficientFundError), errors.Unwrap(err))
@@ -230,7 +230,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 			}
 
-			_, err := l.Commit(context.Background(), batch)
+			_, err := l.Commit(context.Background(), nil, batch...)
 			assert.Error(t, err)
 			assert.IsType(t, new(ledger.ConflictError), err)
 		})
@@ -248,10 +248,10 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 				Reference: "ref1",
 			}
-			_, err := l.Commit(context.Background(), []core.TransactionData{txData})
+			_, err := l.Commit(context.Background(), nil, txData)
 			require.NoError(t, err)
 
-			_, err = l.Commit(context.Background(), []core.TransactionData{txData})
+			_, err = l.Commit(context.Background(), nil, txData)
 			assert.Error(t, err)
 			assert.IsType(t, new(ledger.ConflictError), err)
 		})
@@ -303,7 +303,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 		}
 
-		res, err := l.Commit(context.Background(), batch)
+		res, err := l.Commit(context.Background(), nil, batch...)
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
@@ -339,15 +339,13 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 
 func TestBalance(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), []core.TransactionData{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "empty_wallet",
-						Destination: "world",
-						Amount:      core.NewMonetaryInt(1),
-						Asset:       "COIN",
-					},
+		_, err := l.Commit(context.Background(), nil, core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "empty_wallet",
+					Destination: "world",
+					Amount:      core.NewMonetaryInt(1),
+					Asset:       "COIN",
 				},
 			},
 		})
@@ -370,10 +368,10 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
-		_, err = l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err = l.Commit(context.Background(), nil, tx)
 		assert.Error(t, err)
 	})
 }
@@ -404,15 +402,13 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			// We have to create at least one transaction to retrieve an account from GetAccounts store method
-			_, err := l.Commit(context.Background(), []core.TransactionData{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Amount:      core.NewMonetaryInt(100),
-							Asset:       "USD",
-							Destination: "users:001",
-						},
+			_, err := l.Commit(context.Background(), nil, core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+						Destination: "users:001",
 					},
 				},
 			})
@@ -432,7 +428,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), nil, core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -441,7 +437,7 @@ func TestTransactionMetadata(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-		}})
+		})
 		require.NoError(t, err)
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -470,7 +466,7 @@ func TestTransactionMetadata(t *testing.T) {
 
 func TestSaveTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), nil, core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -482,7 +478,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 			Metadata: core.Metadata{
 				"a metadata": "a value",
 			},
-		}})
+		})
 		require.NoError(t, err)
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -498,7 +494,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), []core.TransactionData{{
+		_, err := l.Commit(context.Background(), nil, core.TransactionData{
 			Reference: "bar",
 			Postings: []core.Posting{
 				{
@@ -508,7 +504,7 @@ func TestGetTransaction(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-		}})
+		})
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -534,7 +530,7 @@ func TestGetTransactions(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), []core.TransactionData{tx})
+		_, err := l.Commit(context.Background(), nil, tx)
 		require.NoError(t, err)
 
 		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
@@ -548,7 +544,7 @@ func TestRevertTransaction(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		revertAmt := core.NewMonetaryInt(100)
 
-		res, err := l.Commit(context.Background(), []core.TransactionData{{
+		res, err := l.Commit(context.Background(), nil, core.TransactionData{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -558,7 +554,7 @@ func TestRevertTransaction(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-		}})
+		})
 		require.NoError(t, err)
 
 		world, err := l.GetAccount(context.Background(), "world")
@@ -606,14 +602,14 @@ func TestVeryBigTransaction(t *testing.T) {
 		amount, err := core.ParseMonetaryInt("199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		tx, err := l.Commit(context.Background(), []core.TransactionData{{
+		tx, err := l.Commit(context.Background(), nil, core.TransactionData{
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
 				Asset:       "ETH/18",
 				Amount:      amount,
 			}},
-		}})
+		})
 		require.NoError(t, err)
 
 		txFromDB, err := l.GetTransaction(context.Background(), tx.GeneratedTransactions[0].ID)
@@ -638,7 +634,7 @@ func BenchmarkTransaction1(b *testing.B) {
 				},
 			})
 
-			_, err := l.Commit(context.Background(), txs)
+			_, err := l.Commit(context.Background(), nil, txs...)
 			require.NoError(b, err)
 		}
 	})
@@ -663,7 +659,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					})
 				}
 
-				_, err := l.Commit(context.Background(), txs)
+				_, err := l.Commit(context.Background(), nil, txs...)
 				require.NoError(b, err)
 			}
 		}

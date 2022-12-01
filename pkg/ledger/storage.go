@@ -24,8 +24,8 @@ type Store interface {
 	Logs(ctx context.Context) ([]core.Log, error)
 	LoadMapping(ctx context.Context) (*core.Mapping, error)
 
-	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error
-	UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata, at time.Time) error
+	UpdateTransactionMetadata(ctx context.Context, txid uint64, metadata core.Metadata, at time.Time) error
+	UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error
 	Commit(ctx context.Context, txs ...core.ExpandedTransaction) error
 	SaveMapping(ctx context.Context, m core.Mapping) error
 	Name() string

@@ -63,7 +63,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		}
 	}
 	if tx != nil {
-		res.Transaction = tx
+		res.Transaction = &tx.GeneratedTransactions[0]
 	}
 
 	c.JSON(http.StatusOK, res)

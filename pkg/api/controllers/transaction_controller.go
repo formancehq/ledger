@@ -189,7 +189,8 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	var res []core.ExpandedTransaction
+	var commitRes *ledger.CommitResult
+	var err error
 
 	// With postings
 	if len(payload.Postings) > 0 {
@@ -198,39 +199,36 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			fn = l.(*ledger.Ledger).CommitPreview
 		}
 
-		commitRes, err := fn(c.Request.Context(), []core.TransactionData{{
-			Postings:  payload.Postings,
-			Reference: payload.Reference,
-			Metadata:  payload.Metadata,
-			Timestamp: payload.Timestamp,
-		}})
+		commitRes, err = fn(c.Request.Context(), nil,
+			core.TransactionData{
+				Postings:  payload.Postings,
+				Reference: payload.Reference,
+				Metadata:  payload.Metadata,
+				Timestamp: payload.Timestamp,
+			})
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-
-		res = commitRes.GeneratedTransactions
-
 	} else { // With script
 		fn := l.(*ledger.Ledger).Execute
 		if preview {
 			fn = l.(*ledger.Ledger).ExecutePreview
 		}
 
-		tx, err := fn(c.Request.Context(), core.Script{
-			ScriptCore: payload.Script,
-			Reference:  payload.Reference,
-			Metadata:   payload.Metadata,
-		})
+		commitRes, err = fn(c.Request.Context(),
+			core.Script{
+				ScriptCore: payload.Script,
+				Reference:  payload.Reference,
+				Metadata:   payload.Metadata,
+			})
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-
-		res = []core.ExpandedTransaction{*tx}
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -313,7 +311,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), txs.Transactions)
+	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
