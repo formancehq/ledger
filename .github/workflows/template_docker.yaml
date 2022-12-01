@@ -67,7 +67,7 @@ jobs:
             APP_SHA=${{ inputs.APP_SHA }}
             VERSION=${{ inputs.VERSION }}
             SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-      - name: Build and push 
+      - name: Build and push
         if: inputs.RELEASE != 'released' || inputs.RELEASE != 'prereleased'
         uses: docker/build-push-action@v2
         with:

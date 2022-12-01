@@ -16,7 +16,7 @@ type ledgerMonitor struct {
 
 var _ ledger.Monitor = &ledgerMonitor{}
 
-func NewLedgerMonitor(publisher *sharedpublish.TopicMapperPublisher) *ledgerMonitor {
+func newLedgerMonitor(publisher *sharedpublish.TopicMapperPublisher) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
 	}
@@ -27,7 +27,7 @@ func LedgerMonitorModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(
-				NewLedgerMonitor,
+				newLedgerMonitor,
 				fx.ParamTags(``, `group:"monitorOptions"`),
 			),
 		),

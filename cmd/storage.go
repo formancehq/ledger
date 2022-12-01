@@ -147,7 +147,7 @@ func NewStorageScan() *cobra.Command {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							rows, err := sqlDb.QueryContext(ctx, `
-								SELECT s.schema_name 
+								SELECT s.schema_name
 								FROM information_schema.schemata s
 								JOIN pg_catalog.pg_tables t ON t.schemaname = s.schema_name AND t.tablename = 'transactions'
 							`)
