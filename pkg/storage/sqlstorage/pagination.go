@@ -34,3 +34,10 @@ type BalancesPaginationToken struct {
 	AfterAddress        string `json:"after,omitempty"`
 	AddressRegexpFilter string `json:"address,omitempty"`
 }
+
+type LogsPaginationToken struct {
+	AfterID   uint64    `json:"after"`
+	PageSize  uint      `json:"page_size,omitempty"`
+	StartTime time.Time `json:"start_time,omitempty"`
+	EndTime   time.Time `json:"end_time,omitempty"`
+}

@@ -48,6 +48,7 @@ const (
 	ScopeMappingRead       = "mapping:read"
 	ScopeMappingWrite      = "mapping:write"
 	ScopesStatsRead        = "stats"
+	ScopesLogsRead         = "logs"
 )
 
 var AllScopes = []string{
@@ -155,6 +156,7 @@ func (r *Routes) Engine() *gin.Engine {
 
 	// LedgerController
 	dedicatedLedgerRouter.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
+	dedicatedLedgerRouter.GET("/log", r.wrapWithScopes(r.ledgerController.GetLogs, ScopesLogsRead))
 
 	// AccountController
 	dedicatedLedgerRouter.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))

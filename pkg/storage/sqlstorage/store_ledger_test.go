@@ -264,7 +264,7 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 	require.Error(t, err)
 	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
 
-	logs, err := store.Logs(context.Background())
+	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
 }
@@ -321,7 +321,7 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", retrievedTransaction.Metadata["foo"])
 
-	logs, err := store.Logs(context.Background())
+	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
 	require.NoError(t, err)
 	require.Len(t, logs, 2)
 }
@@ -356,7 +356,7 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", account.Metadata["foo"])
 
-	logs, err := store.Logs(context.Background())
+	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
 	require.NoError(t, err)
 	require.Len(t, logs, 2)
 }

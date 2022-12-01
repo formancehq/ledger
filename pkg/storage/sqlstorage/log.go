@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
 
@@ -74,11 +76,6 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 }
 
 func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
-	var (
-		l    core.Log
-		data sql.NullString
-	)
-
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
@@ -90,6 +87,8 @@ func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 		return nil, err
 	}
 
+	l := core.Log{}
+	data := sql.NullString{}
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
 	row := executor.QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
@@ -109,54 +108,63 @@ func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.schema.Table("log"))
-	sb.Select("id", "type", "hash", "date", "data")
-	sb.OrderBy("id desc")
+func (s *Store) Logs(ctx context.Context, q ledger.LogsQuery) (sharedapi.Cursor[core.Log], error) {
+	res := []core.Log{}
 
+	if q.PageSize == 0 {
+		return sharedapi.Cursor[core.Log]{Data: res}, nil
+	}
+
+	sb, _ := s.buildLogsQuery(q)
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return nil, err
+		return sharedapi.Cursor[core.Log]{}, err
 	}
 
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := executor.QueryContext(ctx, sqlq)
 	if err != nil {
-		return nil, s.error(err)
+		return sharedapi.Cursor[core.Log]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
-	ret := make([]core.Log, 0)
 	for rows.Next() {
 		l := core.Log{}
-		var (
-			data sql.NullString
-		)
-
-		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil, nil
-			}
-			return nil, err
+		data := sql.NullString{}
+		if err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
+			return sharedapi.Cursor[core.Log]{}, err
 		}
 		l.Date = l.Date.UTC()
 
 		l.Data, err = core.HydrateLog(l.Type, data.String)
 		if err != nil {
-			return nil, errors.Wrap(err, "hydrating log")
+			return sharedapi.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")
 		}
 		l.Date = l.Date.UTC()
-		ret = append(ret, l)
+		res = append(res, l)
 	}
 	if rows.Err() != nil {
-		return nil, s.error(rows.Err())
+		return sharedapi.Cursor[core.Log]{}, s.error(rows.Err())
 	}
 
-	return ret, nil
+	return sharedapi.Cursor[core.Log]{Data: res}, nil
+}
+
+func (s *Store) buildLogsQuery(p ledger.LogsQuery) (*sqlbuilder.SelectBuilder, LogsPaginationToken) {
+	sb := sqlbuilder.NewSelectBuilder()
+	t := LogsPaginationToken{}
+
+	sb.Select("id", "type", "hash", "date", "data")
+	sb.From(s.schema.Table("log"))
+
+	if !p.Filters.StartTime.IsZero() {
+		sb.Where(sb.GE("timestamp", p.Filters.StartTime.UTC()))
+		t.StartTime = p.Filters.StartTime
+	}
+	if !p.Filters.EndTime.IsZero() {
+		sb.Where(sb.L("timestamp", p.Filters.EndTime.UTC()))
+		t.EndTime = p.Filters.EndTime
+	}
+
+	return sb, t
 }
