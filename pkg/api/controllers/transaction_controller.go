@@ -26,11 +26,31 @@ func NewTransactionController() TransactionController {
 func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
+	var startTimeParsed, endTimeParsed time.Time
+	var err error
+	if c.Query("start_time") != "" {
+		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+			return
+		}
+	}
+
+	if c.Query("end_time") != "" {
+		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+			return
+		}
+	}
+
 	txQuery := ledger.NewTransactionsQuery().
 		WithReferenceFilter(c.Query("reference")).
 		WithAccountFilter(c.Query("account")).
 		WithSourceFilter(c.Query("source")).
-		WithDestinationFilter(c.Query("destination"))
+		WithDestinationFilter(c.Query("destination")).
+		WithStartTimeFilter(startTimeParsed).
+		WithEndTimeFilter(endTimeParsed)
 
 	count, err := l.(*ledger.Ledger).CountTransactions(
 		c.Request.Context(),

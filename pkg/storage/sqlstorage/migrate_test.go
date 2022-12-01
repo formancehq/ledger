@@ -29,7 +29,7 @@ func TestMigrates(t *testing.T) {
 						"id"        integer,
 						"reference" varchar,
 						"hash"      varchar,
-					
+
 						UNIQUE("id"),
 						UNIQUE("reference")
 					);`),

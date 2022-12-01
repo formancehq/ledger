@@ -76,9 +76,9 @@ tasks:
     cmds:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
-        go test {{.TAGS}} ./pkg/storage/sqlstorage 
-        -run=XXX -bench={{.RUN}} -benchmem -timeout 1h 
-        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}} 
+        go test {{.TAGS}} ./pkg/storage/sqlstorage
+        -run=XXX -bench={{.RUN}} -benchmem -timeout 1h
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
         | tee {{.BENCH_RESULTS_FILE}}
       - benchstat {{.BENCH_RESULTS_FILE}}
     env:
@@ -131,7 +131,7 @@ tasks:
         msg: Please specify generator as first cli arg (ie "task template -- go")
     cmds:
       - >
-        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author 
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author
         template -g {{.CLI_ARGS}} -o templates/{{.CLI_ARGS}}
 
   sdk:generate:
