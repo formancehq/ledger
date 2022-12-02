@@ -43,39 +43,13 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "no postings or script",
 			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{},
-				},
+				{},
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "transaction has no postings or script",
-			},
-		},
-		{
-			name: "postings and script",
-			payload: []controllers.PostTransaction{{
-				Postings: core.Postings{
-					{
-						Source:      "world",
-						Destination: "centralbank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "COIN",
-					},
-				},
-				Script: core.ScriptCore{
-					Plain: `
-					send [COIN 100] (
-					  source = @world
-					  destination = @centralbank
-					)`,
-				}},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "either postings or script should be sent in the payload",
+				ErrorCode:    apierrors.ErrScriptNoScript,
+				ErrorMessage: "[NO_SCRIPT] no script to execute",
+				Details:      apierrors.EncodeLink("no script to execute"),
 			},
 		},
 		{
@@ -239,7 +213,8 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: apierrors.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
-				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
+				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+				Details:      apierrors.EncodeLink("account had insufficient funds"),
 			},
 		},
 		{
@@ -342,7 +317,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script nominal",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @world
@@ -381,7 +356,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script with set_account_meta",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [TOK 1000] (
 					  source = @world
@@ -412,7 +387,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					send [COIN 100] (
 					  source = @centralbank
@@ -430,7 +405,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "script failure with metadata override",
 			payload: []controllers.PostTransaction{{
-				Script: core.ScriptCore{
+				Script: core.Script{
 					Plain: `
 					set_tx_meta("priority", "low")
 
@@ -450,6 +425,49 @@ func TestPostTransactions(t *testing.T) {
 				Details:      apierrors.EncodeLink("cannot override metadata from script"),
 			},
 		},
+		{
+			name: "postings and script",
+			payload: []controllers.PostTransaction{{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "alice",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+				Script: core.Script{
+					Plain: `
+					send [COIN 100] (
+					  source = @world
+					  destination = @bob
+					)`,
+				}},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "alice",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+								{
+									Source:      "world",
+									Destination: "bob",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
@@ -467,8 +485,12 @@ func TestPostTransactions(t *testing.T) {
 								require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
 							}
 						}
-						rsp := internal.PostTransaction(t, api, tc.payload[len(tc.payload)-1], false)
-						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode)
+						tcIndex := 0
+						if len(tc.payload) > 0 {
+							tcIndex = len(tc.payload) - 1
+						}
+						rsp := internal.PostTransaction(t, api, tc.payload[tcIndex], false)
+						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode, rsp.Body.String())
 
 						if tc.expectedStatusCode != http.StatusOK {
 							actualErr := apierrors.ErrorResponse{}
@@ -483,8 +505,8 @@ func TestPostTransactions(t *testing.T) {
 							require.Len(t, txs, 1)
 							require.Equal(t, (*tc.expectedRes.Data)[0].Postings, txs[0].Postings)
 							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
-							if !tc.payload[len(tc.payload)-1].Timestamp.IsZero() {
-								require.Equal(t, tc.payload[len(tc.payload)-1].Timestamp, txs[0].Timestamp)
+							if !tc.payload[tcIndex].Timestamp.IsZero() {
+								require.Equal(t, tc.payload[tcIndex].Timestamp, txs[0].Timestamp)
 							}
 						}
 					})
@@ -531,7 +553,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script true", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						Script: core.Script{
 							Plain: script,
 						},
 					}, true)
@@ -570,7 +592,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 				t.Run("script false", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
-						Script: core.ScriptCore{
+						Script: core.Script{
 							Plain: script,
 						},
 						Reference: "refScript",
@@ -615,8 +637,8 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "transaction has no postings or script",
+						ErrorCode:    apierrors.ErrScriptNoScript,
+						ErrorMessage: "[NO_SCRIPT] no script to execute",
 					}, err)
 				})
 
@@ -1740,6 +1762,80 @@ func TestPostTransactionsBatch(t *testing.T) {
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    apierrors.ErrValidation,
 						ErrorMessage: "processing tx 1: transaction has no postings",
+					}, err)
+				})
+
+				t.Run("insufficient fund", func(t *testing.T) {
+					batch := []core.TransactionData{
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "empty_wallet",
+									Destination: "world",
+									Amount:      core.NewMonetaryInt(1),
+									Asset:       "COIN",
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: batch,
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrInsufficientFund,
+						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+					}, err)
+				})
+
+				t.Run("insufficient fund middle of batch", func(t *testing.T) {
+					batch := []core.TransactionData{
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "world",
+									Destination: "player2",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "player",
+									Destination: "game",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "world",
+									Destination: "player",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(100),
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: batch,
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:    apierrors.ErrInsufficientFund,
+						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
 					}, err)
 				})
 

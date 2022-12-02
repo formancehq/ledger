@@ -7,7 +7,7 @@ import (
 )
 
 type Monitor interface {
-	CommittedTransactions(ctx context.Context, ledger string, res *CommitResult)
+	CommittedTransactions(ctx context.Context, ledger string, res CommitResult)
 	SavedMetadata(ctx context.Context, ledger, targetType, id string, metadata core.Metadata)
 	UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping)
 	RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction)
@@ -15,7 +15,7 @@ type Monitor interface {
 
 type noOpMonitor struct{}
 
-func (n noOpMonitor) CommittedTransactions(ctx context.Context, s string, result *CommitResult) {}
+func (n noOpMonitor) CommittedTransactions(ctx context.Context, s string, result CommitResult) {}
 func (n noOpMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {
 }
 func (n noOpMonitor) UpdatedMapping(ctx context.Context, s string, mapping core.Mapping) {}

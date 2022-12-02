@@ -28,8 +28,8 @@ func TestMonitor(t *testing.T) {
 	p := sharedpublish.NewTopicMapperPublisher(pubSub, map[string]string{
 		"*": "testing",
 	})
-	m := NewLedgerMonitor(p)
-	go m.CommittedTransactions(context.Background(), uuid.New(), &ledger.CommitResult{})
+	m := newLedgerMonitor(p)
+	go m.CommittedTransactions(context.Background(), uuid.New(), ledger.CommitResult{})
 
 	select {
 	case m := <-messages:

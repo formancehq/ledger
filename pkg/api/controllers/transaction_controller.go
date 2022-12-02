@@ -158,11 +158,11 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 }
 
 type PostTransaction struct {
-	Timestamp time.Time       `json:"timestamp"`
-	Postings  core.Postings   `json:"postings"`
-	Script    core.ScriptCore `json:"script"`
-	Reference string          `json:"reference"`
-	Metadata  core.Metadata   `json:"metadata" swaggertype:"object"`
+	Postings  core.Postings `json:"postings"`
+	Script    core.Script   `json:"script"`
+	Timestamp time.Time     `json:"timestamp"`
+	Reference string        `json:"reference"`
+	Metadata  core.Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func (ctl *TransactionController) PostTransaction(c *gin.Context) {
@@ -172,63 +172,43 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 	preview := ok &&
 		(strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
-	var payload PostTransaction
+	payload := PostTransaction{}
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		apierrors.ResponseError(c, ledger.NewValidationError("invalid transaction format"))
+		apierrors.ResponseError(c,
+			ledger.NewValidationError("invalid transaction format"))
 		return
 	}
 
-	if len(payload.Postings) > 0 && payload.Script.Plain != "" {
-		apierrors.ResponseError(c, ledger.NewValidationError(
-			"either postings or script should be sent in the payload"))
-		return
+	script := core.ScriptData{
+		Script:    payload.Script,
+		Timestamp: payload.Timestamp,
+		Reference: payload.Reference,
+		Metadata:  payload.Metadata,
 	}
 
-	if len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		apierrors.ResponseError(c, ledger.NewValidationError("transaction has no postings or script"))
-		return
-	}
-
-	var commitRes *ledger.CommitResult
-	var err error
-
-	// With postings
 	if len(payload.Postings) > 0 {
-		fn := l.(*ledger.Ledger).Commit
-		if preview {
-			fn = l.(*ledger.Ledger).CommitPreview
+		txData := core.TransactionData{
+			Postings:  payload.Postings,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
 		}
-
-		commitRes, err = fn(c.Request.Context(), nil,
-			core.TransactionData{
-				Postings:  payload.Postings,
-				Reference: payload.Reference,
-				Metadata:  payload.Metadata,
-				Timestamp: payload.Timestamp,
-			})
+		i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txData)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
 			return
 		}
-	} else { // With script
-		fn := l.(*ledger.Ledger).Execute
-		if preview {
-			fn = l.(*ledger.Ledger).ExecutePreview
-		}
-
-		commitRes, err = fn(c.Request.Context(),
-			core.Script{
-				ScriptCore: payload.Script,
-				Reference:  payload.Reference,
-				Metadata:   payload.Metadata,
-			})
-		if err != nil {
-			apierrors.ResponseError(c, err)
-			return
-		}
+		postingsScript := core.TxsToScriptsData(txData)[0]
+		script.Plain = postingsScript.Plain + script.Plain
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, commitRes.GeneratedTransactions)
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
+	if err != nil {
+		apierrors.ResponseError(c, err)
+		return
+	}
+
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -311,11 +291,18 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	res, err := l.(*ledger.Ledger).Commit(c.Request.Context(), nil, txs.Transactions...)
+	i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txs.Transactions...)
+	if err != nil {
+		apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
+		return
+	}
+
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), false,
+		core.TxsToScriptsData(txs.Transactions...)...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }

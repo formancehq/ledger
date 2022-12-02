@@ -2,7 +2,6 @@ package ledger_test
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -130,7 +129,7 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			_, err := l.Commit(context.Background(), nil, batch...)
+			_, err := l.Commit(context.Background(), false, nil, batch...)
 			require.NoError(t, err)
 
 			batch = []core.TransactionData{}
@@ -146,48 +145,6 @@ func TestTransaction(t *testing.T) {
 			expected, b)
 
 		require.NoError(t, l.Close(context.Background()))
-	})
-}
-
-func TestTransactionBatchWithIntermediateWrongState(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		batch := []core.TransactionData{
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player2",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "player",
-						Destination: "game",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-			{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "player",
-						Asset:       "GEM",
-						Amount:      core.NewMonetaryInt(100),
-					},
-				},
-			},
-		}
-
-		_, err := l.Commit(context.Background(), nil, batch...)
-		assert.Error(t, err)
-		assert.IsType(t, new(ledger.TransactionCommitError), err)
-		assert.IsType(t, new(ledger.InsufficientFundError), errors.Unwrap(err))
 	})
 }
 
@@ -230,7 +187,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 			}
 
-			_, err := l.Commit(context.Background(), nil, batch...)
+			_, err := l.Commit(context.Background(), false, nil, batch...)
 			assert.Error(t, err)
 			assert.IsType(t, new(ledger.ConflictError), err)
 		})
@@ -248,10 +205,10 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 				Reference: "ref1",
 			}
-			_, err := l.Commit(context.Background(), nil, txData)
+			_, err := l.Commit(context.Background(), false, nil, txData)
 			require.NoError(t, err)
 
-			_, err = l.Commit(context.Background(), nil, txData)
+			_, err = l.Commit(context.Background(), false, nil, txData)
 			assert.Error(t, err)
 			assert.IsType(t, new(ledger.ConflictError), err)
 		})
@@ -260,7 +217,7 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 
 func TestTransactionExpectedVolumes(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		batch := []core.TransactionData{
+		txsData := []core.TransactionData{
 			{
 				Postings: []core.Posting{
 					{
@@ -303,7 +260,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 		}
 
-		res, err := l.Commit(context.Background(), nil, batch...)
+		commitRes, err := l.ProcessTxsData(context.Background(), txsData...)
 		assert.NoError(t, err)
 
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
@@ -333,24 +290,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: core.NewMonetaryInt(0),
 				},
 			},
-		}, res.PostCommitVolumes)
-	})
-}
-
-func TestBalance(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), nil, core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "empty_wallet",
-					Destination: "world",
-					Amount:      core.NewMonetaryInt(1),
-					Asset:       "COIN",
-				},
-			},
-		})
-		assert.Error(t, err,
-			"balance was insufficient yet the transaction was committed")
+		}, commitRes.PostCommitVolumes)
 	})
 }
 
@@ -368,10 +308,10 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), nil, tx)
+		_, err := l.Commit(context.Background(), false, nil, tx)
 		require.NoError(t, err)
 
-		_, err = l.Commit(context.Background(), nil, tx)
+		_, err = l.Commit(context.Background(), false, nil, tx)
 		assert.Error(t, err)
 	})
 }
@@ -402,7 +342,7 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			// We have to create at least one transaction to retrieve an account from GetAccounts store method
-			_, err := l.Commit(context.Background(), nil, core.TransactionData{
+			_, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 				Postings: core.Postings{
 					{
 						Source:      "world",
@@ -428,7 +368,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), nil, core.TransactionData{
+		_, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -466,7 +406,7 @@ func TestTransactionMetadata(t *testing.T) {
 
 func TestSaveTransactionMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), nil, core.TransactionData{
+		_, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 			Postings: []core.Posting{
 				{
 					Source:      "world",
@@ -494,7 +434,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.Commit(context.Background(), nil, core.TransactionData{
+		_, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 			Reference: "bar",
 			Postings: []core.Posting{
 				{
@@ -530,7 +470,7 @@ func TestGetTransactions(t *testing.T) {
 			},
 		}
 
-		_, err := l.Commit(context.Background(), nil, tx)
+		_, err := l.Commit(context.Background(), false, nil, tx)
 		require.NoError(t, err)
 
 		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
@@ -544,7 +484,7 @@ func TestRevertTransaction(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		revertAmt := core.NewMonetaryInt(100)
 
-		res, err := l.Commit(context.Background(), nil, core.TransactionData{
+		res, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 			Reference: "foo",
 			Postings: []core.Posting{
 				{
@@ -562,7 +502,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		require.Equal(t, core.Postings{
@@ -574,10 +514,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf("%d", res.GeneratedTransactions[0].ID),
+		require.EqualValues(t, fmt.Sprintf("%d", res[0].ID),
 			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
-		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
@@ -602,7 +542,7 @@ func TestVeryBigTransaction(t *testing.T) {
 		amount, err := core.ParseMonetaryInt("199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		tx, err := l.Commit(context.Background(), nil, core.TransactionData{
+		txs, err := l.Commit(context.Background(), false, nil, core.TransactionData{
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
@@ -612,7 +552,7 @@ func TestVeryBigTransaction(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		txFromDB, err := l.GetTransaction(context.Background(), tx.GeneratedTransactions[0].ID)
+		txFromDB, err := l.GetTransaction(context.Background(), txs[0].ID)
 		require.NoError(t, err)
 		require.Equal(t, txFromDB.Postings[0].Amount, amount)
 	})
@@ -634,7 +574,7 @@ func BenchmarkTransaction1(b *testing.B) {
 				},
 			})
 
-			_, err := l.Commit(context.Background(), nil, txs...)
+			_, err := l.Commit(context.Background(), false, nil, txs...)
 			require.NoError(b, err)
 		}
 	})
@@ -659,7 +599,7 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					})
 				}
 
-				_, err := l.Commit(context.Background(), nil, txs...)
+				_, err := l.Commit(context.Background(), false, nil, txs...)
 				require.NoError(b, err)
 			}
 		}

@@ -321,6 +321,8 @@ paths:
         - Script
       operationId: runScript
       summary: Execute a Numscript.
+      description: >
+        This route is deprecated, and has been merged into `POST /{ledger}/transactions`.
       parameters:
         - name: ledger
           in: path
@@ -598,7 +600,7 @@ paths:
       requestBody:
         required: true
         description: >
-          The request body must contain one of the following objects:
+          The request body must contain at least one of the following objects:
             - `postings`: suitable for simple transactions
             - `script`: enabling more complex transactions with Numscript
         content:

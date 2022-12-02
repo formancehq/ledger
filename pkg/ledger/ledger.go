@@ -72,18 +72,22 @@ type CommitResult struct {
 	GeneratedTransactions []core.ExpandedTransaction
 }
 
-func (l *Ledger) Commit(ctx context.Context, addOps *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
-	commitRes, err := l.ProcessTx(ctx, txsData...)
+func (l *Ledger) Commit(ctx context.Context, preview bool, addOps *core.AdditionalOperations, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
+	commitRes, err := l.ProcessTxsData(ctx, txsData...)
 	if err != nil {
-		return nil, err
+		return []core.ExpandedTransaction{}, err
+	}
+
+	if preview {
+		return commitRes.GeneratedTransactions, nil
 	}
 
 	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return nil, NewConflictError()
+			return []core.ExpandedTransaction{}, NewConflictError()
 		default:
-			return nil, err
+			return []core.ExpandedTransaction{}, err
 		}
 	}
 
@@ -91,7 +95,7 @@ func (l *Ledger) Commit(ctx context.Context, addOps *core.AdditionalOperations, 
 		for addr, m := range addOps.SetAccountMeta {
 			if err := l.store.UpdateAccountMetadata(ctx,
 				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-				return nil, err
+				return []core.ExpandedTransaction{}, err
 			}
 		}
 	}
@@ -104,11 +108,7 @@ func (l *Ledger) Commit(ctx context.Context, addOps *core.AdditionalOperations, 
 		}
 	}
 
-	return commitRes, nil
-}
-
-func (l *Ledger) CommitPreview(ctx context.Context, _ *core.AdditionalOperations, txsData ...core.TransactionData) (*CommitResult, error) {
-	return l.ProcessTx(ctx, txsData...)
+	return commitRes.GeneratedTransactions, nil
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
@@ -160,7 +160,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	result, err := l.ProcessTx(ctx, rt)
+	result, err := l.ProcessTxsData(ctx, rt)
 	if err != nil {
 		return nil, err
 	}
