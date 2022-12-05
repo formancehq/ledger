@@ -161,11 +161,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 	if err != nil {
 		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	for rows.Next() {
 		var ref sql.NullString
@@ -444,16 +440,16 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		}
 
 		queryTxs = fmt.Sprintf(
-			`INSERT INTO "%s".transactions (id, timestamp, reference, 
-                               postings, metadata, 
-                               pre_commit_volumes, 
+			`INSERT INTO "%s".transactions (id, timestamp, reference,
+                               postings, metadata,
+                               pre_commit_volumes,
                                post_commit_volumes) (SELECT * FROM unnest(
-                                   $1::int[], 
-                                   $2::timestamp[], 
-                                   $3::varchar[], 
-                                   $4::jsonb[], 
-                                   $5::jsonb[], 
-                                   $6::jsonb[], 
+                                   $1::int[],
+                                   $2::timestamp[],
+                                   $3::varchar[],
+                                   $4::jsonb[],
+                                   $5::jsonb[],
+                                   $6::jsonb[],
                                    $7::jsonb[]))`,
 			s.schema.Name())
 		argsTxs = []any{
@@ -463,11 +459,11 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		}
 
 		queryPostings := fmt.Sprintf(
-			`INSERT INTO "%s".postings (txid, posting_index, 
+			`INSERT INTO "%s".postings (txid, posting_index,
                            source, destination) (SELECT * FROM unnest(
-                                   $1::int[], 
-                                   $2::int[], 
-                                   $3::jsonb[], 
+                                   $1::int[],
+                                   $2::int[],
+                                   $3::jsonb[],
                                    $4::jsonb[]))`,
 			s.schema.Name())
 		argsPostings := []any{
@@ -520,7 +516,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		return err
 	}
 
-	lastLog, err := s.LastLog(ctx)
+	lastLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
 	}

@@ -227,3 +227,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	l.monitor.SavedMetadata(ctx, l.store.Name(), targetType, fmt.Sprint(targetID), m)
 	return nil
 }
+
+func (l *Ledger) GetLogs(ctx context.Context, q *LogsQuery) (sharedapi.Cursor[core.Log], error) {
+	return l.store.GetLogs(ctx, q)
+}

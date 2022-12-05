@@ -20,8 +20,8 @@ type Store interface {
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
 	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-	LastLog(context.Context) (*core.Log, error)
-	Logs(context.Context, LogsQuery) (sharedapi.Cursor[core.Log], error)
+	GetLastLog(context.Context) (*core.Log, error)
+	GetLogs(context.Context, *LogsQuery) (sharedapi.Cursor[core.Log], error)
 	LoadMapping(context.Context) (*core.Mapping, error)
 
 	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata, at time.Time) error

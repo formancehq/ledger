@@ -59,6 +59,7 @@ var AllScopes = []string{
 	ScopeMappingRead,
 	ScopeMappingWrite,
 	ScopesStatsRead,
+	ScopesLogsRead,
 }
 
 type Routes struct {

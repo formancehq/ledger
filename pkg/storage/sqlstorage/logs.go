@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -75,7 +76,7 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 	return nil
 }
 
-func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
+func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
@@ -108,21 +109,21 @@ func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) Logs(ctx context.Context, q ledger.LogsQuery) (sharedapi.Cursor[core.Log], error) {
+func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cursor[core.Log], error) {
 	res := []core.Log{}
 
 	if q.PageSize == 0 {
 		return sharedapi.Cursor[core.Log]{Data: res}, nil
 	}
 
-	sb, _ := s.buildLogsQuery(q)
+	sb, t := s.buildLogsQuery(q)
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
 		return sharedapi.Cursor[core.Log]{}, err
 	}
 
-	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := executor.QueryContext(ctx, sqlq)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
 		return sharedapi.Cursor[core.Log]{}, s.error(err)
 	}
@@ -147,24 +148,63 @@ func (s *Store) Logs(ctx context.Context, q ledger.LogsQuery) (sharedapi.Cursor[
 		return sharedapi.Cursor[core.Log]{}, s.error(rows.Err())
 	}
 
-	return sharedapi.Cursor[core.Log]{Data: res}, nil
+	var previous, next string
+
+	// Page with logs before
+	if q.AfterID > 0 && len(res) > 1 && res[0].ID == q.AfterID {
+		t.AfterID = res[0].ID + uint64(q.PageSize)
+		res = res[1:]
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Log]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	// Page with logs after
+	if len(res) > int(q.PageSize) {
+		res = res[:q.PageSize]
+		t.AfterID = res[len(res)-1].ID
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Log]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	return sharedapi.Cursor[core.Log]{
+		PageSize: int(q.PageSize),
+		HasMore:  next != "",
+		Previous: previous,
+		Next:     next,
+		Data:     res,
+	}, nil
 }
 
-func (s *Store) buildLogsQuery(p ledger.LogsQuery) (*sqlbuilder.SelectBuilder, LogsPaginationToken) {
+func (s *Store) buildLogsQuery(q *ledger.LogsQuery) (*sqlbuilder.SelectBuilder, LogsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := LogsPaginationToken{}
 
 	sb.Select("id", "type", "hash", "date", "data")
 	sb.From(s.schema.Table("log"))
 
-	if !p.Filters.StartTime.IsZero() {
-		sb.Where(sb.GE("timestamp", p.Filters.StartTime.UTC()))
-		t.StartTime = p.Filters.StartTime
+	if !q.Filters.StartTime.IsZero() {
+		sb.Where(sb.GE("date", q.Filters.StartTime.UTC()))
+		t.StartTime = q.Filters.StartTime
 	}
-	if !p.Filters.EndTime.IsZero() {
-		sb.Where(sb.L("timestamp", p.Filters.EndTime.UTC()))
-		t.EndTime = p.Filters.EndTime
+	if !q.Filters.EndTime.IsZero() {
+		sb.Where(sb.L("date", q.Filters.EndTime.UTC()))
+		t.EndTime = q.Filters.EndTime
 	}
+	sb.OrderBy("id").Desc()
+
+	if q.AfterID > 0 {
+		sb.Where(sb.LE("id", q.AfterID))
+	}
+
+	// We fetch additional logs to know if there are more before and/or after.
+	sb.Limit(int(q.PageSize + 2))
+	t.PageSize = q.PageSize
 
 	return sb, t
 }

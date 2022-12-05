@@ -192,6 +192,13 @@ func GetStats(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
+func GetLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/log", testingLedger), nil)
+	req.URL.RawQuery = query.Encode()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
 func LoadMapping(handler http.Handler) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/mapping", testingLedger), nil)
 	handler.ServeHTTP(rec, req)

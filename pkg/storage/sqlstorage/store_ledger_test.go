@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/google/uuid"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/core"
@@ -19,7 +20,6 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/pborman/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,8 @@ func TestStore(t *testing.T) {
 		{name: "Commit", fn: testCommit},
 		{name: "UpdateTransactionMetadata", fn: testUpdateTransactionMetadata},
 		{name: "UpdateAccountMetadata", fn: testUpdateAccountMetadata},
-		{name: "LastLog", fn: testLastLog},
+		{name: "GetLastLog", fn: testGetLastLog},
+		{name: "GetLogs", fn: testGetLogs},
 		{name: "CountAccounts", fn: testCountAccounts},
 		{name: "GetAssetsVolumes", fn: testGetAssetsVolumes},
 		{name: "GetAccounts", fn: testGetAccounts},
@@ -64,17 +65,13 @@ func TestStore(t *testing.T) {
 							defer func() {
 								close(done)
 							}()
-							ledgerName := uuid.New()
-							store, _, err := driver.GetLedgerStore(ctx, ledgerName, true)
+							store, _, err := driver.GetLedgerStore(ctx, uuid.NewString(), true)
 							if err != nil {
 								return err
 							}
-							defer func(store ledger.Store, ctx context.Context) {
-								require.NoError(t, store.Close(ctx))
-							}(store, context.Background())
+							defer store.Close(ctx)
 
-							_, err = store.Initialize(context.Background())
-							if err != nil {
+							if _, err = store.Initialize(context.Background()); err != nil {
 								return err
 							}
 
@@ -264,9 +261,9 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 	require.Error(t, err)
 	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
 
-	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
+	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
 	require.NoError(t, err)
-	require.Len(t, logs, 1)
+	require.Len(t, cursor.Data, 1)
 }
 
 func testIKS(t *testing.T, store *sqlstorage.Store) {
@@ -286,7 +283,7 @@ func testIKS(t *testing.T, store *sqlstorage.Store) {
 		require.Equal(t, response, *fromDB)
 	})
 	t.Run("Not found", func(t *testing.T) {
-		_, err := store.ReadIK(context.Background(), uuid.New())
+		_, err := store.ReadIK(context.Background(), uuid.NewString())
 		require.Equal(t, idempotency.ErrIKNotFound, err)
 	})
 }
@@ -321,9 +318,9 @@ func testUpdateTransactionMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", retrievedTransaction.Metadata["foo"])
 
-	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
+	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
 	require.NoError(t, err)
-	require.Len(t, logs, 2)
+	require.Len(t, cursor.Data, 2)
 }
 
 func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
@@ -356,9 +353,9 @@ func testUpdateAccountMetadata(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", account.Metadata["foo"])
 
-	logs, err := store.Logs(context.Background(), *ledger.NewLogsQuery())
+	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
 	require.NoError(t, err)
-	require.Len(t, logs, 2)
+	require.Len(t, cursor.Data, 2)
 }
 
 func testCountAccounts(t *testing.T, store *sqlstorage.Store) {
@@ -752,7 +749,7 @@ func TestInitializeStore(t *testing.T) {
 	err = driver.Initialize(context.Background())
 	require.NoError(t, err)
 
-	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
+	store, _, err := driver.GetLedgerStore(context.Background(), uuid.NewString(), true)
 	require.NoError(t, err)
 
 	modified, err := store.Initialize(context.Background())
@@ -764,15 +761,59 @@ func TestInitializeStore(t *testing.T) {
 	require.False(t, modified)
 }
 
-func testLastLog(t *testing.T, store *sqlstorage.Store) {
+func testGetLastLog(t *testing.T, store *sqlstorage.Store) {
 	err := store.Commit(context.Background(), tx1)
 	require.NoError(t, err)
 
-	lastLog, err := store.LastLog(context.Background())
+	lastLog, err := store.GetLastLog(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 
 	require.Equal(t, tx1.Postings, lastLog.Data.(core.Transaction).Postings)
 	require.Equal(t, tx1.Reference, lastLog.Data.(core.Transaction).Reference)
 	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.Transaction).Timestamp)
+}
+
+func testGetLogs(t *testing.T, store *sqlstorage.Store) {
+	require.NoError(t, store.Commit(context.Background(), tx1, tx2, tx3))
+
+	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
+	require.NoError(t, err)
+	require.Equal(t, ledger.QueryDefaultPageSize, cursor.PageSize)
+
+	require.Equal(t, 3, len(cursor.Data))
+	require.Equal(t, uint64(2), cursor.Data[0].ID)
+	require.Equal(t, tx3.Postings, cursor.Data[0].Data.(core.Transaction).Postings)
+	require.Equal(t, tx3.Reference, cursor.Data[0].Data.(core.Transaction).Reference)
+	require.Equal(t, tx3.Timestamp, cursor.Data[0].Data.(core.Transaction).Timestamp)
+
+	cursor, err = store.GetLogs(context.Background(), &ledger.LogsQuery{
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+	// Should get only the first log.
+	require.Equal(t, 1, cursor.PageSize)
+	require.Equal(t, uint64(2), cursor.Data[0].ID)
+
+	cursor, err = store.GetLogs(context.Background(), &ledger.LogsQuery{
+		AfterID:  cursor.Data[0].ID,
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+	// Should get only the second log.
+	require.Equal(t, 1, cursor.PageSize)
+	require.Equal(t, uint64(1), cursor.Data[0].ID)
+
+	cursor, err = store.GetLogs(context.Background(), &ledger.LogsQuery{
+		Filters: ledger.LogsQueryFilters{
+			StartTime: now.Add(-2 * time.Hour),
+			EndTime:   now.Add(-1 * time.Hour),
+		},
+		PageSize: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 10, cursor.PageSize)
+	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.
+	require.Len(t, cursor.Data, 1)
+	require.Equal(t, uint64(1), cursor.Data[0].ID)
 }
