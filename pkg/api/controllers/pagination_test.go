@@ -349,6 +349,89 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 			}
 		})
 
+		t.Run("logs", func(t *testing.T) {
+			var paginationToken string
+			cursor := &sharedapi.Cursor[core.Log]{}
+
+			// MOVING FORWARD
+			for i := 0; i < txsPages; i++ {
+
+				values := url.Values{}
+				if paginationToken == "" {
+					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+				} else {
+					values.Set("pagination_token", paginationToken)
+				}
+
+				rsp = internal.GetLogs(api, values)
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)
+				assert.Len(t, cursor.Data, pageSize)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
+
+				// First ID of the page
+				assert.Equal(t,
+					uint64((txsPages-i)*pageSize+additionalTxs-1), cursor.Data[0].ID)
+
+				// Last ID of the page
+				assert.Equal(t,
+					uint64((txsPages-i-1)*pageSize+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
+
+				paginationToken = cursor.Next
+			}
+
+			if additionalTxs > 0 {
+				rsp = internal.GetLogs(api, url.Values{
+					"pagination_token": []string{paginationToken},
+				})
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)
+				assert.Len(t, cursor.Data, additionalTxs)
+				assert.Equal(t, cursor.Next != "", cursor.HasMore)
+
+				// First ID of the last page
+				assert.Equal(t,
+					uint64(additionalTxs-1), cursor.Data[0].ID)
+
+				// Last ID of the last page
+				assert.Equal(t,
+					uint64(0), cursor.Data[len(cursor.Data)-1].ID)
+			}
+
+			assert.Empty(t, cursor.Next)
+
+			// MOVING BACKWARD
+			if txsPages > 0 {
+				back := 0
+				for cursor.Previous != "" {
+					paginationToken = cursor.Previous
+					rsp = internal.GetLogs(api, url.Values{
+						"pagination_token": []string{paginationToken},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)
+					assert.Len(t, cursor.Data, pageSize)
+					assert.Equal(t, cursor.Next != "", cursor.HasMore)
+					back++
+				}
+				if additionalTxs > 0 {
+					assert.Equal(t, txsPages, back)
+				} else {
+					assert.Equal(t, txsPages-1, back)
+				}
+
+				// First ID of the first page
+				assert.Equal(t,
+					uint64(txsPages*pageSize+additionalTxs-1), cursor.Data[0].ID)
+
+				// Last ID of the first page
+				assert.Equal(t,
+					uint64((txsPages-1)*pageSize+additionalTxs), cursor.Data[len(cursor.Data)-1].ID)
+			}
+
+			assert.Empty(t, cursor.Previous)
+		})
+
 		return nil
 	}
 }
