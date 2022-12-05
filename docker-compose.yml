@@ -181,6 +181,7 @@ services:
 
   mongodb:
     image: bitnami/mongodb:4.4
+    platform: linux/amd64
     restart: always
     environment:
       MONGODB_ROOT_PASSWORD: root
