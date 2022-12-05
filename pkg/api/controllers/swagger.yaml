@@ -988,13 +988,14 @@ paths:
                   error_message:
                     type: string
                     example: "invalid address"
+
   /{ledger}/log:
     get:
       tags:
         - Logs
       summary: List the logs from a ledger.
       description: List the logs from a ledger, sorted by ID in descending order.
-      operationId: listTransactions
+      operationId: listLogs
       parameters:
         - name: ledger
           in: path
