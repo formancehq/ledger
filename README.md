@@ -4,7 +4,6 @@ Formance is a highly modular developer platform to build and operate complex mon
 
 - **Formance Ledger** - Programmable double-entry, immutable source of truth to record internal financial transactions and money movements
 - **Formance Payments** - Unified API and data layer for payments processing
-- **Formance Wallets** - Fully managed white-label wallets to debit and credit users funds and liabilities, with multi-currencies, reserve, temporary holds and expiration capabilities
 - **Formance Numscript** - DSL and virtual machine monetary computations and transactions modeling
 - **Formance Control** - Web application dashboard for payments operators with unified views on all your data
 
