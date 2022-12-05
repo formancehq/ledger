@@ -1395,6 +1395,12 @@ components:
         date:
           type: string
           format: date-time
+      required:
+        - id
+        - type
+        - data
+        - hash
+        - date
 
     TransactionsResponse:
       type: object
