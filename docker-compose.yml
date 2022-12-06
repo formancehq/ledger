@@ -40,7 +40,7 @@ services:
       - traefik.http.middlewares.jwt.plugin.auth.Issuer=http://localhost/api/auth
 
   auth:
-    image: "ghcr.io/formancehq/auth:v0.2.2"
+    image: "ghcr.io/formancehq/auth:v0.2.3"
     restart: always
     network_mode: service:auth-dex
     command: serve

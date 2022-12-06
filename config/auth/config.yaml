@@ -1,4 +1,8 @@
 clients:
+  - id: testing
+    secrets:
+    - testing
+    name: testing
   - id: control
     secrets:
       - mysupersecret
