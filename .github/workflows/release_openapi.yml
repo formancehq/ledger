@@ -26,7 +26,7 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: ./openapi/yarn.lock
       - run: yarn install
-      - run: task sdk:build
+      - run: task sdk:build VERSION=${{ github.event.release.tag_name }}
       - uses: actions/checkout@v3
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}

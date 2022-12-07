@@ -11,6 +11,7 @@ tasks:
     cmds:
       - yarn run build
       - sed -i -e "s/SDK_VERSION/{{.VERSION}}/g" sdk/generate.json
+      
   sdk:generate:
     desc: Generate client code
     dir: ./sdk
@@ -27,6 +28,7 @@ tasks:
         --git-user-id=formancehq
         --git-repo-id=formance-sdk-{{.CLI_ARGS}}
         -p packageVersion={{.VERSION}}
+        -p apiVersion={{.VERSION}}
         
   sdk:generate:all:
     desc: Generate all client code
