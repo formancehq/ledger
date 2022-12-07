@@ -60,6 +60,13 @@ x-tagGroups:
       - Stats
       - Transactions
       - Balances
+      - server
+      - accounts
+      - mapping
+      - script
+      - stats
+      - transactions
+      - balances
   - name: Payments
     tags:
       - Payments
