@@ -40,12 +40,12 @@ jobs:
           commit_message: "feat: Upgrade Release to ${{ github.event.release.tag_name }}"
           create_branch: true
           branch: release/${{ github.event.release.tag_name }}
-          repository: ./sdk/sdks/${{ matrix.sdk }}
+          repository: ./openapi/sdk/sdks/${{ matrix.sdk }}
           commit_user_name: NumaryBot
           commit_user_email: support@formance.com
       - name: Create PR
         run: gh pr create --base main --head release/${{ github.event.release.tag_name }} --title "Upgrade to ${{ github.event.release.tag_name }}" --body "Upgrade to ${{ github.event.release.tag_name }}"
-        working-directory: ./sdk/sdks/${{ matrix.sdk }}
+        working-directory: ./openapi/sdk/sdks/${{ matrix.sdk }}
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
@@ -69,4 +69,4 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./sdk/generate.json
+          files: ./openapi/sdk/generate.json
