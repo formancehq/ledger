@@ -1,0 +1,44 @@
+
+# https://taskfile.dev
+version: "3"
+
+env:
+  VERSION: "develop"
+
+tasks:
+  sdk:build:
+    desc: Build the SDK
+    cmds:
+      - yarn run build
+      - sed -i -e "s/SDK_VERSION/{{.VERSION}}/g" sdk/generate.json
+  sdk:generate:
+    desc: Generate client code
+    dir: ./sdk
+    preconditions:
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
+        msg: Please specify generator as first cli arg (ie "task generate -- go")
+    cmds:
+      - >
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest generate
+        -i ./generate.json
+        -g {{ (split "-" .CLI_ARGS)._0 }}
+        -c ./configs/{{.CLI_ARGS}}.yaml
+        -o ./sdks/{{.CLI_ARGS}}
+        --git-user-id=formancehq
+        --git-repo-id=formance-sdk-{{.CLI_ARGS}}
+        -p packageVersion={{.VERSION}}
+        
+  sdk:generate:all:
+    desc: Generate all client code
+    dir: ./sdk
+    cmds:
+      - task: sdk:generate
+        vars: {CLI_ARGS: "go", VERSION: "{{.VERSION}}"}
+      - task: sdk:generate
+        vars: {CLI_ARGS: "java", VERSION: "{{.VERSION}}"}
+      - task: sdk:generate
+        vars: {CLI_ARGS: "php", VERSION: "{{.VERSION}}"}
+      - task: sdk:generate
+        vars: {CLI_ARGS: "python", VERSION: "{{.VERSION}}"}
+      - task: sdk:generate
+        vars: {CLI_ARGS: "typescript-node", VERSION: "{{.VERSION}}"}

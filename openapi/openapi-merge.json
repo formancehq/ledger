@@ -1,0 +1,56 @@
+{
+  "inputs": [
+    {
+      "inputFile": "./openapi/base/base.yaml"
+    },
+    {
+      "inputFile": "./../services/auth/swagger.yaml",
+      "pathModification":{
+        "prepend": "/api/auth"
+      },
+      "dispute": {
+        "prefix": "auth"
+      }
+    },
+    {
+      "inputFile": "./../services/ledger/pkg/api/controllers/swagger.yaml",
+      "pathModification":{
+        "prepend": "/api/ledger"
+      },
+      "dispute": {
+        "prefix": "ledger"
+      }
+    },
+    {
+      "inputFile": "./../services/payments/swagger.yml",
+      "pathModification":{
+        "prepend": "/api/payments"
+      },
+      "dispute": {
+        "prefix": "payments"
+      }
+    },
+    {
+      "inputFile": "./../services/search/swagger.yaml",
+      "pathModification":{
+        "prepend": "/api/search"
+      },
+      "dispute": {
+        "prefix": "search"
+      }
+    },
+    {
+      "inputFile": "./../services/webhooks/pkg/server/openapi.yaml",
+      "pathModification":{
+        "prepend": "/api/webhooks"
+      },
+      "operationSelection": {
+        "excludeTags": ["Health"]
+      },
+      "dispute": {
+        "prefix": "webhooks"
+      }
+    }
+  ], 
+  "output": "./sdk/generate.json"
+}
