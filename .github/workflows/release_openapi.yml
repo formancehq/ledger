@@ -15,6 +15,8 @@ jobs:
         sdk: [ go, php, python, typescript-node, java ]
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: Install Task
         uses: arduino/setup-task@v1
       - uses: actions/setup-node@v3
@@ -28,7 +30,7 @@ jobs:
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           repository: formancehq/formance-sdk-${{ matrix.sdk }}
-          path: ./sdk/sdks/${{ matrix.sdk }}
+          path: ./openapi/sdk/sdks/${{ matrix.sdk }}
       - name: Build SDK for Release
         run: task sdk:generate VERSION=${{ github.event.release.tag_name }} -- ${{ matrix.sdk }}
       - name: Push commit to SDK Repository
@@ -51,6 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: Install Task
         uses: arduino/setup-task@v1
       - uses: actions/setup-node@v3
