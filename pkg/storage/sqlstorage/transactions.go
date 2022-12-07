@@ -161,11 +161,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 	if err != nil {
 		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	for rows.Next() {
 		var ref sql.NullString
@@ -520,7 +516,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		return err
 	}
 
-	lastLog, err := s.LastLog(ctx)
+	lastLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
 	}

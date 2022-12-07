@@ -20,9 +20,9 @@ type Store interface {
 	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
 	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-	LastLog(ctx context.Context) (*core.Log, error)
-	Logs(ctx context.Context) ([]core.Log, error)
-	LoadMapping(ctx context.Context) (*core.Mapping, error)
+	GetLastLog(context.Context) (*core.Log, error)
+	GetLogs(context.Context, *LogsQuery) (sharedapi.Cursor[core.Log], error)
+	LoadMapping(context.Context) (*core.Mapping, error)
 
 	UpdateTransactionMetadata(ctx context.Context, txid uint64, metadata core.Metadata, at time.Time) error
 	UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error
@@ -254,4 +254,52 @@ func (b *BalancesQuery) WithAddressFilter(address string) *BalancesQuery {
 func (b *BalancesQuery) WithPageSize(pageSize uint) *BalancesQuery {
 	b.PageSize = pageSize
 	return b
+}
+
+type LogsQuery struct {
+	AfterID  uint64
+	PageSize uint
+
+	Filters LogsQueryFilters
+}
+
+type LogsQueryFilters struct {
+	EndTime   time.Time
+	StartTime time.Time
+}
+
+func NewLogsQuery() *LogsQuery {
+	return &LogsQuery{
+		PageSize: QueryDefaultPageSize,
+	}
+}
+
+func (l *LogsQuery) WithAfterID(after uint64) *LogsQuery {
+	l.AfterID = after
+
+	return l
+}
+
+func (l *LogsQuery) WithPageSize(pageSize uint) *LogsQuery {
+	if pageSize != 0 {
+		l.PageSize = pageSize
+	}
+
+	return l
+}
+
+func (l *LogsQuery) WithStartTimeFilter(start time.Time) *LogsQuery {
+	if !start.IsZero() {
+		l.Filters.StartTime = start
+	}
+
+	return l
+}
+
+func (l *LogsQuery) WithEndTimeFilter(end time.Time) *LogsQuery {
+	if !end.IsZero() {
+		l.Filters.EndTime = end
+	}
+
+	return l
 }

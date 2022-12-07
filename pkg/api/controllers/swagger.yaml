@@ -1006,6 +1006,99 @@ paths:
                     type: string
                     example: "invalid address"
 
+  /{ledger}/log:
+    get:
+      tags:
+        - Logs
+      summary: List the logs from a ledger.
+      description: List the logs from a ledger, sorted by ID in descending order.
+      operationId: listLogs
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: page_size
+          in: query
+          description: 'The maximum number of results to return per page'
+          example: 100
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            default: 15
+        - name: after
+          in: query
+          description: Pagination cursor, will return the logs after a given ID.
+            (in descending order).
+          schema:
+            type: string
+            example: 1234
+        - name: start_time
+          in: query
+          description: |
+            Filter logs that occurred after this timestamp.
+            The format is RFC3339 and is inclusive (for example, 12:00:01 includes the first second of the minute).
+          schema:
+            type: string
+            example:
+        - name: end_time
+          in: query
+          description: |
+            Filter logs that occurred before this timestamp.
+            The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
+          schema:
+            type: string
+        - name: pagination_token
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when the pagination token is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - cursor
+                properties:
+                  cursor:
+                    allOf:
+                      - $ref: '#/components/schemas/Cursor'
+                      - type: object
+                        properties:
+                          data:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Log'
+                        required:
+                          - data
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                properties:
+                  error_code:
+                    type: string
+                    example: "VALIDATION"
+                  error_message:
+                    type: string
+                    example: "no other query params can be set with 'pagination_token'"
+
 components:
   schemas:
     Config:
@@ -1301,6 +1394,30 @@ components:
         next:
           type: string
           example: ""
+    Log:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1234
+        type:
+          type: string
+          example: NEW_TRANSACTION
+        data:
+          type: object
+          properties: {}
+        hash:
+          type: string
+          example: "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e"
+        date:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - data
+        - hash
+        - date
 
     TransactionsResponse:
       type: object

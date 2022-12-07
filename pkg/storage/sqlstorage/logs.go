@@ -3,13 +3,16 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
 
@@ -73,12 +76,7 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 	return nil
 }
 
-func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
-	var (
-		l    core.Log
-		data sql.NullString
-	)
-
+func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.From(s.schema.Table("log"))
 	sb.Select("id", "type", "hash", "date", "data")
@@ -90,6 +88,8 @@ func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 		return nil, err
 	}
 
+	l := core.Log{}
+	data := sql.NullString{}
 	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
 	row := executor.QueryRowContext(ctx, sqlq)
 	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
@@ -109,54 +109,102 @@ func (s *Store) LastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) Logs(ctx context.Context) ([]core.Log, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.schema.Table("log"))
-	sb.Select("id", "type", "hash", "date", "data")
-	sb.OrderBy("id desc")
+func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cursor[core.Log], error) {
+	res := []core.Log{}
 
+	if q.PageSize == 0 {
+		return sharedapi.Cursor[core.Log]{Data: res}, nil
+	}
+
+	sb, t := s.buildLogsQuery(q)
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return nil, err
+		return sharedapi.Cursor[core.Log]{}, err
 	}
 
-	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := executor.QueryContext(ctx, sqlq)
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return nil, s.error(err)
+		return sharedapi.Cursor[core.Log]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
-	ret := make([]core.Log, 0)
 	for rows.Next() {
 		l := core.Log{}
-		var (
-			data sql.NullString
-		)
-
-		err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return nil, nil
-			}
-			return nil, err
+		data := sql.NullString{}
+		if err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
+			return sharedapi.Cursor[core.Log]{}, err
 		}
 		l.Date = l.Date.UTC()
 
 		l.Data, err = core.HydrateLog(l.Type, data.String)
 		if err != nil {
-			return nil, errors.Wrap(err, "hydrating log")
+			return sharedapi.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")
 		}
 		l.Date = l.Date.UTC()
-		ret = append(ret, l)
+		res = append(res, l)
 	}
 	if rows.Err() != nil {
-		return nil, s.error(rows.Err())
+		return sharedapi.Cursor[core.Log]{}, s.error(rows.Err())
 	}
 
-	return ret, nil
+	var previous, next string
+
+	// Page with logs before
+	if q.AfterID > 0 && len(res) > 1 && res[0].ID == q.AfterID {
+		t.AfterID = res[0].ID + uint64(q.PageSize)
+		res = res[1:]
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Log]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	// Page with logs after
+	if len(res) > int(q.PageSize) {
+		res = res[:q.PageSize]
+		t.AfterID = res[len(res)-1].ID
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return sharedapi.Cursor[core.Log]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	return sharedapi.Cursor[core.Log]{
+		PageSize: int(q.PageSize),
+		HasMore:  next != "",
+		Previous: previous,
+		Next:     next,
+		Data:     res,
+	}, nil
+}
+
+func (s *Store) buildLogsQuery(q *ledger.LogsQuery) (*sqlbuilder.SelectBuilder, LogsPaginationToken) {
+	sb := sqlbuilder.NewSelectBuilder()
+	t := LogsPaginationToken{}
+
+	sb.Select("id", "type", "hash", "date", "data")
+	sb.From(s.schema.Table("log"))
+
+	if !q.Filters.StartTime.IsZero() {
+		sb.Where(sb.GE("date", q.Filters.StartTime.UTC()))
+		t.StartTime = q.Filters.StartTime
+	}
+	if !q.Filters.EndTime.IsZero() {
+		sb.Where(sb.L("date", q.Filters.EndTime.UTC()))
+		t.EndTime = q.Filters.EndTime
+	}
+	sb.OrderBy("id").Desc()
+
+	if q.AfterID > 0 {
+		sb.Where(sb.LE("id", q.AfterID))
+	}
+
+	// We fetch additional logs to know if there are more before and/or after.
+	sb.Limit(int(q.PageSize + 2))
+	t.PageSize = q.PageSize
+
+	return sb, t
 }

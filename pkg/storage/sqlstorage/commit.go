@@ -26,7 +26,7 @@ func (s *Store) commit(ctx context.Context, txs ...core.ExpandedTransaction) ([]
 	}
 
 	logs := make([]core.Log, 0)
-	lastLog, err := s.LastLog(ctx)
+	lastLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return nil, err
 	}
