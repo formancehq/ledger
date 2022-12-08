@@ -56,6 +56,8 @@ paths:
             Count:
               schema:
                 type: integer
+                format: int64
+                minimum: 0
     get:
       summary: List accounts from a ledger.
       description: List accounts from a ledger, sorted by address in descending order.
@@ -76,8 +78,9 @@ paths:
           example: 100
           schema:
             type: integer
-            maximum: 1000
+            format: int64
             minimum: 1
+            maximum: 1000
             default: 15
         - name: after
           in: query
@@ -106,6 +109,7 @@ paths:
           schema:
             type: integer
             format: int64
+            minimum: 0
             example: 2400
         - name: balance_operator
           in: query
@@ -453,6 +457,8 @@ paths:
             Count:
               schema:
                 type: integer
+                format: int64
+                minimum: 0
     get:
       tags:
         - Transactions
@@ -470,11 +476,11 @@ paths:
         - name: page_size
           in: query
           description: 'The maximum number of results to return per page'
-          example: 100
           schema:
             type: integer
-            maximum: 1000
+            format: int64
             minimum: 1
+            maximum: 1000
             default: 15
         - name: after
           in: query
@@ -665,6 +671,8 @@ paths:
           required: true
           schema:
             type: integer
+            format: int64
+            minimum: 0
             example: 1234
       responses:
         "200":
@@ -724,6 +732,8 @@ paths:
           required: true
           schema:
             type: integer
+            format: int64
+            minimum: 0
             example: 1234
       requestBody:
         description: metadata
@@ -786,6 +796,8 @@ paths:
           required: true
           schema:
             type: integer
+            format: int64
+            minimum: 0
             example: 1234
       responses:
         "200":
@@ -1024,11 +1036,11 @@ paths:
         - name: page_size
           in: query
           description: 'The maximum number of results to return per page'
-          example: 100
           schema:
             type: integer
-            maximum: 1000
+            format: int64
             minimum: 1
+            maximum: 1000
             default: 15
         - name: after
           in: query
@@ -1194,11 +1206,15 @@ components:
             type: object
             additionalProperties:
               type: integer
+              format: int64
+              minimum: 0
           example: { COIN: { input: 100, output: 0 } }
         balances:
           type: object
           additionalProperties:
             type: integer
+            format: int64
+            minimum: 0
           example:
             COIN: 100
 
@@ -1218,6 +1234,8 @@ components:
       type: object
       additionalProperties:
         type: integer
+        format: int64
+        minimum: 0
       example:
         USD: 100
         EUR: 12
@@ -1248,6 +1266,8 @@ components:
       properties:
         amount:
           type: integer
+          format: int64
+          minimum: 0
           example: 100
         asset:
           type: string
@@ -1302,6 +1322,8 @@ components:
           $ref: '#/components/schemas/Metadata'
         txid:
           type: integer
+          format: int64
+          minimum: 0
         preCommitVolumes:
           $ref: '#/components/schemas/AggregatedVolumes'
         postCommitVolumes:
@@ -1372,8 +1394,12 @@ components:
       properties:
         accounts:
           type: integer
+          format: int64
+          minimum: 0
         transactions:
           type: integer
+          format: int64
+          minimum: 0
       required:
         - accounts
         - transactions
@@ -1384,6 +1410,9 @@ components:
       properties:
         page_size:
           type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
           example: 15
         has_more:
           type: boolean
@@ -1399,6 +1428,8 @@ components:
       properties:
         id:
           type: integer
+          format: int64
+          minimum: 0
           example: 1234
         type:
           type: string
