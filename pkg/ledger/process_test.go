@@ -302,32 +302,6 @@ func TestLedger_processTx(t *testing.T) {
 				GeneratedTransactions: []core.ExpandedTransaction{},
 			}, result)
 		})
-
-		t.Run("date in the past", func(t *testing.T) {
-			now := time.Now()
-			require.NoError(t, l.GetLedgerStore().Commit(context.Background(), core.ExpandedTransaction{
-				Transaction: core.Transaction{
-					TransactionData: core.TransactionData{
-						Timestamp: now,
-						Postings:  []core.Posting{{}},
-					},
-					ID: 0,
-				},
-			}))
-
-			_, err := l.ProcessTxsData(context.Background(), core.TransactionData{
-				Postings: []core.Posting{{
-					Source:      "world",
-					Destination: "bank",
-					Amount:      core.NewMonetaryInt(100),
-					Asset:       "USD",
-				}},
-				Timestamp: now.Add(-time.Second),
-			})
-
-			assert.Error(t, err)
-			assert.True(t, ledger.IsValidationError(err))
-		})
 	})
 
 	runOnLedger(func(l *ledger.Ledger) {
