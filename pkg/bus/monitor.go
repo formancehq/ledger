@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/formancehq/go-libs/sharedpublish"
+	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
@@ -77,7 +78,9 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 
 func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev EventMessage) {
 	if err := l.publisher.Publish(ctx, topic, ev); err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("Publishing message: %s", err)
+		sharedlogging.GetLogger(ctx).Errorf(
+			"Publishing message (request id %s): %s",
+			ctx.Value(pkg.ContextKeyID), err)
 		return
 	}
 }
