@@ -1,7 +1,7 @@
 ---
 name: Connector Request
 about: Suggest a payments processor connector
-title: "[Connector Request] Name"
+title: "[Connector Request] Connector name"
 labels: connectors
 assignees: ''
 
