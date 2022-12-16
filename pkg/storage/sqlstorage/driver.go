@@ -98,9 +98,10 @@ func defaultExecutorProvider(schema Schema) func(ctx context.Context) (executor,
 }
 
 type Driver struct {
-	name         string
-	db           DB
-	systemSchema Schema
+	name              string
+	db                DB
+	systemSchema      Schema
+	registeredLedgers map[string]struct{}
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
@@ -117,29 +118,42 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 	ctx, span := opentelemetry.Start(ctx, "Load store")
 	defer span.End()
 
-	systemStore := &SystemStore{
-		systemSchema: d.systemSchema,
-	}
-	exists, err := systemStore.exists(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "checking ledger existence")
-	}
-	if !exists && !create {
-		return nil, false, storage.ErrLedgerStoreNotFound
-	}
+	var (
+		created bool
+		schema  Schema
+		err     error
+	)
+	if _, exists := d.registeredLedgers[name]; !exists {
+		systemStore := &SystemStore{
+			systemSchema: d.systemSchema,
+		}
+		exists, err := systemStore.exists(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "checking ledger existence")
+		}
+		if !exists && !create {
+			return nil, false, storage.ErrLedgerStoreNotFound
+		}
 
-	schema, err := d.db.Schema(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "opening schema")
-	}
+		created, err = systemStore.Register(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "registering ledger")
+		}
 
-	created, err := systemStore.Register(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "registering ledger")
-	}
+		schema, err = d.db.Schema(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "opening schema")
+		}
 
-	if err = schema.Initialize(ctx); err != nil {
-		return nil, false, err
+		if err = schema.Initialize(ctx); err != nil {
+			return nil, false, err
+		}
+		d.registeredLedgers[name] = struct{}{}
+	} else {
+		schema, err = d.db.Schema(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "opening schema")
+		}
 	}
 
 	return NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
@@ -203,8 +217,9 @@ func (d *Driver) Close(ctx context.Context) error {
 
 func NewDriver(name string, db DB) *Driver {
 	return &Driver{
-		db:   db,
-		name: name,
+		db:                db,
+		name:              name,
+		registeredLedgers: map[string]struct{}{},
 	}
 }
 
