@@ -3,13 +3,11 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/google/uuid"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/opentelemetry"
 )
@@ -50,14 +48,6 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 	ctx, span := opentelemetry.Start(ctx, "Migrate")
 	defer span.End()
 
-	contextKeyID := uuid.NewString()
-	id := span.SpanContext().SpanID()
-	if id == [8]byte{} {
-		sharedlogging.GetLogger(ctx).Debugf("sqlstorage migration SpanID is empty, new id generated %s", contextKeyID)
-	} else {
-		contextKeyID = fmt.Sprint(id)
-	}
-
 	q, args := sqlbuilder.
 		CreateTable(schema.Table("migrations")).
 		Define(`version varchar, date varchar, UNIQUE("version")`).
@@ -89,15 +79,15 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		row := schema.QueryRowContext(ctx, sqlq, args...)
 		var v string
 		if err = row.Scan(&v); err != nil {
-			sharedlogging.GetLogger(ctx).Debugf("migration %s (id: %s): %s", m.Number, contextKeyID, err)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: %s", m.Number, err)
 		}
 		if v != "" {
-			sharedlogging.GetLogger(ctx).Debugf("migration %s (id: %s): already up to date", m.Number, contextKeyID)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: already up to date", m.Number)
 			continue
 		}
 		modified = true
 
-		sharedlogging.GetLogger(ctx).Debugf("running migration %s (id: %s)", m.Number, contextKeyID)
+		sharedlogging.GetLogger(ctx).Debugf("running migration %s", m.Number)
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
@@ -125,8 +115,7 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		ib.Values(m.Number, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s (id: %s): %s",
-				contextKeyID, m.Number, err)
+			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Number, err)
 			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
 		}
 	}

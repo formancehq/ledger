@@ -21,37 +21,37 @@ func TestContext(t *testing.T) {
 			OnStart: func(ctx context.Context) error {
 				t.Run("GET/stats", func(t *testing.T) {
 					rsp := internal.GetStats(api)
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("GET/log", func(t *testing.T) {
 					rsp := internal.GetLogs(api, url.Values{})
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("GET/accounts", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{})
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("GET/transactions", func(t *testing.T) {
 					rsp := internal.GetTransactions(api, url.Values{})
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("POST/transactions", func(t *testing.T) {
 					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{}, true)
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("POST/transactions/batch", func(t *testing.T) {
 					rsp := internal.PostTransactionBatch(t, api, core.Transactions{})
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("GET/balances", func(t *testing.T) {
 					rsp := internal.GetBalances(api, url.Values{})
-					_, err := uuid.Parse(rsp.Header().Get(string(pkg.ContextKeyID)))
+					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 

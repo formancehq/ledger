@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/api/apierrors"
+	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
 )
@@ -41,8 +42,12 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		} else {
 			contextKeyID = fmt.Sprint(id)
 		}
-		ctx = context.WithValue(ctx, pkg.ContextKeyID, contextKeyID)
-		c.Header(string(pkg.ContextKeyID), contextKeyID)
+		ctx = context.WithValue(ctx, pkg.KeyContextID, contextKeyID)
+		c.Header(string(pkg.KeyContextID), contextKeyID)
+
+		loggerFactory := sharedlogging.StaticLoggerFactory(
+			contextlogger.New(ctx, sharedlogging.GetLogger(ctx)))
+		sharedlogging.SetFactory(loggerFactory)
 
 		l, err := m.resolver.GetLedger(ctx, name)
 		if err != nil {

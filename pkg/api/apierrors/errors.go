@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -74,8 +73,7 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
 		sharedlogging.GetLogger(c.Request.Context()).Errorf(
-			"unknown API response error (id: %s): %s",
-			c.GetString(string(pkg.ContextKeyID)), err)
+			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}
 }

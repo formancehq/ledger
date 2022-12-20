@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
-	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -49,8 +48,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			message = scriptError.Message
 		} else {
 			sharedlogging.GetLogger(c.Request.Context()).Errorf(
-				"internal error executing script (id: %s): %s",
-				c.GetString(string(pkg.ContextKeyID)), err)
+				"internal error executing script: %s", err)
 		}
 		res.ErrorResponse = sharedapi.ErrorResponse{
 			ErrorCode:    code,
