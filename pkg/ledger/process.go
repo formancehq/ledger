@@ -10,10 +10,6 @@ import (
 )
 
 func (l *Ledger) ProcessTxsData(ctx context.Context, txsData ...core.TransactionData) (CommitResult, error) {
-	if i, err := l.ValidatePostings(ctx, txsData...); err != nil {
-		return CommitResult{}, NewTransactionCommitError(i, err)
-	}
-
 	var nextTxId uint64
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
@@ -109,6 +105,8 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 			return i, NewValidationError("cannot pass a date prior to the last transaction")
 		}
 
+		txVolumeAggregator := volumeAggregator.NextTx()
+
 		for _, p := range t.Postings {
 			if p.Amount.Ltz() {
 				return i, NewValidationError("negative amount")
@@ -122,9 +120,10 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 			if !core.AssetIsValid(p.Asset) {
 				return i, NewValidationError("invalid asset")
 			}
+			if err := txVolumeAggregator.Transfer(ctx, p.Source, p.Destination, p.Asset, p.Amount); err != nil {
+				return i, errors.Wrap(err, "transferring volumes")
+			}
 		}
-
-		txVolumeAggregator := volumeAggregator.NextTx()
 
 		accounts := make(map[string]*core.Account, 0)
 		for addr, volumes := range txVolumeAggregator.PostCommitVolumes() {
@@ -139,7 +138,7 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 						if _, ok := accounts[addr]; !ok {
 							account, err := l.store.GetAccount(ctx, addr)
 							if err != nil {
-								return 0, errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr))
+								return i, errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr))
 							}
 							accounts[addr] = account
 						}
@@ -150,7 +149,7 @@ func (l *Ledger) ValidatePostings(ctx context.Context, txsData ...core.Transacti
 							Metadata: accounts[addr].Metadata,
 							Asset:    asset,
 						}); !ok {
-							return 0, NewTransactionCommitError(i, NewInsufficientFundError(asset))
+							return i, NewInsufficientFundError(asset)
 						}
 						break
 					}

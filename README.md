@@ -1,16 +1,23 @@
 # Formance Ledger [![test](https://github.com/formancehq/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/formancehq/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/formancehq/ledger)](https://goreportcard.com/report/github.com/formancehq/ledger) [![discord](https://img.shields.io/discord/846686859869814784?label=chat%20@%20discord)](https://discord.gg/xyHvcbzk4w) [![codecov](https://codecov.io/gh/formancehq/ledger/branch/main/graph/badge.svg?token=3PUKLWIKX3)](https://codecov.io/gh/formancehq/ledger)
 
-<p>
-  <img src="https://user-images.githubusercontent.com/1770991/167574970-45d1ab7e-6c57-45a5-9b46-0e849c62f98c.svg"/>
+<p align="center">
+  <h3 align="center">Formance Ledger is now part of the Formance Stack!</h3>
+  <p align="center">Checkout the Stack <a href="https://github.com/formancehq/stack">repository</a></p>
 </p>
 
-Formance Ledger (fka Numary) is a programmable financial ledger that provides a foundation for money-moving applications. The ledger provides atomic multi-postings transactions and is programmable in [Numscript](doc:machine-instructions), a built-in language dedicated to money movements. It will shine for apps that require a lot of custom, money-moving code, e.g:
+---
+
+Formance Ledger (fka numary) is a programmable financial ledger that provides a foundation for money-moving applications. The ledger provides atomic multi-postings transactions and is programmable in [Numscript](doc:machine-instructions), a built-in language dedicated to money movements. It can be used either as a standalone micro-service or as part of the greater Formance Stack, and will shine for apps that require a lot of custom, money-moving code, e.g:
 
 * E-commerce with complex payments flows, payments splitting, such as marketplaces
 * Company-issued currencies systems, e.g. Twitch Bits
 * In-game currencies, inventories and trading systems, e.g. Fortnite V-Bucks
 * Payment gateways using non-standard assets, e.g. learning credits
 * Local currencies and complementary finance
+
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/1770991/167574970-45d1ab7e-6c57-45a5-9b46-0e849c62f98c.svg" width="400px"/>
+</p>
 
 # Getting started
 

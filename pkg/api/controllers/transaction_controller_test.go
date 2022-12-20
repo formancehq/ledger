@@ -213,8 +213,7 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: apierrors.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
-				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
-				Details:      apierrors.EncodeLink("account had insufficient funds"),
+				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
 			},
 		},
 		{
@@ -606,6 +605,59 @@ func TestPostTransactionsPreview(t *testing.T) {
 					require.NoError(t, err)
 					require.Len(t, cursor.Data, 2)
 					require.Equal(t, "refScript", cursor.Data[0].Reference)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionsOverdraft(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("simple", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+						Script: core.Script{
+							Plain: `
+							send [USD/2 100] (
+							  source = @users:42 allowing unbounded overdraft
+							  destination = @users:43
+							)
+							`,
+						},
+					}, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+				})
+
+				t.Run("complex", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+						Script: core.Script{
+							Plain: `
+							send [USD/2 100] (
+							  source = @world
+							  destination = @users:42:main
+							)
+
+							send [USD/2 500] (
+							  source = {
+								@users:42:main
+								@users:42:overdraft allowing overdraft up to [USD/2 200]
+								@users:42:credit allowing overdraft up to [USD/2 1000]
+							  }
+							  destination = @users:100
+							)
+							`,
+						},
+					}, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
 				})
 
 				return nil
@@ -1788,7 +1840,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    apierrors.ErrInsufficientFund,
-						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessage: "processing tx 0: balance.insufficient.COIN",
 					}, err)
 				})
 
@@ -1835,7 +1887,7 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:    apierrors.ErrInsufficientFund,
-						ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessage: "processing tx 1: balance.insufficient.GEM",
 					}, err)
 				})
 
