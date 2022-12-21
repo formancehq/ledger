@@ -14,6 +14,8 @@ import (
 
 	"github.com/formancehq/go-libs/sharedapi"
 	"github.com/formancehq/go-libs/sharedauth"
+	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/numary/ledger/pkg/api"
@@ -24,6 +26,7 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -228,6 +231,12 @@ func GetLedgerStore(t *testing.T, driver storage.Driver[ledger.Store], ctx conte
 }
 
 func RunTest(t *testing.T, options ...fx.Option) {
+	l := logrus.New()
+	if testing.Verbose() {
+		l.Level = logrus.DebugLevel
+	}
+	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+
 	testingLedger = uuid.New()
 	ch := make(chan struct{})
 
