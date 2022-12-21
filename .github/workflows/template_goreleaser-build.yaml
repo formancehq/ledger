@@ -30,6 +30,7 @@ jobs:
           git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
       - name: Downgrade libssl
         run: |
+          sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 3B4FE6ACC0B21F32
           echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
           sudo apt update && apt-cache policy libssl1.0-dev
           sudo apt-get install libssl1.0-dev
