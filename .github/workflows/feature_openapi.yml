@@ -1,0 +1,48 @@
+on:
+  push:
+    branches:
+    - feat/*
+
+name: Feature - OpenAPI
+defaults:
+  run:
+    working-directory: "./openapi"
+jobs:
+  Build:
+    name: 'SDK Build'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: [ go, php, python, typescript-node, java ]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Install Task
+        uses: arduino/setup-task@v1
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: 'yarn'
+          cache-dependency-path: ./openapi/yarn.lock
+      - run: yarn install
+      - run: task sdk:build VERSION=develop
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          repository: formancehq/formance-sdk-${{ matrix.sdk }}
+          path: ./openapi/sdk/sdks/${{ matrix.sdk }}
+      - name: Build SDK for Release
+        run: task sdk:generate VERSION=develop -- ${{ matrix.sdk }}
+      - name: Push commit to SDK Repository
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "feat: branch ${{ github.ref_name }}"
+          create_branch: true
+          branch: ${{ github.ref_name }}
+          push_options: '--force'
+          skip_fetch: true
+          repository: ./openapi/sdk/sdks/${{ matrix.sdk }}
+          commit_user_name: NumaryBot
+          commit_user_email: support@formance.com
