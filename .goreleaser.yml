@@ -57,7 +57,7 @@ builds:
     flags:
       - -tags=json1,netgo
   - binary: numary
-    id: numary_darwin
+    id: numary_darwin_amd64
     ldflags:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
@@ -72,6 +72,23 @@ builds:
       - darwin
     goarch:
       - amd64
+    flags:
+      - -tags=json1
+  - binary: numary
+    id: numary_darwin_arm4
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+      - CC=/home/runner/work/osxcross/target/bin/o64-clang
+      - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
+    goos:
+      - darwin
+    goarch:
       - arm64
     flags:
       - -tags=json1
@@ -81,7 +98,8 @@ archives:
     builds:
       - numary_linux_amd64
       - numary_linux_arm64
-      - numary_darwin
+      - numary_darwin_amd64
+      - numary_darwin_arm64
       - numary_windows
     format: tar.gz
     format_overrides:
