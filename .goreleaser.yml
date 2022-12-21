@@ -56,32 +56,12 @@ builds:
       - arm64
     flags:
       - -tags=json1,netgo
-  - binary: numary
-    id: numary_darwin
-    ldflags:
-      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
-      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
-      - -s
-    env:
-      - CGO_ENABLED=1
-      - CC=/home/runner/work/osxcross/target/bin/o64-clang
-      - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
-    goos:
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    flags:
-      - -tags=json1
 
 archives:
   - id: "numary"
     builds:
       - numary_linux_amd64
       - numary_linux_arm64
-      - numary_darwin
       - numary_windows
     format: tar.gz
     format_overrides:
@@ -134,19 +114,6 @@ release:
     ## What to do next?
     - Read the [documentation](https://docs.numary.com/oss/ledger/get-started/installation)
     - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
-
-brews:
-  - tap:
-      owner: formancehq
-      name: homebrew-tap
-    name: numary
-    folder: Formula
-    homepage: https://formance.com
-    skip_upload: auto
-    test: |
-      system "#{bin}/numary version"
-    install: |
-      bin.install "numary"
 
 nfpms:
   - id: packages
