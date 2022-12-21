@@ -44,3 +44,14 @@ tasks:
         vars: {CLI_ARGS: "python", VERSION: "{{.VERSION}}"}
       - task: sdk:generate
         vars: {CLI_ARGS: "typescript-node", VERSION: "{{.VERSION}}"}
+
+  sdk:template:
+    desc: Extract templates
+    dir: ./sdk
+    preconditions:
+    - sh: "[ \"{{.CLI_ARGS}}\" != \"\" ]"
+      msg: Please specify generator as first cli arg (ie "task template -- go")
+    cmds:
+    - >
+      docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author 
+      template -g {{.CLI_ARGS}} -o templates/{{.CLI_ARGS}}
