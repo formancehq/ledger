@@ -45,7 +45,7 @@ archives:
 
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: 'checksums-darwin.txt'
 
 snapshot:
   name_template: "{{ .Tag }}"
