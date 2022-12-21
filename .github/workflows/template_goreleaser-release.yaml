@@ -15,7 +15,10 @@ on:
 jobs:
   goreleaser:
     name: GoReleaser Build
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
@@ -31,17 +34,8 @@ jobs:
         with:
           name: control-dist
           path: cmd/control/
-      - name: OSXCross for CGO Support
-        run: |
-          mkdir ../../osxcross
-          git clone https://github.com/plentico/osxcross-target.git ../../osxcross/target
-      - name: Downgrade libssl
-        run: |
-          sudo apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 3B4FE6ACC0B21F32
-          echo 'deb http://security.ubuntu.com/ubuntu bionic-security main' | sudo tee -a /etc/apt/sources.list
-          sudo apt update && apt-cache policy libssl1.0-dev
-          sudo apt-get install libssl1.0-dev
       - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
+        if: ${{ matrix.os == 'ubuntu-latest' }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
@@ -52,15 +46,26 @@ jobs:
           registry: ghcr.io
           username: "NumaryBot"
           password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Run GoReleaser
+      - name: Run GoReleaser for Linux
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-        uses: goreleaser/goreleaser-action@v2
+        uses: goreleaser/goreleaser-action@v4
         with:
           version: latest
           args: release --rm-dist
+      - name: Run GoReleaser for MacOS
+        if: ${{ matrix.os == 'macos-latest' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: release -f .goreleaser-darwin.yml --rm-dist
       - uses: actions/cache@v2
         with:
           path: |
