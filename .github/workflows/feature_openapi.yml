@@ -21,6 +21,8 @@ jobs:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Install Task
         uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v3
         with:
           node-version: 16
