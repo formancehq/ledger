@@ -477,6 +477,199 @@ func TestSetAccountMeta(t *testing.T) {
 	})
 }
 
+func TestMonetaryVariableBalance(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		runOnLedger(func(l *ledger.Ledger) {
+			defer func(l *ledger.Ledger, ctx context.Context) {
+				require.NoError(t, l.Close(ctx))
+			}(l, context.Background())
+
+			tx := core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+			}
+			_, err := l.Commit(context.Background(), false, nil, tx)
+			require.NoError(t, err)
+
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					vars {
+						monetary $bal = balance(@users:001, COIN)
+					}
+					send $bal (
+						source = @users:001
+						destination = @world
+					)`,
+				},
+			}
+
+			_, err = l.Execute(context.Background(), false, script)
+			require.NoError(t, err)
+			assertBalance(t, l, "world", "COIN", core.NewMonetaryInt(0))
+			assertBalance(t, l, "users:001", "COIN", core.NewMonetaryInt(0))
+		})
+	})
+
+	t.Run("complex", func(t *testing.T) {
+		runOnLedger(func(l *ledger.Ledger) {
+			defer func(l *ledger.Ledger, ctx context.Context) {
+				require.NoError(t, l.Close(ctx))
+			}(l, context.Background())
+
+			tx := core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "A",
+						Amount:      core.NewMonetaryInt(40),
+						Asset:       "USD/2",
+					},
+					{
+						Source:      "world",
+						Destination: "C",
+						Amount:      core.NewMonetaryInt(90),
+						Asset:       "USD/2",
+					},
+				},
+			}
+			_, err := l.Commit(context.Background(), false, nil, tx)
+			require.NoError(t, err)
+
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+				vars {
+				  monetary $initial = balance(@A, USD/2)
+				}
+				send [USD/2 100] (
+				  source = {
+					@A
+					@C
+				  }
+				  destination = {
+					max $initial to @B
+					remaining to @D
+				  }
+				)`,
+				},
+			}
+
+			_, err = l.Execute(context.Background(), false, script)
+			require.NoError(t, err)
+			assertBalance(t, l, "B", "USD/2", core.NewMonetaryInt(40))
+			assertBalance(t, l, "D", "USD/2", core.NewMonetaryInt(60))
+		})
+	})
+
+	t.Run("error insufficient funds", func(t *testing.T) {
+		runOnLedger(func(l *ledger.Ledger) {
+			defer func(l *ledger.Ledger, ctx context.Context) {
+				require.NoError(t, l.Close(ctx))
+			}(l, context.Background())
+
+			tx := core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+			}
+			_, err := l.Commit(context.Background(), false, nil, tx)
+			require.NoError(t, err)
+
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					vars {
+						monetary $bal = balance(@users:001, COIN)
+					}
+					send $bal (
+						source = @users:001
+						destination = @world
+					)
+					send $bal (
+						source = @users:001
+						destination = @world
+					)`,
+				},
+			}
+			_, err = l.Execute(context.Background(), false, script)
+			assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrInsufficientFund))
+		})
+	})
+
+	t.Run("error negative balance", func(t *testing.T) {
+		runOnLedger(func(l *ledger.Ledger) {
+			defer func(l *ledger.Ledger, ctx context.Context) {
+				require.NoError(t, l.Close(ctx))
+			}(l, context.Background())
+
+			tx := core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "users:001",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "COIN",
+					},
+				},
+			}
+			_, err := l.Commit(context.Background(), false, nil, tx)
+			require.NoError(t, err)
+
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					vars {
+						monetary $bal = balance(@world, COIN)
+					}
+					send $bal (
+						source = @users:001
+						destination = @world
+					)`,
+				},
+			}
+
+			_, err = l.Execute(context.Background(), false, script)
+			assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
+			assert.ErrorContains(t, err, "must be non-negative")
+		})
+	})
+
+	t.Run("error variable type", func(t *testing.T) {
+		runOnLedger(func(l *ledger.Ledger) {
+			defer func(l *ledger.Ledger, ctx context.Context) {
+				require.NoError(t, l.Close(ctx))
+			}(l, context.Background())
+
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					vars {
+						account $bal = balance(@users:001, COIN)
+					}
+					send $bal (
+						source = @users:001
+						destination = @world
+					)`,
+				},
+			}
+			_, err := l.Execute(context.Background(), false, script)
+			assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrScriptCompilationFailed))
+		})
+	})
+}
+
 func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount *core.MonetaryInt) {
 	user, err := l.GetAccount(context.Background(), account)
 	require.NoError(t, err)

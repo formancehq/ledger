@@ -81,24 +81,32 @@ func (l *Ledger) ProcessScripts(ctx context.Context, scripts ...core.ScriptData)
 					return []core.TransactionData{}, nil, errors.Wrap(err,
 						fmt.Sprintf("could not get account %q", req.Account))
 				}
-				meta := account.Metadata
-				entry, ok := meta[req.Key]
-				if !ok {
+				if req.Key != "" {
+					entry, ok := account.Metadata[req.Key]
+					if !ok {
+						return []core.TransactionData{}, nil, NewScriptError(ScriptErrorCompilationFailed,
+							fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
+					}
+					data, err := json.Marshal(entry)
+					if err != nil {
+						return []core.TransactionData{}, nil, errors.Wrap(err, "json.Marshal")
+					}
+					value, err := machine.NewValueFromTypedJSON(data)
+					if err != nil {
+						return []core.TransactionData{}, nil, NewScriptError(ScriptErrorCompilationFailed,
+							errors.Wrap(err, fmt.Sprintf(
+								"invalid format for metadata at key %v for account %v",
+								req.Key, req.Account)).Error())
+					}
+					req.Response <- *value
+				} else if req.Asset != "" {
+					amt := account.Balances[req.Asset].OrZero()
+					resp := machine.MonetaryInt(*amt)
+					req.Response <- &resp
+				} else {
 					return []core.TransactionData{}, nil, NewScriptError(ScriptErrorCompilationFailed,
-						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
+						errors.Wrap(err, fmt.Sprintf("invalid ResourceRequest: %+v", req)).Error())
 				}
-				data, err := json.Marshal(entry)
-				if err != nil {
-					return []core.TransactionData{}, nil, errors.Wrap(err, "json.Marshal")
-				}
-				value, err := machine.NewValueFromTypedJSON(data)
-				if err != nil {
-					return []core.TransactionData{}, nil, NewScriptError(ScriptErrorCompilationFailed,
-						errors.Wrap(err, fmt.Sprintf(
-							"invalid format for metadata at key %v for account %v",
-							req.Key, req.Account)).Error())
-				}
-				req.Response <- *value
 			}
 		}
 
