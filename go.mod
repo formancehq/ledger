@@ -10,7 +10,7 @@ require (
 	github.com/formancehq/go-libs v1.2.0
 	github.com/formancehq/go-libs/sharedhealth v0.0.0-20221123112229-2c8ab193c63c
 	github.com/formancehq/go-libs/sharedotlp v0.0.0-20221123112229-2c8ab193c63c
-	github.com/formancehq/machine v1.3.1-0.20221215155922-65d1092d0b05
+	github.com/formancehq/machine v1.4.0
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-redis/redis/v8 v8.11.5
