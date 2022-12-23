@@ -2,7 +2,6 @@ package contextlogger
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/numary/ledger/pkg"
@@ -24,23 +23,23 @@ func New(ctx context.Context, logger sharedlogging.Logger) *ContextLogger {
 
 func (c ContextLogger) Debugf(format string, args ...any) {
 	id := c.ctx.Value(pkg.KeyContextID)
-	format = fmt.Sprintf("[%s %%s] %s", pkg.KeyContextID, format)
-	args = append([]any{id}, args...)
-	c.underlyingLogger.Debugf(format, args...)
+	c.underlyingLogger.
+		WithFields(map[string]any{string(pkg.KeyContextID): id}).
+		Debugf(format, args...)
 }
 
 func (c ContextLogger) Infof(format string, args ...any) {
 	id := c.ctx.Value(pkg.KeyContextID)
-	format = fmt.Sprintf("[%s %%s] %s", pkg.KeyContextID, format)
-	args = append([]any{id}, args...)
-	c.underlyingLogger.Infof(format, args...)
+	c.underlyingLogger.
+		WithFields(map[string]any{string(pkg.KeyContextID): id}).
+		Infof(format, args...)
 }
 
 func (c ContextLogger) Errorf(format string, args ...any) {
 	id := c.ctx.Value(pkg.KeyContextID)
-	format = fmt.Sprintf("[%s %%s] %s", pkg.KeyContextID, format)
-	args = append([]any{id}, args...)
-	c.underlyingLogger.Errorf(format, args...)
+	c.underlyingLogger.
+		WithFields(map[string]any{string(pkg.KeyContextID): id}).
+		Errorf(format, args...)
 }
 
 func (c ContextLogger) Debug(args ...any) {
@@ -56,11 +55,7 @@ func (c ContextLogger) Error(args ...any) {
 }
 
 func (c ContextLogger) WithFields(m map[string]any) sharedlogging.Logger {
-	id := c.ctx.Value(pkg.KeyContextID)
-	if _, ok := m[string(pkg.KeyContextID)]; ok {
-		panic("key contextID already set")
-	}
-	m[string(pkg.KeyContextID)] = id
+	m[string(pkg.KeyContextID)] = c.ctx.Value(pkg.KeyContextID)
 	return &ContextLogger{
 		ctx:              c.ctx,
 		underlyingLogger: c.underlyingLogger.WithFields(m),
