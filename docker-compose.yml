@@ -2,7 +2,6 @@
 version: '3.9'
 volumes:
   postgres_data:
-  mongodb_data:
   opensearch_data:
 services:
   otlp-exporter:
@@ -16,7 +15,7 @@ services:
       - "./config/traefik:/etc/traefik:ro"
 
   auth-dex:
-    image: "ghcr.io/formancehq/auth-dex:v0.2.2"
+    image: "ghcr.io/formancehq/auth-dex:v0.2.3"
     restart: always
     volumes:
       - ./config/dex/dex-config.yaml:/etc/dex/config.docker.yaml
@@ -67,7 +66,7 @@ services:
       - traefik.http.routers.auth.middlewares=cors@docker,auth@docker
 
   control:
-    image: "ghcr.io/formancehq/control:v1.3.0-rc.2"
+    image: "ghcr.io/formancehq/control:v1.4.0-rc.1"
     restart: always
     network_mode: service:gateway
     environment:
@@ -150,7 +149,7 @@ services:
     environment:
       POSTGRES_USER: "formance"
       POSTGRES_PASSWORD: "formance"
-      POSTGRES_MULTIPLE_DATABASES: "auth,ledger"
+      POSTGRES_MULTIPLE_DATABASES: "auth,ledger,webhooks,payments"
       PGDATA: /data/postgres
     volumes:
       - postgres_data:/data/postgres
@@ -179,35 +178,16 @@ services:
       - traefik.http.routers.ledger.middlewares=jwt@docker,ledger@docker,cors@docker
       - traefik.http.middlewares.ledger.stripprefix.prefixes=/api/ledger
 
-  mongodb:
-    image: bitnami/mongodb:4.4
-    platform: linux/amd64
-    restart: always
-    environment:
-      MONGODB_ROOT_PASSWORD: root
-      MONGODB_REPLICA_SET_MODE: primary
-      MONGODB_REPLICA_SET_KEY: abcdef
-      MONGODB_ADVERTISED_HOSTNAME: mongodb
-    volumes:
-      - 'mongodb_data:/bitnami/mongodb'
-    ports:
-      - "27017:27017"
-    healthcheck:
-      test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   payments:
-    image: "ghcr.io/formancehq/payments:v0.2.2"
+    image: "ghcr.io/formancehq/payments:v0.4.0"
     restart: always
     depends_on:
-      mongodb:
+      postgres:
         condition: service_healthy
       redpanda:
         condition: service_healthy
     environment:
-      MONGODB_URI: "mongodb://root:root@mongodb:27017"
+      POSTGRES_URI: "postgresql://formance:formance@postgres/payments?sslmode=disable"
       PUBLISHER_KAFKA_ENABLED: "true"
       PUBLISHER_KAFKA_BROKER: redpanda:29092
       PUBLISHER_TOPIC_MAPPING: "*:payments"
@@ -218,6 +198,17 @@ services:
       - traefik.http.services.payments.loadbalancer.server.port=8080
       - traefik.http.routers.payments.middlewares=jwt@docker,payments@docker,cors@docker
       - traefik.http.middlewares.payments.stripprefix.prefixes=/api/payments
+
+  payments-migrate:
+    image: "ghcr.io/formancehq/payments:v0.4.0"
+    command: migrate up
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_URI: "postgresql://formance:formance@postgres/payments?sslmode=disable"
+    labels:
+      - traefik.enable=false
 
   opensearch:
     image: "opensearchproject/opensearch:2.1.0"
@@ -245,7 +236,7 @@ services:
       - "5601:5601"
 
   search-ingester:
-    image: "ghcr.io/formancehq/search-ingester:v0.3.0"
+    image: "ghcr.io/formancehq/search-ingester:v0.5.1"
     restart: always
     depends_on:
       opensearch:
@@ -266,7 +257,7 @@ services:
       OPENSEARCH_BASIC_AUTH_ENABLED: "false"
 
   search:
-    image: "ghcr.io/formancehq/search:v0.3.0"
+    image: "ghcr.io/formancehq/search:v0.5.1"
     restart: always
     healthcheck:
       test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
@@ -288,9 +279,8 @@ services:
       - traefik.http.routers.search.middlewares=jwt@docker,search@docker,cors@docker
       - traefik.http.middlewares.search.stripprefix.prefixes=/api/search
 
-
   webhooks:
-    image: "ghcr.io/formancehq/webhooks:v0.2.3"
+    image: "ghcr.io/formancehq/webhooks:v0.5.0"
     restart: always
     healthcheck:
       test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
@@ -300,10 +290,10 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-      mongodb:
+      postgres:
         condition: service_healthy
     environment:
-      STORAGE_MONGO_CONN_STRING: "mongodb://root:root@mongodb:27017"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/webhooks?sslmode=disable"
     labels:
       - traefik.enable=true
       - traefik.http.routers.webhooks.rule=Host(`localhost`) &&  PathPrefix(`/api/webhooks`)
@@ -313,8 +303,8 @@ services:
       - traefik.http.middlewares.webhooks.stripprefix.prefixes=/api/webhooks
 
   webhooks-worker:
-    image: "ghcr.io/formancehq/webhooks:v0.2.3"
-    command: worker messages
+    image: "ghcr.io/formancehq/webhooks:v0.5.0"
+    command: worker
     restart: always
     healthcheck:
       test: curl -s -f -k http://127.0.0.1:8081/_healthcheck >/dev/null || exit 1
@@ -324,31 +314,12 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-      mongodb:
+      postgres:
         condition: service_healthy
     environment:
-      STORAGE_MONGO_CONN_STRING: "mongodb://root:root@mongodb:27017"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/webhooks?sslmode=disable"
       KAFKA_BROKERS: "redpanda:29092"
       KAFKA_TOPICS: "ledger,payments"
       LOG_LEVEL: "debug"
-    labels:
-      - traefik.enable=false
-
-  webhooks-retries:
-    image: "ghcr.io/formancehq/webhooks:v0.2.3"
-    command: worker retries
-    restart: always
-    healthcheck:
-      test: curl -s -f -k http://127.0.0.1:8082/_healthcheck >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      redpanda:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    environment:
-      STORAGE_MONGO_CONN_STRING: "mongodb://root:root@mongodb:27017"
     labels:
       - traefik.enable=false
