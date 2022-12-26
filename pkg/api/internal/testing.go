@@ -313,9 +313,3 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		}
 	}
 }
-
-func RunSubTest(t *testing.T, name string, opts ...fx.Option) {
-	t.Run(name, func(t *testing.T) {
-		RunTest(t, opts...)
-	})
-}

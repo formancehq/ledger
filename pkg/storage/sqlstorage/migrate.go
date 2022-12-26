@@ -45,11 +45,8 @@ func (m Migrations) Swap(i, j int) {
 var _ sort.Interface = &Migrations{}
 
 func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool, error) {
-
 	ctx, span := opentelemetry.Start(ctx, "Migrate")
 	defer span.End()
-
-	logger := sharedlogging.GetLogger(ctx)
 
 	q, args := sqlbuilder.
 		CreateTable(schema.Table("migrations")).
@@ -82,15 +79,15 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		row := schema.QueryRowContext(ctx, sqlq, args...)
 		var v string
 		if err = row.Scan(&v); err != nil {
-			logger.Debugf("%s", err)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: %s", m.Number, err)
 		}
 		if v != "" {
-			logger.Debugf("version %s already up to date", m.Number)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: already up to date", m.Number)
 			continue
 		}
 		modified = true
 
-		logger.Debugf("running migrations %s", m.Number)
+		sharedlogging.GetLogger(ctx).Debugf("running migration %s", m.Number)
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
@@ -118,7 +115,7 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		ib.Values(m.Number, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			logger.Errorf("failed to insert migration version %s: %s", m.Number, err)
+			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Number, err)
 			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
 		}
 	}

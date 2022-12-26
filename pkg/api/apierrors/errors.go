@@ -26,9 +26,30 @@ const (
 	ErrScriptCompilationFailed = "COMPILATION_FAILED"
 	ErrScriptNoScript          = "NO_SCRIPT"
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
-
-	errorCodeKey = "_errorCode"
 )
+
+// TODO: update sharedapi.ErrorResponse with new details field
+type ErrorResponse struct {
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	Details      string `json:"details,omitempty"`
+}
+
+func ResponseError(c *gin.Context, err error) {
+	_ = c.Error(err)
+	status, code, details := coreErrorToErrorCode(c, err)
+
+	if status < 500 {
+		c.AbortWithStatusJSON(status,
+			ErrorResponse{
+				ErrorCode:    code,
+				ErrorMessage: err.Error(),
+				Details:      details,
+			})
+	} else {
+		c.AbortWithStatus(status)
+	}
+}
 
 func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	switch {
@@ -51,7 +72,8 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
-		sharedlogging.GetLogger(c.Request.Context()).Errorf("internal errors: %s", err)
+		sharedlogging.GetLogger(c.Request.Context()).Errorf(
+			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}
 }
@@ -70,32 +92,4 @@ func EncodeLink(errStr string) string {
 	}
 	payloadB64 := base64.StdEncoding.EncodeToString(payload)
 	return fmt.Sprintf("https://play.numscript.org/?payload=%v", payloadB64)
-}
-
-func ErrorCode(c *gin.Context) string {
-	return c.GetString(errorCodeKey)
-}
-
-// TODO: update sharedapi.ErrorResponse with new details field
-type ErrorResponse struct {
-	ErrorCode    string `json:"error_code,omitempty"`
-	ErrorMessage string `json:"error_message,omitempty"`
-	Details      string `json:"details,omitempty"`
-}
-
-func ResponseError(c *gin.Context, err error) {
-	_ = c.Error(err)
-	status, code, details := coreErrorToErrorCode(c, err)
-	c.Set(errorCodeKey, code)
-
-	if status < 500 {
-		c.AbortWithStatusJSON(status,
-			ErrorResponse{
-				ErrorCode:    code,
-				ErrorMessage: err.Error(),
-				Details:      details,
-			})
-	} else {
-		c.AbortWithStatus(status)
-	}
 }
