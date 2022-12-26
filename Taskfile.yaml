@@ -223,4 +223,4 @@ tasks:
     cmds:
       - docker compose rm -f
       - docker volume prune -f
-      - rm {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}
+      - rm -f {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}

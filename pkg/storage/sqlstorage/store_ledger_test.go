@@ -736,7 +736,9 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 
 func TestInitializeStore(t *testing.T) {
 	l := logrus.New()
-	l.Level = logrus.DebugLevel
+	if testing.Verbose() {
+		l.Level = logrus.DebugLevel
+	}
 	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
 
 	driver, stopFn, err := ledgertesting.StorageDriver()

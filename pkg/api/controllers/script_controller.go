@@ -47,7 +47,8 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code = scriptError.Code
 			message = scriptError.Message
 		} else {
-			sharedlogging.GetLogger(c.Request.Context()).Errorf("internal errors executing script: %s", err)
+			sharedlogging.GetLogger(c.Request.Context()).Errorf(
+				"internal error executing script: %s", err)
 		}
 		res.ErrorResponse = sharedapi.ErrorResponse{
 			ErrorCode:    code,

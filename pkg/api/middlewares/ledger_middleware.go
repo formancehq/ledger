@@ -1,9 +1,15 @@
 package middlewares
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/api/apierrors"
+	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
 )
@@ -12,9 +18,7 @@ type LedgerMiddleware struct {
 	resolver *ledger.Resolver
 }
 
-func NewLedgerMiddleware(
-	resolver *ledger.Resolver,
-) LedgerMiddleware {
+func NewLedgerMiddleware(resolver *ledger.Resolver) LedgerMiddleware {
 	return LedgerMiddleware{
 		resolver: resolver,
 	}
@@ -23,7 +27,6 @@ func NewLedgerMiddleware(
 func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("ledger")
-
 		if name == "" {
 			return
 		}
@@ -31,17 +34,27 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		ctx, span := opentelemetry.Start(c.Request.Context(), "Ledger access")
 		defer span.End()
 
+		contextKeyID := uuid.NewString()
+		id := span.SpanContext().SpanID()
+		if id == [8]byte{} {
+			sharedlogging.GetLogger(ctx).Debugf(
+				"ledger middleware SpanID is empty, new id generated %s", contextKeyID)
+		} else {
+			contextKeyID = fmt.Sprint(id)
+		}
+		ctx = context.WithValue(ctx, pkg.KeyContextID, contextKeyID)
+		c.Header(string(pkg.KeyContextID), contextKeyID)
+
+		loggerFactory := sharedlogging.StaticLoggerFactory(
+			contextlogger.New(ctx, sharedlogging.GetLogger(ctx)))
+		sharedlogging.SetFactory(loggerFactory)
+
 		l, err := m.resolver.GetLedger(ctx, name)
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-		defer func() {
-			err := l.Close(ctx)
-			if err != nil {
-				sharedlogging.GetLogger(ctx).Errorf("error closing ledger: %s", err)
-			}
-		}()
+		defer l.Close(ctx)
 		c.Set("ledger", l)
 
 		c.Request = c.Request.WithContext(ctx)
