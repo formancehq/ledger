@@ -21,8 +21,8 @@ func TestMigrates(t *testing.T) {
 
 	migrations := []Migration{
 		{
-			Number: "0",
-			Name:   "create-schema",
+			Version: "0",
+			Name:    "create-schema",
 			Handlers: HandlersByEngine{
 				"any": {
 					SQLMigrationFunc(`CREATE TABLE IF NOT EXISTS transactions (
@@ -38,8 +38,8 @@ func TestMigrates(t *testing.T) {
 			},
 		},
 		{
-			Number: "1",
-			Name:   "update-column",
+			Version: "1",
+			Name:    "update-column",
 			Handlers: HandlersByEngine{
 				"sqlite": {
 					SQLMigrationFunc(`
@@ -49,8 +49,8 @@ func TestMigrates(t *testing.T) {
 			},
 		},
 		{
-			Number: "2",
-			Name:   "init-timestamp",
+			Version: "2",
+			Name:    "init-timestamp",
 			Handlers: HandlersByEngine{
 				"any": {
 					func(ctx context.Context, schema Schema, tx *sql.Tx) error {

@@ -9,13 +9,71 @@ import (
 
 	"github.com/formancehq/go-libs/sharedlogging"
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/opentelemetry"
+	"github.com/pkg/errors"
 )
+
+func (s *Store) GetMigrationsDone(ctx context.Context) ([]core.MigrationInfo, error) {
+	sb := sqlbuilder.NewSelectBuilder()
+	sb.Select("*")
+	sb.From(s.schema.Table("migrations"))
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return []core.MigrationInfo{}, s.error(err)
+	}
+
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := executor.QueryContext(ctx, sqlq, args...)
+	if err != nil {
+		return []core.MigrationInfo{}, s.error(err)
+	}
+	defer rows.Close()
+
+	res := make([]core.MigrationInfo, 0)
+	for rows.Next() {
+		var version, date string
+		if err := rows.Scan(&version, &date); err != nil {
+			return []core.MigrationInfo{}, s.error(err)
+		}
+		t, err := time.Parse(time.RFC3339, date)
+		if err != nil {
+			return []core.MigrationInfo{},
+				s.error(errors.Wrap(err, "parsing migration date"))
+		}
+		res = append(res, core.MigrationInfo{
+			Version: version,
+			Date:    t,
+		})
+	}
+	if rows.Err() != nil {
+		return []core.MigrationInfo{}, s.error(err)
+	}
+
+	return res, nil
+}
+
+func (s *Store) GetMigrationsAvailable() ([]core.MigrationInfo, error) {
+	migrations, err := CollectMigrationFiles(MigrationsFS)
+	if err != nil {
+		return []core.MigrationInfo{}, errors.Wrap(err, "collecting migration files")
+	}
+
+	res := make([]core.MigrationInfo, 0)
+	for _, m := range migrations {
+		res = append(res, core.MigrationInfo{
+			Version: m.Version,
+		})
+	}
+
+	return res, nil
+}
 
 type HandlersByEngine map[string][]MigrationFunc
 
 type Migration struct {
-	Number   string
+	Version  string
 	Name     string
 	Handlers HandlersByEngine
 }
@@ -27,11 +85,11 @@ func (m Migrations) Len() int {
 }
 
 func (m Migrations) Less(i, j int) bool {
-	iNumber, err := strconv.ParseInt(m[i].Number, 10, 64)
+	iNumber, err := strconv.ParseInt(m[i].Version, 10, 64)
 	if err != nil {
 		panic(err)
 	}
-	jNumber, err := strconv.ParseInt(m[j].Number, 10, 64)
+	jNumber, err := strconv.ParseInt(m[j].Version, 10, 64)
 	if err != nil {
 		panic(err)
 	}
@@ -72,22 +130,22 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("version")
 		sb.From(schema.Table("migrations"))
-		sb.Where(sb.E("version", m.Number))
+		sb.Where(sb.E("version", m.Version))
 
 		// Does not use sql transaction because if the table does not exist, postgres will mark transaction as invalid
 		sqlq, args := sb.BuildWithFlavor(schema.Flavor())
 		row := schema.QueryRowContext(ctx, sqlq, args...)
 		var v string
 		if err = row.Scan(&v); err != nil {
-			sharedlogging.GetLogger(ctx).Debugf("migration %s: %s", m.Number, err)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: %s", m.Version, err)
 		}
 		if v != "" {
-			sharedlogging.GetLogger(ctx).Debugf("migration %s: already up to date", m.Number)
+			sharedlogging.GetLogger(ctx).Debugf("migration %s: already up to date", m.Version)
 			continue
 		}
 		modified = true
 
-		sharedlogging.GetLogger(ctx).Debugf("running migration %s", m.Number)
+		sharedlogging.GetLogger(ctx).Debugf("running migration %s", m.Version)
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
@@ -112,10 +170,10 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		ib := sqlbuilder.NewInsertBuilder()
 		ib.InsertInto(schema.Table("migrations"))
 		ib.Cols("version", "date")
-		ib.Values(m.Number, time.Now().UTC().Format(time.RFC3339))
+		ib.Values(m.Version, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Number, err)
+			sharedlogging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
 			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
 		}
 	}

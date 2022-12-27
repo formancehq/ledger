@@ -20,6 +20,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConfigInfoResponse'
 
+  /{ledger}/_info:
+    get:
+      summary: Get information about a ledger.
+      operationId: getLedgerInfo
+      tags:
+        - Ledger
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerInfoResponse'
+
   /{ledger}/accounts:
     head:
       summary: Count the accounts from a ledger.
@@ -365,12 +387,11 @@ paths:
   /{ledger}/stats:
     get:
       tags:
-        - Stats
+        - Ledger
       operationId: readStats
-      summary: Get Stats
+      summary: Get statistics from a ledger.
       description: |
-        Get ledger stats (aggregate metrics on accounts and transactions)
-        The stats for account
+        Get statistics from a ledger. (aggregate metrics on accounts and transactions)
       parameters:
         - name: ledger
           in: path
@@ -1021,7 +1042,7 @@ paths:
   /{ledger}/log:
     get:
       tags:
-        - Logs
+        - Ledger
       summary: List the logs from a ledger.
       description: List the logs from a ledger, sorted by ID in descending order.
       operationId: listLogs
@@ -1546,3 +1567,45 @@ components:
         error_message:
           type: string
           example: internal error
+
+    LedgerInfoResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/LedgerInfo'
+
+    LedgerInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          example: ledger001
+        version:
+          type: string
+          example: v1.8.1
+        storage:
+          type: object
+          properties:
+            driver:
+              type: string
+              example: postgres
+            migrations:
+              type: array
+              items:
+                $ref: '#/components/schemas/MigrationInfo'
+
+    MigrationInfo:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 11
+        date:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum:
+            - "to do"
+            - "done"

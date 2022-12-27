@@ -60,7 +60,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 
 			case "go":
 				for _, registeredGoMigration := range registeredGoMigrations {
-					if registeredGoMigration.Number == number {
+					if registeredGoMigration.Version == number {
 						for engine, goMigrationUnits := range registeredGoMigration.Handlers {
 							units[engine] = append(units[engine], goMigrationUnits...)
 						}
@@ -70,7 +70,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 		}
 
 		migrations = append(migrations, Migration{
-			Number:   number,
+			Version:  number,
 			Name:     name,
 			Handlers: units,
 		})

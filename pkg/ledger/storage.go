@@ -23,6 +23,8 @@ type Store interface {
 	GetLastLog(context.Context) (*core.Log, error)
 	GetLogs(context.Context, *LogsQuery) (sharedapi.Cursor[core.Log], error)
 	LoadMapping(context.Context) (*core.Mapping, error)
+	GetMigrationsAvailable() ([]core.MigrationInfo, error)
+	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
 
 	UpdateTransactionMetadata(ctx context.Context, txid uint64, metadata core.Metadata, at time.Time) error
 	UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error

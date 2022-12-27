@@ -25,8 +25,8 @@ func RegisterGoMigrationFromFilename(filename string, fn MigrationFunc) {
 	engine := strings.Split(goFile, ".")[0]
 
 	registeredGoMigrations = append(registeredGoMigrations, Migration{
-		Number: number,
-		Name:   name,
+		Version: number,
+		Name:    name,
 		Handlers: map[string][]MigrationFunc{
 			engine: {fn},
 		},

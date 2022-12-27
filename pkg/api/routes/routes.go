@@ -47,6 +47,7 @@ const (
 	ScopeAccountsWrite     = "accounts:write"
 	ScopeMappingRead       = "mapping:read"
 	ScopeMappingWrite      = "mapping:write"
+	ScopesInfoRead         = "info"
 	ScopesStatsRead        = "stats"
 	ScopesLogsRead         = "logs"
 )
@@ -58,6 +59,7 @@ var AllScopes = []string{
 	ScopeAccountsRead,
 	ScopeMappingRead,
 	ScopeMappingWrite,
+	ScopesInfoRead,
 	ScopesStatsRead,
 	ScopesLogsRead,
 }
@@ -156,6 +158,7 @@ func (r *Routes) Engine() *gin.Engine {
 	dedicatedLedgerRouter.Use(append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
 
 	// LedgerController
+	dedicatedLedgerRouter.GET("/_info", r.wrapWithScopes(r.ledgerController.GetInfo, ScopesInfoRead))
 	dedicatedLedgerRouter.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
 	dedicatedLedgerRouter.GET("/log", r.wrapWithScopes(r.ledgerController.GetLogs, ScopesLogsRead))
 

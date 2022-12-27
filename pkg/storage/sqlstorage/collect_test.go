@@ -33,13 +33,13 @@ func TestCollectMigrations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, migrations, 2)
 
-	require.Equal(t, "0", migrations[0].Number)
+	require.Equal(t, "0", migrations[0].Version)
 	require.Equal(t, "first-migration", migrations[0].Name)
 	require.Len(t, migrations[0].Handlers, 2)
 	require.Len(t, migrations[0].Handlers["sqlite"], 1)
 	require.Len(t, migrations[0].Handlers["postgres"], 1)
 
-	require.Equal(t, "1", migrations[1].Number)
+	require.Equal(t, "1", migrations[1].Version)
 	require.Equal(t, "second-migration", migrations[1].Name)
 	require.Len(t, migrations[1].Handlers, 1)
 	require.Len(t, migrations[1].Handlers["any"], 1)
@@ -59,6 +59,6 @@ func TestMigrationsOrders(t *testing.T) {
 	migrations, err := CollectMigrationFiles(mfs)
 	require.NoError(t, err)
 	for i, m := range migrations {
-		require.Equal(t, fmt.Sprintf("%d", i), m.Number)
+		require.Equal(t, fmt.Sprintf("%d", i), m.Version)
 	}
 }

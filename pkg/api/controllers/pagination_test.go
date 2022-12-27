@@ -363,7 +363,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 					values.Set("pagination_token", paginationToken)
 				}
 
-				rsp = internal.GetLogs(api, values)
+				rsp = internal.GetLedgerLogs(api, values)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 				cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)
 				assert.Len(t, cursor.Data, pageSize)
@@ -381,7 +381,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 			}
 
 			if additionalTxs > 0 {
-				rsp = internal.GetLogs(api, url.Values{
+				rsp = internal.GetLedgerLogs(api, url.Values{
 					"pagination_token": []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
@@ -405,7 +405,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				back := 0
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
-					rsp = internal.GetLogs(api, url.Values{
+					rsp = internal.GetLedgerLogs(api, url.Values{
 						"pagination_token": []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
