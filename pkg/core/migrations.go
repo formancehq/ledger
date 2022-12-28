@@ -4,6 +4,7 @@ import "time"
 
 type MigrationInfo struct {
 	Version string    `json:"version"`
-	State   string    `json:"state"`
+	Name    string    `json:"name"`
+	State   string    `json:"state,omitempty"`
 	Date    time.Time `json:"date,omitempty"`
 }

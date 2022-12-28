@@ -64,6 +64,7 @@ func (s *Store) GetMigrationsAvailable() ([]core.MigrationInfo, error) {
 	for _, m := range migrations {
 		res = append(res, core.MigrationInfo{
 			Version: m.Version,
+			Name:    m.Name,
 		})
 	}
 
@@ -73,9 +74,8 @@ func (s *Store) GetMigrationsAvailable() ([]core.MigrationInfo, error) {
 type HandlersByEngine map[string][]MigrationFunc
 
 type Migration struct {
-	Version  string
-	Name     string
-	Handlers HandlersByEngine
+	core.MigrationInfo `json:"inline"`
+	Handlers           HandlersByEngine `json:"-"`
 }
 
 type Migrations []Migration

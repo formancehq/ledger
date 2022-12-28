@@ -45,6 +45,7 @@ func TestGetLedgerInfo(t *testing.T) {
 
 				for _, m := range info.Storage.Migrations {
 					assert.Equal(t, "done", m.State)
+					assert.NotEqual(t, "", m.Name)
 					assert.NotEqual(t, time.Time{}, m.Date)
 				}
 

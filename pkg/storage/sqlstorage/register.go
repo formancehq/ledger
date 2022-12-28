@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/numary/ledger/pkg/core"
 )
 
 var registeredGoMigrations []Migration
@@ -21,12 +23,14 @@ func RegisterGoMigrationFromFilename(filename string, fn MigrationFunc) {
 	rest, goFile := filepath.Split(filename)
 	directory := filepath.Base(rest)
 
-	number, name := extractMigrationInformation(directory)
+	version, name := extractMigrationInformation(directory)
 	engine := strings.Split(goFile, ".")[0]
 
 	registeredGoMigrations = append(registeredGoMigrations, Migration{
-		Version: number,
-		Name:    name,
+		MigrationInfo: core.MigrationInfo{
+			Version: version,
+			Name:    name,
+		},
 		Handlers: map[string][]MigrationFunc{
 			engine: {fn},
 		},
