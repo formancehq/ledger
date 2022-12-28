@@ -32,5 +32,5 @@ RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lis
 COPY --from=builder /go/src/github.com/numary/ledger/numary /usr/local/bin/numary
 EXPOSE 3068
 ENTRYPOINT ["numary"]
-ENV NUMARY_OTEL_SERVICE_NAME ledger
+ENV OTEL_SERVICE_NAME ledger
 CMD ["server", "start"]
