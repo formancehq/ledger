@@ -23,6 +23,13 @@ func (l *Ledger) Execute(ctx context.Context, preview bool, scripts ...core.Scri
 		return []core.ExpandedTransaction{}, err
 	}
 
+	for _, txData := range txsData {
+		if len(txData.Postings) == 0 {
+			return []core.ExpandedTransaction{},
+				NewValidationError("transaction has no postings")
+		}
+	}
+
 	txs, err := l.Commit(ctx, preview, addOps, txsData...)
 	if err != nil {
 		return []core.ExpandedTransaction{}, err

@@ -425,6 +425,21 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
+			name: "script failure with no postings",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					set_account_meta(@bar, "foo", "bar")
+					`,
+				},
+			}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: apierrors.ErrorResponse{
+				ErrorCode:    apierrors.ErrValidation,
+				ErrorMessage: "transaction has no postings",
+			},
+		},
+		{
 			name: "postings and script",
 			payload: []controllers.PostTransaction{{
 				Postings: core.Postings{
