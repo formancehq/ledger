@@ -35,13 +35,13 @@ func (l *Ledger) GetMigrationsInfo(ctx context.Context) ([]core.MigrationInfo, e
 				Version: mAvailable.Version,
 				Name:    mAvailable.Name,
 				Date:    timestamp,
-				State:   "done",
+				State:   "DONE",
 			})
 		} else {
 			res = append(res, core.MigrationInfo{
 				Version: mAvailable.Version,
 				Name:    mAvailable.Name,
-				State:   "to do",
+				State:   "TO DO",
 			})
 		}
 	}

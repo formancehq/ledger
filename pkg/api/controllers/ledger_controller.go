@@ -12,30 +12,21 @@ import (
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
 
-type LedgerController struct {
-	Version       string
-	StorageDriver storage.Driver[ledger.Store]
-}
+type LedgerController struct{}
 
-func NewLedgerController(version string, storageDriver storage.Driver[ledger.Store]) LedgerController {
-	return LedgerController{
-		Version:       version,
-		StorageDriver: storageDriver,
-	}
+func NewLedgerController() LedgerController {
+	return LedgerController{}
 }
 
 type Info struct {
 	Name    string      `json:"name"`
-	Version string      `json:"version"`
 	Storage storageInfo `json:"storage"`
 }
 
 type storageInfo struct {
-	Driver     string               `json:"driver"`
 	Migrations []core.MigrationInfo `json:"migration"`
 }
 
@@ -45,10 +36,7 @@ func (ctl *LedgerController) GetInfo(c *gin.Context) {
 	var err error
 	res := Info{
 		Name:    c.Param("ledger"),
-		Version: ctl.Version,
-		Storage: storageInfo{
-			Driver: ctl.StorageDriver.Name(),
-		},
+		Storage: storageInfo{},
 	}
 	res.Storage.Migrations, err = l.(*ledger.Ledger).GetMigrationsInfo(c.Request.Context())
 	if err != nil {

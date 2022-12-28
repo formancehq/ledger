@@ -39,12 +39,10 @@ func TestGetLedgerInfo(t *testing.T) {
 				_, err = uuid.Parse(info.Name)
 				assert.NoError(t, err)
 
-				assert.Equal(t, "latest", info.Version)
-				assert.Equal(t, driver.Name(), info.Storage.Driver)
 				assert.Equal(t, len(availableMigrations), len(info.Storage.Migrations))
 
 				for _, m := range info.Storage.Migrations {
-					assert.Equal(t, "done", m.State)
+					assert.Equal(t, "DONE", m.State)
 					assert.NotEqual(t, "", m.Name)
 					assert.NotEqual(t, time.Time{}, m.Date)
 				}
