@@ -387,7 +387,7 @@ paths:
   /{ledger}/stats:
     get:
       tags:
-        - Ledger
+        - Stats
       operationId: readStats
       summary: Get statistics from a ledger.
       description: |
@@ -1042,7 +1042,7 @@ paths:
   /{ledger}/log:
     get:
       tags:
-        - Ledger
+        - Logs
       summary: List the logs from a ledger.
       description: List the logs from a ledger, sorted by ID in descending order.
       operationId: listLogs
