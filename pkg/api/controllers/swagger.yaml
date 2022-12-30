@@ -138,7 +138,7 @@ paths:
           description: Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, or equal
           schema:
             type: string
-            enum: [gte, lte, gt, lt, e]
+            enum: [gte, lte, gt, lt, e, ne]
             example: gte
         - name: pagination_token
           in: query

@@ -316,6 +316,19 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, cursor.Data[0].Address, "bob")
 				})
 
+				// test filter by balance != 100
+				t.Run("filter by balance != 100", func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						"balance":          []string{"100"},
+						"balance_operator": []string{"ne"},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
+					assert.Len(t, cursor.Data, 2)
+					assert.Equal(t, cursor.Data[0].Address, "world")
+					assert.Equal(t, cursor.Data[1].Address, "alice")
+				})
+
 				t.Run("invalid balance", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
 						"balance": []string{"toto"},

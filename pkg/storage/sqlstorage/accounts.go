@@ -75,6 +75,8 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 				sb.Where(sb.GreaterThan(balanceOperation, balanceValue))
 			case ledger.BalanceOperatorE:
 				sb.Where(sb.Equal(balanceOperation, balanceValue))
+			case ledger.BalanceOperatorNe:
+				sb.Where(sb.NotEqual(balanceOperation, balanceValue))
 			default:
 				// parameter is validated in the controller for now
 				panic("invalid balance_operator parameter")
