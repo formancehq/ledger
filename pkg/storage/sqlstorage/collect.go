@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/numary/ledger/pkg/core"
 )
 
 //go:embed migrates
@@ -31,7 +33,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 	for _, directory := range directories {
 		directoryName := directory.Name()
 
-		number, name := extractMigrationInformation(directoryName)
+		version, name := extractMigrationInformation(directoryName)
 
 		migrationDirectoryName := path.Join("migrates", directoryName)
 		units := make(map[string][]MigrationFunc)
@@ -60,7 +62,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 
 			case "go":
 				for _, registeredGoMigration := range registeredGoMigrations {
-					if registeredGoMigration.Number == number {
+					if registeredGoMigration.Version == version {
 						for engine, goMigrationUnits := range registeredGoMigration.Handlers {
 							units[engine] = append(units[engine], goMigrationUnits...)
 						}
@@ -70,8 +72,10 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 		}
 
 		migrations = append(migrations, Migration{
-			Number:   number,
-			Name:     name,
+			MigrationInfo: core.MigrationInfo{
+				Version: version,
+				Name:    name,
+			},
 			Handlers: units,
 		})
 	}

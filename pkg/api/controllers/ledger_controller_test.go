@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -22,6 +23,35 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
+
+func TestGetLedgerInfo(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				availableMigrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
+				require.NoError(t, err)
+
+				rsp := internal.GetLedgerInfo(h)
+				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				info, ok := internal.DecodeSingleResponse[controllers.Info](t, rsp.Body)
+				assert.Equal(t, true, ok)
+
+				_, err = uuid.Parse(info.Name)
+				assert.NoError(t, err)
+
+				assert.Equal(t, len(availableMigrations), len(info.Storage.Migrations))
+
+				for _, m := range info.Storage.Migrations {
+					assert.Equal(t, "DONE", m.State)
+					assert.NotEqual(t, "", m.Name)
+					assert.NotEqual(t, time.Time{}, m.Date)
+				}
+
+				return nil
+			},
+		})
+	}))
+}
 
 func TestGetStats(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
@@ -51,7 +81,7 @@ func TestGetStats(t *testing.T) {
 				}, false)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				rsp = internal.GetStats(h)
+				rsp = internal.GetLedgerStats(h)
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
 				stats, _ := internal.DecodeSingleResponse[ledger.Stats](t, rsp.Body)
@@ -114,7 +144,7 @@ func TestGetLogs(t *testing.T) {
 
 				var log0Timestamp, log1Timestamp time.Time
 				t.Run("all", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{})
+					rsp := internal.GetLedgerLogs(api, url.Values{})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Log](t, rsp.Body)
 					// all logs
@@ -129,7 +159,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("after", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"after": []string{"1"},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -139,7 +169,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("invalid after", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"after": []string{"invalid"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
@@ -153,7 +183,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("time range", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"start_time": []string{log0Timestamp.Format(time.RFC3339)},
 						"end_time":   []string{log1Timestamp.Format(time.RFC3339)},
 					})
@@ -164,7 +194,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("only start time", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -173,7 +203,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("only end time", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
@@ -182,7 +212,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("invalid start time", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"start_time": []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
@@ -196,7 +226,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("invalid end time", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"end_time": []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
@@ -213,14 +243,14 @@ func TestGetLogs(t *testing.T) {
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
 				t.Run("valid empty pagination_token", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
 				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
 						"after":            []string{"1"},
 					})
@@ -235,7 +265,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("invalid pagination_token", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"pagination_token": []string{"invalid"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
@@ -249,7 +279,7 @@ func TestGetLogs(t *testing.T) {
 				})
 
 				t.Run("invalid pagination_token not base64", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{
+					rsp := internal.GetLedgerLogs(api, url.Values{
 						"pagination_token": []string{"@!/"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())

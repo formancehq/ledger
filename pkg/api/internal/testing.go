@@ -186,13 +186,19 @@ func NewPostOnLedger(t *testing.T, handler http.Handler, path string, body any) 
 	return rec
 }
 
-func GetStats(handler http.Handler) *httptest.ResponseRecorder {
+func GetLedgerInfo(handler http.Handler) *httptest.ResponseRecorder {
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/_info", testingLedger), nil)
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func GetLedgerStats(handler http.Handler) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/stats", testingLedger), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
-func GetLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
+func GetLedgerLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/log", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)

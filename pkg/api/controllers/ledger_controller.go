@@ -21,6 +21,32 @@ func NewLedgerController() LedgerController {
 	return LedgerController{}
 }
 
+type Info struct {
+	Name    string      `json:"name"`
+	Storage storageInfo `json:"storage"`
+}
+
+type storageInfo struct {
+	Migrations []core.MigrationInfo `json:"migration"`
+}
+
+func (ctl *LedgerController) GetInfo(c *gin.Context) {
+	l, _ := c.Get("ledger")
+
+	var err error
+	res := Info{
+		Name:    c.Param("ledger"),
+		Storage: storageInfo{},
+	}
+	res.Storage.Migrations, err = l.(*ledger.Ledger).GetMigrationsInfo(c.Request.Context())
+	if err != nil {
+		apierrors.ResponseError(c, err)
+		return
+	}
+
+	respondWithData[Info](c, http.StatusOK, res)
+}
+
 func (ctl *LedgerController) GetStats(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
@@ -29,6 +55,7 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 		apierrors.ResponseError(c, err)
 		return
 	}
+
 	respondWithData[ledger.Stats](c, http.StatusOK, stats)
 }
 

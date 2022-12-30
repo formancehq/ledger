@@ -20,12 +20,12 @@ func TestContext(t *testing.T) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				t.Run("GET/stats", func(t *testing.T) {
-					rsp := internal.GetStats(api)
+					rsp := internal.GetLedgerStats(api)
 					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
 				t.Run("GET/log", func(t *testing.T) {
-					rsp := internal.GetLogs(api, url.Values{})
+					rsp := internal.GetLedgerLogs(api, url.Values{})
 					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})

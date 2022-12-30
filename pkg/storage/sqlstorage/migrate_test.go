@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/huandu/go-sqlbuilder"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -21,8 +22,10 @@ func TestMigrates(t *testing.T) {
 
 	migrations := []Migration{
 		{
-			Number: "0",
-			Name:   "create-schema",
+			MigrationInfo: core.MigrationInfo{
+				Version: "0",
+				Name:    "create-schema",
+			},
 			Handlers: HandlersByEngine{
 				"any": {
 					SQLMigrationFunc(`CREATE TABLE IF NOT EXISTS transactions (
@@ -38,8 +41,10 @@ func TestMigrates(t *testing.T) {
 			},
 		},
 		{
-			Number: "1",
-			Name:   "update-column",
+			MigrationInfo: core.MigrationInfo{
+				Version: "1",
+				Name:    "update-column",
+			},
 			Handlers: HandlersByEngine{
 				"sqlite": {
 					SQLMigrationFunc(`
@@ -49,8 +54,10 @@ func TestMigrates(t *testing.T) {
 			},
 		},
 		{
-			Number: "2",
-			Name:   "init-timestamp",
+			MigrationInfo: core.MigrationInfo{
+				Version: "2",
+				Name:    "init-timestamp",
+			},
 			Handlers: HandlersByEngine{
 				"any": {
 					func(ctx context.Context, schema Schema, tx *sql.Tx) error {
