@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/sharedapi"
@@ -46,8 +45,8 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
 			sb.Where(s.schema.Table(
 				fmt.Sprintf("%s(metadata, %s, '%s')",
-					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
-			))
+					SQLCustomFuncMetaCompare, arg, formatMetadataKey(key),
+				)))
 		}
 		t.MetadataFilter = metadata
 	}

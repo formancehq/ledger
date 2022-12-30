@@ -201,7 +201,8 @@ var tx3 = core.ExpandedTransaction{
 			},
 			Reference: "tx3",
 			Metadata: core.Metadata{
-				"priority": json.RawMessage(`"high"`),
+				"priority":                    json.RawMessage(`"high"`),
+				core.SpecMetadata("service1"): json.RawMessage(`true`),
 			},
 			Timestamp: now.Add(-1 * time.Hour),
 		},
@@ -427,7 +428,8 @@ func testGetAssetsVolumes(t *testing.T, store *sqlstorage.Store) {
 
 func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "world", core.Metadata{
-		"foo": json.RawMessage(`"bar"`),
+		"foo":                         json.RawMessage(`"bar"`),
+		core.SpecMetadata("service1"): json.RawMessage(`true`),
 	}, now))
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "bank", core.Metadata{
 		"hello": json.RawMessage(`"world"`),
@@ -503,6 +505,17 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 		Filters: ledger.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"a.super.nested.key": "hello",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, accounts.Data, 1)
+
+	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
+		PageSize: 10,
+		Filters: ledger.AccountsQueryFilters{
+			Metadata: map[string]string{
+				"\"com.numary.spec\"/service1": "true",
 			},
 		},
 	})
@@ -660,6 +673,19 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 			Filters: ledger.TransactionsQueryFilters{
 				Metadata: map[string]string{
 					"priority": "high",
+				},
+			},
+			PageSize: 10,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
+		// Should get only the third transaction.
+		require.Len(t, cursor.Data, 1)
+
+		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
+			Filters: ledger.TransactionsQueryFilters{
+				Metadata: map[string]string{
+					"\"com.numary.spec\"/service1": "true",
 				},
 			},
 			PageSize: 10,

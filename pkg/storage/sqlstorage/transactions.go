@@ -124,10 +124,9 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 
 	for key, value := range metadata {
 		arg := sb.Args.Add(value)
+
 		sb.Where(s.schema.Table(
-			fmt.Sprintf("%s(metadata, %s, '%s')",
-				SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
-		))
+			fmt.Sprintf("%s(metadata, %s, '%s')", SQLCustomFuncMetaCompare, arg, formatMetadataKey(key))))
 	}
 	t.MetadataFilter = metadata
 
