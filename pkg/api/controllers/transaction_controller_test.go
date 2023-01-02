@@ -34,7 +34,7 @@ func TestPostTransactions(t *testing.T) {
 		payload            []controllers.PostTransaction
 		expectedStatusCode int
 		expectedRes        sharedapi.BaseResponse[[]core.ExpandedTransaction]
-		expectedErr        apierrors.ErrorResponse
+		expectedErr        sharedapi.ErrorResponse
 	}
 
 	var now = time.Now().Round(time.Second).UTC()
@@ -46,7 +46,7 @@ func TestPostTransactions(t *testing.T) {
 				{},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrScriptNoScript,
 				ErrorMessage: "[NO_SCRIPT] no script to execute",
 				Details:      apierrors.EncodeLink("no script to execute"),
@@ -131,7 +131,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "processing tx 0: negative amount",
 			},
@@ -151,7 +151,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "processing tx 0: invalid asset",
 			},
@@ -171,7 +171,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "processing tx 0: invalid asset",
 			},
@@ -191,7 +191,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "processing tx 0: invalid destination address",
 			},
@@ -211,7 +211,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
 				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
 			},
@@ -243,7 +243,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusConflict,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrConflict,
 				ErrorMessage: "conflict error on reference",
 			},
@@ -308,7 +308,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "processing tx 0: cannot pass a date prior to the last transaction",
 			},
@@ -395,7 +395,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			}},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrInsufficientFund,
 				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
 				Details:      apierrors.EncodeLink("account had insufficient funds"),
@@ -418,7 +418,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			}},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrScriptMetadataOverride,
 				ErrorMessage: "[METADATA_OVERRIDE] cannot override metadata from script",
 				Details:      apierrors.EncodeLink("cannot override metadata from script"),
@@ -434,7 +434,7 @@ func TestPostTransactions(t *testing.T) {
 				},
 			}},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: apierrors.ErrorResponse{
+			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "transaction has no postings",
 			},
@@ -507,7 +507,7 @@ func TestPostTransactions(t *testing.T) {
 						require.Equal(t, tc.expectedStatusCode, rsp.Result().StatusCode, rsp.Body.String())
 
 						if tc.expectedStatusCode != http.StatusOK {
-							actualErr := apierrors.ErrorResponse{}
+							actualErr := sharedapi.ErrorResponse{}
 							if internal.Decode(t, rsp.Body, &actualErr) {
 								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode, actualErr.ErrorMessage)
 								require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
@@ -708,6 +708,7 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrScriptNoScript,
 						ErrorMessage:           "[NO_SCRIPT] no script to execute",
+						Details:                apierrors.EncodeLink("no script to execute"),
 						ErrorCodeDeprecated:    apierrors.ErrScriptNoScript,
 						ErrorMessageDeprecated: "[NO_SCRIPT] no script to execute",
 					}, err)

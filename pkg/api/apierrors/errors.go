@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
@@ -28,25 +29,13 @@ const (
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
 )
 
-// TODO: update api.ErrorResponse with new details field
-type ErrorResponse struct {
-	ErrorCode    string `json:"errorCode,omitempty"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-	Details      string `json:"details,omitempty"`
-
-	// Deprecated
-	ErrorCodeDeprecated string `json:"error_code,omitempty"`
-	// Deprecated
-	ErrorMessageDeprecated string `json:"error_message,omitempty"`
-}
-
 func ResponseError(c *gin.Context, err error) {
 	_ = c.Error(err)
 	status, code, details := coreErrorToErrorCode(c, err)
 
 	if status < 500 {
 		c.AbortWithStatusJSON(status,
-			ErrorResponse{
+			api.ErrorResponse{
 				ErrorCode:    code,
 				ErrorMessage: err.Error(),
 				Details:      details,
