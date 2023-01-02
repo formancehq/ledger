@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
+	"github.com/formancehq/go-libs/health"
 	"github.com/numary/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
@@ -51,8 +51,8 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
 			return NewDriver(PostgreSQL.String(), db), nil
 		}))
-		options = append(options, sharedhealth.ProvideHealthCheck(func(db *sql.DB) sharedhealth.NamedCheck {
-			return sharedhealth.NewNamedCheck(PostgreSQL.String(), sharedhealth.CheckFn(db.PingContext))
+		options = append(options, health.ProvideHealthCheck(func(db *sql.DB) health.NamedCheck {
+			return health.NewNamedCheck(PostgreSQL.String(), health.CheckFn(db.PingContext))
 		}))
 	case SQLite:
 		options = append(options, fx.Provide(func() DB {
@@ -61,8 +61,8 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
 			return NewDriver(SQLite.String(), db), nil
 		}))
-		options = append(options, sharedhealth.ProvideHealthCheck(func() sharedhealth.NamedCheck {
-			return sharedhealth.NewNamedCheck(SQLite.String(), sharedhealth.CheckFn(func(ctx context.Context) error {
+		options = append(options, health.ProvideHealthCheck(func() health.NamedCheck {
+			return health.NewNamedCheck(SQLite.String(), health.CheckFn(func(ctx context.Context) error {
 				_, err := os.Open(cfg.SQLiteConfig.Dir)
 				return err
 			}))

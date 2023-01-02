@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/Shopify/sarama"
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/logging/logginglogrus"
 	"github.com/formancehq/go-libs/oauth2/oauth2introspect"
-	"github.com/formancehq/go-libs/sharedauth"
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
-	"github.com/formancehq/go-libs/sharedpublish"
-	"github.com/formancehq/go-libs/sharedpublish/sharedpublishhttp"
-	"github.com/formancehq/go-libs/sharedpublish/sharedpublishkafka"
+	"github.com/formancehq/go-libs/otlp/otlptraces"
+	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/go-libs/publish/publishhttp"
+	"github.com/formancehq/go-libs/publish/publishkafka"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/cmd/internal"
@@ -47,8 +47,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	if v.GetBool(debugFlag) {
 		l.Level = logrus.DebugLevel
 	}
-	loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
-	sharedlogging.SetFactory(loggerFactory)
+	loggerFactory := logging.StaticLoggerFactory(logginglogrus.New(l))
+	logging.SetFactory(loggerFactory)
 
 	topics := v.GetStringSlice(publisherTopicMappingFlag)
 	mapping := make(map[string]string)
@@ -60,43 +60,43 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		mapping[parts[0]] = parts[1]
 	}
 
-	options = append(options, sharedpublish.Module(), bus.LedgerMonitorModule())
-	options = append(options, sharedpublish.TopicMapperPublisherModule(mapping))
+	options = append(options, publish.Module(), bus.LedgerMonitorModule())
+	options = append(options, publish.TopicMapperPublisherModule(mapping))
 
 	switch {
 	case v.GetBool(publisherHttpEnabledFlag):
-		options = append(options, sharedpublishhttp.Module())
+		options = append(options, publishhttp.Module())
 	case v.GetBool(publisherKafkaEnabledFlag):
 		sarama.Logger = log.New(os.Stdout, "[Sarama] ", log.LstdFlags)
 		options = append(options,
-			sharedpublishkafka.Module(ServiceName, v.GetStringSlice(publisherKafkaBrokerFlag)...),
-			sharedpublishkafka.ProvideSaramaOption(
-				sharedpublishkafka.WithConsumerReturnErrors(),
-				sharedpublishkafka.WithProducerReturnSuccess(),
+			publishkafka.Module(ServiceName, v.GetStringSlice(publisherKafkaBrokerFlag)...),
+			publishkafka.ProvideSaramaOption(
+				publishkafka.WithConsumerReturnErrors(),
+				publishkafka.WithProducerReturnSuccess(),
 			),
 		)
 		if v.GetBool(publisherKafkaTLSEnabled) {
-			options = append(options, sharedpublishkafka.ProvideSaramaOption(sharedpublishkafka.WithTLS()))
+			options = append(options, publishkafka.ProvideSaramaOption(publishkafka.WithTLS()))
 		}
 		if v.GetBool(publisherKafkaSASLEnabled) {
-			options = append(options, sharedpublishkafka.ProvideSaramaOption(
-				sharedpublishkafka.WithSASLEnabled(),
-				sharedpublishkafka.WithSASLCredentials(
+			options = append(options, publishkafka.ProvideSaramaOption(
+				publishkafka.WithSASLEnabled(),
+				publishkafka.WithSASLCredentials(
 					v.GetString(publisherKafkaSASLUsername),
 					v.GetString(publisherKafkaSASLPassword),
 				),
-				sharedpublishkafka.WithSASLMechanism(sarama.SASLMechanism(v.GetString(publisherKafkaSASLMechanism))),
-				sharedpublishkafka.WithSASLScramClient(func() sarama.SCRAMClient {
+				publishkafka.WithSASLMechanism(sarama.SASLMechanism(v.GetString(publisherKafkaSASLMechanism))),
+				publishkafka.WithSASLScramClient(func() sarama.SCRAMClient {
 					var fn scram.HashGeneratorFcn
 					switch v.GetInt(publisherKafkaSASLScramSHASize) {
 					case 512:
-						fn = sharedpublishkafka.SHA512
+						fn = publishkafka.SHA512
 					case 256:
-						fn = sharedpublishkafka.SHA256
+						fn = publishkafka.SHA256
 					default:
 						panic("sha size not handled")
 					}
-					return &sharedpublishkafka.XDGSCRAMClient{
+					return &publishkafka.XDGSCRAMClient{
 						HashGeneratorFcn: fn,
 					}
 				}),
@@ -105,7 +105,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	}
 
 	// Handle OpenTelemetry
-	options = append(options, sharedotlptraces.CLITracesModule(v))
+	options = append(options, otlptraces.CLITracesModule(v))
 
 	switch v.GetString(lockStrategyFlag) {
 	case "redis":
@@ -174,23 +174,23 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)
 
-		methods := make([]sharedauth.Method, 0)
+		methods := make([]auth.Method, 0)
 		if httpBasicMethod := internal.HTTPBasicAuthMethod(v); httpBasicMethod != nil {
 			methods = append(methods, httpBasicMethod)
 		}
 		if v.GetBool(authBearerEnabledFlag) {
-			methods = append(methods, sharedauth.NewHttpBearerMethod(
-				sharedauth.NewIntrospectionValidator(
+			methods = append(methods, auth.NewHttpBearerMethod(
+				auth.NewIntrospectionValidator(
 					oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
 					v.GetBool(authBearerAudiencesWildcardFlag),
-					sharedauth.AudienceIn(v.GetStringSlice(authBearerAudienceFlag)...),
+					auth.AudienceIn(v.GetStringSlice(authBearerAudienceFlag)...),
 				),
 			))
 		}
 		if len(methods) > 0 {
 			res = append(res, func(c *gin.Context) {
 				handled := false
-				sharedauth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				auth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handled = true
 					// The middleware replace the context of the request to include the agent
 					// We have to forward it to gin
@@ -217,7 +217,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		res = append(res, func(context *gin.Context) {
 			context.Next()
 			for _, err := range context.Errors {
-				sharedlogging.GetLogger(context.Request.Context()).Error(err)
+				logging.GetLogger(context.Request.Context()).Error(err)
 			}
 		})
 		res = append(res, middlewares.Log())

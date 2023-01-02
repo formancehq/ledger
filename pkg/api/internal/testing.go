@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/formancehq/go-libs/sharedapi"
-	"github.com/formancehq/go-libs/sharedauth"
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
+	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/logging/logginglogrus"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/numary/ledger/pkg/api"
@@ -241,7 +241,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
 	}
-	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
 
 	testingLedger = uuid.New()
 	ch := make(chan struct{})
@@ -281,8 +281,8 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		return []gin.HandlerFunc{
 			func(c *gin.Context) {
 				handled := false
-				sharedauth.Middleware(sharedauth.NewHttpBearerMethod(
-					sharedauth.NoOpValidator,
+				auth.Middleware(auth.NewHttpBearerMethod(
+					auth.NoOpValidator,
 				))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handled = true
 					// The middleware replace the context of the request to include the agent

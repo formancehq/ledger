@@ -3,7 +3,7 @@ package internal
 import (
 	"strings"
 
-	"github.com/formancehq/go-libs/sharedauth"
+	"github.com/formancehq/go-libs/auth"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -15,22 +15,22 @@ const (
 	authBasicCredentialsFlag = "auth-basic-credentials"
 )
 
-func HTTPBasicAuthMethod(v *viper.Viper) sharedauth.Method {
+func HTTPBasicAuthMethod(v *viper.Viper) auth.Method {
 	basicAuth := v.GetStringSlice(serverHttpBasicAuthFlag)
 	if len(basicAuth) == 0 {
 		basicAuth = v.GetStringSlice(authBasicCredentialsFlag)
 	}
 	if len(basicAuth) > 0 &&
 		(!v.IsSet(authBasicEnabledFlag) || v.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
-		credentials := sharedauth.Credentials{}
+		credentials := auth.Credentials{}
 		for _, kv := range basicAuth {
 			parts := strings.SplitN(kv, ":", 2)
-			credentials[parts[0]] = sharedauth.Credential{
+			credentials[parts[0]] = auth.Credential{
 				Password: parts[1],
 				Scopes:   routes.AllScopes,
 			}
 		}
-		return sharedauth.NewHTTPBasicMethod(credentials)
+		return auth.NewHTTPBasicMethod(credentials)
 	}
 	return nil
 }

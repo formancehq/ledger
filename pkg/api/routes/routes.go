@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/sharedauth"
-	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/health"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/idempotency"
@@ -67,7 +67,7 @@ var AllScopes = []string{
 type Routes struct {
 	resolver              *ledger.Resolver
 	ledgerMiddleware      middlewares.LedgerMiddleware
-	healthController      *sharedhealth.HealthController
+	healthController      *health.HealthController
 	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
 	scriptController      controllers.ScriptController
@@ -94,7 +94,7 @@ func NewRoutes(
 	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
-	healthController *sharedhealth.HealthController,
+	healthController *health.HealthController,
 	useScopes UseScopes,
 	idempotencyStore storage.Driver[idempotency.Store],
 	locker middlewares.Locker,
@@ -124,7 +124,7 @@ func (r *Routes) wrapWithScopes(handler gin.HandlerFunc, scopes ...string) gin.H
 	}
 	return func(context *gin.Context) {
 		ok := false
-		sharedauth.NeedOneOfScopes(scopes...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth.NeedOneOfScopes(scopes...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			context.Request = r
 			ok = true
 			handler(context)

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/logging/logginglogrus"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -27,7 +27,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
 	}
-	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
 
 	app := fx.New(
 		fx.NopLogger,
@@ -137,7 +137,7 @@ func benchGetTransactions(b *testing.B, store *sqlstorage.Store) {
 	firstQ1, midQ1, lastQ1 := getTxQueries(b, store, 1, maxPages*maxPageSize)
 	firstQ50, midQ50, lastQ50 := getTxQueries(b, store, 50, maxPages*maxPageSize)
 	firstQ500, midQ500, lastQ500 := getTxQueries(b, store, 500, maxPages*maxPageSize)
-	var cursor sharedapi.Cursor[core.ExpandedTransaction]
+	var cursor api.Cursor[core.ExpandedTransaction]
 
 	b.ResetTimer()
 	b.StartTimer()
@@ -251,7 +251,7 @@ func getTxQueries(b *testing.B, store *sqlstorage.Store, pageSize, maxNumTxs int
 		PageSize: uint(pageSize),
 	}
 	firstQ = txQuery
-	cursor := sharedapi.Cursor[core.ExpandedTransaction]{
+	cursor := api.Cursor[core.ExpandedTransaction]{
 		HasMore: true,
 	}
 	var err error

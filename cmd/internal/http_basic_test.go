@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/formancehq/go-libs/sharedauth"
+	"github.com/formancehq/go-libs/auth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -117,7 +117,7 @@ func TestHTTPBasicAuthMethod(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			var method sharedauth.Method
+			var method auth.Method
 			cmd := &cobra.Command{
 				RunE: func(cmd *cobra.Command, args []string) error {
 					method = HTTPBasicAuthMethod(viper.GetViper())

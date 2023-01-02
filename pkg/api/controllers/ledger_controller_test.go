@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
@@ -177,8 +177,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'after'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'after'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'after'",
 					}, err)
 				})
 
@@ -220,8 +222,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'start_time'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'start_time'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'start_time'",
 					}, err)
 				})
 
@@ -234,8 +238,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'end_time'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'end_time'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'end_time'",
 					}, err)
 				})
 
@@ -259,8 +265,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "no other query params can be set with 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "no other query params can be set with 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "no other query params can be set with 'pagination_token'",
 					}, err)
 				})
 
@@ -273,8 +281,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 
@@ -287,8 +297,10 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 

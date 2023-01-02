@@ -22,7 +22,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 				PageSize: 10,
 			})
 		assert.NoError(t, err)
-		assert.Equal(t, 3, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		assert.Equal(t, false, cursor.HasMore)
 		assert.Equal(t, "", cursor.Previous)
 		assert.Equal(t, "", cursor.Next)
@@ -91,7 +91,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 				AfterAddress: "world",
 			})
 		assert.NoError(t, err)
-		assert.Equal(t, 2, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		assert.Equal(t, false, cursor.HasMore)
 		assert.Equal(t, "", cursor.Previous)
 		assert.Equal(t, "", cursor.Next)
@@ -117,7 +117,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 				Filters:      ledger.BalancesQueryFilters{AddressRegexp: "users.+"},
 			})
 		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
+		assert.Equal(t, 10, cursor.PageSize)
 		assert.Equal(t, false, cursor.HasMore)
 		assert.Equal(t, "", cursor.Previous)
 		assert.Equal(t, "", cursor.Next)

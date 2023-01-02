@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/go-redis/redis/v8"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/pkg/errors"
@@ -56,7 +56,7 @@ func (l Lock) tryLock(ctx context.Context, name string) (bool, middlewares.Unloc
 		return false, nil, nil
 	}
 
-	logger := sharedlogging.GetLogger(ctx)
+	logger := logging.GetLogger(ctx)
 
 	return true, func(ctx context.Context) {
 		getCmd := l.redisClient.Get(ctx, lk)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg"
@@ -37,7 +37,7 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		contextKeyID := uuid.NewString()
 		id := span.SpanContext().SpanID()
 		if id == [8]byte{} {
-			sharedlogging.GetLogger(ctx).Debugf(
+			logging.GetLogger(ctx).Debugf(
 				"ledger middleware SpanID is empty, new id generated %s", contextKeyID)
 		} else {
 			contextKeyID = fmt.Sprint(id)
@@ -45,9 +45,9 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 		ctx = context.WithValue(ctx, pkg.KeyContextID, contextKeyID)
 		c.Header(string(pkg.KeyContextID), contextKeyID)
 
-		loggerFactory := sharedlogging.StaticLoggerFactory(
-			contextlogger.New(ctx, sharedlogging.GetLogger(ctx)))
-		sharedlogging.SetFactory(loggerFactory)
+		loggerFactory := logging.StaticLoggerFactory(
+			contextlogger.New(ctx, logging.GetLogger(ctx)))
+		logging.SetFactory(loggerFactory)
 
 		l, err := m.resolver.GetLedger(ctx, name)
 		if err != nil {

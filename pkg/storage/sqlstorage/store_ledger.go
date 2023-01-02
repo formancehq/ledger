@@ -3,7 +3,7 @@ package sqlstorage
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
@@ -43,7 +43,7 @@ func (s *Store) Delete(ctx context.Context) error {
 }
 
 func (s *Store) Initialize(ctx context.Context) (bool, error) {
-	sharedlogging.GetLogger(ctx).Debug("Initialize store")
+	logging.GetLogger(ctx).Debug("Initialize store")
 
 	migrations, err := CollectMigrationFiles(MigrationsFS)
 	if err != nil {

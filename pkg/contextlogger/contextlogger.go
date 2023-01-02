@@ -3,18 +3,18 @@ package contextlogger
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/numary/ledger/pkg"
 )
 
-var _ sharedlogging.Logger = &ContextLogger{}
+var _ logging.Logger = &ContextLogger{}
 
 type ContextLogger struct {
 	ctx              context.Context
-	underlyingLogger sharedlogging.Logger
+	underlyingLogger logging.Logger
 }
 
-func New(ctx context.Context, logger sharedlogging.Logger) *ContextLogger {
+func New(ctx context.Context, logger logging.Logger) *ContextLogger {
 	return &ContextLogger{
 		ctx:              ctx,
 		underlyingLogger: logger,
@@ -54,7 +54,7 @@ func (c ContextLogger) Error(args ...any) {
 	c.underlyingLogger.Error(args...)
 }
 
-func (c ContextLogger) WithFields(m map[string]any) sharedlogging.Logger {
+func (c ContextLogger) WithFields(m map[string]any) logging.Logger {
 	m[string(pkg.KeyContextID)] = c.ctx.Value(pkg.KeyContextID)
 	return &ContextLogger{
 		ctx:              c.ctx,
@@ -62,7 +62,7 @@ func (c ContextLogger) WithFields(m map[string]any) sharedlogging.Logger {
 	}
 }
 
-func (c ContextLogger) WithContext(ctx context.Context) sharedlogging.Logger {
+func (c ContextLogger) WithContext(ctx context.Context) logging.Logger {
 	return &ContextLogger{
 		ctx:              ctx,
 		underlyingLogger: c.underlyingLogger,

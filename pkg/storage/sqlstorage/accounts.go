@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -87,11 +87,11 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 	return sb, t
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
-		return sharedapi.Cursor[core.Account]{Data: accounts}, nil
+		return api.Cursor[core.Account]{Data: accounts}, nil
 	}
 
 	sb, t := s.buildAccountsQuery(q)
@@ -110,13 +110,13 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (shared
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return sharedapi.Cursor[core.Account]{}, err
+		return api.Cursor[core.Account]{}, err
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor[core.Account]{}, s.error(err)
+		return api.Cursor[core.Account]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -129,13 +129,13 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (shared
 			Metadata: core.Metadata{},
 		}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return sharedapi.Cursor[core.Account]{}, err
+			return api.Cursor[core.Account]{}, err
 		}
 
 		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor[core.Account]{}, rows.Err()
+		return api.Cursor[core.Account]{}, rows.Err()
 	}
 
 	var previous, next string
@@ -148,7 +148,7 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (shared
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Account]{}, s.error(err)
+			return api.Cursor[core.Account]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -158,17 +158,20 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (shared
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Account]{}, s.error(err)
+			return api.Cursor[core.Account]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor[core.Account]{
-		PageSize: int(q.PageSize),
-		HasMore:  next != "",
-		Previous: previous,
-		Next:     next,
-		Data:     accounts,
+	hasMore := next != ""
+	return api.Cursor[core.Account]{
+		PageSize:           int(q.PageSize),
+		HasMore:            hasMore,
+		Previous:           previous,
+		Next:               next,
+		Data:               accounts,
+		PageSizeDeprecated: int(q.PageSize),
+		HasMoreDeprecated:  &hasMore,
 	}, nil
 }
 

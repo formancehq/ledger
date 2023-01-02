@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/numary/ledger/pkg/analytics"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -64,13 +64,13 @@ func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
 			interval = viper.GetDuration(segmentHeartbeatIntervalFlag)
 		}
 		if writeKey == "" {
-			sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
+			logging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
 		} else if interval == 0 {
-			sharedlogging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
+			logging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
 		} else {
 			_, err := semver.NewVersion(version)
 			if err != nil {
-				sharedlogging.GetLogger(context.Background()).Infof("telemetry enabled but version '%s' is not semver, skip", version)
+				logging.GetLogger(context.Background()).Infof("telemetry enabled but version '%s' is not semver, skip", version)
 			} else {
 				return fx.Options(
 					appIdProviderModule,

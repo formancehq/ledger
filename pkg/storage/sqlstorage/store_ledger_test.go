@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/logging/logginglogrus"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/idempotency"
@@ -31,7 +31,7 @@ func TestStore(t *testing.T) {
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
 	}
-	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
 
 	type testingFunction struct {
 		name string
@@ -739,7 +739,7 @@ func TestInitializeStore(t *testing.T) {
 	if testing.Verbose() {
 		l.Level = logrus.DebugLevel
 	}
-	sharedlogging.SetFactory(sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l)))
+	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
 
 	driver, stopFn, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)

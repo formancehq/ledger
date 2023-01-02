@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
@@ -28,23 +29,19 @@ const (
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
 )
 
-// TODO: update sharedapi.ErrorResponse with new details field
-type ErrorResponse struct {
-	ErrorCode    string `json:"error_code,omitempty"`
-	ErrorMessage string `json:"error_message,omitempty"`
-	Details      string `json:"details,omitempty"`
-}
-
 func ResponseError(c *gin.Context, err error) {
 	_ = c.Error(err)
 	status, code, details := coreErrorToErrorCode(c, err)
 
 	if status < 500 {
 		c.AbortWithStatusJSON(status,
-			ErrorResponse{
+			api.ErrorResponse{
 				ErrorCode:    code,
 				ErrorMessage: err.Error(),
 				Details:      details,
+
+				ErrorCodeDeprecated:    code,
+				ErrorMessageDeprecated: err.Error(),
 			})
 	} else {
 		c.AbortWithStatus(status)
@@ -72,7 +69,7 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
-		sharedlogging.GetLogger(c.Request.Context()).Errorf(
+		logging.GetLogger(c.Request.Context()).Errorf(
 			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}

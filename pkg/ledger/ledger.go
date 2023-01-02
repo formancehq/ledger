@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -111,7 +111,7 @@ func (l *Ledger) Commit(ctx context.Context, preview bool, addOps *core.Addition
 	return commitRes.GeneratedTransactions, nil
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
 	return l.store.GetTransactions(ctx, q)
 }
 
@@ -186,7 +186,7 @@ func (l *Ledger) CountAccounts(ctx context.Context, a AccountsQuery) (uint64, er
 	return l.store.CountAccounts(ctx, a)
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, a AccountsQuery) (sharedapi.Cursor[core.Account], error) {
+func (l *Ledger) GetAccounts(ctx context.Context, a AccountsQuery) (api.Cursor[core.Account], error) {
 	return l.store.GetAccounts(ctx, a)
 }
 
@@ -208,7 +208,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountW
 	}, nil
 }
 
-func (l *Ledger) GetBalances(ctx context.Context, q BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
+func (l *Ledger) GetBalances(ctx context.Context, q BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
 	return l.store.GetBalances(ctx, q)
 }
 
@@ -243,6 +243,6 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	return nil
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q *LogsQuery) (sharedapi.Cursor[core.Log], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q *LogsQuery) (api.Cursor[core.Log], error) {
 	return l.store.GetLogs(ctx, q)
 }
