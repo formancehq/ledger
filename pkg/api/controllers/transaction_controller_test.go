@@ -318,14 +318,20 @@ func TestPostTransactions(t *testing.T) {
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
 					Plain: `
+					vars {
+						account $acc
+					}
 					send [COIN 100] (
 					  source = @world
 					  destination = @centralbank
 					)
 					send [COIN 100] (
 					  source = @centralbank
-					  destination = @users:001
+					  destination = $acc
 					)`,
+					Vars: map[string]json.RawMessage{
+						"acc": json.RawMessage(`"users:001"`),
+					},
 				},
 			}},
 			expectedStatusCode: http.StatusOK,
@@ -437,6 +443,33 @@ func TestPostTransactions(t *testing.T) {
 			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrValidation,
 				ErrorMessage: "transaction has no postings",
+			},
+		},
+		{
+			name: "script failure with invalid variable",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					vars {
+						account $acc
+					}
+					send [USD/2 99] (
+						source = @world
+						destination = $acc
+					)
+					`,
+					Vars: map[string]json.RawMessage{
+						"acc": json.RawMessage(`"invalid-acc"`),
+					},
+				},
+			}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrScriptCompilationFailed,
+				ErrorMessage:           "[COMPILATION_FAILED] could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
+				Details:                apierrors.EncodeLink("could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
+				ErrorCodeDeprecated:    apierrors.ErrScriptCompilationFailed,
+				ErrorMessageDeprecated: "[COMPILATION_FAILED] could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
 			},
 		},
 		{
