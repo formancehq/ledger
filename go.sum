@@ -167,8 +167,8 @@ github.com/formancehq/go-libs/sharedhealth v0.0.0-20221123112229-2c8ab193c63c h1
 github.com/formancehq/go-libs/sharedhealth v0.0.0-20221123112229-2c8ab193c63c/go.mod h1:4TBSSGGBeY6xCaqI4gw74ouwgirdZjvKlv001kQ8xp0=
 github.com/formancehq/go-libs/sharedotlp v0.0.0-20221123112229-2c8ab193c63c h1:xzGPlzwbAzotpvY6rU0/OtYruK/4VDJpMX+QcagbYJM=
 github.com/formancehq/go-libs/sharedotlp v0.0.0-20221123112229-2c8ab193c63c/go.mod h1:6Pj/5A7XODoIyN/k5qauu1GAHex/A5P4j+7FmkD2TGI=
-github.com/formancehq/machine v1.4.0 h1:9Ab0F8RT7X8Nf6sg5o/i91falpM+2nLd2J25nCU170k=
-github.com/formancehq/machine v1.4.0/go.mod h1:VJgYOFY7rCzs/MyfWVOKASAf5bJHyX3v35ZmSIl2yic=
+github.com/formancehq/machine v1.4.1 h1:faGwQEsLutMufd7tHyFmfDFjEs06gK/hL2D23Hld6kM=
+github.com/formancehq/machine v1.4.1/go.mod h1:VJgYOFY7rCzs/MyfWVOKASAf5bJHyX3v35ZmSIl2yic=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/frankban/quicktest v1.11.3/go.mod h1:wRf/ReqHper53s+kmmSZizM8NamnL3IM0I9ntUbOk+k=
 github.com/frankban/quicktest v1.14.3 h1:FJKSZTDHjyhriyC81FLQ0LY93eSai0ZyR/ZIkd3ZUKE=
