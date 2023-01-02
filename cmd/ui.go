@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -55,6 +55,6 @@ var UICmd = &cobra.Command{
 		fmt.Printf("Numary control is live on http://%s\n", addr)
 
 		httpErr := http.ListenAndServe(addr, nil)
-		sharedlogging.Errorf("http.ListenAndServe: %s", httpErr)
+		logging.Errorf("http.ListenAndServe: %s", httpErr)
 	},
 }

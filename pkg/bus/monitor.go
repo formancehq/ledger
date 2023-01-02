@@ -3,20 +3,20 @@ package bus
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedpublish"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/publish"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
 )
 
 type ledgerMonitor struct {
-	publisher *sharedpublish.TopicMapperPublisher
+	publisher *publish.TopicMapperPublisher
 }
 
 var _ ledger.Monitor = &ledgerMonitor{}
 
-func newLedgerMonitor(publisher *sharedpublish.TopicMapperPublisher) *ledgerMonitor {
+func newLedgerMonitor(publisher *publish.TopicMapperPublisher) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
 	}
@@ -77,7 +77,7 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 
 func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev EventMessage) {
 	if err := l.publisher.Publish(ctx, topic, ev); err != nil {
-		sharedlogging.GetLogger(ctx).Errorf("publishing message: %s", err)
+		logging.GetLogger(ctx).Errorf("publishing message: %s", err)
 		return
 	}
 }

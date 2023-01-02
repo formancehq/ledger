@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/lib/pq"
 	"github.com/numary/ledger/pkg/core"
@@ -74,11 +74,10 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 	return aggregatedBalances, nil
 }
 
-func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error) {
-
+func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return sharedapi.Cursor[core.AccountsBalances]{}, err
+		return api.Cursor[core.AccountsBalances]{}, err
 	}
 
 	sb := sqlbuilder.NewSelectBuilder()
@@ -120,7 +119,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 	balanceQuery, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := executor.QueryContext(ctx, balanceQuery, args...)
 	if err != nil {
-		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+		return api.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
 	defer func(rows *sql.Rows) {
 		if err := rows.Close(); err != nil {
@@ -134,7 +133,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 		var currentAccount string
 		var arrayAgg []string
 		if err = rows.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
-			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+			return api.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 
 		accountsBalances := core.AccountsBalances{
@@ -151,7 +150,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 			balancesString := split[1]
 			balances, err := strconv.ParseInt(balancesString, 10, 64)
 			if err != nil {
-				return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+				return api.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
 			accountsBalances[currentAccount][asset] = core.NewMonetaryInt(balances)
 		}
@@ -160,7 +159,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 	}
 
 	if err := rows.Err(); err != nil {
-		return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+		return api.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
 
 	var previous, next string
@@ -173,7 +172,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+			return api.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -183,16 +182,19 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (shared
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.AccountsBalances]{}, s.error(err)
+			return api.Cursor[core.AccountsBalances]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor[core.AccountsBalances]{
-		PageSize: len(accounts),
-		HasMore:  next != "",
-		Previous: previous,
-		Next:     next,
-		Data:     accounts,
+	hasMore := next != ""
+	return api.Cursor[core.AccountsBalances]{
+		PageSize:           int(q.PageSize),
+		HasMore:            hasMore,
+		Previous:           previous,
+		Next:               next,
+		Data:               accounts,
+		PageSizeDeprecated: int(q.PageSize),
+		HasMoreDeprecated:  &hasMore,
 	}, nil
 }

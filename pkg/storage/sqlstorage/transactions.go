@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -134,11 +134,11 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	return sb, t
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
 	txs := make([]core.ExpandedTransaction, 0)
 
 	if q.PageSize == 0 {
-		return sharedapi.Cursor[core.ExpandedTransaction]{Data: txs}, nil
+		return api.Cursor[core.ExpandedTransaction]{Data: txs}, nil
 	}
 
 	sb, t := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
@@ -153,13 +153,13 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return sharedapi.Cursor[core.ExpandedTransaction]{}, err
+		return api.Cursor[core.ExpandedTransaction]{}, err
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
+		return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
 	defer rows.Close()
 
@@ -175,7 +175,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 			&tx.PreCommitVolumes,
 			&tx.PostCommitVolumes,
 		); err != nil {
-			return sharedapi.Cursor[core.ExpandedTransaction]{}, err
+			return api.Cursor[core.ExpandedTransaction]{}, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
@@ -185,7 +185,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		txs = append(txs, tx)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
+		return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
 	}
 
 	var previous, next string
@@ -196,7 +196,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		txs = txs[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
+			return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -207,17 +207,20 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.ExpandedTransaction]{}, s.error(err)
+			return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor[core.ExpandedTransaction]{
-		PageSize: int(q.PageSize),
-		HasMore:  next != "",
-		Previous: previous,
-		Next:     next,
-		Data:     txs,
+	hasMore := next != ""
+	return api.Cursor[core.ExpandedTransaction]{
+		PageSize:           int(q.PageSize),
+		HasMore:            hasMore,
+		Previous:           previous,
+		Next:               next,
+		Data:               txs,
+		PageSizeDeprecated: int(q.PageSize),
+		HasMoreDeprecated:  &hasMore,
 	}, nil
 }
 
@@ -470,14 +473,14 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			postingTxIds, postingIndices, sources, destinations,
 		}
 
-		sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
+		logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
 		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
 		if err != nil {
 			return s.error(err)
 		}
 	}
 
-	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
+	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
 	_, err = executor.ExecContext(ctx, queryTxs, argsTxs...)
 	if err != nil {
 		return s.error(err)

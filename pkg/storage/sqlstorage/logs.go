@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -68,7 +68,7 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		return err
 	}
 
-	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	_, err = executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)
@@ -109,23 +109,23 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cursor[core.Log], error) {
+func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[core.Log], error) {
 	res := []core.Log{}
 
 	if q.PageSize == 0 {
-		return sharedapi.Cursor[core.Log]{Data: res}, nil
+		return api.Cursor[core.Log]{Data: res}, nil
 	}
 
 	sb, t := s.buildLogsQuery(q)
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
-		return sharedapi.Cursor[core.Log]{}, err
+		return api.Cursor[core.Log]{}, err
 	}
 
 	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 	rows, err := executor.QueryContext(ctx, sqlq, args...)
 	if err != nil {
-		return sharedapi.Cursor[core.Log]{}, s.error(err)
+		return api.Cursor[core.Log]{}, s.error(err)
 	}
 	defer rows.Close()
 
@@ -133,19 +133,19 @@ func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cur
 		l := core.Log{}
 		data := sql.NullString{}
 		if err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
-			return sharedapi.Cursor[core.Log]{}, err
+			return api.Cursor[core.Log]{}, err
 		}
 		l.Date = l.Date.UTC()
 
 		l.Data, err = core.HydrateLog(l.Type, data.String)
 		if err != nil {
-			return sharedapi.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")
+			return api.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")
 		}
 		l.Date = l.Date.UTC()
 		res = append(res, l)
 	}
 	if rows.Err() != nil {
-		return sharedapi.Cursor[core.Log]{}, s.error(rows.Err())
+		return api.Cursor[core.Log]{}, s.error(rows.Err())
 	}
 
 	var previous, next string
@@ -156,7 +156,7 @@ func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cur
 		res = res[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Log]{}, s.error(err)
+			return api.Cursor[core.Log]{}, s.error(err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -167,17 +167,20 @@ func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (sharedapi.Cur
 		t.AfterID = res[len(res)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return sharedapi.Cursor[core.Log]{}, s.error(err)
+			return api.Cursor[core.Log]{}, s.error(err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
 
-	return sharedapi.Cursor[core.Log]{
-		PageSize: int(q.PageSize),
-		HasMore:  next != "",
-		Previous: previous,
-		Next:     next,
-		Data:     res,
+	hasMore := next != ""
+	return api.Cursor[core.Log]{
+		PageSize:           int(q.PageSize),
+		HasMore:            hasMore,
+		Previous:           previous,
+		Next:               next,
+		Data:               res,
+		PageSizeDeprecated: int(q.PageSize),
+		HasMoreDeprecated:  &hasMore,
 	}, nil
 }
 

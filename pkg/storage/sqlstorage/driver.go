@@ -6,7 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
@@ -154,7 +154,7 @@ func (d *Driver) Name() string {
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
-	sharedlogging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
+	logging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
 
 	if err = d.db.Initialize(ctx); err != nil {
 		return

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -62,7 +62,7 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 func (ctl *LedgerController) GetLogs(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor sharedapi.Cursor[core.Log]
+	var cursor api.Cursor[core.Log]
 	var logsQuery *ledger.LogsQuery
 	var err error
 

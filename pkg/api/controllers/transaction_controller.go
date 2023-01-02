@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -67,7 +67,7 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor sharedapi.Cursor[core.ExpandedTransaction]
+	var cursor api.Cursor[core.ExpandedTransaction]
 	var txQuery *ledger.TransactionsQuery
 	var err error
 

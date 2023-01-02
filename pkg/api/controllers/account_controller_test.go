@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -177,8 +177,10 @@ func TestGetAccounts(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "no other query params can be set with 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "no other query params can be set with 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "no other query params can be set with 'pagination_token'",
 					}, err)
 				})
 
@@ -191,8 +193,10 @@ func TestGetAccounts(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 
@@ -205,8 +209,10 @@ func TestGetAccounts(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 
@@ -319,8 +325,10 @@ func TestGetAccounts(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid parameter 'balance', should be a number",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid parameter 'balance', should be a number",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid parameter 'balance', should be a number",
 					}, err)
 				})
 
@@ -334,8 +342,10 @@ func TestGetAccounts(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
 					}, err)
 				})
 
@@ -367,8 +377,10 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: controllers.ErrInvalidPageSize.Error(),
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           controllers.ErrInvalidPageSize.Error(),
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: controllers.ErrInvalidPageSize.Error(),
 					}, err)
 				})
 				t.Run("page size over maximum", func(t *testing.T) {
@@ -482,8 +494,10 @@ func TestGetAccount(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid account address format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid account address format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid account address format",
 					}, err)
 				})
 
@@ -532,8 +546,10 @@ func TestPostAccountMetadata(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid account address format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid account address format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid account address format",
 					}, err)
 				})
 
@@ -544,8 +560,10 @@ func TestPostAccountMetadata(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid metadata format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid metadata format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid metadata format",
 					}, err)
 				})
 

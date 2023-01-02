@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
@@ -692,8 +692,10 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transaction format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transaction format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transaction format",
 					}, err)
 				})
 
@@ -704,8 +706,10 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrScriptNoScript,
-						ErrorMessage: "[NO_SCRIPT] no script to execute",
+						ErrorCode:              apierrors.ErrScriptNoScript,
+						ErrorMessage:           "[NO_SCRIPT] no script to execute",
+						ErrorCodeDeprecated:    apierrors.ErrScriptNoScript,
+						ErrorMessageDeprecated: "[NO_SCRIPT] no script to execute",
 					}, err)
 				})
 
@@ -768,8 +772,10 @@ func TestPostTransactionMetadata(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrNotFound,
-						ErrorMessage: "transaction not found",
+						ErrorCode:              apierrors.ErrNotFound,
+						ErrorMessage:           "transaction not found",
+						ErrorCodeDeprecated:    apierrors.ErrNotFound,
+						ErrorMessageDeprecated: "transaction not found",
 					}, err)
 				})
 
@@ -780,8 +786,10 @@ func TestPostTransactionMetadata(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid metadata format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid metadata format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid metadata format",
 					}, err)
 				})
 
@@ -794,8 +802,10 @@ func TestPostTransactionMetadata(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transaction ID",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transaction ID",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transaction ID",
 					}, err)
 				})
 
@@ -876,8 +886,10 @@ func TestGetTransaction(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrNotFound,
-						ErrorMessage: "transaction not found",
+						ErrorCode:              apierrors.ErrNotFound,
+						ErrorMessage:           "transaction not found",
+						ErrorCodeDeprecated:    apierrors.ErrNotFound,
+						ErrorMessageDeprecated: "transaction not found",
 					}, err)
 				})
 
@@ -888,8 +900,10 @@ func TestGetTransaction(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transaction ID",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transaction ID",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transaction ID",
 					}, err)
 				})
 
@@ -1014,8 +1028,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'after'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'after'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'after'",
 					}, err)
 				})
 
@@ -1130,8 +1146,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'start_time'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'start_time'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'start_time'",
 					}, err)
 				})
 
@@ -1144,8 +1162,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'end_time'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'end_time'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'end_time'",
 					}, err)
 				})
 
@@ -1169,8 +1189,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "no other query params can be set with 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "no other query params can be set with 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "no other query params can be set with 'pagination_token'",
 					}, err)
 				})
 
@@ -1183,8 +1205,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 
@@ -1197,8 +1221,10 @@ func TestGetTransactions(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid query value 'pagination_token'",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
 					}, err)
 				})
 
@@ -1244,8 +1270,10 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: controllers.ErrInvalidPageSize.Error(),
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           controllers.ErrInvalidPageSize.Error(),
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: controllers.ErrInvalidPageSize.Error(),
 					}, err)
 				})
 				t.Run("page size over maximum", func(t *testing.T) {
@@ -1625,9 +1653,7 @@ func TestTooManyClient(t *testing.T) {
 					tx, err := store.(*sqlstorage.Store).Schema().BeginTx(context.Background(), &sql.TxOptions{})
 					require.NoError(t, err)
 					defer func(tx *sql.Tx) {
-						if err := tx.Rollback(); err != nil {
-							panic(err)
-						}
+						_ = tx.Rollback()
 					}(tx)
 				}
 
@@ -1731,8 +1757,10 @@ func TestRevertTransaction(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrNotFound,
-						ErrorMessage: "transaction not found",
+						ErrorCode:              apierrors.ErrNotFound,
+						ErrorMessage:           "transaction not found",
+						ErrorCodeDeprecated:    apierrors.ErrNotFound,
+						ErrorMessageDeprecated: "transaction not found",
 					}, err)
 				})
 
@@ -1743,8 +1771,10 @@ func TestRevertTransaction(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "transaction already reverted",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "transaction already reverted",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "transaction already reverted",
 					}, err)
 				})
 
@@ -1755,8 +1785,10 @@ func TestRevertTransaction(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transaction ID",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transaction ID",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transaction ID",
 					}, err)
 				})
 
@@ -1827,8 +1859,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "processing tx 1: transaction has no postings",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "processing tx 1: transaction has no postings",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "processing tx 1: transaction has no postings",
 					}, err)
 				})
 
@@ -1854,8 +1888,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrInsufficientFund,
-						ErrorMessage: "processing tx 0: balance.insufficient.COIN",
+						ErrorCode:              apierrors.ErrInsufficientFund,
+						ErrorMessage:           "processing tx 0: balance.insufficient.COIN",
+						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
+						ErrorMessageDeprecated: "processing tx 0: balance.insufficient.COIN",
 					}, err)
 				})
 
@@ -1901,8 +1937,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrInsufficientFund,
-						ErrorMessage: "processing tx 1: balance.insufficient.GEM",
+						ErrorCode:              apierrors.ErrInsufficientFund,
+						ErrorMessage:           "processing tx 1: balance.insufficient.GEM",
+						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
+						ErrorMessageDeprecated: "processing tx 1: balance.insufficient.GEM",
 					}, err)
 				})
 
@@ -1913,8 +1951,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:    apierrors.ErrValidation,
-						ErrorMessage: "invalid transactions format",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transactions format",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transactions format",
 					}, err)
 				})
 

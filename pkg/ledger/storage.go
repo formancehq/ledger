@@ -4,24 +4,24 @@ import (
 	"context"
 	"time"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/core"
 )
 
 type Store interface {
 	GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
-	GetTransactions(context.Context, TransactionsQuery) (sharedapi.Cursor[core.ExpandedTransaction], error)
+	GetTransactions(context.Context, TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error)
 	GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error)
 	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
 	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
 	GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
-	GetAccounts(context.Context, AccountsQuery) (sharedapi.Cursor[core.Account], error)
-	GetBalances(context.Context, BalancesQuery) (sharedapi.Cursor[core.AccountsBalances], error)
+	GetAccounts(context.Context, AccountsQuery) (api.Cursor[core.Account], error)
+	GetBalances(context.Context, BalancesQuery) (api.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
 	GetLastLog(context.Context) (*core.Log, error)
-	GetLogs(context.Context, *LogsQuery) (sharedapi.Cursor[core.Log], error)
+	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
 	LoadMapping(context.Context) (*core.Mapping, error)
 	GetMigrationsAvailable() ([]core.MigrationInfo, error)
 	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)

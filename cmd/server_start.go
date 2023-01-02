@@ -5,9 +5,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/formancehq/go-libs/sharedlogging"
-	"github.com/formancehq/go-libs/sharedlogging/sharedlogginglogrus"
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/logging/logginglogrus"
+	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -24,7 +24,7 @@ func NewServerStart() *cobra.Command {
 			if viper.GetBool(debugFlag) {
 				l.Level = logrus.DebugLevel
 			}
-			if viper.GetBool(sharedotlptraces.OtelTracesFlag) {
+			if viper.GetBool(otlptraces.OtelTracesFlag) {
 				l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
 					logrus.PanicLevel,
 					logrus.FatalLevel,
@@ -32,8 +32,8 @@ func NewServerStart() *cobra.Command {
 					logrus.WarnLevel,
 				)))
 			}
-			loggerFactory := sharedlogging.StaticLoggerFactory(sharedlogginglogrus.New(l))
-			sharedlogging.SetFactory(loggerFactory)
+			loggerFactory := logging.StaticLoggerFactory(logginglogrus.New(l))
+			logging.SetFactory(loggerFactory)
 
 			app := NewContainer(
 				viper.GetViper(),
@@ -50,7 +50,7 @@ func NewServerStart() *cobra.Command {
 							}
 							go func() {
 								httpErr := http.Serve(listener, h)
-								sharedlogging.Errorf("http.Serve: %s", httpErr)
+								logging.Errorf("http.Serve: %s", httpErr)
 							}()
 							return nil
 						},

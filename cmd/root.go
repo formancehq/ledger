@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/formancehq/go-libs/sharedotlp/pkg/sharedotlptraces"
+	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
 	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
@@ -138,7 +138,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
-	sharedotlptraces.InitOTLPTracesFlags(root.PersistentFlags())
+	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 

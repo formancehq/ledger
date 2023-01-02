@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/go-libs/sharedapi"
+	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -40,7 +40,7 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor sharedapi.Cursor[core.Account]
+	var cursor api.Cursor[core.Account]
 	var accountsQuery *ledger.AccountsQuery
 	var err error
 
@@ -115,7 +115,6 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	}
 
 	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
-
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

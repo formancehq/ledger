@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/sharedapi"
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -13,7 +13,7 @@ import (
 )
 
 type ScriptResponse struct {
-	sharedapi.ErrorResponse
+	api.ErrorResponse
 	Details     string                    `json:"details,omitempty"`
 	Transaction *core.ExpandedTransaction `json:"transaction,omitempty"`
 }
@@ -47,12 +47,14 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code = scriptError.Code
 			message = scriptError.Message
 		} else {
-			sharedlogging.GetLogger(c.Request.Context()).Errorf(
+			logging.GetLogger(c.Request.Context()).Errorf(
 				"internal error executing script: %s", err)
 		}
-		res.ErrorResponse = sharedapi.ErrorResponse{
-			ErrorCode:    code,
-			ErrorMessage: message,
+		res.ErrorResponse = api.ErrorResponse{
+			ErrorCode:              code,
+			ErrorMessage:           message,
+			ErrorCodeDeprecated:    code,
+			ErrorMessageDeprecated: message,
 		}
 		if message != "" {
 			res.Details = apierrors.EncodeLink(message)

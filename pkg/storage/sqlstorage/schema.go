@@ -7,7 +7,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/formancehq/go-libs/sharedlogging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 )
 
@@ -33,15 +33,15 @@ func (s *baseSchema) Name() string {
 }
 
 func (s *baseSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	sharedlogging.GetLogger(ctx).Debugf("QueryContext: %s %s", query, args)
+	logging.GetLogger(ctx).Debugf("QueryContext: %s %s", query, args)
 	return s.DB.QueryContext(ctx, query, args...)
 }
 func (s *baseSchema) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	sharedlogging.GetLogger(ctx).Debugf("QueryRowContext: %s %s", query, args)
+	logging.GetLogger(ctx).Debugf("QueryRowContext: %s %s", query, args)
 	return s.DB.QueryRowContext(ctx, query, args...)
 }
 func (s *baseSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	sharedlogging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	return s.DB.ExecContext(ctx, query, args...)
 }
 func (s *baseSchema) Close(ctx context.Context) error {

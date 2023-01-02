@@ -7,7 +7,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/go-libs/sharedpublish"
+	"github.com/formancehq/go-libs/publish"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -25,7 +25,7 @@ func TestMonitor(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	p := sharedpublish.NewTopicMapperPublisher(pubSub, map[string]string{
+	p := publish.NewTopicMapperPublisher(pubSub, map[string]string{
 		"*": "testing",
 	})
 	m := newLedgerMonitor(p)

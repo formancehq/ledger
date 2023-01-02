@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"net/http"
 
-	sharedhealth "github.com/formancehq/go-libs/sharedhealth/pkg"
+	"github.com/formancehq/go-libs/health"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
@@ -44,6 +44,6 @@ func Module(cfg Config) fx.Option {
 		controllers.Module,
 		fx.Provide(NewAPI),
 		fx.Supply(routes.UseScopes(cfg.UseScopes)),
-		sharedhealth.Module(),
+		health.Module(),
 	)
 }
