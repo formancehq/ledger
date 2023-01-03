@@ -143,6 +143,7 @@ const (
 	BalanceOperatorGte BalanceOperator = "gte"
 	BalanceOperatorLt  BalanceOperator = "lt"
 	BalanceOperatorLte BalanceOperator = "lte"
+	BalanceOperatorNe  BalanceOperator = "ne"
 
 	DefaultBalanceOperator = BalanceOperatorGte
 )
@@ -153,6 +154,7 @@ func (b BalanceOperator) IsValid() bool {
 		BalanceOperatorGt,
 		BalanceOperatorGte,
 		BalanceOperatorLt,
+		BalanceOperatorNe,
 		BalanceOperatorLte:
 		return true
 	}
