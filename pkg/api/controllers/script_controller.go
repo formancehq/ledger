@@ -14,7 +14,6 @@ import (
 
 type ScriptResponse struct {
 	api.ErrorResponse
-	Details     string                    `json:"details,omitempty"`
 	Transaction *core.ExpandedTransaction `json:"transaction,omitempty"`
 }
 

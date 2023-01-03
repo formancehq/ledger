@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -134,28 +135,55 @@ func TestGetBalances(t *testing.T) {
 				to := sqlstorage.BalancesPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
-				t.Run("valid empty pagination_token", func(t *testing.T) {
+
+				t.Run("valid empty "+controllers.QueryKeyCursor, func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
+				t.Run("valid empty "+controllers.QueryKeyCursorDeprecated, func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":            []string{"bob"},
+						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
+					rsp = internal.GetBalances(api, url.Values{
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":                    []string{"bob"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("invalid pagination_token", func(t *testing.T) {
+				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{
-						"pagination_token": []string{"invalid"},
+						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":                              []string{"bob"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
+					rsp = internal.GetBalances(api, url.Values{
+						controllers.QueryKeyCursor: []string{"invalid"},
 					})
 
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-					assert.Contains(t, rsp.Body.String(), `error_message":"invalid query value 'pagination_token'"`)
+					assert.Contains(t, rsp.Body.String(),
+						fmt.Sprintf(`"invalid '%s' query param"`, controllers.QueryKeyCursor))
+				})
+
+				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
+					rsp = internal.GetBalances(api, url.Values{
+						controllers.QueryKeyCursorDeprecated: []string{"invalid"},
+					})
+
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+					assert.Contains(t, rsp.Body.String(),
+						fmt.Sprintf(`"invalid '%s' query param"`, controllers.QueryKeyCursorDeprecated))
 				})
 
 				t.Run("all", func(t *testing.T) {

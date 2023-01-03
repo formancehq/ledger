@@ -10,28 +10,30 @@ import (
 const (
 	MaxPageSize     = 1000
 	DefaultPageSize = ledger.QueryDefaultPageSize
+
+	QueryKeyCursor = "cursor"
+	// Deprecated
+	QueryKeyCursorDeprecated = "pagination_token"
 )
 
 var (
-	ErrInvalidPageSize = ledger.NewValidationError("invalid query value 'page_size'")
+	ErrInvalidPageSize = ledger.NewValidationError("invalid 'page_size' query param")
 )
 
 func getPageSize(c *gin.Context) (uint, error) {
-	var (
-		pageSize uint64
-		err      error
-	)
-	if pageSizeParam := c.Query("page_size"); pageSizeParam != "" {
-		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
-		if err != nil {
-			return 0, ErrInvalidPageSize
-		}
-
-		if pageSize > MaxPageSize {
-			pageSize = MaxPageSize
-		}
-	} else {
-		pageSize = DefaultPageSize
+	pageSizeParam := c.Query("page_size")
+	if pageSizeParam == "" {
+		return DefaultPageSize, nil
 	}
+
+	pageSize, err := strconv.ParseUint(pageSizeParam, 10, 32)
+	if err != nil {
+		return 0, ErrInvalidPageSize
+	}
+
+	if pageSize > MaxPageSize {
+		return MaxPageSize, nil
+	}
+
 	return uint(pageSize), nil
 }

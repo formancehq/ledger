@@ -140,16 +140,28 @@ paths:
             type: string
             enum: [gte, lte, gt, lt, e, ne]
             example: gte
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: pagination_token
           in: query
           description: |
             Parameter used in pagination requests. Maximum page size is set to 15.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
-            No other parameters can be set when the pagination token is set.
+            No other parameters can be set when this parameter is set.
+            Deprecated: Use cursor instead.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -522,16 +534,28 @@ paths:
             The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
           schema:
             type: string
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: pagination_token
           in: query
           description: |
             Parameter used in pagination requests. Maximum page size is set to 15.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
-            No other parameters can be set when the pagination token is set.
+            No other parameters can be set when this parameter is set.
+            Deprecated: Use cursor instead.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
         - name: metadata
           in: query
           description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
@@ -816,15 +840,27 @@ paths:
           schema:
             type: string
             example: users:003
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: pagination_token
           in: query
           description: |-
             Parameter used in pagination requests.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
+            Deprecated: Use cursor instead.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -940,16 +976,28 @@ paths:
             The format is RFC3339 and is exclusive (for example, 12:00:01 excludes the first second of the minute).
           schema:
             type: string
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: pagination_token
           in: query
           description: |
             Parameter used in pagination requests. Maximum page size is set to 15.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
-            No other parameters can be set when the pagination token is set.
+            No other parameters can be set when this parameter is set.
+            Deprecated: Use cursor instead.
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -1462,15 +1510,9 @@ components:
         name:
           type: string
           example: ledger001
-        version:
-          type: string
-          example: v1.8.1
         storage:
           type: object
           properties:
-            driver:
-              type: string
-              example: postgres
             migrations:
               type: array
               items:
@@ -1484,6 +1526,9 @@ components:
           format: int64
           minimum: 0
           example: 11
+        name:
+          type: string
+          example: migrations:001
         date:
           type: string
           format: date-time

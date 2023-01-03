@@ -160,17 +160,25 @@ func TestGetAccounts(t *testing.T) {
 				to := sqlstorage.AccPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
-				t.Run("valid empty pagination_token", func(t *testing.T) {
+
+				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
+				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":            []string{"bob"},
+						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
+					})
+					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+				})
+
+				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":                    []string{"bob"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -178,15 +186,16 @@ func TestGetAccounts(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "no other query params can be set with 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "no other query params can be set with 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 					}, err)
 				})
 
-				t.Run("invalid pagination_token", func(t *testing.T) {
+				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"pagination_token": []string{"invalid"},
+						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":                              []string{"bob"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -194,15 +203,15 @@ func TestGetAccounts(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
 					}, err)
 				})
 
-				t.Run("invalid pagination_token not base64", func(t *testing.T) {
+				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"pagination_token": []string{"\n*@"},
+						controllers.QueryKeyCursor: []string{"invalid"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -210,9 +219,57 @@ func TestGetAccounts(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+					}, err)
+				})
+
+				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						controllers.QueryKeyCursorDeprecated: []string{"invalid"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
+					}, err)
+				})
+
+				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						controllers.QueryKeyCursor: []string{"\n*@"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+					}, err)
+				})
+
+				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
+					rsp = internal.GetAccounts(api, url.Values{
+						controllers.QueryKeyCursorDeprecated: []string{"\n*@"},
+					})
+					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					assert.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
 					}, err)
 				})
 

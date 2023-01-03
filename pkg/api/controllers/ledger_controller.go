@@ -3,11 +3,11 @@ package controllers
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -27,7 +27,7 @@ type Info struct {
 }
 
 type storageInfo struct {
-	Migrations []core.MigrationInfo `json:"migration"`
+	Migrations []core.MigrationInfo `json:"migrations"`
 }
 
 func (ctl *LedgerController) GetInfo(c *gin.Context) {
@@ -62,41 +62,72 @@ func (ctl *LedgerController) GetStats(c *gin.Context) {
 func (ctl *LedgerController) GetLogs(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor api.Cursor[core.Log]
-	var logsQuery *ledger.LogsQuery
-	var err error
+	logsQuery := ledger.NewLogsQuery()
 
-	if c.Query("pagination_token") != "" {
+	if c.Query(QueryKeyCursor) != "" {
 		if c.Query("after") != "" || c.Query("start_time") != "" ||
 			c.Query("end_time") != "" || c.Query("page_size") != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
-				"no other query params can be set with 'pagination_token'"))
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if decErr != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.LogsPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+		if err := json.Unmarshal(res, &token); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
-		logsQuery = ledger.NewLogsQuery().
+		logsQuery = logsQuery.
 			WithAfterID(token.AfterID).
 			WithStartTimeFilter(token.StartTime).
 			WithEndTimeFilter(token.EndTime).
 			WithPageSize(token.PageSize)
+
+	} else if c.Query(QueryKeyCursorDeprecated) != "" {
+		if c.Query("after") != "" || c.Query("start_time") != "" ||
+			c.Query("end_time") != "" || c.Query("page_size") != "" {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		token := sqlstorage.LogsPaginationToken{}
+		if err := json.Unmarshal(res, &token); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		logsQuery = logsQuery.
+			WithAfterID(token.AfterID).
+			WithStartTimeFilter(token.StartTime).
+			WithEndTimeFilter(token.EndTime).
+			WithPageSize(token.PageSize)
+
 	} else {
+		var err error
 		var afterIDParsed uint64
 		if c.Query("after") != "" {
 			afterIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+				apierrors.ResponseError(c, ledger.NewValidationError(
+					"invalid 'after' query param"))
 				return
 			}
 		}
@@ -105,7 +136,8 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 		if c.Query("start_time") != "" {
 			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+				apierrors.ResponseError(c, ledger.NewValidationError(
+					"invalid 'start_time' query param"))
 				return
 			}
 		}
@@ -113,7 +145,8 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 		if c.Query("end_time") != "" {
 			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+				apierrors.ResponseError(c, ledger.NewValidationError(
+					"invalid 'end_time' query param"))
 				return
 			}
 		}
@@ -124,14 +157,14 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 			return
 		}
 
-		logsQuery = ledger.NewLogsQuery().
+		logsQuery = logsQuery.
 			WithAfterID(afterIDParsed).
 			WithStartTimeFilter(startTimeParsed).
 			WithEndTimeFilter(endTimeParsed).
 			WithPageSize(pageSize)
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetLogs(c.Request.Context(), logsQuery)
+	cursor, err := l.(*ledger.Ledger).GetLogs(c.Request.Context(), logsQuery)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
