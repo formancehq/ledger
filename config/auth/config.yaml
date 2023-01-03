@@ -3,6 +3,10 @@ clients:
     secrets:
     - testing
     name: testing
+  - id: wallets
+    secrets:
+    - wallets
+    name: wallets
   - id: control
     secrets:
       - mysupersecret

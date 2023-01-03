@@ -15,7 +15,7 @@ services:
       - "./config/traefik:/etc/traefik:ro"
 
   auth-dex:
-    image: "ghcr.io/formancehq/auth-dex:v0.2.3"
+    image: "ghcr.io/formancehq/auth-dex:v0.3.1"
     restart: always
     volumes:
       - ./config/dex/dex-config.yaml:/etc/dex/config.docker.yaml
@@ -39,7 +39,7 @@ services:
       - traefik.http.middlewares.jwt.plugin.auth.Issuer=http://localhost/api/auth
 
   auth:
-    image: "ghcr.io/formancehq/auth:v0.2.3"
+    image: "ghcr.io/formancehq/auth:v0.3.1"
     restart: always
     network_mode: service:auth-dex
     command: serve
@@ -66,7 +66,7 @@ services:
       - traefik.http.routers.auth.middlewares=cors@docker,auth@docker
 
   control:
-    image: "ghcr.io/formancehq/control:v1.4.0-rc.1"
+    image: "ghcr.io/formancehq/control:v1.4.1"
     restart: always
     network_mode: service:gateway
     environment:
@@ -149,14 +149,14 @@ services:
     environment:
       POSTGRES_USER: "formance"
       POSTGRES_PASSWORD: "formance"
-      POSTGRES_MULTIPLE_DATABASES: "auth,ledger,webhooks,payments"
+      POSTGRES_MULTIPLE_DATABASES: "auth,ledger,webhooks,payments,wallets"
       PGDATA: /data/postgres
     volumes:
       - postgres_data:/data/postgres
       - ./config/postgres:/docker-entrypoint-initdb.d
 
   ledger:
-    image: "ghcr.io/formancehq/ledger:v1.8.0"
+    image: "ghcr.io/formancehq/ledger:v1.8.1"
     restart: always
     depends_on:
       postgres:
@@ -178,8 +178,27 @@ services:
       - traefik.http.routers.ledger.middlewares=jwt@docker,ledger@docker,cors@docker
       - traefik.http.middlewares.ledger.stripprefix.prefixes=/api/ledger
 
+  wallets:
+    image: "ghcr.io/formancehq/wallets:v0.2.0"
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      STACK_CLIENT_ID: wallets
+      STACK_CLIENT_SECRET: wallets
+      STACK_URL: http://localhost
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/wallets"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wallets.rule=Host(`localhost`) && PathPrefix(`/api/wallets`)
+      - traefik.http.routers.wallets.entrypoints=web
+      - traefik.http.services.wallets.loadbalancer.server.port=8080
+      - traefik.http.routers.wallets.middlewares=jwt@docker,wallets@docker,cors@docker
+      - traefik.http.middlewares.wallets.stripprefix.prefixes=/api/wallets
+
   payments:
-    image: "ghcr.io/formancehq/payments:v0.4.0"
+    image: "ghcr.io/formancehq/payments:v0.4.3"
     restart: always
     depends_on:
       postgres:
@@ -200,7 +219,7 @@ services:
       - traefik.http.middlewares.payments.stripprefix.prefixes=/api/payments
 
   payments-migrate:
-    image: "ghcr.io/formancehq/payments:v0.4.0"
+    image: "ghcr.io/formancehq/payments:v0.4.3"
     command: migrate up
     depends_on:
       postgres:
@@ -211,7 +230,7 @@ services:
       - traefik.enable=false
 
   opensearch:
-    image: "opensearchproject/opensearch:2.1.0"
+    image: "opensearchproject/opensearch:2.2.1"
     restart: always
     environment:
       discovery.type: single-node
@@ -225,7 +244,7 @@ services:
       - opensearch_data:/usr/share/opensearch/data
 
   opensearch-dashboards:
-    image: "opensearchproject/opensearch-dashboards:2.1.0"
+    image: "opensearchproject/opensearch-dashboards:2.2.1"
     environment:
       OPENSEARCH_HOSTS: '["http://opensearch:9200"]' # must be a string with no spaces when specified as an environment variable
       DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
@@ -257,7 +276,7 @@ services:
       OPENSEARCH_BASIC_AUTH_ENABLED: "false"
 
   search:
-    image: "ghcr.io/formancehq/search:v0.5.1"
+    image: "ghcr.io/formancehq/search:v0.5.2"
     restart: always
     healthcheck:
       test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
@@ -280,7 +299,7 @@ services:
       - traefik.http.middlewares.search.stripprefix.prefixes=/api/search
 
   webhooks:
-    image: "ghcr.io/formancehq/webhooks:v0.5.0"
+    image: "ghcr.io/formancehq/webhooks:v0.6.0"
     restart: always
     healthcheck:
       test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
@@ -303,7 +322,7 @@ services:
       - traefik.http.middlewares.webhooks.stripprefix.prefixes=/api/webhooks
 
   webhooks-worker:
-    image: "ghcr.io/formancehq/webhooks:v0.5.0"
+    image: "ghcr.io/formancehq/webhooks:v0.6.0"
     command: worker
     restart: always
     healthcheck:
