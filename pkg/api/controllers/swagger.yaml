@@ -19,6 +19,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfigInfoResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/_info:
     get:
@@ -41,6 +47,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LedgerInfoResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/accounts:
     head:
@@ -80,6 +92,13 @@ paths:
                 type: integer
                 format: int64
                 minimum: 0
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     get:
       summary: List accounts from a ledger.
       description: List accounts from a ledger, sorted by address in descending order.
@@ -156,22 +175,9 @@ paths:
           content:
             application/json:
               schema:
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - properties:
-                          data:
-                            items:
-                              $ref: '#/components/schemas/Account'
-                            type: array
-                        type: object
-                        required:
-                          - data
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/AccountsCursorResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -208,14 +214,9 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  data:
-                    $ref: '#/components/schemas/AccountWithVolumesAndBalances'
-                type: object
-                required:
-                  - data
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/AccountResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -257,8 +258,8 @@ paths:
         "204":
           description: No Content
           content: {}
-        "400":
-          description: Bad Request
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -285,6 +286,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MappingResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     put:
       tags:
         - Mapping
@@ -311,6 +319,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MappingResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/script:
     post:
@@ -354,7 +368,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScriptResult'
+                $ref: '#/components/schemas/ScriptResponse'
 
   /{ledger}/stats:
     get:
@@ -379,6 +393,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/transactions:
     head:
@@ -452,6 +472,13 @@ paths:
                 type: integer
                 format: int64
                 minimum: 0
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     get:
       tags:
         - Transactions
@@ -547,27 +574,14 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - type: object
-                        properties:
-                          data:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/Transaction'
-                        required:
-                          - data
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/TransactionsCursorResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
     post:
       tags:
         - Transactions
@@ -604,14 +618,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionsResponse'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "409":
-          description: Conflict
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -647,14 +655,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "404":
-          description: Not Found
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -693,14 +695,8 @@ paths:
         "204":
           description: No Content
           content: {}
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "404":
-          description: Not Found
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -736,14 +732,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "404":
-          description: Not Found
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -776,14 +766,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionsResponse'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "409":
-          description: Conflict
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -831,24 +815,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - type: object
-                        properties:
-                          data:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/AccountsBalances'
-                        required:
-                          - data
-
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/BalancesCursorResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -881,14 +850,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    $ref: '#/components/schemas/AssetsBalances'
-                required:
-                  - data
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/AggregateBalancesResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -956,23 +920,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - cursor
-                properties:
-                  cursor:
-                    allOf:
-                      - $ref: '#/components/schemas/Cursor'
-                      - type: object
-                        properties:
-                          data:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/Log'
-                        required:
-                          - data
-        "400":
-          description: Bad Request
+                $ref: '#/components/schemas/LogsCursorResponse'
+        default:
+          description: Error
           content:
             application/json:
               schema:
@@ -980,6 +930,90 @@ paths:
 
 components:
   schemas:
+    AccountsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          allOf:
+            - $ref: '#/components/schemas/Cursor'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/components/schemas/Account'
+                  type: array
+              type: object
+              required:
+                - data
+
+    BalancesCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          allOf:
+            - $ref: '#/components/schemas/Cursor'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/components/schemas/AccountsBalances'
+                  type: array
+              type: object
+              required:
+                - data
+
+    TransactionsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          allOf:
+            - $ref: '#/components/schemas/Cursor'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/components/schemas/Transaction'
+                  type: array
+              type: object
+              required:
+                - data
+
+    LogsCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          allOf:
+            - $ref: '#/components/schemas/Cursor'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/components/schemas/Log'
+                  type: array
+              type: object
+              required:
+                - data
+
+    AccountResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AccountWithVolumesAndBalances'
+
+    AggregateBalancesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AssetsBalances'
+
     Config:
       type: object
       properties:
@@ -987,11 +1021,13 @@ components:
           $ref: '#/components/schemas/LedgerStorage'
       required:
         - storage
+
     Metadata:
       type: object
       nullable: true
       additionalProperties: {}
       example: { admin: true, a: { nested: { key: value } } }
+
     ConfigInfo:
       type: object
       properties:
@@ -1005,6 +1041,7 @@ components:
         - config
         - server
         - version
+
     LedgerStorage:
       type: object
       properties:
@@ -1018,7 +1055,7 @@ components:
         - driver
         - ledgers
 
-    ScriptResult:
+    ScriptResponse:
       type: object
       properties:
         errorCode:
@@ -1063,6 +1100,7 @@ components:
           type: object
           properties: {}
           example: { admin: true, a: { nested: { key: value}} }
+
     AccountWithVolumesAndBalances:
       type: object
       required:
@@ -1129,6 +1167,7 @@ components:
       required:
         - accounts
         - expr
+
     Mapping:
       type: object
       nullable: true
@@ -1139,6 +1178,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Contract'
+
     Posting:
       type: object
       properties:
@@ -1161,6 +1201,7 @@ components:
         - asset
         - destination
         - source
+
     Script:
       type: object
       properties:
@@ -1183,6 +1224,7 @@ components:
           $ref: '#/components/schemas/Metadata'
       required:
         - plain
+
     Transaction:
       type: object
       properties:
@@ -1210,6 +1252,7 @@ components:
         - postings
         - timestamp
         - txid
+
     TransactionData:
       type: object
       properties:
@@ -1227,6 +1270,7 @@ components:
           $ref: '#/components/schemas/Metadata'
       required:
         - postings
+
     Transactions:
       required:
         - transactions
@@ -1236,6 +1280,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TransactionData'
+
     PostTransaction:
       type: object
       properties:
@@ -1267,6 +1312,7 @@ components:
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
+
     Stats:
       type: object
       properties:
@@ -1281,26 +1327,42 @@ components:
       required:
         - accounts
         - transactions
+
     Cursor:
       type: object
       required:
+        - pageSize
+        - hasMore
         - page_size
+        - has_more
       properties:
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
+          example: 15
+        hasMore:
+          type: boolean
+          example: false
         page_size:
           type: integer
           format: int64
           minimum: 1
           maximum: 1000
           example: 15
+          deprecated: true
         has_more:
           type: boolean
           example: false
+          deprecated: true
         previous:
           type: string
           example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
         next:
           type: string
           example: ""
+
     Log:
       type: object
       properties:
@@ -1339,6 +1401,7 @@ components:
           type: array
       required:
         - data
+
     TransactionResponse:
       properties:
         data:
@@ -1346,6 +1409,7 @@ components:
       type: object
       required:
         - data
+
     StatsResponse:
       properties:
         data:
@@ -1353,11 +1417,13 @@ components:
       type: object
       required:
         - data
+
     MappingResponse:
       properties:
         data:
           $ref: '#/components/schemas/Mapping'
       type: object
+
     ConfigInfoResponse:
       properties:
         data:
@@ -1365,6 +1431,7 @@ components:
       type: object
       required:
         - data
+
     Volume:
       type: object
       properties:
@@ -1381,6 +1448,7 @@ components:
         input: 100
         output: 20
         balance: 80
+
     Volumes:
       type: object
       additionalProperties:
@@ -1394,6 +1462,7 @@ components:
           input: 100
           output: 10
           balance: 90
+
     AggregatedVolumes:
       type: object
       additionalProperties:
