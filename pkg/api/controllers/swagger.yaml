@@ -175,16 +175,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "no other query params can be set with 'pagination_token'"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/accounts/{address}:
     get:
@@ -228,17 +219,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid account address format"
-
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/accounts/{address}/metadata:
     post:
@@ -281,16 +262,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid account address format"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/mapping:
     get:
@@ -377,8 +349,8 @@ paths:
 
             On failure, it will also return a 200 status code, and the following fields:
               - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.
-              - `error_code`: contains the string code of the error
-              - `error_message`: contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.
+              - `errorCode` and `error_code` (deprecated): contains the string code of the error
+              - `errorMessage` and `error_message` (deprecated): contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.
           content:
             application/json:
               schema:
@@ -595,16 +567,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "no other query params can be set with 'pagination_token'"
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       tags:
         - Transactions
@@ -646,31 +609,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "transaction has no postings"
+                $ref: '#/components/schemas/ErrorResponse'
         "409":
           description: Conflict
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "CONFLICT"
-                  error_message:
-                    type: string
-                    example: "conflict error on reference"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/transactions/{txid}:
     get:
@@ -707,31 +652,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid transaction ID"
+                $ref: '#/components/schemas/ErrorResponse'
         "404":
           description: Not Found
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "NOT_FOUND"
-                  error_message:
-                    type: string
-                    example: "transaction not found"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/transactions/{txid}/metadata:
     post:
@@ -771,31 +698,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid transaction ID"
+                $ref: '#/components/schemas/ErrorResponse'
         "404":
           description: Not Found
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "NOT_FOUND"
-                  error_message:
-                    type: string
-                    example: "transaction not found"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/transactions/{txid}/revert:
     post:
@@ -832,31 +741,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid transaction ID"
+                $ref: '#/components/schemas/ErrorResponse'
         "404":
           description: Not Found
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "NOT_FOUND"
-                  error_message:
-                    type: string
-                    example: "transaction not found"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/transactions/batch:
     post:
@@ -890,31 +781,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid transactions format"
+                $ref: '#/components/schemas/ErrorResponse'
         "409":
           description: Conflict
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "CONFLICT"
-                  error_message:
-                    type: string
-                    example: "conflict error on reference"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/balances:
     get:
@@ -979,16 +852,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "no other query params can be set with 'pagination_token'"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/aggregate/balances:
     get:
@@ -1028,16 +892,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "invalid address"
+                $ref: '#/components/schemas/ErrorResponse'
 
   /{ledger}/log:
     get:
@@ -1121,16 +976,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - error_code
-                properties:
-                  error_code:
-                    type: string
-                    example: "VALIDATION"
-                  error_message:
-                    type: string
-                    example: "no other query params can be set with 'pagination_token'"
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   schemas:
@@ -1171,26 +1017,37 @@ components:
       required:
         - driver
         - ledgers
+
     ScriptResult:
       type: object
       properties:
+        errorCode:
+          $ref: '#/components/schemas/ErrorsEnum'
+        errorMessage:
+          type: string
+          example: "account had insufficient funds"
         details:
           type: string
           example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+        transaction:
+          $ref: '#/components/schemas/Transaction'
         error_code:
           type: string
           enum:
             - INTERNAL
             - INSUFFICIENT_FUND
-            - COMPILATION_FAILED
+            - VALIDATION
+            - CONFLICT
             - NO_SCRIPT
+            - COMPILATION_FAILED
             - METADATA_OVERRIDE
           example: INSUFFICIENT_FUND
+          deprecated: true
         error_message:
           type: string
-          example: "account had insufficient funds"
-        transaction:
-          $ref: '#/components/schemas/Transaction'
+          example: "[INSUFFICIENT_FUND] account had insufficient funds"
+          deprecated: true
+
     Account:
       type: object
       required:
@@ -1454,7 +1311,9 @@ components:
           example: 1234
         type:
           type: string
-          example: NEW_TRANSACTION
+          enum:
+            - NEW_TRANSACTION
+            - SET_METADATA
         data:
           type: object
           properties: {}
@@ -1550,23 +1409,47 @@ components:
             input: 100
             output: 10
             balance: 90
-    ErrorCode:
+
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+      properties:
+        errorCode:
+          $ref: '#/components/schemas/ErrorsEnum'
+        errorMessage:
+          type: string
+          example: "[INSUFFICIENT_FUND] account had insufficient funds"
+        details:
+          type: string
+          example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+        error_code:
+          type: string
+          enum:
+            - INTERNAL
+            - INSUFFICIENT_FUND
+            - VALIDATION
+            - CONFLICT
+            - NO_SCRIPT
+            - COMPILATION_FAILED
+            - METADATA_OVERRIDE
+          deprecated: true
+        error_message:
+          type: string
+          example: "[INSUFFICIENT_FUND] account had insufficient funds"
+          deprecated: true
+
+    ErrorsEnum:
       type: string
       enum:
         - INTERNAL
         - INSUFFICIENT_FUND
         - VALIDATION
         - CONFLICT
-    ErrorResponse:
-      type: object
-      required:
-        - error_code
-      properties:
-        error_code:
-          $ref: '#/components/schemas/ErrorCode'
-        error_message:
-          type: string
-          example: internal error
+        - NO_SCRIPT
+        - COMPILATION_FAILED
+        - METADATA_OVERRIDE
+      example: INSUFFICIENT_FUND
 
     LedgerInfoResponse:
       properties:
