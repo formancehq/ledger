@@ -1311,7 +1311,9 @@ components:
           example: 1234
         type:
           type: string
-          example: NEW_TRANSACTION
+          enum:
+            - NEW_TRANSACTION
+            - SET_METADATA
         data:
           type: object
           properties: {}
