@@ -187,8 +187,8 @@ func TestGetLogs(t *testing.T) {
 
 				t.Run("time range", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
-						"start_time": []string{log0Timestamp.Format(time.RFC3339)},
-						"end_time":   []string{log1Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyStartTime: []string{log0Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyEndTime:   []string{log1Timestamp.Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Log](t, rsp.Body)
@@ -198,7 +198,7 @@ func TestGetLogs(t *testing.T) {
 
 				t.Run("only start time", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
-						"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Log](t, rsp.Body)
@@ -207,7 +207,7 @@ func TestGetLogs(t *testing.T) {
 
 				t.Run("only end time", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
-						"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Log](t, rsp.Body)
@@ -216,7 +216,7 @@ func TestGetLogs(t *testing.T) {
 
 				t.Run("invalid start time", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
-						"start_time": []string{"invalid time"},
+						controllers.QueryKeyStartTime: []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
@@ -224,15 +224,15 @@ func TestGetLogs(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid 'start_time' query param",
+						ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid 'start_time' query param",
+						ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
 					}, err)
 				})
 
 				t.Run("invalid end time", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
-						"end_time": []string{"invalid time"},
+						controllers.QueryKeyEndTime: []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
@@ -240,9 +240,9 @@ func TestGetLogs(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid 'end_time' query param",
+						ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid 'end_time' query param",
+						ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
 					}, err)
 				})
 
@@ -253,13 +253,6 @@ func TestGetLogs(t *testing.T) {
 				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
 						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
-				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp := internal.GetLedgerLogs(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
@@ -281,23 +274,6 @@ func TestGetLogs(t *testing.T) {
 					}, err)
 				})
 
-				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp := internal.GetLedgerLogs(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":                              []string{"1"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
-					}, err)
-				})
-
 				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
 						controllers.QueryKeyCursor: []string{"invalid"},
@@ -314,22 +290,6 @@ func TestGetLogs(t *testing.T) {
 					}, err)
 				})
 
-				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp := internal.GetLedgerLogs(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{"invalid"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-					}, err)
-				})
-
 				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{
 						controllers.QueryKeyCursor: []string{"@!/"},
@@ -343,22 +303,6 @@ func TestGetLogs(t *testing.T) {
 						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
 						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-					}, err)
-				})
-
-				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp := internal.GetLedgerLogs(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{"@!/"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
 					}, err)
 				})
 

@@ -56,8 +56,8 @@ func TestAccounts(t *testing.T) {
 			}, "invalid balance in storage should panic")
 	})
 
-	t.Run("panic invalid balance_operator", func(t *testing.T) {
-		assert.PanicsWithValue(t, "invalid balance_operator parameter", func() {
+	t.Run("panic invalid balance operator", func(t *testing.T) {
+		assert.PanicsWithValue(t, "invalid balance operator parameter", func() {
 			q := ledger.AccountsQuery{
 				PageSize: 10,
 				Filters: ledger.AccountsQueryFilters{
@@ -70,7 +70,7 @@ func TestAccounts(t *testing.T) {
 		}, "invalid balance operator in storage should panic")
 	})
 
-	t.Run("success balance_operator", func(t *testing.T) {
+	t.Run("success balance operator", func(t *testing.T) {
 		q := ledger.AccountsQuery{
 			PageSize: 10,
 			Filters: ledger.AccountsQueryFilters{
@@ -80,6 +80,6 @@ func TestAccounts(t *testing.T) {
 		}
 
 		_, err := store.GetAccounts(context.Background(), q)
-		assert.NoError(t, err, "balance_operator filter should not fail")
+		assert.NoError(t, err, "balance operator filter should not fail")
 	})
 }

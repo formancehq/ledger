@@ -65,8 +65,13 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 	logsQuery := ledger.NewLogsQuery()
 
 	if c.Query(QueryKeyCursor) != "" {
-		if c.Query("after") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" || c.Query("page_size") != "" {
+		if c.Query("after") != "" ||
+			c.Query(QueryKeyStartTime) != "" ||
+			c.Query(QueryKeyStartTimeDeprecated) != "" ||
+			c.Query(QueryKeyEndTime) != "" ||
+			c.Query(QueryKeyEndTimeDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
@@ -93,8 +98,13 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 			WithPageSize(token.PageSize)
 
 	} else if c.Query(QueryKeyCursorDeprecated) != "" {
-		if c.Query("after") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" || c.Query("page_size") != "" {
+		if c.Query("after") != "" ||
+			c.Query(QueryKeyStartTime) != "" ||
+			c.Query(QueryKeyStartTimeDeprecated) != "" ||
+			c.Query(QueryKeyEndTime) != "" ||
+			c.Query(QueryKeyEndTimeDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
 			return
@@ -133,20 +143,32 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 		}
 
 		var startTimeParsed, endTimeParsed time.Time
-		if c.Query("start_time") != "" {
-			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+		if c.Query(QueryKeyStartTime) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTime))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError(
-					"invalid 'start_time' query param"))
+				apierrors.ResponseError(c, ErrInvalidStartTime)
+				return
+			}
+		}
+		if c.Query(QueryKeyStartTimeDeprecated) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTimeDeprecated))
+			if err != nil {
+				apierrors.ResponseError(c, ErrInvalidStartTimeDeprecated)
 				return
 			}
 		}
 
-		if c.Query("end_time") != "" {
-			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+		if c.Query(QueryKeyEndTime) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTime))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError(
-					"invalid 'end_time' query param"))
+				apierrors.ResponseError(c, ErrInvalidEndTime)
+				return
+			}
+		}
+		if c.Query(QueryKeyEndTimeDeprecated) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTimeDeprecated))
+			if err != nil {
+				apierrors.ResponseError(c, ErrInvalidEndTimeDeprecated)
 				return
 			}
 		}

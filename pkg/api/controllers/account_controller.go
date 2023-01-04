@@ -46,8 +46,10 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			c.Query("address") != "" ||
 			len(c.QueryMap("metadata")) > 0 ||
 			c.Query("balance") != "" ||
-			c.Query("balance_operator") != "" ||
-			c.Query("page_size") != "" {
+			c.Query(QueryKeyBalanceOperator) != "" ||
+			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
@@ -81,8 +83,10 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			c.Query("address") != "" ||
 			len(c.QueryMap("metadata")) > 0 ||
 			c.Query("balance") != "" ||
-			c.Query("balance_operator") != "" ||
-			c.Query("page_size") != "" {
+			c.Query(QueryKeyBalanceOperator) != "" ||
+			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
 			return
@@ -121,14 +125,10 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		var balanceOperator = ledger.DefaultBalanceOperator
-		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
-			var ok bool
-			if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {
-				apierrors.ResponseError(c, ledger.NewValidationError(
-					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
-				return
-			}
+		balanceOperator, err := getBalanceOperator(c)
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
 		}
 
 		pageSize, err := getPageSize(c)

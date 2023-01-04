@@ -143,25 +143,10 @@ func TestGetBalances(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("valid empty "+controllers.QueryKeyCursorDeprecated, func(t *testing.T) {
-					rsp = internal.GetBalances(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
-					})
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
 				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetBalances(api, url.Values{
 						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
 						"after":                    []string{"bob"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
-				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetBalances(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":                              []string{"bob"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 				})
@@ -174,16 +159,6 @@ func TestGetBalances(t *testing.T) {
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 					assert.Contains(t, rsp.Body.String(),
 						fmt.Sprintf(`"invalid '%s' query param"`, controllers.QueryKeyCursor))
-				})
-
-				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetBalances(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{"invalid"},
-					})
-
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-					assert.Contains(t, rsp.Body.String(),
-						fmt.Sprintf(`"invalid '%s' query param"`, controllers.QueryKeyCursorDeprecated))
 				})
 
 				t.Run("all", func(t *testing.T) {

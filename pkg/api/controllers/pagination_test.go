@@ -84,7 +84,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
 					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
@@ -167,7 +167,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
 					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
@@ -265,7 +265,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
 					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
@@ -359,7 +359,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
 					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}

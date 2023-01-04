@@ -79,7 +79,7 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 				sb.Where(sb.NotEqual(balanceOperation, balanceValue))
 			default:
 				// parameter is validated in the controller for now
-				panic("invalid balance_operator parameter")
+				panic("invalid balance operator parameter")
 			}
 		} else { // if no operator is given, default to gte
 			sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))

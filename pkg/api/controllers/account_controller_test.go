@@ -168,13 +168,6 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetAccounts(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
-					})
-					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
 				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
 						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
@@ -189,23 +182,6 @@ func TestGetAccounts(t *testing.T) {
 						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
 						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
-					}, err)
-				})
-
-				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetAccounts(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":                              []string{"bob"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursorDeprecated),
 					}, err)
 				})
 
@@ -225,22 +201,6 @@ func TestGetAccounts(t *testing.T) {
 					}, err)
 				})
 
-				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetAccounts(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{"invalid"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-					}, err)
-				})
-
 				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
 						controllers.QueryKeyCursor: []string{"\n*@"},
@@ -254,22 +214,6 @@ func TestGetAccounts(t *testing.T) {
 						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
 						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-					}, err)
-				})
-
-				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursorDeprecated), func(t *testing.T) {
-					rsp = internal.GetAccounts(api, url.Values{
-						controllers.QueryKeyCursorDeprecated: []string{"\n*@"},
-					})
-					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					assert.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursorDeprecated),
 					}, err)
 				})
 
@@ -296,8 +240,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance >= 50", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"50"},
-						"balance_operator": []string{"gte"},
+						"balance":                           []string{"50"},
+						controllers.QueryKeyBalanceOperator: []string{"gte"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -308,8 +252,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance >= 120", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"120"},
-						"balance_operator": []string{"gte"},
+						"balance":                           []string{"120"},
+						controllers.QueryKeyBalanceOperator: []string{"gte"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -319,8 +263,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance > 120", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"120"},
-						"balance_operator": []string{"gt"},
+						"balance":                           []string{"120"},
+						controllers.QueryKeyBalanceOperator: []string{"gt"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -330,8 +274,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance < 0", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"0"},
-						"balance_operator": []string{"lt"},
+						"balance":                           []string{"0"},
+						controllers.QueryKeyBalanceOperator: []string{"lt"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -341,8 +285,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance < 100", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"100"},
-						"balance_operator": []string{"lt"},
+						"balance":                           []string{"100"},
+						controllers.QueryKeyBalanceOperator: []string{"lt"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -352,8 +296,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance <= 100", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"100"},
-						"balance_operator": []string{"lte"},
+						"balance":                           []string{"100"},
+						controllers.QueryKeyBalanceOperator: []string{"lte"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -364,8 +308,8 @@ func TestGetAccounts(t *testing.T) {
 
 				t.Run("filter by balance = 100", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"100"},
-						"balance_operator": []string{"e"},
+						"balance":                           []string{"100"},
+						controllers.QueryKeyBalanceOperator: []string{"e"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -376,8 +320,8 @@ func TestGetAccounts(t *testing.T) {
 				// test filter by balance != 100
 				t.Run("filter by balance != 100", func(t *testing.T) {
 					rsp = internal.GetAccounts(api, url.Values{
-						"balance":          []string{"100"},
-						"balance_operator": []string{"ne"},
+						"balance":                           []string{"100"},
+						controllers.QueryKeyBalanceOperator: []string{"ne"},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -402,10 +346,10 @@ func TestGetAccounts(t *testing.T) {
 					}, err)
 				})
 
-				t.Run("invalid balance_operator", func(t *testing.T) {
+				t.Run("invalid balance operator", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
-						"balance":          []string{"100"},
-						"balance_operator": []string{"toto"},
+						"balance":                           []string{"100"},
+						controllers.QueryKeyBalanceOperator: []string{"toto"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
@@ -413,9 +357,9 @@ func TestGetAccounts(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					assert.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
+						ErrorMessage:           controllers.ErrInvalidBalanceOperator.Error(),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'",
+						ErrorMessageDeprecated: controllers.ErrInvalidBalanceOperator.Error(),
 					}, err)
 				})
 
@@ -440,7 +384,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 
 				t.Run("invalid page size", func(t *testing.T) {
 					rsp := internal.GetAccounts(api, url.Values{
-						"page_size": []string{"nan"},
+						controllers.QueryKeyPageSize: []string{"nan"},
 					})
 					assert.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -455,7 +399,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 				})
 				t.Run("page size over maximum", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
@@ -467,8 +411,8 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 				})
 				t.Run("with page size greater than max count", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
-						"after":     []string{fmt.Sprintf("accounts:%06d", controllers.MaxPageSize-100)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
+						"after":                      []string{fmt.Sprintf("accounts:%06d", controllers.MaxPageSize-100)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
@@ -480,7 +424,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 				})
 				t.Run("with page size lower than max count", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
