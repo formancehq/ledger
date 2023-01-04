@@ -936,16 +936,31 @@ components:
         - cursor
       properties:
         cursor:
-          allOf:
-            - $ref: '#/components/schemas/Cursor'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/components/schemas/Account'
-                  type: array
-              type: object
-              required:
-                - data
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Account'
 
     BalancesCursorResponse:
       type: object
@@ -953,16 +968,31 @@ components:
         - cursor
       properties:
         cursor:
-          allOf:
-            - $ref: '#/components/schemas/Cursor'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/components/schemas/AccountsBalances'
-                  type: array
-              type: object
-              required:
-                - data
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/AccountsBalances'
 
     TransactionsCursorResponse:
       type: object
@@ -970,16 +1000,31 @@ components:
         - cursor
       properties:
         cursor:
-          allOf:
-            - $ref: '#/components/schemas/Cursor'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/components/schemas/Transaction'
-                  type: array
-              type: object
-              required:
-                - data
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaction'
 
     LogsCursorResponse:
       type: object
@@ -987,16 +1032,31 @@ components:
         - cursor
       properties:
         cursor:
-          allOf:
-            - $ref: '#/components/schemas/Cursor'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/components/schemas/Log'
-                  type: array
-              type: object
-              required:
-                - data
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Log'
 
     AccountResponse:
       type: object
@@ -1022,6 +1082,19 @@ components:
       required:
         - storage
 
+    LedgerStorage:
+      type: object
+      properties:
+        driver:
+          type: string
+        ledgers:
+          type: array
+          items:
+            type: string
+      required:
+        - driver
+        - ledgers
+
     Metadata:
       type: object
       nullable: true
@@ -1042,19 +1115,6 @@ components:
         - server
         - version
 
-    LedgerStorage:
-      type: object
-      properties:
-        driver:
-          type: string
-        ledgers:
-          type: array
-          items:
-            type: string
-      required:
-        - driver
-        - ledgers
-
     ScriptResponse:
       type: object
       properties:
@@ -1066,8 +1126,6 @@ components:
         details:
           type: string
           example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-        transaction:
-          $ref: '#/components/schemas/Transaction'
         error_code:
           type: string
           enum:
@@ -1084,6 +1142,8 @@ components:
           type: string
           example: "[INSUFFICIENT_FUND] account had insufficient funds"
           deprecated: true
+        transaction:
+          $ref: '#/components/schemas/Transaction'
 
     Account:
       type: object
@@ -1255,10 +1315,9 @@ components:
 
     TransactionData:
       type: object
+      required:
+        - postings
       properties:
-        timestamp:
-          type: string
-          format: date-time
         postings:
           type: array
           items:
@@ -1268,8 +1327,9 @@ components:
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
-      required:
-        - postings
+        timestamp:
+          type: string
+          format: date-time
 
     Transactions:
       required:
@@ -1327,41 +1387,6 @@ components:
       required:
         - accounts
         - transactions
-
-    Cursor:
-      type: object
-      required:
-        - pageSize
-        - hasMore
-        - page_size
-        - has_more
-      properties:
-        pageSize:
-          type: integer
-          format: int64
-          minimum: 1
-          maximum: 1000
-          example: 15
-        hasMore:
-          type: boolean
-          example: false
-        page_size:
-          type: integer
-          format: int64
-          minimum: 1
-          maximum: 1000
-          example: 15
-          deprecated: true
-        has_more:
-          type: boolean
-          example: false
-          deprecated: true
-        previous:
-          type: string
-          example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
-        next:
-          type: string
-          example: ""
 
     Log:
       type: object
@@ -1436,11 +1461,14 @@ components:
       type: object
       properties:
         input:
-          type: number
+          type: integer
+          format: int64
         output:
-          type: number
+          type: integer
+          format: int64
         balance:
-          type: number
+          type: integer
+          format: int64
       required:
         - input
         - output
