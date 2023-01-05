@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -40,37 +39,74 @@ func (ctl *AccountController) CountAccounts(c *gin.Context) {
 func (ctl *AccountController) GetAccounts(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor api.Cursor[core.Account]
-	var accountsQuery *ledger.AccountsQuery
-	var err error
+	accountsQuery := ledger.NewAccountsQuery()
 
-	if c.Query("pagination_token") != "" {
+	if c.Query(QueryKeyCursor) != "" {
 		if c.Query("after") != "" ||
 			c.Query("address") != "" ||
 			len(c.QueryMap("metadata")) > 0 ||
 			c.Query("balance") != "" ||
-			c.Query("balance_operator") != "" ||
-			c.Query("page_size") != "" {
+			c.Query(QueryKeyBalanceOperator) != "" ||
+			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
-				"no other query params can be set with 'pagination_token'"))
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if decErr != nil {
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		if err != nil {
 			apierrors.ResponseError(c, ledger.NewValidationError(
-				"invalid query value 'pagination_token'"))
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.AccPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
+		if err := json.Unmarshal(res, &token); err != nil {
 			apierrors.ResponseError(c, ledger.NewValidationError(
-				"invalid query value 'pagination_token'"))
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
-		accountsQuery = ledger.NewAccountsQuery().
+		accountsQuery = accountsQuery.
+			WithOffset(token.Offset).
+			WithAfterAddress(token.AfterAddress).
+			WithAddressFilter(token.AddressRegexpFilter).
+			WithBalanceFilter(token.BalanceFilter).
+			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
+			WithMetadataFilter(token.MetadataFilter).
+			WithPageSize(token.PageSize)
+
+	} else if c.Query(QueryKeyCursorDeprecated) != "" {
+		if c.Query("after") != "" ||
+			c.Query("address") != "" ||
+			len(c.QueryMap("metadata")) > 0 ||
+			c.Query("balance") != "" ||
+			c.Query(QueryKeyBalanceOperator) != "" ||
+			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		token := sqlstorage.AccPaginationToken{}
+		if err := json.Unmarshal(res, &token); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		accountsQuery = accountsQuery.
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
 			WithAddressFilter(token.AddressRegexpFilter).
@@ -89,14 +125,10 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			}
 		}
 
-		var balanceOperator = ledger.DefaultBalanceOperator
-		if balanceOperatorStr := c.Query("balance_operator"); balanceOperatorStr != "" {
-			var ok bool
-			if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {
-				apierrors.ResponseError(c, ledger.NewValidationError(
-					"invalid parameter 'balance_operator', should be one of 'e, gt, gte, lt, lte'"))
-				return
-			}
+		balanceOperator, err := getBalanceOperator(c)
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
 		}
 
 		pageSize, err := getPageSize(c)
@@ -105,7 +137,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			return
 		}
 
-		accountsQuery = ledger.NewAccountsQuery().
+		accountsQuery = accountsQuery.
 			WithAfterAddress(c.Query("after")).
 			WithAddressFilter(c.Query("address")).
 			WithBalanceFilter(balance).
@@ -114,7 +146,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
+	cursor, err := l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

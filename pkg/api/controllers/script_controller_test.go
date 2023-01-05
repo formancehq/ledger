@@ -58,10 +58,10 @@ func TestPostScript(t *testing.T) {
 				ErrorResponse: sharedapi.ErrorResponse{
 					ErrorCode:              apierrors.ErrInsufficientFund,
 					ErrorMessage:           "account had insufficient funds",
+					Details:                apierrors.EncodeLink("account had insufficient funds"),
 					ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
 					ErrorMessageDeprecated: "account had insufficient funds",
 				},
-				Details: apierrors.EncodeLink("account had insufficient funds"),
 			},
 		},
 		{
@@ -84,10 +84,10 @@ func TestPostScript(t *testing.T) {
 				ErrorResponse: sharedapi.ErrorResponse{
 					ErrorCode:              ledger.ScriptErrorMetadataOverride,
 					ErrorMessage:           "cannot override metadata from script",
+					Details:                apierrors.EncodeLink("cannot override metadata from script"),
 					ErrorCodeDeprecated:    ledger.ScriptErrorMetadataOverride,
 					ErrorMessageDeprecated: "cannot override metadata from script",
 				},
-				Details: apierrors.EncodeLink("cannot override metadata from script"),
 			},
 		},
 	}

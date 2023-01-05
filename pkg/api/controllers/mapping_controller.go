@@ -19,14 +19,12 @@ func (ctl *MappingController) PutMapping(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
 	mapping := &core.Mapping{}
-	err := c.ShouldBind(mapping)
-	if err != nil {
+	if err := c.ShouldBind(mapping); err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}
 
-	err = l.(*ledger.Ledger).SaveMapping(c.Request.Context(), *mapping)
-	if err != nil {
+	if err := l.(*ledger.Ledger).SaveMapping(c.Request.Context(), *mapping); err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}

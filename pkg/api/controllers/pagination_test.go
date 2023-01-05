@@ -9,6 +9,7 @@ import (
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/api"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/stretchr/testify/assert"
@@ -83,9 +84,9 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
-					values.Set("pagination_token", paginationToken)
+					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
 
 				rsp = internal.GetTransactions(api, values)
@@ -107,7 +108,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 			if additionalTxs > 0 {
 				rsp = internal.GetTransactions(api, url.Values{
-					"pagination_token": []string{paginationToken},
+					controllers.QueryKeyCursor: []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
@@ -131,7 +132,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetTransactions(api, url.Values{
-						"pagination_token": []string{paginationToken},
+						controllers.QueryKeyCursor: []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor = internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
@@ -166,9 +167,9 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
-					values.Set("pagination_token", paginationToken)
+					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
 
 				rsp = internal.GetAccounts(api, values)
@@ -197,7 +198,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 			if additionalAccs > 0 {
 				rsp = internal.GetAccounts(api, url.Values{
-					"pagination_token": []string{paginationToken},
+					controllers.QueryKeyCursor: []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -228,7 +229,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetAccounts(api, url.Values{
-						"pagination_token": []string{paginationToken},
+						controllers.QueryKeyCursor: []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 					cursor = internal.DecodeCursorResponse[core.Account](t, rsp.Body)
@@ -264,9 +265,9 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
-					values.Set("pagination_token", paginationToken)
+					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
 
 				rsp = internal.GetBalances(api, values)
@@ -295,7 +296,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 			if additionalAccs > 0 {
 				rsp = internal.GetBalances(api, url.Values{
-					"pagination_token": []string{paginationToken},
+					controllers.QueryKeyCursor: []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
@@ -324,7 +325,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetBalances(api, url.Values{
-						"pagination_token": []string{paginationToken},
+						controllers.QueryKeyCursor: []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 					cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
@@ -358,9 +359,9 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				values := url.Values{}
 				if paginationToken == "" {
-					values.Set("page_size", fmt.Sprintf("%d", pageSize))
+					values.Set(controllers.QueryKeyPageSize, fmt.Sprintf("%d", pageSize))
 				} else {
-					values.Set("pagination_token", paginationToken)
+					values.Set(controllers.QueryKeyCursor, paginationToken)
 				}
 
 				rsp = internal.GetLedgerLogs(api, values)
@@ -382,7 +383,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 			if additionalTxs > 0 {
 				rsp = internal.GetLedgerLogs(api, url.Values{
-					"pagination_token": []string{paginationToken},
+					controllers.QueryKeyCursor: []string{paginationToken},
 				})
 				assert.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)
@@ -406,7 +407,7 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				for cursor.Previous != "" {
 					paginationToken = cursor.Previous
 					rsp = internal.GetLedgerLogs(api, url.Values{
-						"pagination_token": []string{paginationToken},
+						controllers.QueryKeyCursor: []string{paginationToken},
 					})
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor = internal.DecodeCursorResponse[core.Log](t, rsp.Body)

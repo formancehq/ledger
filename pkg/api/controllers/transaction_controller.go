@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/api"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -28,18 +27,32 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 
 	var startTimeParsed, endTimeParsed time.Time
 	var err error
-	if c.Query("start_time") != "" {
-		startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+	if c.Query(QueryKeyStartTime) != "" {
+		startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTime))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+			apierrors.ResponseError(c, ErrInvalidStartTime)
+			return
+		}
+	}
+	if c.Query(QueryKeyStartTimeDeprecated) != "" {
+		startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTimeDeprecated))
+		if err != nil {
+			apierrors.ResponseError(c, ErrInvalidStartTimeDeprecated)
 			return
 		}
 	}
 
-	if c.Query("end_time") != "" {
-		endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+	if c.Query(QueryKeyEndTime) != "" {
+		endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTime))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+			apierrors.ResponseError(c, ErrInvalidEndTime)
+			return
+		}
+	}
+	if c.Query(QueryKeyEndTimeDeprecated) != "" {
+		endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTimeDeprecated))
+		if err != nil {
+			apierrors.ResponseError(c, ErrInvalidEndTimeDeprecated)
 			return
 		}
 	}
@@ -52,10 +65,7 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 		WithStartTimeFilter(startTimeParsed).
 		WithEndTimeFilter(endTimeParsed)
 
-	count, err := l.(*ledger.Ledger).CountTransactions(
-		c.Request.Context(),
-		*txQuery,
-	)
+	count, err := l.(*ledger.Ledger).CountTransactions(c.Request.Context(), *txQuery)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
@@ -67,33 +77,40 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	var cursor api.Cursor[core.ExpandedTransaction]
-	var txQuery *ledger.TransactionsQuery
-	var err error
+	txQuery := ledger.NewTransactionsQuery()
 
-	if c.Query("pagination_token") != "" {
-		if c.Query("after") != "" || c.Query("reference") != "" ||
-			c.Query("account") != "" || c.Query("source") != "" ||
-			c.Query("destination") != "" || c.Query("start_time") != "" ||
-			c.Query("end_time") != "" || c.Query("page_size") != "" {
+	if c.Query(QueryKeyCursor) != "" {
+		if c.Query("after") != "" ||
+			c.Query("reference") != "" ||
+			c.Query("account") != "" ||
+			c.Query("source") != "" ||
+			c.Query("destination") != "" ||
+			c.Query(QueryKeyStartTime) != "" ||
+			c.Query(QueryKeyStartTimeDeprecated) != "" ||
+			c.Query(QueryKeyEndTime) != "" ||
+			c.Query(QueryKeyEndTimeDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
 			apierrors.ResponseError(c, ledger.NewValidationError(
-				"no other query params can be set with 'pagination_token'"))
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, decErr := base64.RawURLEncoding.DecodeString(c.Query("pagination_token"))
-		if decErr != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.TxsPaginationToken{}
 		if err = json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'pagination_token'"))
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
-		txQuery = ledger.NewTransactionsQuery().
+		txQuery = txQuery.
 			WithAfterTxID(token.AfterTxID).
 			WithReferenceFilter(token.ReferenceFilter).
 			WithAccountFilter(token.AccountFilter).
@@ -103,29 +120,88 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithEndTimeFilter(token.EndTime).
 			WithMetadataFilter(token.MetadataFilter).
 			WithPageSize(token.PageSize)
+
+	} else if c.Query(QueryKeyCursorDeprecated) != "" {
+		if c.Query("after") != "" ||
+			c.Query("reference") != "" ||
+			c.Query("account") != "" ||
+			c.Query("source") != "" ||
+			c.Query("destination") != "" ||
+			c.Query(QueryKeyStartTime) != "" ||
+			c.Query(QueryKeyStartTimeDeprecated) != "" ||
+			c.Query(QueryKeyEndTime) != "" ||
+			c.Query(QueryKeyEndTimeDeprecated) != "" ||
+			c.Query(QueryKeyPageSize) != "" ||
+			c.Query(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		if err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		token := sqlstorage.TxsPaginationToken{}
+		if err = json.Unmarshal(res, &token); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(
+				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
+			return
+		}
+
+		txQuery = txQuery.
+			WithAfterTxID(token.AfterTxID).
+			WithReferenceFilter(token.ReferenceFilter).
+			WithAccountFilter(token.AccountFilter).
+			WithSourceFilter(token.SourceFilter).
+			WithDestinationFilter(token.DestinationFilter).
+			WithStartTimeFilter(token.StartTime).
+			WithEndTimeFilter(token.EndTime).
+			WithMetadataFilter(token.MetadataFilter).
+			WithPageSize(token.PageSize)
+
 	} else {
+		var err error
 		var afterTxIDParsed uint64
 		if c.Query("after") != "" {
 			afterTxIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'after'"))
+				apierrors.ResponseError(c, ledger.NewValidationError(
+					"invalid 'after' query param"))
 				return
 			}
 		}
 
 		var startTimeParsed, endTimeParsed time.Time
-		if c.Query("start_time") != "" {
-			startTimeParsed, err = time.Parse(time.RFC3339, c.Query("start_time"))
+		if c.Query(QueryKeyStartTime) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTime))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'start_time'"))
+				apierrors.ResponseError(c, ErrInvalidStartTime)
+				return
+			}
+		}
+		if c.Query(QueryKeyStartTimeDeprecated) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTimeDeprecated))
+			if err != nil {
+				apierrors.ResponseError(c, ErrInvalidStartTimeDeprecated)
 				return
 			}
 		}
 
-		if c.Query("end_time") != "" {
-			endTimeParsed, err = time.Parse(time.RFC3339, c.Query("end_time"))
+		if c.Query(QueryKeyEndTime) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTime))
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError("invalid query value 'end_time'"))
+				apierrors.ResponseError(c, ErrInvalidEndTime)
+				return
+			}
+		}
+		if c.Query(QueryKeyEndTimeDeprecated) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTimeDeprecated))
+			if err != nil {
+				apierrors.ResponseError(c, ErrInvalidEndTimeDeprecated)
 				return
 			}
 		}
@@ -136,7 +212,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		txQuery = ledger.NewTransactionsQuery().
+		txQuery = txQuery.
 			WithAfterTxID(afterTxIDParsed).
 			WithReferenceFilter(c.Query("reference")).
 			WithAccountFilter(c.Query("account")).
@@ -148,7 +224,7 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err = l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
+	cursor, err := l.(*ledger.Ledger).GetTransactions(c.Request.Context(), *txQuery)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
