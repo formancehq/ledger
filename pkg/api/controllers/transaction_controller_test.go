@@ -1114,9 +1114,9 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'after'",
+						ErrorMessage:           "invalid 'after' query param",
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'after'",
+						ErrorMessageDeprecated: "invalid 'after' query param",
 					}, err)
 				})
 
@@ -1186,8 +1186,8 @@ func TestGetTransactions(t *testing.T) {
 
 				t.Run("time range", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"start_time": []string{tx1Timestamp.Format(time.RFC3339)},
-						"end_time":   []string{tx2Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
@@ -1195,8 +1195,8 @@ func TestGetTransactions(t *testing.T) {
 					require.Len(t, cursor.Data, 1)
 
 					rsp = internal.CountTransactions(api, url.Values{
-						"start_time": []string{tx1Timestamp.Format(time.RFC3339)},
-						"end_time":   []string{tx2Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
+						controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					require.Equal(t, "1", rsp.Header().Get("Count"))
@@ -1204,7 +1204,7 @@ func TestGetTransactions(t *testing.T) {
 
 				t.Run("only start time", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"start_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
@@ -1214,7 +1214,7 @@ func TestGetTransactions(t *testing.T) {
 
 				t.Run("only end time", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"end_time": []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
@@ -1224,7 +1224,7 @@ func TestGetTransactions(t *testing.T) {
 
 				t.Run("invalid start time", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"start_time": []string{"invalid time"},
+						controllers.QueryKeyStartTime: []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
@@ -1232,15 +1232,15 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'start_time'",
+						ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'start_time'",
+						ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
 					}, err)
 				})
 
 				t.Run("invalid end time", func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"end_time": []string{"invalid time"},
+						controllers.QueryKeyEndTime: []string{"invalid time"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
@@ -1248,26 +1248,27 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'end_time'",
+						ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'end_time'",
+						ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
 					}, err)
 				})
 
 				to := sqlstorage.TxsPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
-				t.Run("valid empty pagination_token", func(t *testing.T) {
+
+				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
 					})
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
 				})
 
-				t.Run("valid empty pagination_token with any other param is forbidden", func(t *testing.T) {
+				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"pagination_token": []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":            []string{"1"},
+						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						"after":                    []string{"1"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -1275,15 +1276,15 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "no other query params can be set with 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "no other query params can be set with 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 					}, err)
 				})
 
-				t.Run("invalid pagination_token", func(t *testing.T) {
+				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"pagination_token": []string{"invalid"},
+						controllers.QueryKeyCursor: []string{"invalid"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -1291,15 +1292,15 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 					}, err)
 				})
 
-				t.Run("invalid pagination_token not base64", func(t *testing.T) {
+				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
 					rsp = internal.GetTransactions(api, url.Values{
-						"pagination_token": []string{"@!/"},
+						controllers.QueryKeyCursor: []string{"@!/"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -1307,9 +1308,9 @@ func TestGetTransactions(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid query value 'pagination_token'",
+						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid query value 'pagination_token'",
+						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 					}, err)
 				})
 
@@ -1348,7 +1349,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 
 				t.Run("invalid page size", func(t *testing.T) {
 					rsp := internal.GetTransactions(api, url.Values{
-						"page_size": []string{"nan"},
+						controllers.QueryKeyPageSize: []string{"nan"},
 					})
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
@@ -1363,7 +1364,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 				})
 				t.Run("page size over maximum", func(t *testing.T) {
 					httpResponse := internal.GetTransactions(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", 2*controllers.MaxPageSize)},
 					})
 					require.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
@@ -1375,8 +1376,8 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 				})
 				t.Run("with page size greater than max count", func(t *testing.T) {
 					httpResponse := internal.GetTransactions(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
-						"after":     []string{fmt.Sprintf("%d", controllers.MaxPageSize-100)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", controllers.MaxPageSize)},
+						"after":                      []string{fmt.Sprintf("%d", controllers.MaxPageSize-100)},
 					})
 					require.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
@@ -1388,7 +1389,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 				})
 				t.Run("with page size lower than max count", func(t *testing.T) {
 					httpResponse := internal.GetTransactions(api, url.Values{
-						"page_size": []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
+						controllers.QueryKeyPageSize: []string{fmt.Sprintf("%d", controllers.MaxPageSize/10)},
 					})
 					require.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
 
