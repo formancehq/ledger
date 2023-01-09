@@ -21,11 +21,11 @@ create table if not exists "VAR_LEDGER_NAME".postings (
 );
 
 --statement
-create index postings_src on "VAR_LEDGER_NAME".postings using GIN(source);
+create index if not exists postings_src on "VAR_LEDGER_NAME".postings using GIN(source);
 --statement
-create index postings_dest on "VAR_LEDGER_NAME".postings using GIN(destination);
+create index if not exists postings_dest on "VAR_LEDGER_NAME".postings using GIN(destination);
 --statement
-create index postings_txid on "VAR_LEDGER_NAME".postings (txid asc);
+create index if not exists postings_txid on "VAR_LEDGER_NAME".postings (txid asc);
 
 --statement
 insert into "VAR_LEDGER_NAME".postings(txid, posting_index, source, destination)
