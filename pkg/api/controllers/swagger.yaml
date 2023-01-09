@@ -4,7 +4,6 @@ info:
   contact: {}
   version: "LEDGER_VERSION"
 
-
 paths:
   /_info:
     get:
@@ -1292,22 +1291,6 @@ components:
         details:
           type: string
           example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-        error_code:
-          type: string
-          enum:
-            - INTERNAL
-            - INSUFFICIENT_FUND
-            - VALIDATION
-            - CONFLICT
-            - NO_SCRIPT
-            - COMPILATION_FAILED
-            - METADATA_OVERRIDE
-          example: INSUFFICIENT_FUND
-          deprecated: true
-        error_message:
-          type: string
-          example: "[INSUFFICIENT_FUND] account had insufficient funds"
-          deprecated: true
         transaction:
           $ref: '#/components/schemas/Transaction'
 
