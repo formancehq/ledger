@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Install task
         uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
