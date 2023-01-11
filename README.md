@@ -23,7 +23,7 @@ brew install fctl
 fctl login
 
 # create a sandbox stack deployment
-fctl sandbox create foobar
+fctl stack create foobar
 
 # commit your first ledger transaction
 fctl ledger send world foo 100 EUR/2 --ledger=demo
