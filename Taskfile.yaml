@@ -15,7 +15,7 @@ vars:
   BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
   BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
   BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
-  VERBOSE: "false"
+  VERBOSE: "true"
 
 tasks:
   default:
@@ -84,6 +84,16 @@ tasks:
     env:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:ledger:
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - >
+        go test {{.TAGS}} ./pkg/ledger
+        -run=XXX -bench=BenchmarkLedger -benchmem -timeout 1h
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
+        | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
 
   bench:cpu:
     cmds:

@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/numary/ledger/pkg/api/apierrors"
@@ -680,4 +681,34 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 		asset, account,
 		amount, b,
 	)
+}
+
+func BenchmarkLedger_Post(b *testing.B) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(b, l.Close(ctx))
+		}(l, context.Background())
+
+		txData := core.TransactionData{}
+		for i := 0; i < 1000; i++ {
+			txData.Postings = append(txData.Postings, core.Posting{
+				Source:      "world",
+				Destination: "benchmarks:" + strconv.Itoa(i),
+				Asset:       "COIN",
+				Amount:      core.NewMonetaryInt(10),
+			})
+		}
+
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			script := core.ScriptData{}
+			postingsScript := core.TxsToScriptsData(txData)[0]
+			script.Plain = postingsScript.Plain + script.Plain
+			res, err := l.Execute(context.Background(), true, script)
+			require.NoError(b, err)
+			require.Len(b, res, 1)
+			require.Len(b, res[0].Postings, 1000)
+		}
+	})
 }
