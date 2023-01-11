@@ -441,31 +441,29 @@ func TestScriptReferenceConflict(t *testing.T) {
 	})
 }
 
-func BenchmarkLedger_CommitPreview(b *testing.B) {
+func BenchmarkLedger_Post(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(b, l.Close(ctx))
 		}(l, context.Background())
 
-		txsData := []core.TransactionData{}
+		txData := core.TransactionData{}
 		for i := 0; i < 1000; i++ {
-			txsData = append(txsData, core.TransactionData{
-				Postings: core.Postings{
-					{
-						Source:      "world",
-						Destination: "benchmarks:" + strconv.Itoa(i),
-						Asset:       "COIN",
-						Amount:      core.NewMonetaryInt(10),
-					},
-				},
+			txData.Postings = append(txData.Postings, core.Posting{
+				Source:      "world",
+				Destination: "benchmarks:" + strconv.Itoa(i),
+				Asset:       "COIN",
+				Amount:      core.NewMonetaryInt(10),
 			})
 		}
 
 		b.ResetTimer()
 
 		for n := 0; n < b.N; n++ {
-			_, err := l.CommitPreview(context.Background(), txsData)
+			res, err := l.CommitPreview(context.Background(), []core.TransactionData{txData})
 			require.NoError(b, err)
+			require.Len(b, res.GeneratedTransactions, 1)
+			require.Len(b, res.GeneratedTransactions[0].Postings, 1000)
 		}
 	})
 }
