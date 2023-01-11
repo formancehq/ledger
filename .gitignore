@@ -12,3 +12,4 @@ sdk/sdks
 .vscode
 .env
 sqlstorage.test
+ledger.test
