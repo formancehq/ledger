@@ -703,6 +703,8 @@ func BenchmarkLedger_Post(b *testing.B) {
 
 		for n := 0; n < b.N; n++ {
 			script := core.ScriptData{}
+			_, err := l.ValidatePostings(context.Background(), txData)
+			require.NoError(b, err)
 			postingsScript := core.TxsToScriptsData(txData)[0]
 			script.Plain = postingsScript.Plain + script.Plain
 			res, err := l.Execute(context.Background(), true, script)
