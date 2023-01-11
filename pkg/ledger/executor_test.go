@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/numary/ledger/pkg/core"
@@ -437,5 +438,34 @@ func TestScriptReferenceConflict(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.True(t, ledger.IsConflictError(err))
+	})
+}
+
+func BenchmarkLedger_CommitPreview(b *testing.B) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(b, l.Close(ctx))
+		}(l, context.Background())
+
+		txsData := []core.TransactionData{}
+		for i := 0; i < 1000; i++ {
+			txsData = append(txsData, core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "benchmarks:" + strconv.Itoa(i),
+						Asset:       "COIN",
+						Amount:      core.NewMonetaryInt(10),
+					},
+				},
+			})
+		}
+
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			_, err := l.CommitPreview(context.Background(), txsData)
+			require.NoError(b, err)
+		}
 	})
 }
