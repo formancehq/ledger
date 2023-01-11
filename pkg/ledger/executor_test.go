@@ -3,6 +3,8 @@ package ledger_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strconv"
 	"testing"
 
@@ -698,6 +700,14 @@ func BenchmarkLedger_Post(b *testing.B) {
 				Amount:      core.NewMonetaryInt(10),
 			})
 		}
+
+		by, err := json.MarshalIndent(txData, "", "\t")
+		require.NoError(b, err)
+
+		f, err := os.Create("/tmp/txData.json")
+		require.NoError(b, err)
+		_, err = fmt.Fprint(f, string(by))
+		require.NoError(b, err)
 
 		b.ResetTimer()
 
