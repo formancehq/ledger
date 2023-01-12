@@ -47,9 +47,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrScriptNoScript,
-				ErrorMessage: "[NO_SCRIPT] no script to execute",
-				Details:      apierrors.EncodeLink("no script to execute"),
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid payload: should contain either postings or script",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
 			},
 		},
 		{
@@ -132,8 +133,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "processing tx 0: negative amount",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid posting 0: negative amount",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid posting 0: negative amount",
 			},
 		},
 		{
@@ -152,8 +155,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "processing tx 0: invalid asset",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid posting 0: invalid asset",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid posting 0: invalid asset",
 			},
 		},
 		{
@@ -172,8 +177,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "processing tx 0: invalid asset",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid posting 0: invalid asset",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid posting 0: invalid asset",
 			},
 		},
 		{
@@ -192,8 +199,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "processing tx 0: invalid destination address",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid posting 0: invalid destination address",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid posting 0: invalid destination address",
 			},
 		},
 		{
@@ -212,8 +221,11 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrInsufficientFund,
-				ErrorMessage: "processing tx 0: balance.insufficient.TOK",
+				ErrorCode:              apierrors.ErrInsufficientFund,
+				ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+				Details:                apierrors.EncodeLink("account had insufficient funds"),
+				ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
+				ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
 			},
 		},
 		{
@@ -244,8 +256,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusConflict,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrConflict,
-				ErrorMessage: "conflict error on reference",
+				ErrorCode:              apierrors.ErrConflict,
+				ErrorMessage:           "conflict error on reference",
+				ErrorCodeDeprecated:    apierrors.ErrConflict,
+				ErrorMessageDeprecated: "conflict error on reference",
 			},
 		},
 		{
@@ -309,8 +323,10 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "processing tx 0: cannot pass a date prior to the last transaction",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "cannot pass a timestamp prior to the last transaction:",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "cannot pass a timestamp prior to the last transaction:",
 			},
 		},
 		{
@@ -402,9 +418,11 @@ func TestPostTransactions(t *testing.T) {
 			}},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrInsufficientFund,
-				ErrorMessage: "[INSUFFICIENT_FUND] account had insufficient funds",
-				Details:      apierrors.EncodeLink("account had insufficient funds"),
+				ErrorCode:              apierrors.ErrInsufficientFund,
+				ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+				Details:                apierrors.EncodeLink("account had insufficient funds"),
+				ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
+				ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
 			},
 		},
 		{
@@ -425,9 +443,11 @@ func TestPostTransactions(t *testing.T) {
 			}},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrScriptMetadataOverride,
-				ErrorMessage: "[METADATA_OVERRIDE] cannot override metadata from script",
-				Details:      apierrors.EncodeLink("cannot override metadata from script"),
+				ErrorCode:              apierrors.ErrScriptMetadataOverride,
+				ErrorMessage:           "[METADATA_OVERRIDE] cannot override metadata from script",
+				Details:                apierrors.EncodeLink("cannot override metadata from script"),
+				ErrorCodeDeprecated:    apierrors.ErrScriptMetadataOverride,
+				ErrorMessageDeprecated: "[METADATA_OVERRIDE] cannot override metadata from script",
 			},
 		},
 		{
@@ -441,8 +461,10 @@ func TestPostTransactions(t *testing.T) {
 			}},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrValidation,
-				ErrorMessage: "transaction has no postings",
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "transaction has no postings",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "transaction has no postings",
 			},
 		},
 		{
@@ -473,7 +495,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings and script",
+			name: "postings and script should fail",
 			payload: []controllers.PostTransaction{{
 				Postings: core.Postings{
 					{
@@ -491,28 +513,12 @@ func TestPostTransactions(t *testing.T) {
 					)`,
 				}},
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "alice",
-									Amount:      core.NewMonetaryInt(100),
-									Asset:       "COIN",
-								},
-								{
-									Source:      "world",
-									Destination: "bob",
-									Amount:      core.NewMonetaryInt(100),
-									Asset:       "COIN",
-								},
-							},
-						},
-					},
-				}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid payload: should contain either postings or script",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
 			},
 		},
 	}
@@ -543,7 +549,9 @@ func TestPostTransactions(t *testing.T) {
 							actualErr := sharedapi.ErrorResponse{}
 							if internal.Decode(t, rsp.Body, &actualErr) {
 								require.Equal(t, tc.expectedErr.ErrorCode, actualErr.ErrorCode, actualErr.ErrorMessage)
-								require.Equal(t, tc.expectedErr.ErrorMessage, actualErr.ErrorMessage)
+								require.Contains(t, actualErr.ErrorMessage, tc.expectedErr.ErrorMessage)
+								require.Equal(t, tc.expectedErr.ErrorCodeDeprecated, actualErr.ErrorCodeDeprecated, actualErr.ErrorMessageDeprecated)
+								require.Contains(t, actualErr.ErrorMessageDeprecated, tc.expectedErr.ErrorMessageDeprecated)
 								require.Equal(t, tc.expectedErr.Details, actualErr.Details)
 							}
 						} else {
@@ -739,11 +747,10 @@ func TestPostTransactionInvalidBody(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrScriptNoScript,
-						ErrorMessage:           "[NO_SCRIPT] no script to execute",
-						Details:                apierrors.EncodeLink("no script to execute"),
-						ErrorCodeDeprecated:    apierrors.ErrScriptNoScript,
-						ErrorMessageDeprecated: "[NO_SCRIPT] no script to execute",
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid payload: should contain either postings or script",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
 					}, err)
 				})
 
@@ -1793,9 +1800,9 @@ func TestRevertTransaction(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrNotFound,
-						ErrorMessage:           "transaction not found",
+						ErrorMessage:           "transaction 42 not found",
 						ErrorCodeDeprecated:    apierrors.ErrNotFound,
-						ErrorMessageDeprecated: "transaction not found",
+						ErrorMessageDeprecated: "transaction 42 not found",
 					}, err)
 				})
 
@@ -1807,9 +1814,9 @@ func TestRevertTransaction(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "transaction already reverted",
+						ErrorMessage:           fmt.Sprintf("transaction %d already reverted", revertedTxID),
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "transaction already reverted",
+						ErrorMessageDeprecated: fmt.Sprintf("transaction %d already reverted", revertedTxID),
 					}, err)
 				})
 
@@ -1895,9 +1902,9 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "processing tx 1: transaction has no postings",
+						ErrorMessage:           "invalid transaction 1: no postings",
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "processing tx 1: transaction has no postings",
+						ErrorMessageDeprecated: "invalid transaction 1: no postings",
 					}, err)
 				})
 
@@ -1924,9 +1931,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "processing tx 0: balance.insufficient.COIN",
+						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+						Details:                apierrors.EncodeLink("account had insufficient funds"),
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "processing tx 0: balance.insufficient.COIN",
+						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
 					}, err)
 				})
 
@@ -1973,9 +1981,10 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "processing tx 1: balance.insufficient.GEM",
+						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+						Details:                apierrors.EncodeLink("account had insufficient funds"),
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "processing tx 1: balance.insufficient.GEM",
+						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
 					}, err)
 				})
 

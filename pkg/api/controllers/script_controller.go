@@ -35,7 +35,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	res := ScriptResponse{}
-	txs, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
+	txs, err := l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), false, preview, script)
 	if err != nil {
 		var (
 			code    = apierrors.ErrInternal
