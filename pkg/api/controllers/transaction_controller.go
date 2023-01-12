@@ -256,13 +256,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	script := core.ScriptData{
-		Script:    payload.Script,
-		Timestamp: payload.Timestamp,
-		Reference: payload.Reference,
-		Metadata:  payload.Metadata,
-	}
-
 	var res []core.ExpandedTransaction
 	var err error
 
@@ -283,9 +276,15 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		script.Plain = core.TxsToScriptsData(txData)[0].Plain
-		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), true, preview, script)
+		script := core.TxsToScriptsData(txData)
+		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), true, preview, script...)
 	} else {
+		script := core.ScriptData{
+			Script:    payload.Script,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
+		}
 		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), false, preview, script)
 	}
 	if err != nil {

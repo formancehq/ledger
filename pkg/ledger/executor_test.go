@@ -338,7 +338,7 @@ func BenchmarkLedger_Post(b *testing.B) {
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
 			script := core.TxsToScriptsData(txData)
-			res, err := l.ExecuteScripts(context.Background(), false, true, script...)
+			res, err := l.ExecuteScripts(context.Background(), true, true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, 1000)
