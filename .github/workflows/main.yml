@@ -26,9 +26,13 @@ jobs:
 
   Test_postgres:
     uses: formancehq/gh-workflows/.github/workflows/golang-test-postgres.yml@main
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   Test_sqlite:
     uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   GoReleaserBuild:
     if: github.event_name != 'release'
