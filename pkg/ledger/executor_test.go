@@ -330,7 +330,7 @@ func BenchmarkLedger_Post(b *testing.B) {
 			script := core.TxsToScriptsData(txData)
 			res, err := l.Execute(context.Background(), true, true, script...)
 			require.NoError(b, err)
-			require.Len(b, res, 1)
+			require.Len(b, res.GeneratedTransactions, 1)
 			require.Len(b, res.GeneratedTransactions[0].Postings, 1000)
 		}
 	})
