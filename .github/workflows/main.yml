@@ -16,6 +16,14 @@ jobs:
   Lint:
     uses: formancehq/gh-workflows/.github/workflows/golang-lint.yml@main
 
+  Control:
+    name: 'Control'
+    needs:
+      - Lint
+    uses: ./.github/workflows/template_build-control.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
   Test_postgres:
     uses: formancehq/gh-workflows/.github/workflows/golang-test-postgres.yml@main
 
@@ -35,3 +43,101 @@ jobs:
           go-version-file: 'go.mod'
       - name: Run bench
         run: task install:perf bench:ledger
+
+  GoReleaserBuild:
+    if: github.event_name != 'release'
+    name: 'GoReleaser Build'
+    needs:
+      - Control
+      - Test_sqlite
+      - Test_postgres
+    uses: ./.github/workflows/template_goreleaser-build.yaml
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+    GoReleaserRelease:
+      if: github.event_name == 'release'
+      name: 'GoReleaser Release'
+      needs:
+        - Control
+        - Test_sqlite
+        - Test_postgres
+      uses: ./.github/workflows/template_goreleaser-release.yaml
+      secrets:
+        NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+        SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+        FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+
+    SdkGenerate:
+      needs:
+        - GoReleaserBuild
+      uses: ./.github/workflows/template_sdk-generate.yaml
+      secrets:
+        NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+    SdkPublish:
+      needs:
+        - GoReleaserRelease
+      uses: ./.github/workflows/template_sdk-publish.yaml
+      with:
+        VERSION: ${{ github.event.release.tag_name }}
+      secrets:
+        NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+
+    DockerRelease:
+      if: github.event_name == 'release'
+      uses: ./.github/workflows/template_docker.yaml
+      needs:
+        - Control
+        - Test_sqlite
+        - Test_postgres
+      with:
+        VERSION: ${{ github.event.release.tag_name }}
+        APP_SHA: ${{ github.sha }}
+        RELEASE: ${{ github.event.action }}
+      secrets:
+        NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+        SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+    DockerBranch:
+      if: github.event_name != 'release'
+      uses: ./.github/workflows/template_docker.yaml
+      needs:
+        - Control
+        - Test_sqlite
+        - Test_postgres
+      with:
+        VERSION: develop
+        APP_SHA: ${{ github.sha }}
+        RELEASE: ${{ github.event.action }}
+      secrets:
+        NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+        SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+
+  #  Check-pkgs:
+  #    if: github.event_name == 'release'
+  #    runs-on: ubuntu-latest
+  #    env:
+  #      DOCKER_CLI_EXPERIMENTAL: "enabled"
+  #    needs:
+  #      - GoReleaserRelease
+  #    strategy:
+  #      matrix:
+  #        format: [ deb, rpm ]
+  #    steps:
+  #      - uses: actions/checkout@v3
+  #        with:
+  #          fetch-depth: 0
+  #      - uses: arduino/setup-task@v1
+  #        with:
+  #          version: 3.x
+  #          repo-token: ${{ secrets.GITHUB_TOKEN }}
+  #      - uses: docker/setup-qemu-action@v1
+  #      - uses: actions/cache@v2
+  #        with:
+  #          path: |
+  #            ./dist/*.deb
+  #            ./dist/*.rpm
+  #          key: ${{ runner.os }}-go-${{ hashFiles('**/*.go') }}-${{ hashFiles('**/go.sum') }}
+  #      - run: task goreleaser:test:${{ matrix.format }}
