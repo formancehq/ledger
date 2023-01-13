@@ -34,6 +34,21 @@ jobs:
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
+  Bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install task
+        uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Run bench
+        run: task install:perf bench:ledger
+
   GoReleaserBuild:
     if: github.event_name != 'release'
     name: 'GoReleaser Build'
