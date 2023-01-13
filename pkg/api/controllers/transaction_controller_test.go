@@ -37,22 +37,11 @@ func TestPostTransactions(t *testing.T) {
 		expectedErr        sharedapi.ErrorResponse
 	}
 
-	var now = time.Now().Round(time.Second).UTC()
+	var timestamp1 = time.Now().Add(1 * time.Minute).Truncate(time.Second)
+	var timestamp2 = time.Now().Add(2 * time.Minute).Truncate(time.Second)
+	var timestamp3 = time.Now().Add(3 * time.Minute).Truncate(time.Second)
 
 	testCases := []testCase{
-		{
-			name: "no postings or script",
-			payload: []controllers.PostTransaction{
-				{},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:              apierrors.ErrValidation,
-				ErrorMessage:           "invalid payload: should contain either postings or script",
-				ErrorCodeDeprecated:    apierrors.ErrValidation,
-				ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
-			},
-		},
 		{
 			name: "postings nominal",
 			payload: []controllers.PostTransaction{
@@ -115,6 +104,95 @@ func TestPostTransactions(t *testing.T) {
 						},
 					},
 				}},
+			},
+		},
+		{
+			name: "script nominal",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					vars {
+						account $acc
+					}
+					send [COIN 100] (
+					  source = @world
+					  destination = @centralbank
+					)
+					send [COIN 100] (
+					  source = @centralbank
+					  destination = $acc
+					)`,
+					Vars: map[string]json.RawMessage{
+						"acc": json.RawMessage(`"users:001"`),
+					},
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "centralbank",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+								{
+									Source:      "centralbank",
+									Destination: "users:001",
+									Amount:      core.NewMonetaryInt(100),
+									Asset:       "COIN",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "script with set_account_meta",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					send [TOK 1000] (
+					  source = @world
+					  destination = @bar
+					)
+					set_account_meta(@bar, "foo", "bar")
+					`,
+				},
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "no postings or script",
+			payload: []controllers.PostTransaction{
+				{},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "invalid payload: should contain either postings or script",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
 			},
 		},
 		{
@@ -263,149 +341,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings with specified timestamp",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					Timestamp: now,
-				},
-			},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
-			name: "postings with specified timestamp prior to last tx",
-			payload: []controllers.PostTransaction{
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					Timestamp: now,
-				},
-				{
-					Postings: core.Postings{
-						{
-							Source:      "world",
-							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
-							Asset:       "TOK",
-						},
-					},
-					Timestamp: now.Add(-time.Second),
-				},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:              apierrors.ErrValidation,
-				ErrorMessage:           "cannot pass a timestamp prior to the last transaction:",
-				ErrorCodeDeprecated:    apierrors.ErrValidation,
-				ErrorMessageDeprecated: "cannot pass a timestamp prior to the last transaction:",
-			},
-		},
-		{
-			name: "script nominal",
-			payload: []controllers.PostTransaction{{
-				Script: core.Script{
-					Plain: `
-					vars {
-						account $acc
-					}
-					send [COIN 100] (
-					  source = @world
-					  destination = @centralbank
-					)
-					send [COIN 100] (
-					  source = @centralbank
-					  destination = $acc
-					)`,
-					Vars: map[string]json.RawMessage{
-						"acc": json.RawMessage(`"users:001"`),
-					},
-				},
-			}},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "centralbank",
-									Amount:      core.NewMonetaryInt(100),
-									Asset:       "COIN",
-								},
-								{
-									Source:      "centralbank",
-									Destination: "users:001",
-									Amount:      core.NewMonetaryInt(100),
-									Asset:       "COIN",
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
-			name: "script with set_account_meta",
-			payload: []controllers.PostTransaction{{
-				Script: core.Script{
-					Plain: `
-					send [TOK 1000] (
-					  source = @world
-					  destination = @bar
-					)
-					set_account_meta(@bar, "foo", "bar")
-					`,
-				},
-			}},
-			expectedStatusCode: http.StatusOK,
-			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
-				Data: &[]core.ExpandedTransaction{{
-					Transaction: core.Transaction{
-						TransactionData: core.TransactionData{
-							Postings: core.Postings{
-								{
-									Source:      "world",
-									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
-									Asset:       "TOK",
-								},
-							},
-						},
-					},
-				}},
-			},
-		},
-		{
 			name: "script failure with insufficient funds",
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
@@ -495,7 +430,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "postings and script should fail",
+			name: "postings and script",
 			payload: []controllers.PostTransaction{{
 				Postings: core.Postings{
 					{
@@ -521,6 +456,115 @@ func TestPostTransactions(t *testing.T) {
 				ErrorMessageDeprecated: "invalid payload: should contain either postings or script",
 			},
 		},
+		{
+			name: "postings with specified timestamp",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: timestamp2,
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "script with specified timestamp",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					send [TOK 1000] (
+					  source = @world
+					  destination = @bar
+					)
+					`,
+				},
+				Timestamp: timestamp3,
+			}},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bar",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "postings with specified timestamp prior to last tx",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bar",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: timestamp1,
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "cannot pass a timestamp prior to the last transaction:",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "cannot pass a timestamp prior to the last transaction:",
+			},
+		},
+		{
+			name: "script with specified timestamp prior to last tx",
+			payload: []controllers.PostTransaction{
+				{
+					Script: core.Script{
+						Plain: `
+						send [COIN 100] (
+						  source = @world
+						  destination = @bob
+						)`,
+					},
+					Timestamp: timestamp1,
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrValidation,
+				ErrorMessage:           "cannot pass a timestamp prior to the last transaction:",
+				ErrorCodeDeprecated:    apierrors.ErrValidation,
+				ErrorMessageDeprecated: "cannot pass a timestamp prior to the last transaction:",
+			},
+		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
@@ -535,7 +579,7 @@ func TestPostTransactions(t *testing.T) {
 							require.True(t, ok)
 							require.Len(t, txs, 1)
 							if !tc.payload[i].Timestamp.IsZero() {
-								require.Equal(t, tc.payload[i].Timestamp, txs[0].Timestamp)
+								require.Equal(t, tc.payload[i].Timestamp.UTC(), txs[0].Timestamp)
 							}
 						}
 						tcIndex := 0
@@ -561,7 +605,7 @@ func TestPostTransactions(t *testing.T) {
 							require.Equal(t, (*tc.expectedRes.Data)[0].Postings, txs[0].Postings)
 							require.Equal(t, len((*tc.expectedRes.Data)[0].Metadata), len(txs[0].Metadata))
 							if !tc.payload[tcIndex].Timestamp.IsZero() {
-								require.Equal(t, tc.payload[tcIndex].Timestamp, txs[0].Timestamp)
+								require.Equal(t, tc.payload[tcIndex].Timestamp.UTC(), txs[0].Timestamp)
 							}
 						}
 					})

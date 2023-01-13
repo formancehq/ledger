@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
@@ -155,15 +154,6 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	internal.BindEnv(viper.GetViper())
-
-	logging.Infof("starting ledger with env:")
-	for _, e := range os.Environ() {
-		logging.Infof("%s", e)
-	}
-	logging.Infof("viper:")
-	for key, val := range viper.AllSettings() {
-		logging.Infof("%s: %+v", key, val)
-	}
 
 	return root
 }

@@ -256,7 +256,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	var res []core.ExpandedTransaction
+	var res ledger.CommitResult
 	var err error
 
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
@@ -276,7 +276,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(),
+		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
 			true, preview, core.TxsToScriptsData(txData)...)
 	} else {
 		script := core.ScriptData{
@@ -285,7 +285,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(),
+		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
 			false, preview, script)
 	}
 	if err != nil {
@@ -293,7 +293,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -389,12 +389,12 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		}
 	}
 
-	res, err := l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), true, false,
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), true, false,
 		core.TxsToScriptsData(txs.Transactions...)...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
 }

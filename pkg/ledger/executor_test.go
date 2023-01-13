@@ -16,7 +16,7 @@ func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.ScriptData{}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorNoScript, err.(*ledger.ScriptError).Code)
 	})
@@ -28,7 +28,7 @@ func TestCompilationError(t *testing.T) {
 			Script: core.Script{Plain: "willnotcompile"},
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
 	})
@@ -50,7 +50,7 @@ func TestSend(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:001",
@@ -75,7 +75,7 @@ func TestNoVariables(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		assert.Error(t, err)
 
 		require.NoError(t, l.Close(context.Background()))
@@ -105,7 +105,7 @@ func TestVariables(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:042",
@@ -138,7 +138,7 @@ func TestMissingMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
 	})
 }
@@ -211,7 +211,7 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, l.Close(ctx))
 				}(l, context.Background())
 
-				_, err := l.ExecuteScripts(context.Background(), false, false, tc.script)
+				_, err := l.Execute(context.Background(), false, false, tc.script)
 
 				if tc.expectedErrorCode != "" {
 					require.Error(t, err)
@@ -247,7 +247,7 @@ func TestScriptSetReference(t *testing.T) {
 			Reference: "tx_ref",
 		}
 
-		_, err := l.ExecuteScripts(context.Background(), false, false, script)
+		_, err := l.Execute(context.Background(), false, false, script)
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -263,7 +263,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		_, err := l.ExecuteScripts(context.Background(), false, false,
+		_, err := l.Execute(context.Background(), false, false,
 			core.ScriptData{
 				Script: core.Script{
 					Plain: `
@@ -277,7 +277,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 			})
 		require.NoError(t, err)
 
-		_, err = l.ExecuteScripts(context.Background(), false, false,
+		_, err = l.Execute(context.Background(), false, false,
 			core.ScriptData{
 				Script: core.Script{
 					Plain: `
@@ -328,10 +328,10 @@ func BenchmarkLedger_Post(b *testing.B) {
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
 			script := core.TxsToScriptsData(txData)
-			res, err := l.ExecuteScripts(context.Background(), true, true, script...)
+			res, err := l.Execute(context.Background(), true, true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
-			require.Len(b, res[0].Postings, 1000)
+			require.Len(b, res.GeneratedTransactions[0].Postings, 1000)
 		}
 	})
 }

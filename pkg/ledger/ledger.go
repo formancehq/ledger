@@ -120,13 +120,13 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
 	}
-	res, err := l.ExecuteScripts(ctx, false, false,
+	res, err := l.Execute(ctx, false, false,
 		core.TxsToScriptsData(txData)...)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf(
 			"executing revert script for transaction %d", id))
 	}
-	revertTx := res[0]
+	revertTx := res.GeneratedTransactions[0]
 
 	if err := l.store.UpdateTransactionMetadata(ctx,
 		revertedTx.ID, core.RevertedMetadata(revertTx.ID), revertTx.Timestamp); err != nil {
