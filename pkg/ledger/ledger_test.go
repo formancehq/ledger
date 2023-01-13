@@ -574,15 +574,6 @@ func TestVeryBigTransaction(t *testing.T) {
 	})
 }
 
-func BenchmarkGetAccount(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
-		for i := 0; i < b.N; i++ {
-			_, err := l.GetAccount(context.Background(), "users:013")
-			require.NoError(b, err)
-		}
-	})
-}
-
 func BenchmarkTransaction1(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
@@ -629,6 +620,15 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					true, false, core.TxsToScriptsData(txs...)...)
 				require.NoError(b, err)
 			}
+		}
+	})
+}
+
+func BenchmarkGetAccount(b *testing.B) {
+	runOnLedger(func(l *ledger.Ledger) {
+		for i := 0; i < b.N; i++ {
+			_, err := l.GetAccount(context.Background(), "users:013")
+			require.NoError(b, err)
 		}
 	})
 }

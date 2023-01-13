@@ -18,6 +18,7 @@ type CommitResult struct {
 	PreCommitVolumes      core.AccountsAssetsVolumes
 	PostCommitVolumes     core.AccountsAssetsVolumes
 	GeneratedTransactions []core.ExpandedTransaction
+	AdditionalOperations  *core.AdditionalOperations
 }
 
 func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) (CommitResult, error) {
@@ -317,6 +318,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		PreCommitVolumes:      vAggr.AggregatedPreCommitVolumes(),
 		PostCommitVolumes:     vAggr.AggregatedPostCommitVolumes(),
 		GeneratedTransactions: txs,
+		AdditionalOperations:  addOps,
 	}
 
 	if preview {
