@@ -38,8 +38,10 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	vAggr := NewVolumeAggregator(l.store)
 	txs := make([]core.ExpandedTransaction, 0)
 	var nextTxId uint64
+	var lastTxTimestamp time.Time
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
+		lastTxTimestamp = lastTx.Timestamp
 	}
 	contracts := make([]core.Contract, 0)
 	if checkMapping {
@@ -55,7 +57,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	}
 
 	usedReferences := make(map[string]struct{})
-	accountsVolumes := core.AccountsAssetsVolumes{}
+	accountsWithVolumes := make(map[string]*core.AccountWithVolumes, 0)
 	for i, script := range scripts {
 		// Until v1.5.0, dates was stored as string using rfc3339 format
 		// So round the date to the second to keep the same behaviour
@@ -66,16 +68,17 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 
 		past := false
-		if lastTx != nil && script.Timestamp.Before(lastTx.Timestamp) {
+		if lastTx != nil && script.Timestamp.Before(lastTxTimestamp) {
 			past = true
 		}
 		if past && !l.allowPastTimestamps {
 			return CommitResult{}, NewValidationError(fmt.Sprintf(
 				"cannot pass a timestamp prior to the last transaction: %s (passed) is %s before %s (last)",
 				script.Timestamp.Format(time.RFC3339Nano),
-				lastTx.Timestamp.Sub(script.Timestamp),
-				lastTx.Timestamp.Format(time.RFC3339Nano)))
+				lastTxTimestamp.Sub(script.Timestamp),
+				lastTxTimestamp.Format(time.RFC3339Nano)))
 		}
+		lastTxTimestamp = script.Timestamp
 
 		if script.Reference != "" {
 			if _, ok := usedReferences[script.Reference]; ok {
@@ -83,12 +86,12 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			}
 			usedReferences[script.Reference] = struct{}{}
 
-			txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
-				WithReferenceFilter(script.Reference))
+			res, err := l.GetTransactions(ctx,
+				*NewTransactionsQuery().WithReferenceFilter(script.Reference))
 			if err != nil {
 				return CommitResult{}, errors.Wrap(err, "GetTransactions")
 			}
-			if len(txs.Data) > 0 {
+			if len(res.Data) > 0 {
 				return CommitResult{}, NewConflictError()
 			}
 		}
@@ -121,13 +124,16 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(req.Error, "could not resolve program resources").Error())
 			}
-			account, err := l.GetAccount(ctx, req.Account)
-			if err != nil {
-				return CommitResult{}, errors.Wrap(err,
-					fmt.Sprintf("could not get account %q", req.Account))
+			if _, ok := accountsWithVolumes[req.Account]; !ok {
+				account, err := l.GetAccount(ctx, req.Account)
+				if err != nil {
+					return CommitResult{}, errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
+				}
+				accountsWithVolumes[req.Account] = account
 			}
 			if req.Key != "" {
-				entry, ok := account.Metadata[req.Key]
+				entry, ok := accountsWithVolumes[req.Account].Metadata[req.Key]
 				if !ok {
 					return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
 						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
@@ -145,7 +151,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				}
 				req.Response <- *value
 			} else if req.Asset != "" {
-				amt := account.Balances[req.Asset].OrZero()
+				amt := accountsWithVolumes[req.Account].Balances[req.Asset].OrZero()
 				resp := machine.MonetaryInt(*amt)
 				req.Response <- &resp
 			} else {
@@ -164,18 +170,15 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(req.Error, "could not resolve program balances").Error())
 			}
-			var amt *core.MonetaryInt
-			if vol, ok := accountsVolumes[req.Account]; !ok {
+			if _, ok := accountsWithVolumes[req.Account]; !ok {
 				account, err := l.GetAccount(ctx, req.Account)
 				if err != nil {
 					return CommitResult{}, errors.Wrap(err,
 						fmt.Sprintf("could not get account %q", req.Account))
 				}
-				accountsVolumes[req.Account] = account.Volumes
-				amt = account.Balances[req.Asset].OrZero()
-			} else {
-				amt = vol[req.Asset].Balance()
+				accountsWithVolumes[req.Account] = account
 			}
+			amt := accountsWithVolumes[req.Account].Balances[req.Asset].OrZero()
 			resp := machine.MonetaryInt(*amt)
 			req.Response <- &resp
 		}
@@ -226,29 +229,29 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			}
 		}
 
-		accounts := make(map[string]*core.Account, 0)
-		for addr, volumes := range txVolumeAggr.PostCommitVolumes() {
-			accountsVolumes[addr] = volumes
-			for asset, volume := range volumes {
-				if addr == "world" {
+		for addr, assetsVolumes := range txVolumeAggr.PostCommitVolumes() {
+			if _, ok := accountsWithVolumes[addr]; !ok {
+				account, err := l.GetAccount(ctx, addr)
+				if err != nil {
+					return CommitResult{}, errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", addr))
+				}
+				accountsWithVolumes[addr] = account
+			}
+			accountsWithVolumes[addr].Volumes = assetsVolumes
+			accountsWithVolumes[addr].Balances = accountsWithVolumes[addr].Volumes.Balances()
+			for asset, volumes := range assetsVolumes {
+				if addr == core.WORLD {
 					continue
 				}
 
 				for _, contract := range contracts {
 					if contract.Match(addr) {
-						if _, ok := accounts[addr]; !ok {
-							account, err := l.store.GetAccount(ctx, addr)
-							if err != nil {
-								return CommitResult{}, NewTransactionCommitError(i,
-									errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr)))
-							}
-							accounts[addr] = account
-						}
 						if ok := contract.Expr.Eval(core.EvalContext{
 							Variables: map[string]interface{}{
-								"balance": volume.Balance(),
+								"balance": volumes.Balance(),
 							},
-							Metadata: accounts[addr].Metadata,
+							Metadata: accountsWithVolumes[addr].Metadata,
 							Asset:    asset,
 						}); !ok {
 							return CommitResult{}, NewInsufficientFundError(asset)
