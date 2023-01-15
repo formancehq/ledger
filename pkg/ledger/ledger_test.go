@@ -219,6 +219,104 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	})
 }
 
+func TestTransactionBatchTimestamps(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		timestamp1 := time.Now().UTC().Add(-10 * time.Second)
+		timestamp2 := time.Now().UTC().Add(-9 * time.Second)
+		timestamp3 := time.Now().UTC().Add(-8 * time.Second)
+		timestamp4 := time.Now().UTC().Add(-7 * time.Second)
+		t.Run("descending order should fail", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp2,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp1,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			require.True(t, ledger.IsValidationError(err))
+			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+		})
+		t.Run("ascending order should succeed", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp2,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp3,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			assert.NoError(t, err)
+		})
+		t.Run("ascending order but before last inserted should fail", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp1,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp4,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			require.True(t, ledger.IsValidationError(err))
+			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+		})
+	})
+}
+
 func TestTransactionExpectedVolumes(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		txsData := []core.TransactionData{
