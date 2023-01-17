@@ -37,14 +37,15 @@ func LedgerMonitorModule() fx.Option {
 	)
 }
 
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, res ledger.CommitResult) {
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, txs ...core.ExpandedTransaction) {
+	postCommitVolumes := core.AggregatePostCommitVolumes(txs...)
 	l.publish(ctx, EventTypeCommittedTransactions,
 		newEventCommittedTransactions(CommittedTransactions{
 			Ledger:            ledger,
-			Transactions:      res.GeneratedTransactions,
-			Volumes:           res.PostCommitVolumes,
-			PostCommitVolumes: res.PostCommitVolumes,
-			PreCommitVolumes:  res.PreCommitVolumes,
+			Transactions:      txs,
+			Volumes:           postCommitVolumes,
+			PostCommitVolumes: postCommitVolumes,
+			PreCommitVolumes:  core.AggregatePreCommitVolumes(txs...),
 		}))
 }
 

@@ -14,16 +14,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-type CommitResult struct {
-	PreCommitVolumes      core.AccountsAssetsVolumes
-	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.ExpandedTransaction
-	AdditionalOperations  *core.AdditionalOperations
-}
-
-func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) (CommitResult, error) {
+func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
 	if len(scripts) == 0 {
-		return CommitResult{},
+		return []core.ExpandedTransaction{},
 			NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
 
@@ -31,21 +24,23 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
-		return CommitResult{}, errors.Wrap(err,
+		return []core.ExpandedTransaction{}, errors.Wrap(err,
 			"could not get last transaction")
 	}
 
 	vAggr := NewVolumeAggregator(l.store)
 	txs := make([]core.ExpandedTransaction, 0)
 	var nextTxId uint64
+	var lastTxTimestamp time.Time
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
+		lastTxTimestamp = lastTx.Timestamp
 	}
 	contracts := make([]core.Contract, 0)
 	if checkMapping {
 		mapping, err := l.store.LoadMapping(ctx)
 		if err != nil {
-			return CommitResult{}, errors.Wrap(err,
+			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"loading mapping")
 		}
 		if mapping != nil {
@@ -66,79 +61,80 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 
 		past := false
-		if lastTx != nil && script.Timestamp.Before(lastTx.Timestamp) {
+		if lastTx != nil && script.Timestamp.Before(lastTxTimestamp) {
 			past = true
 		}
 		if past && !l.allowPastTimestamps {
-			return CommitResult{}, NewValidationError(fmt.Sprintf(
+			return []core.ExpandedTransaction{}, NewValidationError(fmt.Sprintf(
 				"cannot pass a timestamp prior to the last transaction: %s (passed) is %s before %s (last)",
 				script.Timestamp.Format(time.RFC3339Nano),
-				lastTx.Timestamp.Sub(script.Timestamp),
-				lastTx.Timestamp.Format(time.RFC3339Nano)))
+				lastTxTimestamp.Sub(script.Timestamp),
+				lastTxTimestamp.Format(time.RFC3339Nano)))
 		}
+		lastTxTimestamp = script.Timestamp
 
 		if script.Reference != "" {
 			if _, ok := usedReferences[script.Reference]; ok {
-				return CommitResult{}, NewConflictError()
+				return []core.ExpandedTransaction{}, NewConflictError()
 			}
 			usedReferences[script.Reference] = struct{}{}
 
 			txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
 				WithReferenceFilter(script.Reference))
 			if err != nil {
-				return CommitResult{}, errors.Wrap(err, "GetTransactions")
+				return []core.ExpandedTransaction{}, errors.Wrap(err, "GetTransactions")
 			}
 			if len(txs.Data) > 0 {
-				return CommitResult{}, NewConflictError()
+				return []core.ExpandedTransaction{}, NewConflictError()
 			}
 		}
 
 		if script.Plain == "" {
-			return CommitResult{}, NewScriptError(ScriptErrorNoScript,
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorNoScript,
 				"no script to execute")
 		}
 
 		p, err := compiler.Compile(script.Plain)
 		if err != nil {
-			return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 				err.Error())
 		}
 
 		m := vm.NewMachine(*p)
 
 		if err = m.SetVarsFromJSON(script.Vars); err != nil {
-			return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 				errors.Wrap(err, "could not set variables").Error())
 		}
 
 		resourcesChan, err := m.ResolveResources()
 		if err != nil {
-			return CommitResult{}, errors.Wrap(err,
+			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"could not resolve program resources")
 		}
 		for req := range resourcesChan {
 			if req.Error != nil {
-				return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(req.Error, "could not resolve program resources").Error())
 			}
 			account, err := l.GetAccount(ctx, req.Account)
 			if err != nil {
-				return CommitResult{}, errors.Wrap(err,
+				return []core.ExpandedTransaction{}, errors.Wrap(err,
 					fmt.Sprintf("could not get account %q", req.Account))
 			}
 			if req.Key != "" {
 				entry, ok := account.Metadata[req.Key]
 				if !ok {
-					return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+					return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
 				}
 				data, err := json.Marshal(entry)
 				if err != nil {
-					return CommitResult{}, errors.Wrap(err, "json.Marshal")
+					return []core.ExpandedTransaction{}, errors.Wrap(err, "json.Marshal")
 				}
 				value, err := machine.NewValueFromTypedJSON(data)
 				if err != nil {
-					return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+					return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 						errors.Wrap(err, fmt.Sprintf(
 							"invalid format for metadata at key %v for account %v",
 							req.Key, req.Account)).Error())
@@ -149,26 +145,26 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				resp := machine.MonetaryInt(*amt)
 				req.Response <- &resp
 			} else {
-				return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(err, fmt.Sprintf("invalid ResourceRequest: %+v", req)).Error())
 			}
 		}
 
 		balanceCh, err := m.ResolveBalances()
 		if err != nil {
-			return CommitResult{}, errors.Wrap(err,
+			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"could not resolve balances")
 		}
 		for req := range balanceCh {
 			if req.Error != nil {
-				return CommitResult{}, NewScriptError(ScriptErrorCompilationFailed,
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(req.Error, "could not resolve program balances").Error())
 			}
 			var amt *core.MonetaryInt
 			if vol, ok := accountsVolumes[req.Account]; !ok {
 				account, err := l.GetAccount(ctx, req.Account)
 				if err != nil {
-					return CommitResult{}, errors.Wrap(err,
+					return []core.ExpandedTransaction{}, errors.Wrap(err,
 						fmt.Sprintf("could not get account %q", req.Account))
 				}
 				accountsVolumes[req.Account] = account.Volumes
@@ -182,31 +178,31 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 
 		exitCode, err := m.Execute()
 		if err != nil {
-			return CommitResult{}, errors.Wrap(err,
+			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"script execution failed")
 		}
 
 		if exitCode != vm.EXIT_OK {
 			switch exitCode {
 			case vm.EXIT_FAIL:
-				return CommitResult{}, errors.New(
+				return []core.ExpandedTransaction{}, errors.New(
 					"script exited with error code EXIT_FAIL")
 			case vm.EXIT_FAIL_INVALID:
-				return CommitResult{}, errors.New(
+				return []core.ExpandedTransaction{}, errors.New(
 					"internal error: compiled script was invalid")
 			case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
 				// TODO: If the machine can provide the asset which is failing
 				// we should be able to use InsufficientFundError{} instead of error code
-				return CommitResult{}, NewScriptError(ScriptErrorInsufficientFund,
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorInsufficientFund,
 					"account had insufficient funds")
 			default:
-				return CommitResult{}, errors.New(
+				return []core.ExpandedTransaction{}, errors.New(
 					"script execution failed")
 			}
 		}
 
 		if len(m.Postings) == 0 {
-			return CommitResult{},
+			return []core.ExpandedTransaction{},
 				NewValidationError("transaction has no postings")
 		}
 
@@ -216,7 +212,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			amt := core.MonetaryInt(*posting.Amount)
 			if err := txVolumeAggr.Transfer(ctx,
 				posting.Source, posting.Destination, posting.Asset, &amt); err != nil {
-				return CommitResult{}, NewTransactionCommitError(i, err)
+				return []core.ExpandedTransaction{}, NewTransactionCommitError(i, err)
 			}
 			postings[j] = core.Posting{
 				Source:      posting.Source,
@@ -227,10 +223,10 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 
 		accounts := make(map[string]*core.Account, 0)
-		for addr, volumes := range txVolumeAggr.PostCommitVolumes() {
+		for addr, volumes := range txVolumeAggr.PostCommitVolumes {
 			accountsVolumes[addr] = volumes
 			for asset, volume := range volumes {
-				if addr == "world" {
+				if addr == core.WORLD {
 					continue
 				}
 
@@ -239,7 +235,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 						if _, ok := accounts[addr]; !ok {
 							account, err := l.store.GetAccount(ctx, addr)
 							if err != nil {
-								return CommitResult{}, NewTransactionCommitError(i,
+								return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
 									errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr)))
 							}
 							accounts[addr] = account
@@ -251,7 +247,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 							Metadata: accounts[addr].Metadata,
 							Asset:    asset,
 						}); !ok {
-							return CommitResult{}, NewInsufficientFundError(asset)
+							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
 						}
 						break
 					}
@@ -263,14 +259,14 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		for k, v := range metadata {
 			asMapAny := make(map[string]any)
 			if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
-				return CommitResult{}, errors.Wrap(err, "json.Unmarshal")
+				return []core.ExpandedTransaction{}, errors.Wrap(err, "json.Unmarshal")
 			}
 			metadata[k] = asMapAny
 		}
 		for k, v := range script.Metadata {
 			_, ok := metadata[k]
 			if ok {
-				return CommitResult{}, NewScriptError(ScriptErrorMetadataOverride,
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorMetadataOverride,
 					"cannot override metadata from script")
 			}
 			metadata[k] = v
@@ -281,7 +277,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			for k, v := range meta {
 				asMapAny := make(map[string]any)
 				if err := json.Unmarshal(v, &asMapAny); err != nil {
-					return CommitResult{}, errors.Wrap(err, "json.Unmarshal")
+					return []core.ExpandedTransaction{}, errors.Wrap(err, "json.Unmarshal")
 				}
 				if account[0] == '@' {
 					account = account[1:]
@@ -306,31 +302,24 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				},
 				ID: nextTxId,
 			},
-			PostCommitVolumes: txVolumeAggr.PostCommitVolumes(),
-			PreCommitVolumes:  txVolumeAggr.PreCommitVolumes(),
+			PreCommitVolumes:  txVolumeAggr.PreCommitVolumes,
+			PostCommitVolumes: txVolumeAggr.PostCommitVolumes,
 		}
 		lastTx = &tx
 		txs = append(txs, tx)
 		nextTxId++
 	}
 
-	res := CommitResult{
-		PreCommitVolumes:      vAggr.AggregatedPreCommitVolumes(),
-		PostCommitVolumes:     vAggr.AggregatedPostCommitVolumes(),
-		GeneratedTransactions: txs,
-		AdditionalOperations:  addOps,
-	}
-
 	if preview {
-		return res, nil
+		return txs, nil
 	}
 
 	if err := l.store.Commit(ctx, txs...); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return CommitResult{}, NewConflictError()
+			return []core.ExpandedTransaction{}, NewConflictError()
 		default:
-			return CommitResult{}, errors.Wrap(err,
+			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"committing transactions")
 		}
 	}
@@ -339,13 +328,13 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		for addr, m := range addOps.SetAccountMeta {
 			if err := l.store.UpdateAccountMetadata(ctx,
 				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-				return CommitResult{}, errors.Wrap(err,
+				return []core.ExpandedTransaction{}, errors.Wrap(err,
 					"updating account metadata")
 			}
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), res)
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), txs...)
 	if addOps != nil && addOps.SetAccountMeta != nil {
 		for addr, m := range addOps.SetAccountMeta {
 			l.monitor.SavedMetadata(ctx,
@@ -353,5 +342,5 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 	}
 
-	return res, nil
+	return txs, nil
 }

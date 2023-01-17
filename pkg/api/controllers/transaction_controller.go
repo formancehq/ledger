@@ -256,7 +256,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	var res ledger.CommitResult
+	var res []core.ExpandedTransaction
 	var err error
 
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
@@ -293,7 +293,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -396,5 +396,5 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res.GeneratedTransactions)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
 }

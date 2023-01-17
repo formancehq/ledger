@@ -139,9 +139,7 @@ func TestLedger_processTx(t *testing.T) {
 					core.TxsToScriptsData(txsData...)...)
 				assert.NoError(t, err)
 
-				assert.Equal(t, len(txsData), len(res.GeneratedTransactions))
-				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
-				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
+				assert.Equal(t, len(txsData), len(res))
 
 				expectedTxs := []core.ExpandedTransaction{{
 					Transaction: core.Transaction{
@@ -151,7 +149,12 @@ func TestLedger_processTx(t *testing.T) {
 					PreCommitVolumes:  expectedPreCommitVol,
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				assert.Equal(t, expectedTxs, res)
+
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 			})
 
 			t.Run("multi transactions single postings", func(t *testing.T) {
@@ -186,7 +189,7 @@ func TestLedger_processTx(t *testing.T) {
 				res, err := l.Execute(context.Background(), true, true,
 					core.TxsToScriptsData(txsData...)...)
 				require.NoError(t, err)
-				require.Equal(t, len(txsData), len(res.GeneratedTransactions))
+				require.Equal(t, len(txsData), len(res))
 
 				expectedTxs := []core.ExpandedTransaction{
 					{
@@ -296,7 +299,12 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 				}
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				assert.Equal(t, expectedTxs, res)
+
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 			})
 		})
 

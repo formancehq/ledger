@@ -219,6 +219,104 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	})
 }
 
+func TestTransactionBatchTimestamps(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		timestamp1 := time.Now().UTC().Add(-10 * time.Second)
+		timestamp2 := time.Now().UTC().Add(-9 * time.Second)
+		timestamp3 := time.Now().UTC().Add(-8 * time.Second)
+		timestamp4 := time.Now().UTC().Add(-7 * time.Second)
+		t.Run("descending order should fail", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp2,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp1,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			require.True(t, ledger.IsValidationError(err), err)
+			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+		})
+		t.Run("ascending order should succeed", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp2,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp3,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			assert.NoError(t, err)
+		})
+		t.Run("ascending order but before last inserted should fail", func(t *testing.T) {
+			batch := []core.TransactionData{
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp1,
+				},
+				{
+					Postings: []core.Posting{
+						{
+							Source:      core.WORLD,
+							Destination: "player",
+							Asset:       "GEM",
+							Amount:      core.NewMonetaryInt(1),
+						},
+					},
+					Timestamp: timestamp4,
+				},
+			}
+			_, err := l.Execute(context.Background(),
+				true, false, core.TxsToScriptsData(batch...)...)
+			require.True(t, ledger.IsValidationError(err))
+			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+		})
+	})
+}
+
 func TestTransactionExpectedVolumes(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		txsData := []core.TransactionData{
@@ -268,7 +366,8 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			true, false, core.TxsToScriptsData(txsData...)...)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 4, len(res.GeneratedTransactions))
+		postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+		assert.Equal(t, 4, len(res))
 		assert.EqualValues(t, core.AccountsAssetsVolumes{
 			"world": core.AssetsVolumes{
 				"USD": {
@@ -296,7 +395,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 					Output: core.NewMonetaryInt(0),
 				},
 			},
-		}, res.PostCommitVolumes)
+		}, postCommitVolumes)
 	})
 }
 
@@ -516,7 +615,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		require.Equal(t, core.Postings{
@@ -528,10 +627,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf("%d", res.GeneratedTransactions[0].ID),
+		require.EqualValues(t, fmt.Sprintf("%d", res[0].ID),
 			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
-		tx, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
@@ -568,7 +667,7 @@ func TestVeryBigTransaction(t *testing.T) {
 			})...)
 		require.NoError(t, err)
 
-		txFromDB, err := l.GetTransaction(context.Background(), res.GeneratedTransactions[0].ID)
+		txFromDB, err := l.GetTransaction(context.Background(), res[0].ID)
 		require.NoError(t, err)
 		require.Equal(t, txFromDB.Postings[0].Amount, amount)
 	})

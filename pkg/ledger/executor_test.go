@@ -461,16 +461,18 @@ func TestSetAccountMeta(t *testing.T) {
   					`},
 				})
 			require.NoError(t, err)
-			require.Equal(t, core.AccountsMeta{
-				"alice": map[string]any{
-					"aaa": map[string]any{"type": "string", "value": "string meta"},
-					"bbb": map[string]any{"type": "number", "value": 42.},
-					"ccc": map[string]any{"type": "asset", "value": "COIN"},
-					"ddd": map[string]any{"type": "monetary",
-						"value": map[string]any{"asset": "COIN", "amount": 30.}},
-					"eee": map[string]any{"type": "account", "value": "bob"},
-				},
-			}, res.AdditionalOperations.SetAccountMeta)
+			require.Equal(t, 1, len(res))
+
+			acc, err := l.GetAccount(context.Background(), "alice")
+			require.NoError(t, err)
+			require.Equal(t, core.Metadata{
+				"aaa": map[string]any{"type": "string", "value": "string meta"},
+				"bbb": map[string]any{"type": "number", "value": 42.},
+				"ccc": map[string]any{"type": "asset", "value": "COIN"},
+				"ddd": map[string]any{"type": "monetary",
+					"value": map[string]any{"asset": "COIN", "amount": 30.}},
+				"eee": map[string]any{"type": "account", "value": "bob"},
+			}, acc.Metadata)
 		})
 
 		t.Run("invalid syntax", func(t *testing.T) {
@@ -726,8 +728,8 @@ func BenchmarkLedger_Post(b *testing.B) {
 			script := core.TxsToScriptsData(txData)
 			res, err := l.Execute(context.Background(), true, true, script...)
 			require.NoError(b, err)
-			require.Len(b, res.GeneratedTransactions, 1)
-			require.Len(b, res.GeneratedTransactions[0].Postings, 1000)
+			require.Len(b, res, 1)
+			require.Len(b, res[0].Postings, 1000)
 		}
 	})
 }
