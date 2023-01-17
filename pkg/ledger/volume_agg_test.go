@@ -105,10 +105,11 @@ func TestVolumeAggregator(t *testing.T) {
 		err := l.GetLedgerStore().Commit(context.Background(), tx1, tx2)
 		require.NoError(t, err)
 
-		volumeAggregator := ledger.NewVolumeAggregator(l.GetLedgerStore())
+		volumeAggregator := ledger.NewVolumeAggregator(l)
 		firstTx := volumeAggregator.NextTx()
-		require.NoError(t, firstTx.Transfer(context.Background(), "bob", "alice", "USD", core.NewMonetaryInt(100)))
-		require.NoError(t, firstTx.Transfer(context.Background(), "bob", "zoro", "USD", core.NewMonetaryInt(50)))
+		accs := map[string]*core.AccountWithVolumes{}
+		require.NoError(t, firstTx.Transfer(context.Background(), "bob", "alice", "USD", core.NewMonetaryInt(100), accs))
+		require.NoError(t, firstTx.Transfer(context.Background(), "bob", "zoro", "USD", core.NewMonetaryInt(50), accs))
 
 		require.Equal(t, core.AccountsAssetsVolumes{
 			"bob": core.AssetsVolumes{
@@ -152,8 +153,8 @@ func TestVolumeAggregator(t *testing.T) {
 		}, firstTx.PreCommitVolumes)
 
 		secondTx := volumeAggregator.NextTx()
-		require.NoError(t, secondTx.Transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50)))
-		require.NoError(t, secondTx.Transfer(context.Background(), "bob", "fred", "USD", core.NewMonetaryInt(25)))
+		require.NoError(t, secondTx.Transfer(context.Background(), "alice", "fred", "USD", core.NewMonetaryInt(50), accs))
+		require.NoError(t, secondTx.Transfer(context.Background(), "bob", "fred", "USD", core.NewMonetaryInt(25), accs))
 		require.Equal(t, core.AccountsAssetsVolumes{
 			"bob": core.AssetsVolumes{
 				"USD": {

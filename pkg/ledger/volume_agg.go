@@ -29,6 +29,7 @@ func (tva *TxVolumeAggregator) Transfer(
 	ctx context.Context,
 	from, to, asset string,
 	amount *core.MonetaryInt,
+	accs map[string]*core.AccountWithVolumes,
 ) error {
 	for _, addr := range []string{from, to} {
 		if !tva.PreCommitVolumes.HasAccountAndAsset(addr, asset) {
@@ -36,11 +37,23 @@ func (tva *TxVolumeAggregator) Transfer(
 			if previousVolumes != nil {
 				tva.PreCommitVolumes.SetVolumes(addr, asset, *previousVolumes)
 			} else {
-				volumesFromStore, err := tva.agg.store.GetVolumes(ctx, addr, asset)
-				if err != nil {
-					return err
+				var vol core.Volumes
+				var ok1, ok2 bool
+				_, ok1 = accs[addr]
+				if ok1 {
+					_, ok2 = accs[addr].Volumes[asset]
 				}
-				tva.PreCommitVolumes.SetVolumes(addr, asset, volumesFromStore)
+				if ok1 && ok2 {
+					vol = accs[addr].Volumes[asset]
+				} else {
+					acc, err := tva.agg.l.GetAccount(ctx, addr)
+					if err != nil {
+						return err
+					}
+					vol = acc.Volumes[asset]
+					accs[addr] = acc
+				}
+				tva.PreCommitVolumes.SetVolumes(addr, asset, vol)
 			}
 		}
 		if !tva.PostCommitVolumes.HasAccountAndAsset(addr, asset) {
@@ -54,8 +67,8 @@ func (tva *TxVolumeAggregator) Transfer(
 }
 
 type VolumeAggregator struct {
-	store Store
-	txs   []*TxVolumeAggregator
+	l   *Ledger
+	txs []*TxVolumeAggregator
 }
 
 func (agg *VolumeAggregator) NextTx() *TxVolumeAggregator {
@@ -71,8 +84,8 @@ func (agg *VolumeAggregator) NextTx() *TxVolumeAggregator {
 	return tva
 }
 
-func NewVolumeAggregator(store Store) *VolumeAggregator {
+func NewVolumeAggregator(l *Ledger) *VolumeAggregator {
 	return &VolumeAggregator{
-		store: store,
+		l: l,
 	}
 }

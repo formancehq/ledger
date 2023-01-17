@@ -28,7 +28,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			"could not get last transaction")
 	}
 
-	vAggr := NewVolumeAggregator(l.store)
+	vAggr := NewVolumeAggregator(l)
 	txs := make([]core.ExpandedTransaction, 0)
 	var nextTxId uint64
 	var lastTxTimestamp time.Time
@@ -50,7 +50,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	}
 
 	usedReferences := make(map[string]struct{})
-	accountsVolumes := core.AccountsAssetsVolumes{}
+	accs := map[string]*core.AccountWithVolumes{}
 	for i, script := range scripts {
 		// Until v1.5.0, dates was stored as string using rfc3339 format
 		// So round the date to the second to keep the same behaviour
@@ -161,16 +161,16 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 					errors.Wrap(req.Error, "could not resolve program balances").Error())
 			}
 			var amt *core.MonetaryInt
-			if vol, ok := accountsVolumes[req.Account]; !ok {
+			if acc, ok := accs[req.Account]; !ok {
 				account, err := l.GetAccount(ctx, req.Account)
 				if err != nil {
 					return []core.ExpandedTransaction{}, errors.Wrap(err,
 						fmt.Sprintf("could not get account %q", req.Account))
 				}
-				accountsVolumes[req.Account] = account.Volumes
+				accs[req.Account] = account
 				amt = account.Balances[req.Asset].OrZero()
 			} else {
-				amt = vol[req.Asset].Balance()
+				amt = acc.Balances[req.Asset]
 			}
 			resp := machine.MonetaryInt(*amt)
 			req.Response <- &resp
@@ -211,7 +211,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		for j, posting := range m.Postings {
 			amt := core.MonetaryInt(*posting.Amount)
 			if err := txVolumeAggr.Transfer(ctx,
-				posting.Source, posting.Destination, posting.Asset, &amt); err != nil {
+				posting.Source, posting.Destination, posting.Asset, &amt, accs); err != nil {
 				return []core.ExpandedTransaction{}, NewTransactionCommitError(i, err)
 			}
 			postings[j] = core.Posting{
@@ -222,29 +222,29 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			}
 		}
 
-		accounts := make(map[string]*core.Account, 0)
-		for addr, volumes := range txVolumeAggr.PostCommitVolumes {
-			accountsVolumes[addr] = volumes
+		for account, volumes := range txVolumeAggr.PostCommitVolumes {
+			if _, ok := accs[account]; !ok {
+				acc, err := l.GetAccount(ctx, account)
+				if err != nil {
+					return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
+						errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", account)))
+				}
+				accs[account] = acc
+			}
+			accs[account].Volumes = volumes
+			accs[account].Balances = volumes.Balances()
 			for asset, volume := range volumes {
-				if addr == core.WORLD {
+				if account == core.WORLD {
 					continue
 				}
 
 				for _, contract := range contracts {
-					if contract.Match(addr) {
-						if _, ok := accounts[addr]; !ok {
-							account, err := l.store.GetAccount(ctx, addr)
-							if err != nil {
-								return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
-									errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", addr)))
-							}
-							accounts[addr] = account
-						}
+					if contract.Match(account) {
 						if ok := contract.Expr.Eval(core.EvalContext{
 							Variables: map[string]interface{}{
 								"balance": volume.Balance(),
 							},
-							Metadata: accounts[addr].Metadata,
+							Metadata: accs[account].Metadata,
 							Asset:    asset,
 						}); !ok {
 							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
