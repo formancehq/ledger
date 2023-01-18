@@ -117,13 +117,15 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(req.Error, "could not resolve program resources").Error())
 			}
-			account, err := l.GetAccount(ctx, req.Account)
-			if err != nil {
-				return []core.ExpandedTransaction{}, errors.Wrap(err,
-					fmt.Sprintf("could not get account %q", req.Account))
+			if _, ok := accs[req.Account]; !ok {
+				accs[req.Account], err = l.GetAccount(ctx, req.Account)
+				if err != nil {
+					return []core.ExpandedTransaction{}, errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
+				}
 			}
 			if req.Key != "" {
-				entry, ok := account.Metadata[req.Key]
+				entry, ok := accs[req.Account].Metadata[req.Key]
 				if !ok {
 					return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
@@ -141,7 +143,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				}
 				req.Response <- *value
 			} else if req.Asset != "" {
-				amt := account.Balances[req.Asset].OrZero()
+				amt := accs[req.Account].Balances[req.Asset].OrZero()
 				resp := machine.MonetaryInt(*amt)
 				req.Response <- &resp
 			} else {
@@ -161,17 +163,14 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 					errors.Wrap(req.Error, "could not resolve program balances").Error())
 			}
 			var amt *core.MonetaryInt
-			if acc, ok := accs[req.Account]; !ok {
-				account, err := l.GetAccount(ctx, req.Account)
+			if _, ok := accs[req.Account]; !ok {
+				accs[req.Account], err = l.GetAccount(ctx, req.Account)
 				if err != nil {
 					return []core.ExpandedTransaction{}, errors.Wrap(err,
 						fmt.Sprintf("could not get account %q", req.Account))
 				}
-				accs[req.Account] = account
-				amt = account.Balances[req.Asset].OrZero()
-			} else {
-				amt = acc.Balances[req.Asset]
 			}
+			amt = accs[req.Account].Balances[req.Asset].OrZero()
 			resp := machine.MonetaryInt(*amt)
 			req.Response <- &resp
 		}
@@ -224,12 +223,11 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 
 		for account, volumes := range txVolumeAggr.PostCommitVolumes {
 			if _, ok := accs[account]; !ok {
-				acc, err := l.GetAccount(ctx, account)
+				accs[account], err = l.GetAccount(ctx, account)
 				if err != nil {
 					return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
 						errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", account)))
 				}
-				accs[account] = acc
 			}
 			accs[account].Volumes = volumes
 			accs[account].Balances = volumes.Balances()

@@ -152,21 +152,7 @@ func (l *Ledger) GetAccounts(ctx context.Context, a AccountsQuery) (api.Cursor[c
 }
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-	account, err := l.store.GetAccount(ctx, address)
-	if err != nil {
-		return nil, err
-	}
-
-	volumes, err := l.store.GetAssetsVolumes(ctx, address)
-	if err != nil {
-		return nil, err
-	}
-
-	return &core.AccountWithVolumes{
-		Account:  *account,
-		Volumes:  volumes,
-		Balances: volumes.Balances(),
-	}, nil
+	return l.store.GetAccountWithVolumes(ctx, address)
 }
 
 func (l *Ledger) GetBalances(ctx context.Context, q BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
