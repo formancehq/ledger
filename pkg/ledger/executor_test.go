@@ -683,6 +683,8 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 	)
 }
 
+var execRes []core.ExpandedTransaction
+
 func BenchmarkLedger_Post(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
@@ -701,14 +703,20 @@ func BenchmarkLedger_Post(b *testing.B) {
 
 		b.ResetTimer()
 
+		res := []core.ExpandedTransaction{}
+
 		for n := 0; n < b.N; n++ {
 			_, err := l.ValidatePostings(context.Background(), txData)
 			require.NoError(b, err)
 			script := core.TxsToScriptsData(txData)
-			res, err := l.Execute(context.Background(), true, script...)
+			res, err = l.Execute(context.Background(), true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, 1000)
 		}
+
+		execRes = res
+		require.Len(b, execRes, 1)
+		require.Len(b, execRes[0].Postings, 1000)
 	})
 }
