@@ -441,6 +441,8 @@ func TestScriptReferenceConflict(t *testing.T) {
 	})
 }
 
+var execRes *ledger.CommitResult
+
 func BenchmarkLedger_Post(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
@@ -459,11 +461,18 @@ func BenchmarkLedger_Post(b *testing.B) {
 
 		b.ResetTimer()
 
+		res := &ledger.CommitResult{}
+
 		for n := 0; n < b.N; n++ {
-			res, err := l.CommitPreview(context.Background(), []core.TransactionData{txData})
+			var err error
+			res, err = l.CommitPreview(context.Background(), []core.TransactionData{txData})
 			require.NoError(b, err)
 			require.Len(b, res.GeneratedTransactions, 1)
 			require.Len(b, res.GeneratedTransactions[0].Postings, 1000)
 		}
+
+		execRes = res
+		require.Len(b, execRes.GeneratedTransactions, 1)
+		require.Len(b, execRes.GeneratedTransactions[0].Postings, 1000)
 	})
 }
