@@ -2051,3 +2051,142 @@ func TestPostTransactionsBatch(t *testing.T) {
 		})
 	}))
 }
+
+func TestPostTransactionsBatchComplex(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+
+				txs := []core.TransactionData{
+					{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "payins:001",
+								Amount:      core.NewMonetaryInt(10000),
+								Asset:       "EUR/2",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "payins:001",
+								Destination: "users:001:wallet",
+								Amount:      core.NewMonetaryInt(10000),
+								Asset:       "EUR/2",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: "teller",
+								Amount:      core.NewMonetaryInt(350000),
+								Asset:       "RBLX/6",
+							},
+							{
+								Source:      "world",
+								Destination: "teller",
+								Amount:      core.NewMonetaryInt(1840000),
+								Asset:       "SNAP/6",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "users:001:wallet",
+								Destination: "trades:001",
+								Amount:      core.NewMonetaryInt(1500),
+								Asset:       "EUR/2",
+							},
+							{
+								Source:      "trades:001",
+								Destination: "fiat:holdings",
+								Amount:      core.NewMonetaryInt(1500),
+								Asset:       "EUR/2",
+							},
+							{
+								Source:      "teller",
+								Destination: "trades:001",
+								Amount:      core.NewMonetaryInt(350000),
+								Asset:       "RBLX/6",
+							},
+							{
+								Source:      "trades:001",
+								Destination: "users:001:wallet",
+								Amount:      core.NewMonetaryInt(350000),
+								Asset:       "RBLX/6",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "users:001:wallet",
+								Destination: "trades:001",
+								Amount:      core.NewMonetaryInt(4230),
+								Asset:       "EUR/2",
+							},
+							{
+								Source:      "trades:001",
+								Destination: "fiat:holdings",
+								Amount:      core.NewMonetaryInt(4230),
+								Asset:       "EUR/2",
+							},
+							{
+								Source:      "teller",
+								Destination: "trades:001",
+								Amount:      core.NewMonetaryInt(1840000),
+								Asset:       "SNAP/6",
+							},
+							{
+								Source:      "trades:001",
+								Destination: "users:001:wallet",
+								Amount:      core.NewMonetaryInt(1840000),
+								Asset:       "SNAP/6",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "users:001:wallet",
+								Destination: "users:001:withdrawals",
+								Amount:      core.NewMonetaryInt(2270),
+								Asset:       "EUR/2",
+							},
+						},
+					},
+					{
+						Postings: core.Postings{
+							{
+								Source:      "users:001:withdrawals",
+								Destination: "payouts:001",
+								Amount:      core.NewMonetaryInt(2270),
+								Asset:       "EUR/2",
+							},
+						},
+					},
+				}
+
+				rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+					Transactions: txs,
+				})
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				res, _ := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+				require.Len(t, res, 7)
+				require.Equal(t, txs[0].Postings, res[0].Postings)
+				require.Equal(t, txs[1].Postings, res[1].Postings)
+				require.Equal(t, txs[2].Postings, res[2].Postings)
+				require.Equal(t, txs[3].Postings, res[3].Postings)
+				require.Equal(t, txs[4].Postings, res[4].Postings)
+				require.Equal(t, txs[5].Postings, res[5].Postings)
+				require.Equal(t, txs[6].Postings, res[6].Postings)
+
+				return nil
+			}})
+	}))
+}

@@ -46,11 +46,14 @@ func (tva *TxVolumeAggregator) Transfer(
 				if ok1 && ok2 {
 					vol = accs[addr].Volumes[asset]
 				} else {
-					var err error
-					accs[addr], err = tva.agg.l.GetAccount(ctx, addr)
+					acc, err := tva.agg.l.GetAccount(ctx, addr)
 					if err != nil {
 						return err
 					}
+					if accs[addr] == nil {
+						accs[addr] = acc
+					}
+					accs[addr].Volumes[asset] = acc.Volumes[asset]
 					vol = accs[addr].Volumes[asset]
 				}
 				tva.PreCommitVolumes.SetVolumes(addr, asset, vol)

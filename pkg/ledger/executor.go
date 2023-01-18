@@ -229,8 +229,10 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 						errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", account)))
 				}
 			}
-			accs[account].Volumes = volumes
-			accs[account].Balances = volumes.Balances()
+			for asset, vol := range volumes {
+				accs[account].Volumes[asset] = vol
+			}
+			accs[account].Balances = accs[account].Volumes.Balances()
 			for asset, volume := range volumes {
 				if account == core.WORLD {
 					continue
