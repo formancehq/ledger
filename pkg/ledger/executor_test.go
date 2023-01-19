@@ -706,7 +706,7 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 
 var execRes []core.ExpandedTransaction
 
-func BenchmarkLedger_Post(b *testing.B) {
+func BenchmarkLedger_PostTransactions(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(b, l.Close(ctx))
@@ -739,5 +739,161 @@ func BenchmarkLedger_Post(b *testing.B) {
 		execRes = res
 		require.Len(b, execRes, 1)
 		require.Len(b, execRes[0].Postings, 1000)
+	})
+}
+
+func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(b, l.Close(ctx))
+		}(l, context.Background())
+
+		txsData := []core.TransactionData{
+			{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "payins:001",
+						Amount:      core.NewMonetaryInt(10000),
+						Asset:       "EUR/2",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "payins:001",
+						Destination: "users:001:wallet",
+						Amount:      core.NewMonetaryInt(10000),
+						Asset:       "EUR/2",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "teller",
+						Amount:      core.NewMonetaryInt(350000),
+						Asset:       "RBLX/6",
+					},
+					{
+						Source:      "world",
+						Destination: "teller",
+						Amount:      core.NewMonetaryInt(1840000),
+						Asset:       "SNAP/6",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "users:001:wallet",
+						Destination: "trades:001",
+						Amount:      core.NewMonetaryInt(1500),
+						Asset:       "EUR/2",
+					},
+					{
+						Source:      "trades:001",
+						Destination: "fiat:holdings",
+						Amount:      core.NewMonetaryInt(1500),
+						Asset:       "EUR/2",
+					},
+					{
+						Source:      "teller",
+						Destination: "trades:001",
+						Amount:      core.NewMonetaryInt(350000),
+						Asset:       "RBLX/6",
+					},
+					{
+						Source:      "trades:001",
+						Destination: "users:001:wallet",
+						Amount:      core.NewMonetaryInt(350000),
+						Asset:       "RBLX/6",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "users:001:wallet",
+						Destination: "trades:001",
+						Amount:      core.NewMonetaryInt(4230),
+						Asset:       "EUR/2",
+					},
+					{
+						Source:      "trades:001",
+						Destination: "fiat:holdings",
+						Amount:      core.NewMonetaryInt(4230),
+						Asset:       "EUR/2",
+					},
+					{
+						Source:      "teller",
+						Destination: "trades:001",
+						Amount:      core.NewMonetaryInt(1840000),
+						Asset:       "SNAP/6",
+					},
+					{
+						Source:      "trades:001",
+						Destination: "users:001:wallet",
+						Amount:      core.NewMonetaryInt(1840000),
+						Asset:       "SNAP/6",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "users:001:wallet",
+						Destination: "users:001:withdrawals",
+						Amount:      core.NewMonetaryInt(2270),
+						Asset:       "EUR/2",
+					},
+				},
+			},
+			{
+				Postings: core.Postings{
+					{
+						Source:      "users:001:withdrawals",
+						Destination: "payouts:001",
+						Amount:      core.NewMonetaryInt(2270),
+						Asset:       "EUR/2",
+					},
+				},
+			},
+		}
+
+		b.ResetTimer()
+
+		res := []core.ExpandedTransaction{}
+
+		for n := 0; n < b.N; n++ {
+			var err error
+			for _, txData := range txsData {
+				_, err := txData.Postings.Validate()
+				require.NoError(b, err)
+			}
+			script := core.TxsToScriptsData(txsData...)
+			res, err = l.Execute(context.Background(), true, true, script...)
+			require.NoError(b, err)
+			require.Len(b, res, 7)
+			require.Len(b, res[0].Postings, 1)
+			require.Len(b, res[1].Postings, 1)
+			require.Len(b, res[2].Postings, 2)
+			require.Len(b, res[3].Postings, 4)
+			require.Len(b, res[4].Postings, 4)
+			require.Len(b, res[5].Postings, 1)
+			require.Len(b, res[6].Postings, 1)
+		}
+
+		execRes = res
+		require.Len(b, execRes, 7)
+		require.Len(b, execRes[0].Postings, 1)
+		require.Len(b, execRes[1].Postings, 1)
+		require.Len(b, execRes[2].Postings, 2)
+		require.Len(b, execRes[3].Postings, 4)
+		require.Len(b, execRes[4].Postings, 4)
+		require.Len(b, execRes[5].Postings, 1)
+		require.Len(b, execRes[6].Postings, 1)
 	})
 }
