@@ -33,3 +33,14 @@ jobs:
           cache: true
       - name: Run bench
         run: task install:perf bench:ledger
+
+  DockerBranch:
+    if: github.event_name != 'release'
+    uses: ./.github/workflows/template_docker.yaml
+    with:
+      VERSION: develop
+      APP_SHA: ${{ github.sha }}
+      RELEASE: ${{ github.event.action }}
+    secrets:
+      NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
