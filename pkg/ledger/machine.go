@@ -460,82 +460,61 @@ func (m *Machine) Execute() (byte, error) {
 	}
 }
 
-type BalanceRequest struct {
-	Account  string
-	Asset    string
-	Response chan *machine.MonetaryInt
-	Error    error
-}
-
-func (m *Machine) ResolveBalances() (chan BalanceRequest, error) {
+func (m *Machine) ResolveBalances(ctx context.Context, l *Ledger, accs map[string]*core.AccountWithVolumes) error {
 	if len(m.Resources) != len(m.UnresolvedResources) {
-		return nil, errors.New("tried to resolve balances before resources")
+		return errors.New("tried to resolve balances before resources")
 	}
 	if m.setBalanceCalled {
-		return nil, errors.New("tried to call ResolveBalances twice")
+		return errors.New("tried to call ResolveBalances twice")
 	}
 	m.setBalanceCalled = true
-	resChan := make(chan BalanceRequest)
-	go func() {
-		defer close(resChan)
-		m.Balances = make(map[machine.Account]map[machine.Asset]*machine.MonetaryInt)
-		// for every account that we need balances of, check if it's there
-		for addr, neededAssets := range m.Program.NeededBalances {
-			account, ok := m.getResource(addr)
-			if !ok {
-				resChan <- BalanceRequest{
-					Error: errors.New("invalid program (resolve balances: invalid address of account)"),
-				}
-				return
-			}
-			if account, ok := (*account).(machine.Account); ok {
-				m.Balances[account] = make(map[machine.Asset]*machine.MonetaryInt)
-				// for every asset, send request
-				for addr := range neededAssets {
-					mon, ok := m.getResource(addr)
-					if !ok {
-						resChan <- BalanceRequest{
-							Error: errors.New("invalid program (resolve balances: invalid address of monetary)"),
-						}
-						return
-					}
-					if ha, ok := (*mon).(machine.HasAsset); ok {
-						asset := ha.GetAsset()
-						if string(account) == "world" {
-							m.Balances[account][asset] = machine.NewMonetaryInt(0)
-							continue
-						}
-						respChan := make(chan *machine.MonetaryInt)
-						resChan <- BalanceRequest{
-							Account:  string(account),
-							Asset:    string(asset),
-							Response: respChan,
-						}
-						resp, ok := <-respChan
-						close(respChan)
-						if !ok {
-							resChan <- BalanceRequest{
-								Error: errors.New("error on response channel"),
-							}
-							return
-						}
-						m.Balances[account][asset] = resp
-					} else {
-						resChan <- BalanceRequest{
-							Error: errors.New("invalid program (resolve balances: not an asset)"),
-						}
-						return
-					}
-				}
-			} else {
-				resChan <- BalanceRequest{
-					Error: errors.New("incorrect program (resolve balances: not an account)"),
-				}
-				return
-			}
+	m.Balances = make(map[machine.Account]map[machine.Asset]*machine.MonetaryInt)
+	// for every account that we need balances of, check if it's there
+	for addr, neededAssets := range m.Program.NeededBalances {
+		account, ok := m.getResource(addr)
+		if !ok {
+			return errors.New("invalid program (resolve balances: invalid address of account)")
 		}
-	}()
-	return resChan, nil
+		if account, ok := (*account).(machine.Account); ok {
+			m.Balances[account] = make(map[machine.Asset]*machine.MonetaryInt)
+			// for every asset, send request
+			for addr := range neededAssets {
+				mon, ok := m.getResource(addr)
+				if !ok {
+					return errors.New("invalid program (resolve balances: invalid address of monetary)")
+				}
+				if ha, ok := (*mon).(machine.HasAsset); ok {
+					asset := ha.GetAsset()
+					if string(account) == "world" {
+						m.Balances[account][asset] = machine.NewMonetaryInt(0)
+						continue
+					}
+
+					var resp *machine.MonetaryInt
+					var amt *core.MonetaryInt
+					if _, ok := accs[string(account)]; !ok {
+						var err error
+						accs[string(account)], err = l.GetAccount(ctx, string(account))
+						if err != nil {
+							return errors.Wrap(err,
+								fmt.Sprintf("could not get account %q", string(account)))
+						}
+					}
+					amt = accs[string(account)].Balances[string(asset)].OrZero()
+					r := machine.MonetaryInt(*amt)
+					resp = &r
+
+					m.Balances[account][asset] = resp
+				} else {
+					return errors.New("invalid program (resolve balances: not an asset)")
+				}
+			}
+		} else {
+			return errors.New("incorrect program (resolve balances: not an account)")
+		}
+	}
+
+	return nil
 }
 
 func (m *Machine) ResolveResources(ctx context.Context, l *Ledger, accs map[string]*core.AccountWithVolumes) error {

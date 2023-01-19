@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
 	"github.com/numary/ledger/pkg/core"
@@ -112,27 +111,9 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				"could not resolve program resources").Error())
 		}
 
-		balanceCh, err := m.ResolveBalances()
-		if err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err,
-				"could not resolve balances")
-		}
-		for req := range balanceCh {
-			if req.Error != nil {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					errors.Wrap(req.Error, "could not resolve program balances").Error())
-			}
-			var amt *core.MonetaryInt
-			if _, ok := accs[req.Account]; !ok {
-				accs[req.Account], err = l.GetAccount(ctx, req.Account)
-				if err != nil {
-					return []core.ExpandedTransaction{}, errors.Wrap(err,
-						fmt.Sprintf("could not get account %q", req.Account))
-				}
-			}
-			amt = accs[req.Account].Balances[req.Asset].OrZero()
-			resp := machine.MonetaryInt(*amt)
-			req.Response <- &resp
+		if err := m.ResolveBalances(ctx, l, accs); err != nil {
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed, errors.Wrap(err,
+				"could not resolve balances").Error())
 		}
 
 		exitCode, err := m.Execute()
