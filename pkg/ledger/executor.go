@@ -100,56 +100,16 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				err.Error())
 		}
 
-		m := vm.NewMachine(*p)
+		m := NewMachine(*p)
 
 		if err = m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 				errors.Wrap(err, "could not set variables").Error())
 		}
 
-		resourcesChan, err := m.ResolveResources()
-		if err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err,
-				"could not resolve program resources")
-		}
-		for req := range resourcesChan {
-			if req.Error != nil {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					errors.Wrap(req.Error, "could not resolve program resources").Error())
-			}
-			if _, ok := accs[req.Account]; !ok {
-				accs[req.Account], err = l.GetAccount(ctx, req.Account)
-				if err != nil {
-					return []core.ExpandedTransaction{}, errors.Wrap(err,
-						fmt.Sprintf("could not get account %q", req.Account))
-				}
-			}
-			if req.Key != "" {
-				entry, ok := accs[req.Account].Metadata[req.Key]
-				if !ok {
-					return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
-				}
-				data, err := json.Marshal(entry)
-				if err != nil {
-					return []core.ExpandedTransaction{}, errors.Wrap(err, "json.Marshal")
-				}
-				value, err := machine.NewValueFromTypedJSON(data)
-				if err != nil {
-					return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-						errors.Wrap(err, fmt.Sprintf(
-							"invalid format for metadata at key %v for account %v",
-							req.Key, req.Account)).Error())
-				}
-				req.Response <- *value
-			} else if req.Asset != "" {
-				amt := accs[req.Account].Balances[req.Asset].OrZero()
-				resp := machine.MonetaryInt(*amt)
-				req.Response <- &resp
-			} else {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					errors.Wrap(err, fmt.Sprintf("invalid ResourceRequest: %+v", req)).Error())
-			}
+		if err := m.ResolveResources(ctx, l, accs); err != nil {
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed, errors.Wrap(err,
+				"could not resolve program resources").Error())
 		}
 
 		balanceCh, err := m.ResolveBalances()
