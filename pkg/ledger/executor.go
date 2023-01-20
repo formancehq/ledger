@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,6 +10,7 @@ import (
 	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
+	"github.com/formancehq/machine/vm/program"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -94,13 +96,26 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				"no script to execute")
 		}
 
-		p, err := compiler.Compile(script.Plain)
-		if err != nil {
-			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-				err.Error())
+		h := sha256.New()
+		if _, err = h.Write([]byte(script.Plain)); err != nil {
+			return []core.ExpandedTransaction{}, errors.Wrap(err, "hashing script")
+		}
+		curr := h.Sum(nil)
+
+		var p program.Program
+		if cachedP, found := l.cache.Get(curr); found {
+			p = cachedP.(program.Program)
+		} else {
+			newP, err := compiler.Compile(script.Plain)
+			if err != nil {
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
+					err.Error())
+			}
+			p = *newP
+			l.cache.Set(curr, p, 1)
 		}
 
-		m := vm.NewMachine(*p)
+		m := vm.NewMachine(p)
 
 		if err = m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,

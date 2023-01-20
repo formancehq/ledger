@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/pkg/errors"
@@ -29,6 +30,7 @@ type Ledger struct {
 	store               Store
 	monitor             Monitor
 	allowPastTimestamps bool
+	cache               *ristretto.Cache
 }
 
 type LedgerOption = func(*Ledger)
@@ -37,14 +39,20 @@ func WithPastTimestamps(l *Ledger) {
 	l.allowPastTimestamps = true
 }
 
-func NewLedger(
-	store Store,
-	monitor Monitor,
-	options ...LedgerOption,
-) (*Ledger, error) {
+func NewLedger(store Store, monitor Monitor, options ...LedgerOption) (*Ledger, error) {
+	cache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 1e7,     // number of keys to track frequency of (10M).
+		MaxCost:     1 << 30, // maximum cost of cache (1GB).
+		BufferItems: 64,      // number of keys per Get buffer.
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "creating ledger cache")
+	}
+
 	l := &Ledger{
 		store:   store,
 		monitor: monitor,
+		cache:   cache,
 	}
 
 	for _, option := range options {
@@ -58,6 +66,7 @@ func (l *Ledger) Close(ctx context.Context) error {
 	if err := l.store.Close(ctx); err != nil {
 		return errors.Wrap(err, "closing store")
 	}
+	l.cache.Close()
 	return nil
 }
 
