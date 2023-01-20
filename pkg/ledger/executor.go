@@ -102,20 +102,18 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 		curr := h.Sum(nil)
 
-		var p program.Program
+		var m *vm.Machine
 		if cachedP, found := l.cache.Get(curr); found {
-			p = cachedP.(program.Program)
+			m = vm.NewMachine(cachedP.(program.Program))
 		} else {
 			newP, err := compiler.Compile(script.Plain)
 			if err != nil {
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					err.Error())
 			}
-			p = *newP
-			l.cache.Set(curr, p, 1)
+			l.cache.Set(curr, *newP, 1)
+			m = vm.NewMachine(*newP)
 		}
-
-		m := vm.NewMachine(p)
 
 		if err = m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
