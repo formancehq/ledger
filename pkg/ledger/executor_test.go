@@ -94,14 +94,16 @@ func TestVariables(t *testing.T) {
 			Script: core.Script{
 				Plain: `
 					vars {
+						account $w
 						account $dest
 					}
 
 					send [CAD/2 42] (
-						source = @world
+						source = $w
 						destination = $dest
 					)`,
 				Vars: map[string]json.RawMessage{
+					"w":    json.RawMessage(`"world"`),
 					"dest": json.RawMessage(`"user:042"`),
 				},
 			},
