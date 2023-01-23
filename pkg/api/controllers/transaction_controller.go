@@ -15,6 +15,7 @@ import (
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/pkg/errors"
 )
 
 type TransactionController struct{}
@@ -179,30 +180,38 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	script := core.ScriptData{
-		Script:    payload.Script,
-		Timestamp: payload.Timestamp,
-		Reference: payload.Reference,
-		Metadata:  payload.Metadata,
-	}
+	var res []core.ExpandedTransaction
+	var err error
 
-	if len(payload.Postings) > 0 {
+	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
+		len(payload.Postings) == 0 && payload.Script.Plain == "" {
+		apierrors.ResponseError(c, ledger.NewValidationError(
+			"invalid payload: should contain either postings or script"))
+		return
+	} else if len(payload.Postings) > 0 {
+		if i, err := payload.Postings.Validate(); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(errors.Wrap(err,
+				fmt.Sprintf("invalid posting %d", i)).Error()))
+			return
+		}
 		txData := core.TransactionData{
 			Postings:  payload.Postings,
 			Timestamp: payload.Timestamp,
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txData)
-		if err != nil {
-			apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
-			return
+		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
+			true, preview, core.TxsToScriptsData(txData)...)
+	} else {
+		script := core.ScriptData{
+			Script:    payload.Script,
+			Timestamp: payload.Timestamp,
+			Reference: payload.Reference,
+			Metadata:  payload.Metadata,
 		}
-		postingsScript := core.TxsToScriptsData(txData)[0]
-		script.Plain = postingsScript.Plain + script.Plain
+		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
+			false, preview, script)
 	}
-
-	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), preview, script)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
@@ -291,13 +300,20 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		return
 	}
 
-	i, err := l.(*ledger.Ledger).ValidatePostings(c.Request.Context(), txs.Transactions...)
-	if err != nil {
-		apierrors.ResponseError(c, ledger.NewTransactionCommitError(i, err))
-		return
+	for i, tx := range txs.Transactions {
+		if len(tx.Postings) == 0 {
+			apierrors.ResponseError(c, ledger.NewValidationError(errors.New(fmt.Sprintf(
+				"invalid transaction %d: no postings", i)).Error()))
+			return
+		}
+		if j, err := tx.Postings.Validate(); err != nil {
+			apierrors.ResponseError(c, ledger.NewValidationError(errors.Wrap(err,
+				fmt.Sprintf("invalid transaction %d: posting %d", i, j)).Error()))
+			return
+		}
 	}
 
-	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), false,
+	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), true, false,
 		core.TxsToScriptsData(txs.Transactions...)...)
 	if err != nil {
 		apierrors.ResponseError(c, err)

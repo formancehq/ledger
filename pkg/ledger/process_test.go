@@ -131,14 +131,15 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Postings:  postings,
 						Timestamp: time.Now().UTC().Round(time.Second),
+						Metadata:  core.Metadata{},
 					},
 				}
 
-				res, err := l.ProcessTxsData(context.Background(), txsData...)
+				res, err := l.Execute(context.Background(), true, true,
+					core.TxsToScriptsData(txsData...)...)
 				assert.NoError(t, err)
 
-				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
-				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
+				assert.Equal(t, len(txsData), len(res))
 
 				expectedTxs := []core.ExpandedTransaction{{
 					Transaction: core.Transaction{
@@ -148,7 +149,12 @@ func TestLedger_processTx(t *testing.T) {
 					PreCommitVolumes:  expectedPreCommitVol,
 					PostCommitVolumes: expectedPostCommitVol,
 				}}
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				assert.Equal(t, expectedTxs, res)
+
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 			})
 
 			t.Run("multi transactions single postings", func(t *testing.T) {
@@ -180,18 +186,18 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.ProcessTxsData(context.Background(), txsData...)
-				assert.NoError(t, err)
-
-				assert.Equal(t, expectedPreCommitVol, res.PreCommitVolumes)
-				assert.Equal(t, expectedPostCommitVol, res.PostCommitVolumes)
+				res, err := l.Execute(context.Background(), true, true,
+					core.TxsToScriptsData(txsData...)...)
+				require.NoError(t, err)
+				require.Equal(t, len(txsData), len(res))
 
 				expectedTxs := []core.ExpandedTransaction{
 					{
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
-								Timestamp: now,
+								Timestamp: now.UTC(),
 								Postings:  core.Postings{postings[0]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 0,
 						},
@@ -206,7 +212,8 @@ func TestLedger_processTx(t *testing.T) {
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
 								Postings:  core.Postings{postings[1]},
-								Timestamp: now.Add(time.Second),
+								Timestamp: now.UTC().Add(time.Second),
+								Metadata:  core.Metadata{},
 							},
 							ID: 1,
 						},
@@ -222,8 +229,9 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
-								Timestamp: now.Add(2 * time.Second),
+								Timestamp: now.UTC().Add(2 * time.Second),
 								Postings:  core.Postings{postings[2]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 2,
 						},
@@ -239,8 +247,9 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
-								Timestamp: now.Add(3 * time.Second),
+								Timestamp: now.UTC().Add(3 * time.Second),
 								Postings:  core.Postings{postings[3]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 3,
 						},
@@ -256,8 +265,9 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
-								Timestamp: now.Add(4 * time.Second),
+								Timestamp: now.UTC().Add(4 * time.Second),
 								Postings:  core.Postings{postings[4]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 4,
 						},
@@ -273,8 +283,9 @@ func TestLedger_processTx(t *testing.T) {
 					{
 						Transaction: core.Transaction{
 							TransactionData: core.TransactionData{
-								Timestamp: now.Add(5 * time.Second),
+								Timestamp: now.UTC().Add(5 * time.Second),
 								Postings:  core.Postings{postings[5]},
+								Metadata:  core.Metadata{},
 							},
 							ID: 5,
 						},
@@ -288,19 +299,19 @@ func TestLedger_processTx(t *testing.T) {
 						},
 					},
 				}
+				assert.Equal(t, expectedTxs, res)
 
-				assert.Equal(t, expectedTxs, res.GeneratedTransactions)
+				preCommitVolumes := core.AggregatePreCommitVolumes(res...)
+				postCommitVolumes := core.AggregatePostCommitVolumes(res...)
+				assert.Equal(t, expectedPreCommitVol, preCommitVolumes)
+				assert.Equal(t, expectedPostCommitVol, postCommitVolumes)
 			})
 		})
 
-		t.Run("no transactions", func(t *testing.T) {
-			result, err := l.ProcessTxsData(context.Background())
-			assert.NoError(t, err)
-			assert.Equal(t, ledger.CommitResult{
-				PreCommitVolumes:      core.AccountsAssetsVolumes{},
-				PostCommitVolumes:     core.AccountsAssetsVolumes{},
-				GeneratedTransactions: []core.ExpandedTransaction{},
-			}, result)
+		t.Run("no script", func(t *testing.T) {
+			_, err := l.Execute(context.Background(), true, true, core.ScriptData{})
+			assert.Error(t, err)
+			assert.ErrorContains(t, err, "no script to execute")
 		})
 	})
 
@@ -310,25 +321,24 @@ func TestLedger_processTx(t *testing.T) {
 			require.NoError(t, l.GetLedgerStore().Commit(context.Background(), core.ExpandedTransaction{
 				Transaction: core.Transaction{
 					TransactionData: core.TransactionData{
-						Timestamp: now,
+						Timestamp: now.UTC(),
 						Postings:  []core.Posting{{}},
 					},
 					ID: 0,
 				},
 			}))
 
-			_, err := l.ProcessTxsData(context.Background(), core.TransactionData{
-				Postings: []core.Posting{{
-					Source:      "world",
-					Destination: "bank",
-					Amount:      core.NewMonetaryInt(100),
-					Asset:       "USD",
-				}},
-				Timestamp: now.Add(-time.Second),
-			})
-
+			_, err := l.Execute(context.Background(), true, true,
+				core.TxsToScriptsData(core.TransactionData{
+					Postings: []core.Posting{{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      core.NewMonetaryInt(100),
+						Asset:       "USD",
+					}},
+					Timestamp: now.UTC().Add(-time.Second),
+				})...)
 			assert.NoError(t, err)
-
 		})
 	}, ledger.WithPastTimestamps)
 }
