@@ -30,6 +30,21 @@ jobs:
   Test_sqlite:
     uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
 
+  Bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install task
+        uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Run bench
+        run: task install:perf bench:ledger
+
   GoReleaserBuild:
     if: github.event_name != 'release'
     name: 'GoReleaser Build'
@@ -100,30 +115,3 @@ jobs:
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-
-#  Check-pkgs:
-#    if: github.event_name == 'release'
-#    runs-on: ubuntu-latest
-#    env:
-#      DOCKER_CLI_EXPERIMENTAL: "enabled"
-#    needs:
-#      - GoReleaserRelease
-#    strategy:
-#      matrix:
-#        format: [ deb, rpm ]
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          fetch-depth: 0
-#      - uses: arduino/setup-task@v1
-#        with:
-#          version: 3.x
-#          repo-token: ${{ secrets.GITHUB_TOKEN }}
-#      - uses: docker/setup-qemu-action@v1
-#      - uses: actions/cache@v2
-#        with:
-#          path: |
-#            ./dist/*.deb
-#            ./dist/*.rpm
-#          key: ${{ runner.os }}-go-${{ hashFiles('**/*.go') }}-${{ hashFiles('**/go.sum') }}
-#      - run: task goreleaser:test:${{ matrix.format }}
