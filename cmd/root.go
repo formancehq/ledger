@@ -5,11 +5,11 @@ import (
 	"os"
 	"path"
 
-	"github.com/numary/go-libs/sharedlogging"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlpmetrics"
 	"github.com/numary/go-libs/sharedotlp/pkg/sharedotlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
+	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -157,15 +157,6 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	internal.BindEnv(viper.GetViper())
-
-	sharedlogging.Infof("starting ledger with env:")
-	for _, e := range os.Environ() {
-		sharedlogging.Infof("%s", e)
-	}
-	sharedlogging.Infof("viper:")
-	for key, val := range viper.AllSettings() {
-		sharedlogging.Infof("%s: %+v", key, val)
-	}
 
 	return root
 }
