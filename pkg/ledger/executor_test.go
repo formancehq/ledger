@@ -115,6 +115,51 @@ func TestVariables(t *testing.T) {
 	})
 }
 
+func TestVariablesEmptyAccount(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		defer func(l *ledger.Ledger, ctx context.Context) {
+			require.NoError(t, l.Close(ctx))
+		}(l, context.Background())
+
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					send [EUR 1] (
+						source = @world
+						destination = @bob
+					)`,
+			},
+		}
+		_, err := l.Execute(context.Background(), false, false, script)
+		require.NoError(t, err)
+
+		script = core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					vars {
+						account $acc
+					}
+
+					send [EUR 1] (
+						source = {
+							@bob
+							$acc
+						}
+						destination = @alice
+					)`,
+				Vars: map[string]json.RawMessage{
+					"acc": json.RawMessage(`""`),
+				},
+			},
+		}
+		_, err = l.Execute(context.Background(), false, false, script)
+		require.NoError(t, err)
+
+		assertBalance(t, l, "alice", "EUR", core.NewMonetaryInt(1))
+		assertBalance(t, l, "bob", "EUR", core.NewMonetaryInt(0))
+	})
+}
+
 func TestEnoughFunds(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {

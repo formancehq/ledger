@@ -7,8 +7,9 @@ require (
 	github.com/Shopify/sarama v1.37.2
 	github.com/ThreeDotsLabs/watermill v1.1.1
 	github.com/buger/jsonparser v1.1.1
+	github.com/dgraph-io/ristretto v0.1.1
 	github.com/formancehq/go-libs v1.4.1
-	github.com/formancehq/machine v1.4.1
+	github.com/formancehq/machine v1.4.4
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-redis/redis/v8 v8.11.5
@@ -55,7 +56,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/docker/cli v20.10.14+incompatible // indirect
 	github.com/docker/docker v20.10.7+incompatible // indirect
