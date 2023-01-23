@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -39,42 +40,11 @@ func TestTxsToScriptsData(t *testing.T) {
 			output: []ScriptData{
 				{
 					Script: Script{
-						Plain: "send [EUR/2 100] (\n\tsource = @world\n\tdestination = @alice\n)\n",
-					},
-					Reference: "ref",
-					Timestamp: ts,
-					Metadata:  Metadata{"key": "val"},
-				},
-			},
-		},
-		{
-			name: "multiple postings",
-			input: []TransactionData{
-				{
-					Postings: Postings{
-						{
-							Source:      "world",
-							Destination: "alice",
-							Asset:       "EUR/2",
-							Amount:      NewMonetaryInt(100),
+						Plain: "vars {\n\taccount $va0\n\tmonetary $vm0\n}\nsend $vm0 (\n\tsource = @world\n\tdestination = $va0\n)\n",
+						Vars: map[string]json.RawMessage{
+							"va0": json.RawMessage(`"alice"`),
+							"vm0": json.RawMessage(`{"asset":"EUR/2","amount":100}`),
 						},
-						{
-							Source:      "world",
-							Destination: "bob",
-							Asset:       "USD/2",
-							Amount:      NewMonetaryInt(1000),
-						},
-					},
-					Reference: "ref",
-					Timestamp: ts,
-					Metadata:  Metadata{"key": "val"},
-				},
-			},
-			output: []ScriptData{
-				{
-					Script: Script{
-						Plain: "send [EUR/2 100] (\n\tsource = @world\n\tdestination = @alice\n)\n" +
-							"send [USD/2 1000] (\n\tsource = @world\n\tdestination = @bob\n)\n",
 					},
 					Reference: "ref",
 					Timestamp: ts,

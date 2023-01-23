@@ -29,5 +29,7 @@ jobs:
         uses: docker/setup-buildx-action@v1
       - name: Install Task
         uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Launch Generate
         run: task sdk:generate VERSION=main -- ${{ matrix.sdk }}
