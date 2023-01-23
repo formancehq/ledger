@@ -11,6 +11,7 @@ vars:
   TIMEOUT: "10m"
   RUN: "''"
   TAGS: "-tags json1,netgo"
+  VERBOSE: "true"
 
 tasks:
   default:
@@ -102,7 +103,7 @@ tasks:
         msg: Please specify generator as first cli arg (ie "task template -- go")
     cmds:
       - >
-        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author 
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author
         template -g {{.CLI_ARGS}} -o templates/{{.CLI_ARGS}}
 
   sdk:generate:

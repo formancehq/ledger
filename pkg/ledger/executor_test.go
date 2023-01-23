@@ -115,28 +115,27 @@ func TestVariables(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		var script core.Script
-		err := json.Unmarshal(
-			[]byte(`{
-				"plain": "vars {\naccount $dest\n}\nsend [CAD/2 42] (\n source=@world \n destination=$dest \n)",
-				"vars": {
-					"dest": "user:042"
+		script := core.Script{
+			Plain: `
+				vars {
+					account $src
+					account $dest
 				}
-			}`),
-			&script)
+				send [CAD/2 42] (
+					source = $src
+					destination = $dest
+				)`,
+			Vars: map[string]json.RawMessage{
+				"src":  json.RawMessage(`"world"`),
+				"dest": json.RawMessage(`"user:042"`),
+			},
+		}
+
+		_, err := l.Execute(context.Background(), script)
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), script)
-		require.NoError(t, err)
-
-		user, err := l.GetAccount(context.Background(), "user:042")
-		require.NoError(t, err)
-
-		b := user.Balances["CAD/2"]
-		assert.Equalf(t, core.NewMonetaryInt(42), b,
-			"wrong CAD/2 balance for account user:042, expected: %d got: %d",
-			42, b,
-		)
+		assertBalance(t, l, "user:042",
+			"CAD/2", core.NewMonetaryInt(42))
 	})
 }
 
