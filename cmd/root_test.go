@@ -1,6 +1,5 @@
 package cmd
 
-/*
 import (
 	"bytes"
 	"context"
@@ -133,4 +132,3 @@ func TestServer(t *testing.T) {
 	}
 
 }
-*/

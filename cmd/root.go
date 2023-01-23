@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/cmd/internal"
 	"github.com/numary/ledger/pkg/redis"
+	_ "github.com/numary/ledger/pkg/storage/sqlstorage/migrates/9-add-pre-post-volumes"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
