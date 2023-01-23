@@ -91,7 +91,7 @@ tasks:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
         go test {{.TAGS}} ./pkg/ledger
-        -run=XXX -bench=BenchmarkLedger -benchmem -benchtime=30s -timeout 1h
+        -run=XXX -bench=BenchmarkLedger -benchmem -benchtime=10s -timeout 1h
         -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
         | tee {{.BENCH_RESULTS_FILE}}
       - benchstat {{.BENCH_RESULTS_FILE}}
