@@ -73,9 +73,7 @@ numary ui
 
 Alternatively, you can use the dashboard by heading to [control.formance.com](https://control.formance.com) which provides a hosted version that can connect to any ledger instance.
 
-# Roadmap & Community
-
-We keep an open roadmap of the upcoming releases and features [here](https://formance.notion.site/OSS-Roadmap-4535fa5716fb4f618027201afcc6f204).
+# Community
 
 If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Slack](https://bit.ly/formance-slack) - looking forward to see you there!
 
