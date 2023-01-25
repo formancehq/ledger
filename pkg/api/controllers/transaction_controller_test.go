@@ -24,6 +24,7 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
@@ -2188,5 +2189,52 @@ func TestPostTransactionsBatchComplex(t *testing.T) {
 
 				return nil
 			}})
+	}))
+}
+
+func TestPostTransactionsScriptConflict(t *testing.T) {
+	script := `
+ 	send [COIN 100] (
+ 	  source = @world
+ 	  destination = @centralbank
+ 	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("first should succeed", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+						Script: core.Script{
+							Plain: script,
+						},
+						Reference: "1234",
+					}, false)
+
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]transaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+				})
+
+				t.Run("second should fail", func(t *testing.T) {
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+						Script: core.Script{
+							Plain: script,
+						},
+						Reference: "1234",
+					}, false)
+
+					assert.Equal(t, http.StatusConflict, rsp.Result().StatusCode)
+					actualErr := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &actualErr)
+					assert.Equal(t, apierrors.ErrConflict, actualErr.ErrorCode)
+					assert.Equal(t, "conflict error on reference", actualErr.ErrorMessage)
+					assert.Equal(t, apierrors.ErrConflict, actualErr.ErrorCodeDeprecated)
+					assert.Equal(t, "conflict error on reference", actualErr.ErrorMessageDeprecated)
+				})
+
+				return nil
+			},
+		})
 	}))
 }
