@@ -9,7 +9,7 @@ require (
 	github.com/buger/jsonparser v1.1.1
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/formancehq/go-libs v1.4.1
-	github.com/formancehq/machine v1.4.4
+	github.com/formancehq/machine v1.4.5
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.8.1
 	github.com/go-redis/redis/v8 v8.11.5

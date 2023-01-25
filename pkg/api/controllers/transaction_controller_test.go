@@ -404,7 +404,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "script failure with invalid variable",
+			name: "script failure with invalid account variable",
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
 					Plain: `
@@ -424,10 +424,37 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:              apierrors.ErrScriptCompilationFailed,
-				ErrorMessage:           "[COMPILATION_FAILED] could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
-				Details:                apierrors.EncodeLink("could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
+				ErrorMessage:           "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
+				Details:                apierrors.EncodeLink("could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
 				ErrorCodeDeprecated:    apierrors.ErrScriptCompilationFailed,
-				ErrorMessageDeprecated: "[COMPILATION_FAILED] could not set variables: invalid json for variable acc of type account: value 'invalid-acc': accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
+				ErrorMessageDeprecated: "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
+			},
+		},
+		{
+			name: "script failure with invalid monetary variable",
+			payload: []controllers.PostTransaction{{
+				Script: core.Script{
+					Plain: `
+					vars {
+						monetary $mon
+					}
+					send $mon (
+						source = @world
+						destination = @alice
+					)
+					`,
+					Vars: map[string]json.RawMessage{
+						"mon": json.RawMessage(`{"asset": "COIN","amount":-1}`),
+					},
+				},
+			}},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErr: sharedapi.ErrorResponse{
+				ErrorCode:              apierrors.ErrScriptCompilationFailed,
+				ErrorMessage:           "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount",
+				Details:                apierrors.EncodeLink("could not set variables: invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount"),
+				ErrorCodeDeprecated:    apierrors.ErrScriptCompilationFailed,
+				ErrorMessageDeprecated: "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount",
 			},
 		},
 		{
