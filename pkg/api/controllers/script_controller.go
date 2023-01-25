@@ -41,13 +41,16 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code    = apierrors.ErrInternal
 			message string
 		)
-		scriptError, ok := err.(*ledger.ScriptError)
-		if ok {
-			code = scriptError.Code
-			message = scriptError.Message
-		} else {
+		switch e := err.(type) {
+		case *ledger.ScriptError:
+			code = e.Code
+			message = e.Message
+		case *ledger.ConflictError:
+			code = apierrors.ErrConflict
+			message = e.Error()
+		default:
 			logging.GetLogger(c.Request.Context()).Errorf(
-				"internal error executing script: %s", err)
+				"internal errors executing script: %s", err)
 		}
 		res.ErrorResponse = api.ErrorResponse{
 			ErrorCode:              code,
