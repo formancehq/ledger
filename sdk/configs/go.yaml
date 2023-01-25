@@ -1,0 +1,8 @@
+templateDir: templates/go
+additionalProperties:
+  packageName: ledgerclient
+  goImportAlias: client
+  generateInterfaces: true
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
