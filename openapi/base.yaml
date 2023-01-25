@@ -73,6 +73,9 @@ x-tagGroups:
   - name: Search
     tags:
       - Search
+  - name: Wallets
+    tags:
+      - Wallets
   - name: Webhooks
     tags:
       - Webhooks

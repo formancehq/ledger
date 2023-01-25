@@ -7025,6 +7025,12 @@
       ]
     },
     {
+      "name": "Wallets",
+      "tags": [
+        "Wallets"
+      ]
+    },
+    {
       "name": "Webhooks",
       "tags": [
         "Webhooks"
