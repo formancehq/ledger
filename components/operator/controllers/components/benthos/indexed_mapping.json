@@ -1,0 +1,56 @@
+{
+  "account" : {
+    "type": "keyword"
+  },
+  "address" : {
+    "type": "keyword"
+  },
+  "amount" : {
+    "type": "keyword"
+  },
+  "asset" : {
+    "type": "keyword"
+  },
+  "createdAt" : {
+    "type" : "date"
+  },
+  "destination" : {
+    "type": "keyword"
+  },
+  "id" : {
+    "type": "keyword"
+  },
+  "initialAmount" : {
+    "type" : "long"
+  },
+  "ledger" : {
+    "type": "keyword"
+  },
+  "name" : {
+    "type": "keyword"
+  },
+  "provider" : {
+    "type": "keyword"
+  },
+  "reference" : {
+    "type": "keyword"
+  },
+  "scheme" : {
+    "type": "keyword"
+  },
+  "source" : {
+    "type": "keyword"
+  },
+  "status" : {
+    "type": "keyword"
+  },
+  "timestamp" : {
+    "type" : "date"
+  },
+  "txid" : {
+    "type" : "long"
+  },
+  "type" : {
+    "type": "keyword"
+  }
+}

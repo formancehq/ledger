@@ -1,0 +1,24 @@
+# permissions for end users to edit benthos.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: benthos-editor-role
+rules:
+- apiGroups:
+  - components.formance.com.formance.com
+  resources:
+  - benthos
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com.formance.com
+  resources:
+  - benthos/status
+  verbs:
+  - get

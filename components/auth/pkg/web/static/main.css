@@ -1,0 +1,164 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  background-color: #F9F9F9;
+  height: 100%;
+  width: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 39px;
+  text-align: center;
+  font-family: Inter, sans-serif;
+}
+
+a {
+  text-decoration: none;
+}
+
+input {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 8px 8px 8px 16px;
+  width: 421px;
+  height: 40px;
+  background: #FFFFFF;
+  border: 1px solid #E3E5EA;
+  border-radius: 6px;
+}
+
+.container {
+  display: flex; /* establish flex container */
+  flex-direction: column; /* make main-axis vertical */
+  justify-content: center; /* align items vertically, in this case */
+  align-items: center; /* align items horizontally, in this case */
+  height: 100%;
+  width: 100%;
+}
+
+.card {
+  padding: 40px;
+  max-width: 500px;
+  box-shadow: 0 4px 2px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  max-height: 355px;
+  background-color: #FFFFFF;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.box {
+  margin: 16px 0 16px 0;
+  display: block;
+}
+
+.button--secondary {
+  background: #FFFFFF;
+  border: 1px solid #E3E5EA;
+  border-radius: 6px;
+  width: 420px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.button--primary {
+  background: #161719;
+  color: #FFFFFF;
+  border: 1px solid #FFFFFF;
+  border-radius: 6px;
+  width: 420px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.button--secondary:hover {
+  cursor: pointer;
+  background-color: #EEF1F5;
+}
+.button--primary:hover {
+  cursor: pointer;
+  color: #FFFFFF;
+}
+
+.button__icon {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 22px;
+  height: 28px;
+  width: 28px;
+  margin-right: 8px;
+  margin-top: 4px;
+}
+
+.button__text {
+  font-style: normal;
+  font-weight: 500;
+  font-size: 14px;
+  margin-top: 10px;
+  display: block;
+}
+
+.button__icon--google {
+  background-image: url(../static/img/google-icon.svg);;
+}
+.button__icon--local {
+  background-image: url(../static/img/email-icon.svg);
+}
+.button__icon--local-light {
+  background-image: url(../static/img/email-icon-light.svg);
+}
+.button__icon--github {
+  background-image: url(../static/img/github-icon.svg);
+}
+.button__icon--gitlab {
+  background-image: url(../static/img/gitlab-icon.svg);
+}
+/* TODO Fix adminEmail dex config issue to avoid cheating for oidc type as a google icon */
+.button__icon--oidc {
+  background-image: url(../static/img/google-icon.svg);
+}
+.button__icon--linkedin {
+  background-image: url(../static/img/linkedin-icon.svg);
+}
+
+.error_shell {
+  background-color: #161719;
+  border-radius: 6px;
+  color: #79FF4A;
+  font-family: Roboto Monospace, sans-serif;
+  padding: 16px;
+  margin: 24px 0 24px 0;
+}
+
+.error {
+  font-size: 14px;
+  color: #C75656;
+}
+
+.backlink {
+  font-size: 14px;
+}
+
+.neutral500 {
+  color: #808B9D;
+}
+
+.neutral300 {
+  color: #D4D7DE;
+}
+
+.ta--center {
+  text-align: center;
+  display: block;
+}

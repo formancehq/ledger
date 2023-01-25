@@ -1,0 +1,12 @@
+---
+kind: Module
+description: Cert Manager
+type: helm
+name: cert-manager
+namespace: cert-manager
+repo: https://charts.jetstack.io
+chart: cert-manager
+version: "v1.4.4"
+values:
+  installCRDs: true
+timeout: 3600

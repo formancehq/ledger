@@ -1,0 +1,20 @@
+# permissions for end users to view benthos.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: benthos-viewer-role
+rules:
+- apiGroups:
+  - components.formance.com.formance.com
+  resources:
+  - benthos
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - components.formance.com.formance.com
+  resources:
+  - benthos/status
+  verbs:
+  - get

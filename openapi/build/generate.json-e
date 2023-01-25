@@ -1,0 +1,7034 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Formance Stack API",
+    "description": "Open, modular foundation for unique payments flows\n\n# Introduction\nThis API is documented in **OpenAPI format**.\n\n# Authentication\nFormance Stack offers one forms of authentication:\n  - OAuth2\nOAuth2 - an open protocol to allow secure authorization in a simple\nand standard method from web, mobile and desktop applications.\n<SecurityDefinitions />\n",
+    "contact": {
+      "name": "Formance",
+      "url": "https://www.formance.com",
+      "email": "support@formance.com"
+    },
+    "x-logo": {
+      "url": "https://avatars.githubusercontent.com/u/84325077?s=200&v=4",
+      "altText": "Formance"
+    },
+    "version": "SDK_VERSION"
+  },
+  "servers": [
+    {
+      "url": "http://localhost",
+      "description": "local server"
+    },
+    {
+      "url": "https://{organization}.sandbox.formance.cloud",
+      "description": "sandbox server",
+      "variables": {
+        "organization": {
+          "description": "The organization on which the ledger is located",
+          "default": ""
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "Authorization": []
+    }
+  ],
+  "paths": {
+    "/api/auth/_info": {
+      "get": {
+        "summary": "Get server info",
+        "operationId": "getServerInfo",
+        "responses": {
+          "200": {
+            "description": "Server information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/clients": {
+      "get": {
+        "summary": "List clients",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "listClients",
+        "responses": {
+          "200": {
+            "description": "List of clients",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListClientsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "createClient",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClientRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Client created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateClientResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/clients/{clientId}": {
+      "get": {
+        "summary": "Read client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "readClient",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retrieved client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadClientResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "updateClient",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateClientResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "deleteClient",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Client deleted"
+          }
+        }
+      }
+    },
+    "/api/auth/clients/{clientId}/secrets": {
+      "post": {
+        "summary": "Add a secret to a client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "createSecret",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSecretRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSecretResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/clients/{clientId}/secrets/{secretId}": {
+      "delete": {
+        "summary": "Delete a secret from a client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "deleteSecret",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Secret ID",
+            "in": "path",
+            "name": "secretId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Secret deleted"
+          }
+        }
+      }
+    },
+    "/api/auth/clients/{clientId}/scopes/{scopeId}": {
+      "put": {
+        "summary": "Add scope to client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "addScopeToClient",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Scope added to client"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete scope from client",
+        "tags": [
+          "Clients"
+        ],
+        "operationId": "deleteScopeFromClient",
+        "parameters": [
+          {
+            "description": "Client ID",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Scope deleted from client"
+          }
+        }
+      }
+    },
+    "/api/auth/scopes": {
+      "get": {
+        "summary": "List scopes",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "List Scopes",
+        "operationId": "listScopes",
+        "responses": {
+          "200": {
+            "description": "List of scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListScopesResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Create scope",
+        "operationId": "createScope",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScopeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateScopeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/scopes/{scopeId}": {
+      "get": {
+        "summary": "Read scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Read scope",
+        "operationId": "readScope",
+        "parameters": [
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retrieved scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadScopeResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Update scope",
+        "operationId": "updateScope",
+        "parameters": [
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScopeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateScopeResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Delete scope",
+        "operationId": "deleteScope",
+        "parameters": [
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Scope deleted"
+          }
+        }
+      }
+    },
+    "/api/auth/scopes/{scopeId}/transient/{transientScopeId}": {
+      "put": {
+        "summary": "Add a transient scope to a scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Add a transient scope to a scope",
+        "operationId": "addTransientScope",
+        "parameters": [
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transient scope ID",
+            "in": "path",
+            "name": "transientScopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Scope added"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a transient scope from a scope",
+        "tags": [
+          "Scopes"
+        ],
+        "description": "Delete a transient scope from a scope",
+        "operationId": "deleteTransientScope",
+        "parameters": [
+          {
+            "description": "Scope ID",
+            "in": "path",
+            "name": "scopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Transient scope ID",
+            "in": "path",
+            "name": "transientScopeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Transient scope deleted"
+          }
+        }
+      }
+    },
+    "/api/auth/users": {
+      "get": {
+        "summary": "List users",
+        "tags": [
+          "Users"
+        ],
+        "description": "List users",
+        "operationId": "listUsers",
+        "responses": {
+          "200": {
+            "description": "List of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUsersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/users/{userId}": {
+      "get": {
+        "summary": "Read user",
+        "tags": [
+          "Users"
+        ],
+        "description": "Read user",
+        "operationId": "readUser",
+        "parameters": [
+          {
+            "description": "User ID",
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retrieved user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadUserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/_info": {
+      "get": {
+        "tags": [
+          "Server"
+        ],
+        "summary": "Show server information",
+        "operationId": "getInfo",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInfoResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/_info": {
+      "get": {
+        "summary": "Get information about a ledger",
+        "operationId": "getLedgerInfo",
+        "tags": [
+          "Ledger"
+        ],
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerInfoResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/accounts": {
+      "head": {
+        "summary": "Count the accounts from a ledger",
+        "operationId": "countAccounts",
+        "tags": [
+          "Accounts"
+        ],
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "description": "Filter accounts by address pattern (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:.+"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Count": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List accounts from a ledger",
+        "description": "List accounts from a ledger, sorted by address in descending order.",
+        "operationId": "listAccounts",
+        "tags": [
+          "Accounts"
+        ],
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\nDeprecated, please use `pageSize` instead.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            },
+            "deprecated": true
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Pagination cursor, will return accounts after given address, in descending order.",
+            "schema": {
+              "type": "string",
+              "example": "users:003"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "description": "Filter accounts by address pattern (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:.+"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          },
+          {
+            "name": "balance",
+            "in": "query",
+            "description": "Filter accounts by their balance (default operator is gte)",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "example": 2400
+            }
+          },
+          {
+            "name": "balanceOperator",
+            "in": "query",
+            "description": "Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.\n",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "gt",
+                "lt",
+                "e",
+                "ne"
+              ],
+              "example": "gte"
+            }
+          },
+          {
+            "name": "balance_operator",
+            "in": "query",
+            "description": "Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.\nDeprecated, please use `balanceOperator` instead.\n",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "gt",
+                "lt",
+                "e",
+                "ne"
+              ],
+              "example": "gte"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          },
+          {
+            "name": "pagination_token",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\nDeprecated, please use `cursor` instead.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            },
+            "deprecated": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsCursorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/accounts/{address}": {
+      "get": {
+        "summary": "Get account by its address",
+        "operationId": "getAccount",
+        "tags": [
+          "Accounts"
+        ],
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "address",
+            "in": "path",
+            "description": "Exact address of the account. It must match the following regular expressions pattern:\n```\n^\\w+(:\\w+)*$\n```\n",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/accounts/{address}/metadata": {
+      "post": {
+        "summary": "Add metadata to an account",
+        "operationId": "addMetadataToAccount",
+        "tags": [
+          "Accounts"
+        ],
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "address",
+            "in": "path",
+            "description": "Exact address of the account. It must match the following regular expressions pattern:\n```\n^\\w+(:\\w+)*$\n```\n",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "metadata",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ledgerMetadata"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "content": {}
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/mapping": {
+      "get": {
+        "tags": [
+          "Mapping"
+        ],
+        "operationId": "getMapping",
+        "summary": "Get the mapping of a ledger",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Mapping"
+        ],
+        "operationId": "updateMapping",
+        "summary": "Update the mapping of a ledger",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Mapping"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/script": {
+      "post": {
+        "deprecated": true,
+        "tags": [
+          "Script"
+        ],
+        "operationId": "runScript",
+        "summary": "Execute a Numscript",
+        "description": "This route is deprecated, and has been merged into `POST /{ledger}/transactions`.\n",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "description": "Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.",
+            "schema": {
+              "type": "boolean",
+              "example": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Script"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "On success, it will return a 200 status code, and the resulting transaction under the `transaction` field.\n\nOn failure, it will also return a 200 status code, and the following fields:\n  - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.\n  - `errorCode` and `error_code` (deprecated): contains the string code of the error\n  - `errorMessage` and `error_message` (deprecated): contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/stats": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "operationId": "readStats",
+        "summary": "Get statistics from a ledger",
+        "description": "Get statistics from a ledger. (aggregate metrics on accounts and transactions)\n",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "name of the ledger",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/transactions": {
+      "head": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Count the transactions from a ledger",
+        "operationId": "countTransactions",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "reference",
+            "in": "query",
+            "description": "Filter transactions by reference field.",
+            "schema": {
+              "type": "string",
+              "example": "ref:001"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account, either as source or destination (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account at source (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "startTime",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\nDeprecated, please use `startTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "endTime",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\nDeprecated, please use `endTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Count": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "List transactions from a ledger",
+        "description": "List transactions from a ledger, sorted by txid in descending order.",
+        "operationId": "listTransactions",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\nDeprecated, please use `pageSize` instead.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            },
+            "deprecated": true
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Pagination cursor, will return transactions after given txid (in descending order).",
+            "schema": {
+              "type": "string",
+              "example": 1234
+            }
+          },
+          {
+            "name": "reference",
+            "in": "query",
+            "description": "Find transactions by reference field.",
+            "schema": {
+              "type": "string",
+              "example": "ref:001"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account, either as source or destination (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account at source (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "description": "Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "startTime",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\nDeprecated, please use `startTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "endTime",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\nDeprecated, please use `endTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          },
+          {
+            "name": "pagination_token",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\nDeprecated, please use `cursor` instead.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            },
+            "deprecated": true
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionsCursorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Create a new transaction to a ledger",
+        "operationId": "createTransaction",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "description": "Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.",
+            "schema": {
+              "type": "boolean",
+              "example": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The request body must contain at least one of the following objects:\n  - `postings`: suitable for simple transactions\n  - `script`: enabling more complex transactions with Numscript\n",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTransaction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/transactions/{txid}": {
+      "get": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Get transaction from a ledger by its ID",
+        "operationId": "getTransaction",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "Transaction ID.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "example": 1234
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/transactions/{txid}/metadata": {
+      "post": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Set the metadata of a transaction by its ID",
+        "operationId": "addMetadataOnTransaction",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "Transaction ID.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "example": 1234
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "metadata",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ledgerMetadata"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "content": {}
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/transactions/{txid}/revert": {
+      "post": {
+        "tags": [
+          "Transactions"
+        ],
+        "operationId": "revertTransaction",
+        "summary": "Revert a ledger transaction by its ID",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "Transaction ID.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "example": 1234
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/transactions/batch": {
+      "post": {
+        "tags": [
+          "Transactions"
+        ],
+        "summary": "Create a new batch of transactions to a ledger",
+        "operationId": "CreateTransactions",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transactions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/balances": {
+      "get": {
+        "tags": [
+          "Balances"
+        ],
+        "summary": "Get the balances from a ledger's account",
+        "operationId": "getBalances",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "description": "Filter balances involving given account, either as source or destination.",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Pagination cursor, will return accounts after given address, in descending order.",
+            "schema": {
+              "type": "string",
+              "example": "users:003"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          },
+          {
+            "name": "pagination_token",
+            "in": "query",
+            "description": "Parameter used in pagination requests.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nDeprecated, please use `cursor` instead.",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            },
+            "deprecated": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalancesCursorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/aggregate/balances": {
+      "get": {
+        "tags": [
+          "Balances"
+        ],
+        "summary": "Get the aggregated balances from selected accounts",
+        "operationId": "getBalancesAggregated",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "description": "Filter balances involving given account, either as source or destination.",
+            "schema": {
+              "type": "string",
+              "example": "users:001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateBalancesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/{ledger}/log": {
+      "get": {
+        "tags": [
+          "Logs"
+        ],
+        "summary": "List the logs from a ledger",
+        "description": "List the logs from a ledger, sorted by ID in descending order.",
+        "operationId": "listLogs",
+        "parameters": [
+          {
+            "name": "ledger",
+            "in": "path",
+            "description": "Name of the ledger.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "ledger001"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "The maximum number of results to return per page.\nDeprecated, please use `pageSize` instead.\n",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 15
+            },
+            "deprecated": true
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Pagination cursor, will return the logs after a given ID. (in descending order).",
+            "schema": {
+              "type": "string",
+              "example": 1234
+            }
+          },
+          {
+            "name": "startTime",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Filter transactions that occurred after this timestamp.\nThe format is RFC3339 and is inclusive (for example, \"2023-01-02T15:04:01Z\" includes the first second of 4th minute).\nDeprecated, please use `startTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "endTime",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "Filter transactions that occurred before this timestamp.\nThe format is RFC3339 and is exclusive (for example, \"2023-01-02T15:04:01Z\" excludes the first second of 4th minute).\nDeprecated, please use `endTime` instead.\n",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deprecated": true
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          },
+          {
+            "name": "pagination_token",
+            "in": "query",
+            "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\nDeprecated, please use `cursor` instead.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            },
+            "deprecated": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsCursorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/payments/_info": {
+      "get": {
+        "summary": "Get server info",
+        "operationId": "paymentsgetServerInfo",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ServerInfo"
+          }
+        }
+      }
+    },
+    "/api/payments/payments": {
+      "get": {
+        "summary": "List payments",
+        "operationId": "listPayments",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Payments"
+          }
+        }
+      }
+    },
+    "/api/payments/payments/{paymentId}": {
+      "get": {
+        "summary": "Get a payment",
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "getPayment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PaymentId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Payment"
+          }
+        }
+      }
+    },
+    "/api/payments/accounts": {
+      "get": {
+        "summary": "List accounts",
+        "operationId": "paymentslistAccounts",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Accounts"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors": {
+      "get": {
+        "summary": "List all installed connectors",
+        "operationId": "listAllConnectors",
+        "tags": [
+          "Payments"
+        ],
+        "description": "List all installed connectors.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Connectors"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/configs": {
+      "get": {
+        "summary": "List the configs of each available connector",
+        "operationId": "listConfigsAvailableConnectors",
+        "tags": [
+          "Payments"
+        ],
+        "description": "List the configs of each available connector.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ConnectorsConfigs"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/{connector}": {
+      "post": {
+        "summary": "Install a connector",
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "installConnector",
+        "description": "Install a connector by its name and config.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ConnectorConfig"
+        },
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Uninstall a connector",
+        "operationId": "uninstallConnector",
+        "tags": [
+          "Payments"
+        ],
+        "description": "Uninstall a connector by its name.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/{connector}/config": {
+      "get": {
+        "summary": "Read the config of a connector",
+        "operationId": "readConnectorConfig",
+        "tags": [
+          "Payments"
+        ],
+        "description": "Read connector config",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ConnectorConfig"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/{connector}/reset": {
+      "post": {
+        "summary": "Reset a connector",
+        "operationId": "resetConnector",
+        "tags": [
+          "Payments"
+        ],
+        "description": "Reset a connector by its name.\nIt will remove the connector and ALL PAYMENTS generated with it.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/{connector}/tasks": {
+      "get": {
+        "summary": "List tasks from a connector",
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "listConnectorTasks",
+        "description": "List all tasks associated with this connector.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Tasks"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/{connector}/tasks/{taskId}": {
+      "get": {
+        "summary": "Read a specific task of the connector",
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "getConnectorTask",
+        "description": "Get a specific task associated to the connector.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Connector"
+          },
+          {
+            "$ref": "#/components/parameters/TaskId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Task"
+          }
+        }
+      }
+    },
+    "/api/payments/connectors/stripe/transfer": {
+      "post": {
+        "summary": "Transfer funds between Stripe accounts",
+        "tags": [
+          "Payments"
+        ],
+        "operationId": "connectorsStripeTransfer",
+        "description": "Execute a transfer between two Stripe accounts.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/StripeTransfer"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/StripeTransfer"
+          }
+        }
+      }
+    },
+    "/api/search/_info": {
+      "get": {
+        "summary": "Get server info",
+        "operationId": "searchgetServerInfo",
+        "responses": {
+          "200": {
+            "description": "Server information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search/": {
+      "post": {
+        "summary": "Search",
+        "tags": [
+          "Search"
+        ],
+        "operationId": "search",
+        "description": "ElasticSearch query engine",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Query"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs": {
+      "get": {
+        "summary": "Get many configs",
+        "description": "Sorted by updated date descending",
+        "operationId": "getManyConfigs",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Optional filter by Config ID",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          },
+          {
+            "name": "endpoint",
+            "in": "query",
+            "description": "Optional filter by endpoint URL",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "https://example.com"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Insert a new config",
+        "description": "Insert a new webhooks config.\n\nThe endpoint should be a valid https URL and be unique.\n\nThe secret is the endpoint's verification secret.\nIf not passed or empty, a secret is automatically generated.\nThe format is a random string of bytes of size 24, base64 encoded. (larger size after encoding)\n\nAll eventTypes are converted to lower-case when inserted.\n",
+        "operationId": "insertConfig",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigUser"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Config created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "endpoints should be valid urls"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs/{id}": {
+      "delete": {
+        "summary": "Delete one config",
+        "description": "Delete a webhooks config by ID.",
+        "operationId": "deleteConfig",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Config ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config successfully deleted.",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs/{id}/test": {
+      "get": {
+        "summary": "Test one config",
+        "description": "Test a config by sending a webhook to its endpoint.",
+        "operationId": "testConfig",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Config ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs/{id}/activate": {
+      "put": {
+        "summary": "Activate one config",
+        "description": "Activate a webhooks config by ID, to start receiving webhooks to its endpoint.",
+        "operationId": "activateConfig",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Config ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config successfully activated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Config not modified, was already activated.",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs/{id}/deactivate": {
+      "put": {
+        "summary": "Deactivate one config",
+        "description": "Deactivate a webhooks config by ID, to stop receiving webhooks to its endpoint.",
+        "operationId": "deactivateConfig",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Config ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config successfully deactivated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Config not modified, was already deactivated.",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/api/webhooks/configs/{id}/secret/change": {
+      "put": {
+        "summary": "Change the signing secret of a config",
+        "description": "Change the signing secret of the endpoint of a webhooks config.\n\nIf not passed or empty, a secret is automatically generated.\nThe format is a random string of bytes of size 24, base64 encoded. (larger size after encoding)\n",
+        "operationId": "changeConfigSecret",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigChangeSecret"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Config ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "4997257d-dfb6-445b-929c-cbe2ab182818"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret successfully changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/_info": {
+      "get": {
+        "summary": "Get server info",
+        "operationId": "walletsgetServerInfo",
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Server information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/transactions": {
+      "get": {
+        "operationId": "getTransactions",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 15
+            }
+          },
+          {
+            "name": "wallet_id",
+            "in": "query",
+            "description": "A wallet ID to filter on",
+            "example": "wallet1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when the cursor is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          }
+        ],
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetTransactionsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets": {
+      "get": {
+        "summary": "List all wallets",
+        "operationId": "listWallets",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Filter on wallet name",
+            "example": "wallet1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter wallets by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 15
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when the pagination token is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          }
+        ],
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListWalletsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new wallet",
+        "operationId": "createWallet",
+        "tags": [
+          "Wallets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWalletRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Wallet created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWalletResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get a wallet",
+        "operationId": "getWallet",
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWalletResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Wallet not found"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a wallet",
+        "operationId": "updateWallet",
+        "tags": [
+          "Wallets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "metadata": {
+                    "type": "object",
+                    "description": "Custom metadata to attach to this wallet.",
+                    "additionalProperties": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Wallet successfully updated"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets/{id}/balances": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List balances of a wallet",
+        "operationId": "listBalances",
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Balances list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBalancesResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a balance",
+        "operationId": "createBalance",
+        "tags": [
+          "Wallets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBalanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBalanceResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets/{id}/balances/{balanceName}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "balanceName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get detailed balance",
+        "operationId": "getBalance",
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Balance summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetBalanceResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets/{id}/debit": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Debit a wallet",
+        "operationId": "debitWallet",
+        "tags": [
+          "Wallets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebitWalletRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet successfully debited as a pending hold",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebitWalletResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Wallet successfully debited"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/wallets/{id}/credit": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Credit a wallet",
+        "operationId": "creditWallet",
+        "tags": [
+          "Wallets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditWalletRequest"
+              },
+              "example": {
+                "amount": {
+                  "asset": "USD/2",
+                  "amount": 100
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Wallet successfully credited"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/holds": {
+      "get": {
+        "summary": "Get all holds for a wallet",
+        "tags": [
+          "Wallets"
+        ],
+        "operationId": "getHolds",
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "The maximum number of results to return per page",
+            "example": 100,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 15
+            }
+          },
+          {
+            "name": "walletID",
+            "in": "query",
+            "description": "The wallet to filter on",
+            "example": "wallet1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "description": "Filter holds by metadata key value pairs. Nested objects can be used as seen in the example below.",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "example": "metadata[key]=value1&metadata[a.nested.key]=value2"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Parameter used in pagination requests.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when the pagination token is set.\n",
+            "schema": {
+              "type": "string",
+              "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Holds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetHoldsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/holds/{holdID}": {
+      "get": {
+        "summary": "Get a hold",
+        "tags": [
+          "Wallets"
+        ],
+        "operationId": "getHold",
+        "parameters": [
+          {
+            "name": "holdID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "The hold ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Holds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetHoldResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/holds/{hold_id}/confirm": {
+      "post": {
+        "parameters": [
+          {
+            "name": "hold_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmHoldRequest"
+              }
+            }
+          }
+        },
+        "summary": "Confirm a hold",
+        "tags": [
+          "Wallets"
+        ],
+        "operationId": "confirmHold",
+        "responses": {
+          "204": {
+            "description": "Hold successfully confirmed, funds moved back to initial destination"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wallets/holds/{hold_id}/void": {
+      "parameters": [
+        {
+          "name": "hold_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Cancel a hold",
+        "operationId": "voidHold",
+        "tags": [
+          "Wallets"
+        ],
+        "responses": {
+          "204": {
+            "description": "Hold successfully cancelled, funds returned to wallet"
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/walletsErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orchestration/_info": {
+      "get": {
+        "summary": "Get server info",
+        "operationId": "orchestrationgetServerInfo",
+        "tags": [
+          "Orchestration"
+        ],
+        "responses": {
+          "200": {
+            "description": "Server information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/orchestration/flows": {
+      "get": {
+        "summary": "List registered flows",
+        "operationId": "listFlows",
+        "description": "List registered flows",
+        "tags": [
+          "Orchestration"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListWorkflowsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create workflow",
+        "operationId": "createWorkflow",
+        "description": "Create a workflow",
+        "tags": [
+          "Orchestration"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWorkflowResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/orchestration/flows/{flowId}": {
+      "parameters": [
+        {
+          "in": "path",
+          "description": "The flow id",
+          "name": "flowId",
+          "schema": {
+            "type": "string"
+          },
+          "example": "xxx",
+          "required": true
+        }
+      ],
+      "get": {
+        "summary": "Get a flow by id",
+        "tags": [
+          "Orchestration"
+        ],
+        "description": "Get a flow by id",
+        "operationId": "getFlow",
+        "responses": {
+          "200": {
+            "description": "The workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWorkflowResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/orchestration/flows/{flowId}/runs": {
+      "parameters": [
+        {
+          "in": "path",
+          "description": "The flow id",
+          "name": "flowId",
+          "schema": {
+            "type": "string"
+          },
+          "example": "xxx",
+          "required": true
+        }
+      ],
+      "get": {
+        "description": "List occurrences of a workflow",
+        "summary": "List occurrences of a workflow",
+        "operationId": "listRuns",
+        "tags": [
+          "Orchestration"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflow occurrences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRunsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "description": "Run workflow",
+        "summary": "Run workflow",
+        "operationId": "runWorkflow",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "description": "Wait end of the workflow before return",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "tags": [
+          "Orchestration"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunWorkflowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The workflow occurrence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunWorkflowResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/orchestration/flows/{flowId}/runs/{runId}": {
+      "parameters": [
+        {
+          "in": "path",
+          "description": "The flow id",
+          "name": "flowId",
+          "schema": {
+            "type": "string"
+          },
+          "example": "xxx",
+          "required": true
+        },
+        {
+          "in": "path",
+          "description": "The occurrence id",
+          "name": "runId",
+          "schema": {
+            "type": "string"
+          },
+          "example": "xxx",
+          "required": true
+        }
+      ],
+      "get": {
+        "summary": "Get a workflow occurrence by id",
+        "description": "Get a workflow occurrence by id",
+        "operationId": "getWorkflowOccurrence",
+        "tags": [
+          "Orchestration"
+        ],
+        "responses": {
+          "200": {
+            "description": "The workflow occurrence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWorkflowOccurrenceResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "Authorization": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "",
+            "refreshUrl": "",
+            "scopes": {}
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Metadata": {
+        "type": "object",
+        "additionalProperties": {}
+      },
+      "ClientOptions": {
+        "type": "object",
+        "properties": {
+          "public": {
+            "type": "boolean"
+          },
+          "redirectUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean"
+          },
+          "postLogoutRedirectUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ClientSecret": {
+        "type": "object",
+        "properties": {
+          "lastDigits": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "required": [
+          "id",
+          "lastDigits",
+          "name"
+        ]
+      },
+      "Client": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ClientOptions"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "secrets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ClientSecret"
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        ]
+      },
+      "ScopeOptions": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "required": [
+          "label"
+        ]
+      },
+      "Scope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScopeOptions"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "transient": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        ]
+      },
+      "SecretOptions": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Secret": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SecretOptions"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "lastDigits": {
+                "type": "string"
+              },
+              "clear": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "lastDigits",
+              "clear"
+            ]
+          }
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "3bb03708-312f-48a0-821a-e765837dc2c4"
+          },
+          "subject": {
+            "type": "string",
+            "example": "Jane Doe"
+          },
+          "email": {
+            "type": "string",
+            "example": "user1@orga1.com"
+          }
+        }
+      },
+      "CreateClientRequest": {
+        "$ref": "#/components/schemas/ClientOptions"
+      },
+      "CreateClientResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Client"
+          }
+        }
+      },
+      "ListClientsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Client"
+            }
+          }
+        }
+      },
+      "UpdateClientRequest": {
+        "$ref": "#/components/schemas/ClientOptions"
+      },
+      "UpdateClientResponse": {
+        "$ref": "#/components/schemas/CreateClientResponse"
+      },
+      "ReadClientResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Client"
+          }
+        }
+      },
+      "ListScopesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            }
+          }
+        }
+      },
+      "CreateScopeRequest": {
+        "$ref": "#/components/schemas/ScopeOptions"
+      },
+      "CreateScopeResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        }
+      },
+      "ReadScopeResponse": {
+        "$ref": "#/components/schemas/CreateScopeResponse"
+      },
+      "UpdateScopeRequest": {
+        "$ref": "#/components/schemas/ScopeOptions"
+      },
+      "UpdateScopeResponse": {
+        "$ref": "#/components/schemas/CreateScopeResponse"
+      },
+      "CreateSecretRequest": {
+        "$ref": "#/components/schemas/SecretOptions"
+      },
+      "CreateSecretResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Secret"
+          }
+        }
+      },
+      "ReadUserResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "ListUsersResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          }
+        }
+      },
+      "ServerInfo": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountsCursorResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "object",
+            "required": [
+              "pageSize",
+              "hasMore",
+              "data"
+            ],
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "example": 15
+              },
+              "hasMore": {
+                "type": "boolean",
+                "example": false
+              },
+              "previous": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "next": {
+                "type": "string",
+                "example": ""
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          }
+        }
+      },
+      "BalancesCursorResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "object",
+            "required": [
+              "pageSize",
+              "hasMore",
+              "data"
+            ],
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "example": 15
+              },
+              "hasMore": {
+                "type": "boolean",
+                "example": false
+              },
+              "previous": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "next": {
+                "type": "string",
+                "example": ""
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AccountsBalances"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TransactionsCursorResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "object",
+            "required": [
+              "pageSize",
+              "hasMore",
+              "data"
+            ],
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "example": 15
+              },
+              "hasMore": {
+                "type": "boolean",
+                "example": false
+              },
+              "previous": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "next": {
+                "type": "string",
+                "example": ""
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LogsCursorResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "object",
+            "required": [
+              "pageSize",
+              "hasMore",
+              "data"
+            ],
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 1000,
+                "example": 15
+              },
+              "hasMore": {
+                "type": "boolean",
+                "example": false
+              },
+              "previous": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "next": {
+                "type": "string",
+                "example": ""
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Log"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AccountResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountWithVolumesAndBalances"
+          }
+        }
+      },
+      "AggregateBalancesResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AssetsBalances"
+          }
+        }
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "storage": {
+            "$ref": "#/components/schemas/LedgerStorage"
+          }
+        },
+        "required": [
+          "storage"
+        ]
+      },
+      "LedgerStorage": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "driver",
+          "ledgers"
+        ]
+      },
+      "ledgerMetadata": {
+        "type": "object",
+        "nullable": true,
+        "additionalProperties": {},
+        "example": {
+          "admin": true,
+          "a": {
+            "nested": {
+              "key": "value"
+            }
+          }
+        }
+      },
+      "ConfigInfo": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "server": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "config",
+          "server",
+          "version"
+        ]
+      },
+      "ScriptResponse": {
+        "type": "object",
+        "properties": {
+          "errorCode": {
+            "$ref": "#/components/schemas/ErrorsEnum"
+          },
+          "errorMessage": {
+            "type": "string",
+            "example": "account had insufficient funds"
+          },
+          "details": {
+            "type": "string",
+            "example": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/Transaction"
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "example": "users:001"
+          },
+          "type": {
+            "type": "string",
+            "example": "virtual"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {},
+            "example": {
+              "admin": true,
+              "a": {
+                "nested": {
+                  "key": "value"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AccountWithVolumesAndBalances": {
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "example": "users:001"
+          },
+          "type": {
+            "type": "string",
+            "example": "virtual"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {},
+            "example": {
+              "admin": true,
+              "a": {
+                "nested": {
+                  "key": "value"
+                }
+              }
+            }
+          },
+          "volumes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            },
+            "example": {
+              "COIN": {
+                "input": 100,
+                "output": 0
+              }
+            }
+          },
+          "balances": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "example": {
+              "COIN": 100
+            }
+          }
+        }
+      },
+      "AccountsBalances": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/AssetsBalances"
+        },
+        "example": {
+          "account1": {
+            "USD": 100,
+            "EUR": 23
+          },
+          "account2": {
+            "CAD": 20,
+            "JPY": 21
+          }
+        }
+      },
+      "AssetsBalances": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "example": {
+          "USD": 100,
+          "EUR": 12
+        }
+      },
+      "Contract": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "example": "users:001"
+          },
+          "expr": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accounts",
+          "expr"
+        ]
+      },
+      "Mapping": {
+        "type": "object",
+        "nullable": true,
+        "required": [
+          "contracts"
+        ],
+        "properties": {
+          "contracts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Contract"
+            }
+          }
+        }
+      },
+      "Posting": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 100
+          },
+          "asset": {
+            "type": "string",
+            "example": "COIN"
+          },
+          "destination": {
+            "type": "string",
+            "example": "users:002"
+          },
+          "source": {
+            "type": "string",
+            "example": "users:001"
+          }
+        },
+        "required": [
+          "amount",
+          "asset",
+          "destination",
+          "source"
+        ]
+      },
+      "Script": {
+        "type": "object",
+        "properties": {
+          "plain": {
+            "type": "string",
+            "example": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
+          },
+          "vars": {
+            "type": "object",
+            "properties": {},
+            "example": {
+              "vars": {
+                "user": "users:042"
+              }
+            }
+          },
+          "reference": {
+            "type": "string",
+            "example": "order_1234",
+            "description": "Reference to attach to the generated transaction"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ledgerMetadata"
+          }
+        },
+        "required": [
+          "plain"
+        ]
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "postings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Posting"
+            }
+          },
+          "reference": {
+            "type": "string",
+            "example": "ref:001"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ledgerMetadata"
+          },
+          "txid": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "preCommitVolumes": {
+            "$ref": "#/components/schemas/AggregatedVolumes"
+          },
+          "postCommitVolumes": {
+            "$ref": "#/components/schemas/AggregatedVolumes"
+          }
+        },
+        "required": [
+          "postings",
+          "timestamp",
+          "txid"
+        ]
+      },
+      "TransactionData": {
+        "type": "object",
+        "required": [
+          "postings"
+        ],
+        "properties": {
+          "postings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Posting"
+            }
+          },
+          "reference": {
+            "type": "string",
+            "example": "ref:001"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ledgerMetadata"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Transactions": {
+        "required": [
+          "transactions"
+        ],
+        "type": "object",
+        "properties": {
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionData"
+            }
+          }
+        }
+      },
+      "PostTransaction": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "postings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Posting"
+            }
+          },
+          "script": {
+            "type": "object",
+            "properties": {
+              "plain": {
+                "type": "string",
+                "example": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
+              },
+              "vars": {
+                "type": "object",
+                "properties": {},
+                "example": {
+                  "vars": {
+                    "user": "users:042"
+                  }
+                }
+              }
+            },
+            "required": [
+              "plain"
+            ]
+          },
+          "reference": {
+            "type": "string",
+            "example": "ref:001"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ledgerMetadata"
+          }
+        }
+      },
+      "Stats": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "accounts",
+          "transactions"
+        ]
+      },
+      "Log": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 1234
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "NEW_TRANSACTION",
+              "SET_METADATA"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "properties": {}
+          },
+          "hash": {
+            "type": "string",
+            "example": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "data",
+          "hash",
+          "date"
+        ]
+      },
+      "TransactionsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "TransactionResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Transaction"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ]
+      },
+      "StatsResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Stats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ]
+      },
+      "MappingResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Mapping"
+          }
+        },
+        "type": "object"
+      },
+      "ConfigInfoResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConfigInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ]
+      },
+      "Volume": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "output": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "balance": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ],
+        "example": {
+          "input": 100,
+          "output": 20,
+          "balance": 80
+        }
+      },
+      "Volumes": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/Volume"
+        },
+        "example": {
+          "USD": {
+            "input": 100,
+            "output": 10,
+            "balance": 90
+          },
+          "EUR": {
+            "input": 100,
+            "output": 10,
+            "balance": 90
+          }
+        }
+      },
+      "AggregatedVolumes": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/Volumes"
+        },
+        "example": {
+          "orders:1": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          },
+          "orders:2": {
+            "USD": {
+              "input": 100,
+              "output": 10,
+              "balance": 90
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error_code"
+        ],
+        "properties": {
+          "errorCode": {
+            "$ref": "#/components/schemas/ErrorsEnum"
+          },
+          "errorMessage": {
+            "type": "string",
+            "example": "[INSUFFICIENT_FUND] account had insufficient funds"
+          },
+          "details": {
+            "type": "string",
+            "example": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+          }
+        }
+      },
+      "ErrorsEnum": {
+        "type": "string",
+        "enum": [
+          "INTERNAL",
+          "INSUFFICIENT_FUND",
+          "VALIDATION",
+          "CONFLICT",
+          "NO_SCRIPT",
+          "COMPILATION_FAILED",
+          "METADATA_OVERRIDE"
+        ],
+        "example": "INSUFFICIENT_FUND"
+      },
+      "LedgerInfoResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LedgerInfo"
+          }
+        }
+      },
+      "LedgerInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "ledger001"
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "migrations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MigrationInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MigrationInfo": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 11
+          },
+          "name": {
+            "type": "string",
+            "example": "migrations:001"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "to do",
+              "done"
+            ]
+          }
+        }
+      },
+      "CursorBase": {
+        "type": "object",
+        "required": [
+          "pageSize",
+          "hasMore",
+          "data"
+        ],
+        "properties": {
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 15
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "previous": {
+            "type": "string",
+            "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+          },
+          "next": {
+            "type": "string",
+            "example": ""
+          }
+        }
+      },
+      "PaymentsCursor": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CursorBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Payment"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AccountsCursor": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CursorBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/paymentsAccount"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "TasksCursor": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CursorBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "data"
+                ],
+                "properties": {
+                  "data": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/TaskStripe"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TaskWise"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TaskCurrencyCloud"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TaskDummyPay"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TaskModulr"
+                        },
+                        {
+                          "$ref": "#/components/schemas/TaskBankingCircle"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ConnectorConfigResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConnectorConfig"
+          }
+        }
+      },
+      "PaymentResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Payment"
+          }
+        }
+      },
+      "ConnectorsResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "$ref": "#/components/schemas/Connector"
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "ConnectorsConfigsResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "connector"
+            ],
+            "properties": {
+              "connector": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "object",
+                    "required": [
+                      "dataType",
+                      "required"
+                    ],
+                    "properties": {
+                      "dataType": {
+                        "type": "string"
+                      },
+                      "required": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskStripe"
+              },
+              {
+                "$ref": "#/components/schemas/TaskWise"
+              },
+              {
+                "$ref": "#/components/schemas/TaskCurrencyCloud"
+              },
+              {
+                "$ref": "#/components/schemas/TaskDummyPay"
+              },
+              {
+                "$ref": "#/components/schemas/TaskModulr"
+              },
+              {
+                "$ref": "#/components/schemas/TaskBankingCircle"
+              }
+            ]
+          }
+        }
+      },
+      "Connector": {
+        "type": "string",
+        "enum": [
+          "STRIPE",
+          "DUMMY-PAY",
+          "WISE",
+          "MODULR",
+          "CURRENCY-CLOUD",
+          "BANKING-CIRCLE"
+        ]
+      },
+      "ConnectorConfig": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StripeConfig"
+          },
+          {
+            "$ref": "#/components/schemas/DummyPayConfig"
+          },
+          {
+            "$ref": "#/components/schemas/WiseConfig"
+          },
+          {
+            "$ref": "#/components/schemas/ModulrConfig"
+          },
+          {
+            "$ref": "#/components/schemas/CurrencyCloudConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BankingCircleConfig"
+          }
+        ]
+      },
+      "StripeConfig": {
+        "type": "object",
+        "required": [
+          "apiKey"
+        ],
+        "properties": {
+          "pollingPeriod": {
+            "type": "string",
+            "example": "60s",
+            "description": "The frequency at which the connector will try to fetch new BalanceTransaction objects from Stripe API.\n",
+            "default": "120s"
+          },
+          "apiKey": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Number of BalanceTransaction to fetch at each polling interval.\n",
+            "default": 10,
+            "example": 50
+          }
+        }
+      },
+      "DummyPayConfig": {
+        "type": "object",
+        "required": [
+          "directory"
+        ],
+        "properties": {
+          "filePollingPeriod": {
+            "type": "string",
+            "example": "60s",
+            "description": "The frequency at which the connector will try to fetch new payment objects from the directory",
+            "default": "10s"
+          },
+          "fileGenerationPeriod": {
+            "type": "string",
+            "example": "60s",
+            "description": "The frequency at which the connector will create new payment objects in the directory",
+            "default": "10s"
+          },
+          "directory": {
+            "type": "string",
+            "example": "/tmp/dummypay"
+          }
+        }
+      },
+      "WiseConfig": {
+        "type": "object",
+        "required": [
+          "apiKey"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "example": "XXX"
+          }
+        }
+      },
+      "ModulrConfig": {
+        "type": "object",
+        "required": [
+          "apiKey",
+          "apiSecret"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "apiSecret": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "endpoint": {
+            "type": "string",
+            "example": "XXX"
+          }
+        }
+      },
+      "BankingCircleConfig": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "endpoint",
+          "authorizationEndpoint"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "password": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "endpoint": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "authorizationEndpoint": {
+            "type": "string",
+            "example": "XXX"
+          }
+        }
+      },
+      "CurrencyCloudConfig": {
+        "type": "object",
+        "required": [
+          "apiKey",
+          "loginID"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "loginID": {
+            "type": "string",
+            "example": "XXX",
+            "description": "Username of the API Key holder"
+          },
+          "pollingPeriod": {
+            "type": "string",
+            "example": "60s",
+            "description": "The frequency at which the connector will fetch transactions"
+          },
+          "endpoint": {
+            "type": "string",
+            "example": "XXX",
+            "description": "The endpoint to use for the API. Defaults to https://devapi.currencycloud.com"
+          }
+        }
+      },
+      "Payment": {
+        "type": "object",
+        "required": [
+          "id",
+          "reference",
+          "accountID",
+          "type",
+          "provider",
+          "status",
+          "initialAmount",
+          "scheme",
+          "asset",
+          "createdAt",
+          "raw",
+          "adjustments",
+          "metadata"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "XXX"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "accountID": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PAY-IN",
+              "PAYOUT",
+              "TRANSFER",
+              "OTHER"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Connector"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "initialAmount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 100
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "visa",
+              "mastercard",
+              "amex",
+              "diners",
+              "discover",
+              "jcb",
+              "unionpay",
+              "sepa debit",
+              "sepa credit",
+              "sepa",
+              "apple pay",
+              "google pay",
+              "a2a",
+              "ach debit",
+              "ach",
+              "rtp",
+              "unknown",
+              "other"
+            ]
+          },
+          "asset": {
+            "type": "string",
+            "example": "USD"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "raw": {
+            "type": "object"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentAdjustment"
+            }
+          },
+          "metadata": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentMetadata"
+            }
+          }
+        }
+      },
+      "PaymentAdjustment": {
+        "type": "object",
+        "required": [
+          "status",
+          "amount",
+          "date",
+          "raw",
+          "absolute"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 100
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "raw": {
+            "type": "object"
+          },
+          "absolute": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PaymentMetadata": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "changelog": {
+            "$ref": "#/components/schemas/PaymentMetadataChangelog"
+          }
+        }
+      },
+      "PaymentMetadataChangelog": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "value"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "paymentsAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "createdAt",
+          "provider",
+          "reference",
+          "type"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Connector"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "TARGET",
+              "SOURCE"
+            ]
+          }
+        }
+      },
+      "TaskBase": {
+        "type": "object",
+        "required": [
+          "id",
+          "connectorId",
+          "createdAt",
+          "updatedAt",
+          "descriptor",
+          "status",
+          "state"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "connectorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "state": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskStripe": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "account"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "main": {
+                    "type": "boolean"
+                  },
+                  "account": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TaskWise": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "profileID": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TaskModulr": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "accountID": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TaskDummyPay": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TaskCurrencyCloud": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "TaskBankingCircle": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "descriptor"
+            ],
+            "properties": {
+              "descriptor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "StripeTransferRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "example": 100
+          },
+          "asset": {
+            "type": "string",
+            "example": "USD"
+          },
+          "destination": {
+            "type": "string",
+            "example": "acct_1Gqj58KZcSIg2N2q"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "A set of key/value pairs that you can attach to a transfer object.\nIt can be useful for storing additional information about the transfer in a structured format.\n",
+            "example": {
+              "order_id": "6735"
+            }
+          }
+        }
+      },
+      "StripeTransferResponse": {
+        "type": "object"
+      },
+      "PaymentStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "ACTIVE",
+          "TERMINATED",
+          "FAILED"
+        ]
+      },
+      "Query": {
+        "type": "object",
+        "properties": {
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "quickstart"
+            }
+          },
+          "after": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "users:002"
+            }
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "destination=central_bank1"
+            }
+          },
+          "sort": {
+            "type": "string",
+            "example": "txid:asc"
+          },
+          "policy": {
+            "type": "string",
+            "example": "OR"
+          },
+          "target": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string",
+            "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+          }
+        }
+      },
+      "Response": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "The payload"
+          },
+          "cursor": {
+            "title": "cursor",
+            "type": "object",
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "total": {
+                "title": "total",
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 0,
+                    "example": 1
+                  },
+                  "relation": {
+                    "type": "string",
+                    "example": "eq"
+                  }
+                }
+              },
+              "next": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "previous": {
+                "type": "string",
+                "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "allOf": [
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "ConfigUser": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "eventTypes"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "secret": {
+            "type": "string",
+            "example": "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "TYPE1"
+            },
+            "example": [
+              "TYPE1",
+              "TYPE2"
+            ]
+          }
+        }
+      },
+      "ConfigsResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/webhooksConfig"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "ConfigResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/webhooksConfig"
+          }
+        }
+      },
+      "webhooksConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpoint": {
+            "type": "string",
+            "example": "https://example.com"
+          },
+          "secret": {
+            "type": "string",
+            "example": "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "example": "TYPE1"
+            },
+            "example": [
+              "TYPE1",
+              "TYPE2"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ConfigChangeSecret": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "example": "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+          }
+        }
+      },
+      "AttemptResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Attempt"
+          }
+        }
+      },
+      "Attempt": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "webhookID": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "config": {
+            "$ref": "#/components/schemas/webhooksConfig"
+          },
+          "payload": {
+            "type": "string",
+            "example": "{\"data\":\"test\"}"
+          },
+          "statusCode": {
+            "type": "integer",
+            "example": 200
+          },
+          "retryAttempt": {
+            "type": "integer",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "nextRetryAfter": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Monetary": {
+        "type": "object",
+        "required": [
+          "asset",
+          "amount"
+        ],
+        "properties": {
+          "asset": {
+            "type": "string",
+            "description": "The asset of the monetary value."
+          },
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The amount of the monetary value."
+          }
+        }
+      },
+      "Wallet": {
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "metadata",
+          "createdAt",
+          "ledger"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The unique ID of the wallet."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Metadata associated with the wallet."
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ledger": {
+            "type": "string"
+          }
+        }
+      },
+      "WalletWithBalances": {
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "metadata",
+          "createdAt",
+          "balances",
+          "ledger"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The unique ID of the wallet."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Metadata associated with the wallet.",
+            "additionalProperties": {}
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "balances": {
+            "type": "object",
+            "required": [
+              "main"
+            ],
+            "properties": {
+              "main": {
+                "$ref": "#/components/schemas/AssetHolder"
+              }
+            }
+          },
+          "ledger": {
+            "type": "string"
+          }
+        }
+      },
+      "Hold": {
+        "type": "object",
+        "required": [
+          "id",
+          "walletID",
+          "metadata",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The unique ID of the hold."
+          },
+          "walletID": {
+            "type": "string",
+            "description": "The ID of the wallet the hold is associated with."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Metadata associated with the hold.",
+            "additionalProperties": {}
+          },
+          "description": {
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/Subject"
+          }
+        }
+      },
+      "ExpandedDebitHold": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Hold"
+          },
+          {
+            "type": "object",
+            "required": [
+              "remaining",
+              "originalAmount"
+            ],
+            "properties": {
+              "remaining": {
+                "type": "integer",
+                "description": "Remaining amount on hold",
+                "example": 10,
+                "format": "int64"
+              },
+              "originalAmount": {
+                "type": "integer",
+                "description": "Original amount on hold",
+                "example": 100,
+                "format": "int64"
+              }
+            }
+          }
+        ]
+      },
+      "ListWalletsResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/Wallet"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "CreateWalletResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Wallet"
+          }
+        }
+      },
+      "GetWalletResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WalletWithBalances"
+          }
+        }
+      },
+      "DebitWalletResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Hold"
+          }
+        }
+      },
+      "walletsAggregatedVolumes": {
+        "type": "object",
+        "x-go-type": {
+          "type": "AggregatedVolumes"
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/walletsVolumes"
+        }
+      },
+      "walletsTransaction": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "postings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Posting"
+            }
+          },
+          "reference": {
+            "type": "string",
+            "example": "ref:001"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Metadata associated with the wallet."
+          },
+          "txid": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "preCommitVolumes": {
+            "$ref": "#/components/schemas/walletsAggregatedVolumes"
+          },
+          "postCommitVolumes": {
+            "$ref": "#/components/schemas/walletsAggregatedVolumes"
+          }
+        },
+        "required": [
+          "postings",
+          "timestamp",
+          "txid"
+        ]
+      },
+      "Cursor": {
+        "type": "object",
+        "required": [
+          "pageSize"
+        ],
+        "properties": {
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 15
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "previous": {
+            "type": "string",
+            "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+          },
+          "next": {
+            "type": "string",
+            "example": ""
+          }
+        }
+      },
+      "GetTransactionsResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/walletsTransaction"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "GetHoldsResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/Hold"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "GetHoldResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ExpandedDebitHold"
+          }
+        }
+      },
+      "CreateWalletRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "description": "Custom metadata to attach to this wallet.",
+            "additionalProperties": {}
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "walletsVolume": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "integer"
+          },
+          "output": {
+            "type": "integer"
+          },
+          "balance": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "balance"
+        ],
+        "example": {
+          "input": 100,
+          "output": 20,
+          "balance": 80
+        }
+      },
+      "walletsVolumes": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/walletsVolume"
+        },
+        "example": {
+          "USD": {
+            "input": 100,
+            "output": 10,
+            "balance": 90
+          },
+          "EUR": {
+            "input": 100,
+            "output": 10,
+            "balance": 90
+          }
+        }
+      },
+      "ConfirmHoldRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "example": 100,
+            "description": "Define the amount to transfer."
+          },
+          "final": {
+            "type": "boolean",
+            "example": true,
+            "description": "Define a final confirmation. Remaining funds will be returned to the wallet."
+          }
+        }
+      },
+      "LedgerAccountSubject": {
+        "required": [
+          "type",
+          "identifier"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          }
+        }
+      },
+      "WalletSubject": {
+        "required": [
+          "type",
+          "identifier"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "balance": {
+            "type": "string"
+          }
+        }
+      },
+      "Subject": {
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "ACCOUNT": "#/components/schemas/LedgerAccountSubject",
+            "WALLET": "#/components/schemas/WalletSubject"
+          }
+        },
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/LedgerAccountSubject"
+          },
+          {
+            "$ref": "#/components/schemas/WalletSubject"
+          }
+        ]
+      },
+      "CreditWalletRequest": {
+        "type": "object",
+        "required": [
+          "amount",
+          "sources"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Monetary"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Metadata associated with the wallet."
+          },
+          "reference": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subject"
+            }
+          },
+          "balance": {
+            "type": "string",
+            "description": "The balance to credit"
+          }
+        }
+      },
+      "DebitWalletRequest": {
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Monetary"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "Set to true to create a pending hold. If false, the wallet will be debited immediately."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Metadata associated with the wallet."
+          },
+          "description": {
+            "type": "string"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "balances": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "A targeted balance (use '*' for all)"
+            }
+          }
+        },
+        "example": {
+          "amount": {
+            "asset": "USD/2",
+            "amount": 100
+          },
+          "pending": true
+        }
+      },
+      "AssetHolder": {
+        "type": "object",
+        "required": [
+          "assets"
+        ],
+        "properties": {
+          "assets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "Balance": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceWithAssets": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Balance"
+          },
+          {
+            "$ref": "#/components/schemas/AssetHolder"
+          }
+        ]
+      },
+      "ListBalancesResponse": {
+        "type": "object",
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/Balance"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "GetBalanceResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BalanceWithAssets"
+          }
+        }
+      },
+      "CreateBalanceRequest": {
+        "$ref": "#/components/schemas/Balance"
+      },
+      "CreateBalanceResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Balance"
+          }
+        }
+      },
+      "walletsErrorResponse": {
+        "type": "object",
+        "required": [
+          "errorCode",
+          "errorMessage"
+        ],
+        "properties": {
+          "errorCode": {
+            "type": "string",
+            "enum": [
+              "VALIDATION"
+            ]
+          },
+          "errorMessage": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "errorCode",
+          "errorMessage"
+        ],
+        "properties": {
+          "errorCode": {
+            "type": "string",
+            "enum": [
+              "VALIDATION"
+            ]
+          },
+          "errorMessage": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowConfig": {
+        "type": "object",
+        "required": [
+          "stages"
+        ],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        }
+      },
+      "Workflow": {
+        "type": "object",
+        "required": [
+          "config",
+          "createdAt",
+          "updatedAt",
+          "id"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/WorkflowConfig"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "StageStatus": {
+        "type": "object",
+        "required": [
+          "stage",
+          "occurrenceID",
+          "startedAt"
+        ],
+        "properties": {
+          "stage": {
+            "type": "number"
+          },
+          "occurrenceID": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "terminatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowOccurrence": {
+        "type": "object",
+        "required": [
+          "workflowID",
+          "id",
+          "createdAt",
+          "updatedAt",
+          "statuses"
+        ],
+        "properties": {
+          "workflowID": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageStatus"
+            }
+          }
+        }
+      },
+      "ListWorkflowsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Workflow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "ReadWorkflowResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Workflow"
+          }
+        }
+      },
+      "CreateWorkflowRequest": {
+        "$ref": "#/components/schemas/WorkflowConfig"
+      },
+      "CreateWorkflowResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Workflow"
+          }
+        }
+      },
+      "RunWorkflowRequest": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "RunWorkflowResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkflowOccurrence"
+          }
+        }
+      },
+      "ListRunsResponse": {
+        "required": [
+          "cursor"
+        ],
+        "properties": {
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/WorkflowOccurrence"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "GetWorkflowResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Workflow"
+          }
+        }
+      },
+      "GetWorkflowOccurrenceResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkflowOccurrence"
+          }
+        }
+      }
+    },
+    "responses": {
+      "NoContent": {
+        "description": "No content"
+      },
+      "ServerInfo": {
+        "description": "Server information",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ServerInfo"
+            }
+          }
+        }
+      },
+      "Payments": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PaymentsCursor"
+            }
+          }
+        }
+      },
+      "Payment": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PaymentResponse"
+            }
+          }
+        }
+      },
+      "Accounts": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AccountsCursor"
+            }
+          }
+        }
+      },
+      "Connectors": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConnectorsResponse"
+            }
+          }
+        }
+      },
+      "ConnectorsConfigs": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConnectorsConfigsResponse"
+            }
+          }
+        }
+      },
+      "ConnectorConfig": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConnectorConfigResponse"
+            }
+          }
+        }
+      },
+      "Tasks": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TasksCursor"
+            }
+          }
+        }
+      },
+      "Task": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TaskResponse"
+            }
+          }
+        }
+      },
+      "StripeTransfer": {
+        "description": "OK",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/StripeTransferResponse"
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "description": "General error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "description": "The maximum number of results to return per page.\n",
+        "example": 100,
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 15
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "description": "Parameter used in pagination requests. Maximum page size is set to 15.\nSet to the value of next for the next page of results.\nSet to the value of previous for the previous page of results.\nNo other parameters can be set when this parameter is set.\n",
+        "schema": {
+          "type": "string",
+          "example": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
+        }
+      },
+      "Sort": {
+        "name": "sort",
+        "in": "query",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": "Fields used to sort payments (default is date:desc).",
+        "example": "date:asc,status:desc"
+      },
+      "PaymentId": {
+        "name": "paymentId",
+        "in": "path",
+        "schema": {
+          "type": "string"
+        },
+        "description": "The payment ID.",
+        "example": "XXX",
+        "required": true
+      },
+      "Connector": {
+        "name": "connector",
+        "description": "The name of the connector.",
+        "in": "path",
+        "schema": {
+          "$ref": "#/components/schemas/Connector"
+        },
+        "required": true
+      },
+      "TaskId": {
+        "name": "taskId",
+        "description": "The task ID.",
+        "example": "task1",
+        "in": "path",
+        "schema": {
+          "type": "string"
+        },
+        "required": true
+      }
+    },
+    "requestBodies": {
+      "ConnectorConfig": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConnectorConfig"
+            }
+          }
+        }
+      },
+      "StripeTransfer": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/StripeTransferRequest"
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-tagGroups": [
+    {
+      "name": "Auth",
+      "tags": [
+        "Clients",
+        "Scopes",
+        "Users"
+      ]
+    },
+    {
+      "name": "Ledger",
+      "tags": [
+        "Server",
+        "Accounts",
+        "Mapping",
+        "Script",
+        "Stats",
+        "Transactions",
+        "Balances",
+        "server",
+        "accounts",
+        "mapping",
+        "script",
+        "stats",
+        "transactions",
+        "balances"
+      ]
+    },
+    {
+      "name": "Payments",
+      "tags": [
+        "Payments"
+      ]
+    },
+    {
+      "name": "Search",
+      "tags": [
+        "Search"
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "tags": [
+        "Webhooks"
+      ]
+    }
+  ]
+}

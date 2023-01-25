@@ -2,6 +2,9 @@
 
 version: '3'
 
+dotenv:
+  - .env
+
 vars:
   COMPOSE_FILE: -f docker-compose.yml
 
@@ -21,3 +24,58 @@ tasks:
     cmds:
       - docker-compose {{.COMPOSE_FILE}} rm -f
       - docker volume prune -f
+
+  all:tests:
+    cmds:
+      - task auth:tests
+      - task fctl:tests
+      - task orchestration:tests
+      - task payments:tests
+      - task search:tests
+      - task wallets:tests
+      - task webhooks:tests
+
+  all:lint:
+    cmds:
+      - task auth:lint
+      - task fctl:lint
+      - task orchestration:lint
+      - task payments:lint
+      - task search:lint
+      - task wallets:lint
+      - task webhooks:lint
+
+includes:
+  openapi:
+    taskfile: ./openapi
+    dir: ./openapi
+  auth:
+    taskfile: ./components/auth
+    dir: ./components/auth
+  fctl:
+    taskfile: ./components/fctl
+    dir: ./components/fctl
+  ledger:
+    taskfile: ./components/ledger
+    dir: ./components/ledger
+  machine:
+    taskfile: ./components/machine
+    dir: ./components/machine
+  orchestration:
+    taskfile: ./components/orchestration
+    dir: ./components/orchestration
+  payments:
+    taskfile: ./components/payments
+    dir: ./components/payments
+  search:
+    taskfile: ./components/search
+    dir: ./components/search
+  wallets:
+    taskfile: ./components/wallets
+    dir: ./components/wallets
+  webhooks:
+    taskfile: ./components/webhooks
+    dir: ./components/webhooks
+  operator:
+    taskfile: ./components/operator
+    dir: ./components/operator

@@ -1,0 +1,25 @@
+name: Create Release
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service name'
+        required: true
+        default: 'ledger'
+      version:
+        description: 'Version'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  Tag:
+    name: Tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions-ecosystem/action-push-tag@v1
+        with:
+          tag: components/${{ github.event.inputs.service }}/${{ github.event.inputs.version }}
+          message: 'components/${{ github.event.inputs.service }}/${{ github.event.inputs.version }}'

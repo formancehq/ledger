@@ -1,0 +1,33 @@
+name: get_doc
+type: processor
+
+fields:
+- name: id
+  type: string
+
+mapping: |
+  root = {
+    "branch": {
+      "request_map": "root = \"\"",
+      "result_map": "root._doc = this",
+      "processors": [
+        {
+          "http": {
+            "url": "%s/%s/_doc/%s".format(env("OPENSEARCH_URL"), env("OPENSEARCH_INDEX"), this.id),
+            "verb": "GET",
+            "basic_auth": {
+              "enabled": env("BASIC_AUTH_ENABLED") == "true",
+              "username": env("BASIC_AUTH_USERNAME"),
+              "password": env("BASIC_AUTH_PASSWORD")
+            },
+            "tls": {
+              "enabled": true,
+              "skip_cert_verify": true
+            }
+          }
+        }, {
+          "bloblang": "root = this._source"
+        }
+      ]
+    }
+  }

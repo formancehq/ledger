@@ -1,0 +1,11 @@
+.vscode
+script/.antlr
+docs/*.example.md
+coverage.out
+machine
+main.go
+machine.go
+.idea
+vendor
+.DS_Store
+script/antlr-*

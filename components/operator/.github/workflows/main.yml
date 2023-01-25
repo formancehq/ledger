@@ -1,0 +1,111 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened ]
+  release:
+    types: [ prereleased, released ]
+
+name: Default
+jobs:
+  Pr:
+    if: github.event_name == 'pull_request'
+    uses: numary/gh-workflows/.github/workflows/pr-style.yml@main
+  Lint:
+    uses: numary/gh-workflows/.github/workflows/golang-lint.yml@main
+    with:
+      go_version: 1.18
+  Test:
+    uses: numary/gh-workflows/.github/workflows/golang-test.yml@main
+  Docker:
+    name: 'Build Docker'
+    runs-on: ubuntu-latest
+    needs:
+      - Lint
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod vendor
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: "NumaryBot"
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Build and push Released
+        if: github.event.action == 'released'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          target: release
+          tags: ghcr.io/formancehq/operator:latest,ghcr.io/formancehq/operator:${{ github.event.release.tag_name }}
+          build-args: |
+            APP_SHA=${{ github.sha }}
+            VERSION=${{ github.event.release.tag_name }}
+      - name: Build and push PreReleased
+        if: github.event.action == 'prereleased'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          target: release
+          tags: ghcr.io/formancehq/operator:${{ github.event.release.tag_name }}
+          build-args: |
+            APP_SHA=${{ github.sha }}
+            VERSION=${{ github.event.release.tag_name }}
+      - name: Build and push
+        if: github.event.action != 'released' || github.event.action != 'prereleased'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          target: release
+          tags: ghcr.io/formancehq/operator:${{ github.sha }}
+          build-args: |
+            APP_SHA=${{ github.sha }}
+            VERSION=develop
+
+
+  Deploy:
+    if: github.ref == 'refs/heads/main'
+    name: 'Deploy to Staging'
+    runs-on: ubuntu-latest
+    needs:
+      - Docker
+    steps:
+      - uses: azure/setup-kubectl@v3
+      - name: Install InfraHQ CLI
+        run: |
+          wget https://github.com/infrahq/infra/releases/download/v0.20.0/infra_0.20.0_amd64.deb
+          sudo dpkg -i infra_0.20.0_amd64.deb
+      - name: Login to InfraHQ
+        run: infra login
+        env:
+          INFRA_ACCESS_KEY: ${{ secrets.INFRA_ACCESS_KEY }}
+          INFRA_SERVER: "https://formance.infrahq.com"
+      - name: InfraHQ use Admin server
+        run: infra use production-eu-west-1-admin
+      - name: Install ArgoCD
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+      - name: Login to ArgoCD
+        run: |
+          kubectl config set-context --current --namespace=argocd
+          argocd login argocd.internal.formance.cloud --core
+      - name: Change image in ArgoCD
+        run: argocd app set staging-eu-west-1-hosting-operator --kustomize-image localhost:30100/formancehq/operator=ghcr.io/formancehq/operator:${{ github.sha }}
+      - name: 🚀 Deploy
+        run: argocd app sync staging-eu-west-1-hosting-operator --prune

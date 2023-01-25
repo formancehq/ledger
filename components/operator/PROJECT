@@ -1,0 +1,166 @@
+domain: formance.com
+layout:
+- go.kubebuilder.io/v3
+multigroup: true
+projectName: formance-operator
+repo: github.com/formancehq/operator
+resources:
+- api:
+    crdVersion: v1
+  controller: true
+  domain: formance.com
+  group: stack
+  kind: Stack
+  path: github.com/formancehq/operator/apis/stack/v1beta2
+  version: v1beta2
+  webhooks:
+    conversion: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Auth
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Ledger
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Payments
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Search
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Control
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: auth
+  kind: Client
+  path: github.com/formancehq/operator/apis/auth.components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: auth
+  kind: Scope
+  path: github.com/formancehq/operator/apis/auth.components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: benthos.components.formance.com
+  kind: Server
+  path: github.com/formancehq/operator/apis/benthos.components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: benthos.components.formance.com
+  kind: Stream
+  path: github.com/formancehq/operator/apis/benthos.components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+  controller: true
+  domain: formance.com
+  group: stack
+  kind: Configuration
+  path: github.com/formancehq/operator/apis/stack/v1beta2
+  version: v1beta2
+  webhooks:
+    conversion: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Webhooks
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Wallets
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Counterparties
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+  controller: true
+  domain: formance.com
+  group: stack
+  kind: Versions
+  path: github.com/formancehq/operator/apis/stack/v1beta2
+  version: v1beta2
+  webhooks:
+    defaulting: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: formance.com
+  group: stack
+  kind: Stack
+  path: github.com/formancehq/operator/apis/stack/v1beta2
+  version: v1beta2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: formance.com
+  group: components
+  kind: Orchestration
+  path: github.com/formancehq/operator/apis/components/v1beta2
+  version: v1beta2
+version: "3"

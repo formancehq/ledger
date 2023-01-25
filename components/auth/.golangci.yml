@@ -1,0 +1,10 @@
+linters:
+  enable:
+    - gofmt
+    - gci
+    - goimports
+
+run:
+  timeout: 5m
+  skip-dirs:
+  - ./authclient # Generated code

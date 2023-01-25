@@ -1,0 +1,5 @@
+:8080 {
+    log {
+        output stdout
+    }
+}

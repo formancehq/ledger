@@ -1,0 +1,9 @@
+---
+kind: Module
+description: Reloader
+type: helm
+name: reloader
+namespace: default
+repo: https://stakater.github.io/stakater-charts
+chart: reloader
+timeout: 3600

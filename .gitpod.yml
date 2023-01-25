@@ -1,13 +1,31 @@
 # List the start up tasks. Learn more https://www.gitpod.io/docs/config-start-tasks/
+image:
+  file: .gitpod.Dockerfile
+
 tasks:
-  - name: Dependencies
-    init: docker compose pull
-    command: docker compose up -d
+  - name: prepare k3s
+    command: |
+      .gitpod/prepare-k3s.sh
+  - name: kernel dev environment
+    init: |
+      sudo apt update -y
+      sudo apt upgrade -y
+      sudo apt update -y
+      sudo apt install qemu qemu-system-x86 linux-image-generic libguestfs-tools sshpass netcat -y
+      .gitpod/prepare-rootfs.sh
+    command: |
+      .gitpod/qemu.sh
+  - name: pre-commit init
+    command: pre-commit install
 
 # List the ports to expose. Learn more https://www.gitpod.io/docs/config-ports/
 ports:
-  - port: 8091
-    onOpen: open-preview
+  - name: HTTP
+    port: 80
+    onOpen: notify
+  - name: HTTPS
+    port: 443
+    onOpen: notify
 
 jetbrains:
   plugins:

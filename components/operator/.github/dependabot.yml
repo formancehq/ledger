@@ -1,0 +1,14 @@
+# Dependabot docs:
+#   https://docs.github.com/en/github/administering-a-repository/keeping-your-dependencies-updated-automatically
+# dependabot.yml configuration docs:
+#   https://docs.github.com/en/github/administering-a-repository/configuration-options-for-dependency-updates
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 10
+    pull-request-branch-name:
+      # Use hyphen to ensure valid tag for container image
+      separator: "-"

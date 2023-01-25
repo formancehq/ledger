@@ -1,0 +1,20 @@
+# permissions for end users to view oauths.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oauth-viewer-role
+rules:
+- apiGroups:
+  - auth.components.formance.com
+  resources:
+  - oauths
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - auth.components.formance.com
+  resources:
+  - oauths/status
+  verbs:
+  - get

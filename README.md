@@ -17,7 +17,7 @@ brew tap formancehq/tap
 brew install fctl
 ```
 
-### 
+###
 ```SHELL
 # login to formance cloud
 fctl login
@@ -54,7 +54,7 @@ cd stack
 docker-compose up
 ```
 
-You can now open your browser and go to http://localhost to connect to the application. The Stack's API is exposed at http://localhost/api.    
+You can now open your browser and go to http://localhost to connect to the application. The Stack's API is exposed at http://localhost/api.
 You should use either use the pre-configured Github App (only for local testing) or the User/Password method to connect to the application, with the provisioned credentials:
 
 ```

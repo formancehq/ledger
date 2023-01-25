@@ -1,0 +1,24 @@
+# permissions for end users to edit streams.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: stream-editor-role
+rules:
+- apiGroups:
+  - benthos.components.formance.com.formance.com
+  resources:
+  - streams
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - benthos.components.formance.com.formance.com
+  resources:
+  - streams/status
+  verbs:
+  - get

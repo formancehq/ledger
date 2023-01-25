@@ -1,0 +1,17 @@
+name: switch_event_type
+type: processor
+
+fields:
+- kind: list
+  type: unknown
+  name: events
+
+mapping: |
+  root = {
+    "switch": this.events.map_each(eventDefinition -> {
+      "check": "this.type == \"%s\"".format(eventDefinition.label),
+      "processors": eventDefinition.processors
+    }).append({
+      "processors": [{"bloblang": "root = deleted()"}]
+    })
+  }

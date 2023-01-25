@@ -1,0 +1,13 @@
+vars {
+    monetary $amount
+    account $destination
+}
+
+send $amount (
+    source = {
+        {{- range $source := .Sources }}
+        @{{ $source }}
+        {{- end }}
+    }
+    destination = $destination
+)

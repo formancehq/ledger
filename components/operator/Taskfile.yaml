@@ -1,0 +1,11 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  tests:
+    cmds:
+      - make test
+  lint:
+    cmds:
+    - golangci-lint run -v --fix

@@ -1,0 +1,11 @@
+{
+  "description": "Account pipeline",
+  "processors": [
+    {
+      "set": {
+        "field": "indexed.address",
+        "value": "{{data.address}}"
+      }
+    }
+  ]
+}

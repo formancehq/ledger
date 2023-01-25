@@ -1,0 +1,69 @@
+input:
+  http_server:
+    path: /
+
+pipeline:
+  processors:
+  - bloblang: |
+      meta ledger = this.ledger
+      meta batchSize = 100
+  - postgres_query:
+      service: ledger
+      query: 'select count(*) as transactions_count from "${! meta("ledger") }".transactions'
+  - unarchive:
+      format: json_array
+  - bloblang: |
+      meta loopCount = (this.transactions_count.number() / meta("batchSize").number()).ceil()
+      meta loopIndex = 0
+  - while:
+      check: 'meta("loopIndex") < meta("loopCount")'
+      processors:
+      - postgres_query:
+          service: ledger
+          query: |
+            select id, timestamp, reference, metadata, postings
+            from "${! meta("ledger") }".transactions
+            offset ${! meta("loopIndex").number() * meta("batchSize").number() }
+            limit ${! meta("batchSize") }
+      - bloblang:
+          meta loopIndex = meta("loopIndex").number() + 1
+      - unarchive:
+          format: json_array
+      - bloblang: |
+          root = this.assign({
+            "postings": this.postings.parse_json(),
+            "metadata": this.metadata.parse_json()
+          })
+      - bloblang: |
+          meta action = "upsert"
+          meta id = "TRANSACTION-%s-%d".format(meta("ledger"), this.id)
+          root = {
+            "data": {
+              "postings": this.postings,
+              "reference": this.reference,
+              "txid": this.id,
+              "timestamp": this.timestamp,
+              "metadata": if this.metadata { this.metadata } else {{}},
+              "ledger": meta("ledger")
+            },
+            "indexed": {
+              "reference": this.reference,
+              "txid": this.id,
+              "timestamp": this.timestamp,
+              "asset": this.postings.map_each(p -> p.asset),
+              "source": this.postings.map_each(p -> p.source),
+              "destination": this.postings.map_each(p -> p.destination),
+              "amount": this.postings.map_each(p -> if p.asset.contains("/") {
+                [
+                  p.amount,
+                  p.amount / range(0, p.asset.split("/").index(1).number()).fold(1, t -> t.tally * 10) # amount / pow(10, decimal part of asset)
+                ]
+              } else { [ p.amount ] }).flatten().map_each(v -> "%v".format(v)),
+              "ledger": meta("ledger")
+            },
+            "kind": "TRANSACTION",
+            "ledger": meta("ledger")
+          }
+
+output:
+  resource: elasticsearch

@@ -1,0 +1,84 @@
+version: '3'
+
+vars:
+  COMPONENT:
+    sh: cat go.mod | head -1 | cut -d \  -f2 | cut -d / -f 3
+
+  PKG: "./..."
+  FAILFAST: "-failfast"
+  TIMEOUT: "1m"
+  RUN: "''"
+
+env:
+  VERSION: "develop"
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: tests:local
+
+  lint:
+    cmds:
+      - golangci-lint run -v --fix
+
+  tests:local:
+    cmds:
+      - >
+        go test -v {{.FAILFAST}} -race -coverpkg {{.PKG}} -coverprofile coverage.out
+        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: coverage
+
+  tests:
+    cmds:
+      - go test -race -coverpkg {{.PKG}} -coverprofile coverage.out {{.PKG}}
+
+  docker:
+    cmds:
+      - docker buildx build --push --platform linux/arm64,linux/arm64/v8 -f ./Dockerfile -t ghcr.io/formancehq/{{.COMPONENT}}:{{.VERSION}} .
+
+  coverage:
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "To open the html coverage file, use one of the following commands:"
+      - echo "open coverage.html on mac"
+      - echo "xdg-open coverage.html on linux"
+    silent: true
+
+  build:
+    cmds:
+      - go build
+
+  build-image:
+    cmds:
+      - docker build -t github.com/formancehq/{{.COMPONENT}} .
+
+  run-image:
+    deps:
+      - build-image
+    cmds:
+      - docker run --rm github.com/formancehq/{{.COMPONENT}}
+
+  generate-client:
+    cmds:
+      - rm -rf ./authclient
+      - >
+        docker run --rm
+        -w /local
+        -v ${PWD}:/local
+        openapitools/openapi-generator-cli:latest generate
+        -i swagger.yaml
+        -g go
+        -o ./authclient
+        --git-user-id=formancehq
+        --git-repo-id=auth
+        -p packageVersion=latest
+        -p isGoSubmodule=true
+        -p packageName=authclient
+
+  install-deps-demo-client:
+    cmds:
+      - cd demo && yarn install

@@ -1,0 +1,24 @@
+# permissions for end users to edit stacks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: stack-editor-role
+rules:
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - stacks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - stacks/status
+  verbs:
+  - get

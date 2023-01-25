@@ -1,0 +1,8 @@
+---
+clients:
+- id: wallets
+  secrets:
+  - wallets
+- id: orchestration
+  secrets:
+  - orchestration

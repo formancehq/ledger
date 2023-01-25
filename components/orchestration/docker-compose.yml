@@ -1,0 +1,172 @@
+version: '3.8'
+volumes:
+  postgres:
+  build-cache:
+services:
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one
+    ports:
+    - "16686:16686/tcp"
+
+  postgres:
+    image: "postgres:13-alpine"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U formance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: "formance"
+      POSTGRES_PASSWORD: "formance"
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+
+  auth:
+    image: "ghcr.io/formancehq/auth:v0.2.3"
+    restart: always
+    command: serve
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEBUG: true
+      CONFIG: ./config.yaml
+      POSTGRES_URI: host=postgres user=formance password=formance dbname=auth port=5432 sslmode=disable
+      CAOS_OIDC_DEV: 1
+      DELEGATED_CLIENT_ID: XXX
+      DELEGATED_CLIENT_SECRET: XXX
+      DELEGATED_ISSUER:  https://accounts.google.com
+      BASE_URL: http://auth:8080
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+    - ./deploy/auth/config.yaml:/config.yaml
+
+  ledger:
+    image: "ghcr.io/formancehq/ledger:latest"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/ledger"
+      NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
+      NUMARY_OTEL_TRACES: "true"
+      NUMARY_OTEL_TRACES_EXPORTER: jaeger
+      NUMARY_OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: ledger
+
+  proxy:
+    image: caddy:2
+    depends_on:
+    - ledger
+    - auth
+    ports:
+    - "8082:8080"
+    volumes:
+    - ./deploy/proxy:/config
+    working_dir: /config
+    command: caddy run
+
+  wallets:
+    image: ghcr.io/formancehq/wallets:latest
+    depends_on:
+    - proxy
+    environment:
+      STACK_CLIENT_ID: wallets
+      STACK_CLIENT_SECRET: wallets
+      STACK_URL: http://proxy:8080
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: wallets
+
+  temporalite:
+    container_name: temporalite
+    build:
+      dockerfile: temporalite.Dockerfile
+    ports:
+    - 7233:7233
+    - 8233:8233
+    stdin_open: true
+    tty: true
+
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    depends_on:
+    - temporalite
+    environment:
+    - TEMPORAL_CLI_ADDRESS=temporalite:7233
+    image: temporalio/admin-tools:1.17.5
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporalite:7233", "workflow", "list" ]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build:
+      dockerfile: reflex.Dockerfile
+    entrypoint:
+    - reflex
+    - -r
+    - \.go$$
+    - -s
+    - go
+    - run
+    - services/orchestration/main.go
+    - serve
+    volumes:
+    - ../..:/src
+    - build-cache:/go
+    working_dir: /src
+    ports:
+    - "8080:8080/tcp"
+    environment:
+      DEBUG: "true"
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      TEMPORAL_ADDRESS: "temporalite:7233"
+      POSTGRES_DSN: "postgres://formance:formance@postgres:5432/orchestration?sslmode=disable"
+    depends_on:
+    - jaeger
+    - postgres
+    - temporalite
+
+  worker:
+    build:
+      context: .
+      dockerfile: reflex.Dockerfile
+    entrypoint:
+    - reflex
+    - -r
+    - \.go$$
+    - -s
+    - go
+    - run
+    - services/orchestration/main.go
+    - worker
+    volumes:
+    - ../..:/src
+    - build-cache:/go
+    working_dir: /src
+    environment:
+      DEBUG: "true"
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      TEMPORAL_ADDRESS: "temporalite:7233"
+      STACK_CLIENT_ID: orchestration
+      STACK_CLIENT_SECRET: orchestration
+      STACK_URL: http://proxy:8080
+      POSTGRES_DSN: "postgres://formance:formance@postgres:5432/orchestration?sslmode=disable"
+    depends_on:
+    - jaeger

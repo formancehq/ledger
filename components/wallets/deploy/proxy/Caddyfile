@@ -1,0 +1,8 @@
+:8080 {
+    handle_path /api/ledger/* {
+        reverse_proxy ledger:3068
+    }
+    handle_path /api/auth/* {
+        reverse_proxy auth:8080
+    }
+}

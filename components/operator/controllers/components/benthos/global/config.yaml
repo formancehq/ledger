@@ -1,0 +1,9 @@
+---
+tracer:
+  open_telemetry_collector:
+    tags:
+      service.name: search-ingester
+      service.version: latest
+    grpc:
+    - url: ${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT}
+  # a useless comment

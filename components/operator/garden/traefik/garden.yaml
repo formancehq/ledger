@@ -1,0 +1,42 @@
+---
+kind: Module
+description: Traefik
+type: helm
+name: traefik
+namespace: default
+repo: https://helm.traefik.io/traefik
+chart: traefik
+timeout: 3600
+version: "20.4.1"
+values:
+  service:
+    type: NodePort
+  ports:
+    web:
+      nodePort: 30080
+    websecure:
+      nodePort: 30443
+    traefik:
+      nodePort: 30090
+      expose: true
+  ingressClass:
+    enabled: true
+  additionalArguments:
+  - --experimental.plugins.auth.modulename=github.com/formancehq/gateway-plugin-auth
+  - --experimental.plugins.auth.version=v0.1.15
+  experimental:
+    plugins:
+      enabled: true
+  tracing:
+    jaeger:
+      samplingServerURL: http://jaeger:5778/sampling
+      samplingType: const
+      samplingParam: 1.0
+      localAgentHostPort: 127.0.0.1:6831
+      propagation: b3
+      traceContextHeaderName: uber-trace-id
+      disableAttemptReconnecting: true
+      collector:
+        endpoint: "http://jaeger:14268/api/traces"
+#        user: ""
+#        password: ""

@@ -1,0 +1,34 @@
+---
+volumes:
+  postgres:
+services:
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one
+    ports:
+    - "16686:16686/tcp"
+  app:
+    build:
+      context: .
+      dockerfile: reflex.Dockerfile
+    entrypoint:
+    - reflex
+    - -r
+    - \.go$$
+    - -s
+    - go
+    - run
+    - main.go
+    - serve
+    volumes:
+      - .:/src
+    working_dir: /src
+    ports:
+    - "8080:8080/tcp"
+    environment:
+      CGO_ENABLED: 0
+      DEBUG: "true"
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    depends_on:
+    - jaeger

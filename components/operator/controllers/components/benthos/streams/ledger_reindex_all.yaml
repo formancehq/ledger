@@ -1,0 +1,18 @@
+input:
+  http_server:
+    path: /
+
+pipeline:
+  processors:
+  - postgres_query:
+      service: ledger
+      query: 'select * from "_system".ledgers'
+  - unarchive:
+      format: json_array
+
+output:
+  broker:
+    outputs:
+    - http_client:
+        verb: POST
+        url: http://localhost:4195/ledger_reindex

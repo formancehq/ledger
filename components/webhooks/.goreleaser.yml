@@ -1,0 +1,123 @@
+project_name: webhooks
+
+monorepo:
+  tag_prefix: components/webhooks/
+  dir: ./components/webhooks/
+
+builds:
+  - binary: webhooks
+    id: webhooks
+    ldflags:
+      - -X github.com/formancehq/{{.ProjectName}}/cmd.BuildDate={{ .Date }}
+      - -X github.com/formancehq/{{.ProjectName}}/cmd.Version={{ .Version }}
+      - -X github.com/formancehq/{{.ProjectName}}/cmd.Commit={{ .ShortCommit }}
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=json1
+
+archives:
+  - id: "{{.ProjectName}}"
+    builds:
+      - webhooks
+    format: tar.gz
+    name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
+
+checksum:
+  name_template: '{{.ProjectName}}_checksums.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^spec:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  groups:
+    - title: 'New Features'
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 10
+    - title: Other work
+      order: 999
+
+release:
+  prerelease: auto
+  draft: true
+  footer: |
+    ## What to do next?
+    - Read the [documentation](https://docs.formance.com/)
+    - Join our [Slack server](https://formance.com/slack)
+
+dockers:
+  - image_templates: ["ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64"]
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.licenses=MIT
+  - image_templates: [ "ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64v8" ]
+    goarch: arm64
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64/v8
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/formancehq/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/formancehq/{{ .ProjectName }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.licenses=MIT
+docker_manifests:
+  - name_template: ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}
+    image_templates:
+      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64
+      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64v8
+  - name_template: ghcr.io/formancehq/{{ .ProjectName }}:latest
+    image_templates:
+      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64
+      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64v8
+
+nfpms:
+  - id: packages
+    package_name: webhooks
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds:
+      - webhooks
+    homepage: https://formance.com
+    maintainer: Maxence Maireaux <maxence@formance.com>
+    formats:
+      - deb
+      - rpm
+
+publishers:
+  - name: fury.io
+    ids:
+      - packages
+    dir: "{{ dir .ArtifactPath }}"
+    cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/formancehq/

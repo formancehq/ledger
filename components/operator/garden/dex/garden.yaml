@@ -1,0 +1,44 @@
+---
+kind: Module
+description: Cert Manager
+type: helm
+name: dex
+namespace: default
+repo: https://charts.dexidp.io
+chart: dex
+timeout: 3600
+dependencies:
+- postgres
+values:
+  config:
+    issuer: http://host.k3d.internal/api/dex
+    storage:
+      type: postgres
+      config:
+        host: postgres-postgresql
+        port: 5432
+        database: formance
+        user: formance
+        password: formance
+        ssl:
+          mode: disable
+    enablePasswordDB: true
+    staticPasswords:
+    - email: admin@formance.com
+      # https://github.com/dexidp/dex/blob/576f990d257d9dd63e283cf379960e50506e8bcc/examples/config-dev.yaml#L145
+      hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W" # password
+      username: admin
+      userID: 08a8684b-db88-4b73-90a9-3cd1661f5466
+    staticClients:
+    - id: dexclient
+      secret: dexclient
+      name: dexclient
+      redirectURIs:
+      - http://host.k3d.internal/api/auth/authorize/callback
+  ingress:
+    enabled: true
+    hosts:
+    - host: host.k3d.internal
+      paths:
+      - path: /api/dex
+        pathType: Prefix

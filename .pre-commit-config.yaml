@@ -1,0 +1,67 @@
+fail_fast: true
+exclude: ^sdks/|openapi/build|components/payments/client|components/auth/authclient
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-yaml
+    exclude: services/orchestration/examples
+    args: [--allow-multiple-documents]
+  - id: check-added-large-files
+- repo: local
+  hooks:
+  - id: gosdk
+    name: gosdk
+    entry: ./scripts/update-sdk.sh
+    description: "Update Go SDK"
+    language: script
+    files: swagger.yaml|swagger.yml|openapi.yml|openapi.yaml # TODO: Refine when all specs will be on the same location
+  - id: gofmt
+    name: gofmt
+    entry: ./scripts/gofmt.sh
+    description: "Runs `go fmt`, requires golang"
+    language: script
+    files: \.go$
+    require_serial: true
+  - id: goimports
+    name: goimports
+    entry: ./scripts/goimports.sh
+    files: \.go$
+    description: "Runs `goimports`, requires golang"
+    language: script
+    require_serial: true
+  - id: gomodtidy
+    name: gomodtidy
+    entry: ./scripts/gomodtidy.sh
+    language: script
+    files: \.go$
+    description: "Runs `go mod tidy`, requires golang"
+    require_serial: true
+  - id: golangci-lint
+    name: golangci-lint
+    entry: ./scripts/golangci-lint.sh
+    language: script
+    files: \.go$
+    description: "Runs `golangci-lint`, requires golangci-lint"
+    require_serial: true
+  - id: gotests
+    name: gotests
+    entry: ./scripts/gotests.sh
+    language: script
+    files: \.go$
+    description: "Runs `go test`, requires golang"
+    require_serial: true
+    # Test requires to start a docker compose, we need to remove this need or find a generic way to start/stop dependencies
+    exclude: components/webhooks
+  - id: commitlint
+    name: commitlint
+    description: Commitlint hook
+    language: node
+    entry: commitlint --edit
+    always_run: true
+    pass_filenames: false
+    additional_dependencies: ['@commitlint/config-conventional']
+    stages:
+    - commit-msg

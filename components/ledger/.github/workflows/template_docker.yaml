@@ -1,0 +1,81 @@
+name: Docker Build & Publish
+on:
+  workflow_call:
+    inputs:
+      VERSION:
+        type: string
+        required: true
+        description: The tag name to use for Docker.
+      APP_SHA:
+        type: string
+        required: true
+        description: The sha to use for Docker.
+      RELEASE:
+        type: string
+        required: true
+        description: Whether to release the Docker image.
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+        description: GitHub token with access to the repo
+      SEGMENT_WRITE_KEY_OSS:
+        required: true
+        description: Segment write key for the OSS repo
+
+jobs:
+  Docker:
+    name: 'Build & Publish Docker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: "NumaryBot"
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - name: Build and push Released
+        if: inputs.RELEASE == 'released'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/formancehq/ledger:latest,ghcr.io/formancehq/ledger:${{ inputs.VERSION }}
+          build-args: |
+            APP_SHA=${{ inputs.APP_SHA }}
+            VERSION=${{ inputs.VERSION }}
+            SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - name: Build and push PreReleased
+        if: inputs.RELEASE == 'prereleased'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/formancehq/ledger:${{ inputs.VERSION }}
+          build-args: |
+            APP_SHA=${{ inputs.APP_SHA }}
+            VERSION=${{ inputs.VERSION }}
+            SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - name: Build and push
+        if: inputs.RELEASE != 'released' || inputs.RELEASE != 'prereleased'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/formancehq/ledger:${{ inputs.APP_SHA }}
+          build-args: |
+            APP_SHA=${{ inputs.APP_SHA }}
+            VERSION=${{ inputs.VERSION }}
+            SEGMENT_WRITE_KEY=${{ secrets.SEGMENT_WRITE_KEY_OSS }}

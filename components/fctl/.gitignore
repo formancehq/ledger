@@ -1,0 +1,7 @@
+vendor
+.idea
+*.num
+dist/
+autocomplete.*
+fctl
+coverage.*

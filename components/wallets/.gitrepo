@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = wallets
+	branch = chore/backports
+	commit = 3d6fa0a8b801a4f05a2459a28fe2a1e2cc5433d4
+	parent = f47e03ad782439f76851ee5414c99e40b07e7f0f
+	method = merge
+	cmdver = 0.4.5

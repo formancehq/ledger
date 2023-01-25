@@ -1,0 +1,9 @@
+.DS_Store
+.idea
+vendor
+.cloud/ressources/.terraform
+.cloud/ressources/.terraform.lock.hcl
+/.cloud/helm/charts/
+coverage.out
+dist/
+.env

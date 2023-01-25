@@ -1,0 +1,319 @@
+openapi: 3.0.3
+info:
+  title: Webhooks server
+  version: "WEBHOOKS_VERSION"
+
+paths:
+  /configs:
+    get:
+      summary: Get many configs
+      description: Sorted by updated date descending
+      operationId: getManyConfigs
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: query
+          description: Optional filter by Config ID
+          required: false
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+        - name: endpoint
+          in: query
+          description: Optional filter by endpoint URL
+          required: false
+          schema:
+            type: string
+            example: https://example.com
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigsResponse'
+
+    post:
+      summary: Insert a new config
+      description: |
+        Insert a new webhooks config.
+
+        The endpoint should be a valid https URL and be unique.
+
+        The secret is the endpoint's verification secret.
+        If not passed or empty, a secret is automatically generated.
+        The format is a random string of bytes of size 24, base64 encoded. (larger size after encoding)
+
+        All eventTypes are converted to lower-case when inserted.
+      operationId: insertConfig
+      tags:
+        - Webhooks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUser'
+        required: true
+      responses:
+        "200":
+          description: Config created successfully.
+          content:
+            application/json:
+                schema:
+                  $ref: '#/components/schemas/ConfigResponse'
+
+        "400":
+          description: Bad Request
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: endpoints should be valid urls
+
+  /configs/{id}:
+    delete:
+      summary: Delete one config
+      description: Delete a webhooks config by ID.
+      operationId: deleteConfig
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: path
+          description: Config ID
+          required: true
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+      responses:
+        "200":
+          description: Config successfully deleted.
+          content: {}
+
+  /configs/{id}/test:
+    get:
+      summary: Test one config
+      description: Test a config by sending a webhook to its endpoint.
+      operationId: testConfig
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: path
+          description: Config ID
+          required: true
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptResponse'
+
+  /configs/{id}/activate:
+    put:
+      summary: Activate one config
+      description: Activate a webhooks config by ID, to start receiving webhooks to its endpoint.
+      operationId: activateConfig
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: path
+          description: Config ID
+          required: true
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+      responses:
+        "200":
+          description: Config successfully activated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        "304":
+          description: Config not modified, was already activated.
+          content: {}
+
+  /configs/{id}/deactivate:
+    put:
+      summary: Deactivate one config
+      description: Deactivate a webhooks config by ID, to stop receiving webhooks to its endpoint.
+      operationId: deactivateConfig
+      tags:
+        - Webhooks
+      parameters:
+        - name: id
+          in: path
+          description: Config ID
+          required: true
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+      responses:
+        "200":
+          description: Config successfully deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        "304":
+          description: Config not modified, was already deactivated.
+          content: {}
+
+  /configs/{id}/secret/change:
+    put:
+      summary: Change the signing secret of a config
+      description: |
+        Change the signing secret of the endpoint of a webhooks config.
+
+        If not passed or empty, a secret is automatically generated.
+        The format is a random string of bytes of size 24, base64 encoded. (larger size after encoding)
+      operationId: changeConfigSecret
+      tags:
+        - Webhooks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigChangeSecret'
+      parameters:
+        - name: id
+          in: path
+          description: Config ID
+          required: true
+          schema:
+            type: string
+            example: 4997257d-dfb6-445b-929c-cbe2ab182818
+      responses:
+        "200":
+          description: Secret successfully changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+
+components:
+  schemas:
+    ConfigUser:
+      type: object
+      required:
+        - endpoint
+        - eventTypes
+      properties:
+        endpoint:
+          type: string
+          example: "https://example.com"
+        secret:
+          type: string
+          example: "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+        eventTypes:
+          type: array
+          items:
+            type: string
+            example: "TYPE1"
+          example: ["TYPE1", "TYPE2"]
+
+    ConfigsResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          allOf:
+          - $ref: '#/components/schemas/Cursor'
+          - properties:
+              data:
+                items:
+                  $ref: '#/components/schemas/Config'
+                type: array
+            type: object
+            required:
+            - data
+
+    ConfigResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Config'
+
+    Config:
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          example: "https://example.com"
+        secret:
+          type: string
+          example: "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+        eventTypes:
+          type: array
+          items:
+            type: string
+            example: "TYPE1"
+          example: ["TYPE1", "TYPE2"]
+        active:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ConfigChangeSecret:
+      type: object
+      properties:
+        secret:
+          type: string
+          example: "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3"
+
+    AttemptResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Attempt'
+
+    Attempt:
+      properties:
+        id:
+          type: string
+          format: uuid
+        webhookID:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        config:
+          $ref: '#/components/schemas/Config'
+        payload:
+          type: string
+          example: '{"data":"test"}'
+        statusCode:
+          type: integer
+          example: 200
+        retryAttempt:
+          type: integer
+          example: 1
+        status:
+          type: string
+          example: success
+        nextRetryAfter:
+          type: string
+          format: date-time

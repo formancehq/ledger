@@ -1,0 +1,5 @@
+---
+clients:
+- id: auth
+  secrets:
+  - auth

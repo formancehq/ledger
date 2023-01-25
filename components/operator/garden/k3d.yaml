@@ -1,0 +1,16 @@
+apiVersion: k3d.io/v1alpha4
+kind: Simple
+metadata:
+  name: formance
+servers: 1
+agents: 2
+ports:
+- port: 80:30080
+  nodeFilters:
+  - loadbalancer
+- port: 443:30443
+  nodeFilters:
+  - loadbalancer
+- port: 9090:30090
+  nodeFilters:
+  - loadbalancer

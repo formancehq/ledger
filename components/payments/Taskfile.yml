@@ -1,0 +1,35 @@
+version: '3'
+
+vars:
+  BINARY_NAME: payments
+  PKG: ./...
+  COVERAGE_FILE: coverage.out
+  FAILFAST: -failfast
+  TIMEOUT: 10m
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: tests
+
+  lint:
+    cmds:
+      - golangci-lint run -v --fix {{.PKG}}
+
+  tests:
+    cmds:
+      - go test -v {{.FAILFAST}} -coverpkg {{.PKG}} -coverprofile {{.COVERAGE_FILE}} -covermode atomic -timeout {{.TIMEOUT}} {{.PKG}}
+
+  build:
+    cmds:
+    - go build -o {{.BINARY_NAME}}
+
+  install:
+    cmds:
+    - go install -o {{.BINARY_NAME}}
+
+  clean:
+    cmds:
+    - go clean
+    - rm -f {{.BINARY_NAME}} {{.COVERAGE_FILE}}

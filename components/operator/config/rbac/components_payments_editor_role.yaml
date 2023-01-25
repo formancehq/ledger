@@ -1,0 +1,24 @@
+# permissions for end users to edit payments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: payments-editor-role
+rules:
+- apiGroups:
+  - components.formance.com
+  resources:
+  - payments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - payments/status
+  verbs:
+  - get

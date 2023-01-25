@@ -1,0 +1,92 @@
+version: '3.8'
+volumes:
+  postgres:
+services:
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one
+    ports:
+    - "16686:16686/tcp"
+
+  postgres:
+    image: "postgres:13-alpine"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U formance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: "formance"
+      POSTGRES_PASSWORD: "formance"
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+
+  auth:
+    image: "ghcr.io/formancehq/auth:v0.2.3"
+    restart: always
+    command: serve
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEBUG: true
+      CONFIG: ./config.yaml
+      POSTGRES_URI: host=postgres user=formance password=formance dbname=auth port=5432 sslmode=disable
+      CAOS_OIDC_DEV: 1
+      DELEGATED_CLIENT_ID: XXX
+      DELEGATED_CLIENT_SECRET: XXX
+      DELEGATED_ISSUER:  https://accounts.google.com
+      BASE_URL: http://auth:8080
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+    - ./deploy/auth/config.yaml:/config.yaml
+
+  ledger:
+    image: "ghcr.io/formancehq/ledger:latest"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/ledger"
+      NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
+      NUMARY_OTEL_TRACES: "true"
+      NUMARY_OTEL_TRACES_EXPORTER: jaeger
+      NUMARY_OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: ledger
+
+  proxy:
+    image: caddy:2
+    depends_on:
+    - ledger
+    - auth
+    ports:
+    - "8082:8080"
+    volumes:
+    - ./deploy/proxy:/config
+    working_dir: /config
+    command: caddy run
+
+  app:
+    image: golang:1.19-alpine
+    command: go run main.go server
+    volumes:
+    - .:/src
+    working_dir: /src
+    depends_on:
+    - proxy
+    ports:
+      - "8080:8080"
+    environment:
+      STACK_CLIENT_ID: auth
+      STACK_CLIENT_SECRET: auth
+      STACK_URL: http://proxy:8080
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: wallets

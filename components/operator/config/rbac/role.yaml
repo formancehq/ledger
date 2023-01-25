@@ -1,0 +1,441 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - benthos.components.formance.com
+  resources:
+  - servers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - benthos.components.formance.com
+  resources:
+  - servers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - benthos.components.formance.com
+  resources:
+  - servers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - benthos.components.formance.com
+  resources:
+  - streams
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - auths
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - auths/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - auths/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - controls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - controls/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - controls/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - counterparties
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - counterparties/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - counterparties/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - ledgers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - ledgers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - ledgers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - orchestrations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - orchestrations/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - orchestrations/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - payments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - payments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - payments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - searches
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - searches/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - searches/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - wallets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - wallets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - wallets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - webhooks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - components.formance.com
+  resources:
+  - webhooks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - components.formance.com
+  resources:
+  - webhooks/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - configurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - stacks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - stacks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - stacks/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - stack.formance.com
+  resources:
+  - versions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - traefik.containo.us
+  resources:
+  - middlewares
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

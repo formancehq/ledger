@@ -1,0 +1,14 @@
+---
+kind: Module
+description: RedPanda operator
+type: helm
+name: redpanda-operator
+namespace: default
+repo: https://charts.vectorized.io/
+chart: redpanda-operator
+version: "v22.2.8"
+timeout: 3600
+dependencies:
+- redpanda-crd
+exclude:
+- "*"

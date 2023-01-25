@@ -1,10 +1,10 @@
 {
   "inputs": [
     {
-      "inputFile": "./openapi/base/base.yaml"
+      "inputFile": "./base.yaml"
     },
     {
-      "inputFile": "./../services/auth/swagger.yaml",
+      "inputFile": "./../components/auth/swagger.yaml",
       "pathModification":{
         "prepend": "/api/auth"
       },
@@ -13,7 +13,7 @@
       }
     },
     {
-      "inputFile": "./../services/ledger/pkg/api/controllers/swagger.yaml",
+      "inputFile": "./../components/ledger/pkg/api/controllers/swagger.yaml",
       "pathModification":{
         "prepend": "/api/ledger"
       },
@@ -22,7 +22,7 @@
       }
     },
     {
-      "inputFile": "./../services/payments/openapi.yaml",
+      "inputFile": "./../components/payments/openapi.yaml",
       "pathModification":{
         "prepend": "/api/payments"
       },
@@ -31,7 +31,7 @@
       }
     },
     {
-      "inputFile": "./../services/search/swagger.yaml",
+      "inputFile": "./../components/search/swagger.yaml",
       "pathModification":{
         "prepend": "/api/search"
       },
@@ -40,7 +40,7 @@
       }
     },
     {
-      "inputFile": "./../services/webhooks/pkg/server/openapi.yaml",
+      "inputFile": "./../components/webhooks/pkg/server/openapi.yaml",
       "pathModification":{
         "prepend": "/api/webhooks"
       },
@@ -50,7 +50,31 @@
       "dispute": {
         "prefix": "webhooks"
       }
+    },
+    {
+      "inputFile": "./../components/wallets/openapi.yml",
+      "pathModification":{
+        "prepend": "/api/wallets"
+      },
+      "operationSelection": {
+        "excludeTags": ["Health"]
+      },
+      "dispute": {
+        "prefix": "wallets"
+      }
+    },
+    {
+      "inputFile": "./../components/orchestration/openapi.yml",
+      "pathModification":{
+        "prepend": "/api/orchestration"
+      },
+      "operationSelection": {
+        "excludeTags": ["Health"]
+      },
+      "dispute": {
+        "prefix": "orchestration"
+      }
     }
-  ], 
-  "output": "./sdk/generate.json"
+  ],
+  "output": "./build/generate.json"
 }

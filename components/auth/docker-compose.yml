@@ -1,0 +1,88 @@
+---
+version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one
+    ports:
+      - '16686:16686/tcp'
+
+  dex:
+    build:
+      context: .
+      dockerfile: dex.Dockerfile
+    volumes:
+      - ./dex-config.yaml:/etc/dex/config.docker.yaml
+      - ./pkg/web:/app/web
+    ports:
+    - '5556:5556/tcp'
+    - '8080:8080/tcp'
+
+  postgres:
+    image: postgres:alpine
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U auth']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - '5432:5432/tcp'
+    environment:
+      POSTGRES_USER: 'auth'
+      POSTGRES_PASSWORD: 'auth'
+      POSTGRES_DB: 'auth'
+
+  auth:
+    build:
+      context: .
+      dockerfile: reflex.Dockerfile
+    network_mode: service:dex
+    healthcheck:
+      test: curl -s -f -k http://localhost:8080/_healthcheck > /dev/null || exit 1
+      interval: 3s
+      timeout: 10s
+      retries: 10
+    entrypoint:
+      - reflex
+      - -r
+      - \.go$$
+      - -s
+      - go
+      - run
+      - main.go
+      - serve
+    environment:
+#      DEBUG: 1
+      CGO_ENABLED: 0
+      CONFIG: ./config.yaml
+      POSTGRES_URI: host=postgres user=auth password=auth dbname=auth port=5432 sslmode=disable
+      CAOS_OIDC_DEV: 1
+      OTEL_TRACES: true
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      DELEGATED_CLIENT_ID: gateway
+      DELEGATED_CLIENT_SECRET: ZXhhbXBsZS1hcHAtc2VjcmV0
+      DELEGATED_ISSUER: http://localhost:5556
+      BASE_URL: http://localhost:8080
+      OTEL_SERVICE_NAME: auth
+    depends_on:
+      - postgres
+      - jaeger
+      - dex
+    volumes:
+      - .:/src
+    working_dir: /src
+
+  frontend:
+    image: node:alpine
+    ports:
+      - '3000:3000/tcp'
+    volumes:
+      - ./demo:/src
+    working_dir: /src
+    entrypoint:
+      - npm
+      - start
+    depends_on:
+      auth:
+        condition: service_healthy

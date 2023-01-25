@@ -1,0 +1,61 @@
+---
+kind: Module
+description: Redpanda Cluster
+type: kubernetes
+namespace: default
+name: redpanda-cluster
+timeout: 3600
+dependencies:
+- redpanda-operator
+exclude:
+- "*"
+manifests:
+-
+  apiVersion: redpanda.vectorized.io/v1alpha1
+  kind: Cluster
+  metadata:
+    name: redpanda
+  spec:
+    image: "vectorized/redpanda"
+    version: "latest"
+    replicas: 1
+    resources:
+      requests:
+        cpu: 1
+        memory: 1.2Gi
+      limits:
+        cpu: 1
+        memory: 1.2Gi
+    configuration:
+      rpcServer:
+        port: 33145
+      kafkaApi:
+      - port: 9092
+      pandaproxyApi:
+      - port: 8082
+      schemaRegistry:
+        port: 8081
+      adminApi:
+      - port: 9644
+      developerMode: true
+-
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: configure-redpanda
+  spec:
+    template:
+      spec:
+        containers:
+        - name: configure-redpanda
+          image: vectorized/redpanda:latest
+          command:
+          - rpk
+          - cluster
+          - config
+          - set
+          - auto_create_topics_enabled
+          - "true"
+          - --api-urls
+          - http://redpanda.default.svc.cluster.local:9644
+        restartPolicy: OnFailure

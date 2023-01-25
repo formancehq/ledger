@@ -1,0 +1,20 @@
+# permissions for end users to view organizations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: organization-viewer-role
+rules:
+- apiGroups:
+  - k8s.formance.com
+  resources:
+  - organizations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - k8s.formance.com
+  resources:
+  - organizations/status
+  verbs:
+  - get

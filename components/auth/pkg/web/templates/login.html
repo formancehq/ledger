@@ -1,0 +1,16 @@
+{{ template "header.html" . }}
+
+<h1>Sign in to Formance</h1>
+<div class="card">
+  {{ range $c := .Connectors }}
+  <a href="{{ $c.URL }}" target="_self">
+    <button class="button--secondary">
+      <span class="button__icon button__icon--{{ $c.Type }}"></span>
+      <span class="button__text">Login with {{ $c.Name }}</span>
+    </button>
+  </a>
+  <span class="box"></span>
+  {{ end }}
+</div>
+
+{{ template "footer.html" . }}

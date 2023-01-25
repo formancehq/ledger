@@ -1,0 +1,24 @@
+# permissions for end users to edit servers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: server-editor-role
+rules:
+- apiGroups:
+  - benthos.components.formance.com.formance.com
+  resources:
+  - servers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - benthos.components.formance.com.formance.com
+  resources:
+  - servers/status
+  verbs:
+  - get

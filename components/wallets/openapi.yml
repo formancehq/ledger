@@ -1,0 +1,934 @@
+openapi: 3.0.3
+
+info:
+  title: Formance Simple Wallets Service API
+  version: 0.1.0
+
+paths:
+  /_info:
+    get:
+      summary: Get server info
+      operationId: getServerInfo
+      tags:
+      - Wallets
+      responses:
+        200:
+          description: Server information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /transactions:
+    get:
+      operationId: getTransactions
+      parameters:
+      - name: pageSize
+        in: query
+        description: 'The maximum number of results to return per page'
+        example: 100
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 15
+      - name: wallet_id
+        in: query
+        description: "A wallet ID to filter on"
+        example: "wallet1"
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        description: |
+          Parameter used in pagination requests.
+          Set to the value of next for the next page of results.
+          Set to the value of previous for the previous page of results.
+          No other parameters can be set when the cursor is set.
+        schema:
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      tags:
+      - Wallets
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTransactionsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets:
+    get:
+      summary: List all wallets
+      operationId: listWallets
+      parameters:
+      - name: name
+        in: query
+        description: 'Filter on wallet name'
+        example: wallet1
+        schema:
+          type: string
+      - name: metadata
+        in: query
+        description: Filter wallets by metadata key value pairs. Nested objects can be used as seen in the example below.
+        style: deepObject
+        explode: true
+        schema:
+          type: object
+          properties: { }
+        example: metadata[key]=value1&metadata[a.nested.key]=value2
+      - name: pageSize
+        in: query
+        description: 'The maximum number of results to return per page'
+        example: 100
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 15
+      - name: cursor
+        in: query
+        description: |
+          Parameter used in pagination requests.
+          Set to the value of next for the next page of results.
+          Set to the value of previous for the previous page of results.
+          No other parameters can be set when the pagination token is set.
+        schema:
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      tags:
+      - Wallets
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListWalletsResponse'
+    post:
+      summary: Create a new wallet
+      operationId: createWallet
+      tags:
+      - Wallets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWalletRequest'
+      responses:
+        201:
+          description: Wallet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateWalletResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get a wallet
+      operationId: getWallet
+      tags:
+      - Wallets
+      responses:
+        200:
+          description: Wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWalletResponse'
+        404:
+          description: Wallet not found
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Update a wallet
+      operationId: updateWallet
+      tags:
+      - Wallets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  description: Custom metadata to attach to this wallet.
+                  additionalProperties: {}
+      responses:
+        204:
+          description: Wallet successfully updated
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{id}/balances:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      summary: List balances of a wallet
+      operationId: listBalances
+      tags:
+      - Wallets
+      responses:
+        200:
+          description: Balances list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListBalancesResponse'
+    post:
+      summary: Create a balance
+      operationId: createBalance
+      tags:
+      - Wallets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBalanceRequest'
+      responses:
+        201:
+          description: Created balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateBalanceResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{id}/balances/{balanceName}:
+    get:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: balanceName
+        in: path
+        required: true
+        schema:
+          type: string
+      summary: Get detailed balance
+      operationId: getBalance
+      tags:
+      - Wallets
+      responses:
+        200:
+          description: Balance summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetBalanceResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{id}/debit:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Debit a wallet
+      operationId: debitWallet
+      tags:
+      - Wallets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebitWalletRequest'
+      responses:
+        200:
+          description: Wallet successfully debited as a pending hold
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebitWalletResponse'
+        204:
+          description: Wallet successfully debited
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /wallets/{id}/credit:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Credit a wallet
+      operationId: creditWallet
+      tags:
+      - Wallets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditWalletRequest'
+            example:
+              amount:
+                asset: USD/2
+                amount: 100
+      responses:
+        204:
+          description: Wallet successfully credited
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /holds:
+    get:
+      summary: Get all holds for a wallet
+      tags:
+      - Wallets
+      operationId: getHolds
+      parameters:
+      - name: pageSize
+        in: query
+        description: 'The maximum number of results to return per page'
+        example: 100
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 15
+      - name: walletID
+        in: query
+        description: 'The wallet to filter on'
+        example: wallet1
+        schema:
+          type: string
+      - name: metadata
+        in: query
+        description: Filter holds by metadata key value pairs. Nested objects can be used as seen in the example below.
+        style: deepObject
+        explode: true
+        schema:
+          type: object
+          properties: { }
+        example: metadata[key]=value1&metadata[a.nested.key]=value2
+      - name: cursor
+        in: query
+        description: |
+          Parameter used in pagination requests.
+          Set to the value of next for the next page of results.
+          Set to the value of previous for the previous page of results.
+          No other parameters can be set when the pagination token is set.
+        schema:
+          type: string
+          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      responses:
+        200:
+          description: Holds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHoldsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /holds/{holdID}:
+    get:
+      summary: Get a hold
+      tags:
+      - Wallets
+      operationId: getHold
+      parameters:
+      - name: holdID
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The hold ID
+      responses:
+        200:
+          description: Holds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetHoldResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /holds/{hold_id}/confirm:
+    post:
+      parameters:
+      - name: hold_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmHoldRequest'
+      summary: Confirm a hold
+      tags:
+      - Wallets
+      operationId: confirmHold
+      responses:
+        204:
+          description: Hold successfully confirmed, funds moved back to initial destination
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /holds/{hold_id}/void:
+    parameters:
+    - name: hold_id
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Cancel a hold
+      operationId: voidHold
+      tags:
+      - Wallets
+      responses:
+        204:
+          description: Hold successfully cancelled, funds returned to wallet
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Monetary:
+      type: object
+      required:
+      - asset
+      - amount
+      properties:
+        asset:
+          type: string
+          description: The asset of the monetary value.
+        amount:
+          type: integer
+          format: int64
+          description: The amount of the monetary value.
+    Wallet:
+      type: object
+      required:
+      - name
+      - id
+      - metadata
+      - createdAt
+      - ledger
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique ID of the wallet.
+        metadata:
+          type: object
+          additionalProperties: { }
+          description: Metadata associated with the wallet.
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        ledger:
+          type: string
+    WalletWithBalances:
+      type: object
+      required:
+      - name
+      - id
+      - metadata
+      - createdAt
+      - balances
+      - ledger
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique ID of the wallet.
+        metadata:
+          type: object
+          description: Metadata associated with the wallet.
+          additionalProperties: { }
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        balances:
+          type: object
+          required:
+          - main
+          properties:
+            main:
+              $ref: '#/components/schemas/AssetHolder'
+        ledger:
+          type: string
+    Hold:
+      type: object
+      required:
+      - id
+      - walletID
+      - metadata
+      - description
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The unique ID of the hold.
+        walletID:
+          type: string
+          description: The ID of the wallet the hold is associated with.
+        metadata:
+          type: object
+          description: Metadata associated with the hold.
+          additionalProperties: {}
+        description:
+          type: string
+        destination:
+          $ref: '#/components/schemas/Subject'
+    ExpandedDebitHold:
+      allOf:
+      - $ref: '#/components/schemas/Hold'
+      - type: object
+        required:
+        - remaining
+        - originalAmount
+        properties:
+          remaining:
+            type: integer
+            description: Remaining amount on hold
+            example: 10
+            format: int64
+          originalAmount:
+            type: integer
+            description: Original amount on hold
+            example: 100
+            format: int64
+    ListWalletsResponse:
+      type: object
+      required:
+      - cursor
+      properties:
+        cursor:
+          allOf:
+          - $ref: '#/components/schemas/Cursor'
+          - properties:
+              data:
+                items:
+                  $ref: '#/components/schemas/Wallet'
+                type: array
+            type: object
+            required:
+            - data
+    CreateWalletResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Wallet'
+    GetWalletResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/WalletWithBalances'
+    DebitWalletResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Hold'
+    AggregatedVolumes:
+      type: object
+      x-go-type:
+        type: AggregatedVolumes
+      additionalProperties:
+        $ref: '#/components/schemas/Volumes'
+    Posting:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 100
+        asset:
+          type: string
+          example: COIN
+        destination:
+          type: string
+          example: users:002
+        source:
+          type: string
+          example: users:001
+      required:
+      - amount
+      - asset
+      - destination
+      - source
+    Transaction:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Posting'
+        reference:
+          type: string
+          example: ref:001
+        metadata:
+          type: object
+          additionalProperties: { }
+          description: Metadata associated with the wallet.
+        txid:
+          type: integer
+          format: int64
+          minimum: 0
+        preCommitVolumes:
+          $ref: '#/components/schemas/AggregatedVolumes'
+        postCommitVolumes:
+          $ref: '#/components/schemas/AggregatedVolumes'
+      required:
+      - postings
+      - timestamp
+      - txid
+    Cursor:
+      type: object
+      required:
+      - pageSize
+      properties:
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000
+          example: 15
+        hasMore:
+          type: boolean
+          example: false
+        previous:
+          type: string
+          example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+        next:
+          type: string
+          example: ""
+    GetTransactionsResponse:
+      type: object
+      required:
+      - cursor
+      properties:
+        cursor:
+          allOf:
+          - $ref: '#/components/schemas/Cursor'
+          - properties:
+              data:
+                items:
+                  $ref: '#/components/schemas/Transaction'
+                type: array
+            type: object
+            required:
+            - data
+    GetHoldsResponse:
+      type: object
+      required:
+      - cursor
+      properties:
+        cursor:
+          allOf:
+          - $ref: '#/components/schemas/Cursor'
+          - properties:
+              data:
+                items:
+                  $ref: '#/components/schemas/Hold'
+                type: array
+            type: object
+            required:
+            - data
+    GetHoldResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/ExpandedDebitHold'
+    CreateWalletRequest:
+      type: object
+      required:
+      - name
+      properties:
+        metadata:
+          type: object
+          description: Custom metadata to attach to this wallet.
+          additionalProperties: {}
+        name:
+          type: string
+    Volume:
+      type: object
+      properties:
+        input:
+          type: integer
+        output:
+          type: integer
+        balance:
+          type: integer
+      required:
+      - input
+      - output
+      - balance
+      example:
+        input: 100
+        output: 20
+        balance: 80
+    Volumes:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/Volume'
+      example:
+        USD:
+          input: 100
+          output: 10
+          balance: 90
+        EUR:
+          input: 100
+          output: 10
+          balance: 90
+    ConfirmHoldRequest:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: int64
+          example: 100
+          description: Define the amount to transfer.
+        final:
+          type: boolean
+          example: true
+          description: Define a final confirmation. Remaining funds will be returned to the wallet.
+    LedgerAccountSubject:
+      required:
+      - type
+      - identifier
+      properties:
+        type:
+          type: string
+        identifier:
+          type: string
+    WalletSubject:
+      required:
+      - type
+      - identifier
+      properties:
+        type:
+          type: string
+        identifier:
+          type: string
+        balance:
+          type: string
+    Subject:
+      discriminator:
+        propertyName: type
+        mapping:
+          ACCOUNT: '#/components/schemas/LedgerAccountSubject'
+          WALLET: '#/components/schemas/WalletSubject'
+      anyOf:
+      - $ref: '#/components/schemas/LedgerAccountSubject'
+      - $ref: '#/components/schemas/WalletSubject'
+    CreditWalletRequest:
+      type: object
+      required:
+      - amount
+      - sources
+      properties:
+        amount:
+          $ref: '#/components/schemas/Monetary'
+        metadata:
+          type: object
+          additionalProperties: { }
+          description: Metadata associated with the wallet.
+        reference:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subject'
+        balance:
+          type: string
+          description: The balance to credit
+    DebitWalletRequest:
+      type: object
+      required:
+      - amount
+      properties:
+        amount:
+          $ref: '#/components/schemas/Monetary'
+        pending:
+          type: boolean
+          description: Set to true to create a pending hold. If false, the wallet will be debited immediately.
+        metadata:
+          type: object
+          additionalProperties: { }
+          description: Metadata associated with the wallet.
+        description:
+          type: string
+        destination:
+          $ref: '#/components/schemas/Subject'
+        balances:
+          type: array
+          items:
+            type: string
+            description: A targeted balance (use '*' for all)
+      example:
+        amount:
+          asset: USD/2
+          amount: 100
+        pending: true
+    ServerInfo:
+      type: object
+      required:
+      - version
+      properties:
+        version:
+          type: string
+    AssetHolder:
+      type: object
+      required:
+      - assets
+      properties:
+        assets:
+          type: object
+          additionalProperties:
+            type: number
+    Balance:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+    BalanceWithAssets:
+      allOf:
+      - $ref: '#/components/schemas/Balance'
+      - $ref: '#/components/schemas/AssetHolder'
+    ListBalancesResponse:
+      type: object
+      required:
+      - cursor
+      properties:
+        cursor:
+          allOf:
+          - $ref: '#/components/schemas/Cursor'
+          - properties:
+              data:
+                items:
+                  $ref: '#/components/schemas/Balance'
+                type: array
+            type: object
+            required:
+            - data
+    GetBalanceResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/BalanceWithAssets'
+    CreateBalanceRequest:
+      $ref: '#/components/schemas/Balance'
+
+    CreateBalanceResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Balance'
+    ErrorResponse:
+      type: object
+      required:
+      - errorCode
+      - errorMessage
+      properties:
+        errorCode:
+          type: string
+          enum:
+          - VALIDATION
+        errorMessage:
+          type: string

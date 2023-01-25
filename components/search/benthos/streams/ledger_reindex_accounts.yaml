@@ -1,0 +1,54 @@
+input:
+  http_server:
+    path: /
+
+pipeline:
+  processors:
+  - bloblang: |
+      meta ledger = this.ledger
+      meta batchSize = 100
+  - postgres_query:
+      service: ledger
+      query: 'select count(*) as accounts_count from "${! meta("ledger") }".accounts'
+  - unarchive:
+      format: json_array
+  - bloblang: |
+      meta loopCount = (this.accounts_count.number() / meta("batchSize").number()).ceil()
+      meta loopIndex = 0
+  - while:
+      check: 'meta("loopIndex") < meta("loopCount")'
+      processors:
+      - postgres_query:
+          service: ledger
+          query: |
+            select address, metadata
+            from "${! meta("ledger") }".accounts
+            offset ${! meta("loopIndex").number() * meta("batchSize").number() }
+            limit ${! meta("batchSize") }
+      - bloblang:
+          meta loopIndex = meta("loopIndex").number() + 1
+      - unarchive:
+          format: json_array
+      - bloblang: |
+          root = this.assign({
+            "metadata": this.metadata.parse_json()
+          })
+      - bloblang: |
+          meta action = "upsert"
+          meta id = "ACCOUNT-%s-%d".format(meta("ledger"), this.address)
+          root = {
+            "data": {
+              "address": this.address,
+              "ledger": meta("ledger"),
+              "metadata": this.metadata
+            },
+            "indexed": {
+              "address": this.address,
+              "ledger": meta("ledger")
+            },
+            "kind": "ACCOUNT",
+            "ledger": meta("ledger")
+          }
+
+output:
+  resource: elasticsearch

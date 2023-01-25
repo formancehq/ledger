@@ -1,0 +1,34 @@
+{
+  "description": "Payment pipeline",
+  "processors": [
+    {
+      "set": {
+        "field": "indexed.provider",
+        "value": "{{data.provider}}"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.reference",
+        "value": "{{data.reference}}"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.scheme",
+        "value": "{{data.scheme}}"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.type",
+        "value": "{{data.type}}"
+      }
+    },
+    {
+      "script": {
+        "source": "String asset = ctx.data.value.asset; double amount = ctx.data.value.amount; String[] parts = asset.splitOnToken(\"/\"); int length = parts.length; int decimal = 0; if (length > 1) { decimal = Integer.parseInt(parts[1]); amount = amount * Math.pow(10, -decimal); } ctx.indexed.amount = amount;"
+    }
+  }
+  ]
+}

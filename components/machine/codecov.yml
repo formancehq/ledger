@@ -1,0 +1,5 @@
+ignore:
+  - "docs"
+  - "examples"
+  - ".github"
+  - ".devcontainer"

@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json ./
 COPY yarn.lock ./
 COPY main.js /app/main.js
-COPY sdk/generate.json /app/sdk/generate.json
+COPY build/generate.json /app/build/generate.json
 RUN apk add --no-cache ca-certificates curl
 RUN yarn install --production
 EXPOSE 3000
