@@ -24,7 +24,7 @@ func TestContext(t *testing.T) {
 					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
 				})
-				t.Run("GET/log", func(t *testing.T) {
+				t.Run("GET/logs", func(t *testing.T) {
 					rsp := internal.GetLedgerLogs(api, url.Values{})
 					_, err := uuid.Parse(rsp.Header().Get(string(pkg.KeyContextID)))
 					require.NoError(t, err)
