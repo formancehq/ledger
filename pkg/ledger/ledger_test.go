@@ -72,9 +72,10 @@ func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption)
 					return err
 				}
 				cache, err := ristretto.NewCache(&ristretto.Config{
-					NumCounters: 1e7,    // number of keys to track frequency of (10M).
-					MaxCost:     1 << 8, // maximum cost of cache (100MB).
-					BufferItems: 64,     // number of keys per Get buffer.
+
+					NumCounters: 1e7, // number of keys to track frequency of (10M).
+					MaxCost:     100, // maximum cost of cache.
+					BufferItems: 64,  // number of keys per Get buffer.
 				})
 				if err != nil {
 					panic(errors.Wrap(err, "creating ledger cache"))
