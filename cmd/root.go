@@ -49,6 +49,8 @@ const (
 	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
 
 	commitPolicyFlag = "commit-policy"
+
+	numscriptCacheCapacity = "numscript-cache-quantity"
 )
 
 var (
@@ -137,6 +139,8 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
 	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
+
+	root.PersistentFlags().Int(numscriptCacheCapacity, 100, "Capacity of the cache storing Numscript in RAM")
 
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)

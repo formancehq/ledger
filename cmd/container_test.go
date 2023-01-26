@@ -209,7 +209,6 @@ func TestContainers(t *testing.T) {
 
 							name := uuid.New()
 							l, err := resolver.GetLedger(ctx, name)
-
 							if err != nil {
 								return err
 							}
@@ -251,6 +250,7 @@ func TestContainers(t *testing.T) {
 			// Default options
 			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 			v.Set(storageDirFlag, "/tmp")
+			v.Set(numscriptCacheCapacity, 100)
 			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
 			app := NewContainer(v, options...)
