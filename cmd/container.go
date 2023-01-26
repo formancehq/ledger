@@ -168,7 +168,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	))
 
 	// Handle resolver
-	options = append(options, ledger.ResolveModule())
+	options = append(options, ledger.ResolveModule(
+		v.GetInt64(numscriptCacheCapacity)))
 
 	// Api middlewares
 	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {
