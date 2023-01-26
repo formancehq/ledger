@@ -199,7 +199,7 @@ func GetLedgerStats(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func GetLedgerLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/log", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/logs", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec

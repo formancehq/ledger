@@ -160,7 +160,7 @@ func (r *Routes) Engine() *gin.Engine {
 	// LedgerController
 	dedicatedLedgerRouter.GET("/_info", r.wrapWithScopes(r.ledgerController.GetInfo, ScopesInfoRead))
 	dedicatedLedgerRouter.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
-	dedicatedLedgerRouter.GET("/log", r.wrapWithScopes(r.ledgerController.GetLogs, ScopesLogsRead))
+	dedicatedLedgerRouter.GET("/logs", r.wrapWithScopes(r.ledgerController.GetLogs, ScopesLogsRead))
 
 	// AccountController
 	dedicatedLedgerRouter.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
