@@ -1,0 +1,30 @@
+libs:
+  - libs/*
+openapi:
+  - openapi/*
+sdks:
+  - sdks/*
+github:
+  - .github/*
+
+# Components
+'components/auth':
+  - components/auth/*
+'components/fctl':
+  - components/fctl/*
+'components/ledger':
+  - components/ledger/*
+'components/machine':
+  - components/machine/*
+'components/operator':
+  - components/operator/*
+'components/orchestration':
+  - components/orchestration/*
+'components/payments':
+  - components/payments/*
+'components/search':
+  - components/search/*
+'components/wallets':
+  - components/wallets/*
+'components/webhooks':
+  - components/webhooks/*
