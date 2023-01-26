@@ -39,16 +39,7 @@ func WithPastTimestamps(l *Ledger) {
 	l.allowPastTimestamps = true
 }
 
-func NewLedger(store Store, monitor Monitor, options ...LedgerOption) (*Ledger, error) {
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e7,     // number of keys to track frequency of (10M).
-		MaxCost:     1 << 30, // maximum cost of cache (1GB).
-		BufferItems: 64,      // number of keys per Get buffer.
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "creating ledger cache")
-	}
-
+func NewLedger(store Store, monitor Monitor, cache *ristretto.Cache, options ...LedgerOption) (*Ledger, error) {
 	l := &Ledger{
 		store:   store,
 		monitor: monitor,
