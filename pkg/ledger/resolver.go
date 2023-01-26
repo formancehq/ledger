@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
@@ -35,6 +36,7 @@ type Resolver struct {
 	initializedStores map[string]struct{}
 	monitor           Monitor
 	ledgerOptions     []LedgerOption
+	cache             *ristretto.Cache
 }
 
 func NewResolver(
@@ -42,14 +44,23 @@ func NewResolver(
 	ledgerOptions []LedgerOption,
 	options ...ResolverOption,
 ) *Resolver {
+	cache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 1e7,    // number of keys to track frequency of (10M).
+		MaxCost:     1 << 8, // maximum cost of cache (100MB).
+		BufferItems: 64,     // number of keys per Get buffer.
+	})
+	if err != nil {
+		panic(errors.Wrap(err, "creating ledger cache"))
+	}
+
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
 		storageDriver:     storageFactory,
 		initializedStores: map[string]struct{}{},
+		cache:             cache,
 	}
 	for _, opt := range options {
-		err := opt.apply(r)
-		if err != nil {
+		if err := opt.apply(r); err != nil {
 			panic(errors.Wrap(err, "applying option on resolver"))
 		}
 	}
@@ -68,7 +79,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	_, ok := r.initializedStores[name]
 	r.lock.RUnlock()
 	if ok {
-		return NewLedger(store, r.monitor, r.ledgerOptions...)
+		return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
 	}
 
 	r.lock.Lock()
@@ -82,7 +93,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.initializedStores[name] = struct{}{}
 	}
 
-	return NewLedger(store, r.monitor, r.ledgerOptions...)
+	return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
 }
 
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`
