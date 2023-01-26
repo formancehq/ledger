@@ -50,7 +50,7 @@ const (
 
 	commitPolicyFlag = "commit-policy"
 
-	numscriptCacheCapacity = "numscript-cache-quantity"
+	numscriptCacheCapacity = "numscript-cache-capacity"
 )
 
 var (
