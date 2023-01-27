@@ -90,8 +90,8 @@ tasks:
     cmds:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
-        go test {{.TAGS}} ./pkg/ledger
-        -run=XXX -bench=BenchmarkLedger_{{.RUN}} -benchmem -benchtime=30s -timeout 1h
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} ./pkg/ledger
+        -run=XXX -bench=BenchmarkLedger_{{.RUN}} -benchmem -benchtime=3s -timeout 1h
         -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
         | tee {{.BENCH_RESULTS_FILE}}
       - benchstat {{.BENCH_RESULTS_FILE}}

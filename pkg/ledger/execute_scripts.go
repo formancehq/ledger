@@ -21,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
-	ctx, span := opentelemetry.Start(ctx, "Execute")
+func (l *Ledger) ExecuteScripts(ctx context.Context, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
+	ctx, span := opentelemetry.Start(ctx, "ExecuteScripts")
 	defer span.End()
 
 	if len(scripts) == 0 {
@@ -45,18 +45,6 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
 		lastTxTimestamp = lastTx.Timestamp
-	}
-	contracts := make([]core.Contract, 0)
-	if checkMapping {
-		mapping, err := l.store.LoadMapping(ctx)
-		if err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err,
-				"loading mapping")
-		}
-		if mapping != nil {
-			contracts = append(contracts, mapping.Contracts...)
-		}
-		contracts = append(contracts, DefaultContracts...)
 	}
 
 	usedReferences := make(map[string]struct{})
@@ -241,26 +229,6 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				accs[account].Volumes[asset] = vol
 			}
 			accs[account].Balances = accs[account].Volumes.Balances()
-			for asset, volume := range volumes {
-				if account == core.WORLD {
-					continue
-				}
-
-				for _, contract := range contracts {
-					if contract.Match(account) {
-						if ok := contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": volume.Balance(),
-							},
-							Metadata: accs[account].Metadata,
-							Asset:    asset,
-						}); !ok {
-							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
-						}
-						break
-					}
-				}
-			}
 		}
 
 		metadata := m.GetTxMetaJSON()
