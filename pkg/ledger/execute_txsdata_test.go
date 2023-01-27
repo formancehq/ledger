@@ -345,7 +345,7 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 
 var execRes []core.ExpandedTransaction
 
-const nbPostings = 3
+const nbPostings = 1000
 
 func BenchmarkLedger_PostTransactions_Postings_Single_FixedAccounts(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
