@@ -5,14 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	machine "github.com/numary/machine/core"
 	"github.com/numary/machine/script/compiler"
 	"github.com/numary/machine/vm"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.TransactionData, error) {
+
+	ctx, span := opentelemetry.Start(ctx, "Execute")
+	defer span.End()
+
 	if script.Reference != "" {
 		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().WithReferenceFilter(script.Reference))
 		if err != nil {
@@ -26,10 +33,13 @@ func (l *Ledger) execute(ctx context.Context, script core.Script) (*core.Transac
 		return nil, NewScriptError(ScriptErrorNoScript, "no script to execute")
 	}
 
+	compileStartAt := time.Now()
 	p, err := compiler.Compile(script.Plain)
 	if err != nil {
 		return nil, NewScriptError(ScriptErrorCompilationFailed, err.Error())
 	}
+	compileTerminatedAt := time.Now()
+	span.SetAttributes(attribute.Int("compilation-duration", int(compileTerminatedAt.Sub(compileStartAt).Seconds())))
 
 	m := vm.NewMachine(*p)
 
