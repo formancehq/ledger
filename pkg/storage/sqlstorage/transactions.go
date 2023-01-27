@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -480,7 +481,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			postingTxIds, postingIndices, sources, destinations,
 		}
 
-		//logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
+		logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
 		ctx, span := opentelemetry.Start(ctx, "Insert posting")
 		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
 		if err != nil {
@@ -489,7 +490,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		span.End()
 	}
 
-	//logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
+	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
 	ctx, span = opentelemetry.Start(ctx, "Insert tx")
 	_, err = executor.ExecContext(ctx, queryTxs, argsTxs...)
 	if err != nil {
