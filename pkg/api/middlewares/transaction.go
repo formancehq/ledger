@@ -57,6 +57,17 @@ func Transaction(locker Locker) func(c *gin.Context) {
 
 		c.Request = c.Request.WithContext(ctx)
 
+		unlock, err := locker.Lock(c.Request.Context(), c.Param("ledger"))
+		if err != nil {
+			panic(err)
+		}
+		defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
+
+		ctx, span = opentelemetry.Start(c.Request.Context(), "Ledger locked")
+		defer span.End()
+
+		c.Request = c.Request.WithContext(ctx)
+
 		bufferedWriter := newBufferedWriter(c.Writer)
 		c.Writer = bufferedWriter
 
