@@ -756,10 +756,6 @@ const nbPostings = 1000
 
 func BenchmarkLedger_PostTransactionsSingle(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(b, l.Close(ctx))
-		}(l, context.Background())
-
 		txData := core.TransactionData{}
 		for i := 0; i < nbPostings; i++ {
 			txData.Postings = append(txData.Postings, core.Posting{
@@ -909,10 +905,6 @@ func newTxsData(i int) []core.TransactionData {
 
 func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(b, l.Close(ctx))
-		}(l, context.Background())
-
 		txsData := newTxsData(1)
 
 		b.ResetTimer()
@@ -952,10 +944,6 @@ func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
 
 func BenchmarkLedger_PostTransactionsBatch2(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(b, l.Close(ctx))
-		}(l, context.Background())
-
 		b.ResetTimer()
 
 		res := []core.ExpandedTransaction{}

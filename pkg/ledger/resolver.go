@@ -42,23 +42,14 @@ type Resolver struct {
 func NewResolver(
 	storageFactory storage.Driver[Store],
 	ledgerOptions []LedgerOption,
-	numscriptCacheCapacity int64,
+	cacheBytesCapacity, cacheMaxNumKeys int64,
 	options ...ResolverOption,
 ) *Resolver {
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e7,                    // number of keys to track frequency of (10M).
-		MaxCost:     numscriptCacheCapacity, // maximum cost of cache.
-		BufferItems: 64,                     // number of keys per Get buffer.
-	})
-	if err != nil {
-		panic(errors.Wrap(err, "creating ledger cache"))
-	}
-
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
 		storageDriver:     storageFactory,
 		initializedStores: map[string]struct{}{},
-		cache:             cache,
+		cache:             NewCache(cacheBytesCapacity, cacheMaxNumKeys, false),
 	}
 	for _, opt := range options {
 		if err := opt.apply(r); err != nil {
@@ -110,11 +101,11 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 	)
 }
 
-func ResolveModule(numscriptCacheCapacity int64) fx.Option {
+func ResolveModule(cacheBytesCapacity, cachemMaxNumKeys int64) fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, options ...ResolverOption) *Resolver {
-				return NewResolver(storageFactory, ledgerOptions, numscriptCacheCapacity, options...)
+				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cachemMaxNumKeys, options...)
 			}, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
 		),
 		fx.Invoke(func(lc fx.Lifecycle, r *Resolver) {

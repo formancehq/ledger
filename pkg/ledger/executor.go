@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DmitriyVTitov/size"
+	"github.com/formancehq/go-libs/logging"
 	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
@@ -104,6 +106,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 
 		var m *vm.Machine
 		if cachedP, found := l.cache.Get(curr); found {
+			logging.Debugf("Ledger.Execute: Numscript found in cache: %x", curr)
 			m = vm.NewMachine(cachedP.(program.Program))
 		} else {
 			newP, err := compiler.Compile(script.Plain)
@@ -111,7 +114,14 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					err.Error())
 			}
-			_ = l.cache.Set(curr, *newP, 1)
+			s := size.Of(*newP)
+			if s == -1 {
+				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
+					fmt.Errorf("error while calculating the size in bytes of script: %s",
+						script.Plain).Error())
+			}
+			ok := l.cache.Set(curr, *newP, int64(s))
+			logging.Debugf("Ledger.Execute: Numscript NOT found in cache (size %d, set attempt returned %v): %x", s, ok, curr)
 			m = vm.NewMachine(*newP)
 		}
 

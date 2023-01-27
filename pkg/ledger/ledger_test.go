@@ -10,14 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
 	"github.com/mitchellh/mapstructure"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,15 +69,12 @@ func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption)
 				if err != nil {
 					return err
 				}
-				cache, err := ristretto.NewCache(&ristretto.Config{
-					NumCounters: 1e7, // number of keys to track frequency of (10M).
-					MaxCost:     100, // maximum cost of cache.
-					BufferItems: 64,  // number of keys per Get buffer.
-				})
-				if err != nil {
-					panic(errors.Wrap(err, "creating ledger cache"))
-				}
-				l, err := ledger.NewLedger(store, ledger.NewNoOpMonitor(), cache, ledgerOptions...)
+				// 100 000 000 is 100MB
+				cache := ledger.NewCache(100000000, 100, true)
+				l, err := ledger.NewLedger(store,
+					ledger.NewNoOpMonitor(),
+					cache,
+					ledgerOptions...)
 				if err != nil {
 					panic(err)
 				}
