@@ -84,7 +84,10 @@ func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption)
 					panic(err)
 				}
 				lc.Append(fx.Hook{
-					OnStop: l.Close,
+					OnStop: func(ctx context.Context) error {
+						cache.Close()
+						return l.Close(ctx)
+					},
 				})
 				f(l)
 				return nil

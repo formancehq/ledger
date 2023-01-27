@@ -97,6 +97,10 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
 }
 
+func (r *Resolver) Close() {
+	r.cache.Close()
+}
+
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`
 const ResolverLedgerOptionsKey = `name:"_ledgerResolverLedgerOptions"`
 
@@ -113,5 +117,13 @@ func ResolveModule(numscriptCacheCapacity int64) fx.Option {
 				return NewResolver(storageFactory, ledgerOptions, numscriptCacheCapacity, options...)
 			}, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
 		),
+		fx.Invoke(func(lc fx.Lifecycle, r *Resolver) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					r.Close()
+					return nil
+				},
+			})
+		}),
 	)
 }
