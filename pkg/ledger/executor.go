@@ -97,7 +97,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		}
 
 		h := sha256.New()
-		if _, err = h.Write([]byte(script.Plain)); err != nil {
+		if _, err := h.Write([]byte(script.Plain)); err != nil {
 			return []core.ExpandedTransaction{}, errors.Wrap(err, "hashing script")
 		}
 		curr := h.Sum(nil)
@@ -111,11 +111,11 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					err.Error())
 			}
-			l.cache.Set(curr, *newP, 1)
+			_ = l.cache.Set(curr, *newP, 1)
 			m = vm.NewMachine(*newP)
 		}
 
-		if err = m.SetVarsFromJSON(script.Vars); err != nil {
+		if err := m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 				errors.Wrap(err, "could not set variables").Error())
 		}

@@ -57,7 +57,6 @@ func (l *Ledger) Close(ctx context.Context) error {
 	if err := l.store.Close(ctx); err != nil {
 		return errors.Wrap(err, "closing store")
 	}
-	l.cache.Close()
 	return nil
 }
 

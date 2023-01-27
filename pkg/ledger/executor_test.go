@@ -752,14 +752,16 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 
 var execRes []core.ExpandedTransaction
 
-func BenchmarkLedger_PostTransactions(b *testing.B) {
+const nbPostings = 1000
+
+func BenchmarkLedger_PostTransactionsSingle(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(b, l.Close(ctx))
 		}(l, context.Background())
 
 		txData := core.TransactionData{}
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < nbPostings; i++ {
 			txData.Postings = append(txData.Postings, core.Posting{
 				Source:      "world",
 				Destination: "benchmarks:" + strconv.Itoa(i),
@@ -779,12 +781,12 @@ func BenchmarkLedger_PostTransactions(b *testing.B) {
 			res, err = l.Execute(context.Background(), true, true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
-			require.Len(b, res[0].Postings, 1000)
+			require.Len(b, res[0].Postings, nbPostings)
 		}
 
 		execRes = res
 		require.Len(b, execRes, 1)
-		require.Len(b, execRes[0].Postings, 1000)
+		require.Len(b, execRes[0].Postings, nbPostings)
 	})
 }
 
