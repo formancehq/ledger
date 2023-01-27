@@ -20,9 +20,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
-
-	ctx, span := opentelemetry.Start(ctx, "Execute")
+func (l *Ledger) ExecuteScripts(ctx context.Context, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
+	ctx, span := opentelemetry.Start(ctx, "ExecuteScripts")
 	defer span.End()
 
 	if len(scripts) == 0 {
@@ -45,18 +44,6 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
 		lastTxTimestamp = lastTx.Timestamp
-	}
-	contracts := make([]core.Contract, 0)
-	if checkMapping {
-		mapping, err := l.store.LoadMapping(ctx)
-		if err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err,
-				"loading mapping")
-		}
-		if mapping != nil {
-			contracts = append(contracts, mapping.Contracts...)
-		}
-		contracts = append(contracts, DefaultContracts...)
 	}
 
 	usedReferences := make(map[string]struct{})
@@ -112,7 +99,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 
 		var m *vm.Machine
 		if cachedP, found := l.cache.Get(curr); found {
-			logging.Debugf("Ledger.Execute: Numscript found in cache: %x", curr)
+			logging.Debugf("Ledger.ExecuteScripts: Numscript found in cache: %x", curr)
 			m = vm.NewMachine(cachedP.(program.Program))
 		} else {
 			compileStartAt := time.Now()
@@ -130,7 +117,7 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 						script.Plain).Error())
 			}
 			ok := l.cache.Set(curr, *newP, int64(s))
-			logging.Debugf("Ledger.Execute: Numscript NOT found in cache (size %d, set attempt returned %v): %x", s, ok, curr)
+			logging.Debugf("Ledger.ExecuteScripts: Numscript NOT found in cache (size %d, set attempt returned %v): %x", s, ok, curr)
 			m = vm.NewMachine(*newP)
 		}
 
@@ -265,26 +252,6 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				accs[account].Volumes[asset] = vol
 			}
 			accs[account].Balances = accs[account].Volumes.Balances()
-			for asset, volume := range volumes {
-				if account == core.WORLD {
-					continue
-				}
-
-				for _, contract := range contracts {
-					if contract.Match(account) {
-						if ok := contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": volume.Balance(),
-							},
-							Metadata: accs[account].Metadata,
-							Asset:    asset,
-						}); !ok {
-							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
-						}
-						break
-					}
-				}
-			}
 		}
 
 		metadata := m.GetTxMetaJSON()

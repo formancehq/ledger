@@ -276,8 +276,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
-			true, preview, core.TxsToScriptsData(txData)...)
+		res, err = l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), preview, txData)
 	} else {
 		script := core.ScriptData{
 			Script:    payload.Script,
@@ -285,8 +284,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
-			false, preview, script)
+		res, err = l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), preview, script)
 	}
 	if err != nil {
 		apierrors.ResponseError(c, err)
@@ -389,8 +387,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		}
 	}
 
-	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), true, false,
-		core.TxsToScriptsData(txs.Transactions...)...)
+	res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), false, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

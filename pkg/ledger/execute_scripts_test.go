@@ -3,7 +3,6 @@ package ledger_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"testing"
 
@@ -18,7 +17,7 @@ func TestNoScript(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		script := core.ScriptData{}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorNoScript, err.(*ledger.ScriptError).Code)
 	})
@@ -30,7 +29,7 @@ func TestCompilationError(t *testing.T) {
 			Script: core.Script{Plain: "willnotcompile"},
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		assert.IsType(t, &ledger.ScriptError{}, err)
 		assert.Equal(t, ledger.ScriptErrorCompilationFailed, err.(*ledger.ScriptError).Code)
 	})
@@ -52,7 +51,7 @@ func TestSend(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:001",
@@ -77,7 +76,7 @@ func TestNoVariables(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		assert.Error(t, err)
 
 		require.NoError(t, l.Close(context.Background()))
@@ -107,7 +106,7 @@ func TestVariables(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "user:042",
@@ -130,7 +129,7 @@ func TestVariablesEmptyAccount(t *testing.T) {
 					)`,
 			},
 		}
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		script = core.ScriptData{
@@ -152,7 +151,7 @@ func TestVariablesEmptyAccount(t *testing.T) {
 				},
 			},
 		}
-		_, err = l.Execute(context.Background(), false, false, script)
+		_, err = l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "alice", "EUR", core.NewMonetaryInt(1))
@@ -177,8 +176,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(),
-			true, false, core.TxsToScriptsData(tx)...)
+		_, err := l.ExecuteTxsData(context.Background(), false, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -191,7 +189,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err = l.Execute(context.Background(), false, false, script)
+		_, err = l.ExecuteScripts(context.Background(), false, script)
 		assert.NoError(t, err)
 	})
 }
@@ -213,8 +211,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(),
-			true, false, core.TxsToScriptsData(tx)...)
+		_, err := l.ExecuteTxsData(context.Background(), false, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -227,7 +224,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err = l.Execute(context.Background(), false, false, script)
+		_, err = l.ExecuteScripts(context.Background(), false, script)
 		assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrInsufficientFund))
 	})
 }
@@ -257,7 +254,7 @@ func TestMissingMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
 	})
 }
@@ -279,8 +276,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.Execute(context.Background(),
-			true, false, core.TxsToScriptsData(tx)...)
+		_, err := l.ExecuteTxsData(context.Background(), false, tx)
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
@@ -329,7 +325,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err = l.Execute(context.Background(), false, false, script)
+		_, err = l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		assertBalance(t, l, "sales:042", "COIN", core.NewMonetaryInt(0))
@@ -406,7 +402,7 @@ func TestSetTxMeta(t *testing.T) {
 					require.NoError(t, l.Close(ctx))
 				}(l, context.Background())
 
-				_, err := l.Execute(context.Background(), false, false, tc.script)
+				_, err := l.ExecuteScripts(context.Background(), false, tc.script)
 
 				if tc.expectedErrorCode != "" {
 					require.Error(t, err)
@@ -442,7 +438,7 @@ func TestScriptSetReference(t *testing.T) {
 			Reference: "tx_ref",
 		}
 
-		_, err := l.Execute(context.Background(), false, false, script)
+		_, err := l.ExecuteScripts(context.Background(), false, script)
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -458,7 +454,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())
 
-		_, err := l.Execute(context.Background(), false, false,
+		_, err := l.ExecuteScripts(context.Background(), false,
 			core.ScriptData{
 				Script: core.Script{
 					Plain: `
@@ -472,7 +468,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 			})
 		require.NoError(t, err)
 
-		_, err = l.Execute(context.Background(), false, false,
+		_, err = l.ExecuteScripts(context.Background(), false,
 			core.ScriptData{
 				Script: core.Script{
 					Plain: `
@@ -492,8 +488,8 @@ func TestScriptReferenceConflict(t *testing.T) {
 func TestSetAccountMeta(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("valid", func(t *testing.T) {
-			res, err := l.Execute(context.Background(),
-				false, false, core.ScriptData{
+			res, err := l.ExecuteScripts(context.Background(), false,
+				core.ScriptData{
 					Script: core.Script{Plain: `
 						send [USD/2 99] (
 							source = @world
@@ -522,7 +518,7 @@ func TestSetAccountMeta(t *testing.T) {
 		})
 
 		t.Run("invalid syntax", func(t *testing.T) {
-			_, err := l.Execute(context.Background(), false, false,
+			_, err := l.ExecuteScripts(context.Background(), false,
 				core.ScriptData{
 					Script: core.Script{Plain: `
 						send [USD/2 99] (
@@ -555,8 +551,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.Execute(context.Background(),
-				true, false, core.TxsToScriptsData(tx)...)
+			_, err := l.ExecuteTxsData(context.Background(), false, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -572,8 +567,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 				},
 			}
 
-			_, err = l.Execute(context.Background(),
-				false, false, script)
+			_, err = l.ExecuteScripts(context.Background(), false, script)
 			require.NoError(t, err)
 			assertBalance(t, l, "world", "COIN", core.NewMonetaryInt(0))
 			assertBalance(t, l, "users:001", "COIN", core.NewMonetaryInt(0))
@@ -602,8 +596,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.Execute(context.Background(),
-				true, false, core.TxsToScriptsData(tx)...)
+			_, err := l.ExecuteTxsData(context.Background(), false, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -625,8 +618,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 				},
 			}
 
-			_, err = l.Execute(context.Background(),
-				false, false, script)
+			_, err = l.ExecuteScripts(context.Background(), false, script)
 			require.NoError(t, err)
 			assertBalance(t, l, "B", "USD/2", core.NewMonetaryInt(40))
 			assertBalance(t, l, "D", "USD/2", core.NewMonetaryInt(60))
@@ -649,8 +641,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.Execute(context.Background(),
-				true, false, core.TxsToScriptsData(tx)...)
+			_, err := l.ExecuteTxsData(context.Background(), false, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -669,8 +660,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
  					)`,
 				},
 			}
-			_, err = l.Execute(context.Background(),
-				false, false, script)
+			_, err = l.ExecuteScripts(context.Background(), false, script)
 			assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrInsufficientFund))
 		})
 	})
@@ -691,8 +681,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.Execute(context.Background(),
-				true, false, core.TxsToScriptsData(tx)...)
+			_, err := l.ExecuteTxsData(context.Background(), false, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -708,7 +697,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 				},
 			}
 
-			_, err = l.Execute(context.Background(), false, false, script)
+			_, err = l.ExecuteScripts(context.Background(), false, script)
 			assert.True(t, ledger.IsScriptErrorWithCode(err, ledger.ScriptErrorCompilationFailed))
 			assert.ErrorContains(t, err, "must be non-negative")
 		})
@@ -732,7 +721,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
  					)`,
 				},
 			}
-			_, err := l.Execute(context.Background(), false, false, script)
+			_, err := l.ExecuteScripts(context.Background(), false, script)
 			assert.True(t, ledger.IsScriptErrorWithCode(err, apierrors.ErrScriptCompilationFailed))
 		})
 	})
@@ -750,11 +739,7 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 	)
 }
 
-var execRes []core.ExpandedTransaction
-
-const nbPostings = 1000
-
-func BenchmarkLedger_PostTransactionsSingle(b *testing.B) {
+func BenchmarkLedger_PostTransactions_Scripts_Single_FixedAccounts(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		txData := core.TransactionData{}
 		for i := 0; i < nbPostings; i++ {
@@ -773,8 +758,7 @@ func BenchmarkLedger_PostTransactionsSingle(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
-			script := core.TxsToScriptsData(txData)
-			res, err = l.Execute(context.Background(), true, true, script...)
+			res, err = l.ExecuteScripts(context.Background(), true, core.TxsToScriptsData(txData)...)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, nbPostings)
@@ -786,124 +770,7 @@ func BenchmarkLedger_PostTransactionsSingle(b *testing.B) {
 	})
 }
 
-func newTxsData(i int) []core.TransactionData {
-	return []core.TransactionData{
-		{
-			Postings: core.Postings{
-				{
-					Source:      "world",
-					Destination: fmt.Sprintf("payins:%d", i),
-					Amount:      core.NewMonetaryInt(10000),
-					Asset:       "EUR/2",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      fmt.Sprintf("payins:%d", i),
-					Destination: fmt.Sprintf("users:%d:wallet", i),
-					Amount:      core.NewMonetaryInt(10000),
-					Asset:       "EUR/2",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      "world",
-					Destination: fmt.Sprintf("teller:%d", i),
-					Amount:      core.NewMonetaryInt(350000),
-					Asset:       "RBLX/6",
-				},
-				{
-					Source:      "world",
-					Destination: fmt.Sprintf("teller:%d", i),
-					Amount:      core.NewMonetaryInt(1840000),
-					Asset:       "SNAP/6",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      fmt.Sprintf("users:%d:wallet", i),
-					Destination: fmt.Sprintf("trades:%d", i),
-					Amount:      core.NewMonetaryInt(1500),
-					Asset:       "EUR/2",
-				},
-				{
-					Source:      fmt.Sprintf("trades:%d", i),
-					Destination: fmt.Sprintf("fiat:holdings:%d", i),
-					Amount:      core.NewMonetaryInt(1500),
-					Asset:       "EUR/2",
-				},
-				{
-					Source:      fmt.Sprintf("teller:%d", i),
-					Destination: fmt.Sprintf("trades:%d", i),
-					Amount:      core.NewMonetaryInt(350000),
-					Asset:       "RBLX/6",
-				},
-				{
-					Source:      fmt.Sprintf("trades:%d", i),
-					Destination: fmt.Sprintf("users:%d:wallet", i),
-					Amount:      core.NewMonetaryInt(350000),
-					Asset:       "RBLX/6",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      fmt.Sprintf("users:%d:wallet", i),
-					Destination: fmt.Sprintf("trades:%d", i),
-					Amount:      core.NewMonetaryInt(4230),
-					Asset:       "EUR/2",
-				},
-				{
-					Source:      fmt.Sprintf("trades:%d", i),
-					Destination: fmt.Sprintf("fiat:holdings:%d", i),
-					Amount:      core.NewMonetaryInt(4230),
-					Asset:       "EUR/2",
-				},
-				{
-					Source:      fmt.Sprintf("teller:%d", i),
-					Destination: fmt.Sprintf("trades:%d", i),
-					Amount:      core.NewMonetaryInt(1840000),
-					Asset:       "SNAP/6",
-				},
-				{
-					Source:      fmt.Sprintf("trades:%d", i),
-					Destination: fmt.Sprintf("users:%d:wallet", i),
-					Amount:      core.NewMonetaryInt(1840000),
-					Asset:       "SNAP/6",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      fmt.Sprintf("users:%d:wallet", i),
-					Destination: fmt.Sprintf("users:%d:withdrawals", i),
-					Amount:      core.NewMonetaryInt(2270),
-					Asset:       "EUR/2",
-				},
-			},
-		},
-		{
-			Postings: core.Postings{
-				{
-					Source:      fmt.Sprintf("users:%d:withdrawals", i),
-					Destination: fmt.Sprintf("payouts:%d", i),
-					Amount:      core.NewMonetaryInt(2270),
-					Asset:       "EUR/2",
-				},
-			},
-		},
-	}
-}
-
-func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
+func BenchmarkLedger_PostTransactions_Scripts_Batch_FixedAccounts(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		txsData := newTxsData(1)
 
@@ -918,7 +785,7 @@ func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
 				require.NoError(b, err)
 			}
 			script := core.TxsToScriptsData(txsData...)
-			res, err = l.Execute(context.Background(), true, true, script...)
+			res, err = l.ExecuteScripts(context.Background(), true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)
@@ -942,7 +809,7 @@ func BenchmarkLedger_PostTransactionsBatch(b *testing.B) {
 	})
 }
 
-func BenchmarkLedger_PostTransactionsBatch2(b *testing.B) {
+func BenchmarkLedger_PostTransactions_Scripts_Batch_VaryingAccounts(b *testing.B) {
 	runOnLedger(func(l *ledger.Ledger) {
 		b.ResetTimer()
 
@@ -958,7 +825,7 @@ func BenchmarkLedger_PostTransactionsBatch2(b *testing.B) {
 				require.NoError(b, err)
 			}
 			script := core.TxsToScriptsData(txsData...)
-			res, err = l.Execute(context.Background(), true, true, script...)
+			res, err = l.ExecuteScripts(context.Background(), true, script...)
 			require.NoError(b, err)
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)
