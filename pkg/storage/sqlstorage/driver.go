@@ -51,10 +51,11 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 
 	wrappedDriver := otelsql.Wrap(dri,
 		otelsql.AllowRoot(),
-		otelsql.TraceQueryWithArgs(),
-		otelsql.TraceRowsAffected(),
-		otelsql.TraceRowsClose(),
-		otelsql.TraceRowsNext(),
+		//otelsql.TraceQueryWithArgs(),
+		//otelsql.TraceRowsAffected(),
+		//otelsql.TraceRowsClose(),
+		//otelsql.TraceRowsNext(),
+		otelsql.TraceAll(),
 	)
 
 	driverName := fmt.Sprintf("otel-%s", name)

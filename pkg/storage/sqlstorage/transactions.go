@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/pkg/errors"
 )
 
@@ -325,6 +325,9 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransacti
 }
 
 func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
+	ctx, span := opentelemetry.Start(ctx, "Insert transactions")
+	defer span.End()
+
 	var queryTxs string
 	var argsTxs []any
 
@@ -390,6 +393,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		sources := []string{}
 		destinations := []string{}
 
+		_, span := opentelemetry.Start(ctx, "Encode tx")
 		for i, tx := range txs {
 			postingsData, err := json.Marshal(tx.Postings)
 			if err != nil {
@@ -426,6 +430,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				references[i] = &cp
 			}
 
+			_, span := opentelemetry.Start(ctx, "Process posting")
 			for i, p := range tx.Postings {
 				sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
 				if err != nil {
@@ -440,7 +445,9 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 				sources = append(sources, string(sourcesBy))
 				destinations = append(destinations, string(destinationsBy))
 			}
+			span.End()
 		}
+		span.End()
 
 		queryTxs = fmt.Sprintf(
 			`INSERT INTO "%s".transactions (id, timestamp, reference,
@@ -473,18 +480,22 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			postingTxIds, postingIndices, sources, destinations,
 		}
 
-		logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
+		//logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
+		ctx, span := opentelemetry.Start(ctx, "Insert posting")
 		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
 		if err != nil {
 			return s.error(err)
 		}
+		span.End()
 	}
 
-	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
+	//logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
+	ctx, span = opentelemetry.Start(ctx, "Insert tx")
 	_, err = executor.ExecContext(ctx, queryTxs, argsTxs...)
 	if err != nil {
 		return s.error(err)
 	}
+	span.End()
 
 	return nil
 }
