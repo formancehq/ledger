@@ -60,6 +60,10 @@ func (l *Ledger) Close(ctx context.Context) error {
 	return nil
 }
 
+func (l *Ledger) GetCacheStats() string {
+	return l.cache.Metrics.String()
+}
+
 func (l *Ledger) GetLedgerStore() Store {
 	return l.store
 }
