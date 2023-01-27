@@ -52,7 +52,7 @@ func newBufferedWriter(rw gin.ResponseWriter) *bufferedResponseWriter {
 func Transaction(locker Locker) func(c *gin.Context) {
 	return func(c *gin.Context) {
 
-		ctx, span := opentelemetry.Start(c.Request.Context(), "Ledger locking")
+		ctx, span := opentelemetry.Start(c.Request.Context(), "Wait ledger lock")
 		defer span.End()
 
 		c.Request = c.Request.WithContext(ctx)
@@ -62,6 +62,11 @@ func Transaction(locker Locker) func(c *gin.Context) {
 			panic(err)
 		}
 		defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
+
+		ctx, span = opentelemetry.Start(c.Request.Context(), "Ledger locked")
+		defer span.End()
+
+		c.Request = c.Request.WithContext(ctx)
 
 		bufferedWriter := newBufferedWriter(c.Writer)
 		c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
