@@ -14,11 +14,17 @@ import (
 	"github.com/formancehq/machine/vm"
 	"github.com/formancehq/machine/vm/program"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
+
+	ctx, span := opentelemetry.Start(ctx, "Execute")
+	defer span.End()
+
 	if len(scripts) == 0 {
 		return []core.ExpandedTransaction{},
 			NewScriptError(ScriptErrorNoScript, "no script to execute")
@@ -109,7 +115,10 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 			logging.Debugf("Ledger.Execute: Numscript found in cache: %x", curr)
 			m = vm.NewMachine(cachedP.(program.Program))
 		} else {
+			compileStartAt := time.Now()
 			newP, err := compiler.Compile(script.Plain)
+			compileTerminatedAt := time.Now()
+			span.SetAttributes(attribute.Int("compilation-duration", int(compileTerminatedAt.Sub(compileStartAt).Seconds())))
 			if err != nil {
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					err.Error())
