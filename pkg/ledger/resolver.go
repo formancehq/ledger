@@ -101,11 +101,11 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 	)
 }
 
-func ResolveModule(cacheBytesCapacity, cachemMaxNumKeys int64) fx.Option {
+func ResolveModule(cacheBytesCapacity, cacheMaxNumKeys int64) fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, options ...ResolverOption) *Resolver {
-				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cachemMaxNumKeys, options...)
+				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cacheMaxNumKeys, options...)
 			}, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
 		),
 		fx.Invoke(func(lc fx.Lifecycle, r *Resolver) {
