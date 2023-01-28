@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
@@ -12,6 +13,7 @@ import (
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
+	"go.nhat.io/otelsql"
 )
 
 const SystemSchema = "_system"
@@ -31,38 +33,7 @@ func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedV
 var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
 
 func UpdateSQLDriverMapping(flavor Flavor, name string) {
-
-	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
-	// pgx implements this interface and just return nil
-	// so, we need to manually wrap the driver to implements this interface and return a nil error
-
-	//db, err := sql.Open(name, "")
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//dri := db.Driver()
-	//
-	//if err = db.Close(); err != nil {
-	//	panic(err)
-	//}
-	//
-	//wrappedDriver := otelsql.Wrap(dri,
-	//	otelsql.AllowRoot(),
-	//	//otelsql.TraceQueryWithArgs(),
-	//	//otelsql.TraceRowsAffected(),
-	//	//otelsql.TraceRowsClose(),
-	//	//otelsql.TraceRowsNext(),
-	//	otelsql.TraceAll(),
-	//)
-	//
-	//driverName := fmt.Sprintf("otel-%s", name)
-	//sql.Register(driverName, otelSQLDriverWithCheckNamedValueDisabled{
-	//	wrappedDriver,
-	//})
-
 	cfg := sqlDrivers[flavor]
-	//cfg.driverName = driverName
 	cfg.driverName = name
 	sqlDrivers[flavor] = cfg
 }
@@ -70,6 +41,35 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 func init() {
 	// Default mapping for app driver/sql driver
 	UpdateSQLDriverMapping(PostgreSQL, "pgx")
+}
+
+func InstrumentalizeSQLDrivers() {
+	for flavor, config := range sqlDrivers {
+		// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
+		// pgx implements this interface and just return nil
+		// so, we need to manually wrap the driver to implements this interface and return a nil error
+		db, err := sql.Open(config.driverName, "")
+		if err != nil {
+			panic(err)
+		}
+
+		dri := db.Driver()
+
+		if err = db.Close(); err != nil {
+			panic(err)
+		}
+
+		wrappedDriver := otelsql.Wrap(dri,
+			otelsql.AllowRoot(),
+			otelsql.TraceAll(),
+		)
+
+		config.driverName = fmt.Sprintf("otel-%s", config.driverName)
+		sql.Register(config.driverName, otelSQLDriverWithCheckNamedValueDisabled{
+			wrappedDriver,
+		})
+		sqlDrivers[flavor] = config
+	}
 }
 
 // defaultExecutorProvider use the context to register and manage a sql transaction (if the context is mark as transactional)
