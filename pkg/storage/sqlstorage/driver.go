@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
@@ -13,7 +12,6 @@ import (
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
-	"go.nhat.io/otelsql"
 )
 
 const SystemSchema = "_system"
@@ -38,33 +36,34 @@ func UpdateSQLDriverMapping(flavor Flavor, name string) {
 	// pgx implements this interface and just return nil
 	// so, we need to manually wrap the driver to implements this interface and return a nil error
 
-	db, err := sql.Open(name, "")
-	if err != nil {
-		panic(err)
-	}
-
-	dri := db.Driver()
-
-	if err = db.Close(); err != nil {
-		panic(err)
-	}
-
-	wrappedDriver := otelsql.Wrap(dri,
-		otelsql.AllowRoot(),
-		//otelsql.TraceQueryWithArgs(),
-		//otelsql.TraceRowsAffected(),
-		//otelsql.TraceRowsClose(),
-		//otelsql.TraceRowsNext(),
-		otelsql.TraceAll(),
-	)
-
-	driverName := fmt.Sprintf("otel-%s", name)
-	sql.Register(driverName, otelSQLDriverWithCheckNamedValueDisabled{
-		wrappedDriver,
-	})
+	//db, err := sql.Open(name, "")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
+	//dri := db.Driver()
+	//
+	//if err = db.Close(); err != nil {
+	//	panic(err)
+	//}
+	//
+	//wrappedDriver := otelsql.Wrap(dri,
+	//	otelsql.AllowRoot(),
+	//	//otelsql.TraceQueryWithArgs(),
+	//	//otelsql.TraceRowsAffected(),
+	//	//otelsql.TraceRowsClose(),
+	//	//otelsql.TraceRowsNext(),
+	//	otelsql.TraceAll(),
+	//)
+	//
+	//driverName := fmt.Sprintf("otel-%s", name)
+	//sql.Register(driverName, otelSQLDriverWithCheckNamedValueDisabled{
+	//	wrappedDriver,
+	//})
 
 	cfg := sqlDrivers[flavor]
-	cfg.driverName = driverName
+	//cfg.driverName = driverName
+	cfg.driverName = name
 	sqlDrivers[flavor] = cfg
 }
 
