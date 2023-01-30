@@ -95,7 +95,7 @@ jobs:
     - name: Run GoReleaser
       env:
         GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-        FURY_TOKEN_FORMANCE: ${{ secrets.FURY_TOKEN_FORMANCE }}
+        FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
       uses: goreleaser/goreleaser-action@v2
       with:
         version: latest
