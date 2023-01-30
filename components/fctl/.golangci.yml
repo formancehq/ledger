@@ -13,16 +13,13 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-    - deadcode    #Default linter
     - errcheck    #Default linter
     - gosimple    #Default linter
     - govet       #Default linter
     - ineffassign #Default linter
     - staticcheck #Default linter
-    - structcheck #Default linter
     - typecheck   #Default linter
     - unused      #Default linter
-    - varcheck    #Default linter
     - gofmt
     - gci
     - goimports

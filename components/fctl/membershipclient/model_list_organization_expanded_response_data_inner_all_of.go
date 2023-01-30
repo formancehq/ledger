@@ -20,7 +20,7 @@ var _ MappedNullable = &ListOrganizationExpandedResponseDataInnerAllOf{}
 // ListOrganizationExpandedResponseDataInnerAllOf struct for ListOrganizationExpandedResponseDataInnerAllOf
 type ListOrganizationExpandedResponseDataInnerAllOf struct {
 	TotalStacks *int32 `json:"totalStacks,omitempty"`
-	TotalUsers  *int32 `json:"totalUsers,omitempty"`
+	TotalUsers *int32 `json:"totalUsers,omitempty"`
 }
 
 // NewListOrganizationExpandedResponseDataInnerAllOf instantiates a new ListOrganizationExpandedResponseDataInnerAllOf object
@@ -105,7 +105,7 @@ func (o *ListOrganizationExpandedResponseDataInnerAllOf) SetTotalUsers(v int32) 
 }
 
 func (o ListOrganizationExpandedResponseDataInnerAllOf) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

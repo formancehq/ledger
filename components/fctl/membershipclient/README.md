@@ -79,6 +79,8 @@ All URIs are relative to *http://localhost:8080*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 *DefaultApi* | [**AcceptInvitation**](docs/DefaultApi.md#acceptinvitation) | **Post** /me/invitations/{invitationId}/accept | Accept invitation
+*DefaultApi* | [**BillingPortal**](docs/DefaultApi.md#billingportal) | **Get** /organizations/{organizationId}/billing/portal | Access to the billing portal
+*DefaultApi* | [**BillingSetup**](docs/DefaultApi.md#billingsetup) | **Get** /organizations/{organizationId}/billing/setup | Create a billing setup
 *DefaultApi* | [**CreateInvitation**](docs/DefaultApi.md#createinvitation) | **Post** /organizations/{organizationId}/invitations | Create invitation
 *DefaultApi* | [**CreateOrganization**](docs/DefaultApi.md#createorganization) | **Post** /organizations | Create organization
 *DefaultApi* | [**CreateStack**](docs/DefaultApi.md#createstack) | **Post** /organizations/{organizationId}/stacks | Create stack
@@ -100,6 +102,10 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [BillingPortal](docs/BillingPortal.md)
+ - [BillingPortalResponse](docs/BillingPortalResponse.md)
+ - [BillingSetup](docs/BillingSetup.md)
+ - [BillingSetupResponse](docs/BillingSetupResponse.md)
  - [CreateInvitationResponse](docs/CreateInvitationResponse.md)
  - [CreateOrganizationResponse](docs/CreateOrganizationResponse.md)
  - [CreateStackResponse](docs/CreateStackResponse.md)

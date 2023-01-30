@@ -72,7 +72,7 @@ func (o *ListRegionsResponse) SetData(v []Region) {
 }
 
 func (o ListRegionsResponse) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

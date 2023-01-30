@@ -20,12 +20,12 @@ var _ MappedNullable = &Invitation{}
 
 // Invitation struct for Invitation
 type Invitation struct {
-	Id             string     `json:"id"`
-	OrganizationId string     `json:"organizationId"`
-	UserEmail      string     `json:"userEmail"`
-	Status         string     `json:"status"`
-	CreationDate   time.Time  `json:"creationDate"`
-	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+	Id string `json:"id"`
+	OrganizationId string `json:"organizationId"`
+	UserEmail string `json:"userEmail"`
+	Status string `json:"status"`
+	CreationDate time.Time `json:"creationDate"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 // NewInvitation instantiates a new Invitation object
@@ -203,7 +203,7 @@ func (o *Invitation) SetUpdatedAt(v time.Time) {
 }
 
 func (o Invitation) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

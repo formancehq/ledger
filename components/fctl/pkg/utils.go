@@ -1,5 +1,10 @@
 package fctl
 
+import (
+	"os/exec"
+	"runtime"
+)
+
 func Map[SRC any, DST any](srcs []SRC, mapper func(SRC) DST) []DST {
 	ret := make([]DST, 0)
 	for _, src := range srcs {
@@ -18,4 +23,23 @@ func MapKeys[K comparable, V any](m map[K]V) []K {
 
 func Prepend[V any](array []V, items ...V) []V {
 	return append(items, array...)
+}
+
+func Open(url string) error {
+	var (
+		cmd  string
+		args []string
+	)
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start"}
+	case "darwin":
+		cmd = "open"
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = "xdg-open"
+	}
+	args = append(args, url)
+	return exec.Command(cmd, args...).Start()
 }

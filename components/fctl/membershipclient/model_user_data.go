@@ -65,7 +65,7 @@ func (o *UserData) SetEmail(v string) {
 }
 
 func (o UserData) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

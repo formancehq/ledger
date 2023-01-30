@@ -5,8 +5,8 @@ info:
   version: "0.1.0"
 
 servers:
-- url: http://localhost:8080
-  description: Local server
+  - url: http://localhost:8080
+    description: Local server
 
 paths:
   /_info:
@@ -62,11 +62,11 @@ paths:
       summary: Read organization
       operationId: readOrganization
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         200:
           description: OK
@@ -78,11 +78,11 @@ paths:
       summary: Delete organization
       operationId: deleteOrganization
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         204:
           description: Organization deleted
@@ -91,11 +91,11 @@ paths:
       summary: List users
       operationId: listUsers
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         200:
           description: List of users
@@ -108,16 +108,16 @@ paths:
       summary: Read user
       operationId: readUser
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: userId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: userId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         200:
           description: Read a user
@@ -125,16 +125,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReadUserResponse'
+  /organizations/{organizationId}/billing/portal:
+    get:
+      summary: Access to the billing portal
+      operationId: billingPortal
+      parameters:
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        200:
+          description: Access to the billing portal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPortalResponse'
+  /organizations/{organizationId}/billing/setup:
+    get:
+      summary: Create a billing setup
+      operationId: billingSetup
+      parameters:
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        200:
+          description: Create a billing setup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSetupResponse'
   /organizations/{organizationId}/stacks:
     get:
       summary: List stacks
       operationId: listStacks
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         200:
           description: List of stacks
@@ -146,11 +180,11 @@ paths:
       summary: Create stack
       operationId: createStack
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
       requestBody:
         content:
           application/json:
@@ -174,16 +208,16 @@ paths:
       summary: Read stack
       operationId: readStack
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: stackId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: stackId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         200:
           description: OK
@@ -195,16 +229,16 @@ paths:
       summary: Delete stack
       operationId: deleteStack
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: stackId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: stackId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         204:
           description: Stack deleted
@@ -213,18 +247,18 @@ paths:
       summary: List invitations of the user
       operationId: listInvitations
       parameters:
-      - in: query
-        name: status
-        required: false
-        description: Status of organizations
-        schema:
-          type: string
-      - in: query
-        name: organization
-        required: false
-        description: Status of organizations
-        schema:
-          type: string
+        - in: query
+          name: status
+          required: false
+          description: Status of organizations
+          schema:
+            type: string
+        - in: query
+          name: organization
+          required: false
+          description: Status of organizations
+          schema:
+            type: string
       responses:
         200:
           description: List of the invitations for the connected user
@@ -237,11 +271,11 @@ paths:
       summary: Accept invitation
       operationId: acceptInvitation
       parameters:
-      - name: invitationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: invitationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         204:
           description: Invitation accepted
@@ -250,11 +284,11 @@ paths:
       summary: Decline invitation
       operationId: declineInvitation
       parameters:
-      - name: invitationId
-        in: path
-        schema:
-          type: string
-        required: true
+        - name: invitationId
+          in: path
+          schema:
+            type: string
+          required: true
       responses:
         204:
           description: Invitation declined
@@ -263,17 +297,17 @@ paths:
       summary: List invitations of the organization
       operationId: listOrganizationInvitations
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
-      - in: query
-        name: status
-        required: false
-        description: Status of organizations
-        schema:
-          type: string
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: status
+          required: false
+          description: Status of organizations
+          schema:
+            type: string
       responses:
         200:
           description: List of the invitations for the organization
@@ -285,16 +319,16 @@ paths:
       summary: Create invitation
       operationId: createInvitation
       parameters:
-      - name: organizationId
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: email
-        in: query
-        schema:
-          type: string
-        required: true
+        - name: organizationId
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: email
+          in: query
+          schema:
+            type: string
+          required: true
       responses:
         201:
           description: Invitation created
@@ -315,7 +349,7 @@ paths:
                 $ref: '#/components/schemas/ListRegionsResponse'
 
 security:
-- oauth2: []
+  - oauth2: []
 
 components:
   securitySchemes:
@@ -332,32 +366,32 @@ components:
     OrganizationData:
       type: object
       required:
-      - name
+        - name
       properties:
         name:
           type: string
           description: Organization name
     Organization:
       allOf:
-      - $ref: '#/components/schemas/OrganizationData'
-      - type: object
-        required:
-        - id
-        - ownerId
-        properties:
-          id:
-            type: string
-            description: Organization ID
-          ownerId:
-            type: string
-            description: Owner ID
+        - $ref: '#/components/schemas/OrganizationData'
+        - type: object
+          required:
+            - id
+            - ownerId
+          properties:
+            id:
+              type: string
+              description: Organization ID
+            ownerId:
+              type: string
+              description: Owner ID
     StackData:
       type: object
       required:
-      - name
-      - tags
-      - production
-      - metadata
+        - name
+        - tags
+        - production
+        - metadata
       properties:
         name:
           type: string
@@ -372,43 +406,59 @@ components:
           type: object
           additionalProperties:
             type: string
+    BillingPortal:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: Billing portal URL
+    BillingSetup:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: Billing portal URL
     Stack:
       allOf:
-      - $ref: '#/components/schemas/StackData'
-      - type: object
-        required:
-        - id
-        - organizationId
-        - uri
-        properties:
-          id:
-            type: string
-            description: Stack ID
-          organizationId:
-            type: string
-            description: Organization ID
-          uri:
-            type: string
-            description: Base stack uri
-          boundRegion:
-            $ref: '#/components/schemas/Region'
+        - $ref: '#/components/schemas/StackData'
+        - type: object
+          required:
+            - id
+            - organizationId
+            - uri
+          properties:
+            id:
+              type: string
+              description: Stack ID
+            organizationId:
+              type: string
+              description: Organization ID
+            uri:
+              type: string
+              description: Base stack uri
+            boundRegion:
+              $ref: '#/components/schemas/Region'
     UserData:
       type: object
       properties:
         email:
           type: string
       required:
-      - email
+        - email
     User:
       allOf:
-      - $ref: '#/components/schemas/UserData'
-      - type: object
-        required:
-        - id
-        properties:
-          id:
-            type: string
-            description: User ID
+        - $ref: '#/components/schemas/UserData'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: User ID
     OrganizationArray:
       type: array
       items:
@@ -440,6 +490,16 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/StackArray'
+    BillingPortalResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/BillingPortal'
+    BillingSetupResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/BillingSetup'
     ListUsersResponse:
       type: object
       properties:
@@ -479,7 +539,7 @@ components:
         error_message:
           type: string
       required:
-      - error_code
+        - error_code
     Invitation:
       type: object
       properties:
@@ -492,9 +552,9 @@ components:
         status:
           type: string
           enum:
-          - pending
-          - accepted
-          - rejected
+            - pending
+            - accepted
+            - rejected
         creationDate:
           type: string
           format: date-time
@@ -502,17 +562,17 @@ components:
           type: string
           format: date-time
       required:
-      - creationDate
-      - status
-      - userEmail
-      - organizationId
-      - id
+        - creationDate
+        - status
+        - userEmail
+        - organizationId
+        - id
     Region:
       type: object
       required:
-      - id
-      - baseUrl
-      - tags
+        - id
+        - baseUrl
+        - tags
       properties:
         id:
           type: string
@@ -529,13 +589,13 @@ components:
           type: array
           items:
             allOf:
-            - $ref: '#/components/schemas/Organization'
-            - type: object
-              properties:
-                totalStacks:
-                  type: integer
-                totalUsers:
-                  type: integer
+              - $ref: '#/components/schemas/Organization'
+              - type: object
+                properties:
+                  totalStacks:
+                    type: integer
+                  totalUsers:
+                    type: integer
     ListRegionsResponse:
       type: object
       properties:
@@ -546,7 +606,7 @@ components:
     ServerInfo:
       type: object
       required:
-      - version
+        - version
       properties:
         version:
           type: string

@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"github.com/formancehq/fctl/cmd/cloud/billing"
 	"github.com/formancehq/fctl/cmd/cloud/me"
 	"github.com/formancehq/fctl/cmd/cloud/organizations"
 	"github.com/formancehq/fctl/cmd/cloud/regions"
@@ -19,6 +20,7 @@ func NewCommand() *cobra.Command {
 			users.NewCommand(),
 			regions.NewCommand(),
 			NewGeneratePersonalTokenCommand(),
+			billing.NewCommand(),
 		),
 	)
 }

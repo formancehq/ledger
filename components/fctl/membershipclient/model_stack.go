@@ -20,16 +20,16 @@ var _ MappedNullable = &Stack{}
 // Stack struct for Stack
 type Stack struct {
 	// Stack name
-	Name       string            `json:"name"`
-	Tags       map[string]string `json:"tags"`
-	Production bool              `json:"production"`
-	Metadata   map[string]string `json:"metadata"`
+	Name string `json:"name"`
+	Tags map[string]string `json:"tags"`
+	Production bool `json:"production"`
+	Metadata map[string]string `json:"metadata"`
 	// Stack ID
 	Id string `json:"id"`
 	// Organization ID
 	OrganizationId string `json:"organizationId"`
 	// Base stack uri
-	Uri         string  `json:"uri"`
+	Uri string `json:"uri"`
 	BoundRegion *Region `json:"boundRegion,omitempty"`
 }
 
@@ -258,7 +258,7 @@ func (o *Stack) SetBoundRegion(v Region) {
 }
 
 func (o Stack) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

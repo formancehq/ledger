@@ -72,7 +72,7 @@ func (o *ReadUserResponse) SetData(v User) {
 }
 
 func (o ReadUserResponse) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

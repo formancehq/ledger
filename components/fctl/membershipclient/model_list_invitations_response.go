@@ -72,7 +72,7 @@ func (o *ListInvitationsResponse) SetData(v []Invitation) {
 }
 
 func (o ListInvitationsResponse) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

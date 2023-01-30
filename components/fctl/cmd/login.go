@@ -4,33 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"os/exec"
-	"runtime"
 
 	fctl "github.com/formancehq/fctl/pkg"
 	"github.com/spf13/cobra"
 	"github.com/zitadel/oidc/pkg/client/rp"
 	"github.com/zitadel/oidc/pkg/oidc"
 )
-
-func open(url string) error {
-	var (
-		cmd  string
-		args []string
-	)
-
-	switch runtime.GOOS {
-	case "windows":
-		cmd = "cmd"
-		args = []string{"/c", "start"}
-	case "darwin":
-		cmd = "open"
-	default: // "linux", "freebsd", "openbsd", "netbsd"
-		cmd = "xdg-open"
-	}
-	args = append(args, url)
-	return exec.Command(cmd, args...).Start()
-}
 
 type Dialog interface {
 	DisplayURIAndCode(uri, code string)
@@ -57,7 +36,7 @@ func LogIn(ctx context.Context, dialog Dialog, relyingParty rp.RelyingParty) (*o
 
 	dialog.DisplayURIAndCode(deviceCode.GetVerificationUri(), deviceCode.GetUserCode())
 
-	if err := open(uri.String()); err != nil {
+	if err := fctl.Open(uri.String()); err != nil {
 		return nil, err
 	}
 

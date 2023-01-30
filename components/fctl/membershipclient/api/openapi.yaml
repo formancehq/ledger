@@ -135,6 +135,44 @@ paths:
                 $ref: '#/components/schemas/ReadUserResponse'
           description: Read a user
       summary: Read user
+  /organizations/{organizationId}/billing/portal:
+    get:
+      operationId: billingPortal
+      parameters:
+      - explode: false
+        in: path
+        name: organizationId
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPortalResponse'
+          description: Access to the billing portal
+      summary: Access to the billing portal
+  /organizations/{organizationId}/billing/setup:
+    get:
+      operationId: billingSetup
+      parameters:
+      - explode: false
+        in: path
+        name: organizationId
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSetupResponse'
+          description: Create a billing setup
+      summary: Create a billing setup
   /organizations/{organizationId}/stacks:
     get:
       operationId: listStacks
@@ -395,6 +433,26 @@ components:
       - production
       - tags
       type: object
+    BillingPortal:
+      example:
+        url: url
+      properties:
+        url:
+          description: Billing portal URL
+          type: string
+      required:
+      - url
+      type: object
+    BillingSetup:
+      example:
+        url: url
+      properties:
+        url:
+          description: Billing portal URL
+          type: string
+      required:
+      - url
+      type: object
     Stack:
       allOf:
       - $ref: '#/components/schemas/StackData'
@@ -454,6 +512,22 @@ components:
           items:
             $ref: '#/components/schemas/Stack'
           type: array
+      type: object
+    BillingPortalResponse:
+      example:
+        data:
+          url: url
+      properties:
+        data:
+          $ref: '#/components/schemas/BillingPortal'
+      type: object
+    BillingSetupResponse:
+      example:
+        data:
+          url: url
+      properties:
+        data:
+          $ref: '#/components/schemas/BillingSetup'
       type: object
     ListUsersResponse:
       example:

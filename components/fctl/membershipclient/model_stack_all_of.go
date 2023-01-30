@@ -24,7 +24,7 @@ type StackAllOf struct {
 	// Organization ID
 	OrganizationId string `json:"organizationId"`
 	// Base stack uri
-	Uri         string  `json:"uri"`
+	Uri string `json:"uri"`
 	BoundRegion *Region `json:"boundRegion,omitempty"`
 }
 
@@ -153,7 +153,7 @@ func (o *StackAllOf) SetBoundRegion(v Region) {
 }
 
 func (o StackAllOf) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}

@@ -5,6 +5,10 @@ api/openapi.yaml
 api_default.go
 client.go
 configuration.go
+docs/BillingPortal.md
+docs/BillingPortalResponse.md
+docs/BillingSetup.md
+docs/BillingSetupResponse.md
 docs/CreateInvitationResponse.md
 docs/CreateOrganizationResponse.md
 docs/CreateStackResponse.md
@@ -34,6 +38,10 @@ docs/UserData.md
 git_push.sh
 go.mod
 go.sum
+model_billing_portal.go
+model_billing_portal_response.go
+model_billing_setup.go
+model_billing_setup_response.go
 model_create_invitation_response.go
 model_create_organization_response.go
 model_create_stack_response.go
@@ -60,4 +68,5 @@ model_user.go
 model_user_all_of.go
 model_user_data.go
 response.go
+test/api_default_test.go
 utils.go
