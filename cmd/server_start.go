@@ -6,13 +6,9 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/logging/logginglogrus"
-	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/pkg/api"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"go.uber.org/fx"
 )
 
@@ -20,21 +16,6 @@ func NewServerStart() *cobra.Command {
 	return &cobra.Command{
 		Use: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			l := logrus.New()
-			if viper.GetBool(debugFlag) {
-				l.Level = logrus.DebugLevel
-			}
-			if viper.GetBool(otlptraces.OtelTracesFlag) {
-				l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
-					logrus.PanicLevel,
-					logrus.FatalLevel,
-					logrus.ErrorLevel,
-					logrus.WarnLevel,
-				)))
-			}
-			loggerFactory := logging.StaticLoggerFactory(logginglogrus.New(l))
-			logging.SetFactory(loggerFactory)
-
 			app := NewContainer(
 				viper.GetViper(),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {

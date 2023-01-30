@@ -3,6 +3,7 @@ module github.com/numary/ledger
 go 1.18
 
 require (
+	github.com/DmitriyVTitov/size v1.5.0
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/Shopify/sarama v1.37.2
 	github.com/ThreeDotsLabs/watermill v1.1.1

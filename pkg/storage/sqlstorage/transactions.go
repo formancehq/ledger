@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -473,14 +472,12 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			postingTxIds, postingIndices, sources, destinations,
 		}
 
-		logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryPostings, argsPostings)
 		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
 		if err != nil {
 			return s.error(err)
 		}
 	}
 
-	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", queryTxs, argsTxs)
 	_, err = executor.ExecContext(ctx, queryTxs, argsTxs...)
 	if err != nil {
 		return s.error(err)

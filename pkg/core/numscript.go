@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -50,11 +51,21 @@ func TxsToScriptsData(txsData ...TransactionData) []ScriptData {
 		}
 
 		sb.WriteString("vars {\n")
+		accVars := make([]string, 0)
 		for _, v := range accountsToVars {
-			sb.WriteString(fmt.Sprintf("\taccount $%s\n", v.name))
+			accVars = append(accVars, v.name)
 		}
+		sort.Strings(accVars)
+		for _, v := range accVars {
+			sb.WriteString(fmt.Sprintf("\taccount $%s\n", v))
+		}
+		monVars := make([]string, 0)
 		for _, v := range monetaryToVars {
-			sb.WriteString(fmt.Sprintf("\tmonetary $%s\n", v.name))
+			monVars = append(monVars, v.name)
+		}
+		sort.Strings(monVars)
+		for _, v := range monVars {
+			sb.WriteString(fmt.Sprintf("\tmonetary $%s\n", v))
 		}
 		sb.WriteString("}\n")
 

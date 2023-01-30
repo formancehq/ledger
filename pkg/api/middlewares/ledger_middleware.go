@@ -2,12 +2,9 @@ package middlewares
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 
-	"github.com/formancehq/go-libs/logging"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/numary/ledger/pkg"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
@@ -28,36 +25,23 @@ func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("ledger")
 		if name == "" {
+			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
 
-		ctx, span := opentelemetry.Start(c.Request.Context(), "Ledger access")
+		span := opentelemetry.WrapGinContext(c, "Ledger access")
 		defer span.End()
 
-		contextKeyID := uuid.NewString()
-		id := span.SpanContext().SpanID()
-		if id == [8]byte{} {
-			logging.GetLogger(ctx).Debugf(
-				"ledger middleware SpanID is empty, new id generated %s", contextKeyID)
-		} else {
-			contextKeyID = fmt.Sprint(id)
-		}
-		ctx = context.WithValue(ctx, pkg.KeyContextID, contextKeyID)
-		c.Header(string(pkg.KeyContextID), contextKeyID)
+		contextlogger.WrapGinRequest(c)
 
-		loggerFactory := logging.StaticLoggerFactory(
-			contextlogger.New(ctx, logging.GetLogger(ctx)))
-		logging.SetFactory(loggerFactory)
-
-		l, err := m.resolver.GetLedger(ctx, name)
+		l, err := m.resolver.GetLedger(c.Request.Context(), name)
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
 		}
-		defer l.Close(ctx)
-		c.Set("ledger", l)
+		defer l.Close(context.Background())
 
-		c.Request = c.Request.WithContext(ctx)
+		c.Set("ledger", l)
 		c.Next()
 	}
 }

@@ -52,33 +52,39 @@ func newBufferedWriter(rw gin.ResponseWriter) *bufferedResponseWriter {
 func Transaction(locker Locker) func(c *gin.Context) {
 	return func(c *gin.Context) {
 
-		ctx, span := opentelemetry.Start(c.Request.Context(), "Ledger locking")
+		ctx, span := opentelemetry.Start(c.Request.Context(), "Wait ledger lock")
 		defer span.End()
 
 		c.Request = c.Request.WithContext(ctx)
 
-		unlock, err := locker.Lock(c.Request.Context(), c.Param("ledger"))
-		if err != nil {
-			panic(err)
-		}
-		defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
-
 		bufferedWriter := newBufferedWriter(c.Writer)
-		c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
 		c.Writer = bufferedWriter
-		defer func() {
-			_ = storage.RollbackTransaction(c.Request.Context())
-		}()
 
-		c.Next()
-
-		if c.Writer.Status() >= 200 && c.Writer.Status() < 300 &&
-			storage.IsTransactionRegistered(c.Request.Context()) {
-			if err := storage.CommitTransaction(c.Request.Context()); err != nil {
-				apierrors.ResponseError(c, err)
-				return
+		func() {
+			unlock, err := locker.Lock(c.Request.Context(), c.Param("ledger"))
+			if err != nil {
+				panic(err)
 			}
-		}
+			defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
+
+			ctx, span = opentelemetry.Start(c.Request.Context(), "Ledger locked")
+			defer span.End()
+			c.Request = c.Request.WithContext(ctx)
+			c.Request = c.Request.WithContext(storage.TransactionalContext(c.Request.Context()))
+			defer func() {
+				_ = storage.RollbackTransaction(c.Request.Context())
+			}()
+
+			c.Next()
+
+			if c.Writer.Status() >= 200 && c.Writer.Status() < 300 &&
+				storage.IsTransactionRegistered(c.Request.Context()) {
+				if err := storage.CommitTransaction(c.Request.Context()); err != nil {
+					apierrors.ResponseError(c, err)
+					return
+				}
+			}
+		}()
 
 		if err := bufferedWriter.WriteResponse(); err != nil {
 			_ = c.Error(err)
