@@ -2,14 +2,18 @@ package ledger_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"testing"
 
+	"github.com/DmitriyVTitov/size"
+	"github.com/formancehq/machine/script/compiler"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -748,6 +752,81 @@ func assertBalance(t *testing.T, l *ledger.Ledger, account, asset string, amount
 		asset, account,
 		amount, b,
 	)
+}
+
+func TestNewMachineFromScript(t *testing.T) {
+	_, span := opentelemetry.Start(context.Background(), "TestNewMachineFromScript")
+	defer span.End()
+
+	txData := core.TransactionData{}
+	for i := 0; i < nbPostings; i++ {
+		txData.Postings = append(txData.Postings, core.Posting{
+			Source:      "world",
+			Destination: "benchmarks:" + strconv.Itoa(i),
+			Asset:       "COIN",
+			Amount:      core.NewMonetaryInt(10),
+		})
+	}
+	_, err := txData.Postings.Validate()
+	require.NoError(t, err)
+	scripts := core.TxsToScriptsData(txData)
+	script := scripts[0].Plain
+
+	h := sha256.New()
+	_, err = h.Write([]byte(script))
+	require.NoError(t, err)
+	key := h.Sum(nil)
+	keySizeBytes := size.Of(key)
+	require.NotEqual(t, -1, keySizeBytes)
+
+	prog, err := compiler.Compile(script)
+	require.NoError(t, err)
+	progSizeBytes := size.Of(*prog)
+	require.NotEqual(t, -1, progSizeBytes)
+
+	t.Run("exact size", func(t *testing.T) {
+		capacityBytes := int64(keySizeBytes + progSizeBytes)
+
+		cache := ledger.NewCache(capacityBytes, 1, true)
+
+		m, err := ledger.NewMachineFromScript(script, cache, span)
+		require.NoError(t, err)
+		require.NotNil(t, m)
+		cache.Wait()
+		require.Equal(t, uint64(0), cache.Metrics.Hits())
+		require.Equal(t, uint64(1), cache.Metrics.Misses())
+		require.Equal(t, uint64(1), cache.Metrics.KeysAdded())
+
+		m, err = ledger.NewMachineFromScript(script, cache, span)
+		require.NoError(t, err)
+		require.NotNil(t, m)
+		cache.Wait()
+		require.Equal(t, uint64(1), cache.Metrics.Hits())
+		require.Equal(t, uint64(1), cache.Metrics.Misses())
+		require.Equal(t, uint64(1), cache.Metrics.KeysAdded())
+	})
+
+	t.Run("one byte too small", func(t *testing.T) {
+		capacityBytes := int64(keySizeBytes+progSizeBytes) - 1
+
+		cache := ledger.NewCache(capacityBytes, 1, true)
+
+		m, err := ledger.NewMachineFromScript(script, cache, span)
+		require.NoError(t, err)
+		require.NotNil(t, m)
+		cache.Wait()
+		require.Equal(t, uint64(0), cache.Metrics.Hits())
+		require.Equal(t, uint64(1), cache.Metrics.Misses())
+		require.Equal(t, uint64(0), cache.Metrics.KeysAdded())
+
+		m, err = ledger.NewMachineFromScript(script, cache, span)
+		require.NoError(t, err)
+		require.NotNil(t, m)
+		cache.Wait()
+		require.Equal(t, uint64(0), cache.Metrics.Hits())
+		require.Equal(t, uint64(2), cache.Metrics.Misses())
+		require.Equal(t, uint64(0), cache.Metrics.KeysAdded())
+	})
 }
 
 var execRes []core.ExpandedTransaction

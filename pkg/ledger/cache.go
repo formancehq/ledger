@@ -5,10 +5,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-func NewCache(bytesCapacity, maxNumKeys int64, metrics bool) *ristretto.Cache {
+func NewCache(capacityBytes, maxNumKeys int64, metrics bool) *ristretto.Cache {
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: maxNumKeys * 10,
-		MaxCost:     bytesCapacity,
+		MaxCost:     capacityBytes,
 		BufferItems: 64,
 		Metrics:     metrics,
 	})

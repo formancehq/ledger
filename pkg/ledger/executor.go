@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DmitriyVTitov/size"
+	"github.com/dgraph-io/ristretto"
 	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
@@ -17,10 +18,10 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
-
 	ctx, span := opentelemetry.Start(ctx, "Execute")
 	defer span.End()
 
@@ -103,32 +104,10 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				"no script to execute")
 		}
 
-		h := sha256.New()
-		if _, err := h.Write([]byte(script.Plain)); err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err, "hashing script")
-		}
-		curr := h.Sum(nil)
-
-		var m *vm.Machine
-		if cachedProgram, found := l.cache.Get(curr); found {
-			span.SetAttributes(attribute.Bool("numscript-cache-hit", true))
-			m = vm.NewMachine(cachedProgram.(program.Program))
-		} else {
-			span.SetAttributes(attribute.Bool("numscript-cache-hit", false))
-			newProgram, err := compiler.Compile(script.Plain)
-			if err != nil {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					err.Error())
-			}
-
-			s := size.Of(*newProgram)
-			if s == -1 {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					fmt.Errorf("error while calculating the size in bytes of script: %s",
-						script.Plain).Error())
-			}
-			l.cache.Set(curr, *newProgram, int64(s))
-			m = vm.NewMachine(*newProgram)
+		m, err := NewMachineFromScript(script.Plain, l.cache, span)
+		if err != nil {
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
+				err.Error())
 		}
 
 		if err := m.SetVarsFromJSON(script.Vars); err != nil {
@@ -372,4 +351,31 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	}
 
 	return txs, nil
+}
+
+func NewMachineFromScript(script string, cache *ristretto.Cache, span trace.Span) (*vm.Machine, error) {
+	h := sha256.New()
+	if _, err := h.Write([]byte(script)); err != nil {
+		return nil, errors.Wrap(err, "hashing script")
+	}
+	curr := h.Sum(nil)
+
+	if cachedProgram, found := cache.Get(curr); found {
+		span.SetAttributes(attribute.Bool("numscript-cache-hit", true))
+		return vm.NewMachine(cachedProgram.(program.Program)), nil
+	}
+
+	span.SetAttributes(attribute.Bool("numscript-cache-hit", false))
+	prog, err := compiler.Compile(script)
+	if err != nil {
+		return nil, err
+	}
+
+	progSizeBytes := size.Of(*prog)
+	if progSizeBytes == -1 {
+		return nil, fmt.Errorf("error while calculating the size in bytes of the program")
+	}
+	cache.Set(curr, *prog, int64(progSizeBytes))
+
+	return vm.NewMachine(*prog), nil
 }
