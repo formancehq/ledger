@@ -7,16 +7,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DmitriyVTitov/size"
+	"github.com/dgraph-io/ristretto"
 	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
 	"github.com/formancehq/machine/vm/program"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, scripts ...core.ScriptData) ([]core.ExpandedTransaction, error) {
+	ctx, span := opentelemetry.Start(ctx, "Execute")
+	defer span.End()
+
 	if len(scripts) == 0 {
 		return []core.ExpandedTransaction{},
 			NewScriptError(ScriptErrorNoScript, "no script to execute")
@@ -96,26 +104,13 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 				"no script to execute")
 		}
 
-		h := sha256.New()
-		if _, err = h.Write([]byte(script.Plain)); err != nil {
-			return []core.ExpandedTransaction{}, errors.Wrap(err, "hashing script")
-		}
-		curr := h.Sum(nil)
-
-		var m *vm.Machine
-		if cachedP, found := l.cache.Get(curr); found {
-			m = vm.NewMachine(cachedP.(program.Program))
-		} else {
-			newP, err := compiler.Compile(script.Plain)
-			if err != nil {
-				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					err.Error())
-			}
-			l.cache.Set(curr, *newP, 1)
-			m = vm.NewMachine(*newP)
+		m, err := NewMachineFromScript(script.Plain, l.cache, span)
+		if err != nil {
+			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
+				err.Error())
 		}
 
-		if err = m.SetVarsFromJSON(script.Vars); err != nil {
+		if err := m.SetVarsFromJSON(script.Vars); err != nil {
 			return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 				errors.Wrap(err, "could not set variables").Error())
 		}
@@ -356,4 +351,31 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 	}
 
 	return txs, nil
+}
+
+func NewMachineFromScript(script string, cache *ristretto.Cache, span trace.Span) (*vm.Machine, error) {
+	h := sha256.New()
+	if _, err := h.Write([]byte(script)); err != nil {
+		return nil, errors.Wrap(err, "hashing script")
+	}
+	curr := h.Sum(nil)
+
+	if cachedProgram, found := cache.Get(curr); found {
+		span.SetAttributes(attribute.Bool("numscript-cache-hit", true))
+		return vm.NewMachine(cachedProgram.(program.Program)), nil
+	}
+
+	span.SetAttributes(attribute.Bool("numscript-cache-hit", false))
+	prog, err := compiler.Compile(script)
+	if err != nil {
+		return nil, err
+	}
+
+	progSizeBytes := size.Of(*prog)
+	if progSizeBytes == -1 {
+		return nil, fmt.Errorf("error while calculating the size in bytes of the program")
+	}
+	cache.Set(curr, *prog, int64(progSizeBytes))
+
+	return vm.NewMachine(*prog), nil
 }

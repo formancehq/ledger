@@ -250,7 +250,8 @@ func TestContainers(t *testing.T) {
 			// Default options
 			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 			v.Set(storageDirFlag, "/tmp")
-			v.Set(numscriptCacheCapacity, 100)
+			v.Set(cacheCapacityBytes, 100000000)
+			v.Set(cacheMaxNumKeys, 100)
 			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
 			app := NewContainer(v, options...)
