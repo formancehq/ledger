@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/DmitriyVTitov/size"
-	"github.com/formancehq/go-libs/logging"
 	machine "github.com/formancehq/machine/core"
 	"github.com/formancehq/machine/script/compiler"
 	"github.com/formancehq/machine/vm"
@@ -111,27 +110,25 @@ func (l *Ledger) Execute(ctx context.Context, checkMapping, preview bool, script
 		curr := h.Sum(nil)
 
 		var m *vm.Machine
-		if cachedP, found := l.cache.Get(curr); found {
-			logging.Debugf("Ledger.Execute: Numscript found in cache: %x", curr)
-			m = vm.NewMachine(cachedP.(program.Program))
+		if cachedProgram, found := l.cache.Get(curr); found {
+			span.SetAttributes(attribute.Bool("numscript-cache-hit", true))
+			m = vm.NewMachine(cachedProgram.(program.Program))
 		} else {
-			compileStartAt := time.Now()
-			newP, err := compiler.Compile(script.Plain)
-			compileTerminatedAt := time.Now()
-			span.SetAttributes(attribute.Int("compilation-duration", int(compileTerminatedAt.Sub(compileStartAt).Seconds())))
+			span.SetAttributes(attribute.Bool("numscript-cache-hit", false))
+			newProgram, err := compiler.Compile(script.Plain)
 			if err != nil {
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					err.Error())
 			}
-			s := size.Of(*newP)
+
+			s := size.Of(*newProgram)
 			if s == -1 {
 				return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					fmt.Errorf("error while calculating the size in bytes of script: %s",
 						script.Plain).Error())
 			}
-			ok := l.cache.Set(curr, *newP, int64(s))
-			logging.Debugf("Ledger.Execute: Numscript NOT found in cache (size %d, set attempt returned %v): %x", s, ok, curr)
-			m = vm.NewMachine(*newP)
+			l.cache.Set(curr, *newProgram, int64(s))
+			m = vm.NewMachine(*newProgram)
 		}
 
 		if err := m.SetVarsFromJSON(script.Vars); err != nil {
