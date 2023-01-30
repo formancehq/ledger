@@ -62,7 +62,7 @@ jobs:
           go-version-file: 'components/${{ needs.Extract.outputs.service }}/go.mod'
           cache-dependency-path: 'components/${{ needs.Extract.outputs.service }}/go.sum'
           cache: true
-      - run: task ${{ matrix.folder }}:tests
+      - run: task ${{ needs.Extract.outputs.service }}:tests
 
   GoReleaser:
     name: GoReleaser
