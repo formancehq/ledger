@@ -95,6 +95,7 @@ from Formance.model.metadata import Metadata
 from Formance.model.migration_info import MigrationInfo
 from Formance.model.modulr_config import ModulrConfig
 from Formance.model.monetary import Monetary
+from Formance.model.orchestration_cursor import OrchestrationCursor
 from Formance.model.payment import Payment
 from Formance.model.payment_adjustment import PaymentAdjustment
 from Formance.model.payment_metadata import PaymentMetadata
@@ -152,6 +153,7 @@ from Formance.model.wallet import Wallet
 from Formance.model.wallet_subject import WalletSubject
 from Formance.model.wallet_with_balances import WalletWithBalances
 from Formance.model.wallets_aggregated_volumes import WalletsAggregatedVolumes
+from Formance.model.wallets_cursor import WalletsCursor
 from Formance.model.wallets_error_response import WalletsErrorResponse
 from Formance.model.wallets_transaction import WalletsTransaction
 from Formance.model.wallets_volume import WalletsVolume

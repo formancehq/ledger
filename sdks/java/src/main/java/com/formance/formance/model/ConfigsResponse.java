@@ -15,7 +15,7 @@ package com.formance.formance.model;
 
 import java.util.Objects;
 import java.util.Arrays;
-import com.formance.formance.model.ConfigsResponseCursor;
+import com.formance.formance.model.Cursor;
 import com.google.gson.TypeAdapter;
 import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
@@ -30,12 +30,12 @@ import java.io.IOException;
 public class ConfigsResponse {
   public static final String SERIALIZED_NAME_CURSOR = "cursor";
   @SerializedName(SERIALIZED_NAME_CURSOR)
-  private ConfigsResponseCursor cursor;
+  private Cursor cursor;
 
   public ConfigsResponse() {
   }
 
-  public ConfigsResponse cursor(ConfigsResponseCursor cursor) {
+  public ConfigsResponse cursor(Cursor cursor) {
     
     this.cursor = cursor;
     return this;
@@ -47,12 +47,12 @@ public class ConfigsResponse {
   **/
   @javax.annotation.Nonnull
 
-  public ConfigsResponseCursor getCursor() {
+  public Cursor getCursor() {
     return cursor;
   }
 
 
-  public void setCursor(ConfigsResponseCursor cursor) {
+  public void setCursor(Cursor cursor) {
     this.cursor = cursor;
   }
 

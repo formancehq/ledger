@@ -140,7 +140,7 @@ class ListRunsResponse(
                         # classes don't exist yet because their module has not finished
                         # loading
                         return [
-                            Cursor,
+                            OrchestrationCursor,
                             cls.all_of_1,
                         ]
             
@@ -200,5 +200,5 @@ class ListRunsResponse(
             **kwargs,
         )
 
-from Formance.model.cursor import Cursor
+from Formance.model.orchestration_cursor import OrchestrationCursor
 from Formance.model.workflow_occurrence import WorkflowOccurrence

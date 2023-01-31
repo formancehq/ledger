@@ -36,8 +36,6 @@ docs/ConfigInfoResponse.md
 docs/ConfigResponse.md
 docs/ConfigUser.md
 docs/ConfigsResponse.md
-docs/ConfigsResponseCursor.md
-docs/ConfigsResponseCursorAllOf.md
 docs/ConfirmHoldRequest.md
 docs/Connector.md
 docs/ConnectorConfig.md
@@ -111,6 +109,7 @@ docs/MigrationInfo.md
 docs/ModulrConfig.md
 docs/Monetary.md
 docs/OrchestrationApi.md
+docs/OrchestrationCursor.md
 docs/Payment.md
 docs/PaymentAdjustment.md
 docs/PaymentMetadata.md
@@ -193,6 +192,7 @@ docs/WalletSubject.md
 docs/WalletWithBalances.md
 docs/WalletWithBalancesBalances.md
 docs/WalletsApi.md
+docs/WalletsCursor.md
 docs/WalletsErrorResponse.md
 docs/WalletsTransaction.md
 docs/WalletsVolume.md
@@ -269,8 +269,6 @@ src/main/java/com/formance/formance/model/ConfigInfoResponse.java
 src/main/java/com/formance/formance/model/ConfigResponse.java
 src/main/java/com/formance/formance/model/ConfigUser.java
 src/main/java/com/formance/formance/model/ConfigsResponse.java
-src/main/java/com/formance/formance/model/ConfigsResponseCursor.java
-src/main/java/com/formance/formance/model/ConfigsResponseCursorAllOf.java
 src/main/java/com/formance/formance/model/ConfirmHoldRequest.java
 src/main/java/com/formance/formance/model/Connector.java
 src/main/java/com/formance/formance/model/ConnectorConfig.java
@@ -339,6 +337,7 @@ src/main/java/com/formance/formance/model/MappingResponse.java
 src/main/java/com/formance/formance/model/MigrationInfo.java
 src/main/java/com/formance/formance/model/ModulrConfig.java
 src/main/java/com/formance/formance/model/Monetary.java
+src/main/java/com/formance/formance/model/OrchestrationCursor.java
 src/main/java/com/formance/formance/model/Payment.java
 src/main/java/com/formance/formance/model/PaymentAdjustment.java
 src/main/java/com/formance/formance/model/PaymentMetadata.java
@@ -412,6 +411,7 @@ src/main/java/com/formance/formance/model/Wallet.java
 src/main/java/com/formance/formance/model/WalletSubject.java
 src/main/java/com/formance/formance/model/WalletWithBalances.java
 src/main/java/com/formance/formance/model/WalletWithBalancesBalances.java
+src/main/java/com/formance/formance/model/WalletsCursor.java
 src/main/java/com/formance/formance/model/WalletsErrorResponse.java
 src/main/java/com/formance/formance/model/WalletsTransaction.java
 src/main/java/com/formance/formance/model/WalletsVolume.java

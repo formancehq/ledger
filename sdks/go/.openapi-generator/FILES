@@ -53,8 +53,6 @@ docs/ConfigInfoResponse.md
 docs/ConfigResponse.md
 docs/ConfigUser.md
 docs/ConfigsResponse.md
-docs/ConfigsResponseCursor.md
-docs/ConfigsResponseCursorAllOf.md
 docs/ConfirmHoldRequest.md
 docs/Connector.md
 docs/ConnectorConfig.md
@@ -128,6 +126,7 @@ docs/MigrationInfo.md
 docs/ModulrConfig.md
 docs/Monetary.md
 docs/OrchestrationApi.md
+docs/OrchestrationCursor.md
 docs/Payment.md
 docs/PaymentAdjustment.md
 docs/PaymentMetadata.md
@@ -210,6 +209,7 @@ docs/WalletSubject.md
 docs/WalletWithBalances.md
 docs/WalletWithBalancesBalances.md
 docs/WalletsApi.md
+docs/WalletsCursor.md
 docs/WalletsErrorResponse.md
 docs/WalletsTransaction.md
 docs/WalletsVolume.md
@@ -250,8 +250,6 @@ model_config_info_response.go
 model_config_response.go
 model_config_user.go
 model_configs_response.go
-model_configs_response_cursor.go
-model_configs_response_cursor_all_of.go
 model_confirm_hold_request.go
 model_connector.go
 model_connector_config.go
@@ -320,6 +318,7 @@ model_mapping_response.go
 model_migration_info.go
 model_modulr_config.go
 model_monetary.go
+model_orchestration_cursor.go
 model_payment.go
 model_payment_adjustment.go
 model_payment_metadata.go
@@ -393,6 +392,7 @@ model_wallet.go
 model_wallet_subject.go
 model_wallet_with_balances.go
 model_wallet_with_balances_balances.go
+model_wallets_cursor.go
 model_wallets_error_response.go
 model_wallets_transaction.go
 model_wallets_volume.go

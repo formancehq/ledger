@@ -140,7 +140,7 @@ class GetHoldsResponse(
                         # classes don't exist yet because their module has not finished
                         # loading
                         return [
-                            Cursor,
+                            WalletsCursor,
                             cls.all_of_1,
                         ]
             
@@ -199,5 +199,5 @@ class GetHoldsResponse(
             **kwargs,
         )
 
-from Formance.model.cursor import Cursor
 from Formance.model.hold import Hold
+from Formance.model.wallets_cursor import WalletsCursor

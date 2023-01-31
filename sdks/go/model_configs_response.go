@@ -20,14 +20,14 @@ var _ MappedNullable = &ConfigsResponse{}
 
 // ConfigsResponse struct for ConfigsResponse
 type ConfigsResponse struct {
-	Cursor ConfigsResponseCursor `json:"cursor"`
+	Cursor Cursor `json:"cursor"`
 }
 
 // NewConfigsResponse instantiates a new ConfigsResponse object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewConfigsResponse(cursor ConfigsResponseCursor) *ConfigsResponse {
+func NewConfigsResponse(cursor Cursor) *ConfigsResponse {
 	this := ConfigsResponse{}
 	this.Cursor = cursor
 	return &this
@@ -42,9 +42,9 @@ func NewConfigsResponseWithDefaults() *ConfigsResponse {
 }
 
 // GetCursor returns the Cursor field value
-func (o *ConfigsResponse) GetCursor() ConfigsResponseCursor {
+func (o *ConfigsResponse) GetCursor() Cursor {
 	if o == nil {
-		var ret ConfigsResponseCursor
+		var ret Cursor
 		return ret
 	}
 
@@ -53,7 +53,7 @@ func (o *ConfigsResponse) GetCursor() ConfigsResponseCursor {
 
 // GetCursorOk returns a tuple with the Cursor field value
 // and a boolean to check if the value has been set.
-func (o *ConfigsResponse) GetCursorOk() (*ConfigsResponseCursor, bool) {
+func (o *ConfigsResponse) GetCursorOk() (*Cursor, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -61,7 +61,7 @@ func (o *ConfigsResponse) GetCursorOk() (*ConfigsResponseCursor, bool) {
 }
 
 // SetCursor sets field value
-func (o *ConfigsResponse) SetCursor(v ConfigsResponseCursor) {
+func (o *ConfigsResponse) SetCursor(v Cursor) {
 	o.Cursor = v
 }
 

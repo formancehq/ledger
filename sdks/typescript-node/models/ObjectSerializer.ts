@@ -26,8 +26,6 @@ export * from '../models/ConfigInfoResponse';
 export * from '../models/ConfigResponse';
 export * from '../models/ConfigUser';
 export * from '../models/ConfigsResponse';
-export * from '../models/ConfigsResponseCursor';
-export * from '../models/ConfigsResponseCursorAllOf';
 export * from '../models/ConfirmHoldRequest';
 export * from '../models/Connector';
 export * from '../models/ConnectorConfig';
@@ -96,6 +94,7 @@ export * from '../models/MigrationInfo';
 export * from '../models/ModelError';
 export * from '../models/ModulrConfig';
 export * from '../models/Monetary';
+export * from '../models/OrchestrationCursor';
 export * from '../models/Payment';
 export * from '../models/PaymentAdjustment';
 export * from '../models/PaymentMetadata';
@@ -169,6 +168,7 @@ export * from '../models/Wallet';
 export * from '../models/WalletSubject';
 export * from '../models/WalletWithBalances';
 export * from '../models/WalletWithBalancesBalances';
+export * from '../models/WalletsCursor';
 export * from '../models/WalletsErrorResponse';
 export * from '../models/WalletsTransaction';
 export * from '../models/WalletsVolume';
@@ -206,8 +206,6 @@ import { ConfigInfoResponse } from '../models/ConfigInfoResponse';
 import { ConfigResponse } from '../models/ConfigResponse';
 import { ConfigUser } from '../models/ConfigUser';
 import { ConfigsResponse } from '../models/ConfigsResponse';
-import { ConfigsResponseCursor } from '../models/ConfigsResponseCursor';
-import { ConfigsResponseCursorAllOf } from '../models/ConfigsResponseCursorAllOf';
 import { ConfirmHoldRequest } from '../models/ConfirmHoldRequest';
 import { Connector } from '../models/Connector';
 import { ConnectorConfig } from '../models/ConnectorConfig';
@@ -276,6 +274,7 @@ import { MigrationInfo   , MigrationInfoStateEnum   } from '../models/MigrationI
 import { ModelError, ModelErrorErrorCodeEnum    } from '../models/ModelError';
 import { ModulrConfig } from '../models/ModulrConfig';
 import { Monetary } from '../models/Monetary';
+import { OrchestrationCursor } from '../models/OrchestrationCursor';
 import { Payment   , PaymentTypeEnum     , PaymentSchemeEnum        } from '../models/Payment';
 import { PaymentAdjustment      } from '../models/PaymentAdjustment';
 import { PaymentMetadata } from '../models/PaymentMetadata';
@@ -349,6 +348,7 @@ import { Wallet } from '../models/Wallet';
 import { WalletSubject } from '../models/WalletSubject';
 import { WalletWithBalances } from '../models/WalletWithBalances';
 import { WalletWithBalancesBalances } from '../models/WalletWithBalancesBalances';
+import { WalletsCursor } from '../models/WalletsCursor';
 import { WalletsErrorResponse, WalletsErrorResponseErrorCodeEnum    } from '../models/WalletsErrorResponse';
 import { WalletsTransaction } from '../models/WalletsTransaction';
 import { WalletsVolume } from '../models/WalletsVolume';
@@ -419,8 +419,6 @@ let typeMap: {[index: string]: any} = {
     "ConfigResponse": ConfigResponse,
     "ConfigUser": ConfigUser,
     "ConfigsResponse": ConfigsResponse,
-    "ConfigsResponseCursor": ConfigsResponseCursor,
-    "ConfigsResponseCursorAllOf": ConfigsResponseCursorAllOf,
     "ConfirmHoldRequest": ConfirmHoldRequest,
     "ConnectorConfig": ConnectorConfig,
     "ConnectorConfigResponse": ConnectorConfigResponse,
@@ -487,6 +485,7 @@ let typeMap: {[index: string]: any} = {
     "ModelError": ModelError,
     "ModulrConfig": ModulrConfig,
     "Monetary": Monetary,
+    "OrchestrationCursor": OrchestrationCursor,
     "Payment": Payment,
     "PaymentAdjustment": PaymentAdjustment,
     "PaymentMetadata": PaymentMetadata,
@@ -559,6 +558,7 @@ let typeMap: {[index: string]: any} = {
     "WalletSubject": WalletSubject,
     "WalletWithBalances": WalletWithBalances,
     "WalletWithBalancesBalances": WalletWithBalancesBalances,
+    "WalletsCursor": WalletsCursor,
     "WalletsErrorResponse": WalletsErrorResponse,
     "WalletsTransaction": WalletsTransaction,
     "WalletsVolume": WalletsVolume,

@@ -140,7 +140,7 @@ class ListWalletsResponse(
                         # classes don't exist yet because their module has not finished
                         # loading
                         return [
-                            Cursor,
+                            WalletsCursor,
                             cls.all_of_1,
                         ]
             
@@ -199,5 +199,5 @@ class ListWalletsResponse(
             **kwargs,
         )
 
-from Formance.model.cursor import Cursor
 from Formance.model.wallet import Wallet
+from Formance.model.wallets_cursor import WalletsCursor

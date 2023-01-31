@@ -5771,25 +5771,26 @@
         ],
         "properties": {
           "cursor": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Cursor"
-              },
-              {
-                "properties": {
-                  "data": {
-                    "items": {
-                      "$ref": "#/components/schemas/webhooksConfig"
-                    },
-                    "type": "array"
-                  }
-                },
-                "type": "object",
-                "required": [
-                  "data"
-                ]
-              }
-            ]
+            "$ref": "#/components/schemas/Cursor"
+          }
+        }
+      },
+      "Cursor": {
+        "type": "object",
+        "required": [
+          "hasMore",
+          "data"
+        ],
+        "properties": {
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/webhooksConfig"
+            }
           }
         }
       },
@@ -6068,7 +6069,7 @@
           "cursor": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Cursor"
+                "$ref": "#/components/schemas/walletsCursor"
               },
               {
                 "properties": {
@@ -6170,7 +6171,7 @@
           "txid"
         ]
       },
-      "Cursor": {
+      "walletsCursor": {
         "type": "object",
         "required": [
           "pageSize"
@@ -6206,7 +6207,7 @@
           "cursor": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Cursor"
+                "$ref": "#/components/schemas/walletsCursor"
               },
               {
                 "properties": {
@@ -6235,7 +6236,7 @@
           "cursor": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Cursor"
+                "$ref": "#/components/schemas/walletsCursor"
               },
               {
                 "properties": {
@@ -6502,7 +6503,7 @@
           "cursor": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Cursor"
+                "$ref": "#/components/schemas/walletsCursor"
               },
               {
                 "properties": {
@@ -6562,6 +6563,33 @@
           },
           "errorMessage": {
             "type": "string"
+          }
+        }
+      },
+      "orchestrationCursor": {
+        "type": "object",
+        "required": [
+          "pageSize"
+        ],
+        "properties": {
+          "pageSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 15
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": false
+          },
+          "previous": {
+            "type": "string",
+            "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+          },
+          "next": {
+            "type": "string",
+            "example": ""
           }
         }
       },
@@ -6746,7 +6774,7 @@
           "cursor": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Cursor"
+                "$ref": "#/components/schemas/orchestrationCursor"
               },
               {
                 "properties": {

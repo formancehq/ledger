@@ -1,7 +1,7 @@
 /*
 Formance Stack API
 
-Open, modular foundation for unique payments flows  # Introduction This API is documented in **OpenAPI format**.  # Authentication Formance Stack offers one forms of authentication:   - OAuth2 OAuth2 - an open protocol to allow secure authorization in a simple and standard method from web, mobile and desktop applications. <SecurityDefinitions />
+Open, modular foundation for unique payments flows  # Introduction This API is documented in **OpenAPI format**.  # Authentication Formance Stack offers one forms of authentication:   - OAuth2 OAuth2 - an open protocol to allow secure authorization in a simple and standard method from web, mobile and desktop applications. <SecurityDefinitions /> 
 
 API version: develop
 Contact: support@formance.com
@@ -15,12 +15,15 @@ import (
 	"encoding/json"
 )
 
+// checks if the WalletsCursor type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &WalletsCursor{}
+
 // WalletsCursor struct for WalletsCursor
 type WalletsCursor struct {
-	PageSize int64   `json:"pageSize"`
-	HasMore  *bool   `json:"hasMore,omitempty"`
+	PageSize int64 `json:"pageSize"`
+	HasMore *bool `json:"hasMore,omitempty"`
 	Previous *string `json:"previous,omitempty"`
-	Next     *string `json:"next,omitempty"`
+	Next *string `json:"next,omitempty"`
 }
 
 // NewWalletsCursor instantiates a new WalletsCursor object
@@ -162,10 +165,16 @@ func (o *WalletsCursor) SetNext(v string) {
 }
 
 func (o WalletsCursor) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
-	if true {
-		toSerialize["pageSize"] = o.PageSize
+	toSerialize,err := o.ToMap()
+	if err != nil {
+		return []byte{}, err
 	}
+	return json.Marshal(toSerialize)
+}
+
+func (o WalletsCursor) ToMap() (map[string]interface{}, error) {
+	toSerialize := map[string]interface{}{}
+	toSerialize["pageSize"] = o.PageSize
 	if !isNil(o.HasMore) {
 		toSerialize["hasMore"] = o.HasMore
 	}
@@ -175,7 +184,7 @@ func (o WalletsCursor) MarshalJSON() ([]byte, error) {
 	if !isNil(o.Next) {
 		toSerialize["next"] = o.Next
 	}
-	return json.Marshal(toSerialize)
+	return toSerialize, nil
 }
 
 type NullableWalletsCursor struct {
@@ -213,3 +222,5 @@ func (v *NullableWalletsCursor) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

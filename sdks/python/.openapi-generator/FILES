@@ -193,6 +193,8 @@ Formance/model/modulr_config.py
 Formance/model/modulr_config.pyi
 Formance/model/monetary.py
 Formance/model/monetary.pyi
+Formance/model/orchestration_cursor.py
+Formance/model/orchestration_cursor.pyi
 Formance/model/payment.py
 Formance/model/payment.pyi
 Formance/model/payment_adjustment.py
@@ -307,6 +309,8 @@ Formance/model/wallet_with_balances.py
 Formance/model/wallet_with_balances.pyi
 Formance/model/wallets_aggregated_volumes.py
 Formance/model/wallets_aggregated_volumes.pyi
+Formance/model/wallets_cursor.py
+Formance/model/wallets_cursor.pyi
 Formance/model/wallets_error_response.py
 Formance/model/wallets_error_response.pyi
 Formance/model/wallets_transaction.py
@@ -431,6 +435,7 @@ docs/models/Metadata.md
 docs/models/MigrationInfo.md
 docs/models/ModulrConfig.md
 docs/models/Monetary.md
+docs/models/OrchestrationCursor.md
 docs/models/Payment.md
 docs/models/PaymentAdjustment.md
 docs/models/PaymentMetadata.md
@@ -488,6 +493,7 @@ docs/models/Wallet.md
 docs/models/WalletSubject.md
 docs/models/WalletWithBalances.md
 docs/models/WalletsAggregatedVolumes.md
+docs/models/WalletsCursor.md
 docs/models/WalletsErrorResponse.md
 docs/models/WalletsTransaction.md
 docs/models/WalletsVolume.md

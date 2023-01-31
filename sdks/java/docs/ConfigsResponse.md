@@ -7,7 +7,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-|**cursor** | [**ConfigsResponseCursor**](ConfigsResponseCursor.md) |  |  |
+|**cursor** | [**Cursor**](Cursor.md) |  |  |
 
 
 

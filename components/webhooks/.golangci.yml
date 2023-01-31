@@ -1,0 +1,19 @@
+linters:
+  enable:
+    - gofmt
+    - gci
+    - goimports
+
+  presets:
+    - bugs
+    - comment
+    - error
+    - format
+    - import
+    - unused
+
+  disable:
+    - contextcheck
+
+run:
+  timeout: 5m

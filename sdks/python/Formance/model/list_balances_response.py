@@ -140,7 +140,7 @@ class ListBalancesResponse(
                         # classes don't exist yet because their module has not finished
                         # loading
                         return [
-                            Cursor,
+                            WalletsCursor,
                             cls.all_of_1,
                         ]
             
@@ -200,4 +200,4 @@ class ListBalancesResponse(
         )
 
 from Formance.model.balance import Balance
-from Formance.model.cursor import Cursor
+from Formance.model.wallets_cursor import WalletsCursor

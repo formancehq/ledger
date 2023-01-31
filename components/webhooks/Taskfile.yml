@@ -1,0 +1,84 @@
+version: '3'
+
+env:
+  LOG_LEVEL: "debug"
+
+vars:
+  SERVICE: "webhooks"
+  APP_VERSION: "develop"
+  APP_SHA: "ksjfsldkf"
+
+  PKG: "./..."
+  FAILFAST: "-failfast"
+  TIMEOUT: "1m"
+  RUN: "''"
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: tests:local
+
+  lint:
+    cmds:
+      - golangci-lint run -v --fix
+
+  tests:local:
+    cmds:
+      - task: docker
+      - >
+        go test -p 1 -v {{.FAILFAST}} -race -coverpkg {{.PKG}} -coverprofile coverage.out
+        -run {{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: coverage
+
+  tests:
+    cmds:
+      - task: docker
+      - go test -p 1 -race -coverpkg {{.PKG}} -coverprofile coverage.out {{.PKG}}
+
+  build:local:
+    cmds:
+      - go build -o {{.SERVICE}}
+
+  install:
+    cmds:
+      - pre-commit install
+      - >
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+        sh -s -- -b $(go env GOPATH)/bin latest
+
+  docker:
+    cmds:
+      - docker compose up -d --remove-orphans postgres redpanda redpanda-config redpanda-ui
+
+  coverage:
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "To open the html coverage file, use one of the following commands:"
+      - echo "open coverage.html on mac"
+      - echo "xdg-open coverage.html on linux"
+    silent: true
+
+  clean:
+    cmds:
+      - go clean
+      - rm -f {{.SERVICE}} coverage.out coverage.html
+      - docker compose down -v
+
+  build:
+    run: once
+    cmds:
+      - docker build -t numary:{{.SERVICE}}-{{.APP_SHA}} --target app --build-arg APP_SHA={{.APP_SHA}} --build-arg APP_VERSION={{.APP_VERSION}} .
+
+  stop:
+    cmds:
+      - docker-compose stop
+  rm:
+    deps:
+      - stop
+    cmds:
+      - docker-compose rm -f
+      - docker volume prune -f

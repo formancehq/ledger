@@ -36,89 +36,88 @@ class Cursor(
 
     class MetaOapg:
         required = {
-            "pageSize",
+            "data",
+            "hasMore",
         }
         
         class properties:
+            hasMore = schemas.BoolSchema
             
             
-            class pageSize(
-                schemas.Int64Schema
+            class data(
+                schemas.ListSchema
             ):
             
             
                 class MetaOapg:
-                    format = 'int64'
-                    inclusive_maximum = 1000
-                    inclusive_minimum = 1
-            hasMore = schemas.BoolSchema
-            previous = schemas.StrSchema
-            next = schemas.StrSchema
+                    
+                    @staticmethod
+                    def items() -> typing.Type['WebhooksConfig']:
+                        return WebhooksConfig
+            
+                def __new__(
+                    cls,
+                    _arg: typing.Union[typing.Tuple['WebhooksConfig'], typing.List['WebhooksConfig']],
+                    _configuration: typing.Optional[schemas.Configuration] = None,
+                ) -> 'data':
+                    return super().__new__(
+                        cls,
+                        _arg,
+                        _configuration=_configuration,
+                    )
+            
+                def __getitem__(self, i: int) -> 'WebhooksConfig':
+                    return super().__getitem__(i)
             __annotations__ = {
-                "pageSize": pageSize,
                 "hasMore": hasMore,
-                "previous": previous,
-                "next": next,
+                "data": data,
             }
     
-    pageSize: MetaOapg.properties.pageSize
-    
-    @typing.overload
-    def __getitem__(self, name: typing_extensions.Literal["pageSize"]) -> MetaOapg.properties.pageSize: ...
+    data: MetaOapg.properties.data
+    hasMore: MetaOapg.properties.hasMore
     
     @typing.overload
     def __getitem__(self, name: typing_extensions.Literal["hasMore"]) -> MetaOapg.properties.hasMore: ...
     
     @typing.overload
-    def __getitem__(self, name: typing_extensions.Literal["previous"]) -> MetaOapg.properties.previous: ...
-    
-    @typing.overload
-    def __getitem__(self, name: typing_extensions.Literal["next"]) -> MetaOapg.properties.next: ...
+    def __getitem__(self, name: typing_extensions.Literal["data"]) -> MetaOapg.properties.data: ...
     
     @typing.overload
     def __getitem__(self, name: str) -> schemas.UnsetAnyTypeSchema: ...
     
-    def __getitem__(self, name: typing.Union[typing_extensions.Literal["pageSize", "hasMore", "previous", "next", ], str]):
+    def __getitem__(self, name: typing.Union[typing_extensions.Literal["hasMore", "data", ], str]):
         # dict_instance[name] accessor
         return super().__getitem__(name)
     
     
     @typing.overload
-    def get_item_oapg(self, name: typing_extensions.Literal["pageSize"]) -> MetaOapg.properties.pageSize: ...
+    def get_item_oapg(self, name: typing_extensions.Literal["hasMore"]) -> MetaOapg.properties.hasMore: ...
     
     @typing.overload
-    def get_item_oapg(self, name: typing_extensions.Literal["hasMore"]) -> typing.Union[MetaOapg.properties.hasMore, schemas.Unset]: ...
-    
-    @typing.overload
-    def get_item_oapg(self, name: typing_extensions.Literal["previous"]) -> typing.Union[MetaOapg.properties.previous, schemas.Unset]: ...
-    
-    @typing.overload
-    def get_item_oapg(self, name: typing_extensions.Literal["next"]) -> typing.Union[MetaOapg.properties.next, schemas.Unset]: ...
+    def get_item_oapg(self, name: typing_extensions.Literal["data"]) -> MetaOapg.properties.data: ...
     
     @typing.overload
     def get_item_oapg(self, name: str) -> typing.Union[schemas.UnsetAnyTypeSchema, schemas.Unset]: ...
     
-    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["pageSize", "hasMore", "previous", "next", ], str]):
+    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["hasMore", "data", ], str]):
         return super().get_item_oapg(name)
     
 
     def __new__(
         cls,
         *_args: typing.Union[dict, frozendict.frozendict, ],
-        pageSize: typing.Union[MetaOapg.properties.pageSize, decimal.Decimal, int, ],
-        hasMore: typing.Union[MetaOapg.properties.hasMore, bool, schemas.Unset] = schemas.unset,
-        previous: typing.Union[MetaOapg.properties.previous, str, schemas.Unset] = schemas.unset,
-        next: typing.Union[MetaOapg.properties.next, str, schemas.Unset] = schemas.unset,
+        data: typing.Union[MetaOapg.properties.data, list, tuple, ],
+        hasMore: typing.Union[MetaOapg.properties.hasMore, bool, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Cursor':
         return super().__new__(
             cls,
             *_args,
-            pageSize=pageSize,
+            data=data,
             hasMore=hasMore,
-            previous=previous,
-            next=next,
             _configuration=_configuration,
             **kwargs,
         )
+
+from Formance.model.webhooks_config import WebhooksConfig

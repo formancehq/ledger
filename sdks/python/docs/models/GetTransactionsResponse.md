@@ -22,7 +22,7 @@ dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal
 #### allOf
 Class Name | Input Type | Accessed Type | Description | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-[Cursor](Cursor.md) | [**Cursor**](Cursor.md) | [**Cursor**](Cursor.md) |  | 
+[WalletsCursor](WalletsCursor.md) | [**WalletsCursor**](WalletsCursor.md) | [**WalletsCursor**](WalletsCursor.md) |  | 
 [all_of_1](#all_of_1) | dict, frozendict.frozendict,  | frozendict.frozendict,  |  | 
 
 # all_of_1

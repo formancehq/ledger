@@ -58,7 +58,7 @@ class ConfigsResponse implements ModelInterface, ArrayAccess, \JsonSerializable
       * @var string[]
       */
     protected static $openAPITypes = [
-        'cursor' => '\Formance\Model\ConfigsResponseCursor'
+        'cursor' => '\Formance\Model\Cursor'
     ];
 
     /**
@@ -296,7 +296,7 @@ class ConfigsResponse implements ModelInterface, ArrayAccess, \JsonSerializable
     /**
      * Gets cursor
      *
-     * @return \Formance\Model\ConfigsResponseCursor
+     * @return \Formance\Model\Cursor
      */
     public function getCursor()
     {
@@ -306,7 +306,7 @@ class ConfigsResponse implements ModelInterface, ArrayAccess, \JsonSerializable
     /**
      * Sets cursor
      *
-     * @param \Formance\Model\ConfigsResponseCursor $cursor cursor
+     * @param \Formance\Model\Cursor $cursor cursor
      *
      * @return self
      */

@@ -4,10 +4,10 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**PageSize** | **int64** |  |
-**HasMore** | Pointer to **bool** |  | [optional]
-**Previous** | Pointer to **string** |  | [optional]
-**Next** | Pointer to **string** |  | [optional]
+**PageSize** | **int64** |  | 
+**HasMore** | Pointer to **bool** |  | [optional] 
+**Previous** | Pointer to **string** |  | [optional] 
+**Next** | Pointer to **string** |  | [optional] 
 
 ## Methods
 
@@ -125,3 +125,5 @@ HasNext returns a boolean if a field has been set.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+
