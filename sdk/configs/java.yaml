@@ -1,0 +1,34 @@
+templateDir: templates/java
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml
+additionalProperties:
+  invokerPackage: com.formance.ledgerclient
+  apiPackage: com.formance.ledgerclient.api
+  modelPackage: com.formance.ledgerclient.model
+  groupId: com.formance
+  artifactId: ledgerclient
+  artifactDescription: Ledger Java Client
+  artifactUrl: https://github.com/numary/numary-sdk-java
+  scmConnection: scm:git:git@github.com/numary/numary-sdk-java.git
+  scmDeveloperConnection: scm:git:git@github.com/numary/numary-sdk-java.git
+  scmUrl: https://github.com/numary/numary-sdk-java
+  developerEmail: support@formance.com
+  developerName: Ledger Java Client Contributors
+  developerOrganization: Formance
+  developerOrganizationUrl: https://formance.com
+  library: retrofit2
+  openApiNullable: false
+  licenseName: MIT License
+  licenseUrl: http://www.opensource.org/licenses/mit-license.php
+  gpg_private_key: '${{ secrets.GPG_SIGNING_KEY }}'
+  gpg_passphrase: '${{ secrets.GPG_PASSPHRASE }}'
+  nexus_username: '${{ secrets.OSSRH_USERNAME }}'
+  nexus_password: '${{ secrets.OSSRH_PASSWORD }}'
+
+inlineSchemaNameMappings:
+  getAccount_200_response: GetAccountResponse
+  listAccounts_200_response: ListAccountsResponse
+  listAccounts_200_response_cursor: ListAccountsResponseCursor
+  listTransactions_200_response: ListTransactionsResponse
+  listTransactions_200_response_cursor: ListTransactionsResponseCursor

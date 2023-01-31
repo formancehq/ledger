@@ -1,0 +1,6 @@
+templateDir: templates/php
+additionalProperties:
+  invokerPackage: Numary\Ledger
+files:
+  Taskfile.yml.mustache:
+    destinationFilename: Taskfile.yml

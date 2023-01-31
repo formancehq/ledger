@@ -1,0 +1,30 @@
+version: '3'
+
+tasks:
+  update:
+    cmds:
+      - npm install
+
+  start-ledger:
+    cmds:
+      - >
+        docker run -d
+        --name ledger
+        --rm
+        -e NUMARY_SERVER_HTTP_BIND_ADDRESS=0.0.0.0:3068
+        -p 3068:3068
+        ghcr.io/formancehq/ledger:{{appVersion}}
+
+  stop-ledger:
+    cmds:
+      - docker stop ledger
+
+  test:
+    desc: Test client code
+    deps:
+      - update
+    cmds:
+      - task: start-ledger
+      - defer:
+          task: stop-ledger
+      - npm test
