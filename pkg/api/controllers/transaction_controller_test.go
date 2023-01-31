@@ -626,6 +626,40 @@ func TestPostTransactions(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "short asset",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bank",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "F/9",
+						},
+					},
+					Timestamp: timestamp3,
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bank",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "F/9",
+								},
+							},
+							Timestamp: timestamp3,
+						},
+					},
+				}},
+			},
+		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
