@@ -1,35 +1,19 @@
-FROM golang:1.19.3-bullseye AS builder
-
-RUN apt-get update && \
-    apt-get install -y gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu && \
-    ln -s /usr/bin/aarch64-linux-gnu-gcc /usr/bin/arm64-linux-gnu-gcc  && \
-    ln -s /usr/bin/x86_64-linux-gnu-gcc /usr/bin/amd64-linux-gnu-gcc
-
-ARG TARGETARCH
+FROM golang:1.18 AS builder
 ARG APP_SHA
 ARG VERSION
-
-WORKDIR /go/src/github.com/formancehq/payments
-
-# get deps first so it's cached
+WORKDIR /src
 COPY . .
+WORKDIR /src/components/payments
+RUN go mod download
+RUN GOOS=linux go build -o payments \
+    -ldflags="-X $(cat go.mod |head -1|cut -d \  -f2)/cmd.Version=${VERSION} \
+    -X $(cat go.mod |head -1|cut -d \  -f2)/cmd.BuildDate=$(date +%s) \
+    -X $(cat go.mod |head -1|cut -d \  -f2)/cmd.Commit=${APP_SHA}" ./
 
-RUN go mod vendor
-
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
-    CC=$TARGETARCH-linux-gnu-gcc \
-    go build -o bin/payments \
-    -ldflags="-X github.com/formancehq/payments/cmd.Version=${VERSION} \
-    -X github.com/formancehq/payments/cmd.BuildDate=$(date +%s) \
-    -X github.com/formancehq/payments/cmd.Commit=${APP_SHA}" ./
-
-FROM scratch
-
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /go/src/github.com/formancehq/payments/bin/payments /usr/local/bin/payments
-
-EXPOSE 8080
-
-ENTRYPOINT ["payments"]
-
-CMD ["server"]
+FROM ubuntu:jammy
+RUN apt update && apt install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /src/components/payments/payments /payments
+EXPOSE 3068
+ENV OTEL_SERVICE_NAME payments
+ENTRYPOINT ["/payments"]
+CMD ["serve"]

@@ -3,11 +3,12 @@ FROM golang:1.18-alpine as builder
 WORKDIR /workspace
 ENV CGO_ENABLED=0
 ENV GOOS=linux
-COPY go.mod .
-COPY go.sum .
+COPY components/operator/go.mod .
+COPY components/operator/go.sum .
 RUN go mod download
 RUN go install -v -installsuffix cgo -a std
-COPY . .
+COPY components/operator .
+RUN ls -salhi .
 RUN go mod vendor
 RUN go build -v -a -o manager main.go
 
