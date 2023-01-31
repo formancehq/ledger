@@ -83,7 +83,7 @@ func TxsToScriptsData(txsData ...TransactionData) []ScriptData {
 				if !ok {
 					panic(fmt.Sprintf("source %s not found", p.Source))
 				}
-				sb.WriteString(fmt.Sprintf("\tsource = $%s\n", src.name))
+				sb.WriteString(fmt.Sprintf("\tsource = $%s allowing unbounded overdraft\n", src.name))
 			}
 			if p.Destination == WORLD {
 				sb.WriteString("\tdestination = @world\n")
