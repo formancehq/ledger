@@ -301,9 +301,9 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:              apierrors.ErrInsufficientFund,
-				ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+				ErrorMessage:           "balance.insufficient.TOK",
 				ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-				ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+				ErrorMessageDeprecated: "balance.insufficient.TOK",
 			},
 		},
 		{
@@ -2052,9 +2052,9 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessage:           "balance.insufficient.COIN",
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessageDeprecated: "balance.insufficient.COIN",
 					}, err)
 				})
 
@@ -2101,9 +2101,9 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessage:           "balance.insufficient.GEM",
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessageDeprecated: "balance.insufficient.GEM",
 					}, err)
 				})
 

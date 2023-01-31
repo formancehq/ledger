@@ -40,7 +40,7 @@ type InsufficientFundError struct {
 }
 
 func (e InsufficientFundError) Error() string {
-	return "[INSUFFICIENT_FUND] account had insufficient funds"
+	return fmt.Sprintf("balance.insufficient.%s", e.Asset)
 }
 
 func (e InsufficientFundError) Is(err error) bool {
