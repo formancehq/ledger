@@ -1,7 +1,0 @@
-.DS_Store
-.env
-.idea
-webhooks
-coverage.out
-coverage.html
-vendor
