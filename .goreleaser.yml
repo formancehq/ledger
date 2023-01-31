@@ -106,11 +106,9 @@ changelog:
 release:
   prerelease: auto
   footer: |
-    ## Want to try this version ?
-    [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/numary/ledger/tree/{{ .Tag }}&version={{ .Tag }})
     ## What to do next?
-    - Read the [documentation](https://docs.numary.com/oss/ledger/get-started/installation)
-    - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
+    - Read the [documentation](https://docs.formance.com/)
+    - Join our [Slack server](https://formance.com/slack)
 
 nfpms:
   - id: packages

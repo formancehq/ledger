@@ -82,6 +82,20 @@ tasks:
       NUMARY_STORAGE_DRIVER: "postgres"
       NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
+  bench:ledger:
+    deps: [postgres]
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - >
+        go test {{.TAGS}} ./pkg/ledger
+        -run=XXX -bench=BenchmarkLedger_{{.RUN}} -benchmem -benchtime=30s -timeout 1h
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
+        | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
   bench:cpu:
     cmds:
       - go tool pprof -http=":" {{.BENCH_CPU_PROFILE}}

@@ -1,7 +1,10 @@
 project_name: numary
-monorepo:
-  tag_prefix: components/ledger/
-  dir: ./components/ledger/
+env:
+  - GO111MODULE=on
+  - GOPROXY=https://proxy.golang.org
+before:
+  hooks:
+    - go mod download
 
 builds:
   - binary: numary
@@ -42,7 +45,7 @@ archives:
 
 
 checksum:
-  name_template: '{{.ProjectName}}_checksums_darwin.txt'
+  name_template: 'checksums-darwin.txt'
 
 snapshot:
   name_template: "{{ .Tag }}"

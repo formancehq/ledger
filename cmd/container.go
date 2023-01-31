@@ -24,11 +24,13 @@ import (
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
+	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"github.com/xdg-go/scram"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -43,12 +45,26 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		options = append(options, fx.NopLogger)
 	}
 
+	debug := viper.GetBool(debugFlag)
+
 	l := logrus.New()
-	if v.GetBool(debugFlag) {
+	if debug {
 		l.Level = logrus.DebugLevel
 	}
-	loggerFactory := logging.StaticLoggerFactory(logginglogrus.New(l))
-	logging.SetFactory(loggerFactory)
+	if viper.GetBool(otlptraces.OtelTracesFlag) {
+		l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+			logrus.WarnLevel,
+		)))
+	}
+	logging.SetFactory(contextlogger.NewFactory(
+		logging.StaticLoggerFactory(logginglogrus.New(l)),
+	))
+	if debug {
+		sqlstorage.InstrumentalizeSQLDrivers()
+	}
 
 	topics := v.GetStringSlice(publisherTopicMappingFlag)
 	mapping := make(map[string]string)
@@ -168,7 +184,8 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	))
 
 	// Handle resolver
-	options = append(options, ledger.ResolveModule())
+	options = append(options, ledger.ResolveModule(
+		v.GetInt64(cacheCapacityBytes), v.GetInt64(cacheMaxNumKeys)))
 
 	// Api middlewares
 	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {

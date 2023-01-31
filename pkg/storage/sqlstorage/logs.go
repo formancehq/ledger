@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -68,7 +67,6 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		return err
 	}
 
-	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
 	_, err = executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return s.error(err)

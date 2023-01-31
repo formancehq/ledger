@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
@@ -30,6 +30,7 @@ type Ledger struct {
 	store               Store
 	monitor             Monitor
 	allowPastTimestamps bool
+	cache               *ristretto.Cache
 }
 
 type LedgerOption = func(*Ledger)
@@ -38,14 +39,11 @@ func WithPastTimestamps(l *Ledger) {
 	l.allowPastTimestamps = true
 }
 
-func NewLedger(
-	store Store,
-	monitor Monitor,
-	options ...LedgerOption,
-) (*Ledger, error) {
+func NewLedger(store Store, monitor Monitor, cache *ristretto.Cache, options ...LedgerOption) (*Ledger, error) {
 	l := &Ledger{
 		store:   store,
 		monitor: monitor,
+		cache:   cache,
 	}
 
 	for _, option := range options {
@@ -64,51 +62,6 @@ func (l *Ledger) Close(ctx context.Context) error {
 
 func (l *Ledger) GetLedgerStore() Store {
 	return l.store
-}
-
-type CommitResult struct {
-	PreCommitVolumes      core.AccountsAssetsVolumes
-	PostCommitVolumes     core.AccountsAssetsVolumes
-	GeneratedTransactions []core.ExpandedTransaction
-}
-
-func (l *Ledger) Commit(ctx context.Context, preview bool, addOps *core.AdditionalOperations, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
-	commitRes, err := l.ProcessTxsData(ctx, txsData...)
-	if err != nil {
-		return []core.ExpandedTransaction{}, err
-	}
-
-	if preview {
-		return commitRes.GeneratedTransactions, nil
-	}
-
-	if err := l.store.Commit(ctx, commitRes.GeneratedTransactions...); err != nil {
-		switch {
-		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return []core.ExpandedTransaction{}, NewConflictError()
-		default:
-			return []core.ExpandedTransaction{}, err
-		}
-	}
-
-	if addOps != nil && addOps.SetAccountMeta != nil {
-		for addr, m := range addOps.SetAccountMeta {
-			if err := l.store.UpdateAccountMetadata(ctx,
-				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-				return []core.ExpandedTransaction{}, err
-			}
-		}
-	}
-
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), commitRes)
-	if addOps != nil && addOps.SetAccountMeta != nil {
-		for addr, m := range addOps.SetAccountMeta {
-			l.monitor.SavedMetadata(ctx,
-				l.store.Name(), core.MetaTargetTypeAccount, addr, m)
-		}
-	}
-
-	return commitRes.GeneratedTransactions, nil
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
@@ -147,39 +100,46 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, fmt.Sprintf("getting transaction %d", id))
 	}
 	if revertedTx == nil {
-		return nil, NewNotFoundError("transaction not found")
+		return nil, NewNotFoundError(fmt.Sprintf("transaction %d not found", id))
 	}
 	if revertedTx.IsReverted() {
-		return nil, NewValidationError("transaction already reverted")
+		return nil, NewValidationError(fmt.Sprintf("transaction %d already reverted", id))
 	}
 
 	rt := revertedTx.Reverse()
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	result, err := l.ProcessTxsData(ctx, rt)
+	txData := core.TransactionData{
+		Postings:  rt.Postings,
+		Timestamp: rt.Timestamp,
+		Reference: rt.Reference,
+		Metadata:  rt.Metadata,
+	}
+	res, err := l.Execute(ctx, false, false,
+		core.TxsToScriptsData(txData)...)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, fmt.Sprintf(
+			"executing revert script for transaction %d", id))
 	}
-	revert := result.GeneratedTransactions[0]
+	revertTx := res[0]
 
-	if err := l.store.Commit(ctx, revert); err != nil {
-		return nil, err
-	}
-	if err := l.store.UpdateTransactionMetadata(ctx, revertedTx.ID, core.RevertedMetadata(revert.ID), revert.Timestamp); err != nil {
-		return nil, err
+	if err := l.store.UpdateTransactionMetadata(ctx,
+		revertedTx.ID, core.RevertedMetadata(revertTx.ID), revertTx.Timestamp); err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf(
+			"updating transaction %d metadata while reverting", id))
 	}
 
 	if revertedTx.Metadata == nil {
 		revertedTx.Metadata = core.Metadata{}
 	}
-	revertedTx.Metadata.Merge(core.RevertedMetadata(revert.ID))
+	revertedTx.Metadata.Merge(core.RevertedMetadata(revertTx.ID))
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &result.GeneratedTransactions[0])
-	return &result.GeneratedTransactions[0], nil
+	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &revertTx)
+	return &revertTx, nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a AccountsQuery) (uint64, error) {
@@ -191,21 +151,7 @@ func (l *Ledger) GetAccounts(ctx context.Context, a AccountsQuery) (api.Cursor[c
 }
 
 func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-	account, err := l.store.GetAccount(ctx, address)
-	if err != nil {
-		return nil, err
-	}
-
-	volumes, err := l.store.GetAssetsVolumes(ctx, address)
-	if err != nil {
-		return nil, err
-	}
-
-	return &core.AccountWithVolumes{
-		Account:  *account,
-		Volumes:  volumes,
-		Balances: volumes.Balances(),
-	}, nil
+	return l.store.GetAccountWithVolumes(ctx, address)
 }
 
 func (l *Ledger) GetBalances(ctx context.Context, q BalancesQuery) (api.Cursor[core.AccountsBalances], error) {

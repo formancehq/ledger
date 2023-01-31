@@ -4,6 +4,8 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"regexp"
+
+	"github.com/pkg/errors"
 )
 
 type Posting struct {
@@ -55,4 +57,23 @@ var addressRegexp = regexp.MustCompile(`^\w+(:\w+)*$`)
 
 func ValidateAddress(addr string) bool {
 	return addressRegexp.Match([]byte(addr))
+}
+
+func (p Postings) Validate() (int, error) {
+	for i, p := range p {
+		if p.Amount.Ltz() {
+			return i, errors.New("negative amount")
+		}
+		if !ValidateAddress(p.Source) {
+			return i, errors.New("invalid source address")
+		}
+		if !ValidateAddress(p.Destination) {
+			return i, errors.New("invalid destination address")
+		}
+		if !AssetIsValid(p.Asset) {
+			return i, errors.New("invalid asset")
+		}
+	}
+
+	return 0, nil
 }

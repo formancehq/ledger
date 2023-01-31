@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dgraph-io/ristretto"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/fx"
@@ -35,21 +36,23 @@ type Resolver struct {
 	initializedStores map[string]struct{}
 	monitor           Monitor
 	ledgerOptions     []LedgerOption
+	cache             *ristretto.Cache
 }
 
 func NewResolver(
 	storageFactory storage.Driver[Store],
 	ledgerOptions []LedgerOption,
+	cacheBytesCapacity, cacheMaxNumKeys int64,
 	options ...ResolverOption,
 ) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
 		storageDriver:     storageFactory,
 		initializedStores: map[string]struct{}{},
+		cache:             NewCache(cacheBytesCapacity, cacheMaxNumKeys, false),
 	}
 	for _, opt := range options {
-		err := opt.apply(r)
-		if err != nil {
+		if err := opt.apply(r); err != nil {
 			panic(errors.Wrap(err, "applying option on resolver"))
 		}
 	}
@@ -68,7 +71,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	_, ok := r.initializedStores[name]
 	r.lock.RUnlock()
 	if ok {
-		return NewLedger(store, r.monitor, r.ledgerOptions...)
+		return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
 	}
 
 	r.lock.Lock()
@@ -82,7 +85,11 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.initializedStores[name] = struct{}{}
 	}
 
-	return NewLedger(store, r.monitor, r.ledgerOptions...)
+	return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
+}
+
+func (r *Resolver) Close() {
+	r.cache.Close()
 }
 
 const ResolverOptionsKey = `group:"_ledgerResolverOptions"`
@@ -94,10 +101,20 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 	)
 }
 
-func ResolveModule() fx.Option {
+func ResolveModule(cacheBytesCapacity, cacheMaxNumKeys int64) fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(NewResolver, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
+			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, options ...ResolverOption) *Resolver {
+				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cacheMaxNumKeys, options...)
+			}, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
 		),
+		fx.Invoke(func(lc fx.Lifecycle, r *Resolver) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					r.Close()
+					return nil
+				},
+			})
+		}),
 	)
 }

@@ -33,43 +33,43 @@ func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedV
 var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
 
 func UpdateSQLDriverMapping(flavor Flavor, name string) {
-
-	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
-	// pgx implements this interface and just return nil
-	// so, we need to manually wrap the driver to implements this interface and return a nil error
-
-	db, err := sql.Open(name, "")
-	if err != nil {
-		panic(err)
-	}
-
-	dri := db.Driver()
-
-	if err = db.Close(); err != nil {
-		panic(err)
-	}
-
-	wrappedDriver := otelsql.Wrap(dri,
-		otelsql.AllowRoot(),
-		otelsql.TraceQueryWithArgs(),
-		otelsql.TraceRowsAffected(),
-		otelsql.TraceRowsClose(),
-		otelsql.TraceRowsNext(),
-	)
-
-	driverName := fmt.Sprintf("otel-%s", name)
-	sql.Register(driverName, otelSQLDriverWithCheckNamedValueDisabled{
-		wrappedDriver,
-	})
-
 	cfg := sqlDrivers[flavor]
-	cfg.driverName = driverName
+	cfg.driverName = name
 	sqlDrivers[flavor] = cfg
 }
 
 func init() {
 	// Default mapping for app driver/sql driver
 	UpdateSQLDriverMapping(PostgreSQL, "pgx")
+}
+
+func InstrumentalizeSQLDrivers() {
+	for flavor, config := range sqlDrivers {
+		// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
+		// pgx implements this interface and just return nil
+		// so, we need to manually wrap the driver to implements this interface and return a nil error
+		db, err := sql.Open(config.driverName, "")
+		if err != nil {
+			panic(err)
+		}
+
+		dri := db.Driver()
+
+		if err = db.Close(); err != nil {
+			panic(err)
+		}
+
+		wrappedDriver := otelsql.Wrap(dri,
+			otelsql.AllowRoot(),
+			otelsql.TraceAll(),
+		)
+
+		config.driverName = fmt.Sprintf("otel-%s", config.driverName)
+		sql.Register(config.driverName, otelSQLDriverWithCheckNamedValueDisabled{
+			wrappedDriver,
+		})
+		sqlDrivers[flavor] = config
+	}
 }
 
 // defaultExecutorProvider use the context to register and manage a sql transaction (if the context is mark as transactional)
@@ -98,9 +98,10 @@ func defaultExecutorProvider(schema Schema) func(ctx context.Context) (executor,
 }
 
 type Driver struct {
-	name         string
-	db           DB
-	systemSchema Schema
+	name              string
+	db                DB
+	systemSchema      Schema
+	registeredLedgers map[string]struct{}
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
@@ -117,29 +118,42 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 	ctx, span := opentelemetry.Start(ctx, "Load store")
 	defer span.End()
 
-	systemStore := &SystemStore{
-		systemSchema: d.systemSchema,
-	}
-	exists, err := systemStore.exists(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "checking ledger existence")
-	}
-	if !exists && !create {
-		return nil, false, storage.ErrLedgerStoreNotFound
-	}
+	var (
+		created bool
+		schema  Schema
+		err     error
+	)
+	if _, exists := d.registeredLedgers[name]; !exists {
+		systemStore := &SystemStore{
+			systemSchema: d.systemSchema,
+		}
+		exists, err := systemStore.exists(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "checking ledger existence")
+		}
+		if !exists && !create {
+			return nil, false, storage.ErrLedgerStoreNotFound
+		}
 
-	schema, err := d.db.Schema(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "opening schema")
-	}
+		created, err = systemStore.Register(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "registering ledger")
+		}
 
-	created, err := systemStore.Register(ctx, name)
-	if err != nil {
-		return nil, false, errors.Wrap(err, "registering ledger")
-	}
+		schema, err = d.db.Schema(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "opening schema")
+		}
 
-	if err = schema.Initialize(ctx); err != nil {
-		return nil, false, err
+		if err = schema.Initialize(ctx); err != nil {
+			return nil, false, err
+		}
+		d.registeredLedgers[name] = struct{}{}
+	} else {
+		schema, err = d.db.Schema(ctx, name)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "opening schema")
+		}
 	}
 
 	return NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
@@ -203,8 +217,9 @@ func (d *Driver) Close(ctx context.Context) error {
 
 func NewDriver(name string, db DB) *Driver {
 	return &Driver{
-		db:   db,
-		name: name,
+		db:                db,
+		name:              name,
+		registeredLedgers: map[string]struct{}{},
 	}
 }
 

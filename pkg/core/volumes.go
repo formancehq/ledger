@@ -44,6 +44,12 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 type AccountsAssetsVolumes map[string]AssetsVolumes
 
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
+	if a == nil {
+		return Volumes{
+			Input:  NewMonetaryInt(0),
+			Output: NewMonetaryInt(0),
+		}
+	}
 	if assetsVolumes, ok := a[account]; !ok {
 		return Volumes{
 			Input:  NewMonetaryInt(0),
@@ -57,9 +63,12 @@ func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	}
 }
 
-func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) {
-	if assetsVolumes, ok := a[account]; !ok {
-		a[account] = map[string]Volumes{
+func (a *AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) {
+	if *a == nil {
+		*a = AccountsAssetsVolumes{}
+	}
+	if assetsVolumes, ok := (*a)[account]; !ok {
+		(*a)[account] = map[string]Volumes{
 			asset: {
 				Input:  volumes.Input.OrZero(),
 				Output: volumes.Output.OrZero(),
@@ -73,9 +82,12 @@ func (a AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes
 	}
 }
 
-func (a AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryInt) {
-	if assetsVolumes, ok := a[account]; !ok {
-		a[account] = map[string]Volumes{
+func (a *AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryInt) {
+	if *a == nil {
+		*a = AccountsAssetsVolumes{}
+	}
+	if assetsVolumes, ok := (*a)[account]; !ok {
+		(*a)[account] = map[string]Volumes{
 			asset: {
 				Input:  input.OrZero(),
 				Output: NewMonetaryInt(0),
@@ -88,9 +100,12 @@ func (a AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryIn
 	}
 }
 
-func (a AccountsAssetsVolumes) AddOutput(account, asset string, output *MonetaryInt) {
-	if assetsVolumes, ok := a[account]; !ok {
-		a[account] = map[string]Volumes{
+func (a *AccountsAssetsVolumes) AddOutput(account, asset string, output *MonetaryInt) {
+	if *a == nil {
+		*a = AccountsAssetsVolumes{}
+	}
+	if assetsVolumes, ok := (*a)[account]; !ok {
+		(*a)[account] = map[string]Volumes{
 			asset: {
 				Output: output.OrZero(),
 				Input:  NewMonetaryInt(0),
@@ -104,11 +119,17 @@ func (a AccountsAssetsVolumes) AddOutput(account, asset string, output *Monetary
 }
 
 func (a AccountsAssetsVolumes) HasAccount(account string) bool {
+	if a == nil {
+		return false
+	}
 	_, ok := a[account]
 	return ok
 }
 
 func (a AccountsAssetsVolumes) HasAccountAndAsset(account, asset string) bool {
+	if a == nil {
+		return false
+	}
 	volumesByAsset, ok := a[account]
 	if !ok {
 		return false
@@ -137,6 +158,24 @@ func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	default:
 		panic("not handled type")
 	}
+}
+
+func AggregatePreCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
+	ret := AccountsAssetsVolumes{}
+	for i := 0; i < len(txs); i++ {
+		tx := txs[i]
+		for _, posting := range tx.Postings {
+			if !ret.HasAccountAndAsset(posting.Source, posting.Asset) {
+				ret.SetVolumes(posting.Source, posting.Asset,
+					tx.PreCommitVolumes.GetVolumes(posting.Source, posting.Asset))
+			}
+			if !ret.HasAccountAndAsset(posting.Destination, posting.Asset) {
+				ret.SetVolumes(posting.Destination, posting.Asset,
+					tx.PreCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
+			}
+		}
+	}
+	return ret
 }
 
 func AggregatePostCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
