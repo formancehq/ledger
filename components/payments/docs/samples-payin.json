@@ -1,7 +1,0 @@
-{
-  "type": "payin",
-  "reference": "001",
-  "status": "succeeded",
-  "asset": "USD",
-  "initialAmount": 100
-}

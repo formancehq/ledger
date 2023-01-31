@@ -1,7 +1,0 @@
----
-stages:
-- payin:
-    source: "${paymentID}"
-    destination:
-      kind: wallet
-      wallet: foo

@@ -1,344 +1,54 @@
----
-version: '3.9'
+version: '3.8'
 volumes:
-  postgres_data:
-  opensearch_data:
+  postgres:
 services:
-  otlp-exporter:
-    image: "otel/opentelemetry-collector"
-
-  gateway:
-    image: "traefik:v2.9"
-    network_mode: service:auth-dex
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./config/traefik:/etc/traefik:ro"
-
-  auth-dex:
-    image: "ghcr.io/formancehq/auth-dex:v0.3.1"
-    restart: always
-    volumes:
-      - ./config/dex/dex-config.yaml:/etc/dex/config.docker.yaml
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "8091:8081"
-      - "8080:8080"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.dex.rule=Host(`localhost`) && PathPrefix(`/api/auth/dex`)
-      - traefik.http.routers.dex.entrypoints=web
-      - traefik.http.services.dex.loadbalancer.server.port=5556
-      - traefik.http.middlewares.cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,HEAD,PATCH
-      - traefik.http.middlewares.cors.headers.accesscontrolalloworiginlist=*
-      - traefik.http.middlewares.cors.headers.accessControlAllowHeaders=content-type
-      - traefik.http.middlewares.cors.headers.accesscontrolmaxage=100
-      - traefik.http.middlewares.cors.headers.addvaryheader=true
-      - traefik.http.middlewares.jwt.plugin.auth.Issuer=http://localhost/api/auth
-
-  auth:
-    image: "ghcr.io/formancehq/auth:v0.3.1"
-    restart: always
-    network_mode: service:auth-dex
-    command: serve
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DEBUG: true
-      CONFIG: ./config.yaml
-      POSTGRES_URI: host=postgres user=formance password=formance dbname=auth port=5432 sslmode=disable
-      CAOS_OIDC_DEV: 1
-      DELEGATED_CLIENT_ID: gateway
-      DELEGATED_CLIENT_SECRET: ZXhhbXBsZS1hcHAtc2VjcmV0
-      DELEGATED_ISSUER: http://localhost/api/auth/dex
-      BASE_URL: http://localhost/api/auth
-    volumes:
-      - ./config/auth/config.yaml:/config.yaml
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.auth.rule=Host(`localhost`) && PathPrefix(`/api/auth`)
-      - traefik.http.routers.auth.entrypoints=web
-      - traefik.http.services.auth.loadbalancer.server.port=8080
-      - traefik.http.middlewares.auth.stripprefix.prefixes=/api/auth
-      - traefik.http.routers.auth.middlewares=cors@docker,auth@docker
-
-  control:
-    image: "ghcr.io/formancehq/control:v1.4.1"
-    restart: always
-    network_mode: service:gateway
-    environment:
-      API_URL: "http://localhost/api"
-      REDIRECT_URI: "http://localhost"
-      CLIENT_ID: "control"
-      CLIENT_SECRET: "mysupersecret"
-      ENCRYPTION_KEY: "mysuperencryptionkey"
-      ENCRYPTION_IV: "6f0c77c78a624022"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.control.rule=Host(`localhost`)
-      - traefik.http.routers.control.entrypoints=web
-      - traefik.http.services.control.loadbalancer.server.port=3000
-      - traefik.http.routers.control.middlewares=cors@docker
-
-  redpanda:
-    image: "docker.vectorized.io/vectorized/redpanda:v22.2.7"
-    restart: always
-    command:
-      - redpanda
-      - start
-      - --smp
-      - '1'
-      - --reserve-memory
-      - 0M
-      - --overprovisioned
-      - --node-id
-      - '0'
-      - --kafka-addr
-      - PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
-      - --advertise-kafka-addr
-      - PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
-    healthcheck:
-      test: curl -s -f -k http://127.0.0.1:9644/metrics >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-      - "9644:9644"
-
-  redpanda-config:
-    image: "docker.vectorized.io/vectorized/redpanda:v22.2.7"
-    command:
-      - cluster
-      - config
-      - import
-      - --filename
-      - /etc/redpanda/redpanda.yaml
-      - --api-urls
-      - redpanda:9644
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    volumes:
-      - ./config/redpanda/config.yaml:/etc/redpanda/redpanda.yaml:ro
-
-  redpanda-ui:
-    image: "docker.redpanda.com/vectorized/console:master-0a8fce8"
-    ports:
-      - "8081:8080"
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    environment:
-      KAFKA_BROKERS: redpanda:29092
-
   postgres:
     image: "postgres:13-alpine"
-    restart: always
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ledger" ]
+      test: ["CMD-SHELL", "pg_isready -U ledger"]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: "formance"
-      POSTGRES_PASSWORD: "formance"
-      POSTGRES_MULTIPLE_DATABASES: "auth,ledger,webhooks,payments,wallets"
+      POSTGRES_USER: "ledger"
+      POSTGRES_PASSWORD: "ledger"
+      POSTGRES_DB: "ledger"
       PGDATA: /data/postgres
     volumes:
-      - postgres_data:/data/postgres
-      - ./config/postgres:/docker-entrypoint-initdb.d
+      - postgres:/data/postgres
 
   ledger:
-    image: "ghcr.io/formancehq/ledger:v1.8.1"
-    restart: always
+    image: "ghcr.io/formancehq/ledger:latest"
+    healthcheck:
+      test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
-        condition: service_healthy
-      redpanda:
         condition: service_healthy
     environment:
       NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/ledger"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
       NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
-      NUMARY_PUBLISHER_KAFKA_ENABLED: "true"
-      NUMARY_PUBLISHER_KAFKA_BROKER: redpanda:29092
-      NUMARY_PUBLISHER_TOPIC_MAPPING: "*:ledger"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.ledger.rule=Host(`localhost`) && PathPrefix(`/api/ledger`)
-      - traefik.http.routers.ledger.entrypoints=web
-      - traefik.http.services.ledger.loadbalancer.server.port=3068
-      - traefik.http.routers.ledger.middlewares=jwt@docker,ledger@docker,cors@docker
-      - traefik.http.middlewares.ledger.stripprefix.prefixes=/api/ledger
 
-  wallets:
-    image: "ghcr.io/formancehq/wallets:v0.2.0"
-    restart: always
+  proxy:
+    image: caddy:2
     depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      STACK_CLIENT_ID: wallets
-      STACK_CLIENT_SECRET: wallets
-      STACK_URL: http://localhost
-      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/wallets"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.wallets.rule=Host(`localhost`) && PathPrefix(`/api/wallets`)
-      - traefik.http.routers.wallets.entrypoints=web
-      - traefik.http.services.wallets.loadbalancer.server.port=8080
-      - traefik.http.routers.wallets.middlewares=jwt@docker,wallets@docker,cors@docker
-      - traefik.http.middlewares.wallets.stripprefix.prefixes=/api/wallets
+    - ledger
+    command: caddy reverse-proxy --from :3068 --to ledger:3068
+    ports:
+    - "3068:3068"
 
-  payments:
-    image: "ghcr.io/formancehq/payments:v0.4.3"
-    restart: always
+  control:
+    image: "ghcr.io/formancehq/ledger:latest"
+    command: ui
     depends_on:
-      postgres:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
-    environment:
-      POSTGRES_URI: "postgresql://formance:formance@postgres/payments?sslmode=disable"
-      PUBLISHER_KAFKA_ENABLED: "true"
-      PUBLISHER_KAFKA_BROKER: redpanda:29092
-      PUBLISHER_TOPIC_MAPPING: "*:payments"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.payments.rule=Host(`localhost`) &&  PathPrefix(`/api/payments`)
-      - traefik.http.routers.payments.entrypoints=web
-      - traefik.http.services.payments.loadbalancer.server.port=8080
-      - traefik.http.routers.payments.middlewares=jwt@docker,payments@docker,cors@docker
-      - traefik.http.middlewares.payments.stripprefix.prefixes=/api/payments
-
-  payments-migrate:
-    image: "ghcr.io/formancehq/payments:v0.4.3"
-    command: migrate up
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      POSTGRES_URI: "postgresql://formance:formance@postgres/payments?sslmode=disable"
-    labels:
-      - traefik.enable=false
-
-  opensearch:
-    image: "opensearchproject/opensearch:2.2.1"
-    restart: always
-    environment:
-      discovery.type: single-node
-      plugins.security.disabled: "true"
-    healthcheck:
-      test: curl -s -f -k http://opensearch:9200/_cat/health >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
-
-  opensearch-dashboards:
-    image: "opensearchproject/opensearch-dashboards:2.2.1"
-    environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]' # must be a string with no spaces when specified as an environment variable
-      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
-    depends_on:
-      opensearch:
+      ledger:
         condition: service_healthy
     ports:
-      - "5601:5601"
-
-  search-ingester:
-    image: "ghcr.io/formancehq/search-ingester:v0.5.1"
-    restart: always
-    depends_on:
-      opensearch:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
-      search:
-        condition: service_healthy
+      - "3078:3078"
     environment:
-      KAFKA_ADDRESS: redpanda:29092
-      KAFKA_TOPIC: ledger,payments
-      KAFKA_VERSION: 1.0.0
-      KAFKA_CONSUMER_GROUP: search-ingester
-      OPENSEARCH_URL: http://opensearch:9200
-      OPENSEARCH_INDEX: "formance"
-      OPENSEARCH_TLS_ENABLED: "true"
-      OPENSEARCH_TLS_SKIP_CERT_VERIFY: "true"
-      OPENSEARCH_BASIC_AUTH_ENABLED: "false"
-
-  search:
-    image: "ghcr.io/formancehq/search:v0.5.2"
-    restart: always
-    healthcheck:
-      test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      opensearch:
-        condition: service_healthy
-    environment:
-      OPEN_SEARCH_SCHEME: http
-      OPEN_SEARCH_SERVICE: "opensearch:9200"
-      ES_INDICES: "formance"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.search.rule=Host(`localhost`) &&  PathPrefix(`/api/search`)
-      - traefik.http.routers.search.entrypoints=web
-      - traefik.http.services.search.loadbalancer.server.port=8080
-      - traefik.http.routers.search.middlewares=jwt@docker,search@docker,cors@docker
-      - traefik.http.middlewares.search.stripprefix.prefixes=/api/search
-
-  webhooks:
-    image: "ghcr.io/formancehq/webhooks:v0.6.0"
-    restart: always
-    healthcheck:
-      test: curl -s -f -k http://127.0.0.1:8080/_healthcheck >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      redpanda:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/webhooks?sslmode=disable"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.webhooks.rule=Host(`localhost`) &&  PathPrefix(`/api/webhooks`)
-      - traefik.http.routers.webhooks.entrypoints=web
-      - traefik.http.services.webhooks.loadbalancer.server.port=8080
-      - traefik.http.routers.webhooks.middlewares=jwt@docker,webhooks@docker,cors@docker
-      - traefik.http.middlewares.webhooks.stripprefix.prefixes=/api/webhooks
-
-  webhooks-worker:
-    image: "ghcr.io/formancehq/webhooks:v0.6.0"
-    command: worker
-    restart: always
-    healthcheck:
-      test: curl -s -f -k http://127.0.0.1:8081/_healthcheck >/dev/null || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      redpanda:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      STORAGE_POSTGRES_CONN_STRING: "postgresql://formance:formance@postgres/webhooks?sslmode=disable"
-      KAFKA_BROKERS: "redpanda:29092"
-      KAFKA_TOPICS: "ledger,payments"
-      LOG_LEVEL: "debug"
-    labels:
-      - traefik.enable=false
+      NUMARY_UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"

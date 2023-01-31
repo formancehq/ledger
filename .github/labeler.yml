@@ -1,30 +1,23 @@
-libs:
-  - libs/*
-openapi:
-  - openapi/*
-sdks:
-  - sdks/*
-github:
-  - .github/*
+'@domain/core':
+  - core/*
+  - core/**/*
 
-# Components
-'components/auth':
-  - components/auth/*
-'components/fctl':
-  - components/fctl/*
-'components/ledger':
-  - components/ledger/*
-'components/machine':
-  - components/machine/*
-'components/operator':
-  - components/operator/*
-'components/orchestration':
-  - components/orchestration/*
-'components/payments':
-  - components/payments/*
-'components/search':
-  - components/search/*
-'components/wallets':
-  - components/wallets/*
-'components/webhooks':
-  - components/webhooks/*
+'@domain/api':
+  - api/*
+  - api/**/*
+
+'@domain/ledger':
+  - ledger/*
+  - ledger/**/*
+
+'@domain/storage':
+  - storage/*
+  - storage/**/*
+
+'@domain/cmd':
+  - cmd/*
+  - cmd/**/*
+
+'@domain/ci':
+  - .github/*
+  - .github/**/*
