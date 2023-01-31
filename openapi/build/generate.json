@@ -5771,7 +5771,25 @@
         ],
         "properties": {
           "cursor": {
-            "$ref": "#/components/schemas/Cursor"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              },
+              {
+                "properties": {
+                  "data": {
+                    "items": {
+                      "$ref": "#/components/schemas/webhooksConfig"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "data"
+                ]
+              }
+            ]
           }
         }
       },

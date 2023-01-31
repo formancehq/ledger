@@ -225,7 +225,16 @@ components:
         - cursor
       properties:
         cursor:
-          $ref: '#/components/schemas/Cursor'
+          allOf:
+            - $ref: '#/components/schemas/Cursor'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/components/schemas/Config'
+                  type: array
+              type: object
+              required:
+                - data
 
     Cursor:
       type: object

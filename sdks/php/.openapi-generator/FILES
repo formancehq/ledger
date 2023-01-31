@@ -49,6 +49,8 @@ docs/Model/ConfigInfoResponse.md
 docs/Model/ConfigResponse.md
 docs/Model/ConfigUser.md
 docs/Model/ConfigsResponse.md
+docs/Model/ConfigsResponseCursor.md
+docs/Model/ConfigsResponseCursorAllOf.md
 docs/Model/ConfirmHoldRequest.md
 docs/Model/Connector.md
 docs/Model/ConnectorConfig.md
@@ -250,6 +252,8 @@ lib/Model/ConfigInfoResponse.php
 lib/Model/ConfigResponse.php
 lib/Model/ConfigUser.php
 lib/Model/ConfigsResponse.php
+lib/Model/ConfigsResponseCursor.php
+lib/Model/ConfigsResponseCursorAllOf.php
 lib/Model/ConfirmHoldRequest.php
 lib/Model/Connector.php
 lib/Model/ConnectorConfig.php

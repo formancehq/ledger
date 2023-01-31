@@ -20,10 +20,7 @@ var _ MappedNullable = &ConfigsResponseCursor{}
 
 // ConfigsResponseCursor struct for ConfigsResponseCursor
 type ConfigsResponseCursor struct {
-	PageSize int64 `json:"pageSize"`
-	HasMore *bool `json:"hasMore,omitempty"`
-	Previous *string `json:"previous,omitempty"`
-	Next *string `json:"next,omitempty"`
+	HasMore bool `json:"hasMore"`
 	Data []WebhooksConfig `json:"data"`
 }
 
@@ -31,9 +28,9 @@ type ConfigsResponseCursor struct {
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewConfigsResponseCursor(pageSize int64, data []WebhooksConfig) *ConfigsResponseCursor {
+func NewConfigsResponseCursor(hasMore bool, data []WebhooksConfig) *ConfigsResponseCursor {
 	this := ConfigsResponseCursor{}
-	this.PageSize = pageSize
+	this.HasMore = hasMore
 	this.Data = data
 	return &this
 }
@@ -46,124 +43,28 @@ func NewConfigsResponseCursorWithDefaults() *ConfigsResponseCursor {
 	return &this
 }
 
-// GetPageSize returns the PageSize field value
-func (o *ConfigsResponseCursor) GetPageSize() int64 {
-	if o == nil {
-		var ret int64
-		return ret
-	}
-
-	return o.PageSize
-}
-
-// GetPageSizeOk returns a tuple with the PageSize field value
-// and a boolean to check if the value has been set.
-func (o *ConfigsResponseCursor) GetPageSizeOk() (*int64, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.PageSize, true
-}
-
-// SetPageSize sets field value
-func (o *ConfigsResponseCursor) SetPageSize(v int64) {
-	o.PageSize = v
-}
-
-// GetHasMore returns the HasMore field value if set, zero value otherwise.
+// GetHasMore returns the HasMore field value
 func (o *ConfigsResponseCursor) GetHasMore() bool {
-	if o == nil || isNil(o.HasMore) {
+	if o == nil {
 		var ret bool
 		return ret
 	}
-	return *o.HasMore
+
+	return o.HasMore
 }
 
-// GetHasMoreOk returns a tuple with the HasMore field value if set, nil otherwise
+// GetHasMoreOk returns a tuple with the HasMore field value
 // and a boolean to check if the value has been set.
 func (o *ConfigsResponseCursor) GetHasMoreOk() (*bool, bool) {
-	if o == nil || isNil(o.HasMore) {
+	if o == nil {
 		return nil, false
 	}
-	return o.HasMore, true
+	return &o.HasMore, true
 }
 
-// HasHasMore returns a boolean if a field has been set.
-func (o *ConfigsResponseCursor) HasHasMore() bool {
-	if o != nil && !isNil(o.HasMore) {
-		return true
-	}
-
-	return false
-}
-
-// SetHasMore gets a reference to the given bool and assigns it to the HasMore field.
+// SetHasMore sets field value
 func (o *ConfigsResponseCursor) SetHasMore(v bool) {
-	o.HasMore = &v
-}
-
-// GetPrevious returns the Previous field value if set, zero value otherwise.
-func (o *ConfigsResponseCursor) GetPrevious() string {
-	if o == nil || isNil(o.Previous) {
-		var ret string
-		return ret
-	}
-	return *o.Previous
-}
-
-// GetPreviousOk returns a tuple with the Previous field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *ConfigsResponseCursor) GetPreviousOk() (*string, bool) {
-	if o == nil || isNil(o.Previous) {
-		return nil, false
-	}
-	return o.Previous, true
-}
-
-// HasPrevious returns a boolean if a field has been set.
-func (o *ConfigsResponseCursor) HasPrevious() bool {
-	if o != nil && !isNil(o.Previous) {
-		return true
-	}
-
-	return false
-}
-
-// SetPrevious gets a reference to the given string and assigns it to the Previous field.
-func (o *ConfigsResponseCursor) SetPrevious(v string) {
-	o.Previous = &v
-}
-
-// GetNext returns the Next field value if set, zero value otherwise.
-func (o *ConfigsResponseCursor) GetNext() string {
-	if o == nil || isNil(o.Next) {
-		var ret string
-		return ret
-	}
-	return *o.Next
-}
-
-// GetNextOk returns a tuple with the Next field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *ConfigsResponseCursor) GetNextOk() (*string, bool) {
-	if o == nil || isNil(o.Next) {
-		return nil, false
-	}
-	return o.Next, true
-}
-
-// HasNext returns a boolean if a field has been set.
-func (o *ConfigsResponseCursor) HasNext() bool {
-	if o != nil && !isNil(o.Next) {
-		return true
-	}
-
-	return false
-}
-
-// SetNext gets a reference to the given string and assigns it to the Next field.
-func (o *ConfigsResponseCursor) SetNext(v string) {
-	o.Next = &v
+	o.HasMore = v
 }
 
 // GetData returns the Data field value
@@ -200,16 +101,7 @@ func (o ConfigsResponseCursor) MarshalJSON() ([]byte, error) {
 
 func (o ConfigsResponseCursor) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
-	toSerialize["pageSize"] = o.PageSize
-	if !isNil(o.HasMore) {
-		toSerialize["hasMore"] = o.HasMore
-	}
-	if !isNil(o.Previous) {
-		toSerialize["previous"] = o.Previous
-	}
-	if !isNil(o.Next) {
-		toSerialize["next"] = o.Next
-	}
+	toSerialize["hasMore"] = o.HasMore
 	toSerialize["data"] = o.Data
 	return toSerialize, nil
 }

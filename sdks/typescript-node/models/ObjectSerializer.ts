@@ -26,6 +26,8 @@ export * from '../models/ConfigInfoResponse';
 export * from '../models/ConfigResponse';
 export * from '../models/ConfigUser';
 export * from '../models/ConfigsResponse';
+export * from '../models/ConfigsResponseCursor';
+export * from '../models/ConfigsResponseCursorAllOf';
 export * from '../models/ConfirmHoldRequest';
 export * from '../models/Connector';
 export * from '../models/ConnectorConfig';
@@ -206,6 +208,8 @@ import { ConfigInfoResponse } from '../models/ConfigInfoResponse';
 import { ConfigResponse } from '../models/ConfigResponse';
 import { ConfigUser } from '../models/ConfigUser';
 import { ConfigsResponse } from '../models/ConfigsResponse';
+import { ConfigsResponseCursor } from '../models/ConfigsResponseCursor';
+import { ConfigsResponseCursorAllOf } from '../models/ConfigsResponseCursorAllOf';
 import { ConfirmHoldRequest } from '../models/ConfirmHoldRequest';
 import { Connector } from '../models/Connector';
 import { ConnectorConfig } from '../models/ConnectorConfig';
@@ -419,6 +423,8 @@ let typeMap: {[index: string]: any} = {
     "ConfigResponse": ConfigResponse,
     "ConfigUser": ConfigUser,
     "ConfigsResponse": ConfigsResponse,
+    "ConfigsResponseCursor": ConfigsResponseCursor,
+    "ConfigsResponseCursorAllOf": ConfigsResponseCursorAllOf,
     "ConfirmHoldRequest": ConfirmHoldRequest,
     "ConnectorConfig": ConnectorConfig,
     "ConnectorConfigResponse": ConnectorConfigResponse,

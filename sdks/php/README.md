@@ -203,6 +203,8 @@ Class | Method | HTTP request | Description
 - [ConfigResponse](docs/Model/ConfigResponse.md)
 - [ConfigUser](docs/Model/ConfigUser.md)
 - [ConfigsResponse](docs/Model/ConfigsResponse.md)
+- [ConfigsResponseCursor](docs/Model/ConfigsResponseCursor.md)
+- [ConfigsResponseCursorAllOf](docs/Model/ConfigsResponseCursorAllOf.md)
 - [ConfirmHoldRequest](docs/Model/ConfirmHoldRequest.md)
 - [Connector](docs/Model/Connector.md)
 - [ConnectorConfig](docs/Model/ConnectorConfig.md)

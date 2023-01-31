@@ -36,6 +36,8 @@ docs/ConfigInfoResponse.md
 docs/ConfigResponse.md
 docs/ConfigUser.md
 docs/ConfigsResponse.md
+docs/ConfigsResponseCursor.md
+docs/ConfigsResponseCursorAllOf.md
 docs/ConfirmHoldRequest.md
 docs/Connector.md
 docs/ConnectorConfig.md
@@ -269,6 +271,8 @@ src/main/java/com/formance/formance/model/ConfigInfoResponse.java
 src/main/java/com/formance/formance/model/ConfigResponse.java
 src/main/java/com/formance/formance/model/ConfigUser.java
 src/main/java/com/formance/formance/model/ConfigsResponse.java
+src/main/java/com/formance/formance/model/ConfigsResponseCursor.java
+src/main/java/com/formance/formance/model/ConfigsResponseCursorAllOf.java
 src/main/java/com/formance/formance/model/ConfirmHoldRequest.java
 src/main/java/com/formance/formance/model/Connector.java
 src/main/java/com/formance/formance/model/ConnectorConfig.java

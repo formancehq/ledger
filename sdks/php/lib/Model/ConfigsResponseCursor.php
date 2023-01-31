@@ -58,10 +58,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
       * @var string[]
       */
     protected static $openAPITypes = [
-        'page_size' => 'int',
         'has_more' => 'bool',
-        'previous' => 'string',
-        'next' => 'string',
         'data' => '\Formance\Model\WebhooksConfig[]'
     ];
 
@@ -73,10 +70,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
       * @psalm-var array<string, string|null>
       */
     protected static $openAPIFormats = [
-        'page_size' => 'int64',
         'has_more' => null,
-        'previous' => null,
-        'next' => null,
         'data' => null
     ];
 
@@ -86,10 +80,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
       * @var boolean[]
       */
     protected static array $openAPINullables = [
-        'page_size' => false,
-		'has_more' => false,
-		'previous' => false,
-		'next' => false,
+        'has_more' => false,
 		'data' => false
     ];
 
@@ -179,10 +170,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
      * @var string[]
      */
     protected static $attributeMap = [
-        'page_size' => 'pageSize',
         'has_more' => 'hasMore',
-        'previous' => 'previous',
-        'next' => 'next',
         'data' => 'data'
     ];
 
@@ -192,10 +180,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
      * @var string[]
      */
     protected static $setters = [
-        'page_size' => 'setPageSize',
         'has_more' => 'setHasMore',
-        'previous' => 'setPrevious',
-        'next' => 'setNext',
         'data' => 'setData'
     ];
 
@@ -205,10 +190,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
      * @var string[]
      */
     protected static $getters = [
-        'page_size' => 'getPageSize',
         'has_more' => 'getHasMore',
-        'previous' => 'getPrevious',
-        'next' => 'getNext',
         'data' => 'getData'
     ];
 
@@ -269,10 +251,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
      */
     public function __construct(array $data = null)
     {
-        $this->setIfExists('page_size', $data ?? [], null);
         $this->setIfExists('has_more', $data ?? [], null);
-        $this->setIfExists('previous', $data ?? [], null);
-        $this->setIfExists('next', $data ?? [], null);
         $this->setIfExists('data', $data ?? [], null);
     }
 
@@ -303,17 +282,9 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
     {
         $invalidProperties = [];
 
-        if ($this->container['page_size'] === null) {
-            $invalidProperties[] = "'page_size' can't be null";
+        if ($this->container['has_more'] === null) {
+            $invalidProperties[] = "'has_more' can't be null";
         }
-        if (($this->container['page_size'] > 1000)) {
-            $invalidProperties[] = "invalid value for 'page_size', must be smaller than or equal to 1000.";
-        }
-
-        if (($this->container['page_size'] < 1)) {
-            $invalidProperties[] = "invalid value for 'page_size', must be bigger than or equal to 1.";
-        }
-
         if ($this->container['data'] === null) {
             $invalidProperties[] = "'data' can't be null";
         }
@@ -333,44 +304,9 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
 
 
     /**
-     * Gets page_size
-     *
-     * @return int
-     */
-    public function getPageSize()
-    {
-        return $this->container['page_size'];
-    }
-
-    /**
-     * Sets page_size
-     *
-     * @param int $page_size page_size
-     *
-     * @return self
-     */
-    public function setPageSize($page_size)
-    {
-        if (is_null($page_size)) {
-            throw new \InvalidArgumentException('non-nullable page_size cannot be null');
-        }
-
-        if (($page_size > 1000)) {
-            throw new \InvalidArgumentException('invalid value for $page_size when calling ConfigsResponseCursor., must be smaller than or equal to 1000.');
-        }
-        if (($page_size < 1)) {
-            throw new \InvalidArgumentException('invalid value for $page_size when calling ConfigsResponseCursor., must be bigger than or equal to 1.');
-        }
-
-        $this->container['page_size'] = $page_size;
-
-        return $this;
-    }
-
-    /**
      * Gets has_more
      *
-     * @return bool|null
+     * @return bool
      */
     public function getHasMore()
     {
@@ -380,7 +316,7 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
     /**
      * Sets has_more
      *
-     * @param bool|null $has_more has_more
+     * @param bool $has_more has_more
      *
      * @return self
      */
@@ -390,60 +326,6 @@ class ConfigsResponseCursor implements ModelInterface, ArrayAccess, \JsonSeriali
             throw new \InvalidArgumentException('non-nullable has_more cannot be null');
         }
         $this->container['has_more'] = $has_more;
-
-        return $this;
-    }
-
-    /**
-     * Gets previous
-     *
-     * @return string|null
-     */
-    public function getPrevious()
-    {
-        return $this->container['previous'];
-    }
-
-    /**
-     * Sets previous
-     *
-     * @param string|null $previous previous
-     *
-     * @return self
-     */
-    public function setPrevious($previous)
-    {
-        if (is_null($previous)) {
-            throw new \InvalidArgumentException('non-nullable previous cannot be null');
-        }
-        $this->container['previous'] = $previous;
-
-        return $this;
-    }
-
-    /**
-     * Gets next
-     *
-     * @return string|null
-     */
-    public function getNext()
-    {
-        return $this->container['next'];
-    }
-
-    /**
-     * Sets next
-     *
-     * @param string|null $next next
-     *
-     * @return self
-     */
-    public function setNext($next)
-    {
-        if (is_null($next)) {
-            throw new \InvalidArgumentException('non-nullable next cannot be null');
-        }
-        $this->container['next'] = $next;
 
         return $this;
     }

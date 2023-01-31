@@ -29,6 +29,8 @@ import { ConfigInfoResponse } from '../models/ConfigInfoResponse';
 import { ConfigResponse } from '../models/ConfigResponse';
 import { ConfigUser } from '../models/ConfigUser';
 import { ConfigsResponse } from '../models/ConfigsResponse';
+import { ConfigsResponseCursor } from '../models/ConfigsResponseCursor';
+import { ConfigsResponseCursorAllOf } from '../models/ConfigsResponseCursorAllOf';
 import { ConfirmHoldRequest } from '../models/ConfirmHoldRequest';
 import { Connector } from '../models/Connector';
 import { ConnectorConfig } from '../models/ConnectorConfig';

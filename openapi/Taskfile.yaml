@@ -34,7 +34,7 @@ tasks:
   sdk:generate:all:
     desc: Generate all client code
     dir: ./sdk
-    cmds:
+    deps:
       - task: sdk:generate
         vars: {CLI_ARGS: "go", VERSION: "{{.VERSION}}"}
       - task: sdk:generate

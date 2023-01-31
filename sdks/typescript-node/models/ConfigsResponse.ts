@@ -10,11 +10,11 @@
  * Do not edit the class manually.
  */
 
-import { Cursor } from '../models/Cursor';
+import { ConfigsResponseCursor } from '../models/ConfigsResponseCursor';
 import { HttpFile } from '../http/http';
 
 export class ConfigsResponse {
-    'cursor': Cursor;
+    'cursor': ConfigsResponseCursor;
 
     static readonly discriminator: string | undefined = undefined;
 
@@ -22,7 +22,7 @@ export class ConfigsResponse {
         {
             "name": "cursor",
             "baseName": "cursor",
-            "type": "Cursor",
+            "type": "ConfigsResponseCursor",
             "format": ""
         }    ];
 

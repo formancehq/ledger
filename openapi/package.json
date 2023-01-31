@@ -10,7 +10,7 @@
   "scripts": {
     "cli": "openapi-merge-cli",
     "build": "yarn run cli",
-    "build:all": "yarn run cli && task sdk:generate:all",
+    "build:all": "yarn run cli && task -p sdk:generate:all",
     "start": "node main.js"
   }
 }

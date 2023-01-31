@@ -5256,55 +5256,14 @@ components:
       type: object
     ConfigsResponse:
       example:
-        cursor:
-          data:
-          - createdAt: 2000-01-23T04:56:07.000+00:00
-            endpoint: https://example.com
-            active: true
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            secret: V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3
-            eventTypes:
-            - TYPE1
-            - TYPE2
-            updatedAt: 2000-01-23T04:56:07.000+00:00
-          - createdAt: 2000-01-23T04:56:07.000+00:00
-            endpoint: https://example.com
-            active: true
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            secret: V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3
-            eventTypes:
-            - TYPE1
-            - TYPE2
-            updatedAt: 2000-01-23T04:56:07.000+00:00
-          hasMore: false
+        cursor: null
       properties:
         cursor:
-          $ref: '#/components/schemas/Cursor'
+          $ref: '#/components/schemas/ConfigsResponse_cursor'
       required:
       - cursor
       type: object
     Cursor:
-      example:
-        data:
-        - createdAt: 2000-01-23T04:56:07.000+00:00
-          endpoint: https://example.com
-          active: true
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          secret: V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3
-          eventTypes:
-          - TYPE1
-          - TYPE2
-          updatedAt: 2000-01-23T04:56:07.000+00:00
-        - createdAt: 2000-01-23T04:56:07.000+00:00
-          endpoint: https://example.com
-          active: true
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          secret: V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3
-          eventTypes:
-          - TYPE1
-          - TYPE2
-          updatedAt: 2000-01-23T04:56:07.000+00:00
-        hasMore: false
       properties:
         hasMore:
           example: false
@@ -6786,6 +6745,19 @@ components:
           type: array
       title: cursor
       type: object
+    ConfigsResponse_cursor_allOf:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/webhooksConfig'
+          type: array
+      required:
+      - data
+      type: object
+    ConfigsResponse_cursor:
+      allOf:
+      - $ref: '#/components/schemas/Cursor'
+      - $ref: '#/components/schemas/ConfigsResponse_cursor_allOf'
     WalletWithBalances_balances:
       example:
         main:

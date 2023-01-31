@@ -73,6 +73,8 @@ models/ConfigInfoResponse.ts
 models/ConfigResponse.ts
 models/ConfigUser.ts
 models/ConfigsResponse.ts
+models/ConfigsResponseCursor.ts
+models/ConfigsResponseCursorAllOf.ts
 models/ConfirmHoldRequest.ts
 models/Connector.ts
 models/ConnectorConfig.ts

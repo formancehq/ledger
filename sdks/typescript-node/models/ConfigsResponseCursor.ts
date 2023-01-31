@@ -14,37 +14,16 @@ import { WebhooksConfig } from '../models/WebhooksConfig';
 import { HttpFile } from '../http/http';
 
 export class ConfigsResponseCursor {
-    'pageSize': number;
-    'hasMore'?: boolean;
-    'previous'?: string;
-    'next'?: string;
+    'hasMore': boolean;
     'data': Array<WebhooksConfig>;
 
     static readonly discriminator: string | undefined = undefined;
 
     static readonly attributeTypeMap: Array<{name: string, baseName: string, type: string, format: string}> = [
         {
-            "name": "pageSize",
-            "baseName": "pageSize",
-            "type": "number",
-            "format": "int64"
-        },
-        {
             "name": "hasMore",
             "baseName": "hasMore",
             "type": "boolean",
-            "format": ""
-        },
-        {
-            "name": "previous",
-            "baseName": "previous",
-            "type": "string",
-            "format": ""
-        },
-        {
-            "name": "next",
-            "baseName": "next",
-            "type": "string",
             "format": ""
         },
         {

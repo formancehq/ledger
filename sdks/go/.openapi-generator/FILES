@@ -53,6 +53,8 @@ docs/ConfigInfoResponse.md
 docs/ConfigResponse.md
 docs/ConfigUser.md
 docs/ConfigsResponse.md
+docs/ConfigsResponseCursor.md
+docs/ConfigsResponseCursorAllOf.md
 docs/ConfirmHoldRequest.md
 docs/Connector.md
 docs/ConnectorConfig.md
@@ -250,6 +252,8 @@ model_config_info_response.go
 model_config_response.go
 model_config_user.go
 model_configs_response.go
+model_configs_response_cursor.go
+model_configs_response_cursor_all_of.go
 model_confirm_hold_request.go
 model_connector.go
 model_connector_config.go
