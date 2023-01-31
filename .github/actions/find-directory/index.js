@@ -18,4 +18,4 @@ function findDockerFile(dir) {
     });
     return results;
 }
-console.log(JSON.stringify(findDockerFile("./"),null,0));
+console.log(JSON.stringify(findDockerFile("./components"),null,0));
