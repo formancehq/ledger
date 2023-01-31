@@ -124,7 +124,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v2
         with:
-          file: ./components/${{ matrix.folder }}/build.Dockerfile
+          file: ./components/${{ matrix.folder }}/Dockerfile
           context: .
           platforms: linux/amd64
           push: true

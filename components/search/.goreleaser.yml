@@ -1,10 +1,8 @@
 project_name: search
-env:
-  - GO111MODULE=on
-  - GOPROXY=https://proxy.golang.org
-before:
-  hooks:
-    - go mod download
+
+monorepo:
+  tag_prefix: components/search/
+  dir: ./components/search/
 
 builds:
   - binary: search
@@ -25,7 +23,7 @@ builds:
       - arm64
 
 archives:
-  - id: "search"
+  - id: "{{.ProjectName}}"
     builds:
       - search
     format: tar.gz
@@ -36,7 +34,7 @@ archives:
 
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: '{{.ProjectName}}_checksums.txt'
 
 snapshot:
   name_template: "{{ .Tag }}"
@@ -68,8 +66,8 @@ release:
   footer: |
     **Full Changelog**: https://github.com/numary/search/compare/{{ .PreviousTag }}...{{ .Tag }}
     ## What to do next?
-    - Read the [documentation](https://docs.formance.com/oss/search/get-started/installation)
-    - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
+    - Read the [documentation](https://docs.formance.com/)
+    - Join our [Slack server](https://formance.com/slack)
 
 #brews:
 #  - tap:
