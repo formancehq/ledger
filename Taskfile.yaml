@@ -2,9 +2,6 @@
 
 version: "3"
 
-dotenv:
-- .env
-
 vars:
   PKG: "./..."
   FAILFAST: "-failfast"
