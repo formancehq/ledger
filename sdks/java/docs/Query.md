@@ -15,6 +15,7 @@
 |**policy** | **String** |  |  [optional] |
 |**target** | **String** |  |  [optional] |
 |**cursor** | **String** |  |  [optional] |
+|**raw** | **Object** |  |  [optional] |
 
 
 

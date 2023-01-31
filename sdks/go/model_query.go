@@ -28,6 +28,7 @@ type Query struct {
 	Policy *string `json:"policy,omitempty"`
 	Target *string `json:"target,omitempty"`
 	Cursor *string `json:"cursor,omitempty"`
+	Raw map[string]interface{} `json:"raw,omitempty"`
 }
 
 // NewQuery instantiates a new Query object
@@ -303,6 +304,38 @@ func (o *Query) SetCursor(v string) {
 	o.Cursor = &v
 }
 
+// GetRaw returns the Raw field value if set, zero value otherwise.
+func (o *Query) GetRaw() map[string]interface{} {
+	if o == nil || isNil(o.Raw) {
+		var ret map[string]interface{}
+		return ret
+	}
+	return o.Raw
+}
+
+// GetRawOk returns a tuple with the Raw field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *Query) GetRawOk() (map[string]interface{}, bool) {
+	if o == nil || isNil(o.Raw) {
+		return map[string]interface{}{}, false
+	}
+	return o.Raw, true
+}
+
+// HasRaw returns a boolean if a field has been set.
+func (o *Query) HasRaw() bool {
+	if o != nil && !isNil(o.Raw) {
+		return true
+	}
+
+	return false
+}
+
+// SetRaw gets a reference to the given map[string]interface{} and assigns it to the Raw field.
+func (o *Query) SetRaw(v map[string]interface{}) {
+	o.Raw = v
+}
+
 func (o Query) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -336,6 +369,9 @@ func (o Query) ToMap() (map[string]interface{}, error) {
 	}
 	if !isNil(o.Cursor) {
 		toSerialize["cursor"] = o.Cursor
+	}
+	if !isNil(o.Raw) {
+		toSerialize["raw"] = o.Raw
 	}
 	return toSerialize, nil
 }

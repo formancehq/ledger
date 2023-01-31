@@ -61,12 +61,12 @@ class Scope(
                     
                         def __new__(
                             cls,
-                            arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                            _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                             _configuration: typing.Optional[schemas.Configuration] = None,
                         ) -> 'transient':
                             return super().__new__(
                                 cls,
-                                arg,
+                                _arg,
                                 _configuration=_configuration,
                             )
                     
@@ -108,7 +108,7 @@ class Scope(
         
             def __new__(
                 cls,
-                *args: typing.Union[dict, frozendict.frozendict, ],
+                *_args: typing.Union[dict, frozendict.frozendict, ],
                 id: typing.Union[MetaOapg.properties.id, str, ],
                 transient: typing.Union[MetaOapg.properties.transient, list, tuple, schemas.Unset] = schemas.unset,
                 _configuration: typing.Optional[schemas.Configuration] = None,
@@ -116,7 +116,7 @@ class Scope(
             ) -> 'all_of_1':
                 return super().__new__(
                     cls,
-                    *args,
+                    *_args,
                     id=id,
                     transient=transient,
                     _configuration=_configuration,
@@ -141,13 +141,13 @@ class Scope(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Scope':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             _configuration=_configuration,
             **kwargs,
         )

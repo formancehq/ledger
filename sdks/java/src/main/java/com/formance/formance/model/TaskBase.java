@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -74,7 +72,6 @@ public class TaskBase {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public UUID getId() {
     return id;
@@ -97,7 +94,6 @@ public class TaskBase {
    * @return connectorId
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public UUID getConnectorId() {
     return connectorId;
@@ -120,7 +116,6 @@ public class TaskBase {
    * @return createdAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -143,7 +138,6 @@ public class TaskBase {
    * @return updatedAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;
@@ -166,7 +160,6 @@ public class TaskBase {
    * @return status
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public PaymentStatus getStatus() {
     return status;
@@ -189,7 +182,6 @@ public class TaskBase {
    * @return state
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Object getState() {
     return state;
@@ -212,7 +204,6 @@ public class TaskBase {
    * @return error
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getError() {
     return error;

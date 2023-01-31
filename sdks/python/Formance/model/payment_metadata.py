@@ -91,7 +91,7 @@ class PaymentMetadata(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         value: typing.Union[MetaOapg.properties.value, str, ],
         key: typing.Union[MetaOapg.properties.key, str, ],
         changelog: typing.Union['PaymentMetadataChangelog', schemas.Unset] = schemas.unset,
@@ -100,7 +100,7 @@ class PaymentMetadata(
     ) -> 'PaymentMetadata':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             value=value,
             key=key,
             changelog=changelog,

@@ -81,7 +81,7 @@ class ScopeOptions(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         label: typing.Union[MetaOapg.properties.label, str, ],
         metadata: typing.Union['Metadata', schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -89,7 +89,7 @@ class ScopeOptions(
     ) -> 'ScopeOptions':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             label=label,
             metadata=metadata,
             _configuration=_configuration,

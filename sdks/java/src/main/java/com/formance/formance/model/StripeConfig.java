@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -55,7 +53,6 @@ public class StripeConfig {
    * @return pollingPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will try to fetch new BalanceTransaction objects from Stripe API. ")
 
   public String getPollingPeriod() {
     return pollingPeriod;
@@ -78,7 +75,6 @@ public class StripeConfig {
    * @return apiKey
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getApiKey() {
     return apiKey;
@@ -102,7 +98,6 @@ public class StripeConfig {
    * @return pageSize
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "50", value = "Number of BalanceTransaction to fetch at each polling interval. ")
 
   public Long getPageSize() {
     return pageSize;

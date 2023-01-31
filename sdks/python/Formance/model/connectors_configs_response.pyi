@@ -119,7 +119,7 @@ class ConnectorsConfigsResponse(
                                     
                                         def __new__(
                                             cls,
-                                            *args: typing.Union[dict, frozendict.frozendict, ],
+                                            *_args: typing.Union[dict, frozendict.frozendict, ],
                                             dataType: typing.Union[MetaOapg.properties.dataType, str, ],
                                             required: typing.Union[MetaOapg.properties.required, bool, ],
                                             _configuration: typing.Optional[schemas.Configuration] = None,
@@ -127,7 +127,7 @@ class ConnectorsConfigsResponse(
                                         ) -> 'key':
                                             return super().__new__(
                                                 cls,
-                                                *args,
+                                                *_args,
                                                 dataType=dataType,
                                                 required=required,
                                                 _configuration=_configuration,
@@ -162,14 +162,14 @@ class ConnectorsConfigsResponse(
                         
                             def __new__(
                                 cls,
-                                *args: typing.Union[dict, frozendict.frozendict, ],
+                                *_args: typing.Union[dict, frozendict.frozendict, ],
                                 key: typing.Union[MetaOapg.properties.key, dict, frozendict.frozendict, ],
                                 _configuration: typing.Optional[schemas.Configuration] = None,
                                 **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
                             ) -> 'connector':
                                 return super().__new__(
                                     cls,
-                                    *args,
+                                    *_args,
                                     key=key,
                                     _configuration=_configuration,
                                     **kwargs,
@@ -203,14 +203,14 @@ class ConnectorsConfigsResponse(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     connector: typing.Union[MetaOapg.properties.connector, dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
                 ) -> 'data':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         connector=connector,
                         _configuration=_configuration,
                         **kwargs,
@@ -244,14 +244,14 @@ class ConnectorsConfigsResponse(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         data: typing.Union[MetaOapg.properties.data, dict, frozendict.frozendict, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'ConnectorsConfigsResponse':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             data=data,
             _configuration=_configuration,
             **kwargs,

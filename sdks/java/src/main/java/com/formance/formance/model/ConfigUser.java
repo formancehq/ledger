@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +55,6 @@ public class ConfigUser {
    * @return endpoint
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "https://example.com", required = true, value = "")
 
   public String getEndpoint() {
     return endpoint;
@@ -80,7 +77,6 @@ public class ConfigUser {
    * @return secret
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3", value = "")
 
   public String getSecret() {
     return secret;
@@ -108,7 +104,6 @@ public class ConfigUser {
    * @return eventTypes
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "[\"TYPE1\",\"TYPE2\"]", required = true, value = "")
 
   public List<String> getEventTypes() {
     return eventTypes;

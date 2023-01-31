@@ -187,12 +187,12 @@ class Payment(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['PaymentAdjustment'], typing.List['PaymentAdjustment']],
+                    _arg: typing.Union[typing.Tuple['PaymentAdjustment'], typing.List['PaymentAdjustment']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'adjustments':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -213,12 +213,12 @@ class Payment(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['PaymentMetadata'], typing.List['PaymentMetadata']],
+                    _arg: typing.Union[typing.Tuple['PaymentMetadata'], typing.List['PaymentMetadata']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'metadata':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -349,7 +349,7 @@ class Payment(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         metadata: typing.Union[MetaOapg.properties.metadata, list, tuple, ],
         adjustments: typing.Union[MetaOapg.properties.adjustments, list, tuple, ],
         scheme: typing.Union[MetaOapg.properties.scheme, str, ],
@@ -368,7 +368,7 @@ class Payment(
     ) -> 'Payment':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             metadata=metadata,
             adjustments=adjustments,
             scheme=scheme,

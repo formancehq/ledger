@@ -80,7 +80,7 @@ class Contract(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         expr: typing.Union[MetaOapg.properties.expr, dict, frozendict.frozendict, ],
         accounts: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         account: typing.Union[MetaOapg.properties.account, str, schemas.Unset] = schemas.unset,
@@ -89,7 +89,7 @@ class Contract(
     ) -> 'Contract':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             expr=expr,
             accounts=accounts,
             account=account,

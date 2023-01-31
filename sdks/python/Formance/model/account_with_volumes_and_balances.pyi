@@ -75,13 +75,13 @@ class AccountWithVolumesAndBalances(
                     
                         def __new__(
                             cls,
-                            *args: typing.Union[dict, frozendict.frozendict, ],
+                            *_args: typing.Union[dict, frozendict.frozendict, ],
                             _configuration: typing.Optional[schemas.Configuration] = None,
                             **kwargs: typing.Union[MetaOapg.additional_properties, decimal.Decimal, int, ],
                         ) -> 'additional_properties':
                             return super().__new__(
                                 cls,
-                                *args,
+                                *_args,
                                 _configuration=_configuration,
                                 **kwargs,
                             )
@@ -95,13 +95,13 @@ class AccountWithVolumesAndBalances(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[MetaOapg.additional_properties, dict, frozendict.frozendict, ],
                 ) -> 'volumes':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         _configuration=_configuration,
                         **kwargs,
                     )
@@ -129,13 +129,13 @@ class AccountWithVolumesAndBalances(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[MetaOapg.additional_properties, decimal.Decimal, int, ],
                 ) -> 'balances':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         _configuration=_configuration,
                         **kwargs,
                     )
@@ -196,7 +196,7 @@ class AccountWithVolumesAndBalances(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         address: typing.Union[MetaOapg.properties.address, str, ],
         type: typing.Union[MetaOapg.properties.type, str, schemas.Unset] = schemas.unset,
         metadata: typing.Union[MetaOapg.properties.metadata, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
@@ -207,7 +207,7 @@ class AccountWithVolumesAndBalances(
     ) -> 'AccountWithVolumesAndBalances':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             address=address,
             type=type,
             metadata=metadata,

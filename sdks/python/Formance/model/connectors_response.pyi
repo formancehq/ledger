@@ -97,7 +97,7 @@ class ConnectorsResponse(
                     
                         def __new__(
                             cls,
-                            *args: typing.Union[dict, frozendict.frozendict, ],
+                            *_args: typing.Union[dict, frozendict.frozendict, ],
                             provider: typing.Union['Connector', schemas.Unset] = schemas.unset,
                             enabled: typing.Union[MetaOapg.properties.enabled, bool, schemas.Unset] = schemas.unset,
                             _configuration: typing.Optional[schemas.Configuration] = None,
@@ -105,7 +105,7 @@ class ConnectorsResponse(
                         ) -> 'items':
                             return super().__new__(
                                 cls,
-                                *args,
+                                *_args,
                                 provider=provider,
                                 enabled=enabled,
                                 _configuration=_configuration,
@@ -114,12 +114,12 @@ class ConnectorsResponse(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, dict, frozendict.frozendict, ]], typing.List[typing.Union[MetaOapg.items, dict, frozendict.frozendict, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, dict, frozendict.frozendict, ]], typing.List[typing.Union[MetaOapg.items, dict, frozendict.frozendict, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'data':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -154,14 +154,14 @@ class ConnectorsResponse(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         data: typing.Union[MetaOapg.properties.data, list, tuple, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'ConnectorsResponse':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             data=data,
             _configuration=_configuration,
             **kwargs,

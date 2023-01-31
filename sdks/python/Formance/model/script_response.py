@@ -95,7 +95,7 @@ class ScriptResponse(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         errorCode: typing.Union['ErrorsEnum', schemas.Unset] = schemas.unset,
         errorMessage: typing.Union[MetaOapg.properties.errorMessage, str, schemas.Unset] = schemas.unset,
         details: typing.Union[MetaOapg.properties.details, str, schemas.Unset] = schemas.unset,
@@ -105,7 +105,7 @@ class ScriptResponse(
     ) -> 'ScriptResponse':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             errorCode=errorCode,
             errorMessage=errorMessage,
             details=details,

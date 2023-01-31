@@ -24,8 +24,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -232,7 +230,6 @@ public class Payment {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getId() {
     return id;
@@ -255,7 +252,6 @@ public class Payment {
    * @return reference
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getReference() {
     return reference;
@@ -278,7 +274,6 @@ public class Payment {
    * @return accountID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getAccountID() {
     return accountID;
@@ -301,7 +296,6 @@ public class Payment {
    * @return type
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public TypeEnum getType() {
     return type;
@@ -324,7 +318,6 @@ public class Payment {
    * @return provider
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Connector getProvider() {
     return provider;
@@ -347,7 +340,6 @@ public class Payment {
    * @return status
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public PaymentStatus getStatus() {
     return status;
@@ -371,7 +363,6 @@ public class Payment {
    * @return initialAmount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "100", required = true, value = "")
 
   public Long getInitialAmount() {
     return initialAmount;
@@ -394,7 +385,6 @@ public class Payment {
    * @return scheme
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public SchemeEnum getScheme() {
     return scheme;
@@ -417,7 +407,6 @@ public class Payment {
    * @return asset
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "USD", required = true, value = "")
 
   public String getAsset() {
     return asset;
@@ -440,7 +429,6 @@ public class Payment {
    * @return createdAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -463,7 +451,6 @@ public class Payment {
    * @return raw
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Object getRaw() {
     return raw;
@@ -491,7 +478,6 @@ public class Payment {
    * @return adjustments
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<PaymentAdjustment> getAdjustments() {
     return adjustments;
@@ -519,7 +505,6 @@ public class Payment {
    * @return metadata
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<PaymentMetadata> getMetadata() {
     return metadata;

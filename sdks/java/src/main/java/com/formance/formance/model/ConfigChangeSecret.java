@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -47,7 +45,6 @@ public class ConfigChangeSecret {
    * @return secret
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3", value = "")
 
   public String getSecret() {
     return secret;

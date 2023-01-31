@@ -63,12 +63,12 @@ class LedgerInfo(
                         
                             def __new__(
                                 cls,
-                                arg: typing.Union[typing.Tuple['MigrationInfo'], typing.List['MigrationInfo']],
+                                _arg: typing.Union[typing.Tuple['MigrationInfo'], typing.List['MigrationInfo']],
                                 _configuration: typing.Optional[schemas.Configuration] = None,
                             ) -> 'migrations':
                                 return super().__new__(
                                     cls,
-                                    arg,
+                                    _arg,
                                     _configuration=_configuration,
                                 )
                         
@@ -101,14 +101,14 @@ class LedgerInfo(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     migrations: typing.Union[MetaOapg.properties.migrations, list, tuple, schemas.Unset] = schemas.unset,
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
                 ) -> 'storage':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         migrations=migrations,
                         _configuration=_configuration,
                         **kwargs,
@@ -147,7 +147,7 @@ class LedgerInfo(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         name: typing.Union[MetaOapg.properties.name, str, schemas.Unset] = schemas.unset,
         storage: typing.Union[MetaOapg.properties.storage, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -155,7 +155,7 @@ class LedgerInfo(
     ) -> 'LedgerInfo':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             name=name,
             storage=storage,
             _configuration=_configuration,

@@ -98,7 +98,7 @@ class Secret(
         
             def __new__(
                 cls,
-                *args: typing.Union[dict, frozendict.frozendict, ],
+                *_args: typing.Union[dict, frozendict.frozendict, ],
                 clear: typing.Union[MetaOapg.properties.clear, str, ],
                 lastDigits: typing.Union[MetaOapg.properties.lastDigits, str, ],
                 id: typing.Union[MetaOapg.properties.id, str, ],
@@ -107,7 +107,7 @@ class Secret(
             ) -> 'all_of_1':
                 return super().__new__(
                     cls,
-                    *args,
+                    *_args,
                     clear=clear,
                     lastDigits=lastDigits,
                     id=id,
@@ -133,13 +133,13 @@ class Secret(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Secret':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             _configuration=_configuration,
             **kwargs,
         )

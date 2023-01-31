@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -47,7 +45,6 @@ public class WiseConfig {
    * @return apiKey
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getApiKey() {
     return apiKey;

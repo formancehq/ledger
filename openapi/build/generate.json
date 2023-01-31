@@ -5668,6 +5668,14 @@
           "cursor": {
             "type": "string",
             "example": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+          },
+          "raw": {
+            "type": "object",
+            "example": {
+              "query": {
+                "match_all": {}
+              }
+            }
           }
         }
       },

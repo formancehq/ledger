@@ -58,12 +58,12 @@ class WalletsTransaction(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['Posting'], typing.List['Posting']],
+                    _arg: typing.Union[typing.Tuple['Posting'], typing.List['Posting']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'postings':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -95,13 +95,13 @@ class WalletsTransaction(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[MetaOapg.additional_properties, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
                 ) -> 'metadata':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         _configuration=_configuration,
                         **kwargs,
                     )
@@ -186,7 +186,7 @@ class WalletsTransaction(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         postings: typing.Union[MetaOapg.properties.postings, list, tuple, ],
         txid: typing.Union[MetaOapg.properties.txid, decimal.Decimal, int, ],
         timestamp: typing.Union[MetaOapg.properties.timestamp, str, datetime, ],
@@ -199,7 +199,7 @@ class WalletsTransaction(
     ) -> 'WalletsTransaction':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             postings=postings,
             txid=txid,
             timestamp=timestamp,

@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,11 +31,11 @@ import java.util.List;
 public class Query {
   public static final String SERIALIZED_NAME_LEDGERS = "ledgers";
   @SerializedName(SERIALIZED_NAME_LEDGERS)
-  private List<String> ledgers = null;
+  private List<String> ledgers = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_AFTER = "after";
   @SerializedName(SERIALIZED_NAME_AFTER)
-  private List<String> after = null;
+  private List<String> after = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_PAGE_SIZE = "pageSize";
   @SerializedName(SERIALIZED_NAME_PAGE_SIZE)
@@ -45,7 +43,7 @@ public class Query {
 
   public static final String SERIALIZED_NAME_TERMS = "terms";
   @SerializedName(SERIALIZED_NAME_TERMS)
-  private List<String> terms = null;
+  private List<String> terms = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_SORT = "sort";
   @SerializedName(SERIALIZED_NAME_SORT)
@@ -62,6 +60,10 @@ public class Query {
   public static final String SERIALIZED_NAME_CURSOR = "cursor";
   @SerializedName(SERIALIZED_NAME_CURSOR)
   private String cursor;
+
+  public static final String SERIALIZED_NAME_RAW = "raw";
+  @SerializedName(SERIALIZED_NAME_RAW)
+  private Object raw;
 
   public Query() {
   }
@@ -85,7 +87,6 @@ public class Query {
    * @return ledgers
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getLedgers() {
     return ledgers;
@@ -116,7 +117,6 @@ public class Query {
    * @return after
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getAfter() {
     return after;
@@ -140,7 +140,6 @@ public class Query {
    * @return pageSize
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Long getPageSize() {
     return pageSize;
@@ -171,7 +170,6 @@ public class Query {
    * @return terms
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getTerms() {
     return terms;
@@ -194,7 +192,6 @@ public class Query {
    * @return sort
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "txid:asc", value = "")
 
   public String getSort() {
     return sort;
@@ -217,7 +214,6 @@ public class Query {
    * @return policy
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "OR", value = "")
 
   public String getPolicy() {
     return policy;
@@ -240,7 +236,6 @@ public class Query {
    * @return target
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getTarget() {
     return target;
@@ -263,7 +258,6 @@ public class Query {
    * @return cursor
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", value = "")
 
   public String getCursor() {
     return cursor;
@@ -272,6 +266,28 @@ public class Query {
 
   public void setCursor(String cursor) {
     this.cursor = cursor;
+  }
+
+
+  public Query raw(Object raw) {
+    
+    this.raw = raw;
+    return this;
+  }
+
+   /**
+   * Get raw
+   * @return raw
+  **/
+  @javax.annotation.Nullable
+
+  public Object getRaw() {
+    return raw;
+  }
+
+
+  public void setRaw(Object raw) {
+    this.raw = raw;
   }
 
 
@@ -291,12 +307,13 @@ public class Query {
         Objects.equals(this.sort, query.sort) &&
         Objects.equals(this.policy, query.policy) &&
         Objects.equals(this.target, query.target) &&
-        Objects.equals(this.cursor, query.cursor);
+        Objects.equals(this.cursor, query.cursor) &&
+        Objects.equals(this.raw, query.raw);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(ledgers, after, pageSize, terms, sort, policy, target, cursor);
+    return Objects.hash(ledgers, after, pageSize, terms, sort, policy, target, cursor, raw);
   }
 
   @Override
@@ -311,6 +328,7 @@ public class Query {
     sb.append("    policy: ").append(toIndentedString(policy)).append("\n");
     sb.append("    target: ").append(toIndentedString(target)).append("\n");
     sb.append("    cursor: ").append(toIndentedString(cursor)).append("\n");
+    sb.append("    raw: ").append(toIndentedString(raw)).append("\n");
     sb.append("}");
     return sb.toString();
   }

@@ -22,8 +22,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -58,11 +56,11 @@ public class Transaction {
 
   public static final String SERIALIZED_NAME_PRE_COMMIT_VOLUMES = "preCommitVolumes";
   @SerializedName(SERIALIZED_NAME_PRE_COMMIT_VOLUMES)
-  private Map<String, Map<String, Volume>> preCommitVolumes = null;
+  private Map<String, Map<String, Volume>> preCommitVolumes = new HashMap<>();
 
   public static final String SERIALIZED_NAME_POST_COMMIT_VOLUMES = "postCommitVolumes";
   @SerializedName(SERIALIZED_NAME_POST_COMMIT_VOLUMES)
-  private Map<String, Map<String, Volume>> postCommitVolumes = null;
+  private Map<String, Map<String, Volume>> postCommitVolumes = new HashMap<>();
 
   public Transaction() {
   }
@@ -78,7 +76,6 @@ public class Transaction {
    * @return timestamp
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getTimestamp() {
     return timestamp;
@@ -106,7 +103,6 @@ public class Transaction {
    * @return postings
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<Posting> getPostings() {
     return postings;
@@ -129,7 +125,6 @@ public class Transaction {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "ref:001", value = "")
 
   public String getReference() {
     return reference;
@@ -149,7 +144,7 @@ public class Transaction {
 
   public Transaction putMetadataItem(String key, Object metadataItem) {
     if (this.metadata == null) {
-      this.metadata = new HashMap<>();
+      this.metadata = null;
     }
     this.metadata.put(key, metadataItem);
     return this;
@@ -160,7 +155,6 @@ public class Transaction {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -184,7 +178,6 @@ public class Transaction {
    * @return txid
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Long getTxid() {
     return txid;
@@ -215,7 +208,6 @@ public class Transaction {
    * @return preCommitVolumes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"orders:1\":{\"USD\":{\"input\":100,\"output\":10,\"balance\":90}},\"orders:2\":{\"USD\":{\"input\":100,\"output\":10,\"balance\":90}}}", value = "")
 
   public Map<String, Map<String, Volume>> getPreCommitVolumes() {
     return preCommitVolumes;
@@ -246,7 +238,6 @@ public class Transaction {
    * @return postCommitVolumes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"orders:1\":{\"USD\":{\"input\":100,\"output\":10,\"balance\":90}},\"orders:2\":{\"USD\":{\"input\":100,\"output\":10,\"balance\":90}}}", value = "")
 
   public Map<String, Map<String, Volume>> getPostCommitVolumes() {
     return postCommitVolumes;

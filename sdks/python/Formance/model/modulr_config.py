@@ -88,7 +88,7 @@ class ModulrConfig(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         apiKey: typing.Union[MetaOapg.properties.apiKey, str, ],
         apiSecret: typing.Union[MetaOapg.properties.apiSecret, str, ],
         endpoint: typing.Union[MetaOapg.properties.endpoint, str, schemas.Unset] = schemas.unset,
@@ -97,7 +97,7 @@ class ModulrConfig(
     ) -> 'ModulrConfig':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             apiKey=apiKey,
             apiSecret=apiSecret,
             endpoint=endpoint,

@@ -64,13 +64,13 @@ class Hold(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[MetaOapg.additional_properties, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
                 ) -> 'metadata':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         _configuration=_configuration,
                         **kwargs,
                     )
@@ -139,7 +139,7 @@ class Hold(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         walletID: typing.Union[MetaOapg.properties.walletID, str, ],
         metadata: typing.Union[MetaOapg.properties.metadata, dict, frozendict.frozendict, ],
         description: typing.Union[MetaOapg.properties.description, str, ],
@@ -150,7 +150,7 @@ class Hold(
     ) -> 'Hold':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             walletID=walletID,
             metadata=metadata,
             description=description,

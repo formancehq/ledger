@@ -39,44 +39,44 @@ class ReadClientResponse(
         class properties:
         
             @staticmethod
-            def items() -> typing.Type['Client']:
+            def data() -> typing.Type['Client']:
                 return Client
             __annotations__ = {
-                "items": items,
+                "data": data,
             }
     
     @typing.overload
-    def __getitem__(self, name: typing_extensions.Literal["items"]) -> 'Client': ...
+    def __getitem__(self, name: typing_extensions.Literal["data"]) -> 'Client': ...
     
     @typing.overload
     def __getitem__(self, name: str) -> schemas.UnsetAnyTypeSchema: ...
     
-    def __getitem__(self, name: typing.Union[typing_extensions.Literal["items", ], str]):
+    def __getitem__(self, name: typing.Union[typing_extensions.Literal["data", ], str]):
         # dict_instance[name] accessor
         return super().__getitem__(name)
     
     
     @typing.overload
-    def get_item_oapg(self, name: typing_extensions.Literal["items"]) -> typing.Union['Client', schemas.Unset]: ...
+    def get_item_oapg(self, name: typing_extensions.Literal["data"]) -> typing.Union['Client', schemas.Unset]: ...
     
     @typing.overload
     def get_item_oapg(self, name: str) -> typing.Union[schemas.UnsetAnyTypeSchema, schemas.Unset]: ...
     
-    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["items", ], str]):
+    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["data", ], str]):
         return super().get_item_oapg(name)
     
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
-        items: typing.Union['Client', schemas.Unset] = schemas.unset,
+        *_args: typing.Union[dict, frozendict.frozendict, ],
+        data: typing.Union['Client', schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'ReadClientResponse':
         return super().__new__(
             cls,
-            *args,
-            items=items,
+            *_args,
+            data=data,
             _configuration=_configuration,
             **kwargs,
         )

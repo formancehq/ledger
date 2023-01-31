@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -59,7 +57,6 @@ public class CurrencyCloudConfig {
    * @return apiKey
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getApiKey() {
     return apiKey;
@@ -82,7 +79,6 @@ public class CurrencyCloudConfig {
    * @return loginID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "Username of the API Key holder")
 
   public String getLoginID() {
     return loginID;
@@ -105,7 +101,6 @@ public class CurrencyCloudConfig {
    * @return pollingPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will fetch transactions")
 
   public String getPollingPeriod() {
     return pollingPeriod;
@@ -128,7 +123,6 @@ public class CurrencyCloudConfig {
    * @return endpoint
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "XXX", value = "The endpoint to use for the API. Defaults to https://devapi.currencycloud.com")
 
   public String getEndpoint() {
     return endpoint;

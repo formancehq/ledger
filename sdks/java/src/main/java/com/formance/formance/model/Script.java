@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -61,7 +59,6 @@ public class Script {
    * @return plain
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "vars { account $user } send [COIN 10] (  source = @world  destination = $user ) ", required = true, value = "")
 
   public String getPlain() {
     return plain;
@@ -84,7 +81,6 @@ public class Script {
    * @return vars
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"vars\":{\"user\":\"users:042\"}}", value = "")
 
   public Object getVars() {
     return vars;
@@ -107,7 +103,6 @@ public class Script {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "order_1234", value = "Reference to attach to the generated transaction")
 
   public String getReference() {
     return reference;
@@ -127,7 +122,7 @@ public class Script {
 
   public Script putMetadataItem(String key, Object metadataItem) {
     if (this.metadata == null) {
-      this.metadata = new HashMap<>();
+      this.metadata = null;
     }
     this.metadata.put(key, metadataItem);
     return this;
@@ -138,7 +133,6 @@ public class Script {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;

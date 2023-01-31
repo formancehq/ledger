@@ -58,12 +58,12 @@ class Mapping(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['Contract'], typing.List['Contract']],
+                    _arg: typing.Union[typing.Tuple['Contract'], typing.List['Contract']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'contracts':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -99,13 +99,13 @@ class Mapping(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, None, ],
+        *_args: typing.Union[dict, frozendict.frozendict, None, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Mapping':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             _configuration=_configuration,
             **kwargs,
         )

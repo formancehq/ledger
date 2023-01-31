@@ -53,12 +53,12 @@ class PostTransaction(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['Posting'], typing.List['Posting']],
+                    _arg: typing.Union[typing.Tuple['Posting'], typing.List['Posting']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'postings':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -115,7 +115,7 @@ class PostTransaction(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     plain: typing.Union[MetaOapg.properties.plain, str, ],
                     vars: typing.Union[MetaOapg.properties.vars, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
                     _configuration: typing.Optional[schemas.Configuration] = None,
@@ -123,7 +123,7 @@ class PostTransaction(
                 ) -> 'script':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         plain=plain,
                         vars=vars,
                         _configuration=_configuration,
@@ -189,7 +189,7 @@ class PostTransaction(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         timestamp: typing.Union[MetaOapg.properties.timestamp, str, datetime, schemas.Unset] = schemas.unset,
         postings: typing.Union[MetaOapg.properties.postings, list, tuple, schemas.Unset] = schemas.unset,
         script: typing.Union[MetaOapg.properties.script, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
@@ -200,7 +200,7 @@ class PostTransaction(
     ) -> 'PostTransaction':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             timestamp=timestamp,
             postings=postings,
             script=script,

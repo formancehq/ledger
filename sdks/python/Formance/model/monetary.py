@@ -80,7 +80,7 @@ class Monetary(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         amount: typing.Union[MetaOapg.properties.amount, decimal.Decimal, int, ],
         asset: typing.Union[MetaOapg.properties.asset, str, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -88,7 +88,7 @@ class Monetary(
     ) -> 'Monetary':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             amount=amount,
             asset=asset,
             _configuration=_configuration,

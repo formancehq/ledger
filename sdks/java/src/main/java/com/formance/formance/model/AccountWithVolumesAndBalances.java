@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,11 +43,11 @@ public class AccountWithVolumesAndBalances {
 
   public static final String SERIALIZED_NAME_VOLUMES = "volumes";
   @SerializedName(SERIALIZED_NAME_VOLUMES)
-  private Map<String, Map<String, Long>> volumes = null;
+  private Map<String, Map<String, Long>> volumes = new HashMap<>();
 
   public static final String SERIALIZED_NAME_BALANCES = "balances";
   @SerializedName(SERIALIZED_NAME_BALANCES)
-  private Map<String, Long> balances = null;
+  private Map<String, Long> balances = new HashMap<>();
 
   public AccountWithVolumesAndBalances() {
   }
@@ -65,7 +63,6 @@ public class AccountWithVolumesAndBalances {
    * @return address
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "users:001", required = true, value = "")
 
   public String getAddress() {
     return address;
@@ -88,7 +85,6 @@ public class AccountWithVolumesAndBalances {
    * @return type
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "virtual", value = "")
 
   public String getType() {
     return type;
@@ -111,7 +107,6 @@ public class AccountWithVolumesAndBalances {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Object getMetadata() {
     return metadata;
@@ -142,7 +137,6 @@ public class AccountWithVolumesAndBalances {
    * @return volumes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"COIN\":{\"input\":100,\"output\":0}}", value = "")
 
   public Map<String, Map<String, Long>> getVolumes() {
     return volumes;
@@ -173,7 +167,6 @@ public class AccountWithVolumesAndBalances {
    * @return balances
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"COIN\":100}", value = "")
 
   public Map<String, Long> getBalances() {
     return balances;

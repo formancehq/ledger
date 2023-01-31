@@ -54,12 +54,12 @@ class LedgerStorage(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'ledgers':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -102,7 +102,7 @@ class LedgerStorage(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         driver: typing.Union[MetaOapg.properties.driver, str, ],
         ledgers: typing.Union[MetaOapg.properties.ledgers, list, tuple, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -110,7 +110,7 @@ class LedgerStorage(
     ) -> 'LedgerStorage':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             driver=driver,
             ledgers=ledgers,
             _configuration=_configuration,

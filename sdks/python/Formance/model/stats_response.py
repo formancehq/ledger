@@ -73,14 +73,14 @@ class StatsResponse(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         data: 'Stats',
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'StatsResponse':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             data=data,
             _configuration=_configuration,
             **kwargs,

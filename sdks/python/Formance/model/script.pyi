@@ -97,7 +97,7 @@ class Script(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         plain: typing.Union[MetaOapg.properties.plain, str, ],
         vars: typing.Union[MetaOapg.properties.vars, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
         reference: typing.Union[MetaOapg.properties.reference, str, schemas.Unset] = schemas.unset,
@@ -107,7 +107,7 @@ class Script(
     ) -> 'Script':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             plain=plain,
             vars=vars,
             reference=reference,

@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 
@@ -112,7 +110,6 @@ public class Log {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "1234", required = true, value = "")
 
   public Long getId() {
     return id;
@@ -135,7 +132,6 @@ public class Log {
    * @return type
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public TypeEnum getType() {
     return type;
@@ -158,7 +154,6 @@ public class Log {
    * @return data
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Object getData() {
     return data;
@@ -181,7 +176,6 @@ public class Log {
    * @return hash
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", required = true, value = "")
 
   public String getHash() {
     return hash;
@@ -204,7 +198,6 @@ public class Log {
    * @return date
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getDate() {
     return date;

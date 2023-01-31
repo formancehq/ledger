@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,7 +52,6 @@ public class AggregateBalancesResponse {
    * @return data
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "{\"USD\":100,\"EUR\":12}", required = true, value = "")
 
   public Map<String, Long> getData() {
     return data;

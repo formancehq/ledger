@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -60,7 +58,6 @@ public class StripeTransferRequest {
    * @return amount
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "100", value = "")
 
   public Long getAmount() {
     return amount;
@@ -83,7 +80,6 @@ public class StripeTransferRequest {
    * @return asset
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "USD", value = "")
 
   public String getAsset() {
     return asset;
@@ -106,7 +102,6 @@ public class StripeTransferRequest {
    * @return destination
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "acct_1Gqj58KZcSIg2N2q", value = "")
 
   public String getDestination() {
     return destination;
@@ -129,7 +124,6 @@ public class StripeTransferRequest {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"order_id\":\"6735\"}", value = "A set of key/value pairs that you can attach to a transfer object. It can be useful for storing additional information about the transfer in a structured format. ")
 
   public Object getMetadata() {
     return metadata;

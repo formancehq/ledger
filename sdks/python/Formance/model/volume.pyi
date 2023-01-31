@@ -88,7 +88,7 @@ class Volume(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         output: typing.Union[MetaOapg.properties.output, decimal.Decimal, int, ],
         input: typing.Union[MetaOapg.properties.input, decimal.Decimal, int, ],
         balance: typing.Union[MetaOapg.properties.balance, decimal.Decimal, int, schemas.Unset] = schemas.unset,
@@ -97,7 +97,7 @@ class Volume(
     ) -> 'Volume':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             output=output,
             input=input,
             balance=balance,

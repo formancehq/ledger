@@ -81,7 +81,7 @@ class SecretOptions(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         name: typing.Union[MetaOapg.properties.name, str, ],
         metadata: typing.Union['Metadata', schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -89,7 +89,7 @@ class SecretOptions(
     ) -> 'SecretOptions':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             name=name,
             metadata=metadata,
             _configuration=_configuration,

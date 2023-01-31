@@ -52,12 +52,12 @@ class ListUsersResponse(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['User'], typing.List['User']],
+                    _arg: typing.Union[typing.Tuple['User'], typing.List['User']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'data':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -90,14 +90,14 @@ class ListUsersResponse(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         data: typing.Union[MetaOapg.properties.data, list, tuple, schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'ListUsersResponse':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             data=data,
             _configuration=_configuration,
             **kwargs,

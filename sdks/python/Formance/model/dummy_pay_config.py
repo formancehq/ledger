@@ -86,7 +86,7 @@ class DummyPayConfig(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         directory: typing.Union[MetaOapg.properties.directory, str, ],
         filePollingPeriod: typing.Union[MetaOapg.properties.filePollingPeriod, str, schemas.Unset] = schemas.unset,
         fileGenerationPeriod: typing.Union[MetaOapg.properties.fileGenerationPeriod, str, schemas.Unset] = schemas.unset,
@@ -95,7 +95,7 @@ class DummyPayConfig(
     ) -> 'DummyPayConfig':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             directory=directory,
             filePollingPeriod=filePollingPeriod,
             fileGenerationPeriod=fileGenerationPeriod,

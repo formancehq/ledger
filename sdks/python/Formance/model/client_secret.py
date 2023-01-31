@@ -101,7 +101,7 @@ class ClientSecret(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         name: typing.Union[MetaOapg.properties.name, str, ],
         lastDigits: typing.Union[MetaOapg.properties.lastDigits, str, ],
         id: typing.Union[MetaOapg.properties.id, str, ],
@@ -111,7 +111,7 @@ class ClientSecret(
     ) -> 'ClientSecret':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             name=name,
             lastDigits=lastDigits,
             id=id,

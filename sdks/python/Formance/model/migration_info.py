@@ -118,7 +118,7 @@ class MigrationInfo(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         version: typing.Union[MetaOapg.properties.version, decimal.Decimal, int, schemas.Unset] = schemas.unset,
         name: typing.Union[MetaOapg.properties.name, str, schemas.Unset] = schemas.unset,
         date: typing.Union[MetaOapg.properties.date, str, datetime, schemas.Unset] = schemas.unset,
@@ -128,7 +128,7 @@ class MigrationInfo(
     ) -> 'MigrationInfo':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             version=version,
             name=name,
             date=date,

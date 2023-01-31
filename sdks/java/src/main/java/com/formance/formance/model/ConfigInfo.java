@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -56,7 +54,6 @@ public class ConfigInfo {
    * @return config
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Config getConfig() {
     return config;
@@ -79,7 +76,6 @@ public class ConfigInfo {
    * @return server
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getServer() {
     return server;
@@ -102,7 +98,6 @@ public class ConfigInfo {
    * @return version
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getVersion() {
     return version;

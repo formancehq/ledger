@@ -1,0 +1,127 @@
+openapi: 3.0.3
+info:
+  title: Search API
+  version: latest
+
+paths:
+  /_info:
+    get:
+      summary: Get server info
+      operationId: getServerInfo
+      responses:
+        "200":
+          description: Server information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+  /:
+    post:
+      summary: Search
+      tags:
+        - Search
+      operationId: search
+      description: ElasticSearch query engine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Query'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        default:
+          description: Error
+          content: {}
+
+components:
+  schemas:
+    ServerInfo:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+
+    Query:
+      type: object
+      properties:
+        ledgers:
+          type: array
+          items:
+            type: string
+            example: "quickstart"
+        after:
+          type: array
+          items:
+            type: string
+            example: "users:002"
+        pageSize:
+          type: integer
+          format: int64
+          minimum: 0
+        terms:
+          type: array
+          items:
+            type: string
+            example: "destination=central_bank1"
+        sort:
+          type: string
+          example: "txid:asc"
+        policy:
+          type: string
+          example: "OR"
+        target:
+          type: string
+        cursor:
+          type: string
+          example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+        raw:
+          type: object
+          example: {"query": {"match_all": {}}}
+
+    Response:
+      type: object
+      properties:
+        data:
+          type: object
+          description: The payload
+        cursor:
+          title: cursor
+          type: object
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 0
+            hasMore:
+              type: boolean
+            total:
+              title: total
+              type: object
+              properties:
+                value:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  example: 1
+                relation:
+                  type: string
+                  example: "eq"
+            next:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            data:
+              type: array
+              items:
+                allOf:
+                - type: object

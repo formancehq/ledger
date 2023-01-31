@@ -39,6 +39,7 @@ let body:SearchApiSearchRequest = {
     policy: "OR",
     target: "target_example",
     cursor: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    raw: {},
   },
 };
 

@@ -22,8 +22,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +39,7 @@ public class CreditWalletRequest {
 
   public static final String SERIALIZED_NAME_METADATA = "metadata";
   @SerializedName(SERIALIZED_NAME_METADATA)
-  private Map<String, Object> metadata = null;
+  private Map<String, Object> metadata = new HashMap<>();
 
   public static final String SERIALIZED_NAME_REFERENCE = "reference";
   @SerializedName(SERIALIZED_NAME_REFERENCE)
@@ -69,7 +67,6 @@ public class CreditWalletRequest {
    * @return amount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Monetary getAmount() {
     return amount;
@@ -100,7 +97,6 @@ public class CreditWalletRequest {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "Metadata associated with the wallet.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -123,7 +119,6 @@ public class CreditWalletRequest {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getReference() {
     return reference;
@@ -151,7 +146,6 @@ public class CreditWalletRequest {
    * @return sources
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<Subject> getSources() {
     return sources;
@@ -174,7 +168,6 @@ public class CreditWalletRequest {
    * @return balance
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "The balance to credit")
 
   public String getBalance() {
     return balance;

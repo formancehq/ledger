@@ -106,7 +106,7 @@ class StageStatus(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         stage: typing.Union[MetaOapg.properties.stage, decimal.Decimal, int, float, ],
         startedAt: typing.Union[MetaOapg.properties.startedAt, str, datetime, ],
         occurrenceID: typing.Union[MetaOapg.properties.occurrenceID, str, ],
@@ -117,7 +117,7 @@ class StageStatus(
     ) -> 'StageStatus':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             stage=stage,
             startedAt=startedAt,
             occurrenceID=occurrenceID,

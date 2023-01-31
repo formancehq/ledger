@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -52,7 +50,6 @@ public class ConnectorsResponseDataInner {
    * @return provider
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Connector getProvider() {
     return provider;
@@ -75,7 +72,6 @@ public class ConnectorsResponseDataInner {
    * @return enabled
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "true", value = "")
 
   public Boolean getEnabled() {
     return enabled;

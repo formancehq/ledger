@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,11 +36,11 @@ public class ClientAllOf {
 
   public static final String SERIALIZED_NAME_SCOPES = "scopes";
   @SerializedName(SERIALIZED_NAME_SCOPES)
-  private List<String> scopes = null;
+  private List<String> scopes = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_SECRETS = "secrets";
   @SerializedName(SERIALIZED_NAME_SECRETS)
-  private List<ClientSecret> secrets = null;
+  private List<ClientSecret> secrets = new ArrayList<>();
 
   public ClientAllOf() {
   }
@@ -58,7 +56,6 @@ public class ClientAllOf {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getId() {
     return id;
@@ -89,7 +86,6 @@ public class ClientAllOf {
    * @return scopes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getScopes() {
     return scopes;
@@ -120,7 +116,6 @@ public class ClientAllOf {
    * @return secrets
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<ClientSecret> getSecrets() {
     return secrets;

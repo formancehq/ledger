@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -65,7 +63,6 @@ public class StageStatus {
    * @return stage
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public BigDecimal getStage() {
     return stage;
@@ -88,7 +85,6 @@ public class StageStatus {
    * @return occurrenceID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getOccurrenceID() {
     return occurrenceID;
@@ -111,7 +107,6 @@ public class StageStatus {
    * @return startedAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getStartedAt() {
     return startedAt;
@@ -134,7 +129,6 @@ public class StageStatus {
    * @return terminatedAt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getTerminatedAt() {
     return terminatedAt;
@@ -157,7 +151,6 @@ public class StageStatus {
    * @return error
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getError() {
     return error;

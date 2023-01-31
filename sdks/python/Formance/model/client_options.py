@@ -54,12 +54,12 @@ class ClientOptions(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'redirectUris':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -79,12 +79,12 @@ class ClientOptions(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'postLogoutRedirectUris':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -165,7 +165,7 @@ class ClientOptions(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         name: typing.Union[MetaOapg.properties.name, str, ],
         public: typing.Union[MetaOapg.properties.public, bool, schemas.Unset] = schemas.unset,
         redirectUris: typing.Union[MetaOapg.properties.redirectUris, list, tuple, schemas.Unset] = schemas.unset,
@@ -178,7 +178,7 @@ class ClientOptions(
     ) -> 'ClientOptions':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             name=name,
             public=public,
             redirectUris=redirectUris,

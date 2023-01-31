@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,7 +35,7 @@ public class ScopeOptions {
 
   public static final String SERIALIZED_NAME_METADATA = "metadata";
   @SerializedName(SERIALIZED_NAME_METADATA)
-  private Map<String, Object> metadata = null;
+  private Map<String, Object> metadata = new HashMap<>();
 
   public ScopeOptions() {
   }
@@ -53,7 +51,6 @@ public class ScopeOptions {
    * @return label
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getLabel() {
     return label;
@@ -84,7 +81,6 @@ public class ScopeOptions {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;

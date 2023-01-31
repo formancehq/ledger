@@ -28,8 +28,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -85,7 +83,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public UUID getId() {
     return id;
@@ -108,7 +105,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return connectorId
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public UUID getConnectorId() {
     return connectorId;
@@ -131,7 +127,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return createdAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -154,7 +149,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return updatedAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;
@@ -177,7 +171,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return status
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public PaymentStatus getStatus() {
     return status;
@@ -200,7 +193,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return state
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Object getState() {
     return state;
@@ -223,7 +215,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return error
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getError() {
     return error;
@@ -246,7 +237,6 @@ public class TasksCursorCursorAllOfDataInner {
    * @return descriptor
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public TaskBankingCircleAllOfDescriptor getDescriptor() {
     return descriptor;

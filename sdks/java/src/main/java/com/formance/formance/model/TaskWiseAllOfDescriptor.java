@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -55,7 +53,6 @@ public class TaskWiseAllOfDescriptor {
    * @return name
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getName() {
     return name;
@@ -78,7 +75,6 @@ public class TaskWiseAllOfDescriptor {
    * @return key
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getKey() {
     return key;
@@ -102,7 +98,6 @@ public class TaskWiseAllOfDescriptor {
    * @return profileID
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Long getProfileID() {
     return profileID;

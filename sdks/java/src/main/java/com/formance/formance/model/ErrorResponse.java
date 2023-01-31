@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -56,7 +54,6 @@ public class ErrorResponse {
    * @return errorCode
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public ErrorsEnum getErrorCode() {
     return errorCode;
@@ -79,7 +76,6 @@ public class ErrorResponse {
    * @return errorMessage
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "[INSUFFICIENT_FUND] account had insufficient funds", value = "")
 
   public String getErrorMessage() {
     return errorMessage;
@@ -102,7 +98,6 @@ public class ErrorResponse {
    * @return details
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9", value = "")
 
   public String getDetails() {
     return details;

@@ -96,7 +96,7 @@ class CurrencyCloudConfig(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         loginID: typing.Union[MetaOapg.properties.loginID, str, ],
         apiKey: typing.Union[MetaOapg.properties.apiKey, str, ],
         pollingPeriod: typing.Union[MetaOapg.properties.pollingPeriod, str, schemas.Unset] = schemas.unset,
@@ -106,7 +106,7 @@ class CurrencyCloudConfig(
     ) -> 'CurrencyCloudConfig':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             loginID=loginID,
             apiKey=apiKey,
             pollingPeriod=pollingPeriod,

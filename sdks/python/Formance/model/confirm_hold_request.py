@@ -73,7 +73,7 @@ class ConfirmHoldRequest(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         amount: typing.Union[MetaOapg.properties.amount, decimal.Decimal, int, schemas.Unset] = schemas.unset,
         final: typing.Union[MetaOapg.properties.final, bool, schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -81,7 +81,7 @@ class ConfirmHoldRequest(
     ) -> 'ConfirmHoldRequest':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             amount=amount,
             final=final,
             _configuration=_configuration,

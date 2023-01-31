@@ -98,7 +98,7 @@ class Stats(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         accounts: typing.Union[MetaOapg.properties.accounts, decimal.Decimal, int, ],
         transactions: typing.Union[MetaOapg.properties.transactions, decimal.Decimal, int, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -106,7 +106,7 @@ class Stats(
     ) -> 'Stats':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             accounts=accounts,
             transactions=transactions,
             _configuration=_configuration,

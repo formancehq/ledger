@@ -93,7 +93,7 @@ class ConfigInfo(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         server: typing.Union[MetaOapg.properties.server, str, ],
         config: 'Config',
         version: typing.Union[MetaOapg.properties.version, str, ],
@@ -102,7 +102,7 @@ class ConfigInfo(
     ) -> 'ConfigInfo':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             server=server,
             config=config,
             version=version,

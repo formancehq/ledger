@@ -105,7 +105,7 @@ class Posting(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         amount: typing.Union[MetaOapg.properties.amount, decimal.Decimal, int, ],
         destination: typing.Union[MetaOapg.properties.destination, str, ],
         source: typing.Union[MetaOapg.properties.source, str, ],
@@ -115,7 +115,7 @@ class Posting(
     ) -> 'Posting':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             amount=amount,
             destination=destination,
             source=source,

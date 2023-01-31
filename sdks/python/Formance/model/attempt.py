@@ -141,7 +141,7 @@ class Attempt(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         id: typing.Union[MetaOapg.properties.id, str, uuid.UUID, schemas.Unset] = schemas.unset,
         webhookID: typing.Union[MetaOapg.properties.webhookID, str, uuid.UUID, schemas.Unset] = schemas.unset,
         createdAt: typing.Union[MetaOapg.properties.createdAt, str, datetime, schemas.Unset] = schemas.unset,
@@ -157,7 +157,7 @@ class Attempt(
     ) -> 'Attempt':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             id=id,
             webhookID=webhookID,
             createdAt=createdAt,

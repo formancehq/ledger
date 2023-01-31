@@ -126,7 +126,7 @@ class PaymentsAccount(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         reference: typing.Union[MetaOapg.properties.reference, str, ],
         createdAt: typing.Union[MetaOapg.properties.createdAt, str, datetime, ],
         provider: 'Connector',
@@ -137,7 +137,7 @@ class PaymentsAccount(
     ) -> 'PaymentsAccount':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             reference=reference,
             createdAt=createdAt,
             provider=provider,

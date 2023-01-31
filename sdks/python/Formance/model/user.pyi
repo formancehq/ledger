@@ -81,7 +81,7 @@ class User(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         id: typing.Union[MetaOapg.properties.id, str, schemas.Unset] = schemas.unset,
         subject: typing.Union[MetaOapg.properties.subject, str, schemas.Unset] = schemas.unset,
         email: typing.Union[MetaOapg.properties.email, str, schemas.Unset] = schemas.unset,
@@ -90,7 +90,7 @@ class User(
     ) -> 'User':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             id=id,
             subject=subject,
             email=email,

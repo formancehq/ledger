@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -75,7 +73,6 @@ public class ExpandedDebitHold {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "The unique ID of the hold.")
 
   public UUID getId() {
     return id;
@@ -98,7 +95,6 @@ public class ExpandedDebitHold {
    * @return walletID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "The ID of the wallet the hold is associated with.")
 
   public String getWalletID() {
     return walletID;
@@ -126,7 +122,6 @@ public class ExpandedDebitHold {
    * @return metadata
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "Metadata associated with the hold.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -149,7 +144,6 @@ public class ExpandedDebitHold {
    * @return description
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getDescription() {
     return description;
@@ -172,7 +166,6 @@ public class ExpandedDebitHold {
    * @return destination
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Subject getDestination() {
     return destination;
@@ -195,7 +188,6 @@ public class ExpandedDebitHold {
    * @return remaining
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "10", required = true, value = "Remaining amount on hold")
 
   public Long getRemaining() {
     return remaining;
@@ -218,7 +210,6 @@ public class ExpandedDebitHold {
    * @return originalAmount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "100", required = true, value = "Original amount on hold")
 
   public Long getOriginalAmount() {
     return originalAmount;

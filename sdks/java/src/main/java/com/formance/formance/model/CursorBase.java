@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -61,7 +59,6 @@ public class CursorBase {
    * @return pageSize
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "15", required = true, value = "")
 
   public Long getPageSize() {
     return pageSize;
@@ -84,7 +81,6 @@ public class CursorBase {
    * @return hasMore
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "false", required = true, value = "")
 
   public Boolean getHasMore() {
     return hasMore;
@@ -107,7 +103,6 @@ public class CursorBase {
    * @return previous
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", value = "")
 
   public String getPrevious() {
     return previous;
@@ -130,7 +125,6 @@ public class CursorBase {
    * @return next
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "", value = "")
 
   public String getNext() {
     return next;

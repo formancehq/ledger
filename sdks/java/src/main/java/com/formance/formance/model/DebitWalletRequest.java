@@ -22,8 +22,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,7 +43,7 @@ public class DebitWalletRequest {
 
   public static final String SERIALIZED_NAME_METADATA = "metadata";
   @SerializedName(SERIALIZED_NAME_METADATA)
-  private Map<String, Object> metadata = null;
+  private Map<String, Object> metadata = new HashMap<>();
 
   public static final String SERIALIZED_NAME_DESCRIPTION = "description";
   @SerializedName(SERIALIZED_NAME_DESCRIPTION)
@@ -57,7 +55,7 @@ public class DebitWalletRequest {
 
   public static final String SERIALIZED_NAME_BALANCES = "balances";
   @SerializedName(SERIALIZED_NAME_BALANCES)
-  private List<String> balances = null;
+  private List<String> balances = new ArrayList<>();
 
   public DebitWalletRequest() {
   }
@@ -73,7 +71,6 @@ public class DebitWalletRequest {
    * @return amount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Monetary getAmount() {
     return amount;
@@ -96,7 +93,6 @@ public class DebitWalletRequest {
    * @return pending
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "Set to true to create a pending hold. If false, the wallet will be debited immediately.")
 
   public Boolean getPending() {
     return pending;
@@ -127,7 +123,6 @@ public class DebitWalletRequest {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "Metadata associated with the wallet.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -150,7 +145,6 @@ public class DebitWalletRequest {
    * @return description
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getDescription() {
     return description;
@@ -173,7 +167,6 @@ public class DebitWalletRequest {
    * @return destination
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Subject getDestination() {
     return destination;
@@ -204,7 +197,6 @@ public class DebitWalletRequest {
    * @return balances
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getBalances() {
     return balances;

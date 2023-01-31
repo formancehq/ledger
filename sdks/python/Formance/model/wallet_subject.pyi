@@ -89,7 +89,7 @@ class WalletSubject(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         identifier: typing.Union[MetaOapg.properties.identifier, str, ],
         type: typing.Union[MetaOapg.properties.type, str, ],
         balance: typing.Union[MetaOapg.properties.balance, str, schemas.Unset] = schemas.unset,
@@ -98,7 +98,7 @@ class WalletSubject(
     ) -> 'WalletSubject':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             identifier=identifier,
             type=type,
             balance=balance,

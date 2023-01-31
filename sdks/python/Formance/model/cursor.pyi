@@ -99,7 +99,7 @@ class Cursor(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         pageSize: typing.Union[MetaOapg.properties.pageSize, decimal.Decimal, int, ],
         hasMore: typing.Union[MetaOapg.properties.hasMore, bool, schemas.Unset] = schemas.unset,
         previous: typing.Union[MetaOapg.properties.previous, str, schemas.Unset] = schemas.unset,
@@ -109,7 +109,7 @@ class Cursor(
     ) -> 'Cursor':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             pageSize=pageSize,
             hasMore=hasMore,
             previous=previous,

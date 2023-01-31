@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -86,7 +84,6 @@ public class Attempt {
    * @return id
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public UUID getId() {
     return id;
@@ -109,7 +106,6 @@ public class Attempt {
    * @return webhookID
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public UUID getWebhookID() {
     return webhookID;
@@ -132,7 +128,6 @@ public class Attempt {
    * @return createdAt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -155,7 +150,6 @@ public class Attempt {
    * @return updatedAt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;
@@ -178,7 +172,6 @@ public class Attempt {
    * @return config
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public WebhooksConfig getConfig() {
     return config;
@@ -201,7 +194,6 @@ public class Attempt {
    * @return payload
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"data\":\"test\"}", value = "")
 
   public String getPayload() {
     return payload;
@@ -224,7 +216,6 @@ public class Attempt {
    * @return statusCode
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "200", value = "")
 
   public Integer getStatusCode() {
     return statusCode;
@@ -247,7 +238,6 @@ public class Attempt {
    * @return retryAttempt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "1", value = "")
 
   public Integer getRetryAttempt() {
     return retryAttempt;
@@ -270,7 +260,6 @@ public class Attempt {
    * @return status
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "success", value = "")
 
   public String getStatus() {
     return status;
@@ -293,7 +282,6 @@ public class Attempt {
    * @return nextRetryAfter
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getNextRetryAfter() {
     return nextRetryAfter;

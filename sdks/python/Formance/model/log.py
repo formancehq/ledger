@@ -139,7 +139,7 @@ class Log(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         date: typing.Union[MetaOapg.properties.date, str, datetime, ],
         data: typing.Union[MetaOapg.properties.data, dict, frozendict.frozendict, ],
         id: typing.Union[MetaOapg.properties.id, decimal.Decimal, int, ],
@@ -150,7 +150,7 @@ class Log(
     ) -> 'Log':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             date=date,
             data=data,
             id=id,

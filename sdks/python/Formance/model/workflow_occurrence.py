@@ -63,12 +63,12 @@ class WorkflowOccurrence(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['StageStatus'], typing.List['StageStatus']],
+                    _arg: typing.Union[typing.Tuple['StageStatus'], typing.List['StageStatus']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'statuses':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -135,7 +135,7 @@ class WorkflowOccurrence(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         createdAt: typing.Union[MetaOapg.properties.createdAt, str, datetime, ],
         statuses: typing.Union[MetaOapg.properties.statuses, list, tuple, ],
         id: typing.Union[MetaOapg.properties.id, str, ],
@@ -146,7 +146,7 @@ class WorkflowOccurrence(
     ) -> 'WorkflowOccurrence':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             createdAt=createdAt,
             statuses=statuses,
             id=id,

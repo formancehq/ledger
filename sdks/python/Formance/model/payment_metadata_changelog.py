@@ -80,7 +80,7 @@ class PaymentMetadataChangelog(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         value: typing.Union[MetaOapg.properties.value, str, ],
         timestamp: typing.Union[MetaOapg.properties.timestamp, str, datetime, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -88,7 +88,7 @@ class PaymentMetadataChangelog(
     ) -> 'PaymentMetadataChangelog':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             value=value,
             timestamp=timestamp,
             _configuration=_configuration,

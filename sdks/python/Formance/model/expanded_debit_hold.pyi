@@ -88,7 +88,7 @@ class ExpandedDebitHold(
         
             def __new__(
                 cls,
-                *args: typing.Union[dict, frozendict.frozendict, ],
+                *_args: typing.Union[dict, frozendict.frozendict, ],
                 originalAmount: typing.Union[MetaOapg.properties.originalAmount, decimal.Decimal, int, ],
                 remaining: typing.Union[MetaOapg.properties.remaining, decimal.Decimal, int, ],
                 _configuration: typing.Optional[schemas.Configuration] = None,
@@ -96,7 +96,7 @@ class ExpandedDebitHold(
             ) -> 'all_of_1':
                 return super().__new__(
                     cls,
-                    *args,
+                    *_args,
                     originalAmount=originalAmount,
                     remaining=remaining,
                     _configuration=_configuration,
@@ -121,13 +121,13 @@ class ExpandedDebitHold(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'ExpandedDebitHold':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             _configuration=_configuration,
             **kwargs,
         )

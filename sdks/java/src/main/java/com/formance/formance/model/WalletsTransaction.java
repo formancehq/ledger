@@ -22,8 +22,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -50,7 +48,7 @@ public class WalletsTransaction {
 
   public static final String SERIALIZED_NAME_METADATA = "metadata";
   @SerializedName(SERIALIZED_NAME_METADATA)
-  private Map<String, Object> metadata = null;
+  private Map<String, Object> metadata = new HashMap<>();
 
   public static final String SERIALIZED_NAME_TXID = "txid";
   @SerializedName(SERIALIZED_NAME_TXID)
@@ -58,11 +56,11 @@ public class WalletsTransaction {
 
   public static final String SERIALIZED_NAME_PRE_COMMIT_VOLUMES = "preCommitVolumes";
   @SerializedName(SERIALIZED_NAME_PRE_COMMIT_VOLUMES)
-  private Map<String, Map<String, WalletsVolume>> preCommitVolumes = null;
+  private Map<String, Map<String, WalletsVolume>> preCommitVolumes = new HashMap<>();
 
   public static final String SERIALIZED_NAME_POST_COMMIT_VOLUMES = "postCommitVolumes";
   @SerializedName(SERIALIZED_NAME_POST_COMMIT_VOLUMES)
-  private Map<String, Map<String, WalletsVolume>> postCommitVolumes = null;
+  private Map<String, Map<String, WalletsVolume>> postCommitVolumes = new HashMap<>();
 
   public WalletsTransaction() {
   }
@@ -78,7 +76,6 @@ public class WalletsTransaction {
    * @return timestamp
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getTimestamp() {
     return timestamp;
@@ -106,7 +103,6 @@ public class WalletsTransaction {
    * @return postings
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<Posting> getPostings() {
     return postings;
@@ -129,7 +125,6 @@ public class WalletsTransaction {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "ref:001", value = "")
 
   public String getReference() {
     return reference;
@@ -160,7 +155,6 @@ public class WalletsTransaction {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "Metadata associated with the wallet.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -184,7 +178,6 @@ public class WalletsTransaction {
    * @return txid
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Long getTxid() {
     return txid;
@@ -215,7 +208,6 @@ public class WalletsTransaction {
    * @return preCommitVolumes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Map<String, Map<String, WalletsVolume>> getPreCommitVolumes() {
     return preCommitVolumes;
@@ -246,7 +238,6 @@ public class WalletsTransaction {
    * @return postCommitVolumes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Map<String, Map<String, WalletsVolume>> getPostCommitVolumes() {
     return postCommitVolumes;

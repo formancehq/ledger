@@ -5161,6 +5161,9 @@ components:
         - quickstart
         - quickstart
         pageSize: 0
+        raw:
+          query:
+            match_all: {}
         after:
         - users:002
         - users:002
@@ -5198,6 +5201,11 @@ components:
         cursor:
           example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
           type: string
+        raw:
+          example:
+            query:
+              match_all: {}
+          type: object
       type: object
     Response:
       example:
@@ -6846,6 +6854,9 @@ x-tagGroups:
 - name: Search
   tags:
   - Search
+- name: Wallets
+  tags:
+  - Wallets
 - name: Webhooks
   tags:
   - Webhooks

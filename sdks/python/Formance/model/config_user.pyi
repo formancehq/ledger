@@ -54,12 +54,12 @@ class ConfigUser(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'eventTypes':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -110,7 +110,7 @@ class ConfigUser(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         endpoint: typing.Union[MetaOapg.properties.endpoint, str, ],
         eventTypes: typing.Union[MetaOapg.properties.eventTypes, list, tuple, ],
         secret: typing.Union[MetaOapg.properties.secret, str, schemas.Unset] = schemas.unset,
@@ -119,7 +119,7 @@ class ConfigUser(
     ) -> 'ConfigUser':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             endpoint=endpoint,
             eventTypes=eventTypes,
             secret=secret,

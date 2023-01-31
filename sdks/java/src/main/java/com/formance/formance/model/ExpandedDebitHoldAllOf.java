@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -51,7 +49,6 @@ public class ExpandedDebitHoldAllOf {
    * @return remaining
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "10", required = true, value = "Remaining amount on hold")
 
   public Long getRemaining() {
     return remaining;
@@ -74,7 +71,6 @@ public class ExpandedDebitHoldAllOf {
    * @return originalAmount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "100", required = true, value = "Original amount on hold")
 
   public Long getOriginalAmount() {
     return originalAmount;

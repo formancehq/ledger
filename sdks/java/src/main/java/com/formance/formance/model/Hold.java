@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -67,7 +65,6 @@ public class Hold {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "The unique ID of the hold.")
 
   public UUID getId() {
     return id;
@@ -90,7 +87,6 @@ public class Hold {
    * @return walletID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "The ID of the wallet the hold is associated with.")
 
   public String getWalletID() {
     return walletID;
@@ -118,7 +114,6 @@ public class Hold {
    * @return metadata
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "Metadata associated with the hold.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -141,7 +136,6 @@ public class Hold {
    * @return description
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getDescription() {
     return description;
@@ -164,7 +158,6 @@ public class Hold {
    * @return destination
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Subject getDestination() {
     return destination;

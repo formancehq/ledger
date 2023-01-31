@@ -118,7 +118,7 @@ class PaymentAdjustment(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         date: typing.Union[MetaOapg.properties.date, str, datetime, ],
         amount: typing.Union[MetaOapg.properties.amount, decimal.Decimal, int, ],
         absolute: typing.Union[MetaOapg.properties.absolute, bool, ],
@@ -129,7 +129,7 @@ class PaymentAdjustment(
     ) -> 'PaymentAdjustment':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             date=date,
             amount=amount,
             absolute=absolute,

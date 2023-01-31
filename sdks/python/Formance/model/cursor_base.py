@@ -108,7 +108,7 @@ class CursorBase(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         data: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         hasMore: typing.Union[MetaOapg.properties.hasMore, bool, ],
         pageSize: typing.Union[MetaOapg.properties.pageSize, decimal.Decimal, int, ],
@@ -119,7 +119,7 @@ class CursorBase(
     ) -> 'CursorBase':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             data=data,
             hasMore=hasMore,
             pageSize=pageSize,

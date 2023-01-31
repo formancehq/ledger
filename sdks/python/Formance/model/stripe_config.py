@@ -95,7 +95,7 @@ class StripeConfig(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         apiKey: typing.Union[MetaOapg.properties.apiKey, str, ],
         pollingPeriod: typing.Union[MetaOapg.properties.pollingPeriod, str, schemas.Unset] = schemas.unset,
         pageSize: typing.Union[MetaOapg.properties.pageSize, decimal.Decimal, int, schemas.Unset] = schemas.unset,
@@ -104,7 +104,7 @@ class StripeConfig(
     ) -> 'StripeConfig':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             apiKey=apiKey,
             pollingPeriod=pollingPeriod,
             pageSize=pageSize,

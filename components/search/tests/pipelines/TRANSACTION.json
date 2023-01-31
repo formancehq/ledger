@@ -1,0 +1,89 @@
+{
+  "description": "Transaction pipeline",
+  "processors": [
+    {
+      "set": {
+        "field": "indexed.reference",
+        "value": "{{data.reference}}"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.timestamp",
+        "value": "{{data.timestamp}}"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.metadata",
+        "value": "{{data.metadata}}"
+      }
+    },
+    {
+      "convert" : {
+        "field" : "indexed.metadata",
+        "type": "string"
+      }
+    },
+    {
+      "set": {
+        "field": "indexed.txid",
+        "value": "{{data.txid}}"
+      }
+    },
+    {
+      "convert": {
+        "field": "indexed.txid",
+        "type": "long"
+      }
+    },
+    {
+      "script": {
+        "if": "ctx.data.postings != null",
+        "source": "ArrayList amounts = new ArrayList(); for (def posting: ctx.data.postings) { String asset = posting.asset; String[] parts = asset.splitOnToken(\"/\"); int length = parts.length; int decimal = 0; double amount = posting.amount; if (length > 1) { decimal = Integer.parseInt(parts[1]); amount = amount * Math.pow(10, -decimal); } amounts.add(amount); } ctx.indexed.amount = amounts; "
+      }
+    },
+    {
+      "foreach": {
+        "field": "data.postings",
+        "if": "ctx.data.postings != null",
+        "processor": {
+          "append": {
+            "field": "indexed.asset",
+            "value": [
+              "{{_ingest._value.asset}}"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "foreach": {
+        "field": "data.postings",
+        "if": "ctx.data.postings != null",
+        "processor": {
+          "append": {
+            "field": "indexed.source",
+            "value": [
+              "{{_ingest._value.source}}"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "foreach": {
+        "field": "data.postings",
+        "if": "ctx.data.postings != null",
+        "processor": {
+          "append": {
+            "field": "indexed.destination",
+            "value": [
+              "{{_ingest._value.destination}}"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

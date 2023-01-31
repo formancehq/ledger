@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,7 +37,7 @@ public class ClientOptions {
 
   public static final String SERIALIZED_NAME_REDIRECT_URIS = "redirectUris";
   @SerializedName(SERIALIZED_NAME_REDIRECT_URIS)
-  private List<String> redirectUris = null;
+  private List<String> redirectUris = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_DESCRIPTION = "description";
   @SerializedName(SERIALIZED_NAME_DESCRIPTION)
@@ -55,11 +53,11 @@ public class ClientOptions {
 
   public static final String SERIALIZED_NAME_POST_LOGOUT_REDIRECT_URIS = "postLogoutRedirectUris";
   @SerializedName(SERIALIZED_NAME_POST_LOGOUT_REDIRECT_URIS)
-  private List<String> postLogoutRedirectUris = null;
+  private List<String> postLogoutRedirectUris = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_METADATA = "metadata";
   @SerializedName(SERIALIZED_NAME_METADATA)
-  private Map<String, Object> metadata = null;
+  private Map<String, Object> metadata = new HashMap<>();
 
   public ClientOptions() {
   }
@@ -75,7 +73,6 @@ public class ClientOptions {
    * @return _public
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Boolean getPublic() {
     return _public;
@@ -106,7 +103,6 @@ public class ClientOptions {
    * @return redirectUris
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getRedirectUris() {
     return redirectUris;
@@ -129,7 +125,6 @@ public class ClientOptions {
    * @return description
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public String getDescription() {
     return description;
@@ -152,7 +147,6 @@ public class ClientOptions {
    * @return name
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getName() {
     return name;
@@ -175,7 +169,6 @@ public class ClientOptions {
    * @return trusted
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Boolean getTrusted() {
     return trusted;
@@ -206,7 +199,6 @@ public class ClientOptions {
    * @return postLogoutRedirectUris
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<String> getPostLogoutRedirectUris() {
     return postLogoutRedirectUris;
@@ -237,7 +229,6 @@ public class ClientOptions {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;

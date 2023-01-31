@@ -61,12 +61,12 @@ class Client(
                     
                         def __new__(
                             cls,
-                            arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                            _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                             _configuration: typing.Optional[schemas.Configuration] = None,
                         ) -> 'scopes':
                             return super().__new__(
                                 cls,
-                                arg,
+                                _arg,
                                 _configuration=_configuration,
                             )
                     
@@ -87,12 +87,12 @@ class Client(
                     
                         def __new__(
                             cls,
-                            arg: typing.Union[typing.Tuple['ClientSecret'], typing.List['ClientSecret']],
+                            _arg: typing.Union[typing.Tuple['ClientSecret'], typing.List['ClientSecret']],
                             _configuration: typing.Optional[schemas.Configuration] = None,
                         ) -> 'secrets':
                             return super().__new__(
                                 cls,
-                                arg,
+                                _arg,
                                 _configuration=_configuration,
                             )
                     
@@ -141,7 +141,7 @@ class Client(
         
             def __new__(
                 cls,
-                *args: typing.Union[dict, frozendict.frozendict, ],
+                *_args: typing.Union[dict, frozendict.frozendict, ],
                 id: typing.Union[MetaOapg.properties.id, str, ],
                 scopes: typing.Union[MetaOapg.properties.scopes, list, tuple, schemas.Unset] = schemas.unset,
                 secrets: typing.Union[MetaOapg.properties.secrets, list, tuple, schemas.Unset] = schemas.unset,
@@ -150,7 +150,7 @@ class Client(
             ) -> 'all_of_1':
                 return super().__new__(
                     cls,
-                    *args,
+                    *_args,
                     id=id,
                     scopes=scopes,
                     secrets=secrets,
@@ -176,13 +176,13 @@ class Client(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Client':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             _configuration=_configuration,
             **kwargs,
         )

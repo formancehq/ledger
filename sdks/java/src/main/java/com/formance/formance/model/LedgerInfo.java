@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -52,7 +50,6 @@ public class LedgerInfo {
    * @return name
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "ledger001", value = "")
 
   public String getName() {
     return name;
@@ -75,7 +72,6 @@ public class LedgerInfo {
    * @return storage
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public LedgerInfoStorage getStorage() {
     return storage;

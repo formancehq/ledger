@@ -37,9 +37,9 @@ configuration = Formance.Configuration(
 
 # Configure OAuth2 access token for authorization: Authorization
 configuration = Formance.Configuration(
-    host = "http://localhost"
+    host = "http://localhost",
+    access_token = 'YOUR_ACCESS_TOKEN'
 )
-configuration.access_token = 'YOUR_ACCESS_TOKEN'
 # Enter a context with an instance of the API client
 with Formance.ApiClient(configuration) as api_client:
     # Create an instance of the API class
@@ -111,9 +111,9 @@ configuration = Formance.Configuration(
 
 # Configure OAuth2 access token for authorization: Authorization
 configuration = Formance.Configuration(
-    host = "http://localhost"
+    host = "http://localhost",
+    access_token = 'YOUR_ACCESS_TOKEN'
 )
-configuration.access_token = 'YOUR_ACCESS_TOKEN'
 # Enter a context with an instance of the API client
 with Formance.ApiClient(configuration) as api_client:
     # Create an instance of the API class

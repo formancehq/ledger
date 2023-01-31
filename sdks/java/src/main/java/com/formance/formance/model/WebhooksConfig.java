@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -47,7 +45,7 @@ public class WebhooksConfig {
 
   public static final String SERIALIZED_NAME_EVENT_TYPES = "eventTypes";
   @SerializedName(SERIALIZED_NAME_EVENT_TYPES)
-  private List<String> eventTypes = null;
+  private List<String> eventTypes = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_ACTIVE = "active";
   @SerializedName(SERIALIZED_NAME_ACTIVE)
@@ -75,7 +73,6 @@ public class WebhooksConfig {
    * @return id
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public UUID getId() {
     return id;
@@ -98,7 +95,6 @@ public class WebhooksConfig {
    * @return endpoint
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "https://example.com", value = "")
 
   public String getEndpoint() {
     return endpoint;
@@ -121,7 +117,6 @@ public class WebhooksConfig {
    * @return secret
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "V0bivxRWveaoz08afqjU6Ko/jwO0Cb+3", value = "")
 
   public String getSecret() {
     return secret;
@@ -152,7 +147,6 @@ public class WebhooksConfig {
    * @return eventTypes
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "[\"TYPE1\",\"TYPE2\"]", value = "")
 
   public List<String> getEventTypes() {
     return eventTypes;
@@ -175,7 +169,6 @@ public class WebhooksConfig {
    * @return active
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "true", value = "")
 
   public Boolean getActive() {
     return active;
@@ -198,7 +191,6 @@ public class WebhooksConfig {
    * @return createdAt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -221,7 +213,6 @@ public class WebhooksConfig {
    * @return updatedAt
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;

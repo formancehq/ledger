@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -70,7 +68,6 @@ public class TransactionData {
    * @return postings
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public List<Posting> getPostings() {
     return postings;
@@ -93,7 +90,6 @@ public class TransactionData {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "ref:001", value = "")
 
   public String getReference() {
     return reference;
@@ -113,7 +109,7 @@ public class TransactionData {
 
   public TransactionData putMetadataItem(String key, Object metadataItem) {
     if (this.metadata == null) {
-      this.metadata = new HashMap<>();
+      this.metadata = null;
     }
     this.metadata.put(key, metadataItem);
     return this;
@@ -124,7 +120,6 @@ public class TransactionData {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -147,7 +142,6 @@ public class TransactionData {
    * @return timestamp
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getTimestamp() {
     return timestamp;

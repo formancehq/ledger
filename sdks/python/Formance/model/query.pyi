@@ -49,12 +49,12 @@ class Query(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'ledgers':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -72,12 +72,12 @@ class Query(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'after':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -101,12 +101,12 @@ class Query(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
+                    _arg: typing.Union[typing.Tuple[typing.Union[MetaOapg.items, str, ]], typing.List[typing.Union[MetaOapg.items, str, ]]],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'terms':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -116,6 +116,7 @@ class Query(
             policy = schemas.StrSchema
             target = schemas.StrSchema
             cursor = schemas.StrSchema
+            raw = schemas.DictSchema
             __annotations__ = {
                 "ledgers": ledgers,
                 "after": after,
@@ -125,6 +126,7 @@ class Query(
                 "policy": policy,
                 "target": target,
                 "cursor": cursor,
+                "raw": raw,
             }
     
     @typing.overload
@@ -152,9 +154,12 @@ class Query(
     def __getitem__(self, name: typing_extensions.Literal["cursor"]) -> MetaOapg.properties.cursor: ...
     
     @typing.overload
+    def __getitem__(self, name: typing_extensions.Literal["raw"]) -> MetaOapg.properties.raw: ...
+    
+    @typing.overload
     def __getitem__(self, name: str) -> schemas.UnsetAnyTypeSchema: ...
     
-    def __getitem__(self, name: typing.Union[typing_extensions.Literal["ledgers", "after", "pageSize", "terms", "sort", "policy", "target", "cursor", ], str]):
+    def __getitem__(self, name: typing.Union[typing_extensions.Literal["ledgers", "after", "pageSize", "terms", "sort", "policy", "target", "cursor", "raw", ], str]):
         # dict_instance[name] accessor
         return super().__getitem__(name)
     
@@ -184,15 +189,18 @@ class Query(
     def get_item_oapg(self, name: typing_extensions.Literal["cursor"]) -> typing.Union[MetaOapg.properties.cursor, schemas.Unset]: ...
     
     @typing.overload
+    def get_item_oapg(self, name: typing_extensions.Literal["raw"]) -> typing.Union[MetaOapg.properties.raw, schemas.Unset]: ...
+    
+    @typing.overload
     def get_item_oapg(self, name: str) -> typing.Union[schemas.UnsetAnyTypeSchema, schemas.Unset]: ...
     
-    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["ledgers", "after", "pageSize", "terms", "sort", "policy", "target", "cursor", ], str]):
+    def get_item_oapg(self, name: typing.Union[typing_extensions.Literal["ledgers", "after", "pageSize", "terms", "sort", "policy", "target", "cursor", "raw", ], str]):
         return super().get_item_oapg(name)
     
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         ledgers: typing.Union[MetaOapg.properties.ledgers, list, tuple, schemas.Unset] = schemas.unset,
         after: typing.Union[MetaOapg.properties.after, list, tuple, schemas.Unset] = schemas.unset,
         pageSize: typing.Union[MetaOapg.properties.pageSize, decimal.Decimal, int, schemas.Unset] = schemas.unset,
@@ -201,12 +209,13 @@ class Query(
         policy: typing.Union[MetaOapg.properties.policy, str, schemas.Unset] = schemas.unset,
         target: typing.Union[MetaOapg.properties.target, str, schemas.Unset] = schemas.unset,
         cursor: typing.Union[MetaOapg.properties.cursor, str, schemas.Unset] = schemas.unset,
+        raw: typing.Union[MetaOapg.properties.raw, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Query':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             ledgers=ledgers,
             after=after,
             pageSize=pageSize,
@@ -215,6 +224,7 @@ class Query(
             policy=policy,
             target=target,
             cursor=cursor,
+            raw=raw,
             _configuration=_configuration,
             **kwargs,
         )

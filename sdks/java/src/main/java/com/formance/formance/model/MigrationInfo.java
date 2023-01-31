@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 
@@ -108,7 +106,6 @@ public class MigrationInfo {
    * @return version
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "11", value = "")
 
   public Long getVersion() {
     return version;
@@ -131,7 +128,6 @@ public class MigrationInfo {
    * @return name
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "migrations:001", value = "")
 
   public String getName() {
     return name;
@@ -154,7 +150,6 @@ public class MigrationInfo {
    * @return date
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getDate() {
     return date;
@@ -177,7 +172,6 @@ public class MigrationInfo {
    * @return state
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public StateEnum getState() {
     return state;

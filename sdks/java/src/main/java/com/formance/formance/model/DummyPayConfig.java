@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -55,7 +53,6 @@ public class DummyPayConfig {
    * @return filePollingPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will try to fetch new payment objects from the directory")
 
   public String getFilePollingPeriod() {
     return filePollingPeriod;
@@ -78,7 +75,6 @@ public class DummyPayConfig {
    * @return fileGenerationPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will create new payment objects in the directory")
 
   public String getFileGenerationPeriod() {
     return fileGenerationPeriod;
@@ -101,7 +97,6 @@ public class DummyPayConfig {
    * @return directory
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "/tmp/dummypay", required = true, value = "")
 
   public String getDirectory() {
     return directory;

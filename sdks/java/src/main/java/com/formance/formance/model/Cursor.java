@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,7 +52,7 @@ public class Cursor {
 
   public static final String SERIALIZED_NAME_DATA = "data";
   @SerializedName(SERIALIZED_NAME_DATA)
-  private List<Object> data = null;
+  private List<Object> data = new ArrayList<>();
 
   public Cursor() {
   }
@@ -71,7 +69,6 @@ public class Cursor {
    * @return pageSize
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Long getPageSize() {
     return pageSize;
@@ -94,7 +91,6 @@ public class Cursor {
    * @return hasMore
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Boolean getHasMore() {
     return hasMore;
@@ -117,7 +113,6 @@ public class Cursor {
    * @return total
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Total getTotal() {
     return total;
@@ -140,7 +135,6 @@ public class Cursor {
    * @return next
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", value = "")
 
   public String getNext() {
     return next;
@@ -163,7 +157,6 @@ public class Cursor {
    * @return previous
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", value = "")
 
   public String getPrevious() {
     return previous;
@@ -194,7 +187,6 @@ public class Cursor {
    * @return data
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<Object> getData() {
     return data;

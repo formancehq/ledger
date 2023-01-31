@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +32,7 @@ import java.util.List;
 public class ListClientsResponse {
   public static final String SERIALIZED_NAME_DATA = "data";
   @SerializedName(SERIALIZED_NAME_DATA)
-  private List<Client> data = null;
+  private List<Client> data = new ArrayList<>();
 
   public ListClientsResponse() {
   }
@@ -58,7 +56,6 @@ public class ListClientsResponse {
    * @return data
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<Client> getData() {
     return data;

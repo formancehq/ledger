@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +32,7 @@ import java.util.List;
 public class LedgerInfoStorage {
   public static final String SERIALIZED_NAME_MIGRATIONS = "migrations";
   @SerializedName(SERIALIZED_NAME_MIGRATIONS)
-  private List<MigrationInfo> migrations = null;
+  private List<MigrationInfo> migrations = new ArrayList<>();
 
   public LedgerInfoStorage() {
   }
@@ -58,7 +56,6 @@ public class LedgerInfoStorage {
    * @return migrations
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<MigrationInfo> getMigrations() {
     return migrations;

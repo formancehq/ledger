@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -55,7 +53,6 @@ public class Volume {
    * @return input
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Long getInput() {
     return input;
@@ -78,7 +75,6 @@ public class Volume {
    * @return output
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Long getOutput() {
     return output;
@@ -101,7 +97,6 @@ public class Volume {
    * @return balance
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public Long getBalance() {
     return balance;

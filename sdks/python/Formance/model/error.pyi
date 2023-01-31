@@ -89,7 +89,7 @@ class Error(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         errorMessage: typing.Union[MetaOapg.properties.errorMessage, str, ],
         errorCode: typing.Union[MetaOapg.properties.errorCode, str, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -97,7 +97,7 @@ class Error(
     ) -> 'Error':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             errorMessage=errorMessage,
             errorCode=errorCode,
             _configuration=_configuration,

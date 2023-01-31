@@ -21,6 +21,7 @@ export class Query {
     'policy'?: string;
     'target'?: string;
     'cursor'?: string;
+    'raw'?: any;
 
     static readonly discriminator: string | undefined = undefined;
 
@@ -71,6 +72,12 @@ export class Query {
             "name": "cursor",
             "baseName": "cursor",
             "type": "string",
+            "format": ""
+        },
+        {
+            "name": "raw",
+            "baseName": "raw",
+            "type": "any",
             "format": ""
         }    ];
 

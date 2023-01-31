@@ -103,7 +103,7 @@ class Workflow(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         createdAt: typing.Union[MetaOapg.properties.createdAt, str, datetime, ],
         id: typing.Union[MetaOapg.properties.id, str, ],
         config: 'WorkflowConfig',
@@ -113,7 +113,7 @@ class Workflow(
     ) -> 'Workflow':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             createdAt=createdAt,
             id=id,
             config=config,

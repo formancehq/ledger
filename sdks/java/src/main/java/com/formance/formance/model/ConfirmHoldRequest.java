@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -51,7 +49,6 @@ public class ConfirmHoldRequest {
    * @return amount
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "100", value = "Define the amount to transfer.")
 
   public Long getAmount() {
     return amount;
@@ -74,7 +71,6 @@ public class ConfirmHoldRequest {
    * @return _final
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "true", value = "Define a final confirmation. Remaining funds will be returned to the wallet.")
 
   public Boolean getFinal() {
     return _final;

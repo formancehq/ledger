@@ -55,12 +55,12 @@ class Transactions(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['TransactionData'], typing.List['TransactionData']],
+                    _arg: typing.Union[typing.Tuple['TransactionData'], typing.List['TransactionData']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'transactions':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -95,14 +95,14 @@ class Transactions(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         transactions: typing.Union[MetaOapg.properties.transactions, list, tuple, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
         **kwargs: typing.Union[schemas.AnyTypeSchema, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, None, list, tuple, bytes],
     ) -> 'Transactions':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             transactions=transactions,
             _configuration=_configuration,
             **kwargs,

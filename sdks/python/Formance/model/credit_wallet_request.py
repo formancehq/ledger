@@ -60,12 +60,12 @@ class CreditWalletRequest(
             
                 def __new__(
                     cls,
-                    arg: typing.Union[typing.Tuple['Subject'], typing.List['Subject']],
+                    _arg: typing.Union[typing.Tuple['Subject'], typing.List['Subject']],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                 ) -> 'sources':
                     return super().__new__(
                         cls,
-                        arg,
+                        _arg,
                         _configuration=_configuration,
                     )
             
@@ -90,13 +90,13 @@ class CreditWalletRequest(
             
                 def __new__(
                     cls,
-                    *args: typing.Union[dict, frozendict.frozendict, ],
+                    *_args: typing.Union[dict, frozendict.frozendict, ],
                     _configuration: typing.Optional[schemas.Configuration] = None,
                     **kwargs: typing.Union[MetaOapg.additional_properties, dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
                 ) -> 'metadata':
                     return super().__new__(
                         cls,
-                        *args,
+                        *_args,
                         _configuration=_configuration,
                         **kwargs,
                     )
@@ -160,7 +160,7 @@ class CreditWalletRequest(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         amount: 'Monetary',
         sources: typing.Union[MetaOapg.properties.sources, list, tuple, ],
         metadata: typing.Union[MetaOapg.properties.metadata, dict, frozendict.frozendict, schemas.Unset] = schemas.unset,
@@ -171,7 +171,7 @@ class CreditWalletRequest(
     ) -> 'CreditWalletRequest':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             amount=amount,
             sources=sources,
             metadata=metadata,

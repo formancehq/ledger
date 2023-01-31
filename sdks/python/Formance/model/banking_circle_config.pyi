@@ -100,7 +100,7 @@ class BankingCircleConfig(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         endpoint: typing.Union[MetaOapg.properties.endpoint, str, ],
         password: typing.Union[MetaOapg.properties.password, str, ],
         authorizationEndpoint: typing.Union[MetaOapg.properties.authorizationEndpoint, str, ],
@@ -110,7 +110,7 @@ class BankingCircleConfig(
     ) -> 'BankingCircleConfig':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             endpoint=endpoint,
             password=password,
             authorizationEndpoint=authorizationEndpoint,

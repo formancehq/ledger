@@ -81,7 +81,7 @@ class LedgerAccountSubject(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
+        *_args: typing.Union[dict, frozendict.frozendict, str, date, datetime, uuid.UUID, int, float, decimal.Decimal, bool, None, list, tuple, bytes, io.FileIO, io.BufferedReader, ],
         identifier: typing.Union[MetaOapg.properties.identifier, str, ],
         type: typing.Union[MetaOapg.properties.type, str, ],
         _configuration: typing.Optional[schemas.Configuration] = None,
@@ -89,7 +89,7 @@ class LedgerAccountSubject(
     ) -> 'LedgerAccountSubject':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             identifier=identifier,
             type=type,
             _configuration=_configuration,

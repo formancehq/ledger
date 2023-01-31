@@ -21,8 +21,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 
@@ -65,7 +63,6 @@ public class PaymentAdjustment {
    * @return status
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public PaymentStatus getStatus() {
     return status;
@@ -89,7 +86,6 @@ public class PaymentAdjustment {
    * @return amount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "100", required = true, value = "")
 
   public Long getAmount() {
     return amount;
@@ -112,7 +108,6 @@ public class PaymentAdjustment {
    * @return date
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getDate() {
     return date;
@@ -135,7 +130,6 @@ public class PaymentAdjustment {
    * @return raw
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Object getRaw() {
     return raw;
@@ -158,7 +152,6 @@ public class PaymentAdjustment {
    * @return absolute
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public Boolean getAbsolute() {
     return absolute;

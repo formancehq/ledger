@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -60,7 +58,6 @@ public class Posting {
    * @return amount
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "100", required = true, value = "")
 
   public Long getAmount() {
     return amount;
@@ -83,7 +80,6 @@ public class Posting {
    * @return asset
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "COIN", required = true, value = "")
 
   public String getAsset() {
     return asset;
@@ -106,7 +102,6 @@ public class Posting {
    * @return destination
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "users:002", required = true, value = "")
 
   public String getDestination() {
     return destination;
@@ -129,7 +124,6 @@ public class Posting {
    * @return source
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "users:001", required = true, value = "")
 
   public String getSource() {
     return source;

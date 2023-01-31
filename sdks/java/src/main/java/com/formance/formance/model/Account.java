@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -55,7 +53,6 @@ public class Account {
    * @return address
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "users:001", required = true, value = "")
 
   public String getAddress() {
     return address;
@@ -78,7 +75,6 @@ public class Account {
    * @return type
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "virtual", value = "")
 
   public String getType() {
     return type;
@@ -101,7 +97,6 @@ public class Account {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Object getMetadata() {
     return metadata;

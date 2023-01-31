@@ -22,8 +22,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -42,7 +40,7 @@ public class PostTransaction {
 
   public static final String SERIALIZED_NAME_POSTINGS = "postings";
   @SerializedName(SERIALIZED_NAME_POSTINGS)
-  private List<Posting> postings = null;
+  private List<Posting> postings = new ArrayList<>();
 
   public static final String SERIALIZED_NAME_SCRIPT = "script";
   @SerializedName(SERIALIZED_NAME_SCRIPT)
@@ -70,7 +68,6 @@ public class PostTransaction {
    * @return timestamp
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public OffsetDateTime getTimestamp() {
     return timestamp;
@@ -101,7 +98,6 @@ public class PostTransaction {
    * @return postings
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public List<Posting> getPostings() {
     return postings;
@@ -124,7 +120,6 @@ public class PostTransaction {
    * @return script
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(value = "")
 
   public PostTransactionScript getScript() {
     return script;
@@ -147,7 +142,6 @@ public class PostTransaction {
    * @return reference
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "ref:001", value = "")
 
   public String getReference() {
     return reference;
@@ -167,7 +161,7 @@ public class PostTransaction {
 
   public PostTransaction putMetadataItem(String key, Object metadataItem) {
     if (this.metadata == null) {
-      this.metadata = new HashMap<>();
+      this.metadata = null;
     }
     this.metadata.put(key, metadataItem);
     return this;
@@ -178,7 +172,6 @@ public class PostTransaction {
    * @return metadata
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "{\"admin\":true,\"a\":{\"nested\":{\"key\":\"value\"}}}", value = "")
 
   public Map<String, Object> getMetadata() {
     return metadata;

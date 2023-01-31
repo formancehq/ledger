@@ -20,8 +20,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -67,7 +65,6 @@ public class Wallet {
    * @return id
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "The unique ID of the wallet.")
 
   public UUID getId() {
     return id;
@@ -95,7 +92,6 @@ public class Wallet {
    * @return metadata
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "Metadata associated with the wallet.")
 
   public Map<String, Object> getMetadata() {
     return metadata;
@@ -118,7 +114,6 @@ public class Wallet {
    * @return name
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getName() {
     return name;
@@ -141,7 +136,6 @@ public class Wallet {
    * @return createdAt
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public OffsetDateTime getCreatedAt() {
     return createdAt;
@@ -164,7 +158,6 @@ public class Wallet {
    * @return ledger
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(required = true, value = "")
 
   public String getLedger() {
     return ledger;

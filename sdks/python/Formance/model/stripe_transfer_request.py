@@ -98,7 +98,7 @@ class StripeTransferRequest(
 
     def __new__(
         cls,
-        *args: typing.Union[dict, frozendict.frozendict, ],
+        *_args: typing.Union[dict, frozendict.frozendict, ],
         amount: typing.Union[MetaOapg.properties.amount, decimal.Decimal, int, schemas.Unset] = schemas.unset,
         asset: typing.Union[MetaOapg.properties.asset, str, schemas.Unset] = schemas.unset,
         destination: typing.Union[MetaOapg.properties.destination, str, schemas.Unset] = schemas.unset,
@@ -108,7 +108,7 @@ class StripeTransferRequest(
     ) -> 'StripeTransferRequest':
         return super().__new__(
             cls,
-            *args,
+            *_args,
             amount=amount,
             asset=asset,
             destination=destination,

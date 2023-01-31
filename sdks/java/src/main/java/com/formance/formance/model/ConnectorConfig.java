@@ -26,8 +26,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 
 /**
@@ -97,7 +95,6 @@ public class ConnectorConfig {
    * @return pollingPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will fetch transactions")
 
   public String getPollingPeriod() {
     return pollingPeriod;
@@ -120,7 +117,6 @@ public class ConnectorConfig {
    * @return apiKey
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getApiKey() {
     return apiKey;
@@ -144,7 +140,6 @@ public class ConnectorConfig {
    * @return pageSize
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "50", value = "Number of BalanceTransaction to fetch at each polling interval. ")
 
   public Long getPageSize() {
     return pageSize;
@@ -167,7 +162,6 @@ public class ConnectorConfig {
    * @return filePollingPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will try to fetch new payment objects from the directory")
 
   public String getFilePollingPeriod() {
     return filePollingPeriod;
@@ -190,7 +184,6 @@ public class ConnectorConfig {
    * @return fileGenerationPeriod
   **/
   @javax.annotation.Nullable
-  @ApiModelProperty(example = "60s", value = "The frequency at which the connector will create new payment objects in the directory")
 
   public String getFileGenerationPeriod() {
     return fileGenerationPeriod;
@@ -213,7 +206,6 @@ public class ConnectorConfig {
    * @return directory
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "/tmp/dummypay", required = true, value = "")
 
   public String getDirectory() {
     return directory;
@@ -236,7 +228,6 @@ public class ConnectorConfig {
    * @return apiSecret
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getApiSecret() {
     return apiSecret;
@@ -259,7 +250,6 @@ public class ConnectorConfig {
    * @return endpoint
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getEndpoint() {
     return endpoint;
@@ -282,7 +272,6 @@ public class ConnectorConfig {
    * @return loginID
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "Username of the API Key holder")
 
   public String getLoginID() {
     return loginID;
@@ -305,7 +294,6 @@ public class ConnectorConfig {
    * @return username
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getUsername() {
     return username;
@@ -328,7 +316,6 @@ public class ConnectorConfig {
    * @return password
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getPassword() {
     return password;
@@ -351,7 +338,6 @@ public class ConnectorConfig {
    * @return authorizationEndpoint
   **/
   @javax.annotation.Nonnull
-  @ApiModelProperty(example = "XXX", required = true, value = "")
 
   public String getAuthorizationEndpoint() {
     return authorizationEndpoint;
