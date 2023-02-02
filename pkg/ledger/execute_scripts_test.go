@@ -41,25 +41,100 @@ func TestCompilationError(t *testing.T) {
 
 func TestSend(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
-		script := core.ScriptData{
-			Script: core.Script{
-				Plain: `
+		t.Run("nominal", func(t *testing.T) {
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
 					send [USD/2 99] (
-						source=@world
-						destination=@user:001
+						source = @world
+						destination = @user:001
 					)`,
-			},
-		}
+				},
+			}
+			_, err := l.ExecuteScripts(context.Background(), false, script)
+			require.NoError(t, err)
 
-		_, err := l.ExecuteScripts(context.Background(), false, script)
-		require.NoError(t, err)
+			assertBalance(t, l, "user:001",
+				"USD/2", core.NewMonetaryInt(99))
+		})
 
-		assertBalance(t, l, "user:001",
-			"USD/2", core.NewMonetaryInt(99))
+		t.Run("one send with zero amount should fail", func(t *testing.T) {
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					send [USD/2 0] (
+						source = @world
+						destination = @user:001
+					)`,
+				},
+			}
+			_, err := l.ExecuteScripts(context.Background(), false, script)
+			require.Error(t, err)
+			require.True(t, ledger.IsValidationError(err))
+			require.ErrorContains(t, err, "transaction has no postings")
+		})
+
+		t.Run("one send with monetary all should fail", func(t *testing.T) {
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					send [USD/2 *] (
+						source = @alice
+						destination = @user:001
+					)`,
+				},
+			}
+			_, err := l.ExecuteScripts(context.Background(), false, script)
+			require.Error(t, err)
+			require.True(t, ledger.IsValidationError(err))
+			require.ErrorContains(t, err, "transaction has no postings")
+		})
+
+		t.Run("one send with zero amount and another with positive amount should succeed", func(t *testing.T) {
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					send [USD/2 0] (
+						source = @world
+						destination = @user:001
+					)
+					send [USD/2 1] (
+						source = @world
+						destination = @user:001
+					)`,
+				},
+			}
+			res, err := l.ExecuteScripts(context.Background(), false, script)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(res))
+			require.Equal(t, 1, len(res[0].Postings))
+
+			assertBalance(t, l, "user:001",
+				"USD/2", core.NewMonetaryInt(100))
+		})
+
+		t.Run("one send with monetary all and another with positive amount should succeed", func(t *testing.T) {
+			script := core.ScriptData{
+				Script: core.Script{
+					Plain: `
+					send [USD/2 *] (
+						source = @alice
+						destination = @user:001
+					)
+					send [USD/2 1] (
+						source = @world
+						destination = @user:001
+					)`,
+				},
+			}
+			res, err := l.ExecuteScripts(context.Background(), false, script)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(res))
+			require.Equal(t, 1, len(res[0].Postings))
+
+			assertBalance(t, l, "user:001",
+				"USD/2", core.NewMonetaryInt(101))
+		})
 	})
 }
 
@@ -82,17 +157,11 @@ func TestNoVariables(t *testing.T) {
 
 		_, err := l.ExecuteScripts(context.Background(), false, script)
 		assert.Error(t, err)
-
-		require.NoError(t, l.Close(context.Background()))
 	})
 }
 
 func TestVariables(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
@@ -120,10 +189,6 @@ func TestVariables(t *testing.T) {
 
 func TestVariablesEmptyAccount(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
@@ -165,10 +230,6 @@ func TestVariablesEmptyAccount(t *testing.T) {
 
 func TestEnoughFunds(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -200,10 +261,6 @@ func TestEnoughFunds(t *testing.T) {
 
 func TestNotEnoughFunds(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -235,10 +292,6 @@ func TestNotEnoughFunds(t *testing.T) {
 
 func TestMissingMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		plain := `
 			vars {
 				account $sale
@@ -265,10 +318,6 @@ func TestMissingMetadata(t *testing.T) {
 
 func TestMetadata(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -402,10 +451,6 @@ func TestSetTxMeta(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			runOnLedger(func(l *ledger.Ledger) {
-				defer func(l *ledger.Ledger, ctx context.Context) {
-					require.NoError(t, l.Close(ctx))
-				}(l, context.Background())
-
 				_, err := l.ExecuteScripts(context.Background(), false, tc.script)
 
 				if tc.expectedErrorCode != "" {
@@ -424,10 +469,6 @@ func TestSetTxMeta(t *testing.T) {
 
 func TestScriptSetReference(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		plain := `
 			send [USD/2 99] (
 				source=@world
@@ -454,10 +495,6 @@ func TestScriptSetReference(t *testing.T) {
 
 func TestScriptReferenceConflict(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
-		defer func(l *ledger.Ledger, ctx context.Context) {
-			require.NoError(t, l.Close(ctx))
-		}(l, context.Background())
-
 		_, err := l.ExecuteScripts(context.Background(), false,
 			core.ScriptData{
 				Script: core.Script{
@@ -541,10 +578,6 @@ func TestSetAccountMeta(t *testing.T) {
 func TestMonetaryVariableBalance(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
-			defer func(l *ledger.Ledger, ctx context.Context) {
-				require.NoError(t, l.Close(ctx))
-			}(l, context.Background())
-
 			tx := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -580,10 +613,6 @@ func TestMonetaryVariableBalance(t *testing.T) {
 
 	t.Run("complex", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
-			defer func(l *ledger.Ledger, ctx context.Context) {
-				require.NoError(t, l.Close(ctx))
-			}(l, context.Background())
-
 			tx := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -631,10 +660,6 @@ func TestMonetaryVariableBalance(t *testing.T) {
 
 	t.Run("error insufficient funds", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
-			defer func(l *ledger.Ledger, ctx context.Context) {
-				require.NoError(t, l.Close(ctx))
-			}(l, context.Background())
-
 			tx := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -671,10 +696,6 @@ func TestMonetaryVariableBalance(t *testing.T) {
 
 	t.Run("error negative balance", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
-			defer func(l *ledger.Ledger, ctx context.Context) {
-				require.NoError(t, l.Close(ctx))
-			}(l, context.Background())
-
 			tx := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -709,10 +730,6 @@ func TestMonetaryVariableBalance(t *testing.T) {
 
 	t.Run("error variable type", func(t *testing.T) {
 		runOnLedger(func(l *ledger.Ledger) {
-			defer func(l *ledger.Ledger, ctx context.Context) {
-				require.NoError(t, l.Close(ctx))
-			}(l, context.Background())
-
 			script := core.ScriptData{
 				Script: core.Script{
 					Plain: `

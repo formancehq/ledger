@@ -308,10 +308,25 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 			})
 		})
 
-		t.Run("no script", func(t *testing.T) {
+		t.Run("empty", func(t *testing.T) {
 			_, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{})
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, "executing transaction data 0: no postings")
+		})
+
+		t.Run("amount zero", func(t *testing.T) {
+			res, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "alice",
+						Amount:      core.NewMonetaryInt(0),
+						Asset:       "USD",
+					},
+				},
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, len(res))
 		})
 	})
 

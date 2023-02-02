@@ -123,8 +123,7 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...co
 							Metadata: accs[account].Metadata,
 							Asset:    asset,
 						}); !ok {
-							return []core.ExpandedTransaction{}, NewScriptError(ScriptErrorInsufficientFund,
-								"account had insufficient funds")
+							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
 						}
 						break
 					}

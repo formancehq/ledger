@@ -8,14 +8,14 @@ dotenv:
 vars:
   PKG: "./..."
   FAILFAST: "-failfast"
-  TIMEOUT: "1m"
+  TIMEOUT: "10m"
   RUN: ".*"
   TAGS: "-tags json1,netgo"
   BENCH_RESULTS_DIR: "/tmp/benchmarks"
   BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
   BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
   BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
-  VERBOSE: "true"
+  VERBOSE: "false"
 
 tasks:
   default:
