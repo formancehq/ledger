@@ -227,3 +227,49 @@ func TestPostScriptConflict(t *testing.T) {
 		})
 	}))
 }
+
+func TestPostScriptOverdraft(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				t.Run("simple", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain: `
+							send [USD/2 100] (
+							  source = @users:42 allowing unbounded overdraft
+							  destination = @users:43
+							)`,
+					}, url.Values{})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+				})
+
+				t.Run("complex", func(t *testing.T) {
+					rsp := internal.PostScript(t, api, core.Script{
+						Plain: `
+							send [USD/2 100] (
+							  source = @world
+							  destination = @users:42:main
+							)
+
+							send [USD/2 500] (
+							  source = {
+								@users:42:main
+								@users:42:overdraft allowing overdraft up to [USD/2 200]
+								@users:42:credit allowing overdraft up to [USD/2 1000]
+							  }
+							  destination = @users:100
+							)`}, url.Values{})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+					require.True(t, ok)
+					require.Len(t, txs, 1)
+				})
+
+				return nil
+			},
+		})
+	}))
+}
