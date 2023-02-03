@@ -40,7 +40,6 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		nextTxId = lastTx.ID + 1
 	}
 
-	usedReferences := make(map[string]struct{})
 	accs := map[string]*core.AccountWithVolumes{}
 	// Until v1.5.0, dates was stored as string using rfc3339 format
 	// So round the date to the second to keep the same behaviour
@@ -63,15 +62,11 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 	}
 
 	if script.Reference != "" {
-		if _, ok := usedReferences[script.Reference]; ok {
-			return core.ExpandedTransaction{}, NewConflictError()
-		}
-		usedReferences[script.Reference] = struct{}{}
-
 		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
 			WithReferenceFilter(script.Reference))
 		if err != nil {
-			return core.ExpandedTransaction{}, errors.Wrap(err, "GetTransactions")
+			return core.ExpandedTransaction{}, errors.Wrap(err,
+				"get transactions with reference")
 		}
 		if len(txs.Data) > 0 {
 			return core.ExpandedTransaction{}, NewConflictError()
@@ -119,7 +114,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 			}
 			data, err := json.Marshal(entry)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, "json.Marshal")
+				return core.ExpandedTransaction{}, errors.Wrap(err, "marshaling metadata")
 			}
 			value, err := machine.NewValueFromTypedJSON(data)
 			if err != nil {
@@ -212,7 +207,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		if _, ok := accs[account]; !ok {
 			accs[account], err = l.GetAccount(ctx, account)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", account))
+				return core.ExpandedTransaction{}, errors.Wrap(err, fmt.Sprintf("get account '%s'", account))
 			}
 		}
 		for asset, vol := range volumes {
@@ -225,7 +220,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 	for k, v := range metadata {
 		asMapAny := make(map[string]any)
 		if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
-			return core.ExpandedTransaction{}, errors.Wrap(err, "json.Unmarshal")
+			return core.ExpandedTransaction{}, errors.Wrap(err, "unmarshaling transaction metadata")
 		}
 		metadata[k] = asMapAny
 	}
@@ -243,7 +238,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		for k, v := range meta {
 			asMapAny := make(map[string]any)
 			if err := json.Unmarshal(v, &asMapAny); err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, "json.Unmarshal")
+				return core.ExpandedTransaction{}, errors.Wrap(err, "unmarshaling account metadata")
 			}
 			if account[0] == '@' {
 				account = account[1:]

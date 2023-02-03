@@ -82,7 +82,8 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...co
 			txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
 				WithReferenceFilter(txData.Reference))
 			if err != nil {
-				return []core.ExpandedTransaction{}, errors.Wrap(err, "GetTransactions")
+				return []core.ExpandedTransaction{}, errors.Wrap(err,
+					"get transactions with reference")
 			}
 			if len(txs.Data) > 0 {
 				return []core.ExpandedTransaction{}, NewConflictError()
@@ -102,7 +103,7 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...co
 				accs[account], err = l.GetAccount(ctx, account)
 				if err != nil {
 					return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
-						errors.Wrap(err, fmt.Sprintf("GetAccount '%s'", account)))
+						errors.Wrap(err, fmt.Sprintf("get account '%s'", account)))
 				}
 			}
 			for asset, vol := range volumes {
