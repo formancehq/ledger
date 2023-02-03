@@ -834,43 +834,6 @@ func TestNewMachineFromScript(t *testing.T) {
 	})
 }
 
-var execRes []core.ExpandedTransaction
-var execResScript core.ExpandedTransaction
-
-const nbPostings = 1000
-
-func BenchmarkLedger_PostTransactions_Scripts_Single_FixedAccounts(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
-		txData := core.TransactionData{}
-		for i := 0; i < nbPostings; i++ {
-			txData.Postings = append(txData.Postings, core.Posting{
-				Source:      "world",
-				Destination: "benchmarks:" + strconv.Itoa(i),
-				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(10),
-			})
-		}
-		script := txToScriptData(txData)
-
-		b.ResetTimer()
-
-		res := core.ExpandedTransaction{}
-
-		for n := 0; n < b.N; n++ {
-			_, err := txData.Postings.Validate()
-			require.NoError(b, err)
-			res, err = l.ExecuteScript(context.Background(), true, script)
-			require.NoError(b, err)
-			require.Len(b, res, 1)
-			require.Len(b, res.Postings, nbPostings)
-		}
-
-		execResScript = res
-		require.Len(b, execRes, 1)
-		require.Len(b, execRes[0].Postings, nbPostings)
-	})
-}
-
 type variable struct {
 	name    string
 	jsonVal json.RawMessage
