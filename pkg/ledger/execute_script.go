@@ -272,39 +272,6 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		PostCommitVolumes: txVolumeAggr.PostCommitVolumes,
 	}
 
-	mapping, err := l.store.LoadMapping(ctx)
-	if err != nil {
-		return core.ExpandedTransaction{}, errors.Wrap(err, "loading mapping")
-	}
-	contracts := make([]core.Contract, 0)
-	if mapping != nil {
-		contracts = append(contracts, mapping.Contracts...)
-	}
-	contracts = append(contracts, DefaultContracts...)
-
-	for account, volumes := range txVolumeAggr.PostCommitVolumes {
-		for asset, volume := range volumes {
-			if account == core.WORLD {
-				continue
-			}
-
-			for _, contract := range contracts {
-				if contract.Match(account) {
-					if ok := contract.Expr.Eval(core.EvalContext{
-						Variables: map[string]interface{}{
-							"balance": volume.Balance(),
-						},
-						Metadata: accs[account].Metadata,
-						Asset:    asset,
-					}); !ok {
-						return core.ExpandedTransaction{}, NewInsufficientFundError(asset)
-					}
-					break
-				}
-			}
-		}
-	}
-
 	if preview {
 		return tx, nil
 	}
