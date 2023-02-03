@@ -35,7 +35,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	preview := ok && (strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1")
 
 	res := ScriptResponse{}
-	execRes, err := l.(*ledger.Ledger).ExecuteScripts(c.Request.Context(), preview, script)
+	execRes, err := l.(*ledger.Ledger).ExecuteScript(c.Request.Context(), preview, script)
 	if err != nil {
 		var (
 			code    = apierrors.ErrInternal
@@ -62,9 +62,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			res.Details = apierrors.EncodeLink(message)
 		}
 	}
-	if len(execRes) > 0 {
-		res.Transaction = &execRes[0]
-	}
+	res.Transaction = &execRes
 
 	c.JSON(http.StatusOK, res)
 }
