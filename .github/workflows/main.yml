@@ -42,8 +42,8 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - name: Run bench
-        run: task install:perf bench:ledger
+      - name: Run ledger package benchmarks
+        run: task install:perf bench PKG=./pkg/ledger RUN=BenchmarkLedger
 
   GoReleaserBuild:
     if: github.event_name != 'release'
