@@ -11,6 +11,7 @@ vars:
   TIMEOUT: "10m"
   RUN: ".*"
   TAGS: "-tags json1,netgo"
+  BENCH_TIME: "30s"
   BENCH_RESULTS_DIR: "/tmp/benchmarks"
   BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
   BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
@@ -29,7 +30,9 @@ tasks:
 
   tests:
     cmds:
-      - go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}} -coverprofile coverage.out -covermode atomic {{.PKG}}
+      - >
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic {{.PKG}}
 
   tests:local:
     cmds:
@@ -76,22 +79,8 @@ tasks:
     cmds:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
-        go test {{.TAGS}} ./pkg/storage/sqlstorage
-        -run=XXX -bench={{.RUN}} -benchmem -timeout 1h
-        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
-        | tee {{.BENCH_RESULTS_FILE}}
-      - benchstat {{.BENCH_RESULTS_FILE}}
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
-
-  bench:ledger:
-    deps: [postgres]
-    cmds:
-      - mkdir -p {{.BENCH_RESULTS_DIR}}
-      - >
-        go test {{.TAGS}} ./pkg/ledger
-        -run=XXX -bench=BenchmarkLedger_{{.RUN}} -benchmem -benchtime=30s -timeout 1h
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}}
+        -run=XXX -bench={{.RUN}} -benchmem -benchtime={{.BENCH_TIME}} -timeout {{.TIMEOUT}}
         -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
         | tee {{.BENCH_RESULTS_FILE}}
       - benchstat {{.BENCH_RESULTS_FILE}}
@@ -110,7 +99,6 @@ tasks:
   install:
     deps:
     - install:golangci-lint
-    - install:cov-report
     - install:perf
 
   install:golangci-lint:
@@ -119,10 +107,6 @@ tasks:
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
         sh -s -- -b $(go env GOPATH)/bin latest
       - golangci-lint --version
-
-  install:cov-report:
-    cmds:
-    - go install github.com/go-phorce/cov-report/cmd/cov-report
 
   install:perf:
     - go install golang.org/x/perf/cmd/...@latest
