@@ -52,7 +52,6 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 			// deprecated regex handling
 			arg := sb.Args.Add(source)
 			sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
-			t.SourceFilter = source
 		} else {
 			// new wildcard handling
 			src := strings.Split(source, ":")
@@ -67,13 +66,13 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
+		t.SourceFilter = source
 	}
 	if destination != "" {
 		if !addressQueryRegexp.MatchString(destination) || flavor == SQLite {
 			// deprecated regex handling
 			arg := sb.Args.Add(destination)
 			sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
-			t.DestinationFilter = destination
 		} else {
 			// new wildcard handling
 			dst := strings.Split(destination, ":")
@@ -87,13 +86,13 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
+		t.DestinationFilter = destination
 	}
 	if account != "" {
 		if !addressQueryRegexp.MatchString(account) || flavor == SQLite {
 			// deprecated regex handling
 			arg := sb.Args.Add(account)
 			sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
-			t.AccountFilter = account
 		} else {
 			// new wildcard handling
 			dst := strings.Split(account, ":")
@@ -107,6 +106,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath)", i, arg, i, arg))
 			}
 		}
+		t.AccountFilter = account
 	}
 	if reference != "" {
 		sb.Where(sb.E("reference", reference))

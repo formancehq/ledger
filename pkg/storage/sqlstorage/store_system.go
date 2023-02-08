@@ -59,11 +59,7 @@ func (s SystemStore) ListLedgers(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	res := make([]string, 0)
 	for rows.Next() {
