@@ -301,10 +301,9 @@ func TestPostTransactions(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:              apierrors.ErrInsufficientFund,
-				ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
-				Details:                apierrors.EncodeLink("account had insufficient funds"),
+				ErrorMessage:           "balance.insufficient.TOK",
 				ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-				ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+				ErrorMessageDeprecated: "balance.insufficient.TOK",
 			},
 		},
 		{
@@ -593,11 +592,95 @@ func TestPostTransactions(t *testing.T) {
 				ErrorMessageDeprecated: "cannot pass a timestamp prior to the last transaction:",
 			},
 		},
+		{
+			name: "mapping with postings",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "negativebalances:bar",
+							Destination: "world",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "TOK",
+						},
+					},
+					Timestamp: timestamp3,
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "negativebalances:bar",
+									Destination: "world",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "TOK",
+								},
+							},
+							Timestamp: timestamp3,
+						},
+					},
+				}},
+			},
+		},
+		{
+			name: "short asset",
+			payload: []controllers.PostTransaction{
+				{
+					Postings: core.Postings{
+						{
+							Source:      "world",
+							Destination: "bank",
+							Amount:      core.NewMonetaryInt(1000),
+							Asset:       "F/9",
+						},
+					},
+					Timestamp: timestamp3,
+				},
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedRes: sharedapi.BaseResponse[[]core.ExpandedTransaction]{
+				Data: &[]core.ExpandedTransaction{{
+					Transaction: core.Transaction{
+						TransactionData: core.TransactionData{
+							Postings: core.Postings{
+								{
+									Source:      "world",
+									Destination: "bank",
+									Amount:      core.NewMonetaryInt(1000),
+									Asset:       "F/9",
+								},
+							},
+							Timestamp: timestamp3,
+						},
+					},
+				}},
+			},
+		},
 	}
 
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
+				internal.SaveMapping(t, api, core.Mapping{
+					Contracts: []core.Contract{{
+						Name:    "negative balances",
+						Account: "negativebalances:*",
+						Expr: core.ExprOr{
+							&core.ExprGte{
+								Op1: core.VariableExpr{Name: "balance"},
+								Op2: core.ConstantExpr{Value: 0},
+							},
+							&core.ExprLte{
+								Op1: core.VariableExpr{Name: "balance"},
+								Op2: core.ConstantExpr{Value: 0},
+							},
+						},
+					}},
+				})
 				for _, tc := range testCases {
 					t.Run(tc.name, func(t *testing.T) {
 						for i := 0; i < len(tc.payload)-1; i++ {
@@ -2003,10 +2086,9 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
-						Details:                apierrors.EncodeLink("account had insufficient funds"),
+						ErrorMessage:           "balance.insufficient.COIN",
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessageDeprecated: "balance.insufficient.COIN",
 					}, err)
 				})
 
@@ -2053,10 +2135,9 @@ func TestPostTransactionsBatch(t *testing.T) {
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
 						ErrorCode:              apierrors.ErrInsufficientFund,
-						ErrorMessage:           "[INSUFFICIENT_FUND] account had insufficient funds",
-						Details:                apierrors.EncodeLink("account had insufficient funds"),
+						ErrorMessage:           "balance.insufficient.GEM",
 						ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-						ErrorMessageDeprecated: "[INSUFFICIENT_FUND] account had insufficient funds",
+						ErrorMessageDeprecated: "balance.insufficient.GEM",
 					}, err)
 				})
 
