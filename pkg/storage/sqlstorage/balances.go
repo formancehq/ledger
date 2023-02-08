@@ -2,7 +2,6 @@ package sqlstorage
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"strconv"
@@ -41,12 +40,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 	if err != nil {
 		return nil, s.error(err)
 	}
-
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	aggregatedBalances := core.AssetsBalances{}
 
@@ -121,11 +115,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 	if err != nil {
 		return api.Cursor[core.AccountsBalances]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	accounts := make([]core.AccountsBalances, 0)
 
