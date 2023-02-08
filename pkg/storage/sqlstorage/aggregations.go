@@ -132,12 +132,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 	if err != nil {
 		return nil, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	volumes := core.AssetsVolumes{}
 	for rows.Next() {
