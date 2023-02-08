@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLedger_processTx(t *testing.T) {
+func TestLedger_ExecuteTxsData(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("multi assets", func(t *testing.T) {
 			worldTotoUSD := core.NewMonetaryInt(43)
@@ -135,8 +135,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.Execute(context.Background(), true, true,
-					core.TxsToScriptsData(txsData...)...)
+				res, err := l.ExecuteTxsData(context.Background(), true, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(txsData), len(res))
@@ -186,8 +185,7 @@ func TestLedger_processTx(t *testing.T) {
 					},
 				}
 
-				res, err := l.Execute(context.Background(), true, true,
-					core.TxsToScriptsData(txsData...)...)
+				res, err := l.ExecuteTxsData(context.Background(), true, txsData...)
 				require.NoError(t, err)
 				require.Equal(t, len(txsData), len(res))
 
@@ -308,10 +306,25 @@ func TestLedger_processTx(t *testing.T) {
 			})
 		})
 
-		t.Run("no script", func(t *testing.T) {
-			_, err := l.Execute(context.Background(), true, true, core.ScriptData{})
+		t.Run("empty", func(t *testing.T) {
+			_, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{})
 			assert.Error(t, err)
-			assert.ErrorContains(t, err, "no script to execute")
+			assert.ErrorContains(t, err, "executing transaction data 0: no postings")
+		})
+
+		t.Run("amount zero", func(t *testing.T) {
+			res, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "world",
+						Destination: "alice",
+						Amount:      core.NewMonetaryInt(0),
+						Asset:       "USD",
+					},
+				},
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, len(res))
 		})
 	})
 
@@ -328,8 +341,8 @@ func TestLedger_processTx(t *testing.T) {
 				},
 			}))
 
-			_, err := l.Execute(context.Background(), true, true,
-				core.TxsToScriptsData(core.TransactionData{
+			_, err := l.ExecuteTxsData(context.Background(), true,
+				core.TransactionData{
 					Postings: []core.Posting{{
 						Source:      "world",
 						Destination: "bank",
@@ -337,7 +350,7 @@ func TestLedger_processTx(t *testing.T) {
 						Asset:       "USD",
 					}},
 					Timestamp: now.UTC().Add(-time.Second),
-				})...)
+				})
 			assert.NoError(t, err)
 		})
 	}, ledger.WithPastTimestamps)
