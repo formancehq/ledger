@@ -256,9 +256,6 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 		return
 	}
 
-	var res []core.ExpandedTransaction
-	var err error
-
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
 		len(payload.Postings) == 0 && payload.Script.Plain == "" {
 		apierrors.ResponseError(c, ledger.NewValidationError(
@@ -276,24 +273,29 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
-			true, preview, core.TxsToScriptsData(txData)...)
-	} else {
-		script := core.ScriptData{
-			Script:    payload.Script,
-			Timestamp: payload.Timestamp,
-			Reference: payload.Reference,
-			Metadata:  payload.Metadata,
+		res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), preview, txData)
+		if err != nil {
+			apierrors.ResponseError(c, err)
+			return
 		}
-		res, err = l.(*ledger.Ledger).Execute(c.Request.Context(),
-			false, preview, script)
+
+		respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+		return
 	}
+
+	script := core.ScriptData{
+		Script:    payload.Script,
+		Timestamp: payload.Timestamp,
+		Reference: payload.Reference,
+		Metadata:  payload.Metadata,
+	}
+	res, err := l.(*ledger.Ledger).ExecuteScript(c.Request.Context(), preview, script)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
 	}
 
-	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, res)
+	respondWithData[[]core.ExpandedTransaction](c, http.StatusOK, []core.ExpandedTransaction{res})
 }
 
 func (ctl *TransactionController) GetTransaction(c *gin.Context) {
@@ -389,8 +391,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		}
 	}
 
-	res, err := l.(*ledger.Ledger).Execute(c.Request.Context(), true, false,
-		core.TxsToScriptsData(txs.Transactions...)...)
+	res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), false, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
