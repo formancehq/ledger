@@ -40,20 +40,17 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 		t.AddressRegexpFilter = address
 	}
 
-	if len(metadata) > 0 {
-		for key, value := range metadata {
-			arg := sb.Args.Add(value)
-			// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
-			sb.Where(s.schema.Table(
-				fmt.Sprintf("%s(metadata, %s, '%s')",
-					SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
-			))
-		}
-		t.MetadataFilter = metadata
+	for key, value := range metadata {
+		arg := sb.Args.Add(value)
+		// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
+		sb.Where(s.schema.Table(
+			fmt.Sprintf("%s(metadata, %s, '%s')",
+				SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
+		))
 	}
+	t.MetadataFilter = metadata
 
 	if balance != "" {
-
 		sb.Join(s.schema.Table("volumes"), "accounts.address = volumes.account")
 		balanceOperation := "volumes.input - volumes.output"
 
@@ -84,6 +81,9 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 		} else { // if no operator is given, default to gte
 			sb.Where(sb.GreaterEqualThan(balanceOperation, balanceValue))
 		}
+
+		t.BalanceFilter = balance
+		t.BalanceOperatorFilter = balanceOperator
 	}
 
 	return sb, t
@@ -120,11 +120,7 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 	if err != nil {
 		return api.Cursor[core.Account]{}, s.error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 
 	for rows.Next() {
 		account := core.Account{
