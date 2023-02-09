@@ -2,10 +2,13 @@ package controllers_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/numary/ledger/pkg/api"
@@ -435,4 +438,179 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 		return nil
 	}
+}
+
+func TestCursor(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				timestamp, err := time.Parse(time.RFC3339, "2023-01-01T00:00:00Z")
+				require.NoError(t, err)
+				for i := 0; i < 30; i++ {
+					rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+						Postings: core.Postings{
+							{
+								Source:      "world",
+								Destination: fmt.Sprintf("accounts:%02d", i),
+								Amount:      core.NewMonetaryInt(1),
+								Asset:       "USD",
+							},
+						},
+						Reference: fmt.Sprintf("ref:%02d", i),
+						Metadata:  core.Metadata{"ref": "abc"},
+						Timestamp: timestamp.Add(time.Duration(i) * time.Second),
+					}, false)
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					rsp = internal.PostAccountMetadata(t, api, fmt.Sprintf("accounts:%02d", i),
+						core.Metadata{
+							"foo": json.RawMessage(`"bar"`),
+						})
+					require.Equal(t, http.StatusNoContent, rsp.Result().StatusCode)
+				}
+
+				t.Run("GetAccounts", func(t *testing.T) {
+					httpResponse := internal.GetAccounts(api, url.Values{
+						"after":                             []string{"accounts:15"},
+						"address":                           []string{"acc.*"},
+						"metadata[foo]":                     []string{"bar"},
+						"balance":                           []string{"1"},
+						controllers.QueryKeyBalanceOperator: []string{"gte"},
+						controllers.QueryKeyPageSize:        []string{"3"},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
+					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						string(res))
+
+					httpResponse = internal.GetAccounts(api, url.Values{
+						controllers.QueryKeyCursor: []string{cursor.Next},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor = internal.DecodeCursorResponse[core.Account](t, httpResponse.Body)
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						string(res))
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						string(res))
+				})
+
+				t.Run("GetTransactions", func(t *testing.T) {
+					httpResponse := internal.GetTransactions(api, url.Values{
+						"after":                       []string{"15"},
+						"account":                     []string{"acc.*"},
+						"source":                      []string{"world"},
+						"destination":                 []string{"acc.*"},
+						controllers.QueryKeyStartTime: []string{timestamp.Add(5 * time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyEndTime:   []string{timestamp.Add(25 * time.Second).Format(time.RFC3339)},
+						"metadata[ref]":               []string{"abc"},
+						controllers.QueryKeyPageSize:  []string{"3"},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
+					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":12,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						string(res))
+
+					httpResponse = internal.GetTransactions(api, url.Values{
+						controllers.QueryKeyCursor: []string{cursor.Next},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor = internal.DecodeCursorResponse[core.Transaction](t, httpResponse.Body)
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":15,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						string(res))
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":9,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						string(res))
+				})
+
+				t.Run("GetBalances", func(t *testing.T) {
+					httpResponse := internal.GetBalances(api, url.Values{
+						"after":                      []string{"accounts:15"},
+						"address":                    []string{"acc.*"},
+						controllers.QueryKeyPageSize: []string{"3"},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.AccountsBalances](t, httpResponse.Body)
+					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"acc.*"}`,
+						string(res))
+
+					httpResponse = internal.GetBalances(api, url.Values{
+						controllers.QueryKeyCursor: []string{cursor.Next},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor = internal.DecodeCursorResponse[core.AccountsBalances](t, httpResponse.Body)
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"acc.*"}`,
+						string(res))
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"acc.*"}`,
+						string(res))
+				})
+
+				t.Run("GetLogs", func(t *testing.T) {
+					httpResponse := internal.GetLedgerLogs(api, url.Values{
+						"after":                       []string{"30"},
+						controllers.QueryKeyStartTime: []string{timestamp.Add(5 * time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyEndTime:   []string{timestamp.Add(25 * time.Second).Format(time.RFC3339)},
+						controllers.QueryKeyPageSize:  []string{"2"},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor := internal.DecodeCursorResponse[core.Log](t, httpResponse.Body)
+					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":26,"pageSize":2,"startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z"}`,
+						string(res))
+
+					httpResponse = internal.GetLedgerLogs(api, url.Values{
+						controllers.QueryKeyCursor: []string{cursor.Next},
+					})
+					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
+
+					cursor = internal.DecodeCursorResponse[core.Log](t, httpResponse.Body)
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":28,"pageSize":2,"startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z"}`,
+						string(res))
+					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
+					require.NoError(t, err)
+					require.Equal(t,
+						`{"after":22,"pageSize":2,"startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z"}`,
+						string(res))
+				})
+
+				return nil
+			},
+		})
+	}))
 }
