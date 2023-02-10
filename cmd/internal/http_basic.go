@@ -3,7 +3,7 @@ package internal
 import (
 	"strings"
 
-	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

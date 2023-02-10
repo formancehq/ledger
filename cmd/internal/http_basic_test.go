@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"

@@ -3,7 +3,7 @@ package idempotency
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/gin-gonic/gin"
 )
 
