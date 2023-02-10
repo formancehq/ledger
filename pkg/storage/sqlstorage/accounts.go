@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"

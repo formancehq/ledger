@@ -6,7 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
