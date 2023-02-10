@@ -834,6 +834,40 @@ func TestNewMachineFromScript(t *testing.T) {
 	})
 }
 
+func TestPortionBoundaryConditions(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					vars {
+						portion $p1
+						portion $p2
+					}
+
+					send [USD/2 100] (
+						source = @world
+						destination = {
+							$p1 to @user:001
+							$p2 to @user:002
+							remaining to @leftover
+					  }
+					)`,
+				Vars: map[string]json.RawMessage{
+					"p1": json.RawMessage(`"0%"`),
+					"p2": json.RawMessage(`"100/100"`),
+				},
+			},
+		}
+
+		_, err := l.ExecuteScript(context.Background(), false, script)
+		require.NoError(t, err)
+
+		assertBalance(t, l, "user:001", "USD/2", core.NewMonetaryInt(0))
+		assertBalance(t, l, "user:002", "USD/2", core.NewMonetaryInt(100))
+		assertBalance(t, l, "leftover", "USD/2", core.NewMonetaryInt(0))
+	})
+}
+
 type variable struct {
 	name    string
 	jsonVal json.RawMessage
