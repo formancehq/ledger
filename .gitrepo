@@ -6,7 +6,7 @@
 [subrepo]
 	remote = ledger
 	branch = main
-	commit = e3f04fb7918b158850ef6f80a15df9a9f8a21e5c
-	parent = d2318ecfe8772878e15b0517548fb7f18929e291
+	commit = 565dedc70bbfb3d3de2786aac1bc841a43cfd1a8
+	parent = fc952d609b53fe413925ea4a735d4c37ab4f0435
 	method = merge
 	cmdver = 0.4.5
