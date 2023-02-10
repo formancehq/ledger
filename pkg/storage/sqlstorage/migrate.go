@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/opentelemetry"

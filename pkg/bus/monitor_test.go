@@ -7,7 +7,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )

@@ -3,7 +3,7 @@ package controllers
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/gin-gonic/gin"
 )
 

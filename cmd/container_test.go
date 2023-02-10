@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/go-libs/otlp/otlptraces"
+	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/bus"

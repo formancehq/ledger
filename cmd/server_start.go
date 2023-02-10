@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

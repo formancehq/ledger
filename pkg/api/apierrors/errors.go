@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
