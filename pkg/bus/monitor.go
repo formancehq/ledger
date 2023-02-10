@@ -3,8 +3,8 @@ package bus
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"

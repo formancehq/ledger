@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/logging/logginglogrus"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging/logginglogrus"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/idempotency"
