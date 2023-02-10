@@ -850,7 +850,7 @@ func TestPortionBoundaryConditions(t *testing.T) {
 							$p1 to @user:001
 							$p2 to @user:002
 							remaining to @leftover
-					  }
+						}
 					)`,
 				Vars: map[string]json.RawMessage{
 					"p1": json.RawMessage(`"0%"`),
