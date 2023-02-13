@@ -3,20 +3,15 @@ package cmd
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
-	"strings"
 
-	"github.com/Shopify/sarama"
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/logging/logginglogrus"
 	"github.com/formancehq/stack/libs/go-libs/oauth2/oauth2introspect"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
-	"github.com/formancehq/stack/libs/go-libs/publish/publishhttp"
-	"github.com/formancehq/stack/libs/go-libs/publish/publishkafka"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/cmd/internal"
@@ -31,7 +26,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
-	"github.com/xdg-go/scram"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
@@ -66,59 +60,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		sqlstorage.InstrumentalizeSQLDrivers()
 	}
 
-	topics := v.GetStringSlice(publisherTopicMappingFlag)
-	mapping := make(map[string]string)
-	for _, topic := range topics {
-		parts := strings.SplitN(topic, ":", 2)
-		if len(parts) != 2 {
-			panic("invalid topic flag")
-		}
-		mapping[parts[0]] = parts[1]
-	}
-
-	options = append(options, publish.Module(), bus.LedgerMonitorModule())
-	options = append(options, publish.TopicMapperPublisherModule(mapping))
-
-	switch {
-	case v.GetBool(publisherHttpEnabledFlag):
-		options = append(options, publishhttp.Module())
-	case v.GetBool(publisherKafkaEnabledFlag):
-		sarama.Logger = log.New(os.Stdout, "[Sarama] ", log.LstdFlags)
-		options = append(options,
-			publishkafka.Module(ServiceName, v.GetStringSlice(publisherKafkaBrokerFlag)...),
-			publishkafka.ProvideSaramaOption(
-				publishkafka.WithConsumerReturnErrors(),
-				publishkafka.WithProducerReturnSuccess(),
-			),
-		)
-		if v.GetBool(publisherKafkaTLSEnabled) {
-			options = append(options, publishkafka.ProvideSaramaOption(publishkafka.WithTLS()))
-		}
-		if v.GetBool(publisherKafkaSASLEnabled) {
-			options = append(options, publishkafka.ProvideSaramaOption(
-				publishkafka.WithSASLEnabled(),
-				publishkafka.WithSASLCredentials(
-					v.GetString(publisherKafkaSASLUsername),
-					v.GetString(publisherKafkaSASLPassword),
-				),
-				publishkafka.WithSASLMechanism(sarama.SASLMechanism(v.GetString(publisherKafkaSASLMechanism))),
-				publishkafka.WithSASLScramClient(func() sarama.SCRAMClient {
-					var fn scram.HashGeneratorFcn
-					switch v.GetInt(publisherKafkaSASLScramSHASize) {
-					case 512:
-						fn = publishkafka.SHA512
-					case 256:
-						fn = publishkafka.SHA256
-					default:
-						panic("sha size not handled")
-					}
-					return &publishkafka.XDGSCRAMClient{
-						HashGeneratorFcn: fn,
-					}
-				}),
-			))
-		}
-	}
+	options = append(options, publish.CLIPublisherModule(v, ServiceName), bus.LedgerMonitorModule())
 
 	// Handle OpenTelemetry
 	options = append(options, otlptraces.CLITracesModule(v))
