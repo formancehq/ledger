@@ -32,7 +32,7 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 	defer rows.Close()
 
 	acc := core.Account{
-		Address:  account,
+		Address:  core.AccountAddress(account),
 		Metadata: core.Metadata{},
 	}
 	assetsVolumes := core.AssetsVolumes{}

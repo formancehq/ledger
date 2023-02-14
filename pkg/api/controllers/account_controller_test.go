@@ -90,7 +90,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				t.Run("meta accountId", func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				t.Run("meta enabled", func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				t.Run("meta nested", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				t.Run("meta unknown", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: alice
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "alice")
+					assert.Equal(t, "alice", string(cursor.Data[0].Address))
 				})
 
 				t.Run("address", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestGetAccounts(t *testing.T) {
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					// 1 accounts: bob
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				to := sqlstorage.AccPaginationToken{}
@@ -224,8 +224,8 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 2)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
-					assert.Equal(t, cursor.Data[1].Address, "alice")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
+					assert.Equal(t, "alice", string(cursor.Data[1].Address))
 				})
 
 				t.Run("filter by balance >= 120 with default operator", func(t *testing.T) {
@@ -235,7 +235,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "alice")
+					assert.Equal(t, "alice", string(cursor.Data[0].Address))
 				})
 
 				t.Run("filter by balance >= 50", func(t *testing.T) {
@@ -246,8 +246,8 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 2)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
-					assert.Equal(t, cursor.Data[1].Address, "alice")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
+					assert.Equal(t, "alice", string(cursor.Data[1].Address))
 				})
 
 				t.Run("filter by balance >= 120", func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "alice")
+					assert.Equal(t, "alice", string(cursor.Data[0].Address))
 				})
 
 				t.Run("filter by balance > 120", func(t *testing.T) {
@@ -269,7 +269,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "alice")
+					assert.Equal(t, "alice", string(cursor.Data[0].Address))
 				})
 
 				t.Run("filter by balance < 0", func(t *testing.T) {
@@ -280,7 +280,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "world")
+					assert.Equal(t, "world", string(cursor.Data[0].Address))
 				})
 
 				t.Run("filter by balance < 100", func(t *testing.T) {
@@ -291,7 +291,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "world")
+					assert.Equal(t, "world", string(cursor.Data[0].Address))
 				})
 
 				t.Run("filter by balance <= 100", func(t *testing.T) {
@@ -302,8 +302,8 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 2)
-					assert.Equal(t, cursor.Data[0].Address, "world")
-					assert.Equal(t, cursor.Data[1].Address, "bob")
+					assert.Equal(t, "world", string(cursor.Data[0].Address))
+					assert.Equal(t, "bob", string(cursor.Data[1].Address))
 				})
 
 				t.Run("filter by balance = 100", func(t *testing.T) {
@@ -314,7 +314,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 1)
-					assert.Equal(t, cursor.Data[0].Address, "bob")
+					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
 				// test filter by balance != 100
@@ -326,8 +326,8 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					cursor := internal.DecodeCursorResponse[core.Account](t, rsp.Body)
 					assert.Len(t, cursor.Data, 2)
-					assert.Equal(t, cursor.Data[0].Address, "world")
-					assert.Equal(t, cursor.Data[1].Address, "alice")
+					assert.Equal(t, "world", string(cursor.Data[0].Address))
+					assert.Equal(t, "alice", string(cursor.Data[1].Address))
 				})
 
 				t.Run("invalid balance", func(t *testing.T) {

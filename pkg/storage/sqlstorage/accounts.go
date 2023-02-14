@@ -180,7 +180,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 		Where(sb.Equal("address", addr))
 
 	account := core.Account{
-		Address:  addr,
+		Address:  core.AccountAddress(addr),
 		Metadata: core.Metadata{},
 	}
 

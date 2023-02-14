@@ -1,11 +1,45 @@
 package core
 
 import (
-	"errors"
+	"fmt"
 	"math/big"
+
+	"github.com/pkg/errors"
 )
 
+type Monetary struct {
+	Asset  Asset        `json:"asset"`
+	Amount *MonetaryInt `json:"amount"`
+}
+
+func (Monetary) GetType() Type { return TypeMonetary }
+
+func (m Monetary) String() string {
+	if m.Amount == nil {
+		return fmt.Sprintf("[%s nil]", m.Asset)
+	}
+	amt := *m.Amount
+	return fmt.Sprintf("[%v %s]", m.Asset, amt.String())
+}
+
+func (m Monetary) GetAsset() Asset { return m.Asset }
+
+func ParseMonetary(mon Monetary) error {
+	if err := ParseAsset(mon.Asset); err != nil {
+		return errors.Wrapf(err, "asset '%s'", mon.Asset)
+	}
+	if mon.Amount == nil {
+		return errors.Errorf("nil amount")
+	}
+	if mon.Amount.Ltz() {
+		return errors.Errorf("negative amount")
+	}
+	return nil
+}
+
 type MonetaryInt big.Int
+
+func (MonetaryInt) GetType() Type { return TypeNumber }
 
 func (a *MonetaryInt) Add(b *MonetaryInt) *MonetaryInt {
 	if a == nil {
