@@ -9,11 +9,10 @@ import (
 
 	"github.com/DmitriyVTitov/size"
 	"github.com/dgraph-io/ristretto"
-	machine "github.com/formancehq/machine/core"
-	"github.com/formancehq/machine/script/compiler"
-	"github.com/formancehq/machine/vm"
-	"github.com/formancehq/machine/vm/program"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/machine/script/compiler"
+	"github.com/numary/ledger/pkg/machine/vm"
+	"github.com/numary/ledger/pkg/machine/vm/program"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -115,7 +114,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 			if err != nil {
 				return core.ExpandedTransaction{}, errors.Wrap(err, "marshaling metadata")
 			}
-			value, err := machine.NewValueFromTypedJSON(data)
+			value, err := core.NewValueFromTypedJSON(data)
 			if err != nil {
 				return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
 					errors.Wrap(err, fmt.Sprintf(
@@ -125,7 +124,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 			req.Response <- *value
 		} else if req.Asset != "" {
 			amt := accs[req.Account].Balances[req.Asset].OrZero()
-			resp := machine.MonetaryInt(*amt)
+			resp := *amt
 			req.Response <- &resp
 		} else {
 			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
@@ -152,7 +151,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 			}
 		}
 		amt = accs[req.Account].Balances[req.Asset].OrZero()
-		resp := machine.MonetaryInt(*amt)
+		resp := *amt
 		req.Response <- &resp
 	}
 

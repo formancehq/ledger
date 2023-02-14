@@ -450,7 +450,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 
 	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize:     1,
-		AfterAddress: accounts.Data[0].Address,
+		AfterAddress: string(accounts.Data[0].Address),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, accounts.PageSize)
