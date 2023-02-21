@@ -20,7 +20,7 @@ services:
     depends_on:
     - postgres
     - redis
-    image: golang:1.18-alpine
+    image: golang:1.19-alpine
     entrypoint: go run main.go server start
     volumes:
     - ../..:/src
