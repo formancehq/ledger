@@ -1500,6 +1500,10 @@ func TestVariablesParsing(t *testing.T) {
 			"str": json.RawMessage(`"valid string"`),
 		}))
 
+		require.Error(t, m.SetVars(map[string]core.Value{
+			"str": core.NewMonetaryInt(1),
+		}))
+
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"str": json.RawMessage(`100`),
 		}))
@@ -1524,6 +1528,10 @@ func TestVariablesParsing(t *testing.T) {
 			"nbr": json.RawMessage(`100`),
 		}))
 
+		require.Error(t, m.SetVars(map[string]core.Value{
+			"nbr": core.String("invalid"),
+		}))
+
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"nbr": json.RawMessage(`"string"`),
 		}))
@@ -1531,6 +1539,57 @@ func TestVariablesParsing(t *testing.T) {
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"nbr": json.RawMessage(`nil`),
 		}))
+	})
+
+	t.Run("missing variable", func(t *testing.T) {
+		p, err := compiler.Compile(`
+			vars {
+				number $nbr
+				string $str
+			}
+			set_tx_meta("number", $nbr)
+		`)
+		require.NoError(t, err)
+
+		m := NewMachine(*p)
+
+		require.ErrorContains(t, m.SetVars(map[string]core.Value{
+			"nbr": core.NewMonetaryInt(100),
+		}), "missing variable $str")
+	})
+
+	t.Run("extraneous variable SetVars", func(t *testing.T) {
+		p, err := compiler.Compile(`
+			vars {
+				number $nbr
+			}
+			set_tx_meta("number", $nbr)
+		`)
+		require.NoError(t, err)
+
+		m := NewMachine(*p)
+
+		require.ErrorContains(t, m.SetVars(map[string]core.Value{
+			"nbr":  core.NewMonetaryInt(100),
+			"nbr2": core.NewMonetaryInt(100),
+		}), "extraneous variable $nbr2")
+	})
+
+	t.Run("extraneous variable SetVarsFromJSON", func(t *testing.T) {
+		p, err := compiler.Compile(`
+			vars {
+				number $nbr
+			}
+			set_tx_meta("number", $nbr)
+		`)
+		require.NoError(t, err)
+
+		m := NewMachine(*p)
+
+		require.ErrorContains(t, m.SetVarsFromJSON(map[string]json.RawMessage{
+			"nbr":  json.RawMessage(`100`),
+			"nbr2": json.RawMessage(`100`),
+		}), "extraneous variable $nbr2")
 	})
 }
 
@@ -1556,4 +1615,127 @@ func TestVariablesErrors(t *testing.T) {
 		Error:    "negative amount",
 	}
 	test(t, tc)
+}
+
+func TestMachine(t *testing.T) {
+	p, err := compiler.Compile(`
+		vars {
+			account $dest
+		}
+		send [COIN 99] (
+			source = @world
+			destination = $dest
+		)`)
+	require.NoError(t, err)
+
+	t.Run("with debug", func(t *testing.T) {
+		m := NewMachine(*p)
+		m.Debug = true
+
+		err = m.SetVars(map[string]core.Value{
+			"dest": core.AccountAddress("charlie"),
+		})
+		require.NoError(t, err)
+
+		ch1, err := m.ResolveResources()
+		require.NoError(t, err)
+		for req := range ch1 {
+			require.NoError(t, req.Error)
+		}
+
+		ch2, err := m.ResolveBalances()
+		require.NoError(t, err)
+		for req := range ch2 {
+			require.NoError(t, req.Error)
+		}
+
+		exitCode, err := m.Execute()
+		require.NoError(t, err)
+		require.Equal(t, EXIT_OK, exitCode)
+	})
+
+	t.Run("err resources", func(t *testing.T) {
+		m := NewMachine(*p)
+		exitCode, err := m.Execute()
+		require.ErrorContains(t, err, "resources haven't been initialized")
+		require.Equal(t, byte(0), exitCode)
+	})
+
+	t.Run("err balances nit initialized", func(t *testing.T) {
+		m := NewMachine(*p)
+
+		err = m.SetVars(map[string]core.Value{
+			"dest": core.AccountAddress("charlie"),
+		})
+		require.NoError(t, err)
+
+		ch1, err := m.ResolveResources()
+		require.NoError(t, err)
+		for req := range ch1 {
+			require.NoError(t, req.Error)
+		}
+
+		exitCode, err := m.Execute()
+		require.ErrorContains(t, err, "balances haven't been initialized")
+		require.Equal(t, byte(0), exitCode)
+	})
+
+	t.Run("err resolve resources twice", func(t *testing.T) {
+		m := NewMachine(*p)
+
+		err = m.SetVars(map[string]core.Value{
+			"dest": core.AccountAddress("charlie"),
+		})
+		require.NoError(t, err)
+
+		ch1, err := m.ResolveResources()
+		require.NoError(t, err)
+		for req := range ch1 {
+			require.NoError(t, req.Error)
+		}
+
+		_, err = m.ResolveResources()
+		require.ErrorContains(t, err, "tried to call ResolveResources twice")
+	})
+
+	t.Run("err balances before resources", func(t *testing.T) {
+		m := NewMachine(*p)
+
+		_, err := m.ResolveBalances()
+		require.ErrorContains(t, err, "tried to resolve balances before resources")
+	})
+
+	t.Run("err resolve balances twice", func(t *testing.T) {
+		m := NewMachine(*p)
+
+		err = m.SetVars(map[string]core.Value{
+			"dest": core.AccountAddress("charlie"),
+		})
+		require.NoError(t, err)
+
+		ch1, err := m.ResolveResources()
+		require.NoError(t, err)
+		for req := range ch1 {
+			require.NoError(t, req.Error)
+		}
+
+		ch2, err := m.ResolveBalances()
+		require.NoError(t, err)
+		for req := range ch2 {
+			require.NoError(t, req.Error)
+		}
+
+		_, err = m.ResolveBalances()
+		require.ErrorContains(t, err, "tried to call ResolveBalances twice")
+	})
+
+	t.Run("err missing var", func(t *testing.T) {
+		m := NewMachine(*p)
+
+		ch1, err := m.ResolveResources()
+		require.NoError(t, err)
+		for req := range ch1 {
+			require.ErrorContains(t, req.Error, "missing variable 'dest'")
+		}
+	})
 }

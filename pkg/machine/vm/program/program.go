@@ -25,10 +25,6 @@ func (p Program) String() string {
 			address := binary.LittleEndian.Uint16(p.Instructions[i+1 : i+3])
 			out += fmt.Sprintf("#%d\n", address)
 			i += 2
-		case OP_IPUSH:
-			out += "OP_IPUSH "
-			out += fmt.Sprintf("%d\n", binary.LittleEndian.Uint64(p.Instructions[i+1:i+9]))
-			i += 8
 		default:
 			out += OpcodeName(p.Instructions[i]) + "\n"
 		}
@@ -66,24 +62,22 @@ func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Va
 							variable.Name, val.(core.Portion).String())
 					}
 				case core.TypeString:
-					if _, ok := val.(core.String); !ok {
-						return nil, fmt.Errorf("invalid variable $%s value '%s'",
-							variable.Name, val)
-					}
 				case core.TypeNumber:
-					if _, ok := val.(core.Number); !ok {
-						return nil, fmt.Errorf("invalid variable $%s value '%s'",
-							variable.Name, val)
-					}
+				default:
+					return nil, fmt.Errorf("unsupported type for variable $%s: %s",
+						variable.Name, val.GetType())
 				}
 				delete(vars, variable.Name)
+			} else if val, ok := vars[variable.Name]; ok && val.GetType() != variable.Typ {
+				return nil, fmt.Errorf("wrong type for variable $%s: %s instead of %s",
+					variable.Name, variable.Typ, val.GetType())
 			} else {
-				return nil, fmt.Errorf("missing variables: %q", variable.Name)
+				return nil, fmt.Errorf("missing variable $%s", variable.Name)
 			}
 		}
 	}
 	for name := range vars {
-		return nil, fmt.Errorf("extraneous variable: %q", name)
+		return nil, fmt.Errorf("extraneous variable $%s", name)
 	}
 	return variables, nil
 }
