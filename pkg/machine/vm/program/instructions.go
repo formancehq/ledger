@@ -1,8 +1,7 @@
 package program
 
 const (
-	OP_APUSH = byte(iota + 1)
-	OP_IPUSH
+	OP_APUSH            = byte(iota + 1)
 	OP_BUMP             // <value_to_bump: any> <any>*N <int N> => <any>*N <value_to_bump>
 	OP_DELETE           // <value: not funding>
 	OP_IADD             // <number> <number> => <number>
@@ -31,8 +30,6 @@ func OpcodeName(op byte) string {
 	switch op {
 	case OP_APUSH:
 		return "OP_APUSH"
-	case OP_IPUSH:
-		return "OP_IPUSH"
 	case OP_BUMP:
 		return "OP_BUMP"
 	case OP_DELETE:

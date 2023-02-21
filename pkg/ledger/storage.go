@@ -16,7 +16,6 @@ type Store interface {
 	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
 	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
 	GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error)
-	GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error)
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (api.Cursor[core.Account], error)
 	GetBalances(context.Context, BalancesQuery) (api.Cursor[core.AccountsBalances], error)
