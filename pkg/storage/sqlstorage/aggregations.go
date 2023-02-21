@@ -102,8 +102,6 @@ func (s *Store) CountTransactions(ctx context.Context, q ledger.TransactionsQuer
 }
 
 func (s *Store) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint64, error) {
-	var count uint64
-
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
 		return 0, err
@@ -111,8 +109,9 @@ func (s *Store) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint
 
 	sb, _ := s.buildAccountsQuery(q)
 	sqlq, args := sb.Select("count(*)").BuildWithFlavor(s.schema.Flavor())
-	err = executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 
+	var count uint64
+	err = executor.QueryRowContext(ctx, sqlq, args...).Scan(&count)
 	return count, s.error(err)
 }
 
@@ -141,19 +140,16 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 			inputStr  string
 			outputStr string
 		)
-		err = rows.Scan(&asset, &inputStr, &outputStr)
-		if err != nil {
+		if err := rows.Scan(&asset, &inputStr, &outputStr); err != nil {
 			return nil, s.error(err)
 		}
 
 		input, err := core.ParseMonetaryInt(inputStr)
-
 		if err != nil {
 			return nil, s.error(err)
 		}
 
 		output, err := core.ParseMonetaryInt(outputStr)
-
 		if err != nil {
 			return nil, s.error(err)
 		}
@@ -168,48 +164,4 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 	}
 
 	return volumes, nil
-}
-
-func (s *Store) GetVolumes(ctx context.Context, accountAddress, asset string) (core.Volumes, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("input", "output")
-	sb.From(s.schema.Table("volumes"))
-	sb.Where(sb.And(sb.E("account", accountAddress), sb.E("asset", asset)))
-
-	executor, err := s.executorProvider(ctx)
-	if err != nil {
-		return core.Volumes{}, err
-	}
-
-	q, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := executor.QueryRowContext(ctx, q, args...)
-	if row.Err() != nil {
-		return core.Volumes{}, s.error(row.Err())
-	}
-
-	var inputStr, outputStr string
-
-	if err := row.Scan(&inputStr, &outputStr); err != nil {
-		if err == sql.ErrNoRows {
-			return core.Volumes{}, nil
-		}
-		return core.Volumes{}, s.error(err)
-	}
-
-	input, err := core.ParseMonetaryInt(inputStr)
-
-	if err != nil {
-		return core.Volumes{}, s.error(err)
-	}
-
-	output, err := core.ParseMonetaryInt(outputStr)
-
-	if err != nil {
-		return core.Volumes{}, s.error(err)
-	}
-
-	return core.Volumes{
-		Input:  input,
-		Output: output,
-	}, nil
 }

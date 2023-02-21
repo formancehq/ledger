@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/pkg/errors"
 )
 
 type TxVolumeAggregator struct {
@@ -48,7 +49,7 @@ func (tva *TxVolumeAggregator) Transfer(
 				} else {
 					acc, err := tva.agg.l.GetAccount(ctx, addr)
 					if err != nil {
-						return err
+						return errors.Wrap(err, "getting account while transferring")
 					}
 					if accs[addr] == nil {
 						accs[addr] = acc

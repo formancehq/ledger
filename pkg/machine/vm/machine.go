@@ -34,7 +34,7 @@ type Machine struct {
 	UnresolvedResources []program.Resource
 	Resources           []core.Value // Constants and Variables
 	resolveCalled       bool
-	Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt // keeps tracks of balances throughout execution
+	Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt // keeps track of balances throughout execution
 	setBalanceCalled    bool
 	Stack               []core.Value
 	Postings            []Posting                                     // accumulates postings throughout execution
@@ -209,12 +209,6 @@ func (m *Machine) tick() (bool, byte) {
 		}
 		m.Stack = append(m.Stack, *v)
 		m.P += 2
-
-	case program.OP_IPUSH:
-		bytes := m.Program.Instructions[m.P+1 : m.P+9]
-		v := core.Number(big.NewInt(int64(binary.LittleEndian.Uint64(bytes))))
-		m.Stack = append(m.Stack, v)
-		m.P += 8
 
 	case program.OP_BUMP:
 		n := big.Int(*pop[core.Number](m))
