@@ -1,6 +1,6 @@
 module github.com/numary/ledger
 
-go 1.18
+go 1.19
 
 require (
 	github.com/DmitriyVTitov/size v1.5.0
