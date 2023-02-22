@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg/api/controllers"
@@ -21,8 +22,13 @@ import (
 )
 
 func Test_ScriptCommands(t *testing.T) {
+
+	db := pgtesting.NewPostgresDatabase(t)
+
 	ledger := uuid.NewString()
 	viper.Set("name", ledger)
+	viper.Set(storageDriverFlag, "postgres")
+	viper.Set(storagePostgresConnectionStringFlag, db.ConnString())
 	require.NoError(t, NewStorageInit().Execute())
 
 	d1 := []byte(`

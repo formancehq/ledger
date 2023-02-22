@@ -12,7 +12,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
-	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/bus"
 	"github.com/numary/ledger/pkg/core"
@@ -29,16 +29,7 @@ import (
 )
 
 func TestContainers(t *testing.T) {
-	pgServer, err := pgtesting.PostgresServer()
-	if !assert.NoError(t, err) {
-		return
-	}
-	defer func(pgServer *pgtesting.PGServer) {
-		err := pgServer.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(pgServer)
+	db := pgtesting.NewPostgresDatabase(t)
 
 	type testCase struct {
 		name    string
@@ -146,7 +137,7 @@ func TestContainers(t *testing.T) {
 			name: "pg",
 			init: func(v *viper.Viper) {
 				v.Set(storageDriverFlag, sqlstorage.PostgreSQL.String())
-				v.Set(storagePostgresConnectionStringFlag, pgServer.ConnString())
+				v.Set(storagePostgresConnectionStringFlag, db.ConnString())
 			},
 			options: []fx.Option{
 				fx.Invoke(func(lc fx.Lifecycle, t *testing.T, driver storage.Driver[storage.LedgerStore], storageFactory storage.Driver[storage.LedgerStore]) {
