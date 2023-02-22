@@ -3,12 +3,18 @@ package cmd
 import (
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_StorageCommands(t *testing.T) {
+	db := pgtesting.NewPostgresDatabase(t)
+
+	viper.Set(storageDriverFlag, "postgres")
+	viper.Set(storagePostgresConnectionStringFlag, db.ConnString())
+
 	require.NoError(t, NewStorageList().Execute())
 
 	viper.Set("name", "")

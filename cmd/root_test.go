@@ -8,20 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/numary/ledger/internal/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestServer(t *testing.T) {
 
-	pgServer, err := pgtesting.PostgresServer()
-	assert.NoError(t, err)
-	defer func(pgServer *pgtesting.PGServer) {
-		if err := pgServer.Close(); err != nil {
-			panic(err)
-		}
-	}(pgServer)
+	db := pgtesting.NewPostgresDatabase(t)
 
 	type env struct {
 		key   string
@@ -46,7 +40,7 @@ func TestServer(t *testing.T) {
 		},
 		{
 			name: "pg",
-			args: []string{"--storage.driver", "postgres", "--storage.postgres.conn_string", pgServer.ConnString()},
+			args: []string{"--storage.driver", "postgres", "--storage.postgres.conn_string", db.ConnString()},
 		},
 		{
 			name: "pg-with-env-var",
@@ -57,7 +51,7 @@ func TestServer(t *testing.T) {
 				},
 				{
 					key:   "NUMARY_STORAGE_POSTGRES_CONN_STRING",
-					value: pgServer.ConnString(),
+					value: db.ConnString(),
 				},
 			},
 		},
