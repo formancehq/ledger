@@ -141,6 +141,7 @@ tasks:
     cmds:
       - wget https://raw.githubusercontent.com/formancehq/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
       - sed -i -e "s/LEDGER_VERSION/{{.VERSION}}/g" swagger.yaml
+      - rm -rf ./sdks/{{.CLI_ARGS}}/*
       - >
         docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest generate
         -i ./swagger.yaml
