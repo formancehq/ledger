@@ -69,7 +69,7 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
-		logging.GetLogger(c.Request.Context()).Errorf(
+		logging.FromContext(c.Request.Context()).Errorf(
 			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}

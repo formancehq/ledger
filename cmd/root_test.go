@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServer(t *testing.T) {
@@ -83,7 +85,9 @@ func TestServer(t *testing.T) {
 			}()
 
 			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			defer func() {
+				cancel()
+			}()
 
 			go func() {
 				assert.NoError(t, root.ExecuteContext(ctx))
@@ -101,8 +105,10 @@ func TestServer(t *testing.T) {
 						<-time.After(delay)
 						continue
 					}
-					if assert.FailNow(t, err.Error()) {
-						return
+					if err != nil {
+						require.Fail(t, err.Error())
+					} else {
+						require.Fail(t, fmt.Sprintf("unexpected status code: %d", rsp.StatusCode))
 					}
 				}
 				break

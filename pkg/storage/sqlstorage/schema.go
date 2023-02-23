@@ -33,15 +33,15 @@ func (s *baseSchema) Name() string {
 }
 
 func (s *baseSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	logging.GetLogger(ctx).Debugf("QueryContext: %s %s", query, args)
+	logging.FromContext(ctx).Debugf("QueryContext: %s %s", query, args)
 	return s.DB.QueryContext(ctx, query, args...)
 }
 func (s *baseSchema) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	logging.GetLogger(ctx).Debugf("QueryRowContext: %s %s", query, args)
+	logging.FromContext(ctx).Debugf("QueryRowContext: %s %s", query, args)
 	return s.DB.QueryRowContext(ctx, query, args...)
 }
 func (s *baseSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	logging.GetLogger(ctx).Debugf("ExecContext: %s %s", query, args)
+	logging.FromContext(ctx).Debugf("ExecContext: %s %s", query, args)
 	return s.DB.ExecContext(ctx, query, args...)
 }
 func (s *baseSchema) Close(ctx context.Context) error {

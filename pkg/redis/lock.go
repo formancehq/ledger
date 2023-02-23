@@ -56,7 +56,7 @@ func (l Lock) tryLock(ctx context.Context, name string) (bool, middlewares.Unloc
 		return false, nil, nil
 	}
 
-	logger := logging.GetLogger(ctx)
+	logger := logging.FromContext(ctx)
 
 	return true, func(ctx context.Context) {
 		getCmd := l.redisClient.Get(ctx, lk)

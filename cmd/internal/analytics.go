@@ -64,13 +64,19 @@ func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
 			interval = viper.GetDuration(segmentHeartbeatIntervalFlag)
 		}
 		if writeKey == "" {
-			logging.GetLogger(context.Background()).Infof("telemetry enabled but no write key provided")
+			return fx.Invoke(func(l logging.Logger) {
+				l.Infof("telemetry enabled but no write key provided")
+			})
 		} else if interval == 0 {
-			logging.GetLogger(context.Background()).Error("telemetry heartbeat interval is 0")
+			return fx.Invoke(func(l logging.Logger) {
+				l.Error("telemetry heartbeat interval is 0")
+			})
 		} else {
 			_, err := semver.NewVersion(version)
 			if err != nil {
-				logging.GetLogger(context.Background()).Infof("telemetry enabled but version '%s' is not semver, skip", version)
+				return fx.Invoke(func(l logging.Logger) {
+					l.Infof("telemetry enabled but version '%s' is not semver, skip", version)
+				})
 			} else {
 				return fx.Options(
 					appIdProviderModule,

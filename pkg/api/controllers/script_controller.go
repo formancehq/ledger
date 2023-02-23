@@ -49,7 +49,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code = apierrors.ErrConflict
 			message = e.Error()
 		default:
-			logging.GetLogger(c.Request.Context()).Errorf(
+			logging.FromContext(c.Request.Context()).Errorf(
 				"internal errors executing script: %s", err)
 		}
 		res.ErrorResponse = api.ErrorResponse{

@@ -8,10 +8,10 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/logging/logginglogrus"
 	"github.com/formancehq/stack/libs/go-libs/oauth2/oauth2introspect"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/cmd/internal"
@@ -19,43 +19,21 @@ import (
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/numary/ledger/pkg/bus"
-	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/redis"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 )
 
 const ServiceName = "ledger"
 
-func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
+func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 
 	options := make([]fx.Option, 0)
-	if !v.GetBool(debugFlag) {
-		options = append(options, fx.NopLogger)
-	}
 
-	debug := viper.GetBool(debugFlag)
-
-	l := logrus.New()
-	if debug {
-		l.Level = logrus.DebugLevel
-	}
-	if viper.GetBool(otlptraces.OtelTracesFlag) {
-		l.AddHook(otellogrus.NewHook(otellogrus.WithLevels(
-			logrus.PanicLevel,
-			logrus.FatalLevel,
-			logrus.ErrorLevel,
-			logrus.WarnLevel,
-		)))
-	}
-	logging.SetFactory(contextlogger.NewFactory(
-		logging.StaticLoggerFactory(logginglogrus.New(l)),
-	))
+	debug := v.GetBool(service.DebugFlag)
 	if debug {
 		sqlstorage.InstrumentalizeSQLDrivers()
 	}
@@ -86,7 +64,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 	options = append(options, api.Module(api.Config{
 		StorageDriver: v.GetString(storageDriverFlag),
 		Version:       Version,
-		UseScopes:     viper.GetBool(authBearerUseScopesFlag),
+		UseScopes:     v.GetBool(authBearerUseScopesFlag),
 	}))
 
 	// Handle storage driver
@@ -164,7 +142,7 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		return res
 	}, fx.ParamTags(`optional:"true"`)))
 
-	options = append(options, routes.ProvideMiddlewares(func(tp trace.TracerProvider) []gin.HandlerFunc {
+	options = append(options, routes.ProvideMiddlewares(func(tp trace.TracerProvider, logger logging.Logger) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)
 
 		cc := cors.DefaultConfig()
@@ -174,9 +152,14 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 
 		res = append(res, cors.New(cc))
 		res = append(res, func(context *gin.Context) {
+			context.Request = context.Request.WithContext(
+				logging.ContextWithLogger(context.Request.Context(), logger),
+			)
+		})
+		res = append(res, func(context *gin.Context) {
 			context.Next()
 			for _, err := range context.Errors {
-				logging.GetLogger(context.Request.Context()).Error(err)
+				logging.FromContext(context.Request.Context()).Error(err)
 			}
 		})
 		res = append(res, middlewares.Log())
@@ -191,5 +174,9 @@ func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
 		return res
 	}, fx.ParamTags(`optional:"true"`)))
 
-	return fx.New(append(options, userOptions...)...)
+	return append(options, userOptions...)
+}
+
+func NewContainer(v *viper.Viper, userOptions ...fx.Option) *fx.App {
+	return fx.New(resolveOptions(v, userOptions...)...)
 }

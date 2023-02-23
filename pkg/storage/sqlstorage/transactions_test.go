@@ -9,25 +9,17 @@ import (
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/logging/logginglogrus"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func BenchmarkStore_GetTransactions(b *testing.B) {
 	b.StopTimer()
-	l := logrus.New()
-	if testing.Verbose() {
-		l.Level = logrus.DebugLevel
-	}
-	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
 
 	app := fx.New(
 		fx.NopLogger,

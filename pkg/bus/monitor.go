@@ -79,7 +79,7 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 
 func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev EventMessage) {
 	if err := l.publisher.Publish(topic, publish.NewMessage(ctx, ev)); err != nil {
-		logging.GetLogger(ctx).Errorf("publishing message: %s", err)
+		logging.FromContext(ctx).Errorf("publishing message: %s", err)
 		return
 	}
 }

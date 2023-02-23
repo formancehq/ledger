@@ -137,15 +137,15 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		row := schema.QueryRowContext(ctx, sqlq, args...)
 		var v string
 		if err = row.Scan(&v); err != nil {
-			logging.GetLogger(ctx).Debugf("migration %s: %s", m.Version, err)
+			logging.FromContext(ctx).Debugf("migration %s: %s", m.Version, err)
 		}
 		if v != "" {
-			logging.GetLogger(ctx).Debugf("migration %s: already up to date", m.Version)
+			logging.FromContext(ctx).Debugf("migration %s: already up to date", m.Version)
 			continue
 		}
 		modified = true
 
-		logging.GetLogger(ctx).Debugf("running migration %s", m.Version)
+		logging.FromContext(ctx).Debugf("running migration %s", m.Version)
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
@@ -173,7 +173,7 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		ib.Values(m.Version, time.Now().UTC().Format(time.RFC3339))
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
-			logging.GetLogger(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
+			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
 			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
 		}
 	}
