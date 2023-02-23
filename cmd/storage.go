@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
@@ -25,9 +26,9 @@ func NewStorageInit() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "init",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := NewContainer(
-				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+			app := service.New(
+				cmd.OutOrStdout(),
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := viper.GetString("name")
@@ -53,7 +54,7 @@ func NewStorageInit() *cobra.Command {
 							return nil
 						},
 					})
-				}),
+				}))...,
 			)
 			return app.Start(cmd.Context())
 		},
@@ -69,27 +70,28 @@ func NewStorageList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := NewContainer(
-				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
-							if err != nil {
-								return err
-							}
-							if len(ledgers) == 0 {
-								fmt.Println("No ledger found.")
+			app := service.New(cmd.OutOrStdout(),
+				resolveOptions(viper.GetViper(),
+					fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+						lc.Append(fx.Hook{
+							OnStart: func(ctx context.Context) error {
+								ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
+								if err != nil {
+									return err
+								}
+								if len(ledgers) == 0 {
+									fmt.Println("No ledger found.")
+									return nil
+								}
+								fmt.Println("Ledgers:")
+								for _, l := range ledgers {
+									fmt.Println("- " + l)
+								}
 								return nil
-							}
-							fmt.Println("Ledgers:")
-							for _, l := range ledgers {
-								fmt.Println("- " + l)
-							}
-							return nil
-						},
-					})
-				}),
+							},
+						})
+					}),
+				)...,
 			)
 			return app.Start(cmd.Context())
 		},
@@ -102,9 +104,8 @@ func NewStorageUpgrade() *cobra.Command {
 		Use:  "upgrade",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := NewContainer(
-				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+			app := service.New(cmd.OutOrStdout(),
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
@@ -124,7 +125,7 @@ func NewStorageUpgrade() *cobra.Command {
 							return nil
 						},
 					})
-				}),
+				}))...,
 			)
 			return app.Start(cmd.Context())
 		},
@@ -235,7 +236,7 @@ func NewStorageScan() *cobra.Command {
 				})
 			}
 
-			app := NewContainer(viper.GetViper(), opt)
+			app := service.New(cmd.OutOrStdout(), resolveOptions(viper.GetViper(), opt)...)
 			return app.Start(cmd.Context())
 		},
 	}
@@ -247,9 +248,9 @@ func NewStorageDelete() *cobra.Command {
 		Use:  "delete",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := NewContainer(
-				viper.GetViper(),
-				fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+			app := service.New(
+				cmd.OutOrStdout(),
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
@@ -264,7 +265,7 @@ func NewStorageDelete() *cobra.Command {
 							return nil
 						},
 					})
-				}),
+				}))...,
 			)
 			return app.Start(cmd.Context())
 		},
