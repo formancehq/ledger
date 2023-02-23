@@ -12,13 +12,13 @@ func respondWithNoContent(c *gin.Context) {
 }
 
 func respondWithCursor[T any](c *gin.Context, status int, data api.Cursor[T]) {
-	c.JSON(status, api.BaseResponse[T]{
+	c.AsciiJSON(status, api.BaseResponse[T]{
 		Cursor: &data,
 	})
 }
 
 func respondWithData[T any](c *gin.Context, status int, data T) {
-	c.JSON(status, api.BaseResponse[T]{
+	c.AsciiJSON(status, api.BaseResponse[T]{
 		Data: &data,
 	})
 }

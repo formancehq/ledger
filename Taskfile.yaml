@@ -137,10 +137,11 @@ tasks:
     dir: ./sdk
     preconditions:
       - sh: '[ "{{.CLI_ARGS}}" != "" ]'
-        msg: Please specify generator as first cli arg (ie "task generate -- go")
+        msg: Please specify generator as first cli arg (ie "task sdk:generate -- go")
     cmds:
-      - wget https://raw.githubusercontent.com/formancehq/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
+      - cp ../pkg/api/controllers/swagger.yaml .
       - sed -i -e "s/LEDGER_VERSION/{{.VERSION}}/g" swagger.yaml
+      - rm -rf ./sdks/{{.CLI_ARGS}}
       - >
         docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:v6.4.0 generate
         -i ./swagger.yaml
