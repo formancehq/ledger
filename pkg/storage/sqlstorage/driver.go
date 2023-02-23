@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"sync"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
@@ -102,6 +103,7 @@ type Driver struct {
 	db                DB
 	systemSchema      Schema
 	registeredLedgers map[string]struct{}
+	lock              sync.Mutex
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
@@ -117,6 +119,9 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 
 	ctx, span := opentelemetry.Start(ctx, "Load store")
 	defer span.End()
+
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	var (
 		created bool
