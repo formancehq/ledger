@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/numary/ledger/pkg/api/middlewares"
@@ -235,6 +236,9 @@ func TestContainers(t *testing.T) {
 				}),
 				fx.Provide(func() *testing.T {
 					return t
+				}),
+				fx.Provide(func() logging.Logger {
+					return logging.FromContext(context.Background())
 				}),
 			)
 			v := viper.New()

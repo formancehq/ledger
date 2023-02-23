@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/numary/ledger/pkg/storage"
 )
 
@@ -52,25 +52,15 @@ func errorFromFlavor(f Flavor, err error) error {
 
 func init() {
 	errorHandlers[PostgreSQL] = func(err error) error {
-
-		handleError := func(err error) error {
-			switch eerr := err.(type) {
-			case *pgconn.PgError:
-				switch eerr.Code {
-				case "23505":
-					return storage.NewError(storage.ConstraintFailed, err)
-				case "53300":
-					return storage.NewError(storage.TooManyClient, err)
-				}
+		var pgConnError *pgconn.PgError
+		if errors.As(err, &pgConnError) {
+			switch pgConnError.Code {
+			case "23505":
+				return storage.NewError(storage.ConstraintFailed, err)
+			case "53300":
+				return storage.NewError(storage.TooManyClient, err)
 			}
-			return err
 		}
-
-		unwrappedError := errors.Unwrap(err)
-		if unwrappedError != nil {
-			return handleError(unwrappedError)
-		} else {
-			return handleError(err)
-		}
+		return err
 	}
 }

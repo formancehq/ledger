@@ -73,7 +73,7 @@ func (m *heartbeat) Run(ctx context.Context) error {
 	enqueue := func() {
 		err := m.enqueue(ctx)
 		if err != nil {
-			logging.GetLogger(ctx).WithFields(map[string]interface{}{
+			logging.FromContext(ctx).WithFields(map[string]interface{}{
 				"error": err,
 			}).Error("enqueuing analytics")
 		}

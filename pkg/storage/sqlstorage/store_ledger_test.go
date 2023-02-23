@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/logging/logginglogrus"
 	"github.com/google/uuid"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api/idempotency"
@@ -20,19 +18,12 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
 func TestStore(t *testing.T) {
-	l := logrus.New()
-	if testing.Verbose() {
-		l.Level = logrus.DebugLevel
-	}
-	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
-
 	type testingFunction struct {
 		name string
 		fn   func(t *testing.T, store *sqlstorage.Store)
@@ -59,6 +50,7 @@ func TestStore(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.ProvideStorageDriver(),
+				fx.NopLogger,
 				fx.Invoke(func(driver *sqlstorage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
@@ -735,12 +727,6 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 }
 
 func TestInitializeStore(t *testing.T) {
-	l := logrus.New()
-	if testing.Verbose() {
-		l.Level = logrus.DebugLevel
-	}
-	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
-
 	driver, stopFn, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer stopFn()

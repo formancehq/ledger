@@ -168,7 +168,7 @@ func (d *Driver) Name() string {
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
-	logging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
+	logging.FromContext(ctx).Debugf("Initialize driver %s", d.name)
 
 	if err = d.db.Initialize(ctx); err != nil {
 		return
