@@ -64,5 +64,5 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 	}
 	res.Transaction = &execRes
 
-	c.AsciiJSON(http.StatusOK, res)
+	c.JSON(http.StatusOK, res)
 }
