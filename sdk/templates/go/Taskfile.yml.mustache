@@ -1,6 +1,10 @@
 version: '3'
 
 tasks:
+  tidy:
+    cmds:
+      - go mod tidy
+
   vendor:
     cmds:
       - go mod vendor
@@ -22,9 +26,10 @@ tasks:
   test:
     desc: Test client code
     deps:
+      - tidy
       - vendor
     cmds:
       - task: start-ledger
       - defer:
           task: stop-ledger
-      - go test
+      - go test -v ./...
