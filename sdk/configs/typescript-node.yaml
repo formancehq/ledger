@@ -10,5 +10,3 @@ additionalProperties:
 files:
   Taskfile.yml.mustache:
     destinationFilename: Taskfile.yml
-  .github/workflows/release.yml.mustache:
-    destinationFilename: .github/workflows/release.yml

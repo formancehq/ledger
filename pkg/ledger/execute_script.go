@@ -34,7 +34,6 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 	}
 
 	vAggr := NewVolumeAggregator(l)
-	txs := make([]core.ExpandedTransaction, 0)
 	var nextTxId uint64
 	if lastTx != nil {
 		nextTxId = lastTx.ID + 1
@@ -291,7 +290,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), txs...)
+	l.monitor.CommittedTransactions(ctx, l.store.Name(), tx)
 	if addOps != nil && addOps.SetAccountMeta != nil {
 		for addr, m := range addOps.SetAccountMeta {
 			l.monitor.SavedMetadata(ctx,
