@@ -178,10 +178,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid 'after' query param",
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid 'after' query param",
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: "invalid 'after' query param",
 					}, err)
 				})
 
@@ -223,10 +221,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: controllers.ErrInvalidStartTime.Error(),
 					}, err)
 				})
 
@@ -239,10 +235,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: controllers.ErrInvalidEndTime.Error(),
 					}, err)
 				})
 
@@ -267,10 +261,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
 					}, err)
 				})
 
@@ -283,10 +275,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 					}, err)
 				})
 
@@ -299,10 +289,8 @@ func TestGetLogs(t *testing.T) {
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
 					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+						ErrorCode:    apierrors.ErrValidation,
+						ErrorMessage: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
 					}, err)
 				})
 

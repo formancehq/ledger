@@ -179,12 +179,10 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 
 	hasMore := next != ""
 	return api.Cursor[core.AccountsBalances]{
-		PageSize:           int(q.PageSize),
-		HasMore:            hasMore,
-		Previous:           previous,
-		Next:               next,
-		Data:               accounts,
-		PageSizeDeprecated: int(q.PageSize),
-		HasMoreDeprecated:  &hasMore,
+		PageSize: int(q.PageSize),
+		HasMore:  hasMore,
+		Previous: previous,
+		Next:     next,
+		Data:     accounts,
 	}, nil
 }
