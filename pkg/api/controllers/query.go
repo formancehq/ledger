@@ -1,9 +1,9 @@
 package controllers
 
 import (
+	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
 )
 
@@ -52,9 +52,9 @@ var (
 	ErrInvalidEndTimeDeprecated = ledger.NewValidationError("invalid 'end_time' query param")
 )
 
-func getPageSize(c *gin.Context) (uint, error) {
-	pageSizeParam := c.Query(QueryKeyPageSize)
-	pageSizeParamDeprecated := c.Query(QueryKeyPageSizeDeprecated)
+func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
+	pageSizeParam := r.URL.Query().Get(QueryKeyPageSize)
+	pageSizeParamDeprecated := r.URL.Query().Get(QueryKeyPageSizeDeprecated)
 	if pageSizeParam == "" && pageSizeParamDeprecated == "" {
 		return DefaultPageSize, nil
 	}
@@ -80,10 +80,10 @@ func getPageSize(c *gin.Context) (uint, error) {
 	return uint(pageSize), nil
 }
 
-func getBalanceOperator(c *gin.Context) (ledger.BalanceOperator, error) {
+func getBalanceOperator(w http.ResponseWriter, r *http.Request) (ledger.BalanceOperator, error) {
 	balanceOperator := ledger.DefaultBalanceOperator
-	balanceOperatorStr := c.Query(QueryKeyBalanceOperator)
-	balanceOperatorStrDeprecated := c.Query(QueryKeyBalanceOperatorDeprecated)
+	balanceOperatorStr := r.URL.Query().Get(QueryKeyBalanceOperator)
+	balanceOperatorStrDeprecated := r.URL.Query().Get(QueryKeyBalanceOperatorDeprecated)
 	if balanceOperatorStr != "" {
 		var ok bool
 		if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {

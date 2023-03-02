@@ -2,10 +2,10 @@ package internal
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
-	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -117,10 +117,10 @@ func TestHTTPBasicAuthMethod(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			var method auth.Method
+			var middleware func(handler http.Handler) http.Handler
 			cmd := &cobra.Command{
 				RunE: func(cmd *cobra.Command, args []string) error {
-					method = HTTPBasicAuthMethod(viper.GetViper())
+					middleware = HTTPBasicAuthMethod(viper.GetViper())
 					return nil
 				},
 			}
@@ -131,9 +131,9 @@ func TestHTTPBasicAuthMethod(t *testing.T) {
 
 			require.NoError(t, cmd.Execute())
 			if testCase.expectedBasicAuthMethod {
-				require.NotNil(t, method)
+				require.NotNil(t, middleware)
 			} else {
-				require.Nil(t, method)
+				require.Nil(t, middleware)
 			}
 		})
 	}

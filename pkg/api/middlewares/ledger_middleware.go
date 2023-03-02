@@ -4,8 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/api/apierrors"
+	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/contextlogger"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/opentelemetry"
@@ -21,27 +22,31 @@ func NewLedgerMiddleware(resolver *ledger.Resolver) LedgerMiddleware {
 	}
 }
 
-func (m *LedgerMiddleware) LedgerMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		name := c.Param("ledger")
-		if name == "" {
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
+func (m *LedgerMiddleware) LedgerMiddleware() func(handler http.Handler) http.Handler {
+	return func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			name := chi.URLParam(r, "ledger")
+			if name == "" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 
-		span := opentelemetry.WrapGinContext(c, "Ledger access")
-		defer span.End()
+			ctx, span := opentelemetry.Start(r.Context(), name)
+			defer span.End()
 
-		contextlogger.WrapGinRequest(c)
+			r = r.WithContext(ctx)
+			r = contextlogger.WrapRequest(r)
 
-		l, err := m.resolver.GetLedger(c.Request.Context(), name)
-		if err != nil {
-			apierrors.ResponseError(c, err)
-			return
-		}
-		defer l.Close(context.Background())
+			l, err := m.resolver.GetLedger(r.Context(), name)
+			if err != nil {
+				apierrors.ResponseError(w, r, err)
+				return
+			}
+			defer l.Close(context.Background())
 
-		c.Set("ledger", l)
-		c.Next()
+			r = r.WithContext(controllers.ContextWithLedger(r.Context(), l))
+
+			handler.ServeHTTP(w, r)
+		})
 	}
 }

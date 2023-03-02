@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -29,26 +28,28 @@ const (
 	ErrScriptMetadataOverride  = "METADATA_OVERRIDE"
 )
 
-func ResponseError(c *gin.Context, err error) {
-	_ = c.Error(err)
-	status, code, details := coreErrorToErrorCode(c, err)
+func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
+	status, code, details := coreErrorToErrorCode(err)
 
+	w.WriteHeader(status)
 	if status < 500 {
-		c.AbortWithStatusJSON(status,
-			api.ErrorResponse{
-				ErrorCode:    code,
-				ErrorMessage: err.Error(),
-				Details:      details,
+		err := json.NewEncoder(w).Encode(api.ErrorResponse{
+			ErrorCode:    code,
+			ErrorMessage: err.Error(),
+			Details:      details,
 
-				ErrorCodeDeprecated:    code,
-				ErrorMessageDeprecated: err.Error(),
-			})
+			ErrorCodeDeprecated:    code,
+			ErrorMessageDeprecated: err.Error(),
+		})
+		if err != nil {
+			panic(err)
+		}
 	} else {
-		c.AbortWithStatus(status)
+		logging.FromContext(r.Context()).Errorf("internal server error: %s", err)
 	}
 }
 
-func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
+func coreErrorToErrorCode(err error) (int, string, string) {
 	switch {
 	case ledger.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
@@ -69,8 +70,6 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
-		logging.FromContext(c.Request.Context()).Errorf(
-			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}
 }
@@ -81,7 +80,7 @@ func EncodeLink(errStr string) string {
 	}
 
 	errStr = strings.ReplaceAll(errStr, "\n", "\r\n")
-	payload, err := json.Marshal(gin.H{
+	payload, err := json.Marshal(map[string]string{
 		"error": errStr,
 	})
 	if err != nil {
