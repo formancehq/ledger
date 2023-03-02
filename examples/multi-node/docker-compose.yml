@@ -28,13 +28,13 @@ services:
     working_dir: /src
     environment:
       CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
-      NUMARY_LOCK_STRATEGY: redis
-      NUMARY_LOCK_STRATEGY_REDIS_URL: redis://redis:6379
-      NUMARY_LOCK_STRATEGY_REDIS_DURATION: 60s # Default value
-      NUMARY_LOCK_STRATEGY_REDIS_RETRY: 1s # Default value
-      NUMARY_LOCK_STRATEGY_REDIS_TLS_ENABLED: false
-      NUMARY_LOCK_STRATEGY_REDIS_TLS_INSECURE: false
+      DEBUG: "true"
+      LOCK_STRATEGY: redis
+      LOCK_STRATEGY_REDIS_URL: redis://redis:6379
+      LOCK_STRATEGY_REDIS_DURATION: 60s # Default value
+      LOCK_STRATEGY_REDIS_RETRY: 1s # Default value
+      LOCK_STRATEGY_REDIS_TLS_ENABLED: false
+      LOCK_STRATEGY_REDIS_TLS_INSECURE: false
 
   proxy:
     extends:

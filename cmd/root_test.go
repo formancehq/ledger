@@ -35,7 +35,7 @@ func TestServer(t *testing.T) {
 			name: "default",
 			env: []env{
 				{
-					key:   "NUMARY_STORAGE_DRIVER",
+					key:   "STORAGE_DRIVER",
 					value: "sqlite",
 				},
 			},
@@ -48,11 +48,11 @@ func TestServer(t *testing.T) {
 			name: "pg-with-env-var",
 			env: []env{
 				{
-					key:   "NUMARY_STORAGE_DRIVER",
+					key:   "STORAGE_DRIVER",
 					value: "postgres",
 				},
 				{
-					key:   "NUMARY_STORAGE_POSTGRES_CONN_STRING",
+					key:   "STORAGE_POSTGRES_CONN_STRING",
 					value: db.ConnString(),
 				},
 			},
