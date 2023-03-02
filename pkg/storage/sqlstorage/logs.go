@@ -172,13 +172,11 @@ func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[co
 
 	hasMore := next != ""
 	return api.Cursor[core.Log]{
-		PageSize:           int(q.PageSize),
-		HasMore:            hasMore,
-		Previous:           previous,
-		Next:               next,
-		Data:               res,
-		PageSizeDeprecated: int(q.PageSize),
-		HasMoreDeprecated:  &hasMore,
+		PageSize: int(q.PageSize),
+		HasMore:  hasMore,
+		Previous: previous,
+		Next:     next,
+		Data:     res,
 	}, nil
 }
 

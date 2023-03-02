@@ -57,11 +57,9 @@ func TestPostScript(t *testing.T) {
 			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:              apierrors.ErrInsufficientFund,
-					ErrorMessage:           "account had insufficient funds",
-					Details:                apierrors.EncodeLink("account had insufficient funds"),
-					ErrorCodeDeprecated:    apierrors.ErrInsufficientFund,
-					ErrorMessageDeprecated: "account had insufficient funds",
+					ErrorCode:    apierrors.ErrInsufficientFund,
+					ErrorMessage: "account had insufficient funds",
+					Details:      apierrors.EncodeLink("account had insufficient funds"),
 				},
 			},
 		},
@@ -83,11 +81,9 @@ func TestPostScript(t *testing.T) {
 			},
 			expectedResponse: controllers.ScriptResponse{
 				ErrorResponse: sharedapi.ErrorResponse{
-					ErrorCode:              ledger.ScriptErrorMetadataOverride,
-					ErrorMessage:           "cannot override metadata from script",
-					Details:                apierrors.EncodeLink("cannot override metadata from script"),
-					ErrorCodeDeprecated:    ledger.ScriptErrorMetadataOverride,
-					ErrorMessageDeprecated: "cannot override metadata from script",
+					ErrorCode:    ledger.ScriptErrorMetadataOverride,
+					ErrorMessage: "cannot override metadata from script",
+					Details:      apierrors.EncodeLink("cannot override metadata from script"),
 				},
 			},
 		},
@@ -222,8 +218,6 @@ func TestPostScriptConflict(t *testing.T) {
 					internal.Decode(t, rsp.Body, &res)
 					assert.Equal(t, "", res.ErrorCode)
 					assert.Equal(t, "", res.ErrorMessage)
-					assert.Equal(t, "", res.ErrorCodeDeprecated)
-					assert.Equal(t, "", res.ErrorMessageDeprecated)
 					assert.NotNil(t, res.Transaction)
 				})
 
@@ -240,8 +234,6 @@ func TestPostScriptConflict(t *testing.T) {
 					internal.Decode(t, rsp.Body, &res)
 					assert.Equal(t, apierrors.ErrConflict, res.ErrorCode)
 					assert.Equal(t, "conflict error on reference", res.ErrorMessage)
-					assert.Equal(t, apierrors.ErrConflict, res.ErrorCodeDeprecated)
-					assert.Equal(t, "conflict error on reference", res.ErrorMessageDeprecated)
 				})
 
 				return nil

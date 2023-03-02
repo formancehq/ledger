@@ -53,10 +53,8 @@ func (ctl *ScriptController) PostScript(w http.ResponseWriter, r *http.Request) 
 				"internal errors executing script: %s", err)
 		}
 		res.ErrorResponse = sharedapi.ErrorResponse{
-			ErrorCode:              code,
-			ErrorMessage:           message,
-			ErrorCodeDeprecated:    code,
-			ErrorMessageDeprecated: message,
+			ErrorCode:    code,
+			ErrorMessage: message,
 		}
 		if message != "" {
 			res.Details = apierrors.EncodeLink(message)

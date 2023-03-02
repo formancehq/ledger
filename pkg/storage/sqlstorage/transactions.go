@@ -213,13 +213,11 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 
 	hasMore := next != ""
 	return api.Cursor[core.ExpandedTransaction]{
-		PageSize:           int(q.PageSize),
-		HasMore:            hasMore,
-		Previous:           previous,
-		Next:               next,
-		Data:               txs,
-		PageSizeDeprecated: int(q.PageSize),
-		HasMoreDeprecated:  &hasMore,
+		PageSize: int(q.PageSize),
+		HasMore:  hasMore,
+		Previous: previous,
+		Next:     next,
+		Data:     txs,
 	}, nil
 }
 
