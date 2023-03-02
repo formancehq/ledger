@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )

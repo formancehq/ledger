@@ -3,7 +3,7 @@ package ledger_test
 import (
 	"testing"
 
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger"
 )
 
 func TestVerify(t *testing.T) {

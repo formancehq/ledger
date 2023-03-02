@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/machine/script/compiler"
-	"github.com/numary/ledger/pkg/machine/vm/program"
+	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/vm/program"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

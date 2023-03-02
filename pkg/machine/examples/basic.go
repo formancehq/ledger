@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/machine/script/compiler"
-	"github.com/numary/ledger/pkg/machine/vm"
+	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/vm"
 )
 
 func main() {

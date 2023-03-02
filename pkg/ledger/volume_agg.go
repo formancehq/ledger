@@ -3,7 +3,7 @@ package ledger
 import (
 	"context"
 
-	"github.com/numary/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/pkg/errors"
 )
 

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/numary/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/core"
 )
 
 var registeredGoMigrations []Migration

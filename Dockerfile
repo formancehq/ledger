@@ -17,16 +17,16 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
     CC=$TARGETARCH-linux-gnu-gcc \
-    go build -o numary -tags json1,netgo \
-    -ldflags="-X github.com/numary/ledger/cmd.Version=${VERSION} \
-    -X github.com/numary/ledger/cmd.BuildDate=$(date +%s) \
-    -X github.com/numary/ledger/cmd.Commit=${APP_SHA} \
-    -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
+    go build -o ledger -tags json1,netgo \
+    -ldflags="-X github.com/ledger/ledger/cmd.Version=${VERSION} \
+    -X github.com/ledger/ledger/cmd.BuildDate=$(date +%s) \
+    -X github.com/ledger/ledger/cmd.Commit=${APP_SHA} \
+    -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
 
 FROM ubuntu:jammy as app
 RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /src/components/ledger/numary /usr/local/bin/numary
+COPY --from=builder /src/components/ledger/ledger /usr/local/bin/ledger
 EXPOSE 3068
-ENTRYPOINT ["numary"]
+ENTRYPOINT ["ledger"]
 ENV OTEL_SERVICE_NAME ledger
 CMD ["server", "start"]

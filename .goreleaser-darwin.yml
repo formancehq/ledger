@@ -1,4 +1,4 @@
-project_name: numary
+project_name: ledger
 env:
   - GO111MODULE=on
   - GOPROXY=https://proxy.golang.org
@@ -7,13 +7,13 @@ before:
     - go mod download
 
 builds:
-  - binary: numary
-    id: numary_darwin
+  - binary: ledger
+    id: ledger_darwin
     ldflags:
-      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
-      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -X github.com/ledger/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/ledger/ledger/cmd.Version={{ .Version }}
+      - -X github.com/ledger/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -s
     env:
       - CGO_ENABLED=1
@@ -26,9 +26,9 @@ builds:
       - -tags=json1
 
 archives:
-  - id: "numary"
+  - id: "ledger"
     builds:
-      - numary_darwin
+      - ledger_darwin
     format: tar.gz
     format_overrides:
       - goos: windows
@@ -54,11 +54,11 @@ brews:
   - tap:
       owner: formancehq
       name: homebrew-tap
-    name: numary
+    name: ledger
     folder: Formula
     homepage: https://formance.com
     skip_upload: auto
     test: |
-      system "#{bin}/numary version"
+      system "#{bin}/ledger version"
     install: |
-      bin.install "numary"
+      bin.install "ledger"

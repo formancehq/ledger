@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/controllers"
-	"github.com/numary/ledger/pkg/api/internal"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/api"
+	"github.com/formancehq/ledger/pkg/api/controllers"
+	"github.com/formancehq/ledger/pkg/api/internal"
+	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -27,7 +27,7 @@ func TestGetInfo(t *testing.T) {
 
 				info.Config.LedgerStorage.Ledgers = []string{}
 				assert.EqualValues(t, controllers.ConfigInfo{
-					Server:  "numary-ledger",
+					Server:  "ledger",
 					Version: "latest",
 					Config: &controllers.Config{
 						LedgerStorage: &controllers.LedgerStorage{

@@ -25,7 +25,7 @@ Formance Ledger works as a standalone binary, the latest of which can be downloa
 
 ```SHELL
 
-numary server start
+ledger server start
 
 # Submit a first transaction
 echo "
@@ -48,7 +48,7 @@ send [USD/2 599] (
 )
 " > example.num
 
-numary exec quickstart example.num
+ledger exec quickstart example.num
 
 # Get the balances of drivers:042
 curl -X GET http://localhost:3068/quickstart/accounts/drivers:042
@@ -60,18 +60,6 @@ curl -X GET http://localhost:3068/quickstart/transactions
 # Documentation
 
 You can find the complete Numary documentation at [docs.formance.com](https://docs.formance.com)
-
-# Dashboard
-
-A simple [dashboard](https://github.com/formancehq/control) is built in the ledger binary, to make it easier to visualize transactions. It can be started with:
-
-```SHELL
-numary ui
-```
-
-<img width="909" alt="control-screenshot" src="https://user-images.githubusercontent.com/1770991/153751534-d8bba99e-610a-4b8c-9c63-4bde6eb6f96f.png">
-
-Alternatively, you can use the dashboard by heading to [control.formance.com](https://control.formance.com) which provides a hosted version that can connect to any ledger instance.
 
 # Community
 

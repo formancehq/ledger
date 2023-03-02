@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/api/controllers"
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
-	"github.com/numary/ledger/pkg/api/controllers"
-	"github.com/numary/ledger/pkg/core"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
