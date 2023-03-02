@@ -16,7 +16,7 @@ func NewServerStart() *cobra.Command {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
 				viper.GetViper(),
 				fx.Invoke(func(lc fx.Lifecycle, h *api.API) {
-					lc.Append(httpserver.NewHook(viper.GetString(serverHttpBindAddressFlag), h))
+					lc.Append(httpserver.NewHook(viper.GetString(bindFlag), h))
 				}),
 			)...).Run(cmd.Context())
 		},
