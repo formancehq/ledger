@@ -96,8 +96,6 @@ func (r *Routes) Engine() *chi.Mux {
 	// Deprecated
 	router.Get("/_health", r.healthController.Check)
 	router.Get("/_healthcheck", r.healthController.Check)
-	router.Get("/swagger.yaml", r.configController.GetDocsAsYaml)
-	router.Get("/swagger.json", r.configController.GetDocsAsJSON)
 
 	router.Group(func(router chi.Router) {
 		router.Use(otelchi.Middleware("ledger"))
