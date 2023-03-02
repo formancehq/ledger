@@ -70,7 +70,7 @@ func TestServer(t *testing.T) {
 					}
 				}(e.key, oldValue)
 			}
-			args := []string{"server", "start", "--debug"}
+			args := []string{"serve", "--debug"}
 			args = append(args, tc.args...)
 			root := NewRootCommand()
 			root.SetArgs(args)

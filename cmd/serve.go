@@ -9,9 +9,9 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewServerStart() *cobra.Command {
+func NewServe() *cobra.Command {
 	return &cobra.Command{
-		Use: "start",
+		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
 				viper.GetViper(),
