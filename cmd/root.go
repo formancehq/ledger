@@ -24,16 +24,13 @@ const (
 	// Deprecated
 	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
-	// Deprecated
-	storageCacheFlag                 = "storage.cache"
-	serverHttpBindAddressFlag        = "server.http.bind_address"
-	uiHttpBindAddressFlag            = "ui.http.bind_address"
-	lockStrategyFlag                 = "lock-strategy"
-	lockStrategyRedisUrlFlag         = "lock-strategy-redis-url"
-	lockStrategyRedisDurationFlag    = "lock-strategy-redis-duration"
-	lockStrategyRedisRetryFlag       = "lock-strategy-redis-retry"
-	lockStrategyRedisTLSEnabledFlag  = "lock-strategy-redis-tls-enabled"
-	lockStrategyRedisTLSInsecureFlag = "lock-strategy-redis-tls-insecure"
+	bindFlag                            = "bind"
+	lockStrategyFlag                    = "lock-strategy"
+	lockStrategyRedisUrlFlag            = "lock-strategy-redis-url"
+	lockStrategyRedisDurationFlag       = "lock-strategy-redis-duration"
+	lockStrategyRedisRetryFlag          = "lock-strategy-redis-retry"
+	lockStrategyRedisTLSEnabledFlag     = "lock-strategy-redis-tls-enabled"
+	lockStrategyRedisTLSInsecureFlag    = "lock-strategy-redis-tls-insecure"
 
 	commitPolicyFlag = "commit-policy"
 
@@ -113,18 +110,8 @@ func NewRootCommand() *cobra.Command {
 		panic(err)
 	}
 	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
-	if err := root.PersistentFlags().MarkDeprecated(storageSQLiteDBNameFlag,
-		"SQLite is being deprecated and will not be supported starting from the v2 of the Formance Ledger. Only Postgres will be supported and this flag will be deprecated."); err != nil {
-		panic(err)
-	}
-	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
-	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
-	if err := root.PersistentFlags().MarkDeprecated(storageCacheFlag,
-		"Storage cache is being deprecated and will not be supported from the v2 of the Formance Ledger."); err != nil {
-		panic(err)
-	}
-	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
-	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
+	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
+	root.PersistentFlags().String(bindFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
 	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
 	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
