@@ -48,9 +48,7 @@ func (ctl *AccountController) GetAccounts(w http.ResponseWriter, r *http.Request
 			len(sharedapi.GetQueryMap(r.URL.Query(), "metadata")) > 0 ||
 			r.URL.Query().Get("balance") != "" ||
 			r.URL.Query().Get(QueryKeyBalanceOperator) != "" ||
-			r.URL.Query().Get(QueryKeyBalanceOperatorDeprecated) != "" ||
-			r.URL.Query().Get(QueryKeyPageSize) != "" ||
-			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			r.URL.Query().Get(QueryKeyPageSize) != "" {
 			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
@@ -67,43 +65,6 @@ func (ctl *AccountController) GetAccounts(w http.ResponseWriter, r *http.Request
 		if err := json.Unmarshal(res, &token); err != nil {
 			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		accountsQuery = accountsQuery.
-			WithOffset(token.Offset).
-			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter).
-			WithBalanceFilter(token.BalanceFilter).
-			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
-			WithMetadataFilter(token.MetadataFilter).
-			WithPageSize(token.PageSize)
-
-	} else if r.URL.Query().Get(QueryKeyCursorDeprecated) != "" {
-		if r.URL.Query().Get("after") != "" ||
-			r.URL.Query().Get("address") != "" ||
-			len(sharedapi.GetQueryMap(r.URL.Query(), "metadata")) > 0 ||
-			r.URL.Query().Get("balance") != "" ||
-			r.URL.Query().Get(QueryKeyBalanceOperator) != "" ||
-			r.URL.Query().Get(QueryKeyBalanceOperatorDeprecated) != "" ||
-			r.URL.Query().Get(QueryKeyPageSize) != "" ||
-			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
-			return
-		}
-
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursorDeprecated))
-		if err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
-			return
-		}
-
-		token := sqlstorage.AccPaginationToken{}
-		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
 

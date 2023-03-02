@@ -37,9 +37,6 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 			ErrorCode:    code,
 			ErrorMessage: err.Error(),
 			Details:      details,
-
-			ErrorCodeDeprecated:    code,
-			ErrorMessageDeprecated: err.Error(),
 		})
 		if err != nil {
 			panic(err)

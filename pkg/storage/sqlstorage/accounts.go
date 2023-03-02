@@ -163,13 +163,11 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 
 	hasMore := next != ""
 	return api.Cursor[core.Account]{
-		PageSize:           int(q.PageSize),
-		HasMore:            hasMore,
-		Previous:           previous,
-		Next:               next,
-		Data:               accounts,
-		PageSizeDeprecated: int(q.PageSize),
-		HasMoreDeprecated:  &hasMore,
+		PageSize: int(q.PageSize),
+		HasMore:  hasMore,
+		Previous: previous,
+		Next:     next,
+		Data:     accounts,
 	}, nil
 }
 

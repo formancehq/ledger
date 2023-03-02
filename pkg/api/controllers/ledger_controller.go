@@ -68,11 +68,8 @@ func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||
 			r.URL.Query().Get(QueryKeyStartTime) != "" ||
-			r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" ||
 			r.URL.Query().Get(QueryKeyEndTime) != "" ||
-			r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" ||
-			r.URL.Query().Get(QueryKeyPageSize) != "" ||
-			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			r.URL.Query().Get(QueryKeyPageSize) != "" {
 			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
@@ -89,39 +86,6 @@ func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(res, &token); err != nil {
 			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		logsQuery = logsQuery.
-			WithAfterID(token.AfterID).
-			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime).
-			WithPageSize(token.PageSize)
-
-	} else if r.URL.Query().Get(QueryKeyCursorDeprecated) != "" {
-		if r.URL.Query().Get("after") != "" ||
-			r.URL.Query().Get(QueryKeyStartTime) != "" ||
-			r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" ||
-			r.URL.Query().Get(QueryKeyEndTime) != "" ||
-			r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" ||
-			r.URL.Query().Get(QueryKeyPageSize) != "" ||
-			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
-			return
-		}
-
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursorDeprecated))
-		if err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
-			return
-		}
-
-		token := sqlstorage.LogsPaginationToken{}
-		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
 
@@ -151,25 +115,11 @@ func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" {
-			startTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyStartTimeDeprecated))
-			if err != nil {
-				apierrors.ResponseError(w, r, ErrInvalidStartTimeDeprecated)
-				return
-			}
-		}
 
 		if r.URL.Query().Get(QueryKeyEndTime) != "" {
 			endTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyEndTime))
 			if err != nil {
 				apierrors.ResponseError(w, r, ErrInvalidEndTime)
-				return
-			}
-		}
-		if r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" {
-			endTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyEndTimeDeprecated))
-			if err != nil {
-				apierrors.ResponseError(w, r, ErrInvalidEndTimeDeprecated)
 				return
 			}
 		}
