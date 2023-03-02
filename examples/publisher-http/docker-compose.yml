@@ -24,6 +24,6 @@ services:
     working_dir: /src
     environment:
       CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
-      NUMARY_PUBLISHER_HTTP_ENABLED: "true"
-      NUMARY_PUBLISHER_TOPIC_MAPPING: "*:http://listener:8080"
+      DEBUG: "true"
+      PUBLISHER_HTTP_ENABLED: "true"
+      PUBLISHER_TOPIC_MAPPING: "*:http://listener:8080"

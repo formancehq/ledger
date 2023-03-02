@@ -1,22 +1,17 @@
 package internal
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
 )
 
-func withPrefix(flag string) string {
-	return strings.ToUpper(fmt.Sprintf("%s_%s", envPrefix, EnvVarReplacer.Replace(flag)))
-}
-
 func setEnvVar(key, value string) func() {
-	prefixedFlag := withPrefix(key)
-	oldEnv := os.Getenv(prefixedFlag)
-	os.Setenv(prefixedFlag, value)
+	flag := strings.ToUpper(EnvVarReplacer.Replace(key))
+	oldEnv := os.Getenv(flag)
+	os.Setenv(flag, value)
 	return func() {
-		os.Setenv(prefixedFlag, oldEnv)
+		os.Setenv(flag, oldEnv)
 	}
 }
 

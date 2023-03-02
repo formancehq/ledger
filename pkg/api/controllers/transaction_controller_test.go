@@ -1974,7 +1974,7 @@ func TestTooManyClient(t *testing.T) {
 				if ledgertesting.StorageDriverName() != "postgres" {
 					return nil
 				}
-				if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
+				if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
 					return nil
 				}
 

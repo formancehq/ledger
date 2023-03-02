@@ -707,7 +707,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	// Use of external server, ignore this test
-	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" ||
+	if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" ||
 		ledgertesting.StorageDriverName() != "postgres" {
 		return
 	}
