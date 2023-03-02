@@ -39,7 +39,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.13.0
 	go.uber.org/fx v1.19.2
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -164,6 +163,7 @@ require (
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace github.com/formancehq/stack/libs/go-libs => ../../libs/go-libs
