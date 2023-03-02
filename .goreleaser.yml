@@ -1,20 +1,16 @@
-project_name: numary
-includes:
-  - from_file:
-      path: ./.goreleaser.default.yaml
-
+project_name: ledger
 monorepo:
   tag_prefix: components/ledger/
   dir: ./components/ledger/
 
 builds:
-  - binary: numary
-    id: numary_windows
+  - binary: ledger
+    id: ledger_windows
     ldflags:
-      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
-      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -X github.com/ledger/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/ledger/ledger/cmd.Version={{ .Version }}
+      - -X github.com/ledger/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
     env:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc
@@ -24,13 +20,13 @@ builds:
       - amd64
     flags:
       - -tags=json1
-  - binary: numary
-    id: numary_linux_amd64
+  - binary: ledger
+    id: ledger_linux_amd64
     ldflags:
-      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
-      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -X github.com/ledger/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/ledger/ledger/cmd.Version={{ .Version }}
+      - -X github.com/ledger/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -extldflags "-static"
     env:
       - CGO_ENABLED=1
@@ -40,13 +36,13 @@ builds:
       - amd64
     flags:
       - -tags=json1,netgo
-  - binary: numary
-    id: numary_linux_arm64
+  - binary: ledger
+    id: ledger_linux_arm64
     ldflags:
-      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
-      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -X github.com/ledger/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/ledger/ledger/cmd.Version={{ .Version }}
+      - -X github.com/ledger/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -extldflags "-static"
     env:
       - CGO_ENABLED=1
@@ -59,11 +55,11 @@ builds:
       - -tags=json1,netgo
 
 archives:
-  - id: "numary"
+  - id: "ledger"
     builds:
-      - numary_linux_amd64
-      - numary_linux_arm64
-      - numary_windows
+      - ledger_linux_amd64
+      - ledger_linux_arm64
+      - ledger_windows
     format: tar.gz
     format_overrides:
       - goos: windows
@@ -80,11 +76,11 @@ archives:
 
 nfpms:
   - id: packages
-    package_name: numary
+    package_name: ledger
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
-      - numary_linux_amd64
-      - numary_linux_arm64
+      - ledger_linux_amd64
+      - ledger_linux_arm64
     homepage: https://formance.com
     maintainer: Maxence Maireaux <maxence@formance.com>
     formats:
@@ -96,4 +92,4 @@ publishers:
     ids:
       - packages
     dir: "{{ dir .ArtifactPath }}"
-    cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/numary/
+    cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/

@@ -4,9 +4,9 @@ import (
 	_ "embed"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage"
 )
 
 type ConfigInfo struct {
@@ -43,7 +43,7 @@ func (ctl *ConfigController) GetInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sharedapi.Ok(w, ConfigInfo{
-		Server:  "numary-ledger",
+		Server:  "ledger",
 		Version: ctl.Version,
 		Config: &Config{
 			LedgerStorage: &LedgerStorage{

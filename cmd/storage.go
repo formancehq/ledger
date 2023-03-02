@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/stack/libs/go-libs/service"
-	"github.com/numary/ledger/pkg/storage"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"

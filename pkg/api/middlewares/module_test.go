@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/numary/ledger/pkg/api"
-	"github.com/numary/ledger/pkg/api/internal"
-	"github.com/numary/ledger/pkg/api/routes"
+	"github.com/formancehq/ledger/pkg/api"
+	"github.com/formancehq/ledger/pkg/api/internal"
+	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 )

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	numaryNamespace           = "com.numary.spec/"
+	formanceNamespace         = "com.formance.spec/"
 	revertKey                 = "state/reverts"
 	revertedKey               = "state/reverted"
 	MetaTargetTypeAccount     = "ACCOUNT"
@@ -16,7 +16,7 @@ const (
 )
 
 func SpecMetadata(name string) string {
-	return numaryNamespace + name
+	return formanceNamespace + name
 }
 
 type Metadata map[string]any

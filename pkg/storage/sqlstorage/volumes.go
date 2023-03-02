@@ -3,8 +3,8 @@ package sqlstorage
 import (
 	"context"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/pkg/core"
 )
 
 func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {

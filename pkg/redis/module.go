@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/go-redis/redis/v8"
-	"github.com/numary/ledger/pkg/api/middlewares"
 	"go.uber.org/fx"
 )
 

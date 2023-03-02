@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	"github.com/numary/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/core"
 )
 
 func TestKeptDestinationAllotment(t *testing.T) {

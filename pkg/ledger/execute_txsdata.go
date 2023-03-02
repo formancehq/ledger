@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/opentelemetry"
-	"github.com/numary/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/opentelemetry"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 

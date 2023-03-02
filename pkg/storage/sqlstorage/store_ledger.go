@@ -3,9 +3,9 @@ package sqlstorage
 import (
 	"context"
 
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
 
