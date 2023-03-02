@@ -43,7 +43,6 @@ type Routes struct {
 	healthController      *health.HealthController
 	configController      controllers.ConfigController
 	ledgerController      controllers.LedgerController
-	scriptController      controllers.ScriptController
 	accountController     controllers.AccountController
 	balanceController     controllers.BalanceController
 	transactionController controllers.TransactionController
@@ -61,7 +60,6 @@ func NewRoutes(
 	ledgerMiddleware middlewares.LedgerMiddleware,
 	configController controllers.ConfigController,
 	ledgerController controllers.LedgerController,
-	scriptController controllers.ScriptController,
 	accountController controllers.AccountController,
 	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
@@ -77,7 +75,6 @@ func NewRoutes(
 		ledgerMiddleware:      ledgerMiddleware,
 		configController:      configController,
 		ledgerController:      ledgerController,
-		scriptController:      scriptController,
 		accountController:     accountController,
 		balanceController:     balanceController,
 		transactionController: transactionController,
@@ -155,12 +152,6 @@ func (r *Routes) Engine() *chi.Mux {
 			// MappingController
 			router.Get("/mapping", r.mappingController.GetMapping)
 			router.Put("/mapping", r.mappingController.PutMapping)
-
-			// ScriptController
-			router.With(
-				middlewares.Transaction(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/script", r.scriptController.PostScript)
 		})
 	})
 

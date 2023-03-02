@@ -77,15 +77,10 @@ func NewRootCommand() *cobra.Command {
 	store.AddCommand(NewStorageScan())
 	store.AddCommand(NewStorageDelete())
 
-	scriptExec := NewScriptExec()
-	scriptCheck := NewScriptCheck()
-
 	root.AddCommand(serve)
 	root.AddCommand(conf)
 	root.AddCommand(UICmd)
 	root.AddCommand(store)
-	root.AddCommand(scriptExec)
-	root.AddCommand(scriptCheck)
 	root.AddCommand(version)
 	root.AddCommand(stickersCmd)
 
