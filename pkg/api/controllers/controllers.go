@@ -19,7 +19,6 @@ var Module = fx.Options(
 		fx.Annotate(NewConfigController, fx.ParamTags(versionKey)),
 	),
 	fx.Provide(NewLedgerController),
-	fx.Provide(NewScriptController),
 	fx.Provide(NewAccountController),
 	fx.Provide(NewTransactionController),
 	fx.Provide(NewBalanceController),
