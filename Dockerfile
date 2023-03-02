@@ -29,4 +29,4 @@ COPY --from=builder /src/components/ledger/ledger /usr/local/bin/ledger
 EXPOSE 3068
 ENTRYPOINT ["ledger"]
 ENV OTEL_SERVICE_NAME ledger
-CMD ["server", "start"]
+CMD ["serve"]
