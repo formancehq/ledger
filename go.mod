@@ -9,12 +9,12 @@ require (
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/buger/jsonparser v1.1.1
 	github.com/dgraph-io/ristretto v0.1.1
-	github.com/formancehq/stack/libs/go-libs v0.0.0-20230425092747-deaef0a31004
-	github.com/gin-contrib/cors v1.4.0
+	github.com/formancehq/stack/libs/go-libs v0.0.0-20230222164357-55840b21a337
 	github.com/gin-gonic/gin v1.9.0
+	github.com/go-chi/chi/v5 v5.0.8
+	github.com/go-chi/cors v1.2.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/huandu/go-sqlbuilder v1.19.0
@@ -28,12 +28,12 @@ require (
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
 	github.com/psanford/memfs v0.0.0-20210214183328-a001468d78ef
+	github.com/riandyrn/otelchi v0.5.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	go.nhat.io/otelsql v0.8.0
-	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.39.0
+	go.nhat.io/otelsql v0.8.1-0.20230208165150-837d13372c7b
 	go.opentelemetry.io/otel v1.13.0
 	go.opentelemetry.io/otel/sdk v1.13.0
 	go.opentelemetry.io/otel/trace v1.13.0
@@ -136,11 +136,12 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
+	go.opentelemetry.io/contrib v1.0.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/github.com/Shopify/sarama/otelsarama v0.39.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.39.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.14.0 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.13.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.15.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.13.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.13.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.13.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.13.0 // indirect
@@ -165,4 +166,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/formancehq/stack/libs/go-libs => ./libs
+replace github.com/formancehq/stack/libs/go-libs => ../../libs/go-libs

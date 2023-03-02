@@ -1,12 +1,10 @@
 package middlewares_test
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/internal"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -16,10 +14,12 @@ import (
 
 func TestAdditionalGlobalMiddleware(t *testing.T) {
 	internal.RunTest(t,
-		routes.ProvideMiddlewares(func() []gin.HandlerFunc {
-			return []gin.HandlerFunc{
-				func(context *gin.Context) {
-					_ = context.AbortWithError(418, errors.New(""))
+		routes.ProvideMiddlewares(func() []func(h http.Handler) http.Handler {
+			return []func(http http.Handler) http.Handler{
+				func(handler http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(418)
+					})
 				},
 			}
 		}),

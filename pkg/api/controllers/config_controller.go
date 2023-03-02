@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"gopkg.in/yaml.v3"
@@ -39,12 +39,13 @@ func NewConfigController(version string, storageDriver storage.Driver[ledger.Sto
 	}
 }
 
-func (ctl *ConfigController) GetInfo(c *gin.Context) {
-	ledgers, err := ctl.StorageDriver.GetSystemStore().ListLedgers(c.Request.Context())
+func (ctl *ConfigController) GetInfo(w http.ResponseWriter, r *http.Request) {
+	ledgers, err := ctl.StorageDriver.GetSystemStore().ListLedgers(r.Context())
 	if err != nil {
 		panic(err)
 	}
-	respondWithData[ConfigInfo](c, http.StatusOK, ConfigInfo{
+
+	sharedapi.Ok(w, ConfigInfo{
 		Server:  "numary-ledger",
 		Version: ctl.Version,
 		Config: &Config{
@@ -69,15 +70,15 @@ func parseSwagger(version string) map[string]interface{} {
 	return ret
 }
 
-func (ctl *ConfigController) GetDocsAsYaml(c *gin.Context) {
-	err := yaml.NewEncoder(c.Writer).Encode(parseSwagger(ctl.Version))
+func (ctl *ConfigController) GetDocsAsYaml(w http.ResponseWriter, r *http.Request) {
+	err := yaml.NewEncoder(w).Encode(parseSwagger(ctl.Version))
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (ctl *ConfigController) GetDocsAsJSON(c *gin.Context) {
-	enc := json.NewEncoder(c.Writer)
+func (ctl *ConfigController) GetDocsAsJSON(w http.ResponseWriter, r *http.Request) {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	err := enc.Encode(parseSwagger(ctl.Version))
 	if err != nil {

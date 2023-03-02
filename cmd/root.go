@@ -35,12 +35,6 @@ const (
 	lockStrategyRedisTLSEnabledFlag  = "lock-strategy-redis-tls-enabled"
 	lockStrategyRedisTLSInsecureFlag = "lock-strategy-redis-tls-insecure"
 
-	authBearerEnabledFlag           = "auth-bearer-enabled"
-	authBearerIntrospectUrlFlag     = "auth-bearer-introspect-url"
-	authBearerAudienceFlag          = "auth-bearer-audience"
-	authBearerAudiencesWildcardFlag = "auth-bearer-audiences-wildcard"
-	authBearerUseScopesFlag         = "auth-bearer-use-scopes"
-
 	commitPolicyFlag = "commit-policy"
 
 	cacheCapacityBytes = "cache-capacity-bytes"
@@ -137,11 +131,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
 	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
-	root.PersistentFlags().Bool(authBearerEnabledFlag, false, "Enable bearer auth")
-	root.PersistentFlags().String(authBearerIntrospectUrlFlag, "", "OAuth2 introspect URL")
-	root.PersistentFlags().StringSlice(authBearerAudienceFlag, []string{}, "Allowed audiences")
-	root.PersistentFlags().Bool(authBearerAudiencesWildcardFlag, false, "Don't check audience")
-	root.PersistentFlags().Bool(authBearerUseScopesFlag, false, "Use scopes as defined by rfc https://datatracker.ietf.org/doc/html/rfc8693")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	// 100 000 000 bytes is 100 MB

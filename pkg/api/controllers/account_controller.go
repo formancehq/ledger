@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -20,51 +21,51 @@ func NewAccountController() AccountController {
 	return AccountController{}
 }
 
-func (ctl *AccountController) CountAccounts(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *AccountController) CountAccounts(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	accountsQuery := ledger.NewAccountsQuery().
-		WithAddressFilter(c.Query("address")).
-		WithMetadataFilter(c.QueryMap("metadata"))
+		WithAddressFilter(r.URL.Query().Get("address")).
+		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
-	count, err := l.(*ledger.Ledger).CountAccounts(c.Request.Context(), *accountsQuery)
+	count, err := l.CountAccounts(r.Context(), *accountsQuery)
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	c.Header("Count", fmt.Sprint(count))
+	w.Header().Set("Count", fmt.Sprint(count))
 }
 
-func (ctl *AccountController) GetAccounts(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *AccountController) GetAccounts(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	accountsQuery := ledger.NewAccountsQuery()
 
-	if c.Query(QueryKeyCursor) != "" {
-		if c.Query("after") != "" ||
-			c.Query("address") != "" ||
-			len(c.QueryMap("metadata")) > 0 ||
-			c.Query("balance") != "" ||
-			c.Query(QueryKeyBalanceOperator) != "" ||
-			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	if r.URL.Query().Get(QueryKeyCursor) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get("address") != "" ||
+			len(sharedapi.GetQueryMap(r.URL.Query(), "metadata")) > 0 ||
+			r.URL.Query().Get("balance") != "" ||
+			r.URL.Query().Get(QueryKeyBalanceOperator) != "" ||
+			r.URL.Query().Get(QueryKeyBalanceOperatorDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.AccPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
@@ -78,30 +79,30 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithMetadataFilter(token.MetadataFilter).
 			WithPageSize(token.PageSize)
 
-	} else if c.Query(QueryKeyCursorDeprecated) != "" {
-		if c.Query("after") != "" ||
-			c.Query("address") != "" ||
-			len(c.QueryMap("metadata")) > 0 ||
-			c.Query("balance") != "" ||
-			c.Query(QueryKeyBalanceOperator) != "" ||
-			c.Query(QueryKeyBalanceOperatorDeprecated) != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	} else if r.URL.Query().Get(QueryKeyCursorDeprecated) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get("address") != "" ||
+			len(sharedapi.GetQueryMap(r.URL.Query(), "metadata")) > 0 ||
+			r.URL.Query().Get("balance") != "" ||
+			r.URL.Query().Get(QueryKeyBalanceOperator) != "" ||
+			r.URL.Query().Get(QueryKeyBalanceOperatorDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursorDeprecated))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
 
 		token := sqlstorage.AccPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
@@ -116,83 +117,83 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithPageSize(token.PageSize)
 
 	} else {
-		balance := c.Query("balance")
+		balance := r.URL.Query().Get("balance")
 		if balance != "" {
 			if _, err := strconv.ParseInt(balance, 10, 64); err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError(
+				apierrors.ResponseError(w, r, ledger.NewValidationError(
 					"invalid parameter 'balance', should be a number"))
 				return
 			}
 		}
 
-		balanceOperator, err := getBalanceOperator(c)
+		balanceOperator, err := getBalanceOperator(w, r)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(w, r, err)
 			return
 		}
 
-		pageSize, err := getPageSize(c)
+		pageSize, err := getPageSize(w, r)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(w, r, err)
 			return
 		}
 
 		accountsQuery = accountsQuery.
-			WithAfterAddress(c.Query("after")).
-			WithAddressFilter(c.Query("address")).
+			WithAfterAddress(r.URL.Query().Get("after")).
+			WithAddressFilter(r.URL.Query().Get("address")).
 			WithBalanceFilter(balance).
 			WithBalanceOperatorFilter(balanceOperator).
-			WithMetadataFilter(c.QueryMap("metadata")).
+			WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata")).
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.(*ledger.Ledger).GetAccounts(c.Request.Context(), *accountsQuery)
+	cursor, err := l.GetAccounts(r.Context(), *accountsQuery)
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithCursor[core.Account](c, http.StatusOK, cursor)
+	sharedapi.RenderCursor(w, cursor)
 }
 
-func (ctl *AccountController) GetAccount(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *AccountController) GetAccount(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
-	if !core.ValidateAddress(c.Param("address")) {
-		apierrors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
+	if !core.ValidateAddress(chi.URLParam(r, "address")) {
+		apierrors.ResponseError(w, r, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
-	acc, err := l.(*ledger.Ledger).GetAccount(
-		c.Request.Context(),
-		c.Param("address"))
+	acc, err := l.GetAccount(
+		r.Context(),
+		chi.URLParam(r, "address"))
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[*core.AccountWithVolumes](c, http.StatusOK, acc)
+	sharedapi.Ok(w, acc)
 }
 
-func (ctl *AccountController) PostAccountMetadata(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *AccountController) PostAccountMetadata(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
-	if !core.ValidateAddress(c.Param("address")) {
-		apierrors.ResponseError(c, ledger.NewValidationError("invalid account address format"))
+	if !core.ValidateAddress(chi.URLParam(r, "address")) {
+		apierrors.ResponseError(w, r, ledger.NewValidationError("invalid account address format"))
 		return
 	}
 
 	var m core.Metadata
-	if err := c.ShouldBindJSON(&m); err != nil {
-		apierrors.ResponseError(c, ledger.NewValidationError("invalid metadata format"))
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		apierrors.ResponseError(w, r, ledger.NewValidationError("invalid metadata format"))
 		return
 	}
 
-	if err := l.(*ledger.Ledger).SaveMeta(c.Request.Context(),
-		core.MetaTargetTypeAccount, c.Param("address"), m); err != nil {
-		apierrors.ResponseError(c, err)
+	if err := l.SaveMeta(r.Context(),
+		core.MetaTargetTypeAccount, chi.URLParam(r, "address"), m); err != nil {
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithNoContent(c)
+	sharedapi.NoContent(w)
 }

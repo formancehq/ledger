@@ -5,10 +5,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/storage"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -16,69 +16,71 @@ const (
 	HeaderIdempotencyHit = "Idempotency-Hit"
 )
 
-func Middleware(driver storage.LedgerStoreProvider[Store]) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func Middleware(driver storage.LedgerStoreProvider[Store]) func(handler http.Handler) http.Handler {
+	return func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		ik := c.Request.Header.Get(HeaderIdempotency)
-		if ik == "" {
-			return
-		}
-
-		// Do not create the store if it doesn't exist
-		store, _, err := driver.GetLedgerStore(c.Request.Context(), c.Param("ledger"), false)
-		if err != nil && err != storage.ErrLedgerStoreNotFound {
-			apierrors.ResponseError(c, err)
-			return
-		}
-
-		data, err := io.ReadAll(c.Request.Body)
-		if err != nil {
-			apierrors.ResponseError(c, err)
-			return
-		}
-		c.Request.Body = io.NopCloser(bytes.NewReader(data))
-
-		// Store created
-		if store != nil {
-			response, err := store.ReadIK(c.Request.Context(), ik)
-			if err != nil && err != ErrIKNotFound {
-				apierrors.ResponseError(c, err)
+			ik := r.Header.Get(HeaderIdempotency)
+			if ik == "" {
+				handler.ServeHTTP(w, r)
 				return
 			}
-			if err == nil {
-				if hashRequest(c.Request.URL.String(), string(data)) != response.RequestHash {
-					c.AbortWithStatus(http.StatusBadRequest)
+
+			// Do not create the store if it doesn't exist
+			store, _, err := driver.GetLedgerStore(r.Context(), chi.URLParam(r, "ledger"), false)
+			if err != nil && err != storage.ErrLedgerStoreNotFound {
+				apierrors.ResponseError(w, r, err)
+				return
+			}
+
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				apierrors.ResponseError(w, r, err)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(data))
+
+			// Store created
+			if store != nil {
+				response, err := store.ReadIK(r.Context(), ik)
+				if err != nil && err != ErrIKNotFound {
+					apierrors.ResponseError(w, r, err)
 					return
 				}
+				if err == nil {
+					if hashRequest(r.URL.String(), string(data)) != response.RequestHash {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
 
-				c.Abort()
-				c.Writer.Header().Set(HeaderIdempotencyHit, "true")
-				response.write(c)
-				return
-			}
-		}
-
-		rw := newResponseWriter(c.Writer)
-		c.Writer = rw
-
-		c.Next()
-		if c.Writer.Status() >= 200 && c.Writer.Status() < 300 {
-			if store == nil {
-				store, _, err = driver.GetLedgerStore(c.Request.Context(), c.Param("ledger"), true)
-				if err != nil {
-					_ = c.Error(errors.Wrap(err, "retrieving ledger store to save IK"))
+					w.Header().Set(HeaderIdempotencyHit, "true")
+					response.write(w, r)
 					return
 				}
 			}
-			if err := store.CreateIK(c.Request.Context(), ik, Response{
-				RequestHash: hashRequest(c.Request.URL.String(), string(data)),
-				StatusCode:  c.Writer.Status(),
-				Header:      c.Writer.Header(),
-				// TODO: Check if PG accept big documents
-				Body: string(rw.Bytes()),
-			}); err != nil {
-				_ = c.Error(errors.Wrap(err, "persisting IK to database"))
+
+			rw := newResponseWriter(w)
+			handler.ServeHTTP(rw, r)
+
+			if rw.statusCode >= 200 && rw.statusCode < 300 {
+				if store == nil {
+					store, _, err = driver.GetLedgerStore(r.Context(), chi.URLParam(r, "ledger"), true)
+					if err != nil {
+						logging.FromContext(r.Context()).Errorf("retrieving ledger store to save IK: %s", err)
+						return
+					}
+				}
+				if err := store.CreateIK(r.Context(), ik, Response{
+					RequestHash: hashRequest(r.URL.String(), string(data)),
+					StatusCode:  rw.statusCode,
+					Header:      w.Header(),
+					// TODO: Check if PG accept big documents
+					Body: string(rw.Bytes()),
+				}); err != nil {
+					logging.FromContext(r.Context()).Errorf("persisting IK to database: %s", err)
+					return
+				}
 			}
-		}
+		})
 	}
 }

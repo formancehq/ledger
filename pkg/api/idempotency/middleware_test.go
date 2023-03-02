@@ -8,14 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	gin.SetMode(gin.ReleaseMode)
-}
 
 func TestIdempotency(t *testing.T) {
 
@@ -42,15 +38,16 @@ func TestIdempotency(t *testing.T) {
 
 		body := "hello world!"
 
-		handler := gin.New()
-		handler.GET("/", Middleware(storeProvider), func(c *gin.Context) {
+		handler := chi.NewMux()
+		handler.Use(Middleware(storeProvider))
+		handler.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			if called {
-				c.Writer.WriteHeader(http.StatusServiceUnavailable)
+				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 			called = true
-			c.Writer.WriteHeader(http.StatusAccepted)
-			_, _ = c.Writer.Write([]byte(body))
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(body))
 		})
 
 		ik := "foo"
@@ -80,17 +77,18 @@ func TestIdempotency(t *testing.T) {
 		called := false
 		body := "Hello world!"
 
-		handler := gin.New()
-		handler.GET("/", Middleware(storeProvider), func(c *gin.Context) {
+		handler := chi.NewRouter()
+		handler.Use(Middleware(storeProvider))
+		handler.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			if called {
 				// Simulate the store creation by a service
-				c.Writer.WriteHeader(http.StatusServiceUnavailable)
+				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 			called = true
 			store = NewInMemoryStore()
-			c.Writer.WriteHeader(http.StatusAccepted)
-			_, _ = c.Writer.Write([]byte(body))
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(body))
 		})
 
 		ik := "foo"
@@ -113,9 +111,10 @@ func TestIdempotency(t *testing.T) {
 			return store, false, nil
 		})
 
-		handler := gin.New()
-		handler.GET("/", Middleware(storeProvider), func(c *gin.Context) {
-			c.Writer.WriteHeader(http.StatusServiceUnavailable)
+		handler := chi.NewRouter()
+		handler.Use(Middleware(storeProvider))
+		handler.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
 		})
 
 		req, rec := newReqRec("foo")
@@ -130,12 +129,13 @@ func TestIdempotency(t *testing.T) {
 			return store, false, nil
 		})
 
-		handler := gin.New()
-		handler.GET("/path1", Middleware(storeProvider), func(c *gin.Context) {
-			c.Writer.WriteHeader(http.StatusAccepted)
+		handler := chi.NewRouter()
+		handler.Use(Middleware(storeProvider))
+		handler.Get("/path1", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
 		})
-		handler.GET("/path2", Middleware(storeProvider), func(c *gin.Context) {
-			c.Writer.WriteHeader(http.StatusAccepted)
+		handler.Get("/path2", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
 		})
 
 		ik := "foo"
@@ -160,12 +160,13 @@ func TestIdempotency(t *testing.T) {
 
 		requestBody := "Hello world!"
 
-		handler := gin.New()
-		handler.GET("/", Middleware(storeProvider), func(c *gin.Context) {
-			data, err := io.ReadAll(c.Request.Body)
+		handler := chi.NewRouter()
+		handler.Use(Middleware(storeProvider))
+		handler.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			data, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
 			require.Equal(t, requestBody, string(data))
-			c.Writer.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusNoContent)
 		})
 
 		ik := "foo"
