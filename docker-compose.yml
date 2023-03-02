@@ -30,9 +30,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
-      NUMARY_SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
+      STORAGE_DRIVER: "postgres"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
+      SERVER_HTTP_BIND_ADDRESS: "0.0.0.0:3068"
 
   proxy:
     image: caddy:2
@@ -51,4 +51,4 @@ services:
     ports:
       - "3078:3078"
     environment:
-      NUMARY_UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"
+      UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"

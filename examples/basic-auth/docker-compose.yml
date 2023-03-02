@@ -21,6 +21,6 @@ services:
     working_dir: /src
     environment:
       CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
-      NUMARY_AUTH_BASIC_ENABLED: "true"
-      NUMARY_AUTH_BASIC_CREDENTIALS: "user:password"
+      DEBUG: "true"
+      AUTH_BASIC_ENABLED: "true"
+      AUTH_BASIC_CREDENTIALS: "user:password"

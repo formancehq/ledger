@@ -30,7 +30,7 @@ const MaxConnections = 3
 
 func PostgresServer() (*PGServer, error) {
 
-	externalConnectionString := os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING")
+	externalConnectionString := os.Getenv("STORAGE_POSTGRES_CONN_STRING")
 	if externalConnectionString != "" {
 		return &PGServer{
 			url: externalConnectionString,

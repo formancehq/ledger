@@ -37,8 +37,8 @@ tasks:
         go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}}
         -coverprofile coverage.out -covermode atomic {{.PKG}}
     env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      STORAGE_DRIVER: "postgres"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
   tests:local:
     cmds:
@@ -68,8 +68,8 @@ tasks:
         sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
       - task: print:coverage
     env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      STORAGE_DRIVER: "postgres"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
   print:coverage:
     cmds:
@@ -91,8 +91,8 @@ tasks:
         | tee {{.BENCH_RESULTS_FILE}}
       - benchstat {{.BENCH_RESULTS_FILE}}
     env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      STORAGE_DRIVER: "postgres"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
   bench:cpu:
     cmds:
@@ -187,12 +187,12 @@ tasks:
         vars:
           Platform: "amd64"
           Image: fedora
-          Cmd: "{{.rpm}} numary_*_linux_amd64.rpm"
+          Cmd: "{{.rpm}} *_linux_amd64.rpm"
       - task: goreleaser:test:pkg
         vars:
           Platform: "arm64"
           Image: fedora
-          Cmd: "{{.rpm}} numary_*_linux_arm64.rpm"
+          Cmd: "{{.rpm}} *_linux_arm64.rpm"
 
   goreleaser:test:deb:
     desc: Tests deb packages
@@ -203,12 +203,12 @@ tasks:
         vars:
           Platform: "amd64"
           Image: ubuntu
-          Cmd: "{{.dpkg}} numary_*_linux_amd64.deb"
+          Cmd: "{{.dpkg}} *_linux_amd64.deb"
       - task: goreleaser:test:pkg
         vars:
           Platform: "arm64"
           Image: ubuntu
-          Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"
+          Cmd: "{{.dpkg}} *_linux_arm64.deb"
 
   run:
     cmds:

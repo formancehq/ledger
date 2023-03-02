@@ -15,7 +15,7 @@ import (
 )
 
 func StorageDriverName() string {
-	fromEnv := os.Getenv("NUMARY_STORAGE_DRIVER")
+	fromEnv := os.Getenv("STORAGE_DRIVER")
 	if fromEnv != "" {
 		return fromEnv
 	}
