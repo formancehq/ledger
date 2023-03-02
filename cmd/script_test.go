@@ -51,7 +51,7 @@ func Test_ScriptCommands(t *testing.T) {
 		want  error
 	}{
 		"not enough args": {args: []string{path}, flags: map[string]any{}, want: errors.New("accepts 2 arg(s), received 1")},
-		"success":         {args: []string{ledger, path}, flags: map[string]any{serverHttpBindAddressFlag: httpServer.URL[7:]}, want: nil},
+		"success":         {args: []string{ledger, path}, flags: map[string]any{bindFlag: httpServer.URL[7:]}, want: nil},
 		"preview":         {args: []string{ledger, path}, flags: map[string]any{previewFlag: true}, want: nil},
 	}
 
