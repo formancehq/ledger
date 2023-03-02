@@ -1,12 +1,12 @@
 package controllers
 
 import (
+	"encoding/json"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
-	"github.com/numary/ledger/pkg/ledger"
 )
 
 type MappingController struct{}
@@ -15,31 +15,31 @@ func NewMappingController() MappingController {
 	return MappingController{}
 }
 
-func (ctl *MappingController) PutMapping(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *MappingController) PutMapping(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	mapping := &core.Mapping{}
-	if err := c.ShouldBind(mapping); err != nil {
-		apierrors.ResponseError(c, err)
+	if err := json.NewDecoder(r.Body).Decode(mapping); err != nil {
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	if err := l.(*ledger.Ledger).SaveMapping(c.Request.Context(), *mapping); err != nil {
-		apierrors.ResponseError(c, err)
+	if err := l.SaveMapping(r.Context(), *mapping); err != nil {
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
+	sharedapi.Ok(w, mapping)
 }
 
-func (ctl *MappingController) GetMapping(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *MappingController) GetMapping(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
-	mapping, err := l.(*ledger.Ledger).LoadMapping(c.Request.Context())
+	mapping, err := l.LoadMapping(r.Context())
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[*core.Mapping](c, http.StatusOK, mapping)
+	sharedapi.Ok(w, mapping)
 }

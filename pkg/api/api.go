@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/stack/libs/go-libs/health"
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/middlewares"
 	"github.com/numary/ledger/pkg/api/routes"
@@ -13,7 +13,7 @@ import (
 )
 
 type API struct {
-	handler *gin.Engine
+	handler chi.Router
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +21,6 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func NewAPI(routes *routes.Routes) *API {
-	gin.SetMode(gin.ReleaseMode)
 	h := &API{
 		handler: routes.Engine(),
 	}
@@ -31,7 +30,6 @@ func NewAPI(routes *routes.Routes) *API {
 type Config struct {
 	StorageDriver string
 	Version       string
-	UseScopes     bool
 }
 
 func Module(cfg Config) fx.Option {
@@ -43,7 +41,6 @@ func Module(cfg Config) fx.Option {
 		routes.Module,
 		controllers.Module,
 		fx.Provide(NewAPI),
-		fx.Supply(routes.UseScopes(cfg.UseScopes)),
 		health.Module(),
 	)
 }

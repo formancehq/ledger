@@ -1,24 +1,24 @@
 package middlewares
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/gin-gonic/gin"
 )
 
-func Log() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		latency := time.Since(start)
-		logging.FromContext(c.Request.Context()).WithFields(map[string]interface{}{
-			"status":     c.Writer.Status(),
-			"method":     c.Request.Method,
-			"path":       c.Request.URL.Path,
-			"ip":         c.ClientIP(),
-			"latency":    latency,
-			"user_agent": c.Request.UserAgent(),
-		}).Info("Request")
+func Log() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			h.ServeHTTP(w, r)
+			latency := time.Since(start)
+			logging.FromContext(r.Context()).WithFields(map[string]interface{}{
+				"method":     r.Method,
+				"path":       r.URL.Path,
+				"latency":    latency,
+				"user_agent": r.UserAgent(),
+			}).Info("Request")
+		})
 	}
 }

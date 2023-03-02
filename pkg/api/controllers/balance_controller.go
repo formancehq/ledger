@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
-	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 )
@@ -19,46 +18,46 @@ func NewBalanceController() BalanceController {
 	return BalanceController{}
 }
 
-func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *BalanceController) GetBalancesAggregated(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	balancesQuery := ledger.NewBalancesQuery().
-		WithAddressFilter(c.Query("address"))
-	balances, err := l.(*ledger.Ledger).GetBalancesAggregated(
-		c.Request.Context(), *balancesQuery)
+		WithAddressFilter(r.URL.Query().Get("address"))
+	balances, err := l.GetBalancesAggregated(
+		r.Context(), *balancesQuery)
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[core.AssetsBalances](c, http.StatusOK, balances)
+	sharedapi.Ok(w, balances)
 }
 
-func (ctl *BalanceController) GetBalances(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *BalanceController) GetBalances(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	balancesQuery := ledger.NewBalancesQuery()
 
-	if c.Query(QueryKeyCursor) != "" {
-		if c.Query("after") != "" ||
-			c.Query("address") != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	if r.URL.Query().Get(QueryKeyCursor) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get("address") != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.BalancesPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
@@ -69,26 +68,26 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 			WithAddressFilter(token.AddressRegexpFilter).
 			WithPageSize(token.PageSize)
 
-	} else if c.Query(QueryKeyCursorDeprecated) != "" {
-		if c.Query("after") != "" ||
-			c.Query("address") != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	} else if r.URL.Query().Get(QueryKeyCursorDeprecated) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get("address") != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursorDeprecated))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
 
 		token := sqlstorage.BalancesPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
@@ -100,23 +99,23 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 			WithPageSize(token.PageSize)
 
 	} else {
-		pageSize, err := getPageSize(c)
+		pageSize, err := getPageSize(w, r)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(w, r, err)
 			return
 		}
 
 		balancesQuery = balancesQuery.
-			WithAfterAddress(c.Query("after")).
-			WithAddressFilter(c.Query("address")).
+			WithAfterAddress(r.URL.Query().Get("after")).
+			WithAddressFilter(r.URL.Query().Get("address")).
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.(*ledger.Ledger).GetBalances(c.Request.Context(), *balancesQuery)
+	cursor, err := l.GetBalances(r.Context(), *balancesQuery)
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithCursor[core.AccountsBalances](c, http.StatusOK, cursor)
+	sharedapi.RenderCursor(w, cursor)
 }

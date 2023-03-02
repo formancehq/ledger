@@ -1,10 +1,9 @@
 package internal
 
 import (
+	"net/http"
 	"strings"
 
-	"github.com/formancehq/stack/libs/go-libs/auth"
-	"github.com/numary/ledger/pkg/api/routes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -15,22 +14,43 @@ const (
 	authBasicCredentialsFlag = "auth-basic-credentials"
 )
 
-func HTTPBasicAuthMethod(v *viper.Viper) auth.Method {
+type Credential struct {
+	Password string
+}
+type Credentials map[string]Credential
+
+func HTTPBasicAuthMethod(v *viper.Viper) func(http.Handler) http.Handler {
 	basicAuth := v.GetStringSlice(serverHttpBasicAuthFlag)
 	if len(basicAuth) == 0 {
 		basicAuth = v.GetStringSlice(authBasicCredentialsFlag)
 	}
 	if len(basicAuth) > 0 &&
 		(!v.IsSet(authBasicEnabledFlag) || v.GetBool(authBasicEnabledFlag)) { // Keep compatibility, we disable the feature only if the flag is explicitely set to false
-		credentials := auth.Credentials{}
+		credentials := Credentials{}
 		for _, kv := range basicAuth {
 			parts := strings.SplitN(kv, ":", 2)
-			credentials[parts[0]] = auth.Credential{
+			credentials[parts[0]] = Credential{
 				Password: parts[1],
-				Scopes:   routes.AllScopes,
 			}
 		}
-		return auth.NewHTTPBasicMethod(credentials)
+		return func(handler http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// TODO: Add integration test on basic auth
+				username, password, ok := r.BasicAuth()
+				if !ok {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+
+				credential, ok := credentials[username]
+				if !ok || credential.Password != password {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+
+				handler.ServeHTTP(w, r)
+			})
+		}
 	}
 	return nil
 }

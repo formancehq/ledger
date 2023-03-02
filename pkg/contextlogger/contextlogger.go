@@ -1,19 +1,20 @@
 package contextlogger
 
 import (
+	"net/http"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
 
-func WrapGinRequest(c *gin.Context) {
-	span := trace.SpanFromContext(c.Request.Context())
+func WrapRequest(r *http.Request) *http.Request {
+	span := trace.SpanFromContext(r.Context())
 	contextKeyID := uuid.NewString()
 	if span.SpanContext().SpanID().IsValid() {
 		contextKeyID = span.SpanContext().SpanID().String()
 	}
-	c.Request = c.Request.WithContext(logging.ContextWithLogger(c.Request.Context(), logging.FromContext(c.Request.Context()).WithFields(map[string]any{
+	return r.WithContext(logging.ContextWithLogger(r.Context(), logging.FromContext(r.Context()).WithFields(map[string]any{
 		"contextID": contextKeyID,
 	})))
 }

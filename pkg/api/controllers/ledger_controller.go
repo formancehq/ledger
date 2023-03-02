@@ -8,7 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/go-chi/chi/v5"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -30,63 +31,63 @@ type storageInfo struct {
 	Migrations []core.MigrationInfo `json:"migrations"`
 }
 
-func (ctl *LedgerController) GetInfo(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *LedgerController) GetInfo(w http.ResponseWriter, r *http.Request) {
+	ledger := LedgerFromContext(r.Context())
 
 	var err error
 	res := Info{
-		Name:    c.Param("ledger"),
+		Name:    chi.URLParam(r, "ledger"),
 		Storage: storageInfo{},
 	}
-	res.Storage.Migrations, err = l.(*ledger.Ledger).GetMigrationsInfo(c.Request.Context())
+	res.Storage.Migrations, err = ledger.GetMigrationsInfo(r.Context())
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[Info](c, http.StatusOK, res)
+	sharedapi.Ok(w, res)
 }
 
-func (ctl *LedgerController) GetStats(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *LedgerController) GetStats(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
-	stats, err := l.(*ledger.Ledger).Stats(c.Request.Context())
+	stats, err := l.Stats(r.Context())
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithData[ledger.Stats](c, http.StatusOK, stats)
+	sharedapi.Ok(w, stats)
 }
 
-func (ctl *LedgerController) GetLogs(c *gin.Context) {
-	l, _ := c.Get("ledger")
+func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
+	l := LedgerFromContext(r.Context())
 
 	logsQuery := ledger.NewLogsQuery()
 
-	if c.Query(QueryKeyCursor) != "" {
-		if c.Query("after") != "" ||
-			c.Query(QueryKeyStartTime) != "" ||
-			c.Query(QueryKeyStartTimeDeprecated) != "" ||
-			c.Query(QueryKeyEndTime) != "" ||
-			c.Query(QueryKeyEndTimeDeprecated) != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	if r.URL.Query().Get(QueryKeyCursor) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get(QueryKeyStartTime) != "" ||
+			r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyEndTime) != "" ||
+			r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := sqlstorage.LogsPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
@@ -97,29 +98,29 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 			WithEndTimeFilter(token.EndTime).
 			WithPageSize(token.PageSize)
 
-	} else if c.Query(QueryKeyCursorDeprecated) != "" {
-		if c.Query("after") != "" ||
-			c.Query(QueryKeyStartTime) != "" ||
-			c.Query(QueryKeyStartTimeDeprecated) != "" ||
-			c.Query(QueryKeyEndTime) != "" ||
-			c.Query(QueryKeyEndTimeDeprecated) != "" ||
-			c.Query(QueryKeyPageSize) != "" ||
-			c.Query(QueryKeyPageSizeDeprecated) != "" {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+	} else if r.URL.Query().Get(QueryKeyCursorDeprecated) != "" {
+		if r.URL.Query().Get("after") != "" ||
+			r.URL.Query().Get(QueryKeyStartTime) != "" ||
+			r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyEndTime) != "" ||
+			r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" ||
+			r.URL.Query().Get(QueryKeyPageSize) != "" ||
+			r.URL.Query().Get(QueryKeyPageSizeDeprecated) != "" {
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursorDeprecated)))
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursorDeprecated))
 		if err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
 
 		token := sqlstorage.LogsPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
@@ -133,49 +134,49 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 	} else {
 		var err error
 		var afterIDParsed uint64
-		if c.Query("after") != "" {
-			afterIDParsed, err = strconv.ParseUint(c.Query("after"), 10, 64)
+		if r.URL.Query().Get("after") != "" {
+			afterIDParsed, err = strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 			if err != nil {
-				apierrors.ResponseError(c, ledger.NewValidationError(
+				apierrors.ResponseError(w, r, ledger.NewValidationError(
 					"invalid 'after' query param"))
 				return
 			}
 		}
 
 		var startTimeParsed, endTimeParsed time.Time
-		if c.Query(QueryKeyStartTime) != "" {
-			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTime))
+		if r.URL.Query().Get(QueryKeyStartTime) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyStartTime))
 			if err != nil {
-				apierrors.ResponseError(c, ErrInvalidStartTime)
+				apierrors.ResponseError(w, r, ErrInvalidStartTime)
 				return
 			}
 		}
-		if c.Query(QueryKeyStartTimeDeprecated) != "" {
-			startTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyStartTimeDeprecated))
+		if r.URL.Query().Get(QueryKeyStartTimeDeprecated) != "" {
+			startTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyStartTimeDeprecated))
 			if err != nil {
-				apierrors.ResponseError(c, ErrInvalidStartTimeDeprecated)
-				return
-			}
-		}
-
-		if c.Query(QueryKeyEndTime) != "" {
-			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTime))
-			if err != nil {
-				apierrors.ResponseError(c, ErrInvalidEndTime)
-				return
-			}
-		}
-		if c.Query(QueryKeyEndTimeDeprecated) != "" {
-			endTimeParsed, err = time.Parse(time.RFC3339, c.Query(QueryKeyEndTimeDeprecated))
-			if err != nil {
-				apierrors.ResponseError(c, ErrInvalidEndTimeDeprecated)
+				apierrors.ResponseError(w, r, ErrInvalidStartTimeDeprecated)
 				return
 			}
 		}
 
-		pageSize, err := getPageSize(c)
+		if r.URL.Query().Get(QueryKeyEndTime) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyEndTime))
+			if err != nil {
+				apierrors.ResponseError(w, r, ErrInvalidEndTime)
+				return
+			}
+		}
+		if r.URL.Query().Get(QueryKeyEndTimeDeprecated) != "" {
+			endTimeParsed, err = time.Parse(time.RFC3339, r.URL.Query().Get(QueryKeyEndTimeDeprecated))
+			if err != nil {
+				apierrors.ResponseError(w, r, ErrInvalidEndTimeDeprecated)
+				return
+			}
+		}
+
+		pageSize, err := getPageSize(w, r)
 		if err != nil {
-			apierrors.ResponseError(c, err)
+			apierrors.ResponseError(w, r, err)
 			return
 		}
 
@@ -186,11 +187,11 @@ func (ctl *LedgerController) GetLogs(c *gin.Context) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.(*ledger.Ledger).GetLogs(c.Request.Context(), logsQuery)
+	cursor, err := l.GetLogs(r.Context(), logsQuery)
 	if err != nil {
-		apierrors.ResponseError(c, err)
+		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	respondWithCursor[core.Log](c, http.StatusOK, cursor)
+	sharedapi.RenderCursor(w, cursor)
 }
