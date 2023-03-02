@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/numary/ledger/pkg/core"
 )
 
 type Store interface {

@@ -3,7 +3,7 @@ package program_test
 import (
 	"testing"
 
-	"github.com/numary/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/stretchr/testify/require"
 )
 

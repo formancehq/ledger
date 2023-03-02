@@ -3,9 +3,9 @@ package sqlstorage
 import (
 	"errors"
 
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/numary/ledger/pkg/storage"
 )
 
 type Flavor sqlbuilder.Flavor

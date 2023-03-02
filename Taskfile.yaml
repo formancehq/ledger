@@ -154,7 +154,7 @@ tasks:
         -c ./configs/{{.CLI_ARGS}}.yaml
         -o ./sdks/{{.CLI_ARGS}}
         --git-user-id=formancehq
-        --git-repo-id=numary-sdk-{{.CLI_ARGS}}
+        --git-repo-id=formance-sdk-{{.CLI_ARGS}}
         -p packageVersion={{.VERSION}}
 
   sdk:test:

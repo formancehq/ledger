@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/numary/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/spf13/cobra"
 )
 

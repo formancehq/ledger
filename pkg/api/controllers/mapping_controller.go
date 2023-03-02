@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/api/apierrors"
+	"github.com/formancehq/ledger/pkg/core"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/numary/ledger/pkg/api/apierrors"
-	"github.com/numary/ledger/pkg/core"
 )
 
 type MappingController struct{}

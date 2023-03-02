@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 )
 

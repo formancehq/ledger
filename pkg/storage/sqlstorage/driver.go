@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/formancehq/ledger/pkg/api/idempotency"
+	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/opentelemetry"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/numary/ledger/pkg/api/idempotency"
-	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/opentelemetry"
-	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"go.nhat.io/otelsql"
 )

@@ -51,7 +51,7 @@ var UICmd = &cobra.Command{
 		})
 
 		openuri(addr)
-		fmt.Printf("Numary control is live on http://%s\n", addr)
+		fmt.Printf("Ledger control is live on http://%s\n", addr)
 
 		httpErr := http.ListenAndServe(addr, nil)
 		if httpErr != nil && httpErr != http.ErrServerClosed {

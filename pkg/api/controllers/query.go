@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/numary/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger"
 )
 
 const (
