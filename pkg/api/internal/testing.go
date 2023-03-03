@@ -74,12 +74,6 @@ func PostTransaction(t *testing.T, handler http.Handler, payload controllers.Pos
 	return rec
 }
 
-func PostTransactionBatch(t *testing.T, handler http.Handler, txs core.Transactions) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, "/"+testingLedger+"/transactions/batch", Buffer(t, txs))
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
 func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m core.Metadata) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions/%d/metadata", testingLedger, id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
@@ -185,18 +179,6 @@ func GetLedgerStats(handler http.Handler) *httptest.ResponseRecorder {
 func GetLedgerLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/logs", testingLedger), nil)
 	req.URL.RawQuery = query.Encode()
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
-func LoadMapping(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/mapping", testingLedger), nil)
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
-func SaveMapping(t *testing.T, handler http.Handler, m core.Mapping) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPut, fmt.Sprintf("/%s/mapping", testingLedger), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }

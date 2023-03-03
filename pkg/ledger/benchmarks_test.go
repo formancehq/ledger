@@ -28,7 +28,7 @@ func BenchmarkLedger_PostTransactions_Scripts_Single_FixedAccounts(b *testing.B)
 	_, err := txData.Postings.Validate()
 	require.NoError(b, err)
 
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		b.ResetTimer()
 
 		res := core.ExpandedTransaction{}
@@ -50,7 +50,7 @@ func BenchmarkLedger_PostTransactions_Scripts_Single_FixedAccounts(b *testing.B)
 func BenchmarkLedger_PostTransactions_Postings_Single_FixedAccounts(b *testing.B) {
 	var execRes []core.ExpandedTransaction
 
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		txData := core.TransactionData{}
 		for i := 0; i < nbPostings; i++ {
 			txData.Postings = append(txData.Postings, core.Posting{
@@ -68,10 +68,12 @@ func BenchmarkLedger_PostTransactions_Postings_Single_FixedAccounts(b *testing.B
 		for n := 0; n < b.N; n++ {
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
-			res, err = l.ExecuteTxsData(context.Background(), true, txData)
+
+			tx, err := l.ExecuteScript(context.Background(), true, core.TxToScriptData(txData))
 			require.NoError(b, err)
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, nbPostings)
+			res = append(res, tx)
 		}
 
 		execRes = res
@@ -85,19 +87,22 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_FixedAccounts(b *testing.B)
 
 	txsData := newTxsData(1)
 
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		b.ResetTimer()
 
 		res := []core.ExpandedTransaction{}
 
 		for n := 0; n < b.N; n++ {
-			var err error
 			for _, txData := range txsData {
 				_, err := txData.Postings.Validate()
 				require.NoError(b, err)
 			}
-			res, err = l.ExecuteTxsData(context.Background(), true, txsData...)
-			require.NoError(b, err)
+			for _, script := range core.TxsToScriptsData(txsData...) {
+				tx, err := l.ExecuteScript(context.Background(), true, script)
+				require.NoError(b, err)
+				res = append(res, tx)
+			}
+
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)
 			require.Len(b, res[1].Postings, 1)
@@ -123,22 +128,25 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_FixedAccounts(b *testing.B)
 func BenchmarkLedger_PostTransactions_Postings_Batch_VaryingAccounts(b *testing.B) {
 	var execRes []core.ExpandedTransaction
 
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		b.ResetTimer()
 
-		res := []core.ExpandedTransaction{}
+		res := make([]core.ExpandedTransaction, 0)
 
 		for n := 0; n < b.N; n++ {
 			b.StopTimer()
 			txsData := newTxsData(n)
 			b.StartTimer()
-			var err error
+
 			for _, txData := range txsData {
 				_, err := txData.Postings.Validate()
 				require.NoError(b, err)
 			}
-			res, err = l.ExecuteTxsData(context.Background(), true, txsData...)
-			require.NoError(b, err)
+			for _, script := range core.TxsToScriptsData(txsData...) {
+				tx, err := l.ExecuteScript(context.Background(), true, script)
+				require.NoError(b, err)
+				res = append(res, tx)
+			}
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)
 			require.Len(b, res[1].Postings, 1)

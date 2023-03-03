@@ -46,7 +46,6 @@ type Routes struct {
 	accountController     controllers.AccountController
 	balanceController     controllers.BalanceController
 	transactionController controllers.TransactionController
-	mappingController     controllers.MappingController
 	globalMiddlewares     []func(handler http.Handler) http.Handler
 	perLedgerMiddlewares  []func(handler http.Handler) http.Handler
 	idempotencyStore      storage.Driver[idempotency.Store]
@@ -63,7 +62,6 @@ func NewRoutes(
 	accountController controllers.AccountController,
 	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
-	mappingController controllers.MappingController,
 	healthController *health.HealthController,
 	idempotencyStore storage.Driver[idempotency.Store],
 	locker middlewares.Locker,
@@ -78,7 +76,6 @@ func NewRoutes(
 		accountController:     accountController,
 		balanceController:     balanceController,
 		transactionController: transactionController,
-		mappingController:     mappingController,
 		healthController:      healthController,
 		idempotencyStore:      idempotencyStore,
 		locker:                locker,
@@ -130,11 +127,6 @@ func (r *Routes) Engine() *chi.Mux {
 				idempotency.Middleware(r.idempotencyStore),
 			).Post("/transactions", r.transactionController.PostTransaction)
 
-			router.With(
-				middlewares.Transaction(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/transactions/batch", r.transactionController.PostTransactionsBatch)
-
 			router.Get("/transactions/{txid}", r.transactionController.GetTransaction)
 			router.With(
 				middlewares.Transaction(r.locker),
@@ -147,11 +139,8 @@ func (r *Routes) Engine() *chi.Mux {
 
 			// BalanceController
 			router.Get("/balances", r.balanceController.GetBalances)
+			// TODO: Rename to /aggregatedBalances
 			router.Get("/aggregate/balances", r.balanceController.GetBalancesAggregated)
-
-			// MappingController
-			router.Get("/mapping", r.mappingController.GetMapping)
-			router.Put("/mapping", r.mappingController.PutMapping)
 		})
 	})
 

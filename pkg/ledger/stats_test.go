@@ -9,7 +9,7 @@ import (
 )
 
 func TestStats(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		_, err := l.Stats(context.Background())
 		assert.NoError(t, err)
 	})
