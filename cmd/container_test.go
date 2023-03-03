@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/redis"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -40,15 +39,8 @@ func TestContainers(t *testing.T) {
 
 	for _, tc := range []testCase{
 		{
-			name: "default",
-			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-			},
-		},
-		{
 			name: "default-with-opentelemetry-traces-on-stdout",
 			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otlptraces.OtelTracesFlag, true)
 				v.Set(otlptraces.OtelTracesExporterFlag, "stdout")
 			},
@@ -83,7 +75,6 @@ func TestContainers(t *testing.T) {
 		{
 			name: "default-with-opentelemetry-traces-on-stdout-and-batch",
 			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otlptraces.OtelTracesFlag, true)
 				v.Set(otlptraces.OtelTracesExporterFlag, "stdout")
 				v.Set(otlptraces.OtelTracesBatchFlag, true)
@@ -121,7 +112,6 @@ func TestContainers(t *testing.T) {
 		{
 			name: "default-with-opentelemetry-traces-on-otlp",
 			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otlptraces.OtelTracesFlag, true)
 				v.Set(otlptraces.OtelTracesExporterFlag, "otlp")
 			},
@@ -129,7 +119,6 @@ func TestContainers(t *testing.T) {
 		{
 			name: "default-with-opentelemetry-traces-on-jaeger",
 			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.SQLite.String())
 				v.Set(otlptraces.OtelTracesFlag, true)
 				v.Set(otlptraces.OtelTracesExporterFlag, "jaeger")
 			},
@@ -137,7 +126,6 @@ func TestContainers(t *testing.T) {
 		{
 			name: "pg",
 			init: func(v *viper.Viper) {
-				v.Set(storageDriverFlag, sqlstorage.PostgreSQL.String())
 				v.Set(storagePostgresConnectionStringFlag, db.ConnString())
 			},
 			options: []fx.Option{
@@ -243,11 +231,9 @@ func TestContainers(t *testing.T) {
 			)
 			v := viper.New()
 			// Default options
-			v.Set(storageDriverFlag, sqlstorage.SQLite.String())
-			v.Set(storageDirFlag, "/tmp")
+			v.Set(storagePostgresConnectionStringFlag, db.ConnString())
 			v.Set(cacheCapacityBytes, 100000000)
 			v.Set(cacheMaxNumKeys, 100)
-			//v.Set(storageSQLiteDBNameFlag, uuid.New())
 			tc.init(v)
 			app := NewContainer(v, options...)
 

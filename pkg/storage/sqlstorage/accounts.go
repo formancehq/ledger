@@ -31,12 +31,7 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 
 	if address != "" {
 		arg := sb.Args.Add("^" + address + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("address ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("address REGEXP " + arg)
-		}
+		sb.Where("address ~* " + arg)
 		t.AddressRegexpFilter = address
 	}
 
@@ -235,12 +230,7 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		Cols("address", "metadata").
 		Values(address, metadataData)
 
-	switch Flavor(s.schema.Flavor()) {
-	case PostgreSQL:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
-	case SQLite:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
-	}
+	ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {

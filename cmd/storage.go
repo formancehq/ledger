@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -138,103 +136,52 @@ func NewStorageScan() *cobra.Command {
 		Use: "scan",
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			var opt fx.Option
-
-			switch viper.GetString(storageDriverFlag) {
-			default:
-				return errors.New("Invalid storage driver: " + viper.GetString(storageDriverFlag))
-			case "postgres":
-				opt = fx.Invoke(func(driver *sqlstorage.Driver, sqlDb *sql.DB, db sqlstorage.DB, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							rows, err := sqlDb.QueryContext(ctx, `
+			opt := fx.Invoke(func(driver *sqlstorage.Driver, sqlDb *sql.DB, db sqlstorage.DB, lc fx.Lifecycle) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						rows, err := sqlDb.QueryContext(ctx, `
 								SELECT s.schema_name
 								FROM information_schema.schemata s
 								JOIN pg_catalog.pg_tables t ON t.schemaname = s.schema_name AND t.tablename = 'transactions'
 							`)
+						if err != nil {
+							return err
+						}
+						defer func(rows *sql.Rows) {
+							if err := rows.Close(); err != nil {
+								panic(err)
+							}
+						}(rows)
+						for rows.Next() {
+							var ledgerName string
+							err := rows.Scan(&ledgerName)
 							if err != nil {
 								return err
 							}
-							defer func(rows *sql.Rows) {
-								if err := rows.Close(); err != nil {
-									panic(err)
-								}
-							}(rows)
-							for rows.Next() {
-								var ledgerName string
-								err := rows.Scan(&ledgerName)
-								if err != nil {
-									return err
-								}
 
-								if ledgerName == sqlstorage.SystemSchema {
-									continue
-								}
-								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
-								// This command is dedicated to upgrade ledger version before 1.4
-								// It will be removed in a near future, so we can assert the system store type without risk
-								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
-									Register(cmd.Context(), ledgerName)
-								if err != nil {
-									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
-									continue
-								}
-								if created {
-									fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
-								} else {
-									fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
-								}
+							if ledgerName == sqlstorage.SystemSchema {
+								continue
 							}
-
-							return nil
-						},
-					})
-				})
-			case "sqlite":
-				opt = fx.Invoke(func(driver *sqlstorage.Driver, db sqlstorage.DB, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							files, err := os.ReadDir(viper.GetString(storageDirFlag))
+							fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
+							// This command is dedicated to upgrade ledger version before 1.4
+							// It will be removed in a near future, so we can assert the system store type without risk
+							created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
+								Register(cmd.Context(), ledgerName)
 							if err != nil {
-								return err
+								fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
+								continue
 							}
-							for _, f := range files {
-								if !strings.HasSuffix(f.Name(), ".db") {
-									fmt.Println("Skip file " + f.Name())
-									continue
-								}
-								f := strings.TrimSuffix(f.Name(), ".db")
-								parts := strings.SplitN(f, "_", 2)
-								if len(parts) != 2 {
-									fmt.Println("Skip file " + f + ".db : Bad name")
-									continue
-								}
-								if parts[0] != viper.GetString(storageSQLiteDBNameFlag) {
-									fmt.Println("Skip file " + f + ".db : DB name not mathing")
-									continue
-								}
-								ledgerName := parts[1]
-								if ledgerName == sqlstorage.SystemSchema {
-									continue
-								}
-								fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
-								created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
-									Register(cmd.Context(), ledgerName)
-								if err != nil {
-									fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
-									continue
-								}
-								if created {
-									fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
-								} else {
-									fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
-								}
+							if created {
+								fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
+							} else {
+								fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
 							}
-							return nil
-						},
-					})
+						}
+
+						return nil
+					},
 				})
-			}
+			})
 
 			app := service.New(cmd.OutOrStdout(), resolveOptions(viper.GetViper(), opt)...)
 			return app.Start(cmd.Context())

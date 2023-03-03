@@ -11,14 +11,11 @@ import (
 type Flavor sqlbuilder.Flavor
 
 var (
-	SQLite     = Flavor(sqlbuilder.SQLite)
 	PostgreSQL = Flavor(sqlbuilder.PostgreSQL)
 )
 
 func (f Flavor) String() string {
 	switch f {
-	case SQLite:
-		return "sqlite"
 	case PostgreSQL:
 		return "postgres"
 	default:
@@ -26,41 +23,15 @@ func (f Flavor) String() string {
 	}
 }
 
-func FlavorFromString(v string) Flavor {
-	switch v {
-	case "sqlite":
-		return SQLite
-	case "postgres":
-		return PostgreSQL
-	default:
-		return 0
-	}
-}
-
-var errorHandlers = map[Flavor]func(error) error{}
-
-func errorFromFlavor(f Flavor, err error) error {
-	if err == nil {
-		return nil
-	}
-	h, ok := errorHandlers[f]
-	if !ok {
-		return err
-	}
-	return h(err)
-}
-
-func init() {
-	errorHandlers[PostgreSQL] = func(err error) error {
-		var pgConnError *pgconn.PgError
-		if errors.As(err, &pgConnError) {
-			switch pgConnError.Code {
-			case "23505":
-				return storage.NewError(storage.ConstraintFailed, err)
-			case "53300":
-				return storage.NewError(storage.TooManyClient, err)
-			}
+func postgresError(err error) error {
+	var pgConnError *pgconn.PgError
+	if errors.As(err, &pgConnError) {
+		switch pgConnError.Code {
+		case "23505":
+			return storage.NewError(storage.ConstraintFailed, err)
+		case "53300":
+			return storage.NewError(storage.TooManyClient, err)
 		}
-		return err
 	}
+	return err
 }

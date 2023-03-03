@@ -1,24 +1,25 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/pborman/uuid"
+	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAccounts(t *testing.T) {
-	d := NewDriver("sqlite", &sqliteDB{
-		directory: os.TempDir(),
-		dbName:    uuid.New(),
-	})
+	d, stopFn, err := ledgertesting.StorageDriver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopFn()
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
-	defer func(d *Driver, ctx context.Context) {
+	defer func(d *sqlstorage.Driver, ctx context.Context) {
 		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
 

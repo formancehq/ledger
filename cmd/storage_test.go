@@ -12,7 +12,6 @@ import (
 func Test_StorageCommands(t *testing.T) {
 	db := pgtesting.NewPostgresDatabase(t)
 
-	viper.Set(storageDriverFlag, "postgres")
 	viper.Set(storagePostgresConnectionStringFlag, db.ConnString())
 
 	require.NoError(t, NewStorageList().Execute())
@@ -33,12 +32,5 @@ func Test_StorageCommands(t *testing.T) {
 	cmd.SetArgs([]string{name})
 	require.NoError(t, cmd.Execute())
 
-	driver := viper.GetString(storageDriverFlag)
 	require.NoError(t, NewStorageScan().Execute())
-
-	viper.Set(storageDriverFlag, "")
-	require.ErrorContains(t, NewStorageScan().Execute(),
-		"Invalid storage driver:")
-
-	viper.Set(storageDriverFlag, driver)
 }

@@ -207,7 +207,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 	ch := make(chan struct{})
 
 	options = append([]fx.Option{
-		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest"}),
+		api.Module(api.Config{Version: "latest"}),
 		// 100 000 000 bytes is 100 MB
 		ledger.ResolveModule(100000000, 100),
 		ledgertesting.ProvideLedgerStorageDriver(),

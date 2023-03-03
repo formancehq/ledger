@@ -24,7 +24,7 @@ func (s *Store) error(err error) error {
 	if err == nil {
 		return nil
 	}
-	return errorFromFlavor(Flavor(s.schema.Flavor()), err)
+	return postgresError(err)
 }
 
 func (s *Store) Schema() Schema {
