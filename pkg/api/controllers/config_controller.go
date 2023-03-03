@@ -42,7 +42,7 @@ func (ctl *ConfigController) GetInfo(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	sharedapi.Ok(w, ConfigInfo{
+	sharedapi.RawOk(w, ConfigInfo{
 		Server:  "ledger",
 		Version: ctl.Version,
 		Config: &Config{
