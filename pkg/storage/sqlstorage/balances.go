@@ -22,12 +22,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 
 	if q.Filters.AddressRegexp != "" {
 		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("account ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("account REGEXP " + arg)
-		}
+		sb.Where("account ~* " + arg)
 	}
 
 	executor, err := s.executorProvider(ctx)
@@ -75,14 +70,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 	}
 
 	sb := sqlbuilder.NewSelectBuilder()
-	switch s.Schema().Flavor() {
-	case sqlbuilder.PostgreSQL:
-		sb.Select("account", "array_agg((asset, input - output))")
-	case sqlbuilder.SQLite:
-		// we try to get the same format as array_agg from postgres : {"(USD,-12686)","(EUR,-250)"}
-		// so don't have to dev a marshal method for each storage
-		sb.Select("account", `'{"(' || group_concat(asset||','||(input-output), ')","(')|| ')"}' as key_value_pairs`)
-	}
+	sb.Select("account", "array_agg((asset, input - output))")
 
 	sb.From(s.schema.Table("volumes"))
 	sb.GroupBy("account")
@@ -97,12 +85,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 
 	if q.Filters.AddressRegexp != "" {
 		arg := sb.Args.Add("^" + q.Filters.AddressRegexp + "$")
-		switch s.Schema().Flavor() {
-		case sqlbuilder.PostgreSQL:
-			sb.Where("account ~* " + arg)
-		case sqlbuilder.SQLite:
-			sb.Where("account REGEXP " + arg)
-		}
+		sb.Where("account ~* " + arg)
 		t.AddressRegexpFilter = q.Filters.AddressRegexp
 	}
 

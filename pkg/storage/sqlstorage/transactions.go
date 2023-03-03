@@ -22,7 +22,7 @@ import (
 // which allows segmented address pattern matching, e.g; "foo:bar:*"
 var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
 
-func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
 	t := TxsPaginationToken{}
 
@@ -39,7 +39,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
 		Distinct()
 	sb.From(s.schema.Table("transactions"))
-	if (source != "" || destination != "" || account != "") && flavor == PostgreSQL {
+	if source != "" || destination != "" || account != "" {
 		// new wildcard handling
 		sb.Join(fmt.Sprintf(
 			"%s postings on postings.txid = %s.id",
@@ -48,7 +48,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 		))
 	}
 	if source != "" {
-		if !addressQueryRegexp.MatchString(source) || flavor == SQLite {
+		if !addressQueryRegexp.MatchString(source) {
 			// deprecated regex handling
 			arg := sb.Args.Add(source)
 			sb.Where(s.schema.Table("use_account_as_source") + "(postings, " + arg + ")")
@@ -69,7 +69,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 		t.SourceFilter = source
 	}
 	if destination != "" {
-		if !addressQueryRegexp.MatchString(destination) || flavor == SQLite {
+		if !addressQueryRegexp.MatchString(destination) {
 			// deprecated regex handling
 			arg := sb.Args.Add(destination)
 			sb.Where(s.schema.Table("use_account_as_destination") + "(postings, " + arg + ")")
@@ -89,7 +89,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 		t.DestinationFilter = destination
 	}
 	if account != "" {
-		if !addressQueryRegexp.MatchString(account) || flavor == SQLite {
+		if !addressQueryRegexp.MatchString(account) {
 			// deprecated regex handling
 			arg := sb.Args.Add(account)
 			sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
@@ -140,7 +140,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 		return api.Cursor[core.ExpandedTransaction]{Data: txs}, nil
 	}
 
-	sb, t := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
+	sb, t := s.buildTransactionsQuery(q)
 	sb.OrderBy("id").Desc()
 	if q.AfterTxID > 0 {
 		sb.Where(sb.LE("id", q.AfterTxID))
@@ -330,113 +330,68 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		return err
 	}
 
-	switch s.Schema().Flavor() {
-	case sqlbuilder.SQLite:
-		ibTxs := sqlbuilder.NewInsertBuilder()
-		ibTxs.InsertInto(s.schema.Table("transactions"))
-		ibTxs.Cols("id", "timestamp", "reference", "postings", "metadata",
-			"pre_commit_volumes", "post_commit_volumes")
+	txIds := make([]uint64, len(txs))
+	timestamps := make([]time.Time, len(txs))
+	references := make([]*string, len(txs))
+	postingDataSet := make([]string, len(txs))
+	metadataDataSet := make([]string, len(txs))
+	preCommitVolumesDataSet := make([]string, len(txs))
+	postCommitVolumesDataSet := make([]string, len(txs))
 
-		for _, tx := range txs {
-			postingsData, err := json.Marshal(tx.Postings)
-			if err != nil {
-				panic(err)
-			}
+	postingTxIds := []uint64{}
+	postingIndices := []int{}
+	sources := []string{}
+	destinations := []string{}
 
-			metadataData := []byte("{}")
-			if tx.Metadata != nil {
-				metadataData, err = json.Marshal(tx.Metadata)
-				if err != nil {
-					panic(err)
-				}
-			}
-
-			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
-
-			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
-
-			var reference *string
-			if tx.Reference != "" {
-				cp := tx.Reference
-				reference = &cp
-			}
-
-			ibTxs.Values(tx.ID, tx.Timestamp, reference, postingsData,
-				metadataData, preCommitVolumesData, postCommitVolumesData)
+	for i, tx := range txs {
+		postingsData, err := json.Marshal(tx.Postings)
+		if err != nil {
+			panic(err)
 		}
 
-		queryTxs, argsTxs = ibTxs.BuildWithFlavor(s.schema.Flavor())
-
-	case sqlbuilder.PostgreSQL:
-		txIds := make([]uint64, len(txs))
-		timestamps := make([]time.Time, len(txs))
-		references := make([]*string, len(txs))
-		postingDataSet := make([]string, len(txs))
-		metadataDataSet := make([]string, len(txs))
-		preCommitVolumesDataSet := make([]string, len(txs))
-		postCommitVolumesDataSet := make([]string, len(txs))
-
-		postingTxIds := []uint64{}
-		postingIndices := []int{}
-		sources := []string{}
-		destinations := []string{}
-
-		for i, tx := range txs {
-			postingsData, err := json.Marshal(tx.Postings)
+		metadataData := []byte("{}")
+		if tx.Metadata != nil {
+			metadataData, err = json.Marshal(tx.Metadata)
 			if err != nil {
 				panic(err)
 			}
+		}
 
-			metadataData := []byte("{}")
-			if tx.Metadata != nil {
-				metadataData, err = json.Marshal(tx.Metadata)
-				if err != nil {
-					panic(err)
-				}
-			}
+		preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
+		if err != nil {
+			panic(err)
+		}
 
-			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
+		postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
+		if err != nil {
+			panic(err)
+		}
+
+		txIds[i] = tx.ID
+		timestamps[i] = tx.Timestamp
+		postingDataSet[i] = string(postingsData)
+		metadataDataSet[i] = string(metadataData)
+		preCommitVolumesDataSet[i] = string(preCommitVolumesData)
+		postCommitVolumesDataSet[i] = string(postCommitVolumesData)
+		references[i] = nil
+		if tx.Reference != "" {
+			cp := tx.Reference
+			references[i] = &cp
+		}
+
+		for i, p := range tx.Postings {
+			sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
 			if err != nil {
 				panic(err)
 			}
-
-			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
+			destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
 			if err != nil {
 				panic(err)
 			}
-
-			txIds[i] = tx.ID
-			timestamps[i] = tx.Timestamp
-			postingDataSet[i] = string(postingsData)
-			metadataDataSet[i] = string(metadataData)
-			preCommitVolumesDataSet[i] = string(preCommitVolumesData)
-			postCommitVolumesDataSet[i] = string(postCommitVolumesData)
-			references[i] = nil
-			if tx.Reference != "" {
-				cp := tx.Reference
-				references[i] = &cp
-			}
-
-			for i, p := range tx.Postings {
-				sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
-				if err != nil {
-					panic(err)
-				}
-				destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
-				if err != nil {
-					panic(err)
-				}
-				postingTxIds = append(postingTxIds, tx.ID)
-				postingIndices = append(postingIndices, i)
-				sources = append(sources, string(sourcesBy))
-				destinations = append(destinations, string(destinationsBy))
-			}
+			postingTxIds = append(postingTxIds, tx.ID)
+			postingIndices = append(postingIndices, i)
+			sources = append(sources, string(sourcesBy))
+			destinations = append(destinations, string(destinationsBy))
 		}
 
 		queryTxs = fmt.Sprintf(
@@ -496,12 +451,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		Where(ub.E("id", id))
 
 	placeholder := ub.Var(string(metadataData))
-	switch Flavor(s.schema.Flavor()) {
-	case PostgreSQL:
-		ub.Set(fmt.Sprintf("metadata = metadata || %s", placeholder))
-	case SQLite:
-		ub.Set(fmt.Sprintf("metadata = json_patch(metadata, %s)", placeholder))
-	}
+	ub.Set(fmt.Sprintf("metadata = metadata || %s", placeholder))
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {

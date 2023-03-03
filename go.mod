@@ -7,7 +7,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/ThreeDotsLabs/watermill v1.2.0
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
-	github.com/buger/jsonparser v1.1.1
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/formancehq/stack/libs/go-libs v0.0.0-20230222164357-55840b21a337
 	github.com/go-chi/chi/v5 v5.0.8
@@ -20,7 +19,6 @@ require (
 	github.com/jackc/pgx/v5 v5.3.0
 	github.com/lib/pq v1.10.7
 	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58

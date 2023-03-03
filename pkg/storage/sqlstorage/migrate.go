@@ -114,12 +114,12 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 
 	_, err := schema.ExecContext(ctx, q, args...)
 	if err != nil {
-		return false, errorFromFlavor(Flavor(schema.Flavor()), err)
+		return false, postgresError(err)
 	}
 
 	tx, err := schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return false, errorFromFlavor(Flavor(schema.Flavor()), err)
+		return false, postgresError(err)
 	}
 	defer func(tx *sql.Tx) {
 		_ = tx.Rollback()
@@ -174,9 +174,9 @@ func Migrate(ctx context.Context, schema Schema, migrations ...Migration) (bool,
 		sqlq, args = ib.BuildWithFlavor(schema.Flavor())
 		if _, err = tx.ExecContext(ctx, sqlq, args...); err != nil {
 			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
-			return false, errorFromFlavor(Flavor(schema.Flavor()), err)
+			return false, postgresError(err)
 		}
 	}
 
-	return modified, errorFromFlavor(Flavor(schema.Flavor()), tx.Commit())
+	return modified, postgresError(tx.Commit())
 }

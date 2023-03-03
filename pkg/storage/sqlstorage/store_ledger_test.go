@@ -45,7 +45,7 @@ func TestStore(t *testing.T) {
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
 		{name: "CreateIK", fn: testIKS},
 	} {
-		t.Run(fmt.Sprintf("%s/%s", ledgertesting.StorageDriverName(), tf.name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("postgres/%s", tf.name), func(t *testing.T) {
 			done := make(chan struct{})
 			app := fx.New(
 				ledgertesting.ProvideStorageDriver(),
@@ -675,8 +675,7 @@ func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
 
 func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 	// Use of external server, ignore this test
-	if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" ||
-		ledgertesting.StorageDriverName() != "postgres" {
+	if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" {
 		return
 	}
 

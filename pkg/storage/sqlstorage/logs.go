@@ -21,45 +21,29 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		args  []interface{}
 	)
 
-	switch s.Schema().Flavor() {
-	case sqlbuilder.SQLite:
-		ib := sqlbuilder.NewInsertBuilder()
-		ib.InsertInto(s.schema.Table("log"))
-		ib.Cols("id", "type", "hash", "date", "data")
-		for _, l := range log {
-			data, err := json.Marshal(l.Data)
-			if err != nil {
-				panic(err)
-			}
+	ids := make([]uint64, len(log))
+	types := make([]string, len(log))
+	hashes := make([]string, len(log))
+	dates := make([]time.Time, len(log))
+	datas := make([][]byte, len(log))
 
-			ib.Values(l.ID, l.Type, l.Hash, l.Date, string(data))
+	for i, l := range log {
+		data, err := json.Marshal(l.Data)
+		if err != nil {
+			panic(err)
 		}
-		query, args = ib.BuildWithFlavor(s.schema.Flavor())
-	case sqlbuilder.PostgreSQL:
-		ids := make([]uint64, len(log))
-		types := make([]string, len(log))
-		hashes := make([]string, len(log))
-		dates := make([]time.Time, len(log))
-		datas := make([][]byte, len(log))
+		ids[i] = l.ID
+		types[i] = l.Type
+		hashes[i] = l.Hash
+		dates[i] = l.Date
+		datas[i] = data
+	}
 
-		for i, l := range log {
-			data, err := json.Marshal(l.Data)
-			if err != nil {
-				panic(err)
-			}
-			ids[i] = l.ID
-			types[i] = l.Type
-			hashes[i] = l.Hash
-			dates[i] = l.Date
-			datas[i] = data
-		}
-
-		query = fmt.Sprintf(
-			`INSERT INTO "%s".log (id, type, hash, date, data) (SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[], $4::timestamptz[], $5::jsonb[]))`,
-			s.schema.Name())
-		args = []interface{}{
-			ids, types, hashes, dates, datas,
-		}
+	query = fmt.Sprintf(
+		`INSERT INTO "%s".log (id, type, hash, date, data) (SELECT * FROM unnest($1::int[], $2::varchar[], $3::varchar[], $4::timestamptz[], $5::jsonb[]))`,
+		s.schema.Name())
+	args = []interface{}{
+		ids, types, hashes, dates, datas,
 	}
 
 	executor, err := s.executorProvider(ctx)

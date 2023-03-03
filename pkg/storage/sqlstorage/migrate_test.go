@@ -1,34 +1,43 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
 	"database/sql"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/formancehq/ledger/internal/pgtesting"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/huandu/go-sqlbuilder"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMigrates(t *testing.T) {
+	pgServer, err := pgtesting.PostgresServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sqlstorage.NewPostgresDB(sqlDB)
 
-	tmpDir := os.TempDir()
-	db := NewSQLiteDB(tmpDir, uuid.New())
 	schema, err := db.Schema(context.Background(), "testing")
 	require.NoError(t, err)
 
-	migrations := []Migration{
+	require.NoError(t, schema.Initialize(context.Background()))
+
+	migrations := []sqlstorage.Migration{
 		{
 			MigrationInfo: core.MigrationInfo{
 				Version: "0",
 				Name:    "create-schema",
 			},
-			Handlers: HandlersByEngine{
+			Handlers: sqlstorage.HandlersByEngine{
 				"any": {
-					SQLMigrationFunc(`CREATE TABLE IF NOT EXISTS transactions (
+					sqlstorage.SQLMigrationFunc(`CREATE TABLE IF NOT EXISTS testing.transactions (
 						"id"        integer,
 						"reference" varchar,
 						"hash"      varchar,
@@ -36,7 +45,7 @@ func TestMigrates(t *testing.T) {
 						UNIQUE("id"),
 						UNIQUE("reference")
 					);`),
-					SQLMigrationFunc(`INSERT INTO transactions VALUES (0, "", "")`),
+					sqlstorage.SQLMigrationFunc(`INSERT INTO testing.transactions VALUES (0, '', '')`),
 				},
 			},
 		},
@@ -45,10 +54,10 @@ func TestMigrates(t *testing.T) {
 				Version: "1",
 				Name:    "update-column",
 			},
-			Handlers: HandlersByEngine{
-				"sqlite": {
-					SQLMigrationFunc(`
-						ALTER TABLE transactions
+			Handlers: sqlstorage.HandlersByEngine{
+				"postgres": {
+					sqlstorage.SQLMigrationFunc(`
+						ALTER TABLE testing.transactions
 						ADD COLUMN timestamp date;`),
 				},
 			},
@@ -58,9 +67,9 @@ func TestMigrates(t *testing.T) {
 				Version: "2",
 				Name:    "init-timestamp",
 			},
-			Handlers: HandlersByEngine{
+			Handlers: sqlstorage.HandlersByEngine{
 				"any": {
-					func(ctx context.Context, schema Schema, tx *sql.Tx) error {
+					func(ctx context.Context, schema sqlstorage.Schema, tx *sql.Tx) error {
 						ub := sqlbuilder.NewUpdateBuilder()
 						sql, args := ub.
 							Update(schema.Table("transactions")).
@@ -74,7 +83,7 @@ func TestMigrates(t *testing.T) {
 		},
 	}
 
-	modified, err := Migrate(context.Background(), schema, migrations...)
+	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations...)
 	require.NoError(t, err)
 	require.True(t, modified)
 
