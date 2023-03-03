@@ -100,14 +100,6 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 	options = append(options, ledger.ResolveModule(
 		v.GetInt64(cacheCapacityBytes), v.GetInt64(cacheMaxNumKeys)))
 
-	// Api middlewares
-	options = append(options, routes.ProvidePerLedgerMiddleware(func() []func(handler http.Handler) http.Handler {
-		if basic := internal.HTTPBasicAuthMethod(v); basic != nil {
-			return []func(handler http.Handler) http.Handler{basic}
-		}
-		return []func(handler http.Handler) http.Handler{}
-	}))
-
 	options = append(options, routes.ProvideMiddlewares(func(logger logging.Logger) []func(handler http.Handler) http.Handler {
 		res := make([]func(handler http.Handler) http.Handler, 0)
 		res = append(res, cors.New(cors.Options{

@@ -30,34 +30,6 @@ func TestAnalyticsFlags(t *testing.T) {
 
 	for _, testCase := range []testCase{
 		{
-			name:          "using deprecated segment enabled flag",
-			key:           segmentEnabledFlag,
-			envValue:      "true",
-			viperMethod:   (*viper.Viper).GetBool,
-			expectedValue: true,
-		},
-		{
-			name:          "using deprecated segment write key flag",
-			key:           segmentWriteKeyFlag,
-			envValue:      "foo:bar",
-			viperMethod:   (*viper.Viper).GetString,
-			expectedValue: "foo:bar",
-		},
-		{
-			name:          "using deprecated segment heartbeat interval flag",
-			key:           segmentHeartbeatIntervalFlag,
-			envValue:      "10s",
-			viperMethod:   (*viper.Viper).GetDuration,
-			expectedValue: 10 * time.Second,
-		},
-		{
-			name:          "using deprecated segment application id flag",
-			key:           segmentApplicationIdFlag,
-			envValue:      "foo:bar",
-			viperMethod:   (*viper.Viper).GetString,
-			expectedValue: "foo:bar",
-		},
-		{
 			name:          "using telemetry enabled flag",
 			key:           telemetryEnabledFlag,
 			envValue:      "true",
@@ -100,7 +72,6 @@ func TestAnalyticsFlags(t *testing.T) {
 					require.Equal(t, testCase.expectedValue, rValue)
 				},
 			}
-			InitHTTPBasicFlags(cmd)
 			BindEnv(v)
 
 			restoreEnvVar := setEnvVar(testCase.key, testCase.envValue)

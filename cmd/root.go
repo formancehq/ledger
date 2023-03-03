@@ -108,7 +108,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Int(cacheMaxNumKeys, 100, "Maximum number of Numscript to be stored in the cache in RAM")
 
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
-	internal.InitHTTPBasicFlags(root)
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 
