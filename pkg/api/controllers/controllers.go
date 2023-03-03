@@ -22,5 +22,4 @@ var Module = fx.Options(
 	fx.Provide(NewAccountController),
 	fx.Provide(NewTransactionController),
 	fx.Provide(NewBalanceController),
-	fx.Provide(NewMappingController),
 )

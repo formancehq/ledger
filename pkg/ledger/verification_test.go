@@ -7,7 +7,7 @@ import (
 )
 
 func TestVerify(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		err := l.Verify()
 
 		if err != nil {

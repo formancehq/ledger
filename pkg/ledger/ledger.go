@@ -11,21 +11,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var DefaultContracts = []core.Contract{
-	{
-		Name:    "default",
-		Account: "*", // world still an exception
-		Expr: &core.ExprGte{
-			Op1: core.VariableExpr{
-				Name: "balance",
-			},
-			Op2: core.ConstantExpr{
-				Value: core.NewMonetaryInt(0),
-			},
-		},
-	},
-}
-
 type Ledger struct {
 	store               Store
 	monitor             Monitor
@@ -84,19 +69,6 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedT
 	return tx, nil
 }
 
-func (l *Ledger) SaveMapping(ctx context.Context, mapping core.Mapping) error {
-	if err := l.store.SaveMapping(ctx, mapping); err != nil {
-		return err
-	}
-
-	l.monitor.UpdatedMapping(ctx, l.store.Name(), mapping)
-	return nil
-}
-
-func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
-	return l.store.LoadMapping(ctx)
-}
-
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
@@ -113,18 +85,18 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	rt.Metadata = core.Metadata{}
 	rt.Metadata.MarkReverts(revertedTx.ID)
 
-	txData := core.TransactionData{
+	scriptData := core.TxsToScriptsData(core.TransactionData{
 		Postings:  rt.Postings,
 		Timestamp: rt.Timestamp,
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
-	}
-	res, err := l.ExecuteTxsData(ctx, false, txData)
+	})
+
+	revertTx, err := l.ExecuteScript(ctx, false, scriptData[0])
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf(
 			"executing revert script for transaction %d", id))
 	}
-	revertTx := res[0]
 
 	if err := l.store.UpdateTransactionMetadata(ctx,
 		revertedTx.ID, core.RevertedMetadata(revertTx.ID), revertTx.Timestamp); err != nil {

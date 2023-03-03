@@ -2,10 +2,8 @@ package ledger_test
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"math/rand"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -16,13 +14,11 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pborman/uuid"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
-func withContainer(options ...fx.Option) {
+func withContainer(t require.TestingT, options ...fx.Option) {
 	done := make(chan struct{})
 	opts := append([]fx.Option{
 		fx.NopLogger,
@@ -37,76 +33,37 @@ func withContainer(options ...fx.Option) {
 		})
 	}))
 	app := fx.New(opts...)
-	go func() {
-		if err := app.Start(context.Background()); err != nil {
-			panic(err)
-		}
-	}()
+	require.NoError(t, app.Start(context.Background()))
+}
 
-	<-done
-	if app.Err() != nil {
-		panic(app.Err())
-	}
+func runOnLedger(t require.TestingT, f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
+	var storageDriver storage.Driver[ledger.Store]
+	withContainer(t, fx.Populate(&storageDriver))
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
-	defer cancel()
+	name := uuid.New()
+	store, _, err := storageDriver.GetLedgerStore(context.Background(), name, true)
+	require.NoError(t, err)
 
-	if err := app.Stop(ctx); err != nil {
+	_, err = store.Initialize(context.Background())
+	require.NoError(t, err)
+
+	// 100 000 000 is 100MB
+	cache := ledger.NewCache(100000000, 100, true)
+	l, err := ledger.NewLedger(store,
+		ledger.NewNoOpMonitor(),
+		cache,
+		ledgerOptions...)
+	if err != nil {
 		panic(err)
 	}
-}
+	defer l.Close(context.Background())
+	defer cache.Close()
 
-func runOnLedger(f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
-	withContainer(fx.Invoke(func(lc fx.Lifecycle, storageDriver storage.Driver[ledger.Store]) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				name := uuid.New()
-				store, _, err := storageDriver.GetLedgerStore(context.Background(), name, true)
-				if err != nil {
-					return err
-				}
-				_, err = store.Initialize(context.Background())
-				if err != nil {
-					return err
-				}
-				// 100 000 000 is 100MB
-				cache := ledger.NewCache(100000000, 100, true)
-				l, err := ledger.NewLedger(store,
-					ledger.NewNoOpMonitor(),
-					cache,
-					ledgerOptions...)
-				if err != nil {
-					panic(err)
-				}
-				lc.Append(fx.Hook{
-					OnStop: func(ctx context.Context) error {
-						cache.Close()
-						return l.Close(ctx)
-					},
-				})
-				f(l)
-				return nil
-			},
-		})
-	}))
-}
-
-func TestMain(m *testing.M) {
-	var code int
-	defer func() {
-		os.Exit(code) // os.Exit don't care about defer so defer the os.Exit allow us to execute other defer
-	}()
-
-	flag.Parse()
-	if testing.Verbose() {
-		logrus.StandardLogger().Level = logrus.DebugLevel
-	}
-
-	code = m.Run()
+	f(l)
 }
 
 func TestTransaction(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		testsize := 1e4
 		total := core.NewMonetaryInt(0)
 		batch := []core.TransactionData{}
@@ -137,8 +94,10 @@ func TestTransaction(t *testing.T) {
 				continue
 			}
 
-			_, err := l.ExecuteTxsData(context.Background(), false, batch...)
-			require.NoError(t, err)
+			for _, script := range core.TxsToScriptsData(batch...) {
+				_, err := l.ExecuteScript(context.Background(), false, script)
+				require.NoError(t, err)
+			}
 
 			batch = []core.TransactionData{}
 		}
@@ -148,7 +107,7 @@ func TestTransaction(t *testing.T) {
 
 		expected := total.Neg()
 		b := world.Balances["GEM"]
-		assert.Equalf(t, expected, b,
+		require.Equalf(t, expected, b,
 			"wrong GEM balance for account world, expected: %s got: %s",
 			expected, b)
 
@@ -158,7 +117,7 @@ func TestTransaction(t *testing.T) {
 
 func TestTransactionBatchWithConflictingReference(t *testing.T) {
 	t.Run("With conflict reference on transaction set", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
+		runOnLedger(t, func(l *ledger.Ledger) {
 			batch := []core.TransactionData{
 				{
 					Postings: []core.Posting{
@@ -195,13 +154,18 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 			}
 
-			_, err := l.ExecuteTxsData(context.Background(), false, batch...)
-			assert.Error(t, err)
-			assert.IsType(t, new(ledger.ConflictError), err)
+			for i, script := range core.TxsToScriptsData(batch...) {
+				_, err := l.ExecuteScript(context.Background(), false, script)
+				if i == 2 {
+					require.IsType(t, new(ledger.ConflictError), err)
+				} else {
+					require.NoError(t, err)
+				}
+			}
 		})
 	})
 	t.Run("with conflict reference on database", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
+		runOnLedger(t, func(l *ledger.Ledger) {
 			txData := core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -213,18 +177,19 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 				Reference: "ref1",
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, txData)
+			_, err := l.ExecuteScript(context.Background(), false, core.TxToScriptData(txData))
 			require.NoError(t, err)
 
-			_, err = l.ExecuteTxsData(context.Background(), false, txData)
-			assert.Error(t, err)
-			assert.IsType(t, new(ledger.ConflictError), err)
+			_, err = l.ExecuteScript(context.Background(), false, core.TxToScriptData(txData))
+			require.Error(t, err)
+			require.IsType(t, new(ledger.ConflictError), err)
 		})
 	})
 }
 
+// TODO: Second test is based of first test data. Clean this! It doesn't allow to target a specific test.
 func TestTransactionBatchTimestamps(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		timestamp1 := time.Now().UTC().Add(-10 * time.Second)
 		timestamp2 := time.Now().UTC().Add(-9 * time.Second)
 		timestamp3 := time.Now().UTC().Add(-8 * time.Second)
@@ -254,9 +219,15 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 					Timestamp: timestamp1,
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, batch...)
-			require.True(t, ledger.IsValidationError(err), err)
-			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+			for i, script := range core.TxsToScriptsData(batch...) {
+				_, err := l.ExecuteScript(context.Background(), false, script)
+				if i == 1 {
+					require.True(t, ledger.IsValidationError(err), err)
+					require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+				} else {
+					require.NoError(t, err)
+				}
+			}
 		})
 		t.Run("ascending order should succeed", func(t *testing.T) {
 			batch := []core.TransactionData{
@@ -283,8 +254,10 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 					Timestamp: timestamp3,
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, batch...)
-			assert.NoError(t, err)
+			for _, script := range core.TxsToScriptsData(batch...) {
+				_, err := l.ExecuteScript(context.Background(), false, script)
+				require.NoError(t, err)
+			}
 		})
 		t.Run("ascending order but before last inserted should fail", func(t *testing.T) {
 			batch := []core.TransactionData{
@@ -311,15 +284,21 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 					Timestamp: timestamp4,
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, batch...)
-			require.True(t, ledger.IsValidationError(err))
-			require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+			for i, script := range core.TxsToScriptsData(batch...) {
+				_, err := l.ExecuteScript(context.Background(), false, script)
+				if i == 0 {
+					require.True(t, ledger.IsValidationError(err))
+					require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
+				} else {
+					require.NoError(t, err)
+				}
+			}
 		})
 	})
 }
 
 func TestTransactionExpectedVolumes(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		txsData := []core.TransactionData{
 			{
 				Postings: []core.Posting{
@@ -363,12 +342,16 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 			},
 		}
 
-		res, err := l.ExecuteTxsData(context.Background(), false, txsData...)
-		assert.NoError(t, err)
+		res := make([]core.ExpandedTransaction, 0)
+		for _, script := range core.TxsToScriptsData(txsData...) {
+			tx, err := l.ExecuteScript(context.Background(), false, script)
+			require.NoError(t, err)
+			res = append(res, tx)
+		}
 
 		postCommitVolumes := core.AggregatePostCommitVolumes(res...)
-		assert.Equal(t, 4, len(res))
-		assert.EqualValues(t, core.AccountsAssetsVolumes{
+		require.Equal(t, 4, len(res))
+		require.EqualValues(t, core.AccountsAssetsVolumes{
 			"world": core.AssetsVolumes{
 				"USD": {
 					Input:  core.NewMonetaryInt(0),
@@ -400,7 +383,7 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 }
 
 func TestReference(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		tx := core.TransactionData{
 			Reference: "payment_processor_id_01",
 			Postings: []core.Posting{
@@ -413,26 +396,26 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
 		require.NoError(t, err)
 
-		_, err = l.ExecuteTxsData(context.Background(), false, tx)
-		assert.Error(t, err)
+		_, err = l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
+		require.Error(t, err)
 	})
 }
 
 func TestAccountMetadata(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 
 		err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": "old value",
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": "new value",
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		{
 			acc, err := l.GetAccount(context.Background(), "users:001")
@@ -441,13 +424,13 @@ func TestAccountMetadata(t *testing.T) {
 			meta, ok := acc.Metadata["a random metadata"]
 			require.True(t, ok)
 
-			assert.Equalf(t, meta, "new value",
+			require.Equalf(t, meta, "new value",
 				"metadata entry did not match in get: expected \"new value\", got %v", meta)
 		}
 
 		{
 			// We have to create at least one transaction to retrieve an account from GetAccounts store method
-			_, err := l.ExecuteTxsData(context.Background(), false, core.TransactionData{
+			_, err := l.ExecuteScript(context.Background(), false, core.TxToScriptData(core.TransactionData{
 				Postings: core.Postings{
 					{
 						Source:      "world",
@@ -456,25 +439,25 @@ func TestAccountMetadata(t *testing.T) {
 						Destination: "users:001",
 					},
 				},
-			})
-			assert.NoError(t, err)
+			}))
+			require.NoError(t, err)
 
 			acc, err := l.GetAccount(context.Background(), "users:001")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			require.True(t, acc.Address == "users:001", "no account returned by get account")
 
 			meta, ok := acc.Metadata["a random metadata"]
-			assert.True(t, ok)
-			assert.Equalf(t, meta, "new value",
+			require.True(t, ok)
+			require.Equalf(t, meta, "new value",
 				"metadata entry did not match in find: expected \"new value\", got %v", meta)
 		}
 	})
 }
 
 func TestTransactionMetadata(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.ExecuteTxsData(context.Background(), false,
-			core.TransactionData{
+	runOnLedger(t, func(l *ledger.Ledger) {
+		_, err := l.ExecuteScript(context.Background(), false,
+			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -483,7 +466,7 @@ func TestTransactionMetadata(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-			})
+			}))
 		require.NoError(t, err)
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -511,9 +494,9 @@ func TestTransactionMetadata(t *testing.T) {
 }
 
 func TestSaveTransactionMetadata(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.ExecuteTxsData(context.Background(), false,
-			core.TransactionData{
+	runOnLedger(t, func(l *ledger.Ledger) {
+		_, err := l.ExecuteScript(context.Background(), false,
+			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -525,7 +508,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 				Metadata: core.Metadata{
 					"a metadata": "a value",
 				},
-			})
+			}))
 		require.NoError(t, err)
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -534,15 +517,15 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		meta, ok := tx.Metadata["a metadata"]
 		require.True(t, ok)
 
-		assert.Equalf(t, meta, "a value",
+		require.Equalf(t, meta, "a value",
 			"metadata entry did not match: expected \"a value\", got %v", meta)
 	})
 }
 
 func TestGetTransaction(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		_, err := l.ExecuteTxsData(context.Background(), false,
-			core.TransactionData{
+	runOnLedger(t, func(l *ledger.Ledger) {
+		_, err := l.ExecuteScript(context.Background(), false,
+			core.TxToScriptData(core.TransactionData{
 				Reference: "bar",
 				Postings: []core.Posting{
 					{
@@ -552,7 +535,7 @@ func TestGetTransaction(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-			})
+			}))
 		require.NoError(t, err)
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
@@ -561,12 +544,12 @@ func TestGetTransaction(t *testing.T) {
 		tx, err := l.GetTransaction(context.Background(), last.ID)
 		require.NoError(t, err)
 
-		assert.True(t, reflect.DeepEqual(tx, last))
+		require.True(t, reflect.DeepEqual(tx, last))
 	})
 }
 
 func TestGetTransactions(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		tx := core.TransactionData{
 			Postings: []core.Posting{
 				{
@@ -578,22 +561,22 @@ func TestGetTransactions(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
 		require.NoError(t, err)
 
 		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
 		require.NoError(t, err)
 
-		assert.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
+		require.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
 	})
 }
 
 func TestRevertTransaction(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		revertAmt := core.NewMonetaryInt(100)
 
-		res, err := l.ExecuteTxsData(context.Background(), false,
-			core.TransactionData{
+		res, err := l.ExecuteScript(context.Background(), false,
+			core.TxToScriptData(core.TransactionData{
 				Reference: "foo",
 				Postings: []core.Posting{
 					{
@@ -603,7 +586,7 @@ func TestRevertTransaction(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-			})
+			}))
 		require.NoError(t, err)
 
 		world, err := l.GetAccount(context.Background(), "world")
@@ -611,7 +594,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, err := l.RevertTransaction(context.Background(), res[0].ID)
+		revertTx, err := l.RevertTransaction(context.Background(), res.ID)
 		require.NoError(t, err)
 
 		require.Equal(t, core.Postings{
@@ -623,10 +606,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 		}, revertTx.TransactionData.Postings)
 
-		require.EqualValues(t, fmt.Sprintf("%d", res[0].ID),
+		require.EqualValues(t, fmt.Sprintf("%d", res.ID),
 			revertTx.Metadata[core.RevertMetadataSpecKey()])
 
-		tx, err := l.GetTransaction(context.Background(), res[0].ID)
+		tx, err := l.GetTransaction(context.Background(), res.ID)
 		require.NoError(t, err)
 
 		v := core.RevertedMetadataSpecValue{}
@@ -646,34 +629,32 @@ func TestRevertTransaction(t *testing.T) {
 }
 
 func TestVeryBigTransaction(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		amount, err := core.ParseMonetaryInt(
 			"199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		res, err := l.ExecuteTxsData(context.Background(), false,
-			core.TransactionData{
+		res, err := l.ExecuteScript(context.Background(), false,
+			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
 					Destination: "bank",
 					Asset:       "ETH/18",
 					Amount:      amount,
 				}},
-			})
+			}))
 		require.NoError(t, err)
 
-		txFromDB, err := l.GetTransaction(context.Background(), res[0].ID)
+		txFromDB, err := l.GetTransaction(context.Background(), res.ID)
 		require.NoError(t, err)
 		require.Equal(t, txFromDB.Postings[0].Amount, amount)
 	})
 }
 
 func BenchmarkTransaction1(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
-			txs := []core.TransactionData{}
-
-			txs = append(txs, core.TransactionData{
+			_, err := l.ExecuteScript(context.Background(), false, core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -682,16 +663,14 @@ func BenchmarkTransaction1(b *testing.B) {
 						Amount:      core.NewMonetaryInt(10),
 					},
 				},
-			})
-
-			_, err := l.ExecuteTxsData(context.Background(), false, txs...)
+			}))
 			require.NoError(b, err)
 		}
 	})
 }
 
 func BenchmarkTransaction_20_1k(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
 			for i := 0; i < 20; i++ {
 				txs := []core.TransactionData{}
@@ -709,15 +688,17 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 					})
 				}
 
-				_, err := l.ExecuteTxsData(context.Background(), false, txs...)
-				require.NoError(b, err)
+				for _, script := range core.TxsToScriptsData(txs...) {
+					_, err := l.ExecuteScript(context.Background(), false, script)
+					require.NoError(b, err)
+				}
 			}
 		}
 	})
 }
 
 func BenchmarkGetAccount(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		for i := 0; i < b.N; i++ {
 			_, err := l.GetAccount(context.Background(), "users:013")
 			require.NoError(b, err)
@@ -726,7 +707,7 @@ func BenchmarkGetAccount(b *testing.B) {
 }
 
 func BenchmarkGetTransactions(b *testing.B) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(b, func(l *ledger.Ledger) {
 		for i := 0; i < b.N; i++ {
 			_, err := l.GetTransactions(context.Background(), ledger.TransactionsQuery{})
 			require.NoError(b, err)

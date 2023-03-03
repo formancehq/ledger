@@ -9,7 +9,6 @@ import (
 type Monitor interface {
 	CommittedTransactions(ctx context.Context, ledger string, res ...core.ExpandedTransaction)
 	SavedMetadata(ctx context.Context, ledger, targetType, id string, metadata core.Metadata)
-	UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping)
 	RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction)
 }
 
@@ -19,7 +18,6 @@ func (n noOpMonitor) CommittedTransactions(ctx context.Context, s string, res ..
 }
 func (n noOpMonitor) SavedMetadata(ctx context.Context, ledger string, targetType string, id string, metadata core.Metadata) {
 }
-func (n noOpMonitor) UpdatedMapping(ctx context.Context, s string, mapping core.Mapping) {}
 func (n noOpMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
 }
 
