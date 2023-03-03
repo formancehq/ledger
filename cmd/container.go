@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/formancehq/stack/libs/go-libs/service"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -29,7 +30,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 
 	debug := v.GetBool(service.DebugFlag)
 	if debug {
-		sqlstorage.InstrumentalizeSQLDrivers()
+		sqlstorage.InstrumentalizeSQLDriver()
 	}
 
 	options = append(options, publish.CLIPublisherModule(v, ServiceName), bus.LedgerMonitorModule())
@@ -56,26 +57,12 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 
 	// Handle api part
 	options = append(options, api.Module(api.Config{
-		StorageDriver: v.GetString(storageDriverFlag),
-		Version:       Version,
+		Version: Version,
 	}))
 
 	// Handle storage driver
 	options = append(options, sqlstorage.DriverModule(sqlstorage.ModuleConfig{
-		StorageDriver: v.GetString(storageDriverFlag),
-		SQLiteConfig: func() *sqlstorage.SQLiteConfig {
-			if v.GetString(storageDriverFlag) != sqlstorage.SQLite.String() {
-				return nil
-			}
-			return &sqlstorage.SQLiteConfig{
-				Dir:    v.GetString(storageDirFlag),
-				DBName: v.GetString(storageSQLiteDBNameFlag),
-			}
-		}(),
 		PostgresConfig: func() *sqlstorage.PostgresConfig {
-			if v.GetString(storageDriverFlag) != sqlstorage.PostgreSQL.String() {
-				return nil
-			}
 			return &sqlstorage.PostgresConfig{
 				ConnString: v.GetString(storagePostgresConnectionStringFlag),
 			}
@@ -116,6 +103,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 			})
 		})
 		res = append(res, middlewares.Log())
+		res = append(res, middleware.Recoverer)
 		return res
 	}))
 

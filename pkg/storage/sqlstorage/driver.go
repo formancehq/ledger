@@ -19,9 +19,11 @@ import (
 
 const SystemSchema = "_system"
 
-var sqlDrivers = map[Flavor]struct {
+type pgxDriver struct {
 	driverName string
-}{}
+}
+
+var pgxSqlDriver pgxDriver
 
 type otelSQLDriverWithCheckNamedValueDisabled struct {
 	driver.Driver
@@ -33,44 +35,35 @@ func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedV
 
 var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
 
-func UpdateSQLDriverMapping(flavor Flavor, name string) {
-	cfg := sqlDrivers[flavor]
-	cfg.driverName = name
-	sqlDrivers[flavor] = cfg
-}
-
 func init() {
 	// Default mapping for app driver/sql driver
-	UpdateSQLDriverMapping(PostgreSQL, "pgx")
+	pgxSqlDriver.driverName = "pgx"
 }
 
-func InstrumentalizeSQLDrivers() {
-	for flavor, config := range sqlDrivers {
-		// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
-		// pgx implements this interface and just return nil
-		// so, we need to manually wrap the driver to implements this interface and return a nil error
-		db, err := sql.Open(config.driverName, "")
-		if err != nil {
-			panic(err)
-		}
-
-		dri := db.Driver()
-
-		if err = db.Close(); err != nil {
-			panic(err)
-		}
-
-		wrappedDriver := otelsql.Wrap(dri,
-			otelsql.AllowRoot(),
-			otelsql.TraceAll(),
-		)
-
-		config.driverName = fmt.Sprintf("otel-%s", config.driverName)
-		sql.Register(config.driverName, otelSQLDriverWithCheckNamedValueDisabled{
-			wrappedDriver,
-		})
-		sqlDrivers[flavor] = config
+func InstrumentalizeSQLDriver() {
+	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
+	// pgx implements this interface and just return nil
+	// so, we need to manually wrap the driver to implements this interface and return a nil error
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		panic(err)
 	}
+
+	dri := db.Driver()
+
+	if err = db.Close(); err != nil {
+		panic(err)
+	}
+
+	wrappedDriver := otelsql.Wrap(dri,
+		otelsql.AllowRoot(),
+		otelsql.TraceAll(),
+	)
+
+	pgxSqlDriver.driverName = fmt.Sprintf("otel-%s", pgxSqlDriver.driverName)
+	sql.Register(pgxSqlDriver.driverName, otelSQLDriverWithCheckNamedValueDisabled{
+		wrappedDriver,
+	})
 }
 
 // defaultExecutorProvider use the context to register and manage a sql transaction (if the context is mark as transactional)

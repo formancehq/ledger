@@ -13,10 +13,6 @@ import (
 )
 
 func TestMigrate17(t *testing.T) {
-	if ledgertesting.StorageDriverName() != "postgres" {
-		t.Skip()
-	}
-
 	driver, closeFunc, err := ledgertesting.StorageDriver()
 	require.NoError(t, err)
 	defer closeFunc()

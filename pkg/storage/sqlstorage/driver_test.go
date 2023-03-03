@@ -1,24 +1,25 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
-	"github.com/pborman/uuid"
+	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewDriver(t *testing.T) {
-	d := NewDriver("sqlite", &sqliteDB{
-		directory: os.TempDir(),
-		dbName:    uuid.New(),
-	})
+	d, stopFn, err := ledgertesting.StorageDriver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopFn()
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
-	defer func(d *Driver, ctx context.Context) {
+	defer func(d *sqlstorage.Driver, ctx context.Context) {
 		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
 
@@ -29,17 +30,20 @@ func TestNewDriver(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NoError(t, store.Close(context.Background()))
+	assert.NoError(t, d.Close(context.Background()))
 
-	_, err = store.schema.QueryContext(context.Background(), "select * from transactions")
+	_, err = store.Schema().QueryContext(context.Background(), "select * from transactions")
 	assert.Error(t, err)
 	assert.Equal(t, "sql: database is closed", err.Error())
 }
 
 func TestConfiguration(t *testing.T) {
-	d := NewDriver("sqlite", &sqliteDB{
-		directory: os.TempDir(),
-		dbName:    uuid.New(),
-	})
+	d, stopFn, err := ledgertesting.StorageDriver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopFn()
+
 	require.NoError(t, d.Initialize(context.Background()))
 
 	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))

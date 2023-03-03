@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
@@ -85,7 +83,7 @@ func (s *PGSchema) Delete(ctx context.Context) error {
 func (s *PGSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	rows, err := s.baseSchema.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, errorFromFlavor(PostgreSQL, err)
+		return nil, postgresError(err)
 	}
 	return rows, nil
 }
@@ -93,40 +91,7 @@ func (s *PGSchema) QueryContext(ctx context.Context, query string, args ...inter
 func (s *PGSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	ret, err := s.baseSchema.ExecContext(ctx, query, args...)
 	if err != nil {
-		return nil, errorFromFlavor(PostgreSQL, err)
-	}
-	return ret, nil
-}
-
-type SQLiteSchema struct {
-	baseSchema
-	file string
-}
-
-func (s SQLiteSchema) Flavor() sqlbuilder.Flavor {
-	return sqlbuilder.SQLite
-}
-
-func (s SQLiteSchema) Delete(ctx context.Context) error {
-	err := s.baseSchema.DB.Close()
-	if err != nil {
-		return err
-	}
-	return os.RemoveAll(s.file)
-}
-
-func (s *SQLiteSchema) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	rows, err := s.baseSchema.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, errorFromFlavor(SQLite, err)
-	}
-	return rows, nil
-}
-
-func (s *SQLiteSchema) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	ret, err := s.baseSchema.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, errorFromFlavor(SQLite, err)
+		return nil, postgresError(err)
 	}
 	return ret, nil
 }
@@ -170,45 +135,5 @@ func (p *postgresDB) Close(ctx context.Context) error {
 func NewPostgresDB(db *sql.DB) *postgresDB {
 	return &postgresDB{
 		db: db,
-	}
-}
-
-type sqliteDB struct {
-	directory string
-	dbName    string
-}
-
-func (p *sqliteDB) Initialize(ctx context.Context) error {
-	return nil
-}
-
-func (p *sqliteDB) Schema(ctx context.Context, name string) (Schema, error) {
-	file := path.Join(
-		p.directory,
-		fmt.Sprintf("%s_%s.db", p.dbName, name),
-	)
-	db, err := OpenSQLDB(SQLite, file)
-	if err != nil {
-		return nil, err
-	}
-
-	return &SQLiteSchema{
-		baseSchema: baseSchema{
-			name:    name,
-			DB:      db,
-			closeDb: true,
-		},
-		file: file,
-	}, nil
-}
-
-func (p *sqliteDB) Close(ctx context.Context) error {
-	return nil
-}
-
-func NewSQLiteDB(directory, dbName string) *sqliteDB {
-	return &sqliteDB{
-		directory: directory,
-		dbName:    dbName,
 	}
 }

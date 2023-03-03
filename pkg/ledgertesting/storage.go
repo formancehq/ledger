@@ -2,48 +2,30 @@ package ledgertesting
 
 import (
 	"context"
-	"os"
 
 	"github.com/formancehq/ledger/internal/pgtesting"
 	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
-	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
-func StorageDriverName() string {
-	fromEnv := os.Getenv("STORAGE_DRIVER")
-	if fromEnv != "" {
-		return fromEnv
-	}
-	return "sqlite"
-}
-
 func StorageDriver() (*sqlstorage.Driver, func(), error) {
-	switch StorageDriverName() {
-	case "sqlite":
-		id := uuid.New()
-		return sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id)), func() {}, nil
-	case "postgres":
-		pgServer, err := pgtesting.PostgresServer()
-		if err != nil {
-			return nil, nil, err
-		}
-		db, err := sqlstorage.OpenSQLDB(sqlstorage.PostgreSQL, pgServer.ConnString())
-		if err != nil {
-			return nil, nil, err
-		}
-		return sqlstorage.NewDriver(
-				"postgres",
-				sqlstorage.NewPostgresDB(db),
-			), func() {
-				_ = pgServer.Close()
-			}, nil
+	pgServer, err := pgtesting.PostgresServer()
+	if err != nil {
+		return nil, nil, err
 	}
-	return nil, nil, errors.New("not found driver")
+	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
+	if err != nil {
+		return nil, nil, err
+	}
+	return sqlstorage.NewDriver(
+			"postgres",
+			sqlstorage.NewPostgresDB(db),
+		), func() {
+			_ = pgServer.Close()
+		}, nil
 }
 
 func ProvideStorageDriver() fx.Option {

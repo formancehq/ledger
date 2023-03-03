@@ -28,8 +28,7 @@ func NewAPI(routes *routes.Routes) *API {
 }
 
 type Config struct {
-	StorageDriver string
-	Version       string
+	Version string
 }
 
 func Module(cfg Config) fx.Option {

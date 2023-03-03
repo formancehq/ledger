@@ -42,7 +42,7 @@ func TestServer(t *testing.T) {
 		},
 		{
 			name: "pg",
-			args: []string{"--storage.driver", "postgres", "--storage.postgres.conn_string", db.ConnString()},
+			args: []string{"--storage.postgres.conn_string", db.ConnString()},
 		},
 		{
 			name: "pg-with-env-var",

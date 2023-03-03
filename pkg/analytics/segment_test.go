@@ -7,15 +7,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -87,10 +86,16 @@ var (
 			})
 		}),
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
-			id := uuid.New()
-			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
+			driver, stopFn, err := ledgertesting.StorageDriver()
+			if err != nil {
+				return nil, err
+			}
 			lc.Append(fx.Hook{
 				OnStart: driver.Initialize,
+				OnStop: func(ctx context.Context) error {
+					stopFn()
+					return driver.Close(ctx)
+				},
 			})
 			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
 		}),

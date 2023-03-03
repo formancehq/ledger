@@ -20,7 +20,6 @@ import (
 	"github.com/formancehq/ledger/pkg/api/internal"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -1765,9 +1764,6 @@ func TestTooManyClient(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				if ledgertesting.StorageDriverName() != "postgres" {
-					return nil
-				}
 				if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
 					return nil
 				}
