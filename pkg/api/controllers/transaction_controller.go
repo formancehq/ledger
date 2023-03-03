@@ -200,7 +200,7 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err := l.ExecuteTxsData(r.Context(), preview, txData)
+		res, err := l.ExecuteScript(r.Context(), preview, core.TxToScriptData(txData))
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -222,7 +222,7 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 		return
 	}
 
-	sharedapi.Ok(w, []core.ExpandedTransaction{res})
+	sharedapi.Ok(w, res)
 }
 
 func (ctl *TransactionController) GetTransaction(w http.ResponseWriter, r *http.Request) {
@@ -289,40 +289,4 @@ func (ctl *TransactionController) PostTransactionMetadata(w http.ResponseWriter,
 	}
 
 	sharedapi.NoContent(w)
-}
-
-func (ctl *TransactionController) PostTransactionsBatch(w http.ResponseWriter, r *http.Request) {
-	l := LedgerFromContext(r.Context())
-
-	var txs core.Transactions
-	if err := json.NewDecoder(r.Body).Decode(&txs); err != nil {
-		apierrors.ResponseError(w, r, ledger.NewValidationError("invalid transactions format"))
-		return
-	}
-
-	if len(txs.Transactions) == 0 {
-		apierrors.ResponseError(w, r, ledger.NewValidationError("no transaction to insert"))
-		return
-	}
-
-	for i, tx := range txs.Transactions {
-		if len(tx.Postings) == 0 {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(errors.New(fmt.Sprintf(
-				"invalid transaction %d: no postings", i)).Error()))
-			return
-		}
-		if j, err := tx.Postings.Validate(); err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(errors.Wrap(err,
-				fmt.Sprintf("invalid transaction %d: posting %d", i, j)).Error()))
-			return
-		}
-	}
-
-	res, err := l.ExecuteTxsData(r.Context(), false, txs.Transactions...)
-	if err != nil {
-		apierrors.ResponseError(w, r, err)
-		return
-	}
-
-	sharedapi.Ok(w, res)
 }

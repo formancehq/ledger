@@ -60,14 +60,6 @@ func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, t
 		}))
 }
 
-func (l *ledgerMonitor) UpdatedMapping(ctx context.Context, ledger string, mapping core.Mapping) {
-	l.publish(ctx, EventTypeUpdatedMapping,
-		newEventUpdatedMapping(UpdatedMapping{
-			Ledger:  ledger,
-			Mapping: mapping,
-		}))
-}
-
 func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
 	l.publish(ctx, EventTypeRevertedTransaction,
 		newEventRevertedTransaction(RevertedTransaction{

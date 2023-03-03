@@ -45,9 +45,8 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 	return func(ctx context.Context) error {
 		numTxs := txsPages*pageSize + additionalTxs
 		if numTxs > 0 {
-			txsData := make([]core.TransactionData, numTxs)
 			for i := 0; i < numTxs; i++ {
-				txsData[i] = core.TransactionData{
+				rec := internal.PostTransaction(t, api, controllers.PostTransaction{
 					Postings: core.Postings{
 						{
 							Source:      "world",
@@ -57,10 +56,9 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 						},
 					},
 					Reference: fmt.Sprintf("ref:%06d", i),
-				}
+				}, false)
+				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 			}
-			rsp := internal.PostTransactionBatch(t, api, core.Transactions{Transactions: txsData})
-			require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
 		}
 
 		rsp := internal.CountTransactions(api, url.Values{})

@@ -40,7 +40,6 @@ func TestStore(t *testing.T) {
 		{name: "GetAccounts", fn: testGetAccounts},
 		{name: "Transactions", fn: testTransactions},
 		{name: "GetTransaction", fn: testGetTransaction},
-		{name: "Mapping", fn: testMapping},
 		{name: "TooManyClient", fn: testTooManyClient},
 		{name: "GetBalances", fn: testGetBalances},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
@@ -661,37 +660,6 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		// Should get only the third transaction.
 		require.Len(t, cursor.Data, 1)
 	})
-}
-
-func testMapping(t *testing.T, store *sqlstorage.Store) {
-	m := core.Mapping{
-		Contracts: []core.Contract{
-			{
-				Expr: &core.ExprGt{
-					Op1: core.VariableExpr{Name: "balance"},
-					Op2: core.ConstantExpr{Value: core.NewMonetaryInt(0)},
-				},
-				Account: "orders:*",
-			},
-		},
-	}
-	err := store.SaveMapping(context.Background(), m)
-	assert.NoError(t, err)
-
-	mapping, err := store.LoadMapping(context.Background())
-	assert.NoError(t, err)
-	assert.Len(t, mapping.Contracts, 1)
-	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
-
-	m2 := core.Mapping{
-		Contracts: []core.Contract{},
-	}
-	err = store.SaveMapping(context.Background(), m2)
-	assert.NoError(t, err)
-
-	mapping, err = store.LoadMapping(context.Background())
-	assert.NoError(t, err)
-	assert.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store *sqlstorage.Store) {

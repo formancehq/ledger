@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DmitriyVTitov/size"
 	"github.com/formancehq/ledger/pkg/api/apierrors"
@@ -21,7 +22,7 @@ import (
 )
 
 func TestNoScript(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		script := core.ScriptData{}
 
 		_, err := l.ExecuteScript(context.Background(), false, script)
@@ -31,7 +32,7 @@ func TestNoScript(t *testing.T) {
 }
 
 func TestCompilationError(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		script := core.ScriptData{
 			Script: core.Script{Plain: "willnotcompile"},
 		}
@@ -79,7 +80,7 @@ func TestMappingIgnoreDestinations(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		t.Run("nominal", func(t *testing.T) {
 			script := core.ScriptData{
 				Script: core.Script{
@@ -176,7 +177,7 @@ func TestSend(t *testing.T) {
 }
 
 func TestNoVariables(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
@@ -198,7 +199,7 @@ func TestNoVariables(t *testing.T) {
 }
 
 func TestVariables(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
@@ -225,7 +226,7 @@ func TestVariables(t *testing.T) {
 }
 
 func TestVariablesEmptyAccount(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		script := core.ScriptData{
 			Script: core.Script{
 				Plain: `
@@ -266,19 +267,16 @@ func TestVariablesEmptyAccount(t *testing.T) {
 }
 
 func TestEnoughFunds(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		tx := core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "user:001",
-					Amount:      core.NewMonetaryInt(100),
-					Asset:       "COIN",
-				},
+	runOnLedger(t, func(l *ledger.Ledger) {
+		_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+			Script: core.Script{
+				Plain: `send [COIN 100] (
+	source = @world
+	destination = @user:001
+)`,
 			},
-		}
-
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			Timestamp: time.Time{},
+		})
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -297,19 +295,17 @@ func TestEnoughFunds(t *testing.T) {
 }
 
 func TestNotEnoughFunds(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		tx := core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "user:002",
-					Amount:      core.NewMonetaryInt(100),
-					Asset:       "COIN",
-				},
-			},
-		}
+	runOnLedger(t, func(l *ledger.Ledger) {
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+			Script: core.Script{
+				Plain: `send [COIN 100] (
+	source = @world
+	destination = @user:002
+)`,
+			},
+			Timestamp: time.Time{},
+		})
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -328,7 +324,7 @@ func TestNotEnoughFunds(t *testing.T) {
 }
 
 func TestMissingMetadata(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		plain := `
 			vars {
 				account $sale
@@ -354,19 +350,16 @@ func TestMissingMetadata(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
-		tx := core.TransactionData{
-			Postings: []core.Posting{
-				{
-					Source:      "world",
-					Destination: "sales:042",
-					Amount:      core.NewMonetaryInt(100),
-					Asset:       "COIN",
-				},
+	runOnLedger(t, func(l *ledger.Ledger) {
+		_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+			Script: core.Script{
+				Plain: `send [COIN 100] (
+	source = @world
+	destination = @sales:042
+)`,
 			},
-		}
-
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			Timestamp: time.Time{},
+		})
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
@@ -487,7 +480,7 @@ func TestSetTxMeta(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			runOnLedger(func(l *ledger.Ledger) {
+			runOnLedger(t, func(l *ledger.Ledger) {
 				_, err := l.ExecuteScript(context.Background(), false, tc.script)
 
 				if tc.expectedErrorCode != "" {
@@ -505,7 +498,7 @@ func TestSetTxMeta(t *testing.T) {
 }
 
 func TestScriptSetReference(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		plain := `
 			send [USD/2 99] (
 				source=@world
@@ -531,7 +524,7 @@ func TestScriptSetReference(t *testing.T) {
 }
 
 func TestScriptReferenceConflict(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		_, err := l.ExecuteScript(context.Background(), false,
 			core.ScriptData{
 				Script: core.Script{
@@ -564,7 +557,7 @@ func TestScriptReferenceConflict(t *testing.T) {
 }
 
 func TestSetAccountMeta(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		t.Run("valid", func(t *testing.T) {
 			_, err := l.ExecuteScript(context.Background(), false,
 				core.ScriptData{
@@ -613,18 +606,16 @@ func TestSetAccountMeta(t *testing.T) {
 
 func TestMonetaryVariableBalance(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
-			tx := core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "users:001",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "COIN",
-					},
+		runOnLedger(t, func(l *ledger.Ledger) {
+			_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+				Script: core.Script{
+					Plain: `send [COIN 100] (
+	source = @world
+	destination = @users:001
+)`,
 				},
-			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+				Timestamp: time.Time{},
+			})
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -648,24 +639,22 @@ func TestMonetaryVariableBalance(t *testing.T) {
 	})
 
 	t.Run("complex", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
-			tx := core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "A",
-						Amount:      core.NewMonetaryInt(40),
-						Asset:       "USD/2",
-					},
-					{
-						Source:      "world",
-						Destination: "C",
-						Amount:      core.NewMonetaryInt(90),
-						Asset:       "USD/2",
-					},
+		runOnLedger(t, func(l *ledger.Ledger) {
+			_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+				Script: core.Script{
+					Plain: `
+send [USD/2 40] (
+	source = @world
+	destination = @A
+)
+send [USD/2 90] (
+	source = @world
+	destination = @C
+)
+`,
 				},
-			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+				Timestamp: time.Time{},
+			})
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -695,18 +684,16 @@ func TestMonetaryVariableBalance(t *testing.T) {
 	})
 
 	t.Run("error insufficient funds", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
-			tx := core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "users:001",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "COIN",
-					},
+		runOnLedger(t, func(l *ledger.Ledger) {
+			_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+				Script: core.Script{
+					Plain: `send [COIN 100] (
+	source = @world
+	destination = @users:001
+)`,
 				},
-			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+				Timestamp: time.Time{},
+			})
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -731,18 +718,16 @@ func TestMonetaryVariableBalance(t *testing.T) {
 	})
 
 	t.Run("error negative balance", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
-			tx := core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "users:001",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "COIN",
-					},
+		runOnLedger(t, func(l *ledger.Ledger) {
+			_, err := l.ExecuteScript(context.Background(), false, core.ScriptData{
+				Script: core.Script{
+					Plain: `send [COIN 100] (
+	source = @world
+	destination = @users:001
+)`,
 				},
-			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+				Timestamp: time.Time{},
+			})
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -765,7 +750,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 	})
 
 	t.Run("error variable type", func(t *testing.T) {
-		runOnLedger(func(l *ledger.Ledger) {
+		runOnLedger(t, func(l *ledger.Ledger) {
 			script := core.ScriptData{
 				Script: core.Script{
 					Plain: `

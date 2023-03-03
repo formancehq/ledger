@@ -10,7 +10,7 @@ import (
 )
 
 func TestVolumeAggregator(t *testing.T) {
-	runOnLedger(func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *ledger.Ledger) {
 		defer func(l *ledger.Ledger, ctx context.Context) {
 			require.NoError(t, l.Close(ctx))
 		}(l, context.Background())

@@ -300,67 +300,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /{ledger}/mapping:
-    get:
-      tags:
-        - Mapping
-      operationId: getMapping
-      summary: Get the mapping of a ledger
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MappingResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-    put:
-      tags:
-        - Mapping
-      operationId: updateMapping
-      summary: Update the mapping of a ledger
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Mapping'
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MappingResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /{ledger}/script:
     post:
       deprecated: true
@@ -721,7 +660,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/TransactionResponse'
         default:
           description: Error
           content:
@@ -836,40 +775,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledger}/transactions/batch:
-    post:
-      tags:
-        - Transactions
-      summary: Create a new batch of transactions to a ledger
-      operationId: CreateTransactions
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Transactions'
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionsResponse'
         default:
           description: Error
           content:
@@ -1362,29 +1267,6 @@ components:
         USD: 100
         EUR: 12
 
-    Contract:
-      type: object
-      properties:
-        account:
-          type: string
-          example: users:001
-        expr:
-          type: object
-      required:
-        - accounts
-        - expr
-
-    Mapping:
-      type: object
-      nullable: true
-      required:
-        - contracts
-      properties:
-        contracts:
-          type: array
-          items:
-            $ref: '#/components/schemas/Contract'
-
     Posting:
       type: object
       properties:
@@ -1559,16 +1441,6 @@ components:
         - hash
         - date
 
-    TransactionsResponse:
-      type: object
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/Transaction'
-          type: array
-      required:
-        - data
-
     TransactionResponse:
       properties:
         data:
@@ -1584,12 +1456,6 @@ components:
       type: object
       required:
         - data
-
-    MappingResponse:
-      properties:
-        data:
-          $ref: '#/components/schemas/Mapping'
-      type: object
 
     ConfigInfoResponse:
       properties:
