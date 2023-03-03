@@ -79,10 +79,8 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(serve)
 	root.AddCommand(conf)
-	root.AddCommand(UICmd)
 	root.AddCommand(store)
 	root.AddCommand(version)
-	root.AddCommand(stickersCmd)
 
 	root.AddCommand(NewDocCommand())
 
