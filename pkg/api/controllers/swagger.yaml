@@ -75,7 +75,7 @@ paths:
             example: users:.+
         - name: metadata
           in: query
-          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: Filter accounts by metadata key value pairs. Can be used like this metadata[key]=value1&metadata[a.nested.key]=value2
           style: deepObject
           explode: true
           schema:
