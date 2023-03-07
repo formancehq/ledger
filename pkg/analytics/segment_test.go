@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -77,16 +78,17 @@ const (
 	writeKey      = "key"
 )
 
-var (
-	module = fx.Options(
+func module(t pgtesting.TestingT) fx.Option {
+	return fx.Options(
 		NewHeartbeatModule(version, writeKey, interval),
+		fx.NopLogger,
 		fx.Provide(func() AppIdProvider {
 			return AppIdProviderFn(func(ctx context.Context) (string, error) {
 				return "foo", nil
 			})
 		}),
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
-			driver, stopFn, err := ledgertesting.StorageDriver()
+			driver, stopFn, err := ledgertesting.StorageDriver(t)
 			if err != nil {
 				return nil, err
 			}
@@ -100,7 +102,7 @@ var (
 			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
 		}),
 	)
-)
+}
 
 func EventuallyQueueNotEmpty[ITEM any](t *testing.T, queue *Queue[ITEM]) {
 	require.Eventually(t, func() bool {
@@ -132,7 +134,7 @@ func TestSegment(t *testing.T) {
 
 	t.Run("Nominal case", func(t *testing.T) {
 		queue := NewQueue[*http.Request]()
-		app := newApp(module, func(request *http.Request) (*http.Response, error) {
+		app := newApp(module(t), func(request *http.Request) (*http.Response, error) {
 			queue.Put(request)
 			return emptyHttpResponse, nil
 		})
@@ -162,7 +164,7 @@ func TestSegment(t *testing.T) {
 		firstCallChan := make(chan struct{})
 
 		queue := NewQueue[*http.Request]()
-		app := newApp(module, func(request *http.Request) (*http.Response, error) {
+		app := newApp(module(t), func(request *http.Request) (*http.Response, error) {
 			select {
 			case <-firstCallChan: // Enter this case only if the chan is closed
 				queue.Put(request)

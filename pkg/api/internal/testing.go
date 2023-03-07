@@ -210,7 +210,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		api.Module(api.Config{Version: "latest"}),
 		// 100 000 000 bytes is 100 MB
 		ledger.ResolveModule(100000000, 100),
-		ledgertesting.ProvideLedgerStorageDriver(),
+		ledgertesting.ProvideLedgerStorageDriver(t),
 		fx.Invoke(func(driver storage.Driver[ledger.Store], lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {

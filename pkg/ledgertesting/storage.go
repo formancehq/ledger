@@ -3,34 +3,31 @@ package ledgertesting
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/pgtesting"
 	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"go.uber.org/fx"
 )
 
-func StorageDriver() (*sqlstorage.Driver, func(), error) {
-	pgServer, err := pgtesting.PostgresServer()
-	if err != nil {
-		return nil, nil, err
-	}
+func StorageDriver(t pgtesting.TestingT) (*sqlstorage.Driver, func(), error) {
+
+	pgServer := pgtesting.NewPostgresDatabase(t)
+
 	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
 	if err != nil {
 		return nil, nil, err
 	}
 	return sqlstorage.NewDriver(
-			"postgres",
-			sqlstorage.NewPostgresDB(db),
-		), func() {
-			_ = pgServer.Close()
-		}, nil
+		"postgres",
+		sqlstorage.NewPostgresDB(db),
+	), func() {}, nil
 }
 
-func ProvideStorageDriver() fx.Option {
+func ProvideStorageDriver(t pgtesting.TestingT) fx.Option {
 	return fx.Provide(func(lc fx.Lifecycle) (*sqlstorage.Driver, error) {
-		driver, stopFn, err := StorageDriver()
+		driver, stopFn, err := StorageDriver(t)
 		if err != nil {
 			return nil, err
 		}
@@ -45,9 +42,9 @@ func ProvideStorageDriver() fx.Option {
 	})
 }
 
-func ProvideLedgerStorageDriver() fx.Option {
+func ProvideLedgerStorageDriver(t pgtesting.TestingT) fx.Option {
 	return fx.Options(
-		ProvideStorageDriver(),
+		ProvideStorageDriver(t),
 		fx.Provide(
 			fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
 				fx.As(new(storage.Driver[ledger.Store]))),

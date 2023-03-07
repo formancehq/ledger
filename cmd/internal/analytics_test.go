@@ -94,8 +94,9 @@ func TestAnalyticsModule(t *testing.T) {
 	module := NewAnalyticsModule(v, "1.0.0")
 	app := fx.New(
 		module,
+		fx.NopLogger,
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
-			driver, stopFn, err := ledgertesting.StorageDriver()
+			driver, stopFn, err := ledgertesting.StorageDriver(t)
 			if err != nil {
 				return nil, err
 			}

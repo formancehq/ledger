@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewDriver(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver()
+	d, stopFn, err := ledgertesting.StorageDriver(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestNewDriver(t *testing.T) {
 }
 
 func TestConfiguration(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver()
+	d, stopFn, err := ledgertesting.StorageDriver(t)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestAccounts(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver()
+	d, stopFn, err := ledgertesting.StorageDriver(t)
 	if err != nil {
 		t.Fatal(err)
 	}
