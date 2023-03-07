@@ -23,7 +23,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 
 	app := fx.New(
 		fx.NopLogger,
-		ledgertesting.ProvideStorageDriver(),
+		ledgertesting.ProvideStorageDriver(b),
 		fx.Invoke(func(driver *sqlstorage.Driver, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
