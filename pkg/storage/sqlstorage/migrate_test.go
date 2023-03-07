@@ -6,18 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/pgtesting"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMigrates(t *testing.T) {
-	pgServer, err := pgtesting.PostgresServer()
-	if err != nil {
-		t.Fatal(err)
-	}
+	pgServer := pgtesting.NewPostgresDatabase(t)
+
 	sqlDB, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
 	if err != nil {
 		t.Fatal(err)

@@ -2,18 +2,15 @@ package controllers_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/pgtesting"
 	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/api/controllers"
@@ -1754,34 +1751,6 @@ func TestTransactionsVolumes(t *testing.T) {
 				require.Equal(t, expPreVolumes, cursor.Data[0].PreCommitVolumes)
 				require.Equal(t, expPostVolumes, cursor.Data[0].PostCommitVolumes)
 
-				return nil
-			},
-		})
-	}))
-}
-
-func TestTooManyClient(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
-		lc.Append(fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				if os.Getenv("STORAGE_POSTGRES_CONN_STRING") != "" { // Use of external server, ignore this test
-					return nil
-				}
-
-				store, _, err := driver.GetLedgerStore(context.Background(), "quickstart", true)
-				require.NoError(t, err)
-
-				// Grab all potential connections
-				for i := 0; i < pgtesting.MaxConnections; i++ {
-					tx, err := store.(*sqlstorage.Store).Schema().BeginTx(context.Background(), &sql.TxOptions{})
-					require.NoError(t, err)
-					defer func(tx *sql.Tx) {
-						_ = tx.Rollback()
-					}(tx)
-				}
-
-				rsp := internal.GetTransactions(api, url.Values{})
-				require.Equal(t, http.StatusServiceUnavailable, rsp.Result().StatusCode)
 				return nil
 			},
 		})

@@ -12,17 +12,18 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
-func withContainer(t require.TestingT, options ...fx.Option) {
+func withContainer(t pgtesting.TestingT, options ...fx.Option) {
 	done := make(chan struct{})
 	opts := append([]fx.Option{
 		fx.NopLogger,
-		ledgertesting.ProvideLedgerStorageDriver(),
+		ledgertesting.ProvideLedgerStorageDriver(t),
 	}, options...)
 	opts = append(opts, fx.Invoke(func(lc fx.Lifecycle) {
 		lc.Append(fx.Hook{
@@ -36,7 +37,7 @@ func withContainer(t require.TestingT, options ...fx.Option) {
 	require.NoError(t, app.Start(context.Background()))
 }
 
-func runOnLedger(t require.TestingT, f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
+func runOnLedger(t pgtesting.TestingT, f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
 	var storageDriver storage.Driver[ledger.Store]
 	withContainer(t, fx.Populate(&storageDriver))
 

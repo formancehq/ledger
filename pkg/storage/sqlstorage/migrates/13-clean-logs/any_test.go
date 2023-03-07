@@ -9,13 +9,20 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMigrate(t *testing.T) {
-	driver, closeFunc, err := ledgertesting.StorageDriver()
+
+	require.NoError(t, pgtesting.CreatePostgresServer())
+	defer func() {
+		require.NoError(t, pgtesting.DestroyPostgresServer())
+	}()
+
+	driver, closeFunc, err := ledgertesting.StorageDriver(t)
 	require.NoError(t, err)
 	defer closeFunc()
 
