@@ -40,7 +40,7 @@ type Routes struct {
 	transactionController controllers.TransactionController
 	globalMiddlewares     []func(handler http.Handler) http.Handler
 	idempotencyStore      storage.Driver[idempotency.Store]
-	locker                middlewares.Locker
+	locker                ledger.Locker
 }
 
 func NewRoutes(
@@ -54,7 +54,7 @@ func NewRoutes(
 	transactionController controllers.TransactionController,
 	healthController *health.HealthController,
 	idempotencyStore storage.Driver[idempotency.Store],
-	locker middlewares.Locker,
+	locker ledger.Locker,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -102,7 +102,7 @@ func (r *Routes) Engine() *chi.Mux {
 			router.Head("/accounts", r.accountController.CountAccounts)
 			router.Get("/accounts/{address}", r.accountController.GetAccount)
 			router.With(
-				middlewares.Transaction(r.locker),
+				middlewares.Lock(r.locker),
 				idempotency.Middleware(r.idempotencyStore),
 			).Post("/accounts/{address}/metadata", r.accountController.PostAccountMetadata)
 
@@ -111,17 +111,17 @@ func (r *Routes) Engine() *chi.Mux {
 			router.Head("/transactions", r.transactionController.CountTransactions)
 
 			router.With(
-				middlewares.Transaction(r.locker),
+				middlewares.Lock(r.locker),
 				idempotency.Middleware(r.idempotencyStore),
 			).Post("/transactions", r.transactionController.PostTransaction)
 
 			router.Get("/transactions/{txid}", r.transactionController.GetTransaction)
 			router.With(
-				middlewares.Transaction(r.locker),
+				middlewares.Lock(r.locker),
 				idempotency.Middleware(r.idempotencyStore),
 			).Post("/transactions/{txid}/revert", r.transactionController.RevertTransaction)
 			router.With(
-				middlewares.Transaction(r.locker),
+				middlewares.Lock(r.locker),
 				idempotency.Middleware(r.idempotencyStore),
 			).Post("/transactions/{txid}/metadata", r.transactionController.PostTransactionMetadata)
 

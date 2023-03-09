@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/api/middlewares"
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
@@ -41,7 +41,7 @@ type Lock struct {
 	retry        time.Duration
 }
 
-func (l Lock) tryLock(ctx context.Context, name string) (bool, middlewares.Unlock, error) {
+func (l Lock) tryLock(ctx context.Context, name string) (bool, ledger.Unlock, error) {
 	rv, err := randomString()
 	if err != nil {
 		return false, nil, errors.Wrap(err, "generating random string")
@@ -77,7 +77,7 @@ func (l Lock) tryLock(ctx context.Context, name string) (bool, middlewares.Unloc
 	}, nil
 }
 
-func (l Lock) Lock(ctx context.Context, name string) (middlewares.Unlock, error) {
+func (l Lock) Lock(ctx context.Context, name string) (ledger.Unlock, error) {
 	for {
 		ok, unlock, err := l.tryLock(ctx, name)
 		if err != nil {
@@ -95,7 +95,7 @@ func (l Lock) Lock(ctx context.Context, name string) (middlewares.Unlock, error)
 	}
 }
 
-var _ middlewares.Locker = &Lock{}
+var _ ledger.Locker = &Lock{}
 
 func NewLock(client Client, lockDuration, retry time.Duration) *Lock {
 	return &Lock{

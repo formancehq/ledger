@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/internal"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -132,7 +132,7 @@ func TestGetBalances(t *testing.T) {
 				}, false)
 				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 
-				to := sqlstorage.BalancesPaginationToken{}
+				to := ledgerstore.BalancesPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
 
