@@ -56,7 +56,7 @@ func (r *Runner) Execute(
 		return nil, nil, ErrNoScript
 	}
 
-	reserve, err := r.state.Reserve(ctx, state.ReserveRequest{
+	reserve, ts, err := r.state.Reserve(ctx, state.ReserveRequest{
 		Timestamp: script.Timestamp,
 		Reference: script.Reference,
 	})
@@ -64,6 +64,8 @@ func (r *Runner) Execute(
 		return nil, nil, errorsutil.NewError(ErrState, err)
 	}
 	defer reserve.Clear(nil)
+
+	script.Timestamp = *ts
 
 	transaction, logHolder, err := r.execute(ctx, script, logComputer, dryRun)
 	if err != nil {

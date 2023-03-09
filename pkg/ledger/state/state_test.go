@@ -12,7 +12,7 @@ import (
 
 func TestState(t *testing.T) {
 	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
-	reserve, err := state.Reserve(context.Background(), ReserveRequest{
+	reserve, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: core.Now(),
 	})
 	require.NoError(t, err)
@@ -22,13 +22,13 @@ func TestState(t *testing.T) {
 func TestStateInsertInPastWithNotAllowedPastTimestamp(t *testing.T) {
 	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
 	now := core.Now()
-	reserve1, err := state.Reserve(context.Background(), ReserveRequest{
+	reserve1, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now,
 	})
 	require.NoError(t, err)
 	defer reserve1.Clear(nil)
 
-	_, err = state.Reserve(context.Background(), ReserveRequest{
+	_, _, err = state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now.Add(-time.Second),
 	})
 	require.Error(t, err)
@@ -38,13 +38,13 @@ func TestStateInsertInPastWithNotAllowedPastTimestamp(t *testing.T) {
 func TestStateInsertInPastWithAllowPastTimestamps(t *testing.T) {
 	state := New(NoOpStore, true, core.Now().Add(-10*time.Second))
 	now := core.Now()
-	reserve1, err := state.Reserve(context.Background(), ReserveRequest{
+	reserve1, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now,
 	})
 	require.NoError(t, err)
 	defer reserve1.Clear(nil)
 
-	reserve2, err := state.Reserve(context.Background(), ReserveRequest{
+	reserve2, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now.Add(-time.Second),
 	})
 	require.NoError(t, err)
@@ -55,12 +55,12 @@ func TestStateWithError(t *testing.T) {
 	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
 	now := core.Now()
 
-	_, err := state.Reserve(context.Background(), ReserveRequest{
+	_, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now,
 	})
 	require.NoError(t, err)
 
-	_, err = state.Reserve(context.Background(), ReserveRequest{
+	_, _, err = state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now.Add(-10 * time.Millisecond),
 	})
 	require.Error(t, err)
@@ -74,7 +74,7 @@ func BenchmarkState(b *testing.B) {
 	eg := errgroup.Group{}
 	for i := 0; i < b.N; i++ {
 		eg.Go(func() error {
-			reserve, err := state.Reserve(context.Background(), ReserveRequest{
+			reserve, _, err := state.Reserve(context.Background(), ReserveRequest{
 				Timestamp: now,
 			})
 			require.NoError(b, err)

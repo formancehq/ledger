@@ -72,17 +72,22 @@ func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
 	return nil
 }
 
-func (s *State) Reserve(ctx context.Context, r ReserveRequest) (*Reserve, error) {
+func (s *State) Reserve(ctx context.Context, r ReserveRequest) (*Reserve, *core.Time, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.checkConstraints(ctx, r); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	ts := r.Timestamp
+	if ts.IsZero() {
+		ts = core.Now()
 	}
 
 	ret := &inFlight{
 		reference: r.Reference,
-		timestamp: r.Timestamp,
+		timestamp: ts,
 	}
 	s.inFlights[ret] = struct{}{}
 	if r.Reference != "" {
@@ -101,7 +106,7 @@ func (s *State) Reserve(ctx context.Context, r ReserveRequest) (*Reserve, error)
 	return &Reserve{
 		inFlight: ret,
 		state:    s,
-	}, nil
+	}, &ts, nil
 }
 
 func (s *State) GetMoreRecentTransactionDate() core.Time {
