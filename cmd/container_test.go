@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
@@ -165,7 +164,7 @@ func TestContainers(t *testing.T) {
 				v.Set(lockStrategyRedisUrlFlag, "redis://redis:6789")
 			},
 			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver, locker middlewares.Locker) {
+				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver, locker ledger.Locker) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							require.IsType(t, locker, &redis.Lock{})

@@ -8,9 +8,12 @@ import (
 
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/system"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 )
 
@@ -136,7 +139,7 @@ func NewStorageScan() *cobra.Command {
 		Use: "scan",
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			opt := fx.Invoke(func(driver *sqlstorage.Driver, sqlDb *sql.DB, db sqlstorage.DB, lc fx.Lifecycle) {
+			opt := fx.Invoke(func(driver *sqlstorage.Driver, sqlDb *bun.DB, db schema.DB, lc fx.Lifecycle) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						rows, err := sqlDb.QueryContext(ctx, `
@@ -165,7 +168,7 @@ func NewStorageScan() *cobra.Command {
 							fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
 							// This command is dedicated to upgrade ledger version before 1.4
 							// It will be removed in a near future, so we can assert the system store type without risk
-							created, err := driver.GetSystemStore().(*sqlstorage.SystemStore).
+							created, err := driver.GetSystemStore().(*system.Store).
 								Register(cmd.Context(), ledgerName)
 							if err != nil {
 								fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
