@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/go-chi/chi/v5"
 )
@@ -82,7 +82,7 @@ func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		token := sqlstorage.LogsPaginationToken{}
+		token := ledgerstore.LogsPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
 			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))

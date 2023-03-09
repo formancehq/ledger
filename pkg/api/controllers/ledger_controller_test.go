@@ -17,7 +17,8 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
-				availableMigrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
+				availableMigrations, err := migrations.CollectMigrationFiles(ledgerstore.MigrationsFS)
 				require.NoError(t, err)
 
 				rsp := internal.GetLedgerInfo(h)
@@ -240,7 +241,7 @@ func TestGetLogs(t *testing.T) {
 					}, err)
 				})
 
-				to := sqlstorage.LogsPaginationToken{}
+				to := ledgerstore.LogsPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
 

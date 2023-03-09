@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1257,7 +1257,7 @@ func TestTransactions(t *testing.T) {
 						}, err)
 					})
 
-					to := sqlstorage.TxsPaginationToken{}
+					to := ledgerstore.TxsPaginationToken{}
 					raw, err := json.Marshal(to)
 					require.NoError(t, err)
 

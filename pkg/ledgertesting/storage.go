@@ -7,12 +7,12 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"go.uber.org/fx"
 )
 
 func StorageDriver(t pgtesting.TestingT) (*sqlstorage.Driver, func(), error) {
-
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
 	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
@@ -21,7 +21,7 @@ func StorageDriver(t pgtesting.TestingT) (*sqlstorage.Driver, func(), error) {
 	}
 	return sqlstorage.NewDriver(
 		"postgres",
-		sqlstorage.NewPostgresDB(db),
+		schema.NewPostgresDB(db),
 	), func() {}, nil
 }
 

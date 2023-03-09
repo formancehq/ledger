@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/api/middlewares"
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/fx"
 )
@@ -39,7 +39,7 @@ func Module(cfg Config) fx.Option {
 			options.TLSConfig = cfg.TLSConfig
 			return redis.NewClient(options), nil
 		}),
-		fx.Decorate(func(redisClient Client) middlewares.Locker {
+		fx.Decorate(func(redisClient Client) ledger.Locker {
 			return NewLock(
 				redisClient,
 				cfg.LockDuration,

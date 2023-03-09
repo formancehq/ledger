@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -157,7 +157,7 @@ func TestGetAccounts(t *testing.T) {
 					assert.Equal(t, "bob", string(cursor.Data[0].Address))
 				})
 
-				to := sqlstorage.AccPaginationToken{}
+				to := ledgerstore.AccountsPaginationToken{}
 				raw, err := json.Marshal(to)
 				require.NoError(t, err)
 

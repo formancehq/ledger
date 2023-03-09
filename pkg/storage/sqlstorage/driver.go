@@ -11,8 +11,10 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry"
 	"github.com/formancehq/ledger/pkg/storage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	systemstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/system"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/pkg/errors"
 	"go.nhat.io/otelsql"
 )
@@ -66,46 +68,19 @@ func InstrumentalizeSQLDriver() {
 	})
 }
 
-// defaultExecutorProvider use the context to register and manage a sql transaction (if the context is mark as transactional)
-func defaultExecutorProvider(schema Schema) func(ctx context.Context) (executor, error) {
-	return func(ctx context.Context) (executor, error) {
-		if !storage.IsTransactional(ctx) {
-			return schema, nil
-		}
-
-		if storage.IsTransactionRegistered(ctx) {
-			return storage.RegisteredTransaction(ctx).(*sql.Tx), nil
-		}
-
-		sqlTx, err := schema.BeginTx(ctx, &sql.TxOptions{})
-		if err != nil {
-			return nil, err
-		}
-
-		storage.RegisterTransaction(ctx, sqlTx, func(ctx context.Context) error {
-			return sqlTx.Commit()
-		}, func(ctx context.Context) error {
-			return sqlTx.Rollback()
-		})
-		return sqlTx, nil
-	}
-}
-
 type Driver struct {
 	name              string
-	db                DB
-	systemSchema      Schema
+	db                schema.DB
+	systemStore       *systemstore.Store
 	registeredLedgers map[string]struct{}
 	lock              sync.Mutex
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
-	return &SystemStore{
-		systemSchema: d.systemSchema,
-	}
+	return d.systemStore
 }
 
-func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (*Store, bool, error) {
+func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (*ledgerstore.Store, bool, error) {
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -117,14 +92,13 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 
 	var (
 		created bool
-		schema  Schema
+		schema  schema.Schema
 		err     error
 	)
 	if _, exists := d.registeredLedgers[name]; !exists {
-		systemStore := &SystemStore{
-			systemSchema: d.systemSchema,
-		}
-		exists, err := systemStore.exists(ctx, name)
+		systemStore := d.systemStore
+
+		exists, err := systemStore.Exists(ctx, name)
 		if err != nil {
 			return nil, false, errors.Wrap(err, "checking ledger existence")
 		}
@@ -145,6 +119,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		if err = schema.Initialize(ctx); err != nil {
 			return nil, false, err
 		}
+
 		d.registeredLedgers[name] = struct{}{}
 	} else {
 		schema, err = d.db.Schema(ctx, name)
@@ -153,7 +128,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		}
 	}
 
-	return NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
+	return ledgerstore.NewStore(schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	}, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
@@ -164,40 +139,25 @@ func (d *Driver) Name() string {
 	return d.name
 }
 
-func (d *Driver) Initialize(ctx context.Context) (err error) {
+func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver %s", d.name)
 
-	if err = d.db.Initialize(ctx); err != nil {
-		return
+	if err := d.db.Initialize(ctx); err != nil {
+		return err
 	}
 
-	d.systemSchema, err = d.db.Schema(ctx, SystemSchema)
-	if err != nil {
-		return
-	}
-
-	if err = d.systemSchema.Initialize(ctx); err != nil {
-		return
-	}
-
-	q, args := sqlbuilder.
-		CreateTable(d.systemSchema.Table("ledgers")).
-		Define("ledger varchar(255) primary key, addedAt timestamp").
-		IfNotExists().
-		BuildWithFlavor(d.systemSchema.Flavor())
-
-	_, err = d.systemSchema.ExecContext(ctx, q, args...)
+	systemSchema, err := d.db.Schema(ctx, SystemSchema)
 	if err != nil {
 		return err
 	}
 
-	q, args = sqlbuilder.
-		CreateTable(d.systemSchema.Table("configuration")).
-		Define("key varchar(255) primary key, value text, addedAt timestamp").
-		IfNotExists().
-		BuildWithFlavor(d.systemSchema.Flavor())
-	_, err = d.systemSchema.ExecContext(ctx, q, args...)
-	if err != nil {
+	if err := systemSchema.Initialize(ctx); err != nil {
+		return err
+	}
+
+	d.systemStore = systemstore.NewStore(systemSchema)
+
+	if err := d.systemStore.Initialize(ctx); err != nil {
 		return err
 	}
 
@@ -205,14 +165,14 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 }
 
 func (d *Driver) Close(ctx context.Context) error {
-	err := d.systemSchema.Close(ctx)
+	err := d.systemStore.Close(ctx)
 	if err != nil {
 		return err
 	}
 	return d.db.Close(ctx)
 }
 
-func NewDriver(name string, db DB) *Driver {
+func NewDriver(name string, db schema.DB) *Driver {
 	return &Driver{
 		db:                db,
 		name:              name,
@@ -220,7 +180,7 @@ func NewDriver(name string, db DB) *Driver {
 	}
 }
 
-var _ storage.Driver[*Store] = (*Driver)(nil)
+var _ storage.Driver[*ledgerstore.Store] = (*Driver)(nil)
 
 type LedgerStorageDriver struct {
 	*Driver
