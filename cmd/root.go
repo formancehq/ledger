@@ -117,7 +117,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
-	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
+	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3078", "UI bind address")
 	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
 	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
 	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
