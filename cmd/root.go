@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/formancehq/ledger/cmd/internal"
-	"github.com/formancehq/ledger/pkg/redis"
 	_ "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/9-add-pre-post-volumes"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -17,12 +16,6 @@ import (
 const (
 	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
 	bindFlag                            = "bind"
-	lockStrategyFlag                    = "lock-strategy"
-	lockStrategyRedisUrlFlag            = "lock-strategy-redis-url"
-	lockStrategyRedisDurationFlag       = "lock-strategy-redis-duration"
-	lockStrategyRedisRetryFlag          = "lock-strategy-redis-retry"
-	lockStrategyRedisTLSEnabledFlag     = "lock-strategy-redis-tls-enabled"
-	lockStrategyRedisTLSInsecureFlag    = "lock-strategy-redis-tls-insecure"
 
 	commitPolicyFlag = "commit-policy"
 
@@ -68,12 +61,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(service.DebugFlag, false, "Debug mode")
 	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
-	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
-	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
-	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")
-	root.PersistentFlags().Duration(lockStrategyRedisRetryFlag, redis.DefaultRetryInterval, "Retry lock period")
-	root.PersistentFlags().Bool(lockStrategyRedisTLSEnabledFlag, false, "Use tls on redis")
-	root.PersistentFlags().Bool(lockStrategyRedisTLSInsecureFlag, false, "Whether redis is trusted or not")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	// 100 000 000 bytes is 100 MB

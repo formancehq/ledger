@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/redis"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
@@ -139,35 +138,6 @@ func TestContainers(t *testing.T) {
 							if err != nil {
 								return err
 							}
-							return nil
-						},
-					})
-				}),
-			},
-		},
-		{
-			name: "default-with-lock-strategy-memory",
-			init: func(v *viper.Viper) {
-				v.Set(lockStrategyFlag, "redis")
-			},
-		},
-		{
-			name: "default-with-lock-strategy-none",
-			init: func(v *viper.Viper) {
-				v.Set(lockStrategyFlag, "none")
-			},
-		},
-		{
-			name: "default-with-lock-strategy-redis",
-			init: func(v *viper.Viper) {
-				v.Set(lockStrategyFlag, "redis")
-				v.Set(lockStrategyRedisUrlFlag, "redis://redis:6789")
-			},
-			options: []fx.Option{
-				fx.Invoke(func(lc fx.Lifecycle, resolver *ledger.Resolver, locker ledger.Locker) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							require.IsType(t, locker, &redis.Lock{})
 							return nil
 						},
 					})
