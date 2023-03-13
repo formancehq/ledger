@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
@@ -291,7 +290,7 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 	return s.error(err)
 }
 
-func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
 	a := &Accounts{
 		Address:  address,
 		Metadata: metadata,
@@ -302,18 +301,11 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		On("CONFLICT (address) DO UPDATE").
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
-	if err != nil {
-		return err
-	}
+	return err
 
-	lastLog, err := s.GetLastLog(ctx)
-	if err != nil {
-		return errors.Wrap(err, "reading last log")
-	}
-
-	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   address,
-		Metadata:   metadata,
-	}))
+	// return s.appendLog(ctx, core.NewSetMetadataLog(at, core.SetMetadata{
+	// 	TargetType: core.MetaTargetTypeAccount,
+	// 	TargetID:   address,
+	// 	Metadata:   metadata,
+	// }))
 }

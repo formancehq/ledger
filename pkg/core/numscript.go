@@ -115,7 +115,7 @@ func TxToScriptData(txData TransactionData) ScriptData {
 }
 
 func TxsToScriptsData(txsData ...TransactionData) []ScriptData {
-	res := []ScriptData{}
+	res := make([]ScriptData, 0, len(txsData))
 	for _, txData := range txsData {
 		res = append(res, TxToScriptData(txData))
 	}
