@@ -16,12 +16,23 @@ type Ledger struct {
 	monitor             Monitor
 	allowPastTimestamps bool
 	cache               *ristretto.Cache
+	locker              Locker
 }
 
 type LedgerOption = func(*Ledger)
 
 func WithPastTimestamps(l *Ledger) {
 	l.allowPastTimestamps = true
+}
+
+func WithLocker(locker Locker) LedgerOption {
+	return func(ledger *Ledger) {
+		ledger.locker = locker
+	}
+}
+
+var defaultLedgerOptions = []LedgerOption{
+	WithLocker(NewInMemoryLocker()),
 }
 
 func NewLedger(store Store, monitor Monitor, cache *ristretto.Cache, options ...LedgerOption) (*Ledger, error) {
@@ -31,7 +42,10 @@ func NewLedger(store Store, monitor Monitor, cache *ristretto.Cache, options ...
 		cache:   cache,
 	}
 
-	for _, option := range options {
+	for _, option := range append(
+		defaultLedgerOptions,
+		options...,
+	) {
 		option(l)
 	}
 

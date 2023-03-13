@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"crypto/tls"
 	"net/http"
 
 	"github.com/formancehq/ledger/cmd/internal"
@@ -10,7 +9,6 @@ import (
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/redis"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
@@ -37,23 +35,6 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 
 	// Handle OpenTelemetry
 	options = append(options, otlptraces.CLITracesModule(v))
-
-	switch v.GetString(lockStrategyFlag) {
-	case "redis":
-		var tlsConfig *tls.Config
-		if v.GetBool(lockStrategyRedisTLSEnabledFlag) {
-			tlsConfig = &tls.Config{}
-			if v.GetBool(lockStrategyRedisTLSInsecureFlag) {
-				tlsConfig.InsecureSkipVerify = true
-			}
-		}
-		options = append(options, redis.Module(redis.Config{
-			Url:          v.GetString(lockStrategyRedisUrlFlag),
-			LockDuration: v.GetDuration(lockStrategyRedisDurationFlag),
-			LockRetry:    v.GetDuration(lockStrategyRedisRetryFlag),
-			TLSConfig:    tlsConfig,
-		}))
-	}
 
 	// Handle api part
 	options = append(options, api.Module(api.Config{

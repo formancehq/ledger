@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -210,22 +209,6 @@ var _ storage.Driver[storage.LedgerStore] = (*DefaultStorageDriver)(nil)
 
 func NewDefaultStorageDriverFromRawDriver(driver *Driver) storage.Driver[storage.LedgerStore] {
 	return &DefaultStorageDriver{
-		Driver: driver,
-	}
-}
-
-type IdempotencyStorageDriver struct {
-	*Driver
-}
-
-func (d *IdempotencyStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (idempotency.Store, bool, error) {
-	return d.Driver.GetLedgerStore(ctx, name, create)
-}
-
-var _ storage.Driver[idempotency.Store] = (*IdempotencyStorageDriver)(nil)
-
-func NewIdempotencyStorageDriverFromRawDriver(driver *Driver) storage.Driver[idempotency.Store] {
-	return &IdempotencyStorageDriver{
 		Driver: driver,
 	}
 }

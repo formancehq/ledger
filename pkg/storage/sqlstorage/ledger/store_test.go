@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
@@ -40,7 +38,6 @@ func TestStore(t *testing.T) {
 		{name: "GetTransaction", fn: testGetTransaction},
 		{name: "GetBalances", fn: testGetBalances},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
-		{name: "CreateIK", fn: testIKS},
 	} {
 		t.Run(fmt.Sprintf("postgres/%s", tf.name), func(t *testing.T) {
 			done := make(chan struct{})
@@ -252,28 +249,6 @@ func testCommit(t *testing.T, store *ledgerstore.Store) {
 	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, 1)
-}
-
-func testIKS(t *testing.T, store *ledgerstore.Store) {
-	t.Run("Create and Read", func(t *testing.T) {
-		response := idempotency.Response{
-			RequestHash: "xxx",
-			StatusCode:  http.StatusAccepted,
-			Header: http.Header{
-				"Content-Type": []string{"application/json"},
-			},
-			Body: "Hello World!",
-		}
-		require.NoError(t, store.CreateIK(context.Background(), "foo", response))
-
-		fromDB, err := store.ReadIK(context.Background(), "foo")
-		require.NoError(t, err)
-		require.Equal(t, response, *fromDB)
-	})
-	t.Run("Not found", func(t *testing.T) {
-		_, err := store.ReadIK(context.Background(), uuid.NewString())
-		require.Equal(t, idempotency.ErrIKNotFound, err)
-	})
 }
 
 func testUpdateTransactionMetadata(t *testing.T, store *ledgerstore.Store) {
