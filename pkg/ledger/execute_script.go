@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.ScriptData) (core.ExpandedTransaction, error) {
+func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.ScriptData) (core.ExpandedTransaction, waitLogsAndPostProcessing) {
 
 	unlock, err := l.locker.Lock(ctx, l.store.Name())
 	if err != nil {
@@ -35,8 +35,10 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 
 	lastTx, err := l.store.GetLastTransaction(ctx)
 	if err != nil {
-		return core.ExpandedTransaction{}, errors.Wrap(err,
-			"could not get last transaction")
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return errors.Wrap(err,
+				"could not get last transaction")
+		}
 	}
 
 	vAggr := NewVolumeAggregator(l)
@@ -59,74 +61,94 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		past = true
 	}
 	if past && !l.allowPastTimestamps {
-		return core.ExpandedTransaction{}, NewValidationError(fmt.Sprintf(
-			"cannot pass a timestamp prior to the last transaction: %s (passed) is %s before %s (last)",
-			script.Timestamp.Format(time.RFC3339Nano),
-			lastTx.Timestamp.Sub(script.Timestamp),
-			lastTx.Timestamp.Format(time.RFC3339Nano)))
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return NewValidationError(fmt.Sprintf(
+				"cannot pass a timestamp prior to the last transaction: %s (passed) is %s before %s (last)",
+				script.Timestamp.Format(time.RFC3339Nano),
+				lastTx.Timestamp.Sub(script.Timestamp),
+				lastTx.Timestamp.Format(time.RFC3339Nano)))
+		}
 	}
 
 	if script.Reference != "" {
 		txs, err := l.GetTransactions(ctx, *NewTransactionsQuery().
 			WithReferenceFilter(script.Reference))
 		if err != nil {
-			return core.ExpandedTransaction{}, errors.Wrap(err,
-				"get transactions with reference")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return errors.Wrap(err,
+					"get transactions with reference")
+			}
 		}
 		if len(txs.Data) > 0 {
-			return core.ExpandedTransaction{}, NewConflictError()
+			return core.ExpandedTransaction{}, func(_ context.Context) error { return NewConflictError() }
 		}
 	}
 
 	if script.Plain == "" {
-		return core.ExpandedTransaction{}, NewScriptError(ScriptErrorNoScript,
-			"no script to execute")
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return NewScriptError(ScriptErrorNoScript,
+				"no script to execute")
+		}
 	}
 
 	m, err := NewMachineFromScript(script.Plain, l.cache, span)
 	if err != nil {
-		return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-			err.Error())
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return NewScriptError(ScriptErrorCompilationFailed,
+				err.Error())
+		}
 	}
 
 	if err := m.SetVarsFromJSON(script.Vars); err != nil {
-		return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not set variables").Error())
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return NewScriptError(ScriptErrorCompilationFailed,
+				errors.Wrap(err, "could not set variables").Error())
+		}
 	}
 
 	resourcesChan, err := m.ResolveResources()
 	if err != nil {
-		return core.ExpandedTransaction{}, errors.Wrap(err,
-			"could not resolve program resources")
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return errors.Wrap(err,
+				"could not resolve program resources")
+		}
 	}
 	for req := range resourcesChan {
 		if req.Error != nil {
-			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-				errors.Wrap(req.Error, "could not resolve program resources").Error())
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return NewScriptError(ScriptErrorCompilationFailed,
+					errors.Wrap(req.Error, "could not resolve program resources").Error())
+			}
 		}
 		if _, ok := accs[req.Account]; !ok {
 			accs[req.Account], err = l.GetAccount(ctx, req.Account)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err,
-					fmt.Sprintf("could not get account %q", req.Account))
+				return core.ExpandedTransaction{}, func(_ context.Context) error {
+					return errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
+				}
 			}
 		}
 		if req.Key != "" {
 			entry, ok := accs[req.Account].Metadata[req.Key]
 			if !ok {
-				return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
+				return core.ExpandedTransaction{}, func(_ context.Context) error {
+					return NewScriptError(ScriptErrorCompilationFailed,
+						fmt.Sprintf("missing key %v in metadata for account %v", req.Key, req.Account))
+				}
 			}
 			data, err := json.Marshal(entry)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, "marshaling metadata")
+				return core.ExpandedTransaction{}, func(_ context.Context) error { return errors.Wrap(err, "marshaling metadata") }
 			}
 			value, err := core.NewValueFromTypedJSON(data)
 			if err != nil {
-				return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-					errors.Wrap(err, fmt.Sprintf(
-						"invalid format for metadata at key %v for account %v",
-						req.Key, req.Account)).Error())
+				return core.ExpandedTransaction{}, func(_ context.Context) error {
+					return NewScriptError(ScriptErrorCompilationFailed,
+						errors.Wrap(err, fmt.Sprintf(
+							"invalid format for metadata at key %v for account %v",
+							req.Key, req.Account)).Error())
+				}
 			}
 			req.Response <- *value
 		} else if req.Asset != "" {
@@ -134,27 +156,35 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 			resp := *amt
 			req.Response <- &resp
 		} else {
-			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-				errors.Wrap(err, fmt.Sprintf("invalid ResourceRequest: %+v", req)).Error())
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return NewScriptError(ScriptErrorCompilationFailed,
+					errors.Wrap(err, fmt.Sprintf("invalid ResourceRequest: %+v", req)).Error())
+			}
 		}
 	}
 
 	balanceCh, err := m.ResolveBalances()
 	if err != nil {
-		return core.ExpandedTransaction{}, errors.Wrap(err,
-			"could not resolve balances")
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return errors.Wrap(err,
+				"could not resolve balances")
+		}
 	}
 	for req := range balanceCh {
 		if req.Error != nil {
-			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorCompilationFailed,
-				errors.Wrap(req.Error, "could not resolve program balances").Error())
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return NewScriptError(ScriptErrorCompilationFailed,
+					errors.Wrap(req.Error, "could not resolve program balances").Error())
+			}
 		}
 		var amt *core.MonetaryInt
 		if _, ok := accs[req.Account]; !ok {
 			accs[req.Account], err = l.GetAccount(ctx, req.Account)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err,
-					fmt.Sprintf("could not get account %q", req.Account))
+				return core.ExpandedTransaction{}, func(_ context.Context) error {
+					return errors.Wrap(err,
+						fmt.Sprintf("could not get account %q", req.Account))
+				}
 			}
 		}
 		amt = accs[req.Account].Balances[req.Asset].OrZero()
@@ -164,32 +194,42 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 
 	exitCode, err := m.Execute()
 	if err != nil {
-		return core.ExpandedTransaction{}, errors.Wrap(err,
-			"script execution failed")
+		return core.ExpandedTransaction{}, func(_ context.Context) error {
+			return errors.Wrap(err,
+				"script execution failed")
+		}
 	}
 
 	if exitCode != vm.EXIT_OK {
 		switch exitCode {
 		case vm.EXIT_FAIL:
-			return core.ExpandedTransaction{}, errors.New(
-				"script exited with error code EXIT_FAIL")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return errors.New(
+					"script exited with error code EXIT_FAIL")
+			}
 		case vm.EXIT_FAIL_INVALID:
-			return core.ExpandedTransaction{}, errors.New(
-				"internal error: compiled script was invalid")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return errors.New(
+					"internal error: compiled script was invalid")
+			}
 		case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
 			// TODO: If the machine can provide the asset which is failing
 			// we should be able to use InsufficientFundError{} instead of error code
-			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorInsufficientFund,
-				"account had insufficient funds")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return NewScriptError(ScriptErrorInsufficientFund,
+					"account had insufficient funds")
+			}
 		default:
-			return core.ExpandedTransaction{}, errors.New(
-				"script execution failed")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return errors.New(
+					"script execution failed")
+			}
 		}
 	}
 
 	if len(m.Postings) == 0 {
 		return core.ExpandedTransaction{},
-			NewValidationError("transaction has no postings")
+			func(_ context.Context) error { return NewValidationError("transaction has no postings") }
 	}
 
 	txVolumeAggr := vAggr.NextTx()
@@ -198,7 +238,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		amt := core.MonetaryInt(*posting.Amount)
 		if err := txVolumeAggr.Transfer(ctx,
 			posting.Source, posting.Destination, posting.Asset, &amt, accs); err != nil {
-			return core.ExpandedTransaction{}, errors.Wrap(err, "transferring volumes")
+			return core.ExpandedTransaction{}, func(_ context.Context) error { return errors.Wrap(err, "transferring volumes") }
 		}
 		postings[j] = core.Posting{
 			Source:      posting.Source,
@@ -212,7 +252,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		if _, ok := accs[account]; !ok {
 			accs[account], err = l.GetAccount(ctx, account)
 			if err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, fmt.Sprintf("get account '%s'", account))
+				return core.ExpandedTransaction{}, func(_ context.Context) error { return errors.Wrap(err, fmt.Sprintf("get account '%s'", account)) }
 			}
 		}
 		for asset, vol := range volumes {
@@ -225,15 +265,17 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 	for k, v := range metadata {
 		asMapAny := make(map[string]any)
 		if err := json.Unmarshal(v.([]byte), &asMapAny); err != nil {
-			return core.ExpandedTransaction{}, errors.Wrap(err, "unmarshaling transaction metadata")
+			return core.ExpandedTransaction{}, func(_ context.Context) error { return errors.Wrap(err, "unmarshaling transaction metadata") }
 		}
 		metadata[k] = asMapAny
 	}
 	for k, v := range script.Metadata {
 		_, ok := metadata[k]
 		if ok {
-			return core.ExpandedTransaction{}, NewScriptError(ScriptErrorMetadataOverride,
-				"cannot override metadata from script")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return NewScriptError(ScriptErrorMetadataOverride,
+					"cannot override metadata from script")
+			}
 		}
 		metadata[k] = v
 	}
@@ -243,7 +285,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		for k, v := range meta {
 			asMapAny := make(map[string]any)
 			if err := json.Unmarshal(v, &asMapAny); err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err, "unmarshaling account metadata")
+				return core.ExpandedTransaction{}, func(_ context.Context) error { return errors.Wrap(err, "unmarshaling account metadata") }
 			}
 			if account[0] == '@' {
 				account = account[1:]
@@ -273,38 +315,63 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 	}
 
 	if preview {
-		return tx, nil
+		return tx, func(_ context.Context) error { return nil }
 	}
 
 	if err := l.store.Commit(ctx, tx); err != nil {
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
-			return core.ExpandedTransaction{}, NewConflictError()
+			return core.ExpandedTransaction{}, func(_ context.Context) error { return NewConflictError() }
 		default:
-			return core.ExpandedTransaction{}, errors.Wrap(err,
-				"committing transactions")
-		}
-	}
-
-	if addOps != nil && addOps.SetAccountMeta != nil {
-		for addr, m := range addOps.SetAccountMeta {
-			if err := l.store.UpdateAccountMetadata(ctx,
-				addr, m, time.Now().Round(time.Second).UTC()); err != nil {
-				return core.ExpandedTransaction{}, errors.Wrap(err,
-					"updating account metadata")
+			return core.ExpandedTransaction{}, func(_ context.Context) error {
+				return errors.Wrap(err,
+					"committing transactions")
 			}
 		}
 	}
 
-	l.monitor.CommittedTransactions(ctx, l.store.Name(), tx)
+	logs := make([]core.Log, 0)
+	logs = append(logs, core.NewTransactionLog(tx.Transaction))
+
 	if addOps != nil && addOps.SetAccountMeta != nil {
 		for addr, m := range addOps.SetAccountMeta {
-			l.monitor.SavedMetadata(ctx,
-				l.store.Name(), core.MetaTargetTypeAccount, addr, m)
+			at := time.Now().Round(time.Second).UTC()
+			if err := l.store.UpdateAccountMetadata(ctx, addr, m); err != nil {
+				return core.ExpandedTransaction{}, func(_ context.Context) error {
+					return errors.Wrap(err,
+						"updating account metadata")
+				}
+			}
+			logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
+				TargetType: core.MetaTargetTypeAccount,
+				TargetID:   addr,
+				Metadata:   m,
+			}))
 		}
 	}
 
-	return tx, nil
+	errChan := l.store.AppendLogs(ctx, logs...)
+
+	return tx, func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return errors.Wrap(err, "appending logs")
+			}
+		}
+
+		l.monitor.CommittedTransactions(ctx, l.store.Name(), tx)
+		if addOps != nil && addOps.SetAccountMeta != nil {
+			for addr, m := range addOps.SetAccountMeta {
+				l.monitor.SavedMetadata(ctx,
+					l.store.Name(), core.MetaTargetTypeAccount, addr, m)
+			}
+		}
+
+		return nil
+	}
 }
 
 func NewMachineFromScript(script string, cache *ristretto.Cache, span trace.Span) (*vm.Machine, error) {

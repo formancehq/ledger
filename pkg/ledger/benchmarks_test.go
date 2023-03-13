@@ -37,9 +37,10 @@ func BenchmarkLedger_PostTransactions_Scripts_Single_FixedAccounts(b *testing.B)
 			b.StopTimer()
 			script := txToScriptData(txData)
 			b.StartTimer()
-			res, err = l.ExecuteScript(context.Background(), true, script)
-			require.NoError(b, err)
+			_res, waitAndPostProcess := l.ExecuteScript(context.Background(), true, script)
+			require.NoError(b, waitAndPostProcess(context.Background()))
 			require.Len(b, res.Postings, nbPostings)
+			res = _res
 		}
 
 		execResScript = res
@@ -69,8 +70,8 @@ func BenchmarkLedger_PostTransactions_Postings_Single_FixedAccounts(b *testing.B
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
 
-			tx, err := l.ExecuteScript(context.Background(), true, core.TxToScriptData(txData))
-			require.NoError(b, err)
+			tx, waitAndPostProcess := l.ExecuteScript(context.Background(), true, core.TxToScriptData(txData))
+			require.NoError(b, waitAndPostProcess(context.Background()))
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, nbPostings)
 			res = append(res, tx)
@@ -98,8 +99,8 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_FixedAccounts(b *testing.B)
 				require.NoError(b, err)
 			}
 			for _, script := range core.TxsToScriptsData(txsData...) {
-				tx, err := l.ExecuteScript(context.Background(), true, script)
-				require.NoError(b, err)
+				tx, waitAndPostProcess := l.ExecuteScript(context.Background(), true, script)
+				require.NoError(b, waitAndPostProcess(context.Background()))
 				res = append(res, tx)
 			}
 
@@ -143,8 +144,8 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_VaryingAccounts(b *testing.
 				require.NoError(b, err)
 			}
 			for _, script := range core.TxsToScriptsData(txsData...) {
-				tx, err := l.ExecuteScript(context.Background(), true, script)
-				require.NoError(b, err)
+				tx, waitAndPostProcess := l.ExecuteScript(context.Background(), true, script)
+				require.NoError(b, waitAndPostProcess(context.Background()))
 				res = append(res, tx)
 			}
 			require.Len(b, res, 7)

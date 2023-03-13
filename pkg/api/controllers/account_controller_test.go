@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/api/apierrors"
@@ -360,7 +359,6 @@ func TestGetAccounts(t *testing.T) {
 }
 
 func TestGetAccountsWithPageSize(t *testing.T) {
-	now := time.Now()
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -369,7 +367,7 @@ func TestGetAccountsWithPageSize(t *testing.T) {
 				for i := 0; i < 3*controllers.MaxPageSize; i++ {
 					require.NoError(t, store.UpdateAccountMetadata(ctx, fmt.Sprintf("accounts:%06d", i), core.Metadata{
 						"foo": []byte("{}"),
-					}, now))
+					}))
 				}
 
 				t.Run("invalid page size", func(t *testing.T) {

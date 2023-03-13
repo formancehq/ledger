@@ -33,6 +33,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.13.0
 	go.opentelemetry.io/otel/trace v1.13.0
 	go.uber.org/fx v1.19.2
+	golang.org/x/sync v0.1.0
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 )
 

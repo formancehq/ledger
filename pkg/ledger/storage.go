@@ -22,11 +22,12 @@ type Store interface {
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
 	GetLastLog(context.Context) (*core.Log, error)
 	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
+	AppendLogs(context.Context, ...core.Log) <-chan error
 	GetMigrationsAvailable() ([]core.MigrationInfo, error)
 	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
 
-	UpdateTransactionMetadata(ctx context.Context, txid uint64, metadata core.Metadata, at time.Time) error
-	UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error
+	UpdateTransactionMetadata(ctx context.Context, txid uint64, metadata core.Metadata) error
+	UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error
 	Commit(ctx context.Context, txs ...core.ExpandedTransaction) error
 	Name() string
 	Initialize(context.Context) (bool, error)

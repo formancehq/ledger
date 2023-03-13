@@ -33,29 +33,45 @@ type LogsPaginationToken struct {
 	EndTime   time.Time `json:"endTime,omitempty"`
 }
 
-func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
-	ls := make([]Log, len(log))
+func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
+	previousLog, err := s.GetLastLog(ctx)
+	if err != nil {
+		return errors.Wrap(err, "reading last log")
+	}
 
-	for i, l := range log {
+	ls := make([]Log, len(logs))
+	for i, l := range logs {
 		data, err := json.Marshal(l.Data)
 		if err != nil {
 			panic(err)
 		}
-		ls[i].ID = l.ID
+
+		id := uint64(0)
+		if previousLog != nil {
+			id = previousLog.ID + 1
+		}
+		logs[i].ID = id
+		logs[i].Hash = core.Hash(previousLog, &l)
+
+		ls[i].ID = id
 		ls[i].Type = l.Type
 		ls[i].Hash = l.Hash
 		ls[i].Date = l.Date
 		ls[i].Data = data
+
+		previousLog = &logs[i]
 	}
 
-	_, err := s.schema.NewInsert(LogTableName).
+	_, err = s.schema.NewInsert(LogTableName).
 		Model(&ls).
 		Column("id", "type", "hash", "date", "data").
 		Exec(ctx)
-	if err != nil {
-		return s.error(err)
-	}
-	return nil
+
+	return s.error(err)
+}
+
+func (s *Store) AppendLogs(ctx context.Context, logs ...core.Log) <-chan error {
+	return s.logsBatchWorker.WriteModels(ctx, logs)
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {

@@ -10,6 +10,7 @@ import (
 const SetMetadataType = "SET_METADATA"
 const NewTransactionType = "NEW_TRANSACTION"
 
+// TODO(polo): create Log struct and extended Log struct
 type Log struct {
 	ID   uint64      `json:"id"`
 	Type string      `json:"type"`
@@ -18,23 +19,18 @@ type Log struct {
 	Date time.Time   `json:"date"`
 }
 
-func NewTransactionLogWithDate(previousLog *Log, tx Transaction, time time.Time) Log {
-	id := uint64(0)
-	if previousLog != nil {
-		id = previousLog.ID + 1
-	}
-	l := Log{
-		ID:   id,
+func NewTransactionLogWithDate(tx Transaction, time time.Time) Log {
+	// Since the id is unique and the hash is a hash of the previous log, they
+	// will be filled at insertion time during the batch process.
+	return Log{
 		Type: NewTransactionType,
 		Date: time,
 		Data: tx,
 	}
-	l.Hash = Hash(previousLog, &l)
-	return l
 }
 
-func NewTransactionLog(previousLog *Log, tx Transaction) Log {
-	return NewTransactionLogWithDate(previousLog, tx, tx.Timestamp)
+func NewTransactionLog(tx Transaction) Log {
+	return NewTransactionLogWithDate(tx, tx.Timestamp)
 }
 
 type SetMetadata struct {
@@ -76,19 +72,14 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(previousLog *Log, at time.Time, metadata SetMetadata) Log {
-	id := uint64(0)
-	if previousLog != nil {
-		id = previousLog.ID + 1
-	}
-	l := Log{
-		ID:   id,
+func NewSetMetadataLog(at time.Time, metadata SetMetadata) Log {
+	// Since the id is unique and the hash is a hash of the previous log, they
+	// will be filled at insertion time during the batch process.
+	return Log{
 		Type: SetMetadataType,
 		Date: at,
 		Data: metadata,
 	}
-	l.Hash = Hash(previousLog, &l)
-	return l
 }
 
 func HydrateLog(_type string, data string) (interface{}, error) {
