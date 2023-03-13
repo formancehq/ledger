@@ -21,6 +21,13 @@ import (
 )
 
 func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.ScriptData) (core.ExpandedTransaction, error) {
+
+	unlock, err := l.locker.Lock(ctx, l.store.Name())
+	if err != nil {
+		panic(err)
+	}
+	defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
+
 	ctx, span := opentelemetry.Start(ctx, "ExecuteScript")
 	defer span.End()
 

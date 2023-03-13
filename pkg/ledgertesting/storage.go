@@ -3,7 +3,6 @@ package ledgertesting
 import (
 	"context"
 
-	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -48,8 +47,6 @@ func ProvideLedgerStorageDriver(t pgtesting.TestingT) fx.Option {
 		fx.Provide(
 			fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
 				fx.As(new(storage.Driver[ledger.Store]))),
-			fx.Annotate(sqlstorage.NewIdempotencyStorageDriverFromRawDriver,
-				fx.As(new(storage.Driver[idempotency.Store]))),
 		),
 	)
 }

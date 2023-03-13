@@ -37,12 +37,14 @@ type Resolver struct {
 	monitor           Monitor
 	ledgerOptions     []LedgerOption
 	cache             *ristretto.Cache
+	locker            Locker
 }
 
 func NewResolver(
 	storageFactory storage.Driver[Store],
 	ledgerOptions []LedgerOption,
 	cacheBytesCapacity, cacheMaxNumKeys int64,
+	locker Locker,
 	options ...ResolverOption,
 ) *Resolver {
 	options = append(DefaultResolverOptions, options...)
@@ -50,6 +52,7 @@ func NewResolver(
 		storageDriver:     storageFactory,
 		initializedStores: map[string]struct{}{},
 		cache:             NewCache(cacheBytesCapacity, cacheMaxNumKeys, false),
+		locker:            locker,
 	}
 	for _, opt := range options {
 		if err := opt.apply(r); err != nil {
@@ -85,7 +88,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.initializedStores[name] = struct{}{}
 	}
 
-	return NewLedger(store, r.monitor, r.cache, r.ledgerOptions...)
+	return NewLedger(store, r.monitor, r.cache, append(r.ledgerOptions, WithLocker(r.locker))...)
 }
 
 func (r *Resolver) Close() {
@@ -104,10 +107,13 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 func ResolveModule(cacheBytesCapacity, cacheMaxNumKeys int64) fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, options ...ResolverOption) *Resolver {
-				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cacheMaxNumKeys, options...)
-			}, fx.ParamTags("", ResolverLedgerOptionsKey, ResolverOptionsKey)),
+			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, locker Locker, options ...ResolverOption) *Resolver {
+				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cacheMaxNumKeys, locker, options...)
+			}, fx.ParamTags("", ResolverLedgerOptionsKey, "", ResolverOptionsKey)),
 		),
+		fx.Provide(func() Locker {
+			return NewInMemoryLocker()
+		}),
 		fx.Invoke(func(lc fx.Lifecycle, r *Resolver) {
 			lc.Append(fx.Hook{
 				OnStop: func(ctx context.Context) error {

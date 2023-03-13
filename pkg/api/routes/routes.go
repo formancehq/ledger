@@ -4,10 +4,8 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/pkg/api/controllers"
-	"github.com/formancehq/ledger/pkg/api/idempotency"
 	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/go-chi/chi/v5"
 	"github.com/riandyrn/otelchi"
@@ -39,8 +37,6 @@ type Routes struct {
 	balanceController     controllers.BalanceController
 	transactionController controllers.TransactionController
 	globalMiddlewares     []func(handler http.Handler) http.Handler
-	idempotencyStore      storage.Driver[idempotency.Store]
-	locker                ledger.Locker
 }
 
 func NewRoutes(
@@ -53,8 +49,6 @@ func NewRoutes(
 	balanceController controllers.BalanceController,
 	transactionController controllers.TransactionController,
 	healthController *health.HealthController,
-	idempotencyStore storage.Driver[idempotency.Store],
-	locker ledger.Locker,
 ) *Routes {
 	return &Routes{
 		globalMiddlewares:     globalMiddlewares,
@@ -66,8 +60,6 @@ func NewRoutes(
 		balanceController:     balanceController,
 		transactionController: transactionController,
 		healthController:      healthController,
-		idempotencyStore:      idempotencyStore,
-		locker:                locker,
 	}
 }
 
@@ -101,29 +93,17 @@ func (r *Routes) Engine() *chi.Mux {
 			router.Get("/accounts", r.accountController.GetAccounts)
 			router.Head("/accounts", r.accountController.CountAccounts)
 			router.Get("/accounts/{address}", r.accountController.GetAccount)
-			router.With(
-				middlewares.Lock(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/accounts/{address}/metadata", r.accountController.PostAccountMetadata)
+			router.Post("/accounts/{address}/metadata", r.accountController.PostAccountMetadata)
 
 			// TransactionController
 			router.Get("/transactions", r.transactionController.GetTransactions)
 			router.Head("/transactions", r.transactionController.CountTransactions)
 
-			router.With(
-				middlewares.Lock(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/transactions", r.transactionController.PostTransaction)
+			router.Post("/transactions", r.transactionController.PostTransaction)
 
 			router.Get("/transactions/{txid}", r.transactionController.GetTransaction)
-			router.With(
-				middlewares.Lock(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/transactions/{txid}/revert", r.transactionController.RevertTransaction)
-			router.With(
-				middlewares.Lock(r.locker),
-				idempotency.Middleware(r.idempotencyStore),
-			).Post("/transactions/{txid}/metadata", r.transactionController.PostTransactionMetadata)
+			router.Post("/transactions/{txid}/revert", r.transactionController.RevertTransaction)
+			router.Post("/transactions/{txid}/metadata", r.transactionController.PostTransactionMetadata)
 
 			// BalanceController
 			router.Get("/balances", r.balanceController.GetBalances)
