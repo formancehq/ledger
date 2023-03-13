@@ -11,6 +11,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+type waitLogsAndPostProcessing func(context.Context) error
+
 type Ledger struct {
 	store               Store
 	monitor             Monitor
@@ -83,16 +85,18 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedT
 	return tx, nil
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, waitLogsAndPostProcessing) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("getting transaction %d", id))
+		return nil, func(_ context.Context) error { return errors.Wrap(err, fmt.Sprintf("getting transaction %d", id)) }
 	}
 	if revertedTx == nil {
-		return nil, NewNotFoundError(fmt.Sprintf("transaction %d not found", id))
+		return nil, func(_ context.Context) error { return NewNotFoundError(fmt.Sprintf("transaction %d not found", id)) }
 	}
 	if revertedTx.IsReverted() {
-		return nil, NewValidationError(fmt.Sprintf("transaction %d already reverted", id))
+		return nil, func(_ context.Context) error {
+			return NewValidationError(fmt.Sprintf("transaction %d already reverted", id))
+		}
 	}
 
 	rt := revertedTx.Reverse()
@@ -106,25 +110,53 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		Metadata:  rt.Metadata,
 	})
 
-	revertTx, err := l.ExecuteScript(ctx, false, scriptData[0])
-	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf(
-			"executing revert script for transaction %d", id))
-	}
+	revertTx, waitAndPostProcess := l.ExecuteScript(ctx, false, scriptData[0])
+	// TODO(polo): merge next logs with the one in ExecuteScript function
+	// when CQRS is implemented
 
 	if err := l.store.UpdateTransactionMetadata(ctx,
-		revertedTx.ID, core.RevertedMetadata(revertTx.ID), revertTx.Timestamp); err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf(
-			"updating transaction %d metadata while reverting", id))
+		revertedTx.ID, core.RevertedMetadata(revertTx.ID)); err != nil {
+		return nil, func(_ context.Context) error {
+			return errors.Wrap(err, fmt.Sprintf(
+				"updating transaction %d metadata while reverting", id))
+		}
 	}
 
-	if revertedTx.Metadata == nil {
-		revertedTx.Metadata = core.Metadata{}
-	}
-	revertedTx.Metadata.Merge(core.RevertedMetadata(revertTx.ID))
+	// TODO(polo): Merge thoses logs with the one in ExecuteScript function
+	logs := make([]core.Log, 0, 1)
+	logs = append(logs, core.NewSetMetadataLog(revertTx.Timestamp, core.SetMetadata{
+		TargetType: core.MetaTargetTypeTransaction,
+		TargetID:   revertedTx.ID,
+		Metadata:   core.RevertedMetadata(revertTx.ID),
+	}))
 
-	l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &revertTx)
-	return &revertTx, nil
+	errChan := l.store.AppendLogs(ctx, logs...)
+
+	// TODO(polo): remove this when the CQRS is implemented
+	// Move the monitor save metadat to the CQRS part
+	return &revertTx, func(ctx context.Context) error {
+		if err := waitAndPostProcess(ctx); err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return err
+			}
+		}
+
+		if revertedTx.Metadata == nil {
+			revertedTx.Metadata = core.Metadata{}
+		}
+		revertedTx.Metadata.Merge(core.RevertedMetadata(revertTx.ID))
+
+		l.monitor.RevertedTransaction(ctx, l.store.Name(), revertedTx, &revertTx)
+
+		return nil
+	}
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a AccountsQuery) (uint64, error) {
@@ -147,31 +179,62 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (co
 	return l.store.GetBalancesAggregated(ctx, q)
 }
 
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) waitLogsAndPostProcessing {
 
 	if targetType == "" {
-		return NewValidationError("empty target type")
+		return func(_ context.Context) error { return NewValidationError("empty target type") }
 	}
 
 	if targetID == "" {
-		return NewValidationError("empty target id")
+		return func(_ context.Context) error { return NewValidationError("empty target id") }
 	}
 
+	logs := make([]core.Log, 0)
 	var err error
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
-		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m, time.Now().Round(time.Second).UTC())
+		at := time.Now().Round(time.Second).UTC()
+		err = l.store.UpdateTransactionMetadata(ctx, targetID.(uint64), m)
+		logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
+			TargetType: core.MetaTargetTypeTransaction,
+			TargetID:   targetID.(uint64),
+			Metadata:   m,
+		}))
 	case core.MetaTargetTypeAccount:
-		err = l.store.UpdateAccountMetadata(ctx, targetID.(string), m, time.Now().Round(time.Second).UTC())
+		at := time.Now().Round(time.Second).UTC()
+		err = l.store.UpdateAccountMetadata(ctx, targetID.(string), m)
+		logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
+			TargetType: core.MetaTargetTypeAccount,
+			TargetID:   targetID.(string),
+			Metadata:   m,
+		}))
 	default:
-		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
+		return func(_ context.Context) error {
+			return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
+		}
 	}
 	if err != nil {
-		return err
+		return func(_ context.Context) error { return err }
 	}
 
-	l.monitor.SavedMetadata(ctx, l.store.Name(), targetType, fmt.Sprint(targetID), m)
-	return nil
+	errChan := l.store.AppendLogs(ctx, logs...)
+
+	// TODO(polo): remove this when the CQRS is implemented
+	// Move the monitor save metadat to the CQRS part
+	return func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return err
+			}
+		}
+
+		l.monitor.SavedMetadata(ctx, l.store.Name(), targetType, fmt.Sprint(targetID), m)
+
+		return nil
+	}
 }
 
 func (l *Ledger) GetLogs(ctx context.Context, q *LogsQuery) (api.Cursor[core.Log], error) {

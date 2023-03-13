@@ -2,11 +2,14 @@ package ledger
 
 import (
 	"context"
+	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pkg/errors"
@@ -14,12 +17,21 @@ import (
 
 const (
 	SQLCustomFuncMetaCompare = "meta_compare"
+
+	// TODO(polo/gfyrag): make these configurable by env or create an algorithm
+	// to calculate the optimal values based on the number of transactions
+	// NOTE: the batch size must stay `1` until we implement the lock and CQRS
+	// pattern
+	batchSize       = 1
+	batchTickerTime = 100 * time.Millisecond
 )
 
 type Store struct {
 	schema   schema.Schema
 	onClose  func(ctx context.Context) error
 	onDelete func(ctx context.Context) error
+
+	logsBatchWorker *worker.Worker[core.Log]
 }
 
 func (s *Store) error(err error) error {
@@ -60,14 +72,22 @@ func (s *Store) Close(ctx context.Context) error {
 }
 
 func NewStore(
+	ctx context.Context,
 	schema schema.Schema,
 	onClose, onDelete func(ctx context.Context) error,
 ) *Store {
-	return &Store{
+	s := &Store{
 		schema:   schema,
 		onClose:  onClose,
 		onDelete: onDelete,
 	}
+
+	logsBatchWorker := worker.NewWorker(batchSize, batchTickerTime, s.batchLogs)
+	s.logsBatchWorker = logsBatchWorker
+
+	go logsBatchWorker.Run(ctx)
+
+	return s
 }
 
 var _ ledger.Store = &Store{}

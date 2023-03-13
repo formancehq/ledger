@@ -200,8 +200,8 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err := l.ExecuteScript(r.Context(), preview, core.TxToScriptData(txData))
-		if err != nil {
+		res, waitAndPostProcess := l.ExecuteScript(r.Context(), preview, core.TxToScriptData(txData))
+		if err := waitAndPostProcess(r.Context()); err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
 		}
@@ -216,8 +216,8 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 		Reference: payload.Reference,
 		Metadata:  payload.Metadata,
 	}
-	res, err := l.ExecuteScript(r.Context(), preview, script)
-	if err != nil {
+	res, waitAndPostProcess := l.ExecuteScript(r.Context(), preview, script)
+	if err := waitAndPostProcess(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
@@ -252,8 +252,8 @@ func (ctl *TransactionController) RevertTransaction(w http.ResponseWriter, r *ht
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), txId)
-	if err != nil {
+	tx, waitAndPostProcess := l.RevertTransaction(r.Context(), txId)
+	if err := waitAndPostProcess(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
@@ -282,8 +282,9 @@ func (ctl *TransactionController) PostTransactionMetadata(w http.ResponseWriter,
 		return
 	}
 
-	if err := l.SaveMeta(r.Context(),
-		core.MetaTargetTypeTransaction, txId, m); err != nil {
+	waitAndPostProcess := l.SaveMeta(r.Context(),
+		core.MetaTargetTypeTransaction, txId, m)
+	if err := waitAndPostProcess(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}

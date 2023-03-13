@@ -137,12 +137,38 @@ func TestGetLogs(t *testing.T) {
 				}
 				store := internal.GetLedgerStore(t, driver, ctx)
 				require.NoError(t, store.Commit(context.Background(), tx1, tx2))
+				logs := make([]core.Log, 0)
+				for _, tx := range []core.ExpandedTransaction{tx1, tx2} {
+					logs = append(logs, core.NewTransactionLog(tx.Transaction))
+				}
+				errChan := store.AppendLogs(ctx, logs...)
+				require.NoError(t, <-errChan)
 
+				at := time.Now().UTC()
 				require.NoError(t, store.UpdateTransactionMetadata(context.Background(),
-					0, core.Metadata{"key": "value"}, time.Now().UTC()))
+					0, core.Metadata{"key": "value"}))
 
+				logs = nil
+				logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
+					TargetType: core.MetaTargetTypeTransaction,
+					TargetID:   0,
+					Metadata:   core.Metadata{"key": "value"},
+				}))
+				errChan = store.AppendLogs(ctx, logs...)
+				require.NoError(t, <-errChan)
+
+				at2 := time.Now().UTC()
 				require.NoError(t, store.UpdateAccountMetadata(context.Background(),
-					"alice", core.Metadata{"key": "value"}, time.Now().UTC()))
+					"alice", core.Metadata{"key": "value"}))
+
+				logs = nil
+				logs = append(logs, core.NewSetMetadataLog(at2, core.SetMetadata{
+					TargetType: core.MetaTargetTypeAccount,
+					TargetID:   "alice",
+					Metadata:   core.Metadata{"key": "value"},
+				}))
+				errChan = store.AppendLogs(ctx, logs...)
+				require.NoError(t, <-errChan)
 
 				var log0Timestamp, log1Timestamp time.Time
 				t.Run("all", func(t *testing.T) {

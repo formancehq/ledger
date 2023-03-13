@@ -127,7 +127,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		}
 	}
 
-	return ledgerstore.NewStore(schema, func(ctx context.Context) error {
+	return ledgerstore.NewStore(ctx, schema, func(ctx context.Context) error {
 		return schema.Close(context.Background())
 	}, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
