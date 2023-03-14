@@ -81,12 +81,11 @@ func (w *Worker[MODEL]) write(ctx context.Context) error {
 		close(model.errChan)
 	}
 
-	// If there is an error, we keep the slice in order to retry the write
-	if err == nil {
-		// Release the slice in order to release the underlying memory to the
-		// garbage collector.
-		w.models = nil
-	}
+	// Even if the worker job failed, we still want to release the memory, the
+	// clients will retry.
+	// Release the slice in order to release the underlying memory to the
+	// garbage collector.
+	w.models = nil
 
 	return err
 }
