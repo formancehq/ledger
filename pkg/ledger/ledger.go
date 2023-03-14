@@ -180,7 +180,6 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (co
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) waitLogsAndPostProcessing {
-
 	if targetType == "" {
 		return func(_ context.Context) error { return NewValidationError("empty target type") }
 	}

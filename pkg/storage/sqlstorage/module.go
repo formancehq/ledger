@@ -1,12 +1,12 @@
 package sqlstorage
 
 import (
+	"database/sql"
+
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/health"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"go.uber.org/fx"
@@ -21,13 +21,10 @@ type ModuleConfig struct {
 }
 
 func OpenSQLDB(dataSourceName string) (*bun.DB, error) {
-	config, err := pgx.ParseConfig(dataSourceName)
+	sqldb, err := sql.Open("postgres", dataSourceName)
 	if err != nil {
 		return nil, err
 	}
-	config.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-
-	sqldb := stdlib.OpenDB(*config)
 
 	db := bun.NewDB(sqldb, pgdialect.New())
 
