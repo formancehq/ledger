@@ -200,8 +200,13 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, waitAndPostProcess := l.ExecuteScript(r.Context(), preview, core.TxToScriptData(txData))
-		if err := waitAndPostProcess(r.Context()); err != nil {
+		res, logs, err := l.ProcessScript(r.Context(), true, preview, core.TxToScriptData(txData))
+		if err != nil {
+			apierrors.ResponseError(w, r, err)
+			return
+		}
+
+		if err := logs.Wait(r.Context()); err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
 		}
@@ -216,8 +221,14 @@ func (ctl *TransactionController) PostTransaction(w http.ResponseWriter, r *http
 		Reference: payload.Reference,
 		Metadata:  payload.Metadata,
 	}
-	res, waitAndPostProcess := l.ExecuteScript(r.Context(), preview, script)
-	if err := waitAndPostProcess(r.Context()); err != nil {
+
+	res, logs, err := l.ProcessScript(r.Context(), true, preview, script)
+	if err != nil {
+		apierrors.ResponseError(w, r, err)
+		return
+	}
+
+	if err := logs.Wait(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
@@ -252,8 +263,13 @@ func (ctl *TransactionController) RevertTransaction(w http.ResponseWriter, r *ht
 		return
 	}
 
-	tx, waitAndPostProcess := l.RevertTransaction(r.Context(), txId)
-	if err := waitAndPostProcess(r.Context()); err != nil {
+	tx, logs, err := l.RevertTransaction(r.Context(), txId)
+	if err != nil {
+		apierrors.ResponseError(w, r, err)
+		return
+	}
+
+	if err := logs.Wait(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
@@ -282,9 +298,14 @@ func (ctl *TransactionController) PostTransactionMetadata(w http.ResponseWriter,
 		return
 	}
 
-	waitAndPostProcess := l.SaveMeta(r.Context(),
+	logs, err := l.SaveMeta(r.Context(),
 		core.MetaTargetTypeTransaction, txId, m)
-	if err := waitAndPostProcess(r.Context()); err != nil {
+	if err != nil {
+		apierrors.ResponseError(w, r, err)
+		return
+	}
+
+	if err := logs.Wait(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}

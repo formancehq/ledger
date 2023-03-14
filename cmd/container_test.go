@@ -163,8 +163,10 @@ func TestContainers(t *testing.T) {
 							}
 							errCh := make(chan error, 1)
 							go func() {
-								waitAndPostProcess := l.SaveMeta(ctx, core.MetaTargetTypeAccount, "world", core.Metadata{"foo": []byte(`"bar"`)})
-								err := waitAndPostProcess(ctx)
+								logs, err := l.SaveMeta(ctx, core.MetaTargetTypeAccount, "world", core.Metadata{"foo": []byte(`"bar"`)})
+								if err == nil {
+									err = logs.Wait(ctx)
+								}
 								if err != nil {
 									errCh <- err
 								}
