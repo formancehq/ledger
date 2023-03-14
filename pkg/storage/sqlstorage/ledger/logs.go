@@ -3,8 +3,10 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -33,10 +35,30 @@ type LogsPaginationToken struct {
 	EndTime   time.Time `json:"endTime,omitempty"`
 }
 
+type RawMessage json.RawMessage
+
+func (j RawMessage) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return string(j), nil
+}
+
 func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 	previousLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
+	}
+
+	txn, err := s.schema.Begin()
+	if err != nil {
+		return err
+	}
+
+	// Beware: COPY query is not supported by bun if the pgx driver is used.
+	stmt, err := txn.Prepare(fmt.Sprintf("COPY \"%s\".log (id, type, hash, date, data) FROM STDIN", s.schema.Name()))
+	if err != nil {
+		return err
 	}
 
 	ls := make([]Log, len(logs))
@@ -60,14 +82,23 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 		ls[i].Data = data
 
 		previousLog = &logs[i]
+		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data))
+		if err != nil {
+			return s.error(err)
+		}
 	}
 
-	_, err = s.schema.NewInsert(LogTableName).
-		Model(&ls).
-		Column("id", "type", "hash", "date", "data").
-		Exec(ctx)
+	_, err = stmt.Exec()
+	if err != nil {
+		return s.error(err)
+	}
 
-	return s.error(err)
+	err = stmt.Close()
+	if err != nil {
+		return s.error(err)
+	}
+
+	return s.error(txn.Commit())
 }
 
 func (s *Store) AppendLogs(ctx context.Context, logs ...core.Log) <-chan error {
