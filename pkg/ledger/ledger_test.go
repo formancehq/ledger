@@ -96,8 +96,9 @@ func TestTransaction(t *testing.T) {
 			}
 
 			for _, script := range core.TxsToScriptsData(batch...) {
-				_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-				require.NoError(t, waitAndPostProcess(context.Background()))
+				_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+				require.NoError(t, err)
+				require.NoError(t, logs.Wait(context.Background()))
 			}
 
 			batch = []core.TransactionData{}
@@ -156,8 +157,13 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 			}
 
 			for i, script := range core.TxsToScriptsData(batch...) {
-				_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-				err := waitAndPostProcess(context.Background())
+				_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+				if err == nil {
+					err = logs.Wait(context.Background())
+				} else {
+					require.Nil(t, logs)
+				}
+
 				if i == 2 {
 					require.IsType(t, new(ledger.ConflictError), err)
 				} else {
@@ -179,11 +185,14 @@ func TestTransactionBatchWithConflictingReference(t *testing.T) {
 				},
 				Reference: "ref1",
 			}
-			_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, core.TxToScriptData(txData))
-			require.NoError(t, waitAndPostProcess(context.Background()))
+			_, logs, err := l.ProcessScript(context.Background(), true, false, core.TxToScriptData(txData))
+			require.NoError(t, err)
+			require.NoError(t, logs.Wait(context.Background()))
 
-			_, waitAndPostProcess = l.ExecuteScript(context.Background(), false, core.TxToScriptData(txData))
-			err := waitAndPostProcess(context.Background())
+			_, logs, err = l.ProcessScript(context.Background(), true, false, core.TxToScriptData(txData))
+			if err == nil {
+				err = logs.Wait(context.Background())
+			}
 			require.Error(t, err)
 			require.IsType(t, new(ledger.ConflictError), err)
 		})
@@ -223,8 +232,13 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 				},
 			}
 			for i, script := range core.TxsToScriptsData(batch...) {
-				_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-				err := waitAndPostProcess(context.Background())
+				_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+				if err == nil {
+					err = logs.Wait(context.Background())
+				} else {
+					require.Nil(t, logs)
+				}
+
 				if i == 1 {
 					require.True(t, ledger.IsValidationError(err), err)
 					require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
@@ -259,8 +273,9 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 				},
 			}
 			for _, script := range core.TxsToScriptsData(batch...) {
-				_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-				require.NoError(t, waitAndPostProcess(context.Background()))
+				_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+				require.NoError(t, err)
+				require.NoError(t, logs.Wait(context.Background()))
 			}
 		})
 		t.Run("ascending order but before last inserted should fail", func(t *testing.T) {
@@ -289,8 +304,13 @@ func TestTransactionBatchTimestamps(t *testing.T) {
 				},
 			}
 			for i, script := range core.TxsToScriptsData(batch...) {
-				_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-				err := waitAndPostProcess(context.Background())
+				_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+				if err == nil {
+					err = logs.Wait(context.Background())
+				} else {
+					require.Nil(t, logs)
+				}
+
 				if i == 0 {
 					require.True(t, ledger.IsValidationError(err))
 					require.ErrorContains(t, err, "cannot pass a timestamp prior to the last transaction")
@@ -349,8 +369,9 @@ func TestTransactionExpectedVolumes(t *testing.T) {
 
 		res := make([]core.ExpandedTransaction, 0)
 		for _, script := range core.TxsToScriptsData(txsData...) {
-			tx, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-			require.NoError(t, waitAndPostProcess(context.Background()))
+			tx, logs, err := l.ProcessScript(context.Background(), true, false, script)
+			require.NoError(t, err)
+			require.NoError(t, logs.Wait(context.Background()))
 			res = append(res, tx)
 		}
 
@@ -401,26 +422,30 @@ func TestReference(t *testing.T) {
 			},
 		}
 
-		_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		_, logs, err := l.ProcessScript(context.Background(), true, false, core.TxToScriptData(tx))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
-		_, waitAndPostProcess = l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
-		require.Error(t, waitAndPostProcess(context.Background()))
+		_, logs, err = l.ProcessScript(context.Background(), true, false, core.TxToScriptData(tx))
+		require.Error(t, err)
+		require.Nil(t, logs)
 	})
 }
 
 func TestAccountMetadata(t *testing.T) {
 	runOnLedger(t, func(l *ledger.Ledger) {
 
-		waitAndPostProcess := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
+		logs, err := l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": "old value",
 		})
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
-		waitAndPostProcess = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
+		logs, err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount, "users:001", core.Metadata{
 			"a random metadata": "new value",
 		})
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		{
 			acc, err := l.GetAccount(context.Background(), "users:001")
@@ -435,7 +460,7 @@ func TestAccountMetadata(t *testing.T) {
 
 		{
 			// We have to create at least one transaction to retrieve an account from GetAccounts store method
-			_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, core.TxToScriptData(core.TransactionData{
+			_, logs, err := l.ProcessScript(context.Background(), true, false, core.TxToScriptData(core.TransactionData{
 				Postings: core.Postings{
 					{
 						Source:      "world",
@@ -445,7 +470,8 @@ func TestAccountMetadata(t *testing.T) {
 					},
 				},
 			}))
-			require.NoError(t, waitAndPostProcess(context.Background()))
+			require.NoError(t, err)
+			require.NoError(t, logs.Wait(context.Background()))
 
 			acc, err := l.GetAccount(context.Background(), "users:001")
 			require.NoError(t, err)
@@ -461,7 +487,7 @@ func TestAccountMetadata(t *testing.T) {
 
 func TestTransactionMetadata(t *testing.T) {
 	runOnLedger(t, func(l *ledger.Ledger) {
-		_, waitAndPostProcess := l.ExecuteScript(context.Background(), false,
+		_, logs, err := l.ProcessScript(context.Background(), true, false,
 			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -472,20 +498,23 @@ func TestTransactionMetadata(t *testing.T) {
 					},
 				},
 			}))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
 
-		waitAndPostProcess = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
+		logs, err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": "old value",
 		})
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
-		waitAndPostProcess = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
+		logs, err = l.SaveMeta(context.Background(), core.MetaTargetTypeTransaction, tx.ID, core.Metadata{
 			"a random metadata": "new value",
 		})
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		tx, err = l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
@@ -500,7 +529,7 @@ func TestTransactionMetadata(t *testing.T) {
 
 func TestSaveTransactionMetadata(t *testing.T) {
 	runOnLedger(t, func(l *ledger.Ledger) {
-		_, waitAndPostProcess := l.ExecuteScript(context.Background(), false,
+		_, logs, err := l.ProcessScript(context.Background(), true, false,
 			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
@@ -514,7 +543,8 @@ func TestSaveTransactionMetadata(t *testing.T) {
 					"a metadata": "a value",
 				},
 			}))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		tx, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
@@ -529,7 +559,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	runOnLedger(t, func(l *ledger.Ledger) {
-		_, waitAndPostProcess := l.ExecuteScript(context.Background(), false,
+		_, logs, err := l.ProcessScript(context.Background(), true, false,
 			core.TxToScriptData(core.TransactionData{
 				Reference: "bar",
 				Postings: []core.Posting{
@@ -541,7 +571,8 @@ func TestGetTransaction(t *testing.T) {
 					},
 				},
 			}))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		last, err := l.GetLedgerStore().GetLastTransaction(context.Background())
 		require.NoError(t, err)
@@ -566,8 +597,9 @@ func TestGetTransactions(t *testing.T) {
 			},
 		}
 
-		_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, core.TxToScriptData(tx))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		_, logs, err := l.ProcessScript(context.Background(), true, false, core.TxToScriptData(tx))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
 		require.NoError(t, err)
@@ -580,7 +612,7 @@ func TestRevertTransaction(t *testing.T) {
 	runOnLedger(t, func(l *ledger.Ledger) {
 		revertAmt := core.NewMonetaryInt(100)
 
-		res, waitAndPostProcess := l.ExecuteScript(context.Background(), false,
+		res, logs, err := l.ProcessScript(context.Background(), true, false,
 			core.TxToScriptData(core.TransactionData{
 				Reference: "foo",
 				Postings: []core.Posting{
@@ -592,15 +624,17 @@ func TestRevertTransaction(t *testing.T) {
 					},
 				},
 			}))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		world, err := l.GetAccount(context.Background(), "world")
 		require.NoError(t, err)
 
 		originalBal := world.Balances["COIN"]
 
-		revertTx, waitAndPostProcess := l.RevertTransaction(context.Background(), res.ID)
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		revertTx, logs, err := l.RevertTransaction(context.Background(), res.ID)
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		require.Equal(t, core.Postings{
 			{
@@ -639,7 +673,7 @@ func TestVeryBigTransaction(t *testing.T) {
 			"199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
 		require.NoError(t, err)
 
-		res, waitAndPostProcess := l.ExecuteScript(context.Background(), false,
+		res, logs, err := l.ProcessScript(context.Background(), true, false,
 			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",
@@ -648,7 +682,8 @@ func TestVeryBigTransaction(t *testing.T) {
 					Amount:      amount,
 				}},
 			}))
-		require.NoError(t, waitAndPostProcess(context.Background()))
+		require.NoError(t, err)
+		require.NoError(t, logs.Wait(context.Background()))
 
 		txFromDB, err := l.GetTransaction(context.Background(), res.ID)
 		require.NoError(t, err)
@@ -659,7 +694,7 @@ func TestVeryBigTransaction(t *testing.T) {
 func BenchmarkTransaction1(b *testing.B) {
 	runOnLedger(b, func(l *ledger.Ledger) {
 		for n := 0; n < b.N; n++ {
-			_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, core.TxToScriptData(core.TransactionData{
+			_, logs, err := l.ProcessScript(context.Background(), true, false, core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{
 					{
 						Source:      "world",
@@ -669,7 +704,8 @@ func BenchmarkTransaction1(b *testing.B) {
 					},
 				},
 			}))
-			require.NoError(b, waitAndPostProcess(context.Background()))
+			require.NoError(b, err)
+			require.NoError(b, logs.Wait(context.Background()))
 		}
 	})
 }
@@ -694,8 +730,9 @@ func BenchmarkTransaction_20_1k(b *testing.B) {
 				}
 
 				for _, script := range core.TxsToScriptsData(txs...) {
-					_, waitAndPostProcess := l.ExecuteScript(context.Background(), false, script)
-					require.NoError(b, waitAndPostProcess(context.Background()))
+					_, logs, err := l.ProcessScript(context.Background(), true, false, script)
+					require.NoError(b, err)
+					require.NoError(b, logs.Wait(context.Background()))
 				}
 			}
 		}

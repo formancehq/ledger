@@ -150,9 +150,14 @@ func (ctl *AccountController) PostAccountMetadata(w http.ResponseWriter, r *http
 		return
 	}
 
-	waitAndPostProcess := l.SaveMeta(r.Context(),
+	logs, err := l.SaveMeta(r.Context(),
 		core.MetaTargetTypeAccount, chi.URLParam(r, "address"), m)
-	if err := waitAndPostProcess(r.Context()); err != nil {
+	if err != nil {
+		apierrors.ResponseError(w, r, err)
+		return
+	}
+
+	if err := logs.Wait(r.Context()); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
