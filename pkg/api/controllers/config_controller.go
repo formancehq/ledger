@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"net/http"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
@@ -26,10 +25,10 @@ type LedgerStorage struct {
 
 type ConfigController struct {
 	Version       string
-	StorageDriver storage.Driver[ledger.Store]
+	StorageDriver storage.Driver
 }
 
-func NewConfigController(version string, storageDriver storage.Driver[ledger.Store]) ConfigController {
+func NewConfigController(version string, storageDriver storage.Driver) ConfigController {
 	return ConfigController{
 		Version:       version,
 		StorageDriver: storageDriver,

@@ -3,7 +3,6 @@ package ledgertesting
 import (
 	"context"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
@@ -25,7 +24,7 @@ func StorageDriver(t pgtesting.TestingT) (*sqlstorage.Driver, func(), error) {
 }
 
 func ProvideStorageDriver(t pgtesting.TestingT) fx.Option {
-	return fx.Provide(func(lc fx.Lifecycle) (*sqlstorage.Driver, error) {
+	return fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
 		driver, stopFn, err := StorageDriver(t)
 		if err != nil {
 			return nil, err
@@ -44,9 +43,5 @@ func ProvideStorageDriver(t pgtesting.TestingT) fx.Option {
 func ProvideLedgerStorageDriver(t pgtesting.TestingT) fx.Option {
 	return fx.Options(
 		ProvideStorageDriver(t),
-		fx.Provide(
-			fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
-				fx.As(new(storage.Driver[ledger.Store]))),
-		),
 	)
 }

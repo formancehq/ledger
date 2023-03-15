@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
 )
@@ -58,7 +58,7 @@ type TxsPaginationToken struct {
 	PageSize          uint              `json:"pageSize,omitempty"`
 }
 
-func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*bun.SelectQuery, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) (*bun.SelectQuery, TxsPaginationToken) {
 	sb := s.schema.NewSelect(TransactionsTableName).
 		Model((*Transactions)(nil))
 	t := TxsPaginationToken{}
@@ -161,7 +161,7 @@ func (s *Store) buildTransactionsQuery(p ledger.TransactionsQuery) (*bun.SelectQ
 	return sb, t
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
 	txs := make([]core.ExpandedTransaction, 0)
 
 	if q.PageSize == 0 {
@@ -243,7 +243,7 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 	}, nil
 }
 
-func (s *Store) CountTransactions(ctx context.Context, q ledger.TransactionsQuery) (uint64, error) {
+func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
 	sb, _ := s.buildTransactionsQuery(q)
 	count, err := sb.Count(ctx)
 	return uint64(count), s.error(err)

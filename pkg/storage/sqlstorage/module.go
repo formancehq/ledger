@@ -4,7 +4,6 @@ import (
 	"database/sql"
 
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/uptrace/bun"
@@ -51,19 +50,15 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		return health.NewNamedCheck("postgres", health.CheckFn(db.PingContext))
 	}))
 
-	options = append(options, fx.Provide(func(driver *Driver) storage.Driver[*ledgerstore.Store] {
+	options = append(options, fx.Provide(func(driver *Driver) storage.Driver {
 		return driver
 	}))
-	options = append(options, fx.Invoke(func(driver storage.Driver[*ledgerstore.Store], lifecycle fx.Lifecycle) error {
+	options = append(options, fx.Invoke(func(driver storage.Driver, lifecycle fx.Lifecycle) error {
 		lifecycle.Append(fx.Hook{
 			OnStart: driver.Initialize,
 			OnStop:  driver.Close,
 		})
 		return nil
 	}))
-	options = append(options, fx.Provide(
-		NewLedgerStorageDriverFromRawDriver,
-		NewDefaultStorageDriverFromRawDriver,
-	))
 	return fx.Options(options...)
 }

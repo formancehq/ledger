@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 )
@@ -30,9 +30,9 @@ func TestAccounts(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("success balance", func(t *testing.T) {
-		q := ledger.AccountsQuery{
+		q := storage.AccountsQuery{
 			PageSize: 10,
-			Filters: ledger.AccountsQueryFilters{
+			Filters: storage.AccountsQueryFilters{
 				Balance: "50",
 			},
 		}
@@ -42,9 +42,9 @@ func TestAccounts(t *testing.T) {
 	})
 
 	t.Run("panic invalid balance", func(t *testing.T) {
-		q := ledger.AccountsQuery{
+		q := storage.AccountsQuery{
 			PageSize: 10,
-			Filters: ledger.AccountsQueryFilters{
+			Filters: storage.AccountsQueryFilters{
 				Balance: "TEST",
 			},
 		}
@@ -59,9 +59,9 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("panic invalid balance operator", func(t *testing.T) {
 		assert.PanicsWithValue(t, "invalid balance operator parameter", func() {
-			q := ledger.AccountsQuery{
+			q := storage.AccountsQuery{
 				PageSize: 10,
-				Filters: ledger.AccountsQueryFilters{
+				Filters: storage.AccountsQueryFilters{
 					Balance:         "50",
 					BalanceOperator: "TEST",
 				},
@@ -72,11 +72,11 @@ func TestAccounts(t *testing.T) {
 	})
 
 	t.Run("success balance operator", func(t *testing.T) {
-		q := ledger.AccountsQuery{
+		q := storage.AccountsQuery{
 			PageSize: 10,
-			Filters: ledger.AccountsQueryFilters{
+			Filters: storage.AccountsQueryFilters{
 				Balance:         "50",
-				BalanceOperator: ledger.BalanceOperatorGte,
+				BalanceOperator: storage.BalanceOperatorGte,
 			},
 		}
 

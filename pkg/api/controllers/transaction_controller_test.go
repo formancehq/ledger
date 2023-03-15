@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/internal"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -649,7 +648,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 	  destination = @centralbank
 	)`
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				store := internal.GetLedgerStore(t, driver, ctx)
@@ -669,7 +668,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 					_, ok := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					require.NoError(t, err)
 					require.Len(t, cursor.Data, 0)
 				})
@@ -684,7 +683,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 					_, ok := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					require.NoError(t, err)
 					require.Len(t, cursor.Data, 0)
 				})
@@ -705,7 +704,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 					_, ok := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					require.NoError(t, err)
 					require.Len(t, cursor.Data, 1)
 					require.Equal(t, "refPostings", cursor.Data[0].Reference)
@@ -722,7 +721,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 					_, ok := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.True(t, ok)
 
-					cursor, err := store.GetTransactions(ctx, *ledger.NewTransactionsQuery())
+					cursor, err := store.GetTransactions(ctx, *storage.NewTransactionsQuery())
 					require.NoError(t, err)
 					require.Len(t, cursor.Data, 2)
 					require.Equal(t, "refScript", cursor.Data[0].Reference)
@@ -735,7 +734,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 }
 
 func TestPostTransactionsOverdraft(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				t.Run("simple", func(t *testing.T) {
@@ -1004,7 +1003,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestTransactions(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()
@@ -1364,7 +1363,7 @@ func TestTransactions(t *testing.T) {
 }
 
 func TestGetTransactionsWithPageSize(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()
@@ -1456,7 +1455,7 @@ type accountsVolumes map[string]assetsVolumes
 type assetsVolumes map[string]core.VolumesWithBalance
 
 func TestTransactionsVolumes(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 
@@ -1758,7 +1757,7 @@ func TestTransactionsVolumes(t *testing.T) {
 }
 
 func TestRevertTransaction(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
@@ -1891,7 +1890,7 @@ func TestPostTransactionsScriptConflict(t *testing.T) {
  	  destination = @centralbank
  	)`
 
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				t.Run("first should succeed", func(t *testing.T) {

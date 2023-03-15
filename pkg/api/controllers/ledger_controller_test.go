@@ -27,7 +27,7 @@ import (
 )
 
 func TestGetLedgerInfo(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				availableMigrations, err := migrations.CollectMigrationFiles(ledgerstore.MigrationsFS)
@@ -99,7 +99,7 @@ func TestGetStats(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				now := time.Now().UTC()

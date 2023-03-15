@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
@@ -21,7 +22,7 @@ func NewBalanceController() BalanceController {
 func (ctl *BalanceController) GetBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	balancesQuery := ledger.NewBalancesQuery().
+	balancesQuery := storage.NewBalancesQuery().
 		WithAddressFilter(r.URL.Query().Get("address"))
 	balances, err := l.GetBalancesAggregated(
 		r.Context(), *balancesQuery)
@@ -36,7 +37,7 @@ func (ctl *BalanceController) GetBalancesAggregated(w http.ResponseWriter, r *ht
 func (ctl *BalanceController) GetBalances(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	balancesQuery := ledger.NewBalancesQuery()
+	balancesQuery := storage.NewBalancesQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||

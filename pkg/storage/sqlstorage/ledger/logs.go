@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -133,7 +133,7 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[core.Log], error) {
+func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {
 	res := []core.Log{}
 
 	if q.PageSize == 0 {
@@ -201,7 +201,7 @@ func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[co
 	}, nil
 }
 
-func (s *Store) buildLogsQuery(q *ledger.LogsQuery) (*bun.SelectQuery, LogsPaginationToken) {
+func (s *Store) buildLogsQuery(q *storage.LogsQuery) (*bun.SelectQuery, LogsPaginationToken) {
 	t := LogsPaginationToken{}
 	sb := s.schema.NewSelect(LogTableName).
 		Model((*Log)(nil)).

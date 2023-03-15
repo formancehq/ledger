@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/go-chi/chi/v5"
@@ -63,7 +64,7 @@ func (ctl *LedgerController) GetStats(w http.ResponseWriter, r *http.Request) {
 func (ctl *LedgerController) GetLogs(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	logsQuery := ledger.NewLogsQuery()
+	logsQuery := storage.NewLogsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||

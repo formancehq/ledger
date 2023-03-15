@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	add_pre_post_volumes "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/9-add-pre-post-volumes"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
@@ -229,7 +229,7 @@ func TestMigrate9(t *testing.T) {
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
-	schema := store.Schema()
+	schema := store.(*ledgerstore.Store).Schema()
 
 	ms, err := migrations.CollectMigrationFiles(ledgerstore.MigrationsFS)
 	require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestMigrate9(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	count, err := store.CountTransactions(context.Background(), *ledger.NewTransactionsQuery())
+	count, err := store.CountTransactions(context.Background(), *storage.NewTransactionsQuery())
 	require.NoError(t, err)
 	require.Equal(t, count, uint64(len(testCases)))
 
