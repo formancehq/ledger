@@ -29,7 +29,7 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(
 				cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := viper.GetString("name")
@@ -73,7 +73,7 @@ func NewStorageList() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(cmd.OutOrStdout(),
 				resolveOptions(viper.GetViper(),
-					fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
@@ -106,7 +106,7 @@ func NewStorageUpgrade() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]
@@ -200,7 +200,7 @@ func NewStorageDelete() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(
 				cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver[storage.LedgerStore], lc fx.Lifecycle) {
+				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							name := args[0]

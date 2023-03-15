@@ -5,11 +5,12 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 )
 
 const (
 	MaxPageSize     = 1000
-	DefaultPageSize = ledger.QueryDefaultPageSize
+	DefaultPageSize = storage.QueryDefaultPageSize
 
 	QueryKeyCursor          = "cursor"
 	QueryKeyPageSize        = "pageSize"
@@ -48,12 +49,12 @@ func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
 	return uint(pageSize), nil
 }
 
-func getBalanceOperator(w http.ResponseWriter, r *http.Request) (ledger.BalanceOperator, error) {
-	balanceOperator := ledger.DefaultBalanceOperator
+func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.BalanceOperator, error) {
+	balanceOperator := storage.DefaultBalanceOperator
 	balanceOperatorStr := r.URL.Query().Get(QueryKeyBalanceOperator)
 	if balanceOperatorStr != "" {
 		var ok bool
-		if balanceOperator, ok = ledger.NewBalanceOperator(balanceOperatorStr); !ok {
+		if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
 			return "", ErrInvalidBalanceOperator
 		}
 	}

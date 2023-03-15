@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/go-chi/chi/v5"
@@ -24,7 +25,7 @@ func NewAccountController() AccountController {
 func (ctl *AccountController) CountAccounts(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	accountsQuery := ledger.NewAccountsQuery().
+	accountsQuery := storage.NewAccountsQuery().
 		WithAddressFilter(r.URL.Query().Get("address")).
 		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
@@ -40,7 +41,7 @@ func (ctl *AccountController) CountAccounts(w http.ResponseWriter, r *http.Reque
 func (ctl *AccountController) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	accountsQuery := ledger.NewAccountsQuery()
+	accountsQuery := storage.NewAccountsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||

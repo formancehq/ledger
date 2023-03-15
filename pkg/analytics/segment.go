@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pbnjay/memory"
@@ -39,7 +38,7 @@ func (fn AppIdProviderFn) AppID(ctx context.Context) (string, error) {
 	return fn(ctx)
 }
 
-func FromStorageAppIdProvider(driver storage.Driver[ledger.Store]) AppIdProvider {
+func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
 	var appId string
 	return AppIdProviderFn(func(ctx context.Context) (string, error) {
 		var err error
@@ -65,7 +64,7 @@ type heartbeat struct {
 	client        analytics.Client
 	stopChan      chan chan struct{}
 	appIdProvider AppIdProvider
-	driver        storage.Driver[ledger.Store]
+	driver        storage.Driver
 }
 
 func (m *heartbeat) Run(ctx context.Context) error {
@@ -135,11 +134,11 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			transactions, err := store.CountTransactions(ctx, ledger.TransactionsQuery{})
+			transactions, err := store.CountTransactions(ctx, storage.TransactionsQuery{})
 			if err != nil {
 				return err
 			}
-			accounts, err := store.CountAccounts(ctx, ledger.AccountsQuery{})
+			accounts, err := store.CountAccounts(ctx, storage.AccountsQuery{})
 			if err != nil {
 				return err
 			}
@@ -168,7 +167,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	})
 }
 
-func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver[ledger.Store], client analytics.Client, version string, interval time.Duration) *heartbeat {
+func newHeartbeat(appIdProvider AppIdProvider, driver storage.Driver, client analytics.Client, version string, interval time.Duration) *heartbeat {
 	return &heartbeat{
 		version:       version,
 		interval:      interval,
@@ -185,7 +184,7 @@ func NewHeartbeatModule(version, writeKey string, interval time.Duration) fx.Opt
 		fx.Provide(func(cfg analytics.Config) (analytics.Client, error) {
 			return analytics.NewWithConfig(writeKey, cfg)
 		}),
-		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver[ledger.Store]) *heartbeat {
+		fx.Provide(func(client analytics.Client, provider AppIdProvider, driver storage.Driver) *heartbeat {
 			return newHeartbeat(provider, driver, client, version, interval)
 		}),
 		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {

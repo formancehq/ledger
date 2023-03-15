@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/lib/pq"
 )
@@ -20,7 +20,7 @@ type BalancesPaginationToken struct {
 	AddressRegexpFilter string `json:"address,omitempty"`
 }
 
-func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuery) (core.AssetsBalances, error) {
+func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
 		ColumnExpr("asset").
@@ -63,7 +63,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 	return aggregatedBalances, nil
 }
 
-func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
 		ColumnExpr("account").

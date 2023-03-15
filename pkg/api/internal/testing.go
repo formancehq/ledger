@@ -196,7 +196,7 @@ func PostScript(t *testing.T, handler http.Handler, s core.ScriptData, query url
 	return rec
 }
 
-func GetLedgerStore(t *testing.T, driver storage.Driver[ledger.Store], ctx context.Context) ledger.Store {
+func GetLedgerStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.LedgerStore {
 	store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
 	require.NoError(t, err)
 	return store
@@ -211,14 +211,14 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		// 100 000 000 bytes is 100 MB
 		ledger.ResolveModule(100000000, 100),
 		ledgertesting.ProvideLedgerStorageDriver(t),
-		fx.Invoke(func(driver storage.Driver[ledger.Store], lc fx.Lifecycle) {
+		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
 					if err != nil {
 						return err
 					}
-					defer func(store ledger.Store, ctx context.Context) {
+					defer func(store storage.LedgerStore, ctx context.Context) {
 						require.NoError(t, store.Close(ctx))
 					}(store, ctx)
 

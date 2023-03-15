@@ -38,7 +38,7 @@ func withContainer(t pgtesting.TestingT, options ...fx.Option) {
 }
 
 func runOnLedger(t pgtesting.TestingT, f func(l *ledger.Ledger), ledgerOptions ...ledger.LedgerOption) {
-	var storageDriver storage.Driver[ledger.Store]
+	var storageDriver storage.Driver
 	withContainer(t, fx.Populate(&storageDriver))
 
 	name := uuid.New()
@@ -601,7 +601,7 @@ func TestGetTransactions(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, logs.Wait(context.Background()))
 
-		res, err := l.GetTransactions(context.Background(), *ledger.NewTransactionsQuery())
+		res, err := l.GetTransactions(context.Background(), *storage.NewTransactionsQuery())
 		require.NoError(t, err)
 
 		require.Equal(t, "test_get_transactions", res.Data[0].Postings[0].Destination)
@@ -751,7 +751,7 @@ func BenchmarkGetAccount(b *testing.B) {
 func BenchmarkGetTransactions(b *testing.B) {
 	runOnLedger(b, func(l *ledger.Ledger) {
 		for i := 0; i < b.N; i++ {
-			_, err := l.GetTransactions(context.Background(), ledger.TransactionsQuery{})
+			_, err := l.GetTransactions(context.Background(), storage.TransactionsQuery{})
 			require.NoError(b, err)
 		}
 	})

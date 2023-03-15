@@ -7,10 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -95,7 +93,7 @@ func TestAnalyticsModule(t *testing.T) {
 	app := fx.New(
 		module,
 		fx.NopLogger,
-		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
+		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
 			driver, stopFn, err := ledgertesting.StorageDriver(t)
 			if err != nil {
 				return nil, err
@@ -107,7 +105,7 @@ func TestAnalyticsModule(t *testing.T) {
 					return driver.Close(ctx)
 				},
 			})
-			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
+			return driver, nil
 		}),
 		fx.Replace(analytics.Config{
 			BatchSize: 1,

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -26,16 +26,16 @@ type Accounts struct {
 }
 
 type AccountsPaginationToken struct {
-	PageSize              uint                   `json:"pageSize"`
-	Offset                uint                   `json:"offset"`
-	AfterAddress          string                 `json:"after,omitempty"`
-	AddressRegexpFilter   string                 `json:"address,omitempty"`
-	MetadataFilter        map[string]string      `json:"metadata,omitempty"`
-	BalanceFilter         string                 `json:"balance,omitempty"`
-	BalanceOperatorFilter ledger.BalanceOperator `json:"balanceOperator,omitempty"`
+	PageSize              uint                    `json:"pageSize"`
+	Offset                uint                    `json:"offset"`
+	AfterAddress          string                  `json:"after,omitempty"`
+	AddressRegexpFilter   string                  `json:"address,omitempty"`
+	MetadataFilter        map[string]string       `json:"metadata,omitempty"`
+	BalanceFilter         string                  `json:"balance,omitempty"`
+	BalanceOperatorFilter storage.BalanceOperator `json:"balanceOperator,omitempty"`
 }
 
-func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
+func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
 	sb := s.schema.NewSelect(accountsTableName).
 		Model((*Accounts)(nil))
 	t := AccountsPaginationToken{}
@@ -74,17 +74,17 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*bun.SelectQuery, Ac
 
 		if balanceOperator != "" {
 			switch balanceOperator {
-			case ledger.BalanceOperatorLte:
+			case storage.BalanceOperatorLte:
 				sb.Where(fmt.Sprintf("%s <= ?", balanceOperation), balanceValue)
-			case ledger.BalanceOperatorLt:
+			case storage.BalanceOperatorLt:
 				sb.Where(fmt.Sprintf("%s < ?", balanceOperation), balanceValue)
-			case ledger.BalanceOperatorGte:
+			case storage.BalanceOperatorGte:
 				sb.Where(fmt.Sprintf("%s >= ?", balanceOperation), balanceValue)
-			case ledger.BalanceOperatorGt:
+			case storage.BalanceOperatorGt:
 				sb.Where(fmt.Sprintf("%s > ?", balanceOperation), balanceValue)
-			case ledger.BalanceOperatorE:
+			case storage.BalanceOperatorE:
 				sb.Where(fmt.Sprintf("%s = ?", balanceOperation), balanceValue)
-			case ledger.BalanceOperatorNe:
+			case storage.BalanceOperatorNe:
 				sb.Where(fmt.Sprintf("%s != ?", balanceOperation), balanceValue)
 			default:
 				// parameter is validated in the controller for now
@@ -101,7 +101,7 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*bun.SelectQuery, Ac
 	return sb, t
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cursor[core.Account], error) {
+func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
@@ -270,7 +270,7 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 	return res, nil
 }
 
-func (s *Store) CountAccounts(ctx context.Context, q ledger.AccountsQuery) (uint64, error) {
+func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
 	sb, _ := s.buildAccountsQuery(q)
 	count, err := sb.Count(ctx)
 	return uint64(count), s.error(err)
