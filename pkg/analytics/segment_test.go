@@ -11,10 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -87,7 +85,7 @@ func module(t pgtesting.TestingT) fx.Option {
 				return "foo", nil
 			})
 		}),
-		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
+		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
 			driver, stopFn, err := ledgertesting.StorageDriver(t)
 			if err != nil {
 				return nil, err
@@ -99,7 +97,7 @@ func module(t pgtesting.TestingT) fx.Option {
 					return driver.Close(ctx)
 				},
 			})
-			return sqlstorage.NewLedgerStorageDriverFromRawDriver(driver), nil
+			return driver, nil
 		}),
 	)
 }

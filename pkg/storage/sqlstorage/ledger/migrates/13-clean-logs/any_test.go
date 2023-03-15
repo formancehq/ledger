@@ -29,7 +29,7 @@ func TestMigrate(t *testing.T) {
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
-	schema := store.Schema()
+	schema := store.(*ledgerstore.Store).Schema()
 
 	ms, err := migrations.CollectMigrationFiles(ledgerstore.MigrationsFS)
 	require.NoError(t, err)

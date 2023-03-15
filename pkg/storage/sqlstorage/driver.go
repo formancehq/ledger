@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
@@ -79,7 +78,7 @@ func (d *Driver) GetSystemStore() storage.SystemStore {
 	return d.systemStore
 }
 
-func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (*ledgerstore.Store, bool, error) {
+func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (storage.LedgerStore, bool, error) {
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
@@ -179,36 +178,4 @@ func NewDriver(name string, db schema.DB) *Driver {
 	}
 }
 
-var _ storage.Driver[*ledgerstore.Store] = (*Driver)(nil)
-
-type LedgerStorageDriver struct {
-	*Driver
-}
-
-func (d *LedgerStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (ledger.Store, bool, error) {
-	return d.Driver.GetLedgerStore(ctx, name, create)
-}
-
-var _ storage.Driver[ledger.Store] = (*LedgerStorageDriver)(nil)
-
-func NewLedgerStorageDriverFromRawDriver(driver *Driver) storage.Driver[ledger.Store] {
-	return &LedgerStorageDriver{
-		Driver: driver,
-	}
-}
-
-type DefaultStorageDriver struct {
-	*Driver
-}
-
-func (d *DefaultStorageDriver) GetLedgerStore(ctx context.Context, name string, create bool) (storage.LedgerStore, bool, error) {
-	return d.Driver.GetLedgerStore(ctx, name, create)
-}
-
-var _ storage.Driver[storage.LedgerStore] = (*DefaultStorageDriver)(nil)
-
-func NewDefaultStorageDriverFromRawDriver(driver *Driver) storage.Driver[storage.LedgerStore] {
-	return &DefaultStorageDriver{
-		Driver: driver,
-	}
-}
+var _ storage.Driver = (*Driver)(nil)

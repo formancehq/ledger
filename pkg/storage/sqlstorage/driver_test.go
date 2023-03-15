@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestNewDriver(t *testing.T) {
 	assert.NoError(t, store.Close(context.Background()))
 	assert.NoError(t, d.Close(context.Background()))
 
-	_, err = store.Schema().QueryContext(context.Background(), "select * from transactions")
+	_, err = store.(*ledgerstore.Store).Schema().QueryContext(context.Background(), "select * from transactions")
 	assert.Error(t, err)
 	assert.Equal(t, "sql: database is closed", err.Error())
 }

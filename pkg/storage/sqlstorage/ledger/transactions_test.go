@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/stack/libs/go-libs/api"
@@ -29,7 +29,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					ledgerName := uuid.NewString()
-					var store *ledgerstore.Store
+					var store storage.LedgerStore
 					var err error
 					for store == nil {
 						store, _, err = driver.GetLedgerStore(ctx, ledgerName, true)
@@ -38,7 +38,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 							time.Sleep(3 * time.Second)
 						}
 					}
-					defer func(store ledger.Store, ctx context.Context) {
+					defer func(store storage.LedgerStore, ctx context.Context) {
 						require.NoError(b, store.Close(ctx))
 					}(store, context.Background())
 
@@ -58,7 +58,7 @@ func BenchmarkStore_GetTransactions(b *testing.B) {
 	}(app, context.Background())
 }
 
-func benchGetTransactions(b *testing.B, store *ledgerstore.Store) {
+func benchGetTransactions(b *testing.B, store storage.LedgerStore) {
 	maxPages := 120
 	maxPageSize := 500
 	id := uint64(0)
@@ -123,7 +123,7 @@ func benchGetTransactions(b *testing.B, store *ledgerstore.Store) {
 	}
 
 	numTxs := maxPages * maxPageSize
-	nb, err := store.CountTransactions(context.Background(), ledger.TransactionsQuery{})
+	nb, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
 	require.NoError(b, err)
 	require.Equal(b, uint64(numTxs), nb)
 
@@ -235,10 +235,10 @@ func benchGetTransactions(b *testing.B, store *ledgerstore.Store) {
 	})
 }
 
-func getTxQueries(b *testing.B, store *ledgerstore.Store, pageSize, maxNumTxs int) (firstQ, midQ, lastQ *ledger.TransactionsQuery) {
+func getTxQueries(b *testing.B, store storage.LedgerStore, pageSize, maxNumTxs int) (firstQ, midQ, lastQ *storage.TransactionsQuery) {
 	numTxs := 0
-	txQuery := &ledger.TransactionsQuery{
-		Filters: ledger.TransactionsQueryFilters{
+	txQuery := &storage.TransactionsQuery{
+		Filters: storage.TransactionsQueryFilters{
 			Source: ".*:key1:.*:key2:.*",
 		},
 		PageSize: uint(pageSize),
@@ -260,7 +260,7 @@ func getTxQueries(b *testing.B, store *ledgerstore.Store, pageSize, maxNumTxs in
 				return
 			}
 
-			txQuery = ledger.NewTransactionsQuery().
+			txQuery = storage.NewTransactionsQuery().
 				WithAfterTxID(token.AfterTxID).
 				WithSourceFilter(token.SourceFilter).
 				WithPageSize(token.PageSize)

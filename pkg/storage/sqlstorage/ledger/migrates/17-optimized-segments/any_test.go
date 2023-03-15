@@ -27,7 +27,7 @@ func TestMigrate17(t *testing.T) {
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
 	require.NoError(t, err)
 
-	schema := store.Schema()
+	schema := store.(*ledgerstore.Store).Schema()
 
 	ms, err := migrations.CollectMigrationFiles(ledgerstore.MigrationsFS)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestMigrate17(t *testing.T) {
 		Column("txid", "posting_index", "source", "destination").
 		Where("txid = 0")
 
-	row := store.Schema().QueryRowContext(context.Background(), sb.String())
+	row := store.(*ledgerstore.Store).Schema().QueryRowContext(context.Background(), sb.String())
 	require.NoError(t, row.Err())
 
 	var txid uint64

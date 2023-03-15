@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/internal"
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ import (
 )
 
 func TestGetInfo(t *testing.T) {
-	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver[ledger.Store]) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, h *api.API, driver storage.Driver) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				rsp := internal.GetInfo(h)

@@ -31,7 +31,7 @@ var DefaultResolverOptions = []ResolverOption{
 }
 
 type Resolver struct {
-	storageDriver     storage.Driver[Store]
+	storageDriver     storage.Driver
 	lock              sync.RWMutex
 	initializedStores map[string]struct{}
 	monitor           Monitor
@@ -41,7 +41,7 @@ type Resolver struct {
 }
 
 func NewResolver(
-	storageFactory storage.Driver[Store],
+	storageDriver storage.Driver,
 	ledgerOptions []LedgerOption,
 	cacheBytesCapacity, cacheMaxNumKeys int64,
 	locker Locker,
@@ -49,7 +49,7 @@ func NewResolver(
 ) *Resolver {
 	options = append(DefaultResolverOptions, options...)
 	r := &Resolver{
-		storageDriver:     storageFactory,
+		storageDriver:     storageDriver,
 		initializedStores: map[string]struct{}{},
 		cache:             NewCache(cacheBytesCapacity, cacheMaxNumKeys, false),
 		locker:            locker,
@@ -107,7 +107,7 @@ func ProvideResolverOption(provider interface{}) fx.Option {
 func ResolveModule(cacheBytesCapacity, cacheMaxNumKeys int64) fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(func(storageFactory storage.Driver[Store], ledgerOptions []LedgerOption, locker Locker, options ...ResolverOption) *Resolver {
+			fx.Annotate(func(storageFactory storage.Driver, ledgerOptions []LedgerOption, locker Locker, options ...ResolverOption) *Resolver {
 				return NewResolver(storageFactory, ledgerOptions, cacheBytesCapacity, cacheMaxNumKeys, locker, options...)
 			}, fx.ParamTags("", ResolverLedgerOptionsKey, "", ResolverOptionsKey)),
 		),

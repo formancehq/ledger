@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/go-chi/chi/v5"
@@ -45,7 +46,7 @@ func (ctl *TransactionController) CountTransactions(w http.ResponseWriter, r *ht
 		}
 	}
 
-	txQuery := ledger.NewTransactionsQuery().
+	txQuery := storage.NewTransactionsQuery().
 		WithReferenceFilter(r.URL.Query().Get("reference")).
 		WithAccountFilter(r.URL.Query().Get("account")).
 		WithSourceFilter(r.URL.Query().Get("source")).
@@ -65,7 +66,7 @@ func (ctl *TransactionController) CountTransactions(w http.ResponseWriter, r *ht
 func (ctl *TransactionController) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	txQuery := ledger.NewTransactionsQuery()
+	txQuery := storage.NewTransactionsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||
