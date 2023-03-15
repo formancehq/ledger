@@ -81,7 +81,7 @@ paths:
           schema:
             type: object
             properties: {}
-          example: metadata[key]=value1&metadata[a.nested.key]=value2
+          example: { admin: true, a: { nested: { key: value}} }
       responses:
         "200":
           description: OK
@@ -156,7 +156,7 @@ paths:
           schema:
             type: object
             properties: {}
-          example: metadata[key]=value1&metadata[a.nested.key]=value2
+          example: { admin: true, a: { nested: { key: value}} }
         - name: balance
           in: query
           description: Filter accounts by their balance (default operator is gte)
@@ -457,7 +457,7 @@ paths:
           schema:
             type: object
             properties: { }
-          example: metadata[key]=value1&metadata[a.nested.key]=value2
+          example: { admin: true, a: { nested: { key: value}} }
       responses:
         "200":
           description: OK
@@ -518,7 +518,7 @@ paths:
             (in descending order).
           schema:
             type: string
-            example: 1234
+            example: "1234"
         - name: reference
           in: query
           description: Find transactions by reference field.
@@ -610,7 +610,7 @@ paths:
           schema:
             type: object
             properties: { }
-          example: metadata[key]=value1&metadata[a.nested.key]=value2
+          example: { admin: true, a: { nested: { key: value}} }
       responses:
         "200":
           description: OK
@@ -924,7 +924,7 @@ paths:
             (in descending order).
           schema:
             type: string
-            example: 1234
+            example: "1234"
         - name: startTime
           in: query
           description: |
