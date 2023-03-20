@@ -2,8 +2,8 @@ package system
 
 import (
 	"context"
-	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -14,7 +14,7 @@ type Ledgers struct {
 	bun.BaseModel `bun:"ledgers,alias:ledgers"`
 
 	Ledger  string    `bun:"ledger,type:varchar(255),pk"` // Primary key
-	AddedAt time.Time `bun:"addedAt,type:timestamp"`
+	AddedAt core.Time `bun:"addedAt,type:timestamp"`
 }
 
 func (s *Store) CreateLedgersTable(ctx context.Context) error {
@@ -61,7 +61,7 @@ func (s *Store) DeleteLedger(ctx context.Context, name string) error {
 func (s *Store) Register(ctx context.Context, ledger string) (bool, error) {
 	l := &Ledgers{
 		Ledger:  ledger,
-		AddedAt: time.Now(),
+		AddedAt: core.Now(),
 	}
 
 	ret, err := s.schema.NewInsert(ledgersTableName).
@@ -95,5 +95,8 @@ func (s *Store) Exists(ctx context.Context, ledger string) (bool, error) {
 	var t string
 	_ = ret.Scan(&t) // Trigger close
 
+	if t == "" {
+		return false, nil
+	}
 	return true, nil
 }

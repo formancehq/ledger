@@ -5,17 +5,16 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/publish"
-	"go.uber.org/fx"
 )
 
 type ledgerMonitor struct {
 	publisher message.Publisher
 }
 
-var _ ledger.Monitor = &ledgerMonitor{}
+var _ query.Monitor = &ledgerMonitor{}
 
 func newLedgerMonitor(publisher message.Publisher) *ledgerMonitor {
 	m := &ledgerMonitor{
@@ -24,22 +23,8 @@ func newLedgerMonitor(publisher message.Publisher) *ledgerMonitor {
 	return m
 }
 
-func LedgerMonitorModule() fx.Option {
-	return fx.Options(
-		fx.Provide(
-			fx.Annotate(
-				newLedgerMonitor,
-				fx.ParamTags(``, `group:"monitorOptions"`),
-			),
-		),
-		ledger.ProvideResolverOption(func(monitor *ledgerMonitor) ledger.ResolveOptionFn {
-			return ledger.WithMonitor(monitor)
-		}),
-	)
-}
-
 func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, txs ...core.ExpandedTransaction) {
-	postCommitVolumes := core.AggregatePostCommitVolumes(txs...)
+	postCommitVolumes := aggregatePostCommitVolumes(txs...)
 	l.publish(ctx, EventTypeCommittedTransactions,
 		newEventCommittedTransactions(CommittedTransactions{
 			Ledger:            ledger,

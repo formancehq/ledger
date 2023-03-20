@@ -2,14 +2,21 @@ package core
 
 import (
 	"encoding/json"
-	"time"
 )
 
-type ScriptData struct {
+type RunScript struct {
 	Script
-	Timestamp time.Time `json:"timestamp"`
-	Reference string    `json:"reference"`
-	Metadata  Metadata  `json:"metadata"`
+	Timestamp Time     `json:"timestamp"`
+	Reference string   `json:"reference"`
+	Metadata  Metadata `json:"metadata"`
+}
+
+func (s *RunScript) WithDefaultValues() {
+	if s.Timestamp.IsZero() {
+		s.Timestamp = Now()
+	} else {
+		s.Timestamp = s.Timestamp.UTC().Round(DatePrecision)
+	}
 }
 
 type Script struct {

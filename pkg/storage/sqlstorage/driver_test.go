@@ -12,11 +12,7 @@ import (
 )
 
 func TestNewDriver(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stopFn()
+	d := ledgertesting.StorageDriver(t)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
@@ -39,11 +35,7 @@ func TestNewDriver(t *testing.T) {
 }
 
 func TestConfiguration(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stopFn()
+	d := ledgertesting.StorageDriver(t)
 
 	require.NoError(t, d.Initialize(context.Background()))
 

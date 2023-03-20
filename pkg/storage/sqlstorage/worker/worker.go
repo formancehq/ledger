@@ -98,7 +98,7 @@ func (w *Worker[MODEL]) len() int {
 	return l
 }
 
-func (w *Worker[MODEL]) WriteModels(ctx context.Context, models []MODEL) <-chan error {
+func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...MODEL) <-chan error {
 	errChan := make(chan error, 1)
 
 	select {

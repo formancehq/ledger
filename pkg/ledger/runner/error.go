@@ -1,4 +1,4 @@
-package ledger
+package runner
 
 import (
 	"fmt"
@@ -81,10 +81,12 @@ func IsValidationError(err error) bool {
 	return errors.Is(err, &ValidationError{})
 }
 
-type ConflictError struct{}
+type ConflictError struct {
+	msg string
+}
 
 func (e ConflictError) Error() string {
-	return "conflict error on reference"
+	return fmt.Sprintf("conflict error: %s", e.msg)
 }
 
 func (e ConflictError) Is(err error) bool {
@@ -92,49 +94,14 @@ func (e ConflictError) Is(err error) bool {
 	return ok
 }
 
-func NewConflictError() *ConflictError {
-	return &ConflictError{}
+func NewConflictError(msg string) *ConflictError {
+	return &ConflictError{
+		msg: msg,
+	}
 }
 
 func IsConflictError(err error) bool {
 	return errors.Is(err, &ConflictError{})
-}
-
-const (
-	ScriptErrorInsufficientFund  = "INSUFFICIENT_FUND"
-	ScriptErrorCompilationFailed = "COMPILATION_FAILED"
-	ScriptErrorNoScript          = "NO_SCRIPT"
-	ScriptErrorMetadataOverride  = "METADATA_OVERRIDE"
-)
-
-type ScriptError struct {
-	Code    string
-	Message string
-}
-
-func (e ScriptError) Error() string {
-	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
-}
-
-func (e ScriptError) Is(err error) bool {
-	eerr, ok := err.(*ScriptError)
-	if !ok {
-		return false
-	}
-	return e.Code == eerr.Code
-}
-
-func IsScriptErrorWithCode(err error, code string) bool {
-	return errors.Is(err, &ScriptError{
-		Code: code,
-	})
-}
-
-func NewScriptError(code string, message string) *ScriptError {
-	return &ScriptError{
-		Code:    code,
-		Message: message,
-	}
 }
 
 type LockError struct {

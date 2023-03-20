@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"time"
+	"github.com/formancehq/ledger/pkg/core"
 )
 
 const (
@@ -19,8 +19,8 @@ type TransactionsQueryFilters struct {
 	Destination string
 	Source      string
 	Account     string
-	EndTime     time.Time
-	StartTime   time.Time
+	EndTime     core.Time
+	StartTime   core.Time
 	Metadata    map[string]string
 }
 
@@ -44,7 +44,7 @@ func (a *TransactionsQuery) WithAfterTxID(after uint64) *TransactionsQuery {
 	return a
 }
 
-func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQuery {
+func (a *TransactionsQuery) WithStartTimeFilter(start core.Time) *TransactionsQuery {
 	if !start.IsZero() {
 		a.Filters.StartTime = start
 	}
@@ -52,7 +52,7 @@ func (a *TransactionsQuery) WithStartTimeFilter(start time.Time) *TransactionsQu
 	return a
 }
 
-func (a *TransactionsQuery) WithEndTimeFilter(end time.Time) *TransactionsQuery {
+func (a *TransactionsQuery) WithEndTimeFilter(end core.Time) *TransactionsQuery {
 	if !end.IsZero() {
 		a.Filters.EndTime = end
 	}
@@ -237,8 +237,8 @@ type LogsQuery struct {
 }
 
 type LogsQueryFilters struct {
-	EndTime   time.Time
-	StartTime time.Time
+	EndTime   core.Time
+	StartTime core.Time
 }
 
 func NewLogsQuery() *LogsQuery {
@@ -261,7 +261,7 @@ func (l *LogsQuery) WithPageSize(pageSize uint) *LogsQuery {
 	return l
 }
 
-func (l *LogsQuery) WithStartTimeFilter(start time.Time) *LogsQuery {
+func (l *LogsQuery) WithStartTimeFilter(start core.Time) *LogsQuery {
 	if !start.IsZero() {
 		l.Filters.StartTime = start
 	}
@@ -269,7 +269,7 @@ func (l *LogsQuery) WithStartTimeFilter(start time.Time) *LogsQuery {
 	return l
 }
 
-func (l *LogsQuery) WithEndTimeFilter(end time.Time) *LogsQuery {
+func (l *LogsQuery) WithEndTimeFilter(end core.Time) *LogsQuery {
 	if !end.IsZero() {
 		l.Filters.EndTime = end
 	}

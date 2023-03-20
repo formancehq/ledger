@@ -11,8 +11,17 @@ import (
 )
 
 func testGetBalances(t *testing.T, store storage.LedgerStore) {
-	err := store.Commit(context.Background(), tx1, tx2, tx3)
-	require.NoError(t, err)
+	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
+		"world": {
+			"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
+		},
+		"users:1": {
+			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(1)),
+		},
+		"central_bank": {
+			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(199)),
+		},
+	}))
 
 	t.Run("all accounts", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
@@ -130,8 +139,17 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 }
 
 func testGetBalancesAggregated(t *testing.T, store storage.LedgerStore) {
-	err := store.Commit(context.Background(), tx1, tx2, tx3)
-	assert.NoError(t, err)
+	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
+		"world": {
+			"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
+		},
+		"users:1": {
+			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(1)),
+		},
+		"central_bank": {
+			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(199)),
+		},
+	}))
 
 	q := storage.BalancesQuery{
 		PageSize: 10,

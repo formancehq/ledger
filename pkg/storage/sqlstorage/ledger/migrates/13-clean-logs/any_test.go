@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
@@ -13,7 +12,18 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 )
+
+type Log struct {
+	bun.BaseModel `bun:"log,alias:log"`
+
+	ID   uint64          `bun:"id,unique,type:bigint"`
+	Type string          `bun:"type,type:varchar"`
+	Hash string          `bun:"hash,type:varchar"`
+	Date core.Time       `bun:"date,type:timestamptz"`
+	Data json.RawMessage `bun:"data,type:jsonb"`
+}
 
 func TestMigrate(t *testing.T) {
 	require.NoError(t, pgtesting.CreatePostgresServer())
@@ -21,9 +31,7 @@ func TestMigrate(t *testing.T) {
 		require.NoError(t, pgtesting.DestroyPostgresServer())
 	}()
 
-	driver, closeFunc, err := ledgertesting.StorageDriver(t)
-	require.NoError(t, err)
-	defer closeFunc()
+	driver := ledgertesting.StorageDriver(t)
 
 	require.NoError(t, driver.Initialize(context.Background()))
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
@@ -38,12 +46,12 @@ func TestMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	ls := []ledgerstore.Log{
+	ls := []Log{
 		{
 			ID:   0,
-			Type: core.NewTransactionType,
+			Type: core.NewTransactionLogType,
 			Hash: "",
-			Date: time.Now(),
+			Date: core.Now(),
 			Data: []byte(`{
 				"txid": 0,
 				"postings": [],
@@ -52,9 +60,9 @@ func TestMigrate(t *testing.T) {
 		},
 		{
 			ID:   1,
-			Type: core.NewTransactionType,
+			Type: core.NewTransactionLogType,
 			Hash: "",
-			Date: time.Now(),
+			Date: core.Now(),
 			Data: []byte(`{
 				"txid": 1,
 				"postings": [],

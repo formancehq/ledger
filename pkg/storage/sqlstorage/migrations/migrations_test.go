@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -17,7 +16,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/psanford/memfs"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 )
 
 func TestMain(t *testing.M) {
@@ -47,7 +45,7 @@ func TestCollectMigrations(t *testing.T) {
 		NO SQL;
 	`), 0666))
 
-	migrations.RegisterGoMigrationFromFilename("migrates/0-first-migration/sqlite.go", func(ctx context.Context, schema schema.Schema, tx *bun.Tx) error {
+	migrations.RegisterGoMigrationFromFilename("migrates/0-first-migration/sqlite.go", func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 		return nil
 	})
 
@@ -138,10 +136,10 @@ func TestMigrates(t *testing.T) {
 			},
 			Handlers: migrations.HandlersByEngine{
 				"any": {
-					func(ctx context.Context, schema schema.Schema, tx *bun.Tx) error {
+					func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 						sb := s.NewUpdate(ledgerstore.TransactionsTableName).
 							Model((*ledgerstore.Transactions)(nil)).
-							Set("timestamp = ?", time.Now()).
+							Set("timestamp = ?", core.Now()).
 							Where("TRUE")
 
 						_, err := tx.ExecContext(ctx, sb.String())
@@ -160,7 +158,7 @@ func TestMigrates(t *testing.T) {
 }
 
 func TestRegister(t *testing.T) {
-	fn := func(ctx context.Context, schema schema.Schema, tx *bun.Tx) error {
+	fn := func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 		return nil
 	}
 

@@ -110,3 +110,30 @@ func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[strin
 	}
 	return variables, nil
 }
+
+func (p *Program) GetInvolvedAccounts(vars map[string]json.RawMessage) ([]string, error) {
+	involvedAccountsMap := map[string]struct{}{}
+	for _, resource := range p.Resources {
+		switch resource.GetType() {
+		case core.TypeAccount:
+			switch resource := resource.(type) {
+			case Constant:
+				switch inner := resource.Inner.(type) {
+				case core.AccountAddress:
+					involvedAccountsMap[string(inner)] = struct{}{}
+				}
+			case Variable:
+				value, err := core.NewValueFromJSON(core.TypeAccount, vars[resource.Name])
+				if err != nil {
+					return nil, err
+				}
+				involvedAccountsMap[string((*value).(core.AccountAddress))] = struct{}{}
+			}
+		}
+	}
+	ret := make([]string, 0)
+	for account := range involvedAccountsMap {
+		ret = append(ret, account)
+	}
+	return ret, nil
+}

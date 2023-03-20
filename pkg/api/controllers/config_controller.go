@@ -23,32 +23,22 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-type ConfigController struct {
-	Version       string
-	StorageDriver storage.Driver
-}
+func GetInfo(storageDriver storage.Driver, version string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ledgers, err := storageDriver.GetSystemStore().ListLedgers(r.Context())
+		if err != nil {
+			panic(err)
+		}
 
-func NewConfigController(version string, storageDriver storage.Driver) ConfigController {
-	return ConfigController{
-		Version:       version,
-		StorageDriver: storageDriver,
-	}
-}
-
-func (ctl *ConfigController) GetInfo(w http.ResponseWriter, r *http.Request) {
-	ledgers, err := ctl.StorageDriver.GetSystemStore().ListLedgers(r.Context())
-	if err != nil {
-		panic(err)
-	}
-
-	sharedapi.RawOk(w, ConfigInfo{
-		Server:  "ledger",
-		Version: ctl.Version,
-		Config: &Config{
-			LedgerStorage: &LedgerStorage{
-				Driver:  ctl.StorageDriver.Name(),
-				Ledgers: ledgers,
+		sharedapi.RawOk(w, ConfigInfo{
+			Server:  "ledger",
+			Version: version,
+			Config: &Config{
+				LedgerStorage: &LedgerStorage{
+					Driver:  storageDriver.Name(),
+					Ledgers: ledgers,
+				},
 			},
-		},
-	})
+		})
+	}
 }

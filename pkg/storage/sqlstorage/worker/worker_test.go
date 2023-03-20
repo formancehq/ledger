@@ -27,7 +27,7 @@ func TestSimpleWorker(t *testing.T) {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case err := <-w.WriteModels(ctx, []Log{{id: _i}}):
+			case err := <-w.WriteModels(ctx, Log{id: _i}):
 				return err
 			}
 		})
@@ -60,7 +60,7 @@ func TestBatchWorker(t *testing.T) {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case err := <-w.WriteModels(ctx, logs):
+			case err := <-w.WriteModels(ctx, logs...):
 				return err
 			}
 		})
@@ -95,7 +95,7 @@ func TestBatchTickerWorker(t *testing.T) {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case err := <-w.WriteModels(ctx, logs):
+			case err := <-w.WriteModels(ctx, logs...):
 				return err
 			}
 		})
