@@ -18,9 +18,6 @@ const (
 	bindFlag                            = "bind"
 
 	commitPolicyFlag = "commit-policy"
-
-	cacheCapacityBytes = "cache-capacity-bytes"
-	cacheMaxNumKeys    = "cache-max-num-keys"
 )
 
 var (
@@ -62,10 +59,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
-
-	// 100 000 000 bytes is 100 MB
-	root.PersistentFlags().Int(cacheCapacityBytes, 100000000, "Capacity in bytes of the cache storing Numscript in RAM")
-	root.PersistentFlags().Int(cacheMaxNumKeys, 100, "Maximum number of Numscript to be stored in the cache in RAM")
 
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)

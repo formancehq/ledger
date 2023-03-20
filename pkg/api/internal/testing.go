@@ -11,20 +11,25 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/api/controllers"
+	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/cache"
+	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/health"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/go-chi/chi/v5"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/fx"
 )
 
-var testingLedger string
+var TestingLedger string
 
 func Encode(t *testing.T, v interface{}) []byte {
 	data, err := json.Marshal(v)
@@ -64,8 +69,8 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	return req, rec
 }
 
-func PostTransaction(t *testing.T, handler http.Handler, payload controllers.PostTransaction, preview bool) *httptest.ResponseRecorder {
-	path := fmt.Sprintf("/%s/transactions", testingLedger)
+func PostTransaction(t *testing.T, handler http.Handler, payload controllers.PostTransactionRequest, preview bool) *httptest.ResponseRecorder {
+	path := fmt.Sprintf("/%s/transactions", TestingLedger)
 	if preview {
 		path += "?preview=true"
 	}
@@ -75,109 +80,109 @@ func PostTransaction(t *testing.T, handler http.Handler, payload controllers.Pos
 }
 
 func PostTransactionMetadata(t *testing.T, handler http.Handler, id uint64, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions/%d/metadata", testingLedger, id), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/transactions/%d/metadata", TestingLedger, id), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func CountTransactions(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/transactions", testingLedger), nil)
+	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/transactions", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransactions(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions/%d", testingLedger, id), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/transactions/%d", TestingLedger, id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func RevertTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/revert", id), nil)
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+TestingLedger+"/transactions/%d/revert", id), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func CountAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/accounts", testingLedger), nil)
+	req, rec := NewRequest(http.MethodHead, fmt.Sprintf("/%s/accounts", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccounts(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetBalances(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/balances", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/balances", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetBalancesAggregated(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/aggregate/balances", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/aggregate/balances", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetAccount(handler http.Handler, addr string) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts/%s", testingLedger, addr), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/accounts/%s", TestingLedger, addr), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func PostAccountMetadata(t *testing.T, handler http.Handler, addr string, m core.Metadata) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/accounts/%s/metadata", testingLedger, addr), Buffer(t, m))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/accounts/%s/metadata", TestingLedger, addr), Buffer(t, m))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func NewRequestOnLedger(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", testingLedger, path), Buffer(t, body))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", TestingLedger, path), Buffer(t, body))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func NewGetOnLedger(handler http.Handler, path string) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s%s", testingLedger, path), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s%s", TestingLedger, path), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func NewPostOnLedger(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", testingLedger, path), Buffer(t, body))
+	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s%s", TestingLedger, path), Buffer(t, body))
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetLedgerInfo(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/_info", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/_info", TestingLedger), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetLedgerStats(handler http.Handler) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/stats", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/stats", TestingLedger), nil)
 	handler.ServeHTTP(rec, req)
 	return rec
 }
 
 func GetLedgerLogs(handler http.Handler, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/logs", testingLedger), nil)
+	req, rec := NewRequest(http.MethodGet, fmt.Sprintf("/%s/logs", TestingLedger), nil)
 	req.URL.RawQuery = query.Encode()
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -189,74 +194,26 @@ func GetInfo(handler http.Handler) *httptest.ResponseRecorder {
 	return rec
 }
 
-func PostScript(t *testing.T, handler http.Handler, s core.ScriptData, query url.Values) *httptest.ResponseRecorder {
-	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/%s/script", testingLedger), Buffer(t, s))
-	req.URL.RawQuery = query.Encode()
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
 func GetLedgerStore(t *testing.T, driver storage.Driver, ctx context.Context) storage.LedgerStore {
-	store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
+	store, _, err := driver.GetLedgerStore(ctx, TestingLedger, true)
 	require.NoError(t, err)
 	return store
 }
 
-func RunTest(t *testing.T, options ...fx.Option) {
-	testingLedger = uuid.New()
-	ch := make(chan struct{})
+func RunTest(t *testing.T, callback func(api chi.Router, storageDriver storage.Driver)) {
+	TestingLedger = uuid.New()
+	t.Parallel()
 
-	options = append([]fx.Option{
-		api.Module(api.Config{Version: "latest"}),
-		// 100 000 000 bytes is 100 MB
-		ledger.ResolveModule(100000000, 100),
-		ledgertesting.ProvideLedgerStorageDriver(t),
-		fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					store, _, err := driver.GetLedgerStore(ctx, testingLedger, true)
-					if err != nil {
-						return err
-					}
-					defer func(store storage.LedgerStore, ctx context.Context) {
-						require.NoError(t, store.Close(ctx))
-					}(store, ctx)
+	storageDriver := ledgertesting.StorageDriver(t)
+	require.NoError(t, storageDriver.Initialize(context.Background()))
 
-					_, err = store.Initialize(ctx)
-					return err
-				},
-			})
-		}),
-		fx.NopLogger,
-	}, options...)
+	cacheManager := cache.NewManager(storageDriver)
+	lock := lock.NewInMemory()
+	runnerManager := runner.NewManager(storageDriver, lock, cacheManager, false)
+	resolver := ledger.NewResolver(storageDriver, lock, cacheManager, runnerManager)
 
-	options = append(options, fx.Provide(
-		fx.Annotate(func() []ledger.LedgerOption {
-			ledgerOptions := []ledger.LedgerOption{}
+	router := routes.NewRouter(storageDriver, "latest", resolver,
+		logging.FromContext(context.Background()), &health.HealthController{})
 
-			return ledgerOptions
-		}, fx.ResultTags(ledger.ResolverLedgerOptionsKey)),
-	))
-
-	options = append(options,
-		fx.Invoke(func(lc fx.Lifecycle) {
-			lc.Append(fx.Hook{
-				OnStop: func(ctx context.Context) error {
-					close(ch)
-					return nil
-				},
-			})
-		}))
-
-	app := fx.New(options...)
-
-	assert.NoError(t, app.Start(context.Background()))
-
-	select {
-	case <-ch:
-	default:
-		if app.Err() != nil {
-			assert.Fail(t, app.Err().Error())
-		}
-	}
+	callback(router, storageDriver)
 }

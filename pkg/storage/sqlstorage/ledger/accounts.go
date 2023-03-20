@@ -16,7 +16,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const accountsTableName = "accounts"
+const (
+	accountsTableName = "accounts"
+)
 
 type Accounts struct {
 	bun.BaseModel `bun:"accounts,alias:accounts"`
@@ -35,9 +37,8 @@ type AccountsPaginationToken struct {
 	BalanceOperatorFilter storage.BalanceOperator `json:"balanceOperator,omitempty"`
 }
 
-func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
-	sb := s.schema.NewSelect(accountsTableName).
-		Model((*Accounts)(nil))
+func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
+	sb := s.schema.NewSelect(accountsTableName).Model((*Accounts)(nil))
 	t := AccountsPaginationToken{}
 
 	var (
@@ -62,7 +63,7 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) (*bun.SelectQuery, A
 	t.MetadataFilter = metadata
 
 	if balance != "" {
-		sb.Join("JOIN " + s.schema.Table("volumes")).
+		sb.Join("JOIN " + s.schema.Table(volumesTableName)).
 			JoinOn("accounts.address = volumes.account")
 		balanceOperation := "volumes.input - volumes.output"
 
@@ -108,7 +109,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		return api.Cursor[core.Account]{Data: accounts}, nil
 	}
 
-	sb, t := s.buildAccountsQuery(q)
+	sb, t := s.buildAccountsQuery(ctx, q)
 	sb.OrderExpr("address desc")
 
 	if q.AfterAddress != "" {
@@ -183,7 +184,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 		String()
 
 	account := core.Account{
-		Address:  core.AccountAddress(addr),
+		Address:  addr,
 		Metadata: core.Metadata{},
 	}
 
@@ -202,22 +203,27 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	return &account, nil
 }
 
-func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
+func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
+	QueryContext(
+		ctx context.Context, query string, args ...interface{},
+	) (*sql.Rows, error)
+}, account string) (*core.AccountWithVolumes, error) {
+
 	query := s.schema.NewSelect(accountsTableName).
 		Model((*Accounts)(nil)).
 		ColumnExpr("accounts.metadata, volumes.asset, volumes.input, volumes.output").
-		Join("LEFT OUTER JOIN "+s.schema.Table("volumes")).
+		Join("LEFT OUTER JOIN "+s.schema.Table(volumesTableName)+" volumes").
 		JoinOn("accounts.address = volumes.account").
 		Where("accounts.address = ?", account).String()
 
-	rows, err := s.schema.QueryContext(ctx, query)
+	rows, err := exec.QueryContext(ctx, query)
 	if err != nil {
 		return nil, s.error(err)
 	}
 	defer rows.Close()
 
 	acc := core.Account{
-		Address:  core.AccountAddress(account),
+		Address:  account,
 		Metadata: core.Metadata{},
 	}
 	assetsVolumes := core.AssetsVolumes{}
@@ -270,13 +276,17 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 	return res, nil
 }
 
+func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
+	return s.getAccountWithVolumes(ctx, s.schema, account)
+}
+
 func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
-	sb, _ := s.buildAccountsQuery(q)
+	sb, _ := s.buildAccountsQuery(ctx, q)
 	count, err := sb.Count(ctx)
 	return uint64(count), s.error(err)
 }
 
-func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
+func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 	a := &Accounts{
 		Address:  account,
 		Metadata: make(map[string]interface{}),
@@ -303,9 +313,58 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		Exec(ctx)
 	return err
 
-	// return s.appendLog(ctx, core.NewSetMetadataLog(at, core.SetMetadata{
-	// 	TargetType: core.MetaTargetTypeAccount,
-	// 	TargetID:   address,
-	// 	Metadata:   metadata,
-	// }))
+}
+
+func (s *Store) ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{
+		ReadOnly: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	account, err := s.getAccountWithVolumes(ctx, tx, address)
+	if err != nil {
+		return nil, err
+	}
+
+	nextLogID, err := s.getNextLogID(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	notReadLogs, err := s.readLogsStartingFromID(ctx, tx, nextLogID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, log := range notReadLogs {
+		switch log.Type {
+		case core.NewTransactionLogType:
+			for _, posting := range log.Data.(core.NewTransactionLogPayload).Transaction.Postings {
+				volumes, ok := account.Volumes[posting.Asset]
+				if !ok {
+					volumes.Input = core.NewMonetaryInt(0)
+					volumes.Output = core.NewMonetaryInt(0)
+				}
+				switch {
+				case posting.Source == address:
+					volumes.Output = volumes.Output.Add(posting.Amount)
+				case posting.Destination == address:
+					volumes.Input = volumes.Input.Add(posting.Amount)
+				}
+				account.Volumes[posting.Asset] = volumes
+				account.Balances[posting.Asset] = volumes.Input.Sub(volumes.Output)
+			}
+		case core.SetMetadataLogType:
+			if log.Data.(core.SetMetadataLogPayload).TargetID == address {
+				account.Metadata = account.Metadata.Merge(log.Data.(core.SetMetadataLogPayload).Metadata)
+			}
+		}
+	}
+
+	return account, nil
 }

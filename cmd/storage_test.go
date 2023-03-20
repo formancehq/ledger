@@ -13,8 +13,6 @@ func Test_StorageCommands(t *testing.T) {
 	db := pgtesting.NewPostgresDatabase(t)
 
 	viper.Set(storagePostgresConnectionStringFlag, db.ConnString())
-	viper.Set(cacheMaxNumKeys, 10)
-	viper.Set(cacheCapacityBytes, 100)
 
 	require.NoError(t, NewStorageList().Execute())
 

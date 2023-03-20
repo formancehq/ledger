@@ -10,6 +10,23 @@ type Volumes struct {
 	Output *MonetaryInt `json:"output"`
 }
 
+func (v Volumes) WithInput(input *MonetaryInt) Volumes {
+	v.Input = input
+	return v
+}
+
+func (v Volumes) WithOutput(output *MonetaryInt) Volumes {
+	v.Output = output
+	return v
+}
+
+func NewEmptyVolumes() Volumes {
+	return Volumes{
+		Input:  NewMonetaryInt(0),
+		Output: NewMonetaryInt(0),
+	}
+}
+
 type VolumesWithBalance struct {
 	Input   *MonetaryInt `json:"input"`
 	Output  *MonetaryInt `json:"output"`
@@ -28,7 +45,23 @@ func (v Volumes) Balance() *MonetaryInt {
 	return v.Input.Sub(v.Output)
 }
 
+func (v Volumes) copy() Volumes {
+	return Volumes{
+		Input:  v.Input.Sub(NewMonetaryInt(0)),  // copy
+		Output: v.Output.Sub(NewMonetaryInt(0)), // copy
+	}
+}
+
 type AssetsBalances map[string]*MonetaryInt
+
+func (a AssetsBalances) copy() AssetsBalances {
+	ret := AssetsBalances{}
+	for k, monetaryInt := range a {
+		ret[k] = monetaryInt.Add(NewMonetaryInt(0))
+	}
+	return ret
+}
+
 type AssetsVolumes map[string]Volumes
 
 type AccountsBalances map[string]AssetsBalances
@@ -41,7 +74,19 @@ func (v AssetsVolumes) Balances() AssetsBalances {
 	return balances
 }
 
+func (v AssetsVolumes) copy() AssetsVolumes {
+	ret := AssetsVolumes{}
+	for key, volumes := range v {
+		ret[key] = volumes.copy()
+	}
+	return ret
+}
+
 type AccountsAssetsVolumes map[string]AssetsVolumes
+
+func NewAccountsAssetsVolumes() AccountsAssetsVolumes {
+	return AccountsAssetsVolumes{}
+}
 
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	if a == nil {
@@ -160,6 +205,14 @@ func (a *AccountsAssetsVolumes) Scan(value interface{}) error {
 	}
 }
 
+func (a AccountsAssetsVolumes) copy() AccountsAssetsVolumes {
+	ret := AccountsAssetsVolumes{}
+	for key, volumes := range a {
+		ret[key] = volumes.copy()
+	}
+	return ret
+}
+
 func AggregatePreCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
 	ret := AccountsAssetsVolumes{}
 	for i := 0; i < len(txs); i++ {
@@ -172,24 +225,6 @@ func AggregatePreCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes
 			if !ret.HasAccountAndAsset(posting.Destination, posting.Asset) {
 				ret.SetVolumes(posting.Destination, posting.Asset,
 					tx.PreCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
-			}
-		}
-	}
-	return ret
-}
-
-func AggregatePostCommitVolumes(txs ...ExpandedTransaction) AccountsAssetsVolumes {
-	ret := AccountsAssetsVolumes{}
-	for i := len(txs) - 1; i >= 0; i-- {
-		tx := txs[i]
-		for _, posting := range tx.Postings {
-			if !ret.HasAccountAndAsset(posting.Source, posting.Asset) {
-				ret.SetVolumes(posting.Source, posting.Asset,
-					tx.PostCommitVolumes.GetVolumes(posting.Source, posting.Asset))
-			}
-			if !ret.HasAccountAndAsset(posting.Destination, posting.Asset) {
-				ret.SetVolumes(posting.Destination, posting.Asset,
-					tx.PostCommitVolumes.GetVolumes(posting.Destination, posting.Asset))
 			}
 		}
 	}

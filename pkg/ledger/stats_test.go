@@ -1,15 +1,14 @@
-package ledger_test
+package ledger
 
 import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestStats(t *testing.T) {
-	runOnLedger(t, func(l *ledger.Ledger) {
+	runOnLedger(t, func(l *Ledger) {
 		_, err := l.Stats(context.Background())
 		assert.NoError(t, err)
 	})

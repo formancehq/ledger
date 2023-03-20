@@ -1,8 +1,6 @@
 package bus
 
 import (
-	"time"
-
 	"github.com/formancehq/ledger/pkg/core"
 )
 
@@ -16,7 +14,7 @@ const (
 )
 
 type EventMessage struct {
-	Date    time.Time `json:"date"`
+	Date    core.Time `json:"date"`
 	App     string    `json:"app"`
 	Version string    `json:"version"`
 	Type    string    `json:"type"`
@@ -34,7 +32,7 @@ type CommittedTransactions struct {
 
 func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
 	return EventMessage{
-		Date:    time.Now().UTC(),
+		Date:    core.Now(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeCommittedTransactions,
@@ -51,7 +49,7 @@ type SavedMetadata struct {
 
 func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
 	return EventMessage{
-		Date:    time.Now().UTC(),
+		Date:    core.Now(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeSavedMetadata,
@@ -67,7 +65,7 @@ type RevertedTransaction struct {
 
 func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
 	return EventMessage{
-		Date:    time.Now().UTC(),
+		Date:    core.Now(),
 		App:     EventApp,
 		Version: EventVersion,
 		Type:    EventTypeRevertedTransaction,

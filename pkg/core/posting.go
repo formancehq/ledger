@@ -15,6 +15,15 @@ type Posting struct {
 	Asset       string       `json:"asset"`
 }
 
+func NewPosting(source string, destination string, asset string, amount *MonetaryInt) Posting {
+	return Posting{
+		Source:      source,
+		Destination: destination,
+		Amount:      amount,
+		Asset:       asset,
+	}
+}
+
 type Postings []Posting
 
 func (p Postings) Reverse() {

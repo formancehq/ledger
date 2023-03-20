@@ -6,23 +6,15 @@ import (
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/api/controllers"
-	"github.com/formancehq/ledger/pkg/contextlogger"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 )
 
-type LedgerMiddleware struct {
-	resolver *ledger.Resolver
-}
-
-func NewLedgerMiddleware(resolver *ledger.Resolver) LedgerMiddleware {
-	return LedgerMiddleware{
-		resolver: resolver,
-	}
-}
-
-func (m *LedgerMiddleware) LedgerMiddleware() func(handler http.Handler) http.Handler {
+func LedgerMiddleware(resolver *ledger.Resolver) func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			name := chi.URLParam(r, "ledger")
@@ -35,9 +27,9 @@ func (m *LedgerMiddleware) LedgerMiddleware() func(handler http.Handler) http.Ha
 			defer span.End()
 
 			r = r.WithContext(ctx)
-			r = contextlogger.WrapRequest(r)
+			r = wrapRequest(r)
 
-			l, err := m.resolver.GetLedger(r.Context(), name)
+			l, err := resolver.GetLedger(r.Context(), name)
 			if err != nil {
 				apierrors.ResponseError(w, r, err)
 				return
@@ -49,4 +41,15 @@ func (m *LedgerMiddleware) LedgerMiddleware() func(handler http.Handler) http.Ha
 			handler.ServeHTTP(w, r)
 		})
 	}
+}
+
+func wrapRequest(r *http.Request) *http.Request {
+	span := trace.SpanFromContext(r.Context())
+	contextKeyID := uuid.NewString()
+	if span.SpanContext().SpanID().IsValid() {
+		contextKeyID = span.SpanContext().SpanID().String()
+	}
+	return r.WithContext(logging.ContextWithLogger(r.Context(), logging.FromContext(r.Context()).WithFields(map[string]any{
+		"contextID": contextKeyID,
+	})))
 }

@@ -1,4 +1,4 @@
-package ledger
+package query
 
 import (
 	"context"

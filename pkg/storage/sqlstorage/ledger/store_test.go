@@ -23,7 +23,6 @@ func TestStore(t *testing.T) {
 	}
 
 	for _, tf := range []testingFunction{
-		{name: "Commit", fn: testCommit},
 		{name: "UpdateTransactionMetadata", fn: testUpdateTransactionMetadata},
 		{name: "UpdateAccountMetadata", fn: testUpdateAccountMetadata},
 		{name: "GetLastLog", fn: testGetLastLog},
@@ -79,7 +78,7 @@ func TestStore(t *testing.T) {
 	}
 }
 
-var now = time.Now().UTC().Truncate(time.Second)
+var now = core.Now()
 var tx1 = core.ExpandedTransaction{
 	Transaction: core.Transaction{
 		TransactionData: core.TransactionData{
@@ -218,40 +217,6 @@ var tx3 = core.ExpandedTransaction{
 	},
 }
 
-func testCommit(t *testing.T, store storage.LedgerStore) {
-	tx := core.ExpandedTransaction{
-		Transaction: core.Transaction{
-			ID: 0,
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					},
-				},
-				Reference: "foo",
-				Timestamp: time.Now().Round(time.Second),
-			},
-		},
-	}
-	err := store.Commit(context.Background(), tx)
-	require.NoError(t, err)
-	logs := make([]core.Log, 0)
-	logs = append(logs, core.NewTransactionLog(tx.Transaction))
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
-
-	err = store.Commit(context.Background(), tx)
-	require.Error(t, err)
-	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
-
-	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())
-	require.NoError(t, err)
-	require.Len(t, cursor.Data, 1)
-}
-
 func testUpdateTransactionMetadata(t *testing.T, store storage.LedgerStore) {
 	tx := core.ExpandedTransaction{
 		Transaction: core.Transaction{
@@ -266,111 +231,39 @@ func testUpdateTransactionMetadata(t *testing.T, store storage.LedgerStore) {
 					},
 				},
 				Reference: "foo",
-				Timestamp: time.Now().Round(time.Second),
+				Timestamp: core.Now(),
 			},
 		},
 	}
-	err := store.Commit(context.Background(), tx)
+	err := store.InsertTransactions(context.Background(), tx)
 	require.NoError(t, err)
-	logs := make([]core.Log, 0)
-	logs = append(logs, core.NewTransactionLog(tx.Transaction))
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
 
-	at := time.Now()
 	err = store.UpdateTransactionMetadata(context.Background(), tx.ID, core.Metadata{
 		"foo": "bar",
 	})
 	require.NoError(t, err)
-	logs = nil
-	logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeTransaction,
-		TargetID:   tx.ID,
-		Metadata: core.Metadata{
-			"foo": "bar",
-		},
-	}))
-	errChan = store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
 
 	retrievedTransaction, err := store.GetTransaction(context.Background(), tx.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", retrievedTransaction.Metadata["foo"])
-
-	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())
-	require.NoError(t, err)
-	require.Len(t, cursor.Data, 2)
 }
 
 func testUpdateAccountMetadata(t *testing.T, store storage.LedgerStore) {
-	tx := core.ExpandedTransaction{
-		Transaction: core.Transaction{
-			ID: 0,
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					},
-				},
-				Reference: "foo",
-				Timestamp: time.Now().Round(time.Second),
-			},
-		},
-	}
-	err := store.Commit(context.Background(), tx)
-	require.NoError(t, err)
-	logs := make([]core.Log, 0)
-	logs = append(logs, core.NewTransactionLog(tx.Transaction))
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
+	require.NoError(t, store.EnsureAccountExists(context.Background(), "central_bank"))
 
-	at := time.Now()
-	err = store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
+	err := store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
 		"foo": "bar",
 	})
 	require.NoError(t, err)
-	logs = nil
-	logs = append(logs, core.NewSetMetadataLog(at, core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "central_bank",
-		Metadata: core.Metadata{
-			"foo": "bar",
-		},
-	}))
-	errChan = store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
 
 	account, err := store.GetAccount(context.Background(), "central_bank")
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", account.Metadata["foo"])
-
-	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())
-	require.NoError(t, err)
-	require.Len(t, cursor.Data, 2)
 }
 
 func testCountAccounts(t *testing.T, store storage.LedgerStore) {
-	tx := core.ExpandedTransaction{
-		Transaction: core.Transaction{
-			ID: 0,
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					},
-				},
-				Timestamp: time.Now().Round(time.Second),
-			},
-		},
-	}
-	err := store.Commit(context.Background(), tx)
-	require.NoError(t, err)
+	require.NoError(t, store.EnsureAccountExists(context.Background(), "world"))
+	require.NoError(t, store.EnsureAccountExists(context.Background(), "central_bank"))
 
 	countAccounts, err := store.CountAccounts(context.Background(), storage.AccountsQuery{})
 	require.NoError(t, err)
@@ -378,39 +271,14 @@ func testCountAccounts(t *testing.T, store storage.LedgerStore) {
 }
 
 func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
-	tx := core.ExpandedTransaction{
-		Transaction: core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{
-					{
-						Source:      "world",
-						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(100),
-						Asset:       "USD",
-					},
-				},
-				Timestamp: time.Now().Round(time.Second),
+	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
+		"central_bank": {
+			"USD": {
+				Input:  core.NewMonetaryInt(100),
+				Output: core.NewMonetaryInt(0),
 			},
 		},
-		PostCommitVolumes: core.AccountsAssetsVolumes{
-			"central_bank": core.AssetsVolumes{
-				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
-				},
-			},
-		},
-		PreCommitVolumes: core.AccountsAssetsVolumes{
-			"central_bank": core.AssetsVolumes{
-				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
-				},
-			},
-		},
-	}
-	err := store.Commit(context.Background(), tx)
-	require.NoError(t, err)
+	}))
 
 	volumes, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	require.NoError(t, err)
@@ -420,53 +288,20 @@ func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
 }
 
 func testGetAccounts(t *testing.T, store storage.LedgerStore) {
-	logs := make([]core.Log, 0)
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "world", core.Metadata{
 		"foo": json.RawMessage(`"bar"`),
-	}))
-	logs = append(logs, core.NewSetMetadataLog(time.Now(), core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "world",
-		Metadata: core.Metadata{
-			"foo": json.RawMessage(`"bar"`),
-		},
 	}))
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "bank", core.Metadata{
 		"hello": json.RawMessage(`"world"`),
 	}))
-	logs = append(logs, core.NewSetMetadataLog(time.Now(), core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "bank",
-		Metadata: core.Metadata{
-			"hello": json.RawMessage(`"world"`),
-		},
-	}))
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:1", core.Metadata{
 		"hello": json.RawMessage(`"world"`),
-	}))
-	logs = append(logs, core.NewSetMetadataLog(time.Now(), core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "order:1",
-		Metadata: core.Metadata{
-			"hello": json.RawMessage(`"world"`),
-		},
 	}))
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:2", core.Metadata{
 		"number":  json.RawMessage(`3`),
 		"boolean": json.RawMessage(`true`),
 		"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
 	}))
-	logs = append(logs, core.NewSetMetadataLog(time.Now(), core.SetMetadata{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "order:2",
-		Metadata: core.Metadata{
-			"number":  json.RawMessage(`3`),
-			"boolean": json.RawMessage(`true`),
-			"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
-		},
-	}))
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
 
 	accounts, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
 		PageSize: 1,
@@ -538,8 +373,7 @@ func testGetAccounts(t *testing.T, store storage.LedgerStore) {
 }
 
 func testTransactions(t *testing.T, store storage.LedgerStore) {
-	err := store.Commit(context.Background(), tx1, tx2, tx3)
-	require.NoError(t, err)
+	require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2, tx3))
 
 	t.Run("Count", func(t *testing.T) {
 		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
@@ -699,8 +533,7 @@ func testTransactions(t *testing.T, store storage.LedgerStore) {
 }
 
 func testGetTransaction(t *testing.T, store storage.LedgerStore) {
-	err := store.Commit(context.Background(), tx1, tx2)
-	require.NoError(t, err)
+	require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2))
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
 	require.NoError(t, err)
@@ -710,14 +543,12 @@ func testGetTransaction(t *testing.T, store storage.LedgerStore) {
 }
 
 func TestInitializeStore(t *testing.T) {
-	driver, stopFn, err := ledgertesting.StorageDriver(t)
-	require.NoError(t, err)
-	defer stopFn()
+	driver := ledgertesting.StorageDriver(t)
 	defer func(driver storage.Driver, ctx context.Context) {
 		require.NoError(t, driver.Close(ctx))
 	}(driver, context.Background())
 
-	err = driver.Initialize(context.Background())
+	err := driver.Initialize(context.Background())
 	require.NoError(t, err)
 
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.NewString(), true)
@@ -733,30 +564,21 @@ func TestInitializeStore(t *testing.T) {
 }
 
 func testGetLastLog(t *testing.T, store storage.LedgerStore) {
-	err := store.Commit(context.Background(), tx1)
-	require.NoError(t, err)
-	logs := make([]core.Log, 0)
-	logs = append(logs, core.NewTransactionLog(tx1.Transaction))
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
+	require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx1.Transaction, nil)))
 
 	lastLog, err := store.GetLastLog(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 
-	require.Equal(t, tx1.Postings, lastLog.Data.(core.Transaction).Postings)
-	require.Equal(t, tx1.Reference, lastLog.Data.(core.Transaction).Reference)
-	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.Transaction).Timestamp)
+	require.Equal(t, tx1.Postings, lastLog.Data.(core.NewTransactionLogPayload).Transaction.Postings)
+	require.Equal(t, tx1.Reference, lastLog.Data.(core.NewTransactionLogPayload).Transaction.Reference)
+	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.NewTransactionLogPayload).Transaction.Timestamp)
 }
 
 func testGetLogs(t *testing.T, store storage.LedgerStore) {
-	require.NoError(t, store.Commit(context.Background(), tx1, tx2, tx3))
-	logs := make([]core.Log, 0)
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
-		logs = append(logs, core.NewTransactionLog(tx.Transaction))
+		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx.Transaction, nil)))
 	}
-	errChan := store.AppendLogs(context.Background(), logs...)
-	require.NoError(t, <-errChan)
 
 	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())
 	require.NoError(t, err)
@@ -764,9 +586,9 @@ func testGetLogs(t *testing.T, store storage.LedgerStore) {
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.Equal(t, uint64(2), cursor.Data[0].ID)
-	require.Equal(t, tx3.Postings, cursor.Data[0].Data.(core.Transaction).Postings)
-	require.Equal(t, tx3.Reference, cursor.Data[0].Data.(core.Transaction).Reference)
-	require.Equal(t, tx3.Timestamp, cursor.Data[0].Data.(core.Transaction).Timestamp)
+	require.Equal(t, tx3.Postings, cursor.Data[0].Data.(core.NewTransactionLogPayload).Transaction.Postings)
+	require.Equal(t, tx3.Reference, cursor.Data[0].Data.(core.NewTransactionLogPayload).Transaction.Reference)
+	require.Equal(t, tx3.Timestamp, cursor.Data[0].Data.(core.NewTransactionLogPayload).Transaction.Timestamp)
 
 	cursor, err = store.GetLogs(context.Background(), &storage.LogsQuery{
 		PageSize: 1,

@@ -11,11 +11,7 @@ import (
 )
 
 func TestAccounts(t *testing.T) {
-	d, stopFn, err := ledgertesting.StorageDriver(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stopFn()
+	d := ledgertesting.StorageDriver(t)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 

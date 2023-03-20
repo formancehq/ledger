@@ -94,14 +94,10 @@ func TestAnalyticsModule(t *testing.T) {
 		module,
 		fx.NopLogger,
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
-			driver, stopFn, err := ledgertesting.StorageDriver(t)
-			if err != nil {
-				return nil, err
-			}
+			driver := ledgertesting.StorageDriver(t)
 			lc.Append(fx.Hook{
 				OnStart: driver.Initialize,
 				OnStop: func(ctx context.Context) error {
-					stopFn()
 					return driver.Close(ctx)
 				},
 			})
