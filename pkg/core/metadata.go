@@ -66,8 +66,16 @@ func (m Metadata) ConvertValue(v interface{}) (driver.Value, error) {
 	return json.Marshal(v)
 }
 
+func (m1 Metadata) copy() Metadata {
+	ret := Metadata{}
+	for k, v := range m1 {
+		ret[k] = v
+	}
+	return ret
+}
+
 type RevertedMetadataSpecValue struct {
-	By string `json:"by"`
+	By uint64 `json:"by"`
 }
 
 func RevertedMetadataSpecKey() string {
@@ -86,7 +94,7 @@ func ComputeMetadata(key string, value interface{}) Metadata {
 
 func RevertedMetadata(by uint64) Metadata {
 	return ComputeMetadata(RevertedMetadataSpecKey(), RevertedMetadataSpecValue{
-		By: fmt.Sprint(by),
+		By: by,
 	})
 }
 

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pbnjay/memory"
@@ -110,7 +111,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		return err
 	}
 
-	tz, _ := time.Now().Local().Zone()
+	tz, _ := core.Now().Local().Zone()
 
 	properties := analytics.NewProperties().
 		Set(VersionProperty, m.version).

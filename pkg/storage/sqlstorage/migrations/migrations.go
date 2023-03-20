@@ -40,31 +40,31 @@ func createMigrationsTable(ctx context.Context, schema schema.Schema) error {
 	return err
 }
 
-func Migrate(ctx context.Context, schema schema.Schema, migrations ...Migration) (bool, error) {
+func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (bool, error) {
 	ctx, span := opentelemetry.Start(ctx, "Migrate")
 	defer span.End()
 
-	if err := createMigrationsTable(ctx, schema); err != nil {
+	if err := createMigrationsTable(ctx, s); err != nil {
 		return false, sqlerrors.PostgresError(err)
 	}
 
-	tx, err := schema.BeginTx(ctx, &sql.TxOptions{})
+	tx, err := s.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return false, sqlerrors.PostgresError(err)
 	}
-	defer func(tx *bun.Tx) {
+	defer func(tx *schema.Tx) {
 		_ = tx.Rollback()
-	}(&tx)
+	}(tx)
 
 	modified := false
 	for _, m := range migrations {
-		sb := schema.NewSelect(migrationsTableName).
+		sb := s.NewSelect(migrationsTableName).
 			Model((*MigrationsTable)(nil)).
 			Column("version").
 			Where("version = ?", m.Version)
 
 		// Does not use sql transaction because if the table does not exist, postgres will mark transaction as invalid
-		row := schema.QueryRowContext(ctx, sb.String())
+		row := s.QueryRowContext(ctx, sb.String())
 		var v string
 		if err = row.Scan(&v); err != nil {
 			logging.FromContext(ctx).Debugf("migration %s: %s", m.Version, err)
@@ -80,17 +80,17 @@ func Migrate(ctx context.Context, schema schema.Schema, migrations ...Migration)
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
 			for _, h := range handlersForAnyEngine {
-				err := h(ctx, schema, &tx)
+				err := h(ctx, s, tx)
 				if err != nil {
 					return false, err
 				}
 			}
 		}
 
-		handlersForCurrentEngine, ok := m.Handlers[schema.Flavor()]
+		handlersForCurrentEngine, ok := m.Handlers[s.Flavor()]
 		if ok {
 			for _, h := range handlersForCurrentEngine {
-				err := h(ctx, schema, &tx)
+				err := h(ctx, s, tx)
 				if err != nil {
 					return false, err
 				}
@@ -99,9 +99,9 @@ func Migrate(ctx context.Context, schema schema.Schema, migrations ...Migration)
 
 		m := MigrationsTable{
 			Version: m.Version,
-			Date:    time.Now().UTC().Format(time.RFC3339),
+			Date:    core.Now().Format(time.RFC3339),
 		}
-		if _, err := schema.NewInsert(migrationsTableName).
+		if _, err := s.NewInsert(migrationsTableName).
 			Model(&m).
 			Exec(ctx); err != nil {
 			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
@@ -130,7 +130,7 @@ func GetMigrations(ctx context.Context, schema schema.Schema) ([]core.MigrationI
 		if err := rows.Scan(&version, &date); err != nil {
 			return []core.MigrationInfo{}, err
 		}
-		t, err := time.Parse(time.RFC3339, date)
+		t, err := core.ParseTime(date)
 		if err != nil {
 			return []core.MigrationInfo{},
 				errors.Wrap(err, "parsing migration date")
@@ -244,7 +244,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 }
 
 func SQLMigrationFunc(content string) MigrationFunc {
-	return func(ctx context.Context, schema schema.Schema, tx *bun.Tx) error {
+	return func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 		plain := strings.ReplaceAll(content, "VAR_LEDGER_NAME", schema.Name())
 		r := regexp.MustCompile(`[\n\t\s]+`)
 		plain = r.ReplaceAllString(plain, " ")
@@ -256,7 +256,7 @@ func SQLMigrationFunc(content string) MigrationFunc {
 
 var RegisteredGoMigrations []Migration
 
-type MigrationFunc func(ctx context.Context, schema schema.Schema, tx *bun.Tx) error
+type MigrationFunc func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error
 
 type HandlersByEngine map[string][]MigrationFunc
 

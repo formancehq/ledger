@@ -2,7 +2,6 @@ package ledger
 
 import (
 	"context"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/pkg/errors"
@@ -21,7 +20,7 @@ func (l *Ledger) GetMigrationsInfo(ctx context.Context) ([]core.MigrationInfo, e
 
 	res := make([]core.MigrationInfo, 0)
 	for _, mAvailable := range migrationsAvailable {
-		timestamp := time.Time{}
+		timestamp := core.Time{}
 		done := false
 		for _, mDone := range migrationsDone {
 			if mDone.Version == mAvailable.Version {

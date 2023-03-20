@@ -6,75 +6,44 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/health"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/riandyrn/otelchi"
-	"go.uber.org/fx"
 )
 
-const GlobalMiddlewaresKey = `name:"_routesGlobalMiddlewares" optional:"true"`
-
-var Module = fx.Options(
-	fx.Provide(
-		fx.Annotate(NewRoutes, fx.ParamTags(GlobalMiddlewaresKey)),
-	),
-)
-
-func ProvideMiddlewares(provider interface{}, additionalAnnotations ...fx.Annotation) fx.Option {
-	opts := []fx.Annotation{fx.ResultTags(GlobalMiddlewaresKey)}
-	return fx.Provide(
-		fx.Annotate(provider, append(opts, additionalAnnotations...)...),
-	)
-}
-
-type Routes struct {
-	resolver              *ledger.Resolver
-	ledgerMiddleware      middlewares.LedgerMiddleware
-	healthController      *health.HealthController
-	configController      controllers.ConfigController
-	ledgerController      controllers.LedgerController
-	accountController     controllers.AccountController
-	balanceController     controllers.BalanceController
-	transactionController controllers.TransactionController
-	globalMiddlewares     []func(handler http.Handler) http.Handler
-}
-
-func NewRoutes(
-	globalMiddlewares []func(handler http.Handler) http.Handler,
-	resolver *ledger.Resolver,
-	ledgerMiddleware middlewares.LedgerMiddleware,
-	configController controllers.ConfigController,
-	ledgerController controllers.LedgerController,
-	accountController controllers.AccountController,
-	balanceController controllers.BalanceController,
-	transactionController controllers.TransactionController,
-	healthController *health.HealthController,
-) *Routes {
-	return &Routes{
-		globalMiddlewares:     globalMiddlewares,
-		resolver:              resolver,
-		ledgerMiddleware:      ledgerMiddleware,
-		configController:      configController,
-		ledgerController:      ledgerController,
-		accountController:     accountController,
-		balanceController:     balanceController,
-		transactionController: transactionController,
-		healthController:      healthController,
-	}
-}
-
-func (r *Routes) Engine() *chi.Mux {
+func NewRouter(storageDriver storage.Driver, version string, resolver *ledger.Resolver,
+	logger logging.Logger, healthController *health.HealthController) chi.Router {
 	router := chi.NewMux()
 
-	router.Use(r.globalMiddlewares...)
+	router.Use(
+		cors.New(cors.Options{
+			AllowOriginFunc: func(r *http.Request, origin string) bool {
+				return true
+			},
+			AllowCredentials: true,
+		}).Handler,
+		func(handler http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				handler.ServeHTTP(w, r.WithContext(
+					logging.ContextWithLogger(r.Context(), logger),
+				))
+			})
+		},
+		middlewares.Log(),
+		middleware.Recoverer,
+	)
+	router.Use()
+	router.Use(middlewares.Log())
 
-	// Deprecated
-	router.Get("/_health", r.healthController.Check)
-	router.Get("/_healthcheck", r.healthController.Check)
+	router.Get("/_healthcheck", healthController.Check)
 
 	router.Group(func(router chi.Router) {
 		router.Use(otelchi.Middleware("ledger"))
-		router.Get("/_info", r.configController.GetInfo)
+		router.Get("/_info", controllers.GetInfo(storageDriver, version))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
@@ -82,33 +51,33 @@ func (r *Routes) Engine() *chi.Mux {
 					handler.ServeHTTP(w, r)
 				})
 			})
-			router.Use(r.ledgerMiddleware.LedgerMiddleware())
+			router.Use(middlewares.LedgerMiddleware(resolver))
 
 			// LedgerController
-			router.Get("/_info", r.ledgerController.GetInfo)
-			router.Get("/stats", r.ledgerController.GetStats)
-			router.Get("/logs", r.ledgerController.GetLogs)
+			router.Get("/_info", controllers.GetLedgerInfo)
+			router.Get("/stats", controllers.GetStats)
+			router.Get("/logs", controllers.GetLogs)
 
 			// AccountController
-			router.Get("/accounts", r.accountController.GetAccounts)
-			router.Head("/accounts", r.accountController.CountAccounts)
-			router.Get("/accounts/{address}", r.accountController.GetAccount)
-			router.Post("/accounts/{address}/metadata", r.accountController.PostAccountMetadata)
+			router.Get("/accounts", controllers.GetAccounts)
+			router.Head("/accounts", controllers.CountAccounts)
+			router.Get("/accounts/{address}", controllers.GetAccount)
+			router.Post("/accounts/{address}/metadata", controllers.PostAccountMetadata)
 
 			// TransactionController
-			router.Get("/transactions", r.transactionController.GetTransactions)
-			router.Head("/transactions", r.transactionController.CountTransactions)
+			router.Get("/transactions", controllers.GetTransactions)
+			router.Head("/transactions", controllers.CountTransactions)
 
-			router.Post("/transactions", r.transactionController.PostTransaction)
+			router.Post("/transactions", controllers.PostTransaction)
 
-			router.Get("/transactions/{txid}", r.transactionController.GetTransaction)
-			router.Post("/transactions/{txid}/revert", r.transactionController.RevertTransaction)
-			router.Post("/transactions/{txid}/metadata", r.transactionController.PostTransactionMetadata)
+			router.Get("/transactions/{txid}", controllers.GetTransaction)
+			router.Post("/transactions/{txid}/revert", controllers.RevertTransaction)
+			router.Post("/transactions/{txid}/metadata", controllers.PostTransactionMetadata)
 
 			// BalanceController
-			router.Get("/balances", r.balanceController.GetBalances)
+			router.Get("/balances", controllers.GetBalances)
 			// TODO: Rename to /aggregatedBalances
-			router.Get("/aggregate/balances", r.balanceController.GetBalancesAggregated)
+			router.Get("/aggregate/balances", controllers.GetBalancesAggregated)
 		})
 	})
 

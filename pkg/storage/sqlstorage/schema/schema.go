@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/uptrace/bun"
@@ -36,6 +37,17 @@ const (
 func (s *Schema) Delete(ctx context.Context) error {
 	_, err := s.ExecContext(ctx, fmt.Sprintf(deleteSchemaQuery, s.name))
 	return err
+}
+
+func (s *Schema) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
+	bunTx, err := s.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{
+		schema: s,
+		Tx:     bunTx,
+	}, nil
 }
 
 func (s *Schema) Flavor() string {
@@ -106,4 +118,13 @@ func NewPostgresDB(db *bun.DB) *postgresDB {
 	return &postgresDB{
 		db: db,
 	}
+}
+
+type Tx struct {
+	schema *Schema
+	bun.Tx
+}
+
+func (s *Tx) NewSelect(tableName string) *bun.SelectQuery {
+	return s.Tx.NewSelect().ModelTableExpr("?0.?1 as ?1", bun.Ident(s.schema.Name()), bun.Ident(tableName))
 }

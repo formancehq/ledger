@@ -2,44 +2,71 @@ package core
 
 import (
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
-	"time"
 )
 
-const SetMetadataType = "SET_METADATA"
-const NewTransactionType = "NEW_TRANSACTION"
+const (
+	SetMetadataLogType         = "SET_METADATA"
+	NewTransactionLogType      = "NEW_TRANSACTION"
+	RevertedTransactionLogType = "REVERTED_TRANSACTION"
+)
 
 // TODO(polo): create Log struct and extended Log struct
 type Log struct {
-	ID   uint64      `json:"id"`
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-	Hash string      `json:"hash"`
-	Date time.Time   `json:"date"`
+	ID        uint64      `json:"id"`
+	Type      string      `json:"type"`
+	Data      interface{} `json:"data"`
+	Hash      string      `json:"hash"`
+	Date      Time        `json:"date"`
+	Reference string      `json:"reference"`
 }
 
-func NewTransactionLogWithDate(tx Transaction, time time.Time) Log {
+func (l Log) ComputeHash(previous *Log) Log {
+	l.Hash = Hash(previous, l)
+	return l
+}
+
+func (l Log) WithDate(date Time) Log {
+	l.Date = date
+	return l
+}
+
+func (l Log) WithReference(reference string) Log {
+	l.Reference = reference
+	return l
+}
+
+type NewTransactionLogPayload struct {
+	Transaction     Transaction
+	AccountMetadata map[string]Metadata
+}
+
+func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]Metadata, time Time) Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return Log{
-		Type: NewTransactionType,
+		Type: NewTransactionLogType,
 		Date: time,
-		Data: tx,
+		Data: NewTransactionLogPayload{
+			Transaction:     tx,
+			AccountMetadata: accountMetadata,
+		},
 	}
 }
 
-func NewTransactionLog(tx Transaction) Log {
-	return NewTransactionLogWithDate(tx, tx.Timestamp)
+func NewTransactionLog(tx Transaction, accountMetadata map[string]Metadata) Log {
+	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp).WithReference(tx.Reference)
 }
 
-type SetMetadata struct {
+type SetMetadataLogPayload struct {
 	TargetType string      `json:"targetType"`
 	TargetID   interface{} `json:"targetId"`
 	Metadata   Metadata    `json:"metadata"`
 }
 
-func (s *SetMetadata) UnmarshalJSON(data []byte) error {
+func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 	type X struct {
 		TargetType string          `json:"targetType"`
 		TargetID   json.RawMessage `json:"targetId"`
@@ -64,7 +91,7 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*s = SetMetadata{
+	*s = SetMetadataLogPayload{
 		TargetType: x.TargetType,
 		TargetID:   id,
 		Metadata:   x.Metadata,
@@ -72,100 +99,50 @@ func (s *SetMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(at time.Time, metadata SetMetadata) Log {
+func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return Log{
-		Type: SetMetadataType,
+		Type: SetMetadataLogType,
 		Date: at,
 		Data: metadata,
 	}
 }
 
-func HydrateLog(_type string, data string) (interface{}, error) {
-	switch _type {
-	case NewTransactionType:
-		tx := Transaction{}
-		err := json.Unmarshal([]byte(data), &tx)
-		if err != nil {
-			return nil, err
-		}
+type RevertedTransactionLogPayload struct {
+	RevertedTransactionID uint64
+	RevertTransaction     Transaction
+}
 
-		return tx, nil
-	case SetMetadataType:
-		sm := SetMetadata{}
-		err := json.Unmarshal([]byte(data), &sm)
-		if err != nil {
-			return nil, err
-		}
-		return sm, nil
+func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) Log {
+	return Log{
+		Type: RevertedTransactionLogType,
+		Date: at,
+		Data: RevertedTransactionLogPayload{
+			RevertedTransactionID: revertedTxID,
+			RevertTransaction:     tx,
+		},
+	}
+}
+
+func HydrateLog(_type string, data string) (interface{}, error) {
+	var payload any
+	switch _type {
+	case NewTransactionLogType:
+		payload = &NewTransactionLogPayload{}
+	case SetMetadataLogType:
+		payload = &SetMetadataLogPayload{}
+	case RevertedTransactionLogType:
+		payload = &RevertedTransactionLogPayload{}
 	default:
 		panic("unknown type " + _type)
 	}
+	err := json.Unmarshal([]byte(data), &payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return reflect.ValueOf(payload).Elem().Interface(), nil
 }
 
 type Accounts map[string]Account
-
-func (a Accounts) ensureExists(accounts ...string) {
-	for _, account := range accounts {
-		_, ok := a[account]
-		if !ok {
-			a[account] = Account{
-				Address:  AccountAddress(account),
-				Metadata: Metadata{},
-			}
-		}
-	}
-}
-
-type LogProcessor struct {
-	Transactions []*ExpandedTransaction
-	Accounts     Accounts
-	Volumes      AccountsAssetsVolumes
-}
-
-func (m *LogProcessor) ProcessNextLog(logs ...Log) {
-	for _, log := range logs {
-		switch log.Type {
-		case NewTransactionType:
-			tx := ExpandedTransaction{
-				Transaction:       log.Data.(Transaction),
-				PreCommitVolumes:  AccountsAssetsVolumes{},
-				PostCommitVolumes: AccountsAssetsVolumes{},
-			}
-			m.Transactions = append(m.Transactions, &tx)
-			for _, posting := range tx.Postings {
-				tx.PreCommitVolumes.SetVolumes(posting.Source, posting.Asset, m.Volumes.GetVolumes(posting.Source, posting.Asset))
-				tx.PreCommitVolumes.SetVolumes(posting.Destination, posting.Asset, m.Volumes.GetVolumes(posting.Destination, posting.Asset))
-			}
-			for _, posting := range tx.Postings {
-				m.Accounts.ensureExists(posting.Source, posting.Destination)
-				m.Volumes.AddOutput(posting.Source, posting.Asset, posting.Amount)
-				m.Volumes.AddInput(posting.Destination, posting.Asset, posting.Amount)
-			}
-			for _, posting := range tx.Postings {
-				tx.PostCommitVolumes.SetVolumes(posting.Source, posting.Asset, m.Volumes.GetVolumes(posting.Source, posting.Asset))
-				tx.PostCommitVolumes.SetVolumes(posting.Destination, posting.Asset, m.Volumes.GetVolumes(posting.Destination, posting.Asset))
-			}
-		case SetMetadataType:
-			setMetadata := log.Data.(SetMetadata)
-			switch setMetadata.TargetType {
-			case MetaTargetTypeAccount:
-				account := setMetadata.TargetID.(string)
-				m.Accounts.ensureExists(account)
-				m.Accounts[account].Metadata.Merge(setMetadata.Metadata)
-			case MetaTargetTypeTransaction:
-				id := setMetadata.TargetID.(int)
-				m.Transactions[id].Metadata.Merge(setMetadata.Metadata)
-			}
-		}
-	}
-}
-
-func NewLogProcessor() *LogProcessor {
-	return &LogProcessor{
-		Transactions: make([]*ExpandedTransaction, 0),
-		Accounts:     Accounts{},
-		Volumes:      AccountsAssetsVolumes{},
-	}
-}

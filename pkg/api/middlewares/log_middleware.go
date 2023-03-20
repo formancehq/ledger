@@ -4,15 +4,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 )
 
 func Log() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
+			start := core.Now()
 			h.ServeHTTP(w, r)
-			latency := time.Since(start)
+			latency := time.Since(start.Time)
 			logging.FromContext(r.Context()).WithFields(map[string]interface{}{
 				"method":     r.Method,
 				"path":       r.URL.Path,

@@ -6,33 +6,36 @@ import (
 	"database/sql/driver"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 
-const LogTableName = "log"
+const (
+	LogTableName          = "log"
+	LogIngestionTableName = "logs_ingestion"
+)
 
 type Log struct {
 	bun.BaseModel `bun:"log,alias:log"`
 
-	ID   uint64          `bun:"id,unique,type:bigint"`
-	Type string          `bun:"type,type:varchar"`
-	Hash string          `bun:"hash,type:varchar"`
-	Date time.Time       `bun:"date,type:timestamptz"`
-	Data json.RawMessage `bun:"data,type:jsonb"`
+	ID        uint64          `bun:"id,unique,type:bigint"`
+	Type      string          `bun:"type,type:varchar"`
+	Hash      string          `bun:"hash,type:varchar"`
+	Date      core.Time       `bun:"date,type:timestamptz"`
+	Data      json.RawMessage `bun:"data,type:jsonb"`
+	Reference string          `bun:"reference,type:varchar"`
 }
 
 type LogsPaginationToken struct {
 	AfterID   uint64    `json:"after"`
 	PageSize  uint      `json:"pageSize,omitempty"`
-	StartTime time.Time `json:"startTime,omitempty"`
-	EndTime   time.Time `json:"endTime,omitempty"`
+	StartTime core.Time `json:"startTime,omitempty"`
+	EndTime   core.Time `json:"endTime,omitempty"`
 }
 
 type RawMessage json.RawMessage
@@ -56,7 +59,11 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 	}
 
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
-	stmt, err := txn.Prepare(fmt.Sprintf("COPY \"%s\".log (id, type, hash, date, data) FROM STDIN", s.schema.Name()))
+	stmt, err := txn.Prepare(pq.CopyInSchema(
+		s.schema.Name(),
+		"log",
+		"id", "type", "hash", "date", "data", "reference",
+	))
 	if err != nil {
 		return err
 	}
@@ -73,16 +80,17 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 			id = previousLog.ID + 1
 		}
 		logs[i].ID = id
-		logs[i].Hash = core.Hash(previousLog, &l)
+		logs[i].Hash = core.Hash(previousLog, &logs[i])
 
 		ls[i].ID = id
 		ls[i].Type = l.Type
-		ls[i].Hash = l.Hash
+		ls[i].Hash = logs[i].Hash
 		ls[i].Date = l.Date
 		ls[i].Data = data
+		ls[i].Reference = l.Reference
 
 		previousLog = &logs[i]
-		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data))
+		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].Reference)
 		if err != nil {
 			return s.error(err)
 		}
@@ -101,32 +109,32 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 	return s.error(txn.Commit())
 }
 
-func (s *Store) AppendLogs(ctx context.Context, logs ...core.Log) <-chan error {
-	return s.logsBatchWorker.WriteModels(ctx, logs)
+func (s *Store) AppendLog(ctx context.Context, log core.Log) error {
+	return <-s.logsBatchWorker.WriteModels(ctx, log)
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	sb := s.schema.NewSelect(LogTableName).
 		Model((*Log)(nil)).
-		Column("id", "type", "hash", "date", "data").
+		Column("id", "type", "hash", "date", "data", "reference").
 		OrderExpr("id desc").
 		Limit(1)
 
 	l := core.Log{}
 	data := sql.NullString{}
 	row := s.schema.QueryRowContext(ctx, sb.String())
-	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
+	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data, &l.Reference); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, err
+		return nil, errors.Wrap(err, "scanning log")
 	}
 	l.Date = l.Date.UTC()
 
 	var err error
 	l.Data, err = core.HydrateLog(l.Type, data.String)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "hydrating log")
 	}
 	l.Date = l.Date.UTC()
 
@@ -151,7 +159,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 	for rows.Next() {
 		l := core.Log{}
 		data := sql.NullString{}
-		if err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
+		if err := rows.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data, &l.Reference); err != nil {
 			return api.Cursor[core.Log]{}, err
 		}
 		l.Date = l.Date.UTC()
@@ -205,7 +213,7 @@ func (s *Store) buildLogsQuery(q *storage.LogsQuery) (*bun.SelectQuery, LogsPagi
 	t := LogsPaginationToken{}
 	sb := s.schema.NewSelect(LogTableName).
 		Model((*Log)(nil)).
-		Column("id", "type", "hash", "date", "data")
+		Column("id", "type", "hash", "date", "data", "reference")
 
 	if !q.Filters.StartTime.IsZero() {
 		sb.Where("date >= ?", q.Filters.StartTime.UTC())
@@ -228,4 +236,128 @@ func (s *Store) buildLogsQuery(q *storage.LogsQuery) (*bun.SelectQuery, LogsPagi
 	t.PageSize = q.PageSize
 
 	return sb, t
+}
+
+func (s *Store) getNextLogID(ctx context.Context, sq interface {
+	NewSelect(string) *bun.SelectQuery
+}) (uint64, error) {
+	var logID uint64
+	err := sq.
+		NewSelect(LogIngestionTableName).
+		Column("log_id").
+		Limit(1).
+		Scan(ctx, &logID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return logID, nil
+}
+
+func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
+	return s.getNextLogID(ctx, &s.schema)
+}
+
+func (s *Store) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error) {
+	return s.readLogsStartingFromID(ctx, &s.schema, id)
+}
+
+func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
+	NewSelect(tableName string) *bun.SelectQuery
+}, id uint64) ([]core.Log, error) {
+
+	rawLogs := make([]Log, 0)
+	err := exec.
+		NewSelect(LogTableName).
+		Where("id >= ?", id).
+		Model(&rawLogs).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	logs := make([]core.Log, len(rawLogs))
+	for index, rawLog := range rawLogs {
+		payload, err := core.HydrateLog(rawLog.Type, string(rawLog.Data))
+		if err != nil {
+			return nil, errors.Wrap(err, "hydrating log")
+		}
+		logs[index] = core.Log{
+			ID:        rawLog.ID,
+			Type:      rawLog.Type,
+			Hash:      rawLog.Hash,
+			Date:      rawLog.Date,
+			Data:      payload,
+			Reference: rawLog.Reference,
+		}
+	}
+
+	return logs, nil
+}
+
+func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
+	_, err := s.schema.
+		NewInsert(LogIngestionTableName).
+		Model(&struct {
+			LogID uint64
+		}{}).
+		Value("log_id", "?", id).
+		On("CONFLICT (log_id) DO UPDATE").
+		Set("log_id = EXCLUDED.log_id").
+		Exec(ctx)
+	return err
+}
+
+func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
+	raw := &Log{}
+	err := s.schema.
+		NewSelect(LogTableName).
+		Where("reference = ?", reference).
+		Model(raw).
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := core.HydrateLog(raw.Type, string(raw.Data))
+	if err != nil {
+		return nil, errors.Wrap(err, "hydrating log")
+	}
+	return &core.Log{
+		ID:        raw.ID,
+		Type:      raw.Type,
+		Data:      payload,
+		Hash:      raw.Hash,
+		Date:      raw.Date,
+		Reference: raw.Reference,
+	}, nil
+}
+
+func (s *Store) ReadLastLogWithType(ctx context.Context, logType ...string) (*core.Log, error) {
+	raw := &Log{}
+	err := s.schema.
+		NewSelect(LogTableName).
+		Where("type IN (?)", bun.In(logType)).
+		OrderExpr("date DESC").
+		Model(raw).
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := core.HydrateLog(raw.Type, string(raw.Data))
+	if err != nil {
+		return nil, errors.Wrap(err, "hydrating log")
+	}
+
+	return &core.Log{
+		ID:        raw.ID,
+		Type:      raw.Type,
+		Data:      payload,
+		Hash:      raw.Hash,
+		Date:      raw.Date,
+		Reference: raw.Reference,
+	}, nil
 }

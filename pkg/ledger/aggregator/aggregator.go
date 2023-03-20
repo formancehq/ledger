@@ -1,4 +1,4 @@
-package ledger
+package aggregator
 
 import (
 	"context"
@@ -30,7 +30,6 @@ func (tva *TxVolumeAggregator) Transfer(
 	ctx context.Context,
 	from, to, asset string,
 	amount *core.MonetaryInt,
-	accs map[string]*core.AccountWithVolumes,
 ) error {
 	for _, addr := range []string{from, to} {
 		if !tva.PreCommitVolumes.HasAccountAndAsset(addr, asset) {
@@ -38,26 +37,11 @@ func (tva *TxVolumeAggregator) Transfer(
 			if previousVolumes != nil {
 				tva.PreCommitVolumes.SetVolumes(addr, asset, *previousVolumes)
 			} else {
-				var vol core.Volumes
-				var ok1, ok2 bool
-				_, ok1 = accs[addr]
-				if ok1 {
-					_, ok2 = accs[addr].Volumes[asset]
+				acc, err := tva.agg.store.GetAccountWithVolumes(ctx, addr)
+				if err != nil {
+					return errors.Wrap(err, "getting account while transferring")
 				}
-				if ok1 && ok2 {
-					vol = accs[addr].Volumes[asset]
-				} else {
-					acc, err := tva.agg.l.GetAccount(ctx, addr)
-					if err != nil {
-						return errors.Wrap(err, "getting account while transferring")
-					}
-					if accs[addr] == nil {
-						accs[addr] = acc
-					}
-					accs[addr].Volumes[asset] = acc.Volumes[asset]
-					vol = accs[addr].Volumes[asset]
-				}
-				tva.PreCommitVolumes.SetVolumes(addr, asset, vol)
+				tva.PreCommitVolumes.SetVolumes(addr, asset, acc.Volumes[asset])
 			}
 		}
 		if !tva.PostCommitVolumes.HasAccountAndAsset(addr, asset) {
@@ -70,9 +54,18 @@ func (tva *TxVolumeAggregator) Transfer(
 	return nil
 }
 
+func (agg *TxVolumeAggregator) AddPostings(ctx context.Context, postings ...core.Posting) error {
+	for _, posting := range postings {
+		if err := agg.Transfer(ctx, posting.Source, posting.Destination, posting.Asset, posting.Amount); err != nil {
+			return errors.Wrap(err, "aggregating volumes")
+		}
+	}
+	return nil
+}
+
 type VolumeAggregator struct {
-	l   *Ledger
-	txs []*TxVolumeAggregator
+	txs   []*TxVolumeAggregator
+	store Store
 }
 
 func (agg *VolumeAggregator) NextTx() *TxVolumeAggregator {
@@ -88,8 +81,16 @@ func (agg *VolumeAggregator) NextTx() *TxVolumeAggregator {
 	return tva
 }
 
-func NewVolumeAggregator(l *Ledger) *VolumeAggregator {
+func (agg *VolumeAggregator) NextTxWithPostings(ctx context.Context, postings ...core.Posting) (*TxVolumeAggregator, error) {
+	tva := agg.NextTx()
+	if err := tva.AddPostings(ctx, postings...); err != nil {
+		return nil, err
+	}
+	return tva, nil
+}
+
+func Volumes(store Store) *VolumeAggregator {
 	return &VolumeAggregator{
-		l: l,
+		store: store,
 	}
 }

@@ -7,32 +7,25 @@ import (
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
 
-func StorageDriver(t pgtesting.TestingT) (*sqlstorage.Driver, func(), error) {
+func StorageDriver(t pgtesting.TestingT) *sqlstorage.Driver {
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
 	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
-	if err != nil {
-		return nil, nil, err
-	}
-	return sqlstorage.NewDriver(
-		"postgres",
-		schema.NewPostgresDB(db),
-	), func() {}, nil
+	require.NoError(t, err)
+
+	return sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db))
 }
 
 func ProvideStorageDriver(t pgtesting.TestingT) fx.Option {
 	return fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
-		driver, stopFn, err := StorageDriver(t)
-		if err != nil {
-			return nil, err
-		}
+		driver := StorageDriver(t)
 		lc.Append(fx.Hook{
 			OnStart: driver.Initialize,
 			OnStop: func(ctx context.Context) error {
-				stopFn()
 				return driver.Close(ctx)
 			},
 		})

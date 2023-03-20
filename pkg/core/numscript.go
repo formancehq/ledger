@@ -12,7 +12,7 @@ type variable struct {
 	jsonVal json.RawMessage
 }
 
-func TxToScriptData(txData TransactionData) ScriptData {
+func TxToScriptData(txData TransactionData) RunScript {
 	sb := strings.Builder{}
 	monetaryToVars := map[string]variable{}
 	accountsToVars := map[string]variable{}
@@ -103,7 +103,7 @@ func TxToScriptData(txData TransactionData) ScriptData {
 		vars[v.name] = v.jsonVal
 	}
 
-	return ScriptData{
+	return RunScript{
 		Script: Script{
 			Plain: sb.String(),
 			Vars:  vars,
@@ -114,8 +114,8 @@ func TxToScriptData(txData TransactionData) ScriptData {
 	}
 }
 
-func TxsToScriptsData(txsData ...TransactionData) []ScriptData {
-	res := make([]ScriptData, 0, len(txsData))
+func TxsToScriptsData(txsData ...TransactionData) []RunScript {
+	res := make([]RunScript, 0, len(txsData))
 	for _, txData := range txsData {
 		res = append(res, TxToScriptData(txData))
 	}
