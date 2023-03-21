@@ -1513,7 +1513,7 @@ components:
     ErrorResponse:
       type: object
       required:
-        - error_code
+        - errorCode
       properties:
         errorCode:
           $ref: '#/components/schemas/ErrorsEnum'
@@ -1534,6 +1534,7 @@ components:
         - NO_SCRIPT
         - COMPILATION_FAILED
         - METADATA_OVERRIDE
+        - NOT_FOUND
       example: INSUFFICIENT_FUND
 
     LedgerInfoResponse:

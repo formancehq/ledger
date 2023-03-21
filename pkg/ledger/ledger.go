@@ -134,6 +134,9 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 
 // TODO(gfyrag): maybe we should check transaction exists on the log store before set a metadata ? (accounts always exists even if never used)
 func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
+	if m == nil {
+		return nil
+	}
 
 	if targetType == "" {
 		return runner.NewValidationError("empty target type")

@@ -28,11 +28,12 @@ type workerLog struct {
 
 type Worker struct {
 	workerConfig
-	ctx      context.Context
-	logChan  chan workerLog
-	stopChan chan chan struct{}
-	driver   storage.Driver
-	monitor  Monitor
+	ctx                context.Context
+	logChan            chan workerLog
+	stopChan           chan chan struct{}
+	driver             storage.Driver
+	monitor            Monitor
+	lastProcessedLogID *uint64
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -82,8 +83,11 @@ func (w *Worker) run() error {
 			logging.FromContext(w.ctx).Debugf("CQRS worker stopped")
 			close(stopChan)
 			return nil
-		case log := <-w.logChan:
-			if err := w.processLog(w.ctx, log.store, log.log); err != nil {
+		case wl := <-w.logChan:
+			if w.lastProcessedLogID != nil && wl.log.ID <= *w.lastProcessedLogID {
+				continue
+			}
+			if err := w.processLog(w.ctx, wl.store, wl.log); err != nil {
 				if err == context.Canceled {
 					logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
 				} else {
@@ -94,7 +98,7 @@ func (w *Worker) run() error {
 				return err
 			}
 
-			if err := log.store.UpdateNextLogID(w.ctx, log.log.ID+1); err != nil {
+			if err := wl.store.UpdateNextLogID(w.ctx, wl.log.ID+1); err != nil {
 				logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
 
 				// TODO(polo/gfyrag): add indempotency tests
@@ -169,6 +173,8 @@ func (w *Worker) initLedger(ctx context.Context, ledger string) error {
 	if err := store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
 		return errors.Wrap(err, "updating last read log")
 	}
+	lastProcessedLogID := logs[len(logs)-1].ID
+	w.lastProcessedLogID = &lastProcessedLogID
 
 	return nil
 }
