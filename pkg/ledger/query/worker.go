@@ -54,6 +54,10 @@ func (w *Worker) Run(ctx context.Context) error {
 				}
 
 				// Restart the worker if there is an error
+			} else {
+				// No error was returned, it means the worker was stopped
+				// using the stopChan, let's stop this loop too
+				return nil
 			}
 		}
 	}
