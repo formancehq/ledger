@@ -451,7 +451,8 @@ func TestCursor(t *testing.T) {
 				WithTimestamp(date).
 				WithID(uint64(i))
 			require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(tx)))
-			require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx, nil).WithDate(date)))
+			log := core.NewTransactionLog(tx, nil).WithDate(date)
+			require.NoError(t, store.AppendLog(context.Background(), &log))
 			require.NoError(t, store.EnsureAccountExists(context.Background(), fmt.Sprintf("accounts:%02d", i)))
 			require.NoError(t, store.UpdateAccountMetadata(context.Background(), fmt.Sprintf("accounts:%02d", i), core.Metadata{
 				"foo": json.RawMessage(`"bar"`),

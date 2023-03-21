@@ -1,6 +1,7 @@
 --statement
 create table if not exists "VAR_LEDGER_NAME".logs_ingestion (
-    log_id bigint primary key
+    onerow_id boolean PRIMARY KEY DEFAULT TRUE,
+    log_id bigint
 );
 --statement
 alter table "VAR_LEDGER_NAME".log

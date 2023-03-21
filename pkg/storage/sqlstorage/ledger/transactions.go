@@ -398,8 +398,12 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 	_, err := s.schema.NewInsert(PostingsTableName).
 		Model(&ps).
-		//TODO(gfyrag): check failure
-		//On("CONFLICT (txid, posting_index) DO NOTHING").
+		// TODO(polo/gfyrag): Current postings table does not have
+		// unique indexes in txid and posting_index. It means that if we insert
+		// a posting with same txid and same posting index, it will be
+		// duplicated. We should fix this in the future.
+		// Why this index was removed ?
+		// On("CONFLICT (txid, posting_index) DO NOTHING").
 		Exec(ctx)
 	if err != nil {
 		return s.error(err)

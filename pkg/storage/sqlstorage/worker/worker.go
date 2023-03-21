@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-type WorkerJob[MODEL any] func(context.Context, []MODEL) error
+type WorkerJob[MODEL any] func(context.Context, []*MODEL) error
 
 type Model[MODEL any] struct {
-	models  []MODEL
+	models  []*MODEL
 	errChan chan error
 }
 
@@ -69,7 +69,7 @@ func (w *Worker[MODEL]) write(ctx context.Context) error {
 		return nil
 	}
 
-	models := make([]MODEL, 0, w.len())
+	models := make([]*MODEL, 0, w.len())
 	for _, model := range w.models {
 		models = append(models, model.models...)
 	}
@@ -98,7 +98,7 @@ func (w *Worker[MODEL]) len() int {
 	return l
 }
 
-func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...MODEL) <-chan error {
+func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...*MODEL) <-chan error {
 	errChan := make(chan error, 1)
 
 	select {

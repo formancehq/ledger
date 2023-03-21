@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
@@ -14,18 +15,26 @@ import (
 )
 
 type Ledger struct {
-	runner  *runner.Runner
-	store   storage.LedgerStore
-	locker  lock.Locker
-	dbCache *cache.Cache
+	runner      *runner.Runner
+	store       storage.LedgerStore
+	locker      lock.Locker
+	dbCache     *cache.Cache
+	queryWorker *query.Worker
 }
 
-func New(store storage.LedgerStore, dbCache *cache.Cache, runner *runner.Runner, locker lock.Locker) *Ledger {
+func New(
+	store storage.LedgerStore,
+	dbCache *cache.Cache,
+	runner *runner.Runner,
+	locker lock.Locker,
+	queryWorker *query.Worker,
+) *Ledger {
 	return &Ledger{
-		store:   store,
-		dbCache: dbCache,
-		runner:  runner,
-		locker:  locker,
+		store:       store,
+		dbCache:     dbCache,
+		runner:      runner,
+		locker:      locker,
+		queryWorker: queryWorker,
 	}
 }
 
@@ -41,9 +50,14 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 }
 
 func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core.RunScript) (*core.ExpandedTransaction, error) {
-	return l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+	tx, log, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
 		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
 	})
+	if err == nil {
+		l.queryWorker.QueueLog(ctx, log, l.store)
+	}
+
+	return tx, err
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
@@ -88,9 +102,14 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
 	})
-	return l.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+	tx, log, err := l.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
 		return core.NewRevertedTransactionLog(expandedTx.Timestamp, revertedTx.ID, expandedTx.Transaction)
 	})
+	if err == nil {
+		l.queryWorker.QueueLog(ctx, log, l.store)
+	}
+
+	return tx, err
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
@@ -164,7 +183,12 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		return err
 	}
 
-	return l.store.AppendLog(ctx, log)
+	err = l.store.AppendLog(ctx, &log)
+	if err == nil {
+		l.queryWorker.QueueLog(ctx, log, l.store)
+	}
+
+	return err
 }
 
 func (l *Ledger) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {

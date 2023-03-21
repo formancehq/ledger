@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"go.uber.org/fx"
@@ -12,7 +11,7 @@ func Module() fx.Option {
 	return fx.Options(
 		fx.Supply(workerConfig{
 			// TODO(gfyrag): Probably need to be configurable
-			Interval: time.Second,
+			ChanSize: 1024,
 		}),
 		fx.Provide(NewWorker),
 		fx.Provide(fx.Annotate(NewNoOpMonitor, fx.As(new(Monitor)))),
