@@ -40,31 +40,35 @@ func (r *Runner) GetMoreRecentTransactionDate() core.Time {
 	return r.lastTransactionDate
 }
 
-func (r *Runner) Execute(ctx context.Context, script core.RunScript, dryRun bool,
-	logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log) (*core.ExpandedTransaction, error) {
+func (r *Runner) Execute(
+	ctx context.Context,
+	script core.RunScript,
+	dryRun bool,
+	logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log,
+) (*core.ExpandedTransaction, core.Log, error) {
 
 	inFlight, err := r.acquireInflight(ctx, script)
 	if err != nil {
-		return nil, err
+		return nil, core.Log{}, err
 	}
 	defer r.releaseInFlight(inFlight)
 
 	transaction, accountMetadata, err := r.execute(ctx, script, dryRun)
 	if err != nil {
-		return nil, err
+		return nil, core.Log{}, err
 	}
 	if dryRun {
-		return transaction, err
+		return transaction, core.Log{}, err
 	}
 
-	log := logComputer(*transaction, accountMetadata)
-	if err := r.store.AppendLog(ctx, log.WithReference(script.Reference)); err != nil {
-		return nil, err
+	log := logComputer(*transaction, accountMetadata).WithReference(script.Reference)
+	if err := r.store.AppendLog(ctx, &log); err != nil {
+		return nil, core.Log{}, err
 	}
 
 	r.releaseInFlightWithTransaction(inFlight, &transaction.Transaction)
 
-	return transaction, nil
+	return transaction, log, nil
 }
 
 func (r *Runner) checkConstraints(ctx context.Context, script core.RunScript) error {

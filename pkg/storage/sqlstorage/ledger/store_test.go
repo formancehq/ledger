@@ -564,7 +564,8 @@ func TestInitializeStore(t *testing.T) {
 }
 
 func testGetLastLog(t *testing.T, store storage.LedgerStore) {
-	require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx1.Transaction, nil)))
+	logTx := core.NewTransactionLog(tx1.Transaction, nil)
+	require.NoError(t, store.AppendLog(context.Background(), &logTx))
 
 	lastLog, err := store.GetLastLog(context.Background())
 	require.NoError(t, err)
@@ -577,7 +578,8 @@ func testGetLastLog(t *testing.T, store storage.LedgerStore) {
 
 func testGetLogs(t *testing.T, store storage.LedgerStore) {
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
-		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx.Transaction, nil)))
+		logTx := core.NewTransactionLog(tx.Transaction, nil)
+		require.NoError(t, store.AppendLog(context.Background(), &logTx))
 	}
 
 	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())

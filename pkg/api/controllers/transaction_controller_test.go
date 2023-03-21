@@ -597,8 +597,9 @@ func TestPostTransactions(t *testing.T) {
 				require.NoError(t, err)
 
 				for _, transaction := range tc.initialTransactions {
-					require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(transaction, nil).
-						WithReference(transaction.Reference)))
+					log := core.NewTransactionLog(transaction, nil).
+						WithReference(transaction.Reference)
+					require.NoError(t, store.AppendLog(context.Background(), &log))
 				}
 
 				rsp := internal.PostTransaction(t, api, tc.payload, false)
@@ -1316,7 +1317,8 @@ func TestRevertTransaction(t *testing.T) {
 			}).
 			WithTimestamp(core.Now().Add(-3 * time.Minute))
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(tx1)))
-		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx1, nil)))
+		log := core.NewTransactionLog(tx1, nil)
+		require.NoError(t, store.AppendLog(context.Background(), &log))
 
 		tx2 := core.NewTransaction().
 			WithPostings(core.NewPosting("world", "bob", "USD", core.NewMonetaryInt(100))).
@@ -1327,7 +1329,8 @@ func TestRevertTransaction(t *testing.T) {
 			WithID(1).
 			WithTimestamp(core.Now().Add(-2 * time.Minute))
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(tx2)))
-		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx2, nil)))
+		log2 := core.NewTransactionLog(tx2, nil)
+		require.NoError(t, store.AppendLog(context.Background(), &log2))
 
 		tx3 := core.NewTransaction().
 			WithPostings(core.NewPosting("alice", "bob", "USD", core.NewMonetaryInt(3))).
@@ -1337,7 +1340,8 @@ func TestRevertTransaction(t *testing.T) {
 			WithID(2).
 			WithTimestamp(core.Now().Add(-time.Minute))
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(tx3)))
-		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx3, nil)))
+		log3 := core.NewTransactionLog(tx3, nil)
+		require.NoError(t, store.AppendLog(context.Background(), &log3))
 
 		require.NoError(t, store.EnsureAccountExists(context.Background(), "world"))
 		require.NoError(t, store.EnsureAccountExists(context.Background(), "bob"))
@@ -1412,12 +1416,13 @@ func TestPostTransactionsScriptConflict(t *testing.T) {
 		require.NoError(t, err)
 		_, err = store.Initialize(context.Background())
 		require.NoError(t, err)
-		require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(
+		log := core.NewTransactionLog(
 			core.NewTransaction().
 				WithPostings(core.NewPosting("world", "centralbank", "COIN", core.NewMonetaryInt(100))).
 				WithReference("1234"),
 			nil,
-		)))
+		)
+		require.NoError(t, store.AppendLog(context.Background(), &log))
 		rsp := internal.PostTransaction(t, api, controllers.PostTransactionRequest{
 			Script: core.Script{
 				Plain: `

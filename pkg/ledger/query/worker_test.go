@@ -32,7 +32,7 @@ func TestWorker(t *testing.T) {
 	require.True(t, modified)
 
 	worker := NewWorker(workerConfig{
-		Interval: 100 * time.Millisecond,
+		ChanSize: 1024,
 	}, driver, NewNoOpMonitor())
 	go func() {
 		require.NoError(t, worker.Run(context.Background()))
@@ -97,7 +97,8 @@ func TestWorker(t *testing.T) {
 		}),
 	}
 	for _, log := range logs {
-		require.NoError(t, ledgerStore.AppendLog(context.Background(), log))
+		require.NoError(t, ledgerStore.AppendLog(context.Background(), &log))
+		worker.QueueLog(context.Background(), log, ledgerStore)
 	}
 	require.Eventually(t, func() bool {
 		nextLogID, err := ledgerStore.GetNextLogID(context.Background())

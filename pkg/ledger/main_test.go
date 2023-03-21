@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -50,7 +51,12 @@ func runOnLedger(t interface {
 	runner, err := runner.New(store, lock.NewInMemory(), ledgerCache, false)
 	require.NoError(t, err)
 
-	l := New(store, ledgerCache, runner, lock.NewInMemory())
+	queryWorker := query.NewWorker(query.DefaultWorkerConfig, storageDriver, query.NewNoOpMonitor())
+	go func() {
+		require.NoError(t, queryWorker.Run(context.Background()))
+	}()
+
+	l := New(store, ledgerCache, runner, lock.NewInMemory(), queryWorker)
 	defer l.Close(context.Background())
 
 	f(l)

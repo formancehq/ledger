@@ -46,7 +46,7 @@ type LedgerStore interface {
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
 	GetLastLog(context.Context) (*core.Log, error)
 	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
-	AppendLog(context.Context, core.Log) error
+	AppendLog(context.Context, *core.Log) error
 	GetMigrationsAvailable() ([]core.MigrationInfo, error)
 	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
 	ComputeAccount(ctx context.Context, account string) (*core.AccountWithVolumes, error)

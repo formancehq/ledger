@@ -90,9 +90,10 @@ var testCases = []testCase{
 			tx := core.NewTransaction().
 				WithPostings(core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100))).
 				WithReference("tx_ref")
+			log := core.NewTransactionLog(tx, nil).WithReference("tx_ref")
 			require.NoError(t, l.store.AppendLog(
 				context.Background(),
-				core.NewTransactionLog(tx, nil).WithReference("tx_ref"),
+				&log,
 			))
 		},
 		script: `
@@ -189,7 +190,7 @@ func TestExecuteScript(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(t, runner)
 			}
-			ret, err := runner.Execute(context.Background(), core.RunScript{
+			ret, _, err := runner.Execute(context.Background(), core.RunScript{
 				Script: core.Script{
 					Plain: tc.script,
 				},

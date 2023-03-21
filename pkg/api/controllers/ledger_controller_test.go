@@ -123,27 +123,30 @@ func TestGetLogs(t *testing.T) {
 		require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2))
 
 		for _, tx := range []core.ExpandedTransaction{tx1, tx2} {
-			require.NoError(t, store.AppendLog(context.Background(), core.NewTransactionLog(tx.Transaction, nil)))
+			log := core.NewTransactionLog(tx.Transaction, nil)
+			require.NoError(t, store.AppendLog(context.Background(), &log))
 		}
 
 		at := core.Now()
 		require.NoError(t, store.UpdateTransactionMetadata(context.Background(),
 			0, core.Metadata{"key": "value"}))
 
-		require.NoError(t, store.AppendLog(context.Background(), core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
+		log := core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeTransaction,
 			TargetID:   0,
 			Metadata:   core.Metadata{"key": "value"},
-		})))
+		})
+		require.NoError(t, store.AppendLog(context.Background(), &log))
 
 		at2 := core.Now()
 		require.NoError(t, store.UpdateAccountMetadata(context.Background(), "alice", core.Metadata{"key": "value"}))
 
-		require.NoError(t, store.AppendLog(context.Background(), core.NewSetMetadataLog(at2, core.SetMetadataLogPayload{
+		log2 := core.NewSetMetadataLog(at2, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeAccount,
 			TargetID:   "alice",
 			Metadata:   core.Metadata{"key": "value"},
-		})))
+		})
+		require.NoError(t, store.AppendLog(context.Background(), &log2))
 
 		var log0Timestamp, log1Timestamp core.Time
 		t.Run("all", func(t *testing.T) {
