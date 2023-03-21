@@ -20,6 +20,7 @@ type Resolver struct {
 	locker            lock.Locker
 	cacheManager      *cache.Manager
 	runnerManager     *runner.Manager
+	queryWorker       *query.Worker
 }
 
 func NewResolver(
@@ -27,6 +28,7 @@ func NewResolver(
 	locker lock.Locker,
 	cacheManager *cache.Manager,
 	runnerManager *runner.Manager,
+	queryWorker *query.Worker,
 ) *Resolver {
 	return &Resolver{
 		storageDriver:     storageDriver,
@@ -34,6 +36,7 @@ func NewResolver(
 		runnerManager:     runnerManager,
 		initializedStores: map[string]struct{}{},
 		locker:            locker,
+		queryWorker:       queryWorker,
 	}
 }
 
@@ -71,7 +74,7 @@ ret:
 		return nil, err
 	}
 
-	return New(store, cache, runner, r.locker), nil
+	return New(store, cache, runner, r.locker, r.queryWorker), nil
 }
 
 func Module(allowPastTimestamp bool) fx.Option {

@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/google/uuid"
@@ -192,7 +193,12 @@ func BenchmarkSequentialWrites(b *testing.B) {
 	runner, err := runnerManager.ForLedger(context.Background(), ledgerName)
 	require.NoError(b, err)
 
-	ledger := New(store, cache, runner, locker)
+	queryWorker := query.NewWorker(query.DefaultWorkerConfig, driver, query.NewNoOpMonitor())
+	go func() {
+		require.NoError(b, queryWorker.Run(context.Background()))
+	}()
+
+	ledger := New(store, cache, runner, locker, queryWorker)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -229,7 +235,12 @@ func BenchmarkParallelWrites(b *testing.B) {
 	runner, err := runnerManager.ForLedger(context.Background(), ledgerName)
 	require.NoError(b, err)
 
-	ledger := New(store, cache, runner, locker)
+	queryWorker := query.NewWorker(query.DefaultWorkerConfig, driver, query.NewNoOpMonitor())
+	go func() {
+		require.NoError(b, queryWorker.Run(context.Background()))
+	}()
+
+	ledger := New(store, cache, runner, locker, queryWorker)
 
 	b.ResetTimer()
 	wg := sync.WaitGroup{}

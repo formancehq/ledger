@@ -66,28 +66,30 @@ func TestCache(t *testing.T) {
 	account.Volumes["USD/2"] = volumes
 	account.Balances["USD/2"] = core.NewMonetaryInt(90)
 
+	log := core.NewTransactionLog(core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{{
+				Source:      "world",
+				Destination: "bank",
+				Amount:      core.NewMonetaryInt(10),
+				Asset:       "USD/2",
+			}},
+		},
+	}, nil)
 	require.NoError(t, ledgerStore.AppendLog(
 		context.Background(),
-		core.NewTransactionLog(core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings: []core.Posting{{
-					Source:      "world",
-					Destination: "bank",
-					Amount:      core.NewMonetaryInt(10),
-					Asset:       "USD/2",
-				}},
-			},
-		}, nil),
+		&log,
 	))
+	log2 := core.NewSetMetadataLog(core.Now(), core.SetMetadataLogPayload{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "bank",
+		Metadata: core.Metadata{
+			"category": "gold",
+		},
+	})
 	require.NoError(t, ledgerStore.AppendLog(
 		context.Background(),
-		core.NewSetMetadataLog(core.Now(), core.SetMetadataLogPayload{
-			TargetType: core.MetaTargetTypeAccount,
-			TargetID:   "bank",
-			Metadata: core.Metadata{
-				"category": "gold",
-			},
-		}),
+		&log2,
 	))
 
 	account, err = cache.GetAccountWithVolumes(context.Background(), "bank")

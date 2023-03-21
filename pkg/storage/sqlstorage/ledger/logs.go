@@ -31,6 +31,13 @@ type Log struct {
 	Reference string          `bun:"reference,type:varchar"`
 }
 
+type LogsIngestion struct {
+	bun.BaseModel `bun:"logs_ingestion,alias:logs_ingestion"`
+
+	OnerowId bool   `bun:"onerow_id,pk,type:bool,default:true"`
+	LogId    uint64 `bun:"log_id,type:bigint"`
+}
+
 type LogsPaginationToken struct {
 	AfterID   uint64    `json:"after"`
 	PageSize  uint      `json:"pageSize,omitempty"`
@@ -47,7 +54,7 @@ func (j RawMessage) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
-func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
+func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 	previousLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
@@ -89,7 +96,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 		ls[i].Data = data
 		ls[i].Reference = l.Reference
 
-		previousLog = &logs[i]
+		previousLog = logs[i]
 		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].Reference)
 		if err != nil {
 			return s.error(err)
@@ -109,7 +116,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []core.Log) error {
 	return s.error(txn.Commit())
 }
 
-func (s *Store) AppendLog(ctx context.Context, log core.Log) error {
+func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
 	return <-s.logsBatchWorker.WriteModels(ctx, log)
 }
 
@@ -244,6 +251,7 @@ func (s *Store) getNextLogID(ctx context.Context, sq interface {
 	var logID uint64
 	err := sq.
 		NewSelect(LogIngestionTableName).
+		Model((*LogsIngestion)(nil)).
 		Column("log_id").
 		Limit(1).
 		Scan(ctx, &logID)
@@ -299,11 +307,10 @@ func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
 func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 	_, err := s.schema.
 		NewInsert(LogIngestionTableName).
-		Model(&struct {
-			LogID uint64
-		}{}).
-		Value("log_id", "?", id).
-		On("CONFLICT (log_id) DO UPDATE").
+		Model(&LogsIngestion{
+			LogId: id,
+		}).
+		On("CONFLICT (onerow_id) DO UPDATE").
 		Set("log_id = EXCLUDED.log_id").
 		Exec(ctx)
 	return err
