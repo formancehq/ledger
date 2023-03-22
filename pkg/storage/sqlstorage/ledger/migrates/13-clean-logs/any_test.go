@@ -49,7 +49,7 @@ func TestMigrate(t *testing.T) {
 	ls := []Log{
 		{
 			ID:   0,
-			Type: core.NewTransactionLogType,
+			Type: core.NewTransactionLogType.String(),
 			Hash: "",
 			Date: core.Now(),
 			Data: []byte(`{
@@ -60,7 +60,7 @@ func TestMigrate(t *testing.T) {
 		},
 		{
 			ID:   1,
-			Type: core.NewTransactionLogType,
+			Type: core.NewTransactionLogType.String(),
 			Hash: "",
 			Date: core.Now(),
 			Data: []byte(`{
@@ -72,7 +72,7 @@ func TestMigrate(t *testing.T) {
 			}`),
 		},
 	}
-	_, err = schema.NewInsert(ledgerstore.LogTableName).
+	_, err = schema.NewInsert("log").
 		Model(&ls).
 		Exec(context.Background())
 	require.NoError(t, err)
@@ -81,8 +81,8 @@ func TestMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	sb := schema.NewSelect(ledgerstore.LogTableName).
-		Model((*ledgerstore.Log)(nil)).
+	sb := schema.NewSelect("log").
+		Model((*Log)(nil)).
 		Column("data")
 
 	rows, err := schema.QueryContext(context.Background(), sb.String())

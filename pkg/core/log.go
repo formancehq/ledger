@@ -7,16 +7,31 @@ import (
 	"strings"
 )
 
+type LogType int16
+
 const (
-	SetMetadataLogType         = "SET_METADATA"
-	NewTransactionLogType      = "NEW_TRANSACTION"
-	RevertedTransactionLogType = "REVERTED_TRANSACTION"
+	SetMetadataLogType         LogType = iota // "SET_METADATA"
+	NewTransactionLogType                     // "NEW_TRANSACTION"
+	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
 )
+
+func (l LogType) String() string {
+	switch l {
+	case SetMetadataLogType:
+		return "SET_METADATA"
+	case NewTransactionLogType:
+		return "NEW_TRANSACTION"
+	case RevertedTransactionLogType:
+		return "REVERTED_TRANSACTION"
+	}
+
+	return ""
+}
 
 // TODO(polo): create Log struct and extended Log struct
 type Log struct {
 	ID        uint64      `json:"id"`
-	Type      string      `json:"type"`
+	Type      LogType     `json:"type"`
 	Data      interface{} `json:"data"`
 	Hash      string      `json:"hash"`
 	Date      Time        `json:"date"`
@@ -125,7 +140,7 @@ func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) Log
 	}
 }
 
-func HydrateLog(_type string, data string) (interface{}, error) {
+func HydrateLog(_type LogType, data []byte) (interface{}, error) {
 	var payload any
 	switch _type {
 	case NewTransactionLogType:
@@ -135,9 +150,9 @@ func HydrateLog(_type string, data string) (interface{}, error) {
 	case RevertedTransactionLogType:
 		payload = &RevertedTransactionLogPayload{}
 	default:
-		panic("unknown type " + _type)
+		panic("unknown type " + _type.String())
 	}
-	err := json.Unmarshal([]byte(data), &payload)
+	err := json.Unmarshal(data, &payload)
 	if err != nil {
 		return nil, err
 	}
