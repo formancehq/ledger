@@ -18,7 +18,7 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 
 	address = strings.TrimPrefix(address, "@")
 
-	rawAccount, err := c.cache.Get(c.accountKey(address))
+	rawAccount, err := c.cache.Get(address)
 	if err != nil {
 		// TODO: Rename later ?
 		account, err := c.store.ComputeAccount(ctx, address)
@@ -26,10 +26,11 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 			return nil, err
 		}
 
-		if err := c.cache.Set(c.accountKey(account.Address), account); err != nil {
+		if err := c.cache.Set(account.Address, account); err != nil {
 			panic(err)
 		}
 
+		*account = account.Copy()
 		return account, nil
 	}
 	cp := rawAccount.(*core.AccountWithVolumes).Copy()
@@ -39,7 +40,7 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 
 func (c *Cache) Update(accounts core.AccountsAssetsVolumes) {
 	for address, volumes := range accounts {
-		rawAccount, err := c.cache.Get(c.accountKey(address))
+		rawAccount, err := c.cache.Get(address)
 		if err != nil {
 			// Cannot update cache, item maybe evicted
 			continue
@@ -47,7 +48,7 @@ func (c *Cache) Update(accounts core.AccountsAssetsVolumes) {
 		account := rawAccount.(*core.AccountWithVolumes)
 		account.Volumes = volumes
 		account.Balances = volumes.Balances()
-		if err := c.cache.Set(c.accountKey(address), account); err != nil {
+		if err := c.cache.Set(address, account); err != nil {
 			panic(err)
 		}
 	}
@@ -59,12 +60,8 @@ func (c *Cache) UpdateAccountMetadata(ctx context.Context, address string, m cor
 		return err
 	}
 	account.Metadata = account.Metadata.Merge(m)
-	_ = c.cache.Set(c.accountKey(address), account)
+	_ = c.cache.Set(address, account)
 	return nil
-}
-
-func (c *Cache) accountKey(address string) string {
-	return c.store.Name() + "-" + address
 }
 
 func New(store storage.LedgerStore) *Cache {
