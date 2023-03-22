@@ -174,5 +174,8 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		}
 		p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
 	}
+	for address := range neededAccounts {
+		p.sources[address] = struct{}{}
+	}
 	return neededAccounts, emptiedAccounts, fallback, nil
 }

@@ -15,3 +15,17 @@ func (a Address) ToBytes() []byte {
 	binary.LittleEndian.PutUint16(bytes, uint16(a))
 	return bytes
 }
+
+type Addresses []Address
+
+func (a Addresses) Len() int {
+	return len(a)
+}
+
+func (a Addresses) Less(i, j int) bool {
+	return a[i] < a[j]
+}
+
+func (a Addresses) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
