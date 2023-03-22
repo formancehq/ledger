@@ -53,7 +53,7 @@ func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core
 	tx, log, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
 		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
 	})
-	if err == nil {
+	if err == nil && !dryRun {
 		l.queryWorker.QueueLog(ctx, log, l.store)
 	}
 
