@@ -52,8 +52,6 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 	switch {
 	case runner.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
-	case runner.IsInsufficientFundError(err):
-		return http.StatusBadRequest, ErrInsufficientFund, ""
 	case runner.IsValidationError(err):
 		return http.StatusBadRequest, ErrValidation, ""
 	case runner.IsNotFoundError(err):
