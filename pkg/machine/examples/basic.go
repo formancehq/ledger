@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -38,35 +39,31 @@ func main() {
 		panic(err)
 	}
 
-	initialBalances := map[string]map[string]*core.MonetaryInt{
-		"alice": {"COIN": core.NewMonetaryInt(10)},
-		"bob":   {"COIN": core.NewMonetaryInt(100)},
+	initialVolumes := map[string]map[string]core.Volumes{
+		"alice": {
+			"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(10)),
+		},
+		"bob": {
+			"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+		},
 	}
 
-	{
-		ch, err := m.ResolveResources()
-		if err != nil {
-			panic(err)
-		}
-		for req := range ch {
-			if req.Error != nil {
-				panic(req.Error)
-			}
-		}
+	err = m.ResolveResources(context.Background(), vm.EmptyStore)
+	if err != nil {
+		panic(err)
 	}
 
-	{
-		ch, err := m.ResolveBalances()
-		if err != nil {
-			panic(err)
-		}
-		for req := range ch {
-			val := initialBalances[req.Account][req.Asset]
-			if req.Error != nil {
-				panic(req.Error)
-			}
-			req.Response <- val
-		}
+	err = m.ResolveBalances(context.Background(), vm.StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+		return &core.AccountWithVolumes{
+			Account: core.Account{
+				Address:  address,
+				Metadata: core.Metadata{},
+			},
+			Volumes: initialVolumes[address],
+		}, nil
+	}))
+	if err != nil {
+		panic(err)
 	}
 
 	exitCode, err := m.Execute()
