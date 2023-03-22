@@ -49,26 +49,24 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	r.lock.RLock()
 	_, ok := r.initializedStores[name]
 	r.lock.RUnlock()
-	if ok {
-		goto ret
-	}
+	if !ok {
+		r.lock.Lock()
+		defer r.lock.Unlock()
 
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	if _, ok = r.initializedStores[name]; !ok {
-		_, err = store.Initialize(ctx)
-		if err != nil {
-			return nil, errors.Wrap(err, "initializing ledger store")
+		if _, ok = r.initializedStores[name]; !ok {
+			_, err = store.Initialize(ctx)
+			if err != nil {
+				return nil, errors.Wrap(err, "initializing ledger store")
+			}
+			r.initializedStores[name] = struct{}{}
 		}
-		r.initializedStores[name] = struct{}{}
 	}
 
-ret:
 	cache, err := r.cacheManager.ForLedger(ctx, name)
 	if err != nil {
 		return nil, err
 	}
+
 	runner, err := r.runnerManager.ForLedger(ctx, name)
 	if err != nil {
 		return nil, err
