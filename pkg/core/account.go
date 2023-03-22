@@ -36,7 +36,7 @@ func (v AccountWithVolumes) MarshalJSON() ([]byte, error) {
 	type aux AccountWithVolumes
 	return json.Marshal(struct {
 		aux
-		Balances AssetsBalances `json:"balanes"`
+		Balances AssetsBalances `json:"balances"`
 	}{
 		aux:      aux(v),
 		Balances: v.Volumes.Balances(),

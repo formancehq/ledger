@@ -3,11 +3,17 @@ package cache
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/bluele/gcache"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 )
+
+type cacheEntry struct {
+	sync.Mutex
+	account *core.AccountWithVolumes
+}
 
 type Cache struct {
 	cache gcache.Cache
@@ -18,7 +24,7 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 
 	address = strings.TrimPrefix(address, "@")
 
-	rawAccount, err := c.cache.Get(address)
+	entry, err := c.cache.Get(address)
 	if err != nil {
 		// TODO: Rename later ?
 		account, err := c.store.ComputeAccount(ctx, address)
@@ -26,40 +32,64 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 			return nil, err
 		}
 
-		if err := c.cache.Set(account.Address, account); err != nil {
+		ce := &cacheEntry{
+			account: account,
+		}
+
+		if err := c.cache.Set(account.Address, ce); err != nil {
 			panic(err)
 		}
 
 		*account = account.Copy()
 		return account, nil
 	}
-	cp := rawAccount.(*core.AccountWithVolumes).Copy()
+	cp := entry.(*cacheEntry).account.Copy()
 
 	return &cp, nil
 }
 
-func (c *Cache) Update(accounts core.AccountsAssetsVolumes) {
-	for address, volumes := range accounts {
-		rawAccount, err := c.cache.Get(address)
-		if err != nil {
-			// Cannot update cache, item maybe evicted
-			continue
-		}
-		account := rawAccount.(*core.AccountWithVolumes)
-		account.Volumes = volumes
-		if err := c.cache.Set(address, account); err != nil {
-			panic(err)
-		}
+func (c *Cache) withLockOnAccount(address string, callback func(account *core.AccountWithVolumes)) {
+	item, err := c.cache.Get(address)
+	if err != nil {
+		return
+	}
+	entry := item.(*cacheEntry)
+	entry.Lock()
+	defer entry.Unlock()
+
+	callback(entry.account)
+}
+
+func (c *Cache) addOutput(address, asset string, amount *core.MonetaryInt) {
+	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
+		volumes := account.Volumes[asset]
+		volumes.Output = volumes.Output.OrZero().Add(amount)
+		volumes.Input = volumes.Input.OrZero()
+		account.Volumes[asset] = volumes
+	})
+}
+
+func (c *Cache) addInput(address, asset string, amount *core.MonetaryInt) {
+	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
+		volumes := account.Volumes[asset]
+		volumes.Input = volumes.Input.OrZero().Add(amount)
+		volumes.Output = volumes.Output.OrZero()
+		account.Volumes[asset] = volumes
+	})
+}
+
+func (c *Cache) UpdateVolumeWithTX(tx core.Transaction) {
+	for _, posting := range tx.Postings {
+		c.addOutput(posting.Source, posting.Asset, posting.Amount)
+		c.addInput(posting.Destination, posting.Asset, posting.Amount)
 	}
 }
 
-func (c *Cache) UpdateAccountMetadata(ctx context.Context, address string, m core.Metadata) error {
-	account, err := c.GetAccountWithVolumes(ctx, address)
-	if err != nil {
-		return err
-	}
-	account.Metadata = account.Metadata.Merge(m)
-	_ = c.cache.Set(address, account)
+func (c *Cache) UpdateAccountMetadata(address string, m core.Metadata) error {
+	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
+		account.Metadata = account.Metadata.Merge(m)
+	})
+
 	return nil
 }
 

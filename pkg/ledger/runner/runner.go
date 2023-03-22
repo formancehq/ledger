@@ -185,7 +185,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool
 		return expandedTx, result.AccountMetadata, nil
 	}
 
-	r.cache.Update(expandedTx.PostCommitVolumes)
+	r.cache.UpdateVolumeWithTX(expandedTx.Transaction)
 
 	return expandedTx, result.AccountMetadata, nil
 }
