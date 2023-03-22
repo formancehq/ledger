@@ -23,6 +23,7 @@ type LedgerStore interface {
 	Delete(ctx context.Context) error
 	Initialize(ctx context.Context) (bool, error)
 	Close(ctx context.Context) error
+	IsInitialized() bool
 	Name() string
 
 	GetNextLogID(ctx context.Context) (uint64, error)

@@ -103,6 +103,10 @@ func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery)
 }
 
 func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.Cursor[core.Account], error) {
+	if !s.isInitialized {
+		return api.Cursor[core.Account]{}, ErrStoreNotInitialized
+	}
+
 	accounts := make([]core.Account, 0)
 
 	if q.PageSize == 0 {
@@ -178,6 +182,10 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 }
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	query := s.schema.NewSelect(accountsTableName).
 		Model((*Accounts)(nil)).
 		Where("address = ?", addr).
@@ -274,16 +282,28 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 }
 
 func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	return s.getAccountWithVolumes(ctx, s.schema, account)
 }
 
 func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
+	if !s.isInitialized {
+		return 0, ErrStoreNotInitialized
+	}
+
 	sb, _ := s.buildAccountsQuery(ctx, q)
 	count, err := sb.Count(ctx)
 	return uint64(count), s.error(err)
 }
 
 func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	a := &Accounts{
 		Address:  account,
 		Metadata: make(map[string]interface{}),
@@ -298,6 +318,10 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 }
 
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	a := &Accounts{
 		Address:  address,
 		Metadata: metadata,
@@ -313,6 +337,10 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 }
 
 func (s *Store) ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{
 		ReadOnly: true,
 	})
