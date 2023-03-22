@@ -167,7 +167,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		}
 		defer unlock(context.Background())
 
-		err = l.dbCache.UpdateAccountMetadata(ctx, targetID.(string), m)
+		err = l.dbCache.UpdateAccountMetadata(targetID.(string), m)
 		if err != nil {
 			return err
 		}
