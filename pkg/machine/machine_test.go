@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
@@ -21,7 +22,6 @@ type testCase struct {
 	vars            map[string]json.RawMessage
 	expectErrorCode string
 	expectResult    Result
-	expectSources   []string
 	setup           func(t *testing.T, store storage.LedgerStore)
 	metadata        core.Metadata
 }
@@ -41,7 +41,6 @@ var testCases = []testCase{
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"world"},
 	},
 	{
 		name: "not enough funds",
@@ -50,8 +49,7 @@ var testCases = []testCase{
 				source = @bank
 				destination = @user:001
 			)`,
-		expectErrorCode: ScriptErrorInsufficientFund,
-		expectSources:   []string{"bank"},
+		expectErrorCode: vm.ScriptErrorInsufficientFund,
 	},
 	{
 		name: "send 0$",
@@ -68,7 +66,6 @@ var testCases = []testCase{
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"world"},
 	},
 	{
 		name: "send all available",
@@ -85,7 +82,6 @@ var testCases = []testCase{
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"alice"},
 	},
 	{
 		name: "with variable",
@@ -101,7 +97,6 @@ var testCases = []testCase{
 		vars: map[string]json.RawMessage{
 			"dest": json.RawMessage(`"user:001"`),
 		},
-		expectSources: []string{"world"},
 		expectResult: Result{
 			Postings: []core.Posting{
 				core.NewPosting("world", "user:001", "CAD/2", core.NewMonetaryInt(42)),
@@ -122,8 +117,7 @@ var testCases = []testCase{
 				destination = $dest
 			)`,
 		vars:            map[string]json.RawMessage{},
-		expectErrorCode: ScriptErrorCompilationFailed,
-		expectSources:   []string{"world"},
+		expectErrorCode: vm.ScriptErrorCompilationFailed,
 	},
 	{
 		name: "use empty account",
@@ -155,7 +149,6 @@ var testCases = []testCase{
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"", "world", "bob"},
 	},
 	{
 		name: "missing metadata",
@@ -172,8 +165,7 @@ var testCases = []testCase{
 		vars: map[string]json.RawMessage{
 			"sale": json.RawMessage(`"sales:042"`),
 		},
-		expectErrorCode: ScriptErrorCompilationFailed,
-		expectSources:   []string{"sales:042"},
+		expectErrorCode: vm.ScriptErrorCompilationFailed,
 	},
 	{
 		name: "using metadata",
@@ -225,7 +217,6 @@ var testCases = []testCase{
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"sales:001"},
 	},
 	{
 		name: "defining metadata from input",
@@ -246,7 +237,6 @@ var testCases = []testCase{
 			},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"world"},
 	},
 	{
 		name: "defining metadata from script",
@@ -268,7 +258,6 @@ var testCases = []testCase{
 			},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"world"},
 	},
 	{
 		name: "override metadata from script",
@@ -281,8 +270,7 @@ var testCases = []testCase{
 		metadata: core.Metadata{
 			"priority": "low",
 		},
-		expectErrorCode: ScriptErrorMetadataOverride,
-		expectSources:   []string{"world"},
+		expectErrorCode: vm.ScriptErrorMetadataOverride,
 	},
 	{
 		name: "set account meta",
@@ -312,7 +300,6 @@ var testCases = []testCase{
 				},
 			},
 		},
-		expectSources: []string{"world"},
 	},
 	{
 		name: "balance function",
@@ -342,7 +329,6 @@ var testCases = []testCase{
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"users:001"},
 	},
 	{
 		name: "balance function with negative balance",
@@ -365,8 +351,7 @@ var testCases = []testCase{
 				source = @users:001
 				destination = @world
 			)`,
-		expectErrorCode: ScriptErrorCompilationFailed,
-		expectSources:   []string{"users:001"},
+		expectErrorCode: vm.ScriptErrorCompilationFailed,
 	},
 	{
 		name: "overdraft",
@@ -382,7 +367,6 @@ var testCases = []testCase{
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-		expectSources: []string{"users:001"},
 	},
 }
 
@@ -420,10 +404,6 @@ func TestMachine(t *testing.T) {
 			prog, err := compiler.Compile(tc.script)
 			require.NoError(t, err)
 
-			involvedSources, err := prog.GetInvolvedSources(tc.vars)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectSources, involvedSources)
-
 			result, err := Run(context.Background(), cache, prog, core.RunScript{
 				Script: core.Script{
 					Plain: tc.script,
@@ -432,7 +412,7 @@ func TestMachine(t *testing.T) {
 				Metadata: tc.metadata,
 			})
 			if tc.expectErrorCode != "" {
-				require.True(t, IsScriptErrorWithCode(err, tc.expectErrorCode))
+				require.True(t, vm.IsScriptErrorWithCode(err, tc.expectErrorCode))
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, result)

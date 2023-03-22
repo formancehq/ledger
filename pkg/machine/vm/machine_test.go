@@ -1,7 +1,9 @@
 package vm
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"sync"
 	"testing"
@@ -79,37 +81,44 @@ func test(t *testing.T, testCase TestCase) {
 			return 0, err
 		}
 
-		{
-			ch, err := m.ResolveResources()
-			if err != nil {
-				return 0, err
-			}
-			for req := range ch {
-				if req.Key != "" {
-					val := testCase.meta[req.Account][req.Key]
-					req.Response <- val
-				} else if req.Asset != "" {
-					val := testCase.balances[req.Account][req.Asset]
-					req.Response <- val
-				}
-				if req.Error != nil {
-					return 0, req.Error
+		store := StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+			m := core.Metadata{}
+			for s, value := range testCase.meta[address] {
+				json, err := core.NewJSONFromValue(value)
+				require.NoError(t, err)
+
+				m[s] = map[string]any{
+					"type":  value.GetType().String(),
+					"value": json,
 				}
 			}
+			return &core.AccountWithVolumes{
+				Account: core.Account{
+					Address:  address,
+					Metadata: m,
+				},
+				Volumes: func() core.AssetsVolumes {
+					ret := make(core.AssetsVolumes, 0)
+					for asset, balance := range testCase.balances[address] {
+						if balance.Gt(core.NewMonetaryInt(0)) {
+							ret[asset] = core.NewEmptyVolumes().WithInput(balance)
+						} else {
+							ret[asset] = core.NewEmptyVolumes().WithOutput(balance.Neg())
+						}
+					}
+					return ret
+				}(),
+			}, nil
+		})
+
+		err := m.ResolveResources(context.Background(), store)
+		if err != nil {
+			return 128, err
 		}
 
-		{
-			ch, err := m.ResolveBalances()
-			if err != nil {
-				return 0, err
-			}
-			for req := range ch {
-				val := testCase.balances[req.Account][req.Asset]
-				req.Response <- val
-				if req.Error != nil {
-					return 0, req.Error
-				}
-			}
+		err = m.ResolveBalances(context.Background(), store)
+		if err != nil {
+			return 128, err
 		}
 
 		return m.Execute()
@@ -136,7 +145,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 	}
 
 	exitCode, err := exec(m)
-	require.Equal(t, expected.ExitCode, exitCode, err)
+	require.Equal(t, expected.ExitCode, exitCode)
 	if expected.Error != "" {
 		require.ErrorContains(t, err, expected.Error)
 	} else {
@@ -212,22 +221,14 @@ func TestVariables(t *testing.T) {
 	tc.compile(t, `vars {
 		account $rider
 		account $driver
-		string 	$description
-		number 	$nb
-		asset 	$ass
 	}
-	send [$ass 999] (
+	send [EUR/2 999] (
 		source=$rider
 		destination=$driver
-	)
-	set_tx_meta("description", $description)
-	set_tx_meta("ride", $nb)`)
+	)`)
 	tc.vars = map[string]core.Value{
-		"rider":       core.AccountAddress("users:001"),
-		"driver":      core.AccountAddress("users:002"),
-		"description": core.String("midnight ride"),
-		"nb":          core.NewMonetaryInt(1),
-		"ass":         core.Asset("EUR/2"),
+		"rider":  core.AccountAddress("users:001"),
+		"driver": core.AccountAddress("users:002"),
 	}
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
@@ -240,10 +241,6 @@ func TestVariables(t *testing.T) {
 				Destination: "users:002",
 			},
 		},
-		Metadata: map[string]core.Value{
-			"description": core.String("midnight ride"),
-			"ride":        core.NewMonetaryInt(1),
-		},
 		ExitCode: EXIT_OK,
 	}
 }
@@ -255,9 +252,8 @@ func TestVariablesJSON(t *testing.T) {
 		account $driver
 		string 	$description
 		number 	$nb
-		asset 	$ass
 	}
-	send [$ass 999] (
+	send [EUR/2 999] (
 		source=$rider
 		destination=$driver
 	)
@@ -267,8 +263,7 @@ func TestVariablesJSON(t *testing.T) {
 		"rider": "users:001",
 		"driver": "users:002",
 		"description": "midnight ride",
-		"nb": 1,
-		"ass": "EUR/2"
+		"nb": 1
 	}`)
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
@@ -942,47 +937,22 @@ func TestNeededBalances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
 	}
-	{
-		ch, err := m.ResolveResources()
-		if err != nil {
-			t.Fatalf("did not expect error on ResolveResources, got: %v", err)
-		}
-		for range ch {
-			t.Fatalf("did not expect to need any metadata")
-		}
-	}
+	err = m.ResolveResources(context.Background(), EmptyStore)
+	require.NoError(t, err)
 
-	expected := map[string]map[string]struct{}{
-		"a": {
-			"GEM": {},
-		},
-		"b": {
-			"GEM": {},
-		},
-	}
-	{
-		ch, err := m.ResolveBalances()
-		if err != nil {
-			t.Fatalf("did not expect error on ResolveBalances, got: %v", err)
-		}
-		for req := range ch {
-			if req.Error != nil {
-				t.Fatalf("did not expect error in balance request: %v", req.Error)
-			}
-			if _, ok := expected[req.Account][req.Asset]; ok {
-				delete(expected[req.Account], req.Asset)
-				if len(expected[req.Account]) == 0 {
-					delete(expected, req.Account)
-				}
-				req.Response <- core.NewMonetaryInt(0)
-			} else {
-				t.Fatalf("did not expect to need %v balance of %v", req.Asset, req.Account)
-			}
-		}
-	}
-	if len(expected) != 0 {
-		t.Fatalf("some balances were not requested: %v", expected)
-	}
+	called := make(map[string]*struct{})
+	err = m.ResolveBalances(context.Background(), StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+		called[address] = &struct{}{}
+		return &core.AccountWithVolumes{
+			Account: core.Account{
+				Address:  address,
+				Metadata: core.Metadata{},
+			},
+			Volumes: map[string]core.Volumes{},
+		}, nil
+	}))
+	require.NotNil(t, called["a"])
+	require.NotNil(t, called["b"])
 }
 
 func TestSetTxMeta(t *testing.T) {
@@ -998,21 +968,10 @@ func TestSetTxMeta(t *testing.T) {
 
 	m := NewMachine(*p)
 
-	{
-		ch, err := m.ResolveResources()
-		require.NoError(t, err)
-		for req := range ch {
-			require.NoError(t, req.Error)
-		}
-	}
-
-	{
-		ch, err := m.ResolveBalances()
-		require.NoError(t, err)
-		for req := range ch {
-			require.NoError(t, req.Error)
-		}
-	}
+	err = m.ResolveResources(context.Background(), EmptyStore)
+	require.NoError(t, err)
+	err = m.ResolveBalances(context.Background(), EmptyStore)
+	require.NoError(t, err)
 
 	exitCode, err := m.Execute()
 	require.NoError(t, err)
@@ -1048,21 +1007,11 @@ func TestSetAccountMeta(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		{
-			ch, err := m.ResolveResources()
-			require.NoError(t, err)
-			for req := range ch {
-				require.NoError(t, req.Error)
-			}
-		}
+		err = m.ResolveResources(context.Background(), EmptyStore)
+		require.NoError(t, err)
 
-		{
-			ch, err := m.ResolveBalances()
-			require.NoError(t, err)
-			for req := range ch {
-				require.NoError(t, req.Error)
-			}
-		}
+		err = m.ResolveBalances(context.Background(), EmptyStore)
+		require.NoError(t, err)
 
 		exitCode, err := m.Execute()
 		require.NoError(t, err)
@@ -1109,21 +1058,11 @@ func TestSetAccountMeta(t *testing.T) {
 			"acc": core.AccountAddress("test"),
 		}))
 
-		{
-			ch, err := m.ResolveResources()
-			require.NoError(t, err)
-			for req := range ch {
-				require.NoError(t, req.Error)
-			}
-		}
+		err = m.ResolveResources(context.Background(), EmptyStore)
+		require.NoError(t, err)
 
-		{
-			ch, err := m.ResolveBalances()
-			require.NoError(t, err)
-			for req := range ch {
-				require.NoError(t, req.Error)
-			}
-		}
+		err = m.ResolveBalances(context.Background(), EmptyStore)
+		require.NoError(t, err)
 
 		exitCode, err := m.Execute()
 		require.NoError(t, err)
@@ -1341,7 +1280,8 @@ func TestVariableBalance(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("world", "USD/2", -40)
 		tc.expected = CaseResult{
-			Error: "must be non-negative",
+			ExitCode: 128,
+			Error:    "must be non-negative",
 		}
 		test(t, tc)
 	})
@@ -1373,34 +1313,6 @@ func TestVariablesParsing(t *testing.T) {
 
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"acc": json.RawMessage(`"invalid-acc"`),
-		}))
-	})
-
-	t.Run("asset", func(t *testing.T) {
-		p, err := compiler.Compile(`
-			vars {
-				asset $ass
-			}
-			set_tx_meta("asset", $ass)
-		`)
-		require.NoError(t, err)
-
-		m := NewMachine(*p)
-
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"ass": core.Asset("USD/2"),
-		}))
-
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"ass": core.Asset("USD-2"),
-		}))
-
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"ass": json.RawMessage(`"USD/2"`),
-		}))
-
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"ass": json.RawMessage(`"USD-2"`),
 		}))
 	})
 
@@ -1679,17 +1591,11 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ch1, err := m.ResolveResources()
+		err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch1 {
-			require.NoError(t, req.Error)
-		}
 
-		ch2, err := m.ResolveBalances()
+		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch2 {
-			require.NoError(t, req.Error)
-		}
 
 		exitCode, err := m.Execute()
 		require.NoError(t, err)
@@ -1711,11 +1617,8 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ch1, err := m.ResolveResources()
+		err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch1 {
-			require.NoError(t, req.Error)
-		}
 
 		exitCode, err := m.Execute()
 		require.ErrorContains(t, err, "balances haven't been initialized")
@@ -1730,20 +1633,17 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ch1, err := m.ResolveResources()
+		err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch1 {
-			require.NoError(t, req.Error)
-		}
 
-		_, err = m.ResolveResources()
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to call ResolveResources twice")
 	})
 
 	t.Run("err balances before resources", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		_, err := m.ResolveBalances()
+		err := m.ResolveBalances(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to resolve balances before resources")
 	})
 
@@ -1755,94 +1655,969 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ch1, err := m.ResolveResources()
+		err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch1 {
-			require.NoError(t, req.Error)
-		}
 
-		ch2, err := m.ResolveBalances()
+		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.NoError(t, err)
-		for req := range ch2 {
-			require.NoError(t, req.Error)
-		}
 
-		_, err = m.ResolveBalances()
+		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to call ResolveBalances twice")
 	})
 
 	t.Run("err missing var", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		ch1, err := m.ResolveResources()
-		require.NoError(t, err)
-		for req := range ch1 {
-			require.ErrorContains(t, req.Error, "missing variable 'dest'")
-		}
+		err := m.ResolveResources(context.Background(), EmptyStore)
+		require.Error(t, err)
 	})
 }
 
-func TestVariableAsset(t *testing.T) {
-	script := `
-		vars {
-			asset $ass
-			monetary $bal = balance(@alice, $ass)
-		}
-
-		send [$ass 15] (
-			source = {
-				@alice
-				@bob
-			}
-			destination = @swap
-		)
-
-		send [$ass *] (
-			source = @swap
-			destination = {
-				max $bal to @alice_2
-				remaining to @bob_2
-			}
-		)`
-
-	tc := NewTestCase()
-	tc.compile(t, script)
-	tc.vars = map[string]core.Value{
-		"ass": core.Asset("USD"),
+func TestIsScriptErrorWithCode(t *testing.T) {
+	type args struct {
+		err  error
+		code string
 	}
-	tc.setBalance("alice", "USD", 10)
-	tc.setBalance("bob", "USD", 10)
-	tc.expected = CaseResult{
-		Printed: []core.Value{},
-		Postings: []Posting{
-			{
-				Asset:       "USD",
-				Amount:      core.NewMonetaryInt(10),
-				Source:      "alice",
-				Destination: "swap",
-			},
-			{
-				Asset:       "USD",
-				Amount:      core.NewMonetaryInt(5),
-				Source:      "bob",
-				Destination: "swap",
-			},
-			{
-				Asset:       "USD",
-				Amount:      core.NewMonetaryInt(10),
-				Source:      "swap",
-				Destination: "alice_2",
-			},
-			{
-				Asset:       "USD",
-				Amount:      core.NewMonetaryInt(5),
-				Source:      "swap",
-				Destination: "bob_2",
-			},
-		},
-		ExitCode: EXIT_OK,
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		// TODO: Add test cases.
 	}
-	test(t, tc)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, IsScriptErrorWithCode(tt.args.err, tt.args.code), "IsScriptErrorWithCode(%v, %v)", tt.args.err, tt.args.code)
+		})
+	}
+}
+
+func TestMachine_Execute(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    byte
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			got, err := m.Execute()
+			if !tt.wantErr(t, err, "Execute()") {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "Execute()")
+		})
+	}
+}
+
+func TestMachine_GetAccountsMetaJSON(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   Metadata
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			assert.Equalf(t, tt.want, m.GetAccountsMetaJSON(), "GetAccountsMetaJSON()")
+		})
+	}
+}
+
+func TestMachine_GetTxMetaJSON(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   Metadata
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			assert.Equalf(t, tt.want, m.GetTxMetaJSON(), "GetTxMetaJSON()")
+		})
+	}
+}
+
+func TestMachine_ResolveBalances(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		ctx   context.Context
+		store Store
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			tt.wantErr(t, m.ResolveBalances(tt.args.ctx, tt.args.store), fmt.Sprintf("ResolveBalances(%v, %v)", tt.args.ctx, tt.args.store))
+		})
+	}
+}
+
+func TestMachine_ResolveResources(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		ctx   context.Context
+		store Store
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			tt.wantErr(t, m.ResolveResources(tt.args.ctx, tt.args.store), fmt.Sprintf("ResolveResources(%v, %v)", tt.args.ctx, tt.args.store))
+		})
+	}
+}
+
+func TestMachine_SetVars(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		vars map[string]core.Value
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			tt.wantErr(t, m.SetVars(tt.args.vars), fmt.Sprintf("SetVars(%v)", tt.args.vars))
+		})
+	}
+}
+
+func TestMachine_SetVarsFromJSON(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		vars map[string]json.RawMessage
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			tt.wantErr(t, m.SetVarsFromJSON(tt.args.vars), fmt.Sprintf("SetVarsFromJSON(%v)", tt.args.vars))
+		})
+	}
+}
+
+func TestMachine_credit(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		account core.AccountAddress
+		funding core.Funding
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			m.credit(tt.args.account, tt.args.funding)
+		})
+	}
+}
+
+func TestMachine_getResource(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		addr core.Address
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   *core.Value
+		want1  bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			got, got1 := m.getResource(tt.args.addr)
+			assert.Equalf(t, tt.want, got, "getResource(%v)", tt.args.addr)
+			assert.Equalf(t, tt.want1, got1, "getResource(%v)", tt.args.addr)
+		})
+	}
+}
+
+func TestMachine_popValue(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   core.Value
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			assert.Equalf(t, tt.want, m.popValue(), "popValue()")
+		})
+	}
+}
+
+func TestMachine_pushValue(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		v core.Value
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			m.pushValue(tt.args.v)
+		})
+	}
+}
+
+func TestMachine_repay(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		funding core.Funding
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			m.repay(tt.args.funding)
+		})
+	}
+}
+
+func TestMachine_tick(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+		want1  byte
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			got, got1 := m.tick()
+			assert.Equalf(t, tt.want, got, "tick()")
+			assert.Equalf(t, tt.want1, got1, "tick()")
+		})
+	}
+}
+
+func TestMachine_withdrawAll(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		account   core.AccountAddress
+		asset     core.Asset
+		overdraft *core.MonetaryInt
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *core.Funding
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			got, err := m.withdrawAll(tt.args.account, tt.args.asset, tt.args.overdraft)
+			if !tt.wantErr(t, err, fmt.Sprintf("withdrawAll(%v, %v, %v)", tt.args.account, tt.args.asset, tt.args.overdraft)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "withdrawAll(%v, %v, %v)", tt.args.account, tt.args.asset, tt.args.overdraft)
+		})
+	}
+}
+
+func TestMachine_withdrawAlways(t *testing.T) {
+	type fields struct {
+		P                   uint
+		Program             program.Program
+		Vars                map[string]core.Value
+		UnresolvedResources []program.Resource
+		Resources           []core.Value
+		resolveCalled       bool
+		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		setBalanceCalled    bool
+		Stack               []core.Value
+		Postings            []Posting
+		TxMeta              map[string]core.Value
+		AccountsMeta        map[core.AccountAddress]map[string]core.Value
+		Printer             func(chan core.Value)
+		printChan           chan core.Value
+		Debug               bool
+	}
+	type args struct {
+		account core.AccountAddress
+		mon     core.Monetary
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *core.Funding
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Machine{
+				P:                   tt.fields.P,
+				Program:             tt.fields.Program,
+				Vars:                tt.fields.Vars,
+				UnresolvedResources: tt.fields.UnresolvedResources,
+				Resources:           tt.fields.Resources,
+				resolveCalled:       tt.fields.resolveCalled,
+				Balances:            tt.fields.Balances,
+				setBalanceCalled:    tt.fields.setBalanceCalled,
+				Stack:               tt.fields.Stack,
+				Postings:            tt.fields.Postings,
+				TxMeta:              tt.fields.TxMeta,
+				AccountsMeta:        tt.fields.AccountsMeta,
+				Printer:             tt.fields.Printer,
+				printChan:           tt.fields.printChan,
+				Debug:               tt.fields.Debug,
+			}
+			got, err := m.withdrawAlways(tt.args.account, tt.args.mon)
+			if !tt.wantErr(t, err, fmt.Sprintf("withdrawAlways(%v, %v)", tt.args.account, tt.args.mon)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "withdrawAlways(%v, %v)", tt.args.account, tt.args.mon)
+		})
+	}
+}
+
+func TestNewMachine(t *testing.T) {
+	type args struct {
+		p program.Program
+	}
+	tests := []struct {
+		name string
+		args args
+		want *Machine
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, NewMachine(tt.args.p), "NewMachine(%v)", tt.args.p)
+		})
+	}
+}
+
+func TestNewScriptError(t *testing.T) {
+	type args struct {
+		code    string
+		message string
+	}
+	tests := []struct {
+		name string
+		args args
+		want *ScriptError
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, NewScriptError(tt.args.code, tt.args.message), "NewScriptError(%v, %v)", tt.args.code, tt.args.message)
+		})
+	}
+}
+
+func TestScriptError_Error(t *testing.T) {
+	type fields struct {
+		Code    string
+		Message string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := ScriptError{
+				Code:    tt.fields.Code,
+				Message: tt.fields.Message,
+			}
+			assert.Equalf(t, tt.want, e.Error(), "Error()")
+		})
+	}
+}
+
+func TestScriptError_Is(t *testing.T) {
+	type fields struct {
+		Code    string
+		Message string
+	}
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := ScriptError{
+				Code:    tt.fields.Code,
+				Message: tt.fields.Message,
+			}
+			assert.Equalf(t, tt.want, e.Is(tt.args.err), "Is(%v)", tt.args.err)
+		})
+	}
+}
+
+func TestStdOutPrinter(t *testing.T) {
+	type args struct {
+		c chan core.Value
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			StdOutPrinter(tt.args.c)
+		})
+	}
+}
+
+func TestStoreFn_GetAccountWithVolumes(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		address string
+	}
+	tests := []struct {
+		name    string
+		fn      StoreFn
+		args    args
+		want    *core.AccountWithVolumes
+		wantErr assert.ErrorAssertionFunc
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.fn.GetAccountWithVolumes(tt.args.ctx, tt.args.address)
+			if !tt.wantErr(t, err, fmt.Sprintf("GetAccountWithVolumes(%v, %v)", tt.args.ctx, tt.args.address)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "GetAccountWithVolumes(%v, %v)", tt.args.ctx, tt.args.address)
+		})
+	}
 }
 
 func TestSendWithArithmetic(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
-	"github.com/formancehq/ledger/pkg/machine"
+	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -74,12 +74,12 @@ var testCases = []testCase{
 	{
 		name:          "no script",
 		script:        ``,
-		expectedError: machine.NewScriptError(machine.ScriptErrorNoScript, ""),
+		expectedError: vm.NewScriptError(vm.ScriptErrorNoScript, ""),
 	},
 	{
 		name:          "invalid script",
 		script:        `XXX`,
-		expectedError: machine.NewScriptError(machine.ScriptErrorCompilationFailed, ""),
+		expectedError: vm.NewScriptError(vm.ScriptErrorCompilationFailed, ""),
 	},
 	{
 		name: "set reference conflict",

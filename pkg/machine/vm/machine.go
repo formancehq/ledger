@@ -9,15 +9,16 @@ Provides `Machine`, which executes programs and outputs postings.
 package vm
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
 	"github.com/logrusorgru/aurora"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -483,75 +484,46 @@ type BalanceRequest struct {
 	Error    error
 }
 
-func (m *Machine) ResolveBalances() (chan BalanceRequest, error) {
+func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	if len(m.Resources) != len(m.UnresolvedResources) {
-		return nil, errors.New("tried to resolve balances before resources")
+		return errors.New("tried to resolve balances before resources")
 	}
 	if m.setBalanceCalled {
-		return nil, errors.New("tried to call ResolveBalances twice")
+		return errors.New("tried to call ResolveBalances twice")
 	}
 	m.setBalanceCalled = true
-	resChan := make(chan BalanceRequest)
-	go func() {
-		defer close(resChan)
-		m.Balances = make(map[core.AccountAddress]map[core.Asset]*core.MonetaryInt)
-		// for every account that we need balances of, check if it's there
-		for addr, neededAssets := range m.Program.NeededBalances {
-			account, ok := m.getResource(addr)
-			if !ok {
-				resChan <- BalanceRequest{
-					Error: errors.New("invalid program (resolve balances: invalid address of account)"),
-				}
-				return
-			}
-			if account, ok := (*account).(core.AccountAddress); ok {
-				m.Balances[account] = make(map[core.Asset]*core.MonetaryInt)
-				// for every asset, send request
-				for addr := range neededAssets {
-					mon, ok := m.getResource(addr)
-					if !ok {
-						resChan <- BalanceRequest{
-							Error: errors.New("invalid program (resolve balances: invalid address of monetary)"),
-						}
-						return
-					}
-					if ha, ok := (*mon).(core.HasAsset); ok {
-						asset := ha.GetAsset()
-						if string(account) == "world" {
-							m.Balances[account][asset] = core.NewMonetaryInt(0)
-							continue
-						}
-						respChan := make(chan *core.MonetaryInt)
-						resChan <- BalanceRequest{
-							Account:  string(account),
-							Asset:    string(asset),
-							Response: respChan,
-						}
-						resp, ok := <-respChan
-						close(respChan)
-						if !ok {
-							resChan <- BalanceRequest{
-								Error: errors.New("error on response channel"),
-							}
-							return
-						}
-						m.Balances[account][asset] = resp
-					} else {
-						resChan <- BalanceRequest{
-							Error: errors.New("invalid program (resolve balances: not an asset)"),
-						}
-						return
-					}
-				}
-			} else {
-				resChan <- BalanceRequest{
-					Error: errors.New("incorrect program (resolve balances: not an account)"),
-				}
-				return
-			}
+	m.Balances = make(map[core.AccountAddress]map[core.Asset]*core.MonetaryInt)
+	// for every account that we need balances of, check if it's there
+	for addr, neededAssets := range m.Program.NeededBalances {
+		account, ok := m.getResource(addr)
+		if !ok {
+			return errors.New("invalid program (resolve balances: invalid address of account)")
 		}
-	}()
-	return resChan, nil
+		accountAddress := (*account).(core.AccountAddress)
+		m.Balances[accountAddress] = make(map[core.Asset]*core.MonetaryInt)
+		// for every asset, send request
+		for addr := range neededAssets {
+			mon, ok := m.getResource(addr)
+			if !ok {
+				return errors.New("invalid program (resolve balances: invalid address of monetary)")
+			}
+
+			asset := (*mon).(core.HasAsset).GetAsset()
+			if string(accountAddress) == "world" {
+				m.Balances[accountAddress][asset] = core.NewMonetaryInt(0)
+				continue
+			}
+
+			account, err := store.GetAccountWithVolumes(ctx, string(accountAddress))
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("could not get account %q", account))
+			}
+			amt := account.Volumes[string(asset)].Balance().OrZero()
+
+			m.Balances[accountAddress][asset] = amt
+		}
+	}
+	return nil
 }
 
 type ResourceRequest struct {
@@ -562,172 +534,123 @@ type ResourceRequest struct {
 	Error    error
 }
 
-func (m *Machine) ResolveResources() (chan ResourceRequest, error) {
+func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 	if m.resolveCalled {
-		return nil, errors.New("tried to call ResolveResources twice")
+		return errors.New("tried to call ResolveResources twice")
 	}
-	m.resolveCalled = true
-	resChan := make(chan ResourceRequest)
-	go func() {
-		defer close(resChan)
-		for len(m.Resources) != len(m.UnresolvedResources) {
-			idx := len(m.Resources)
-			res := m.UnresolvedResources[idx]
-			var val core.Value
-			switch res := res.(type) {
-			case program.Constant:
-				val = res.Inner
-			case program.Variable:
-				var ok bool
-				val, ok = m.Vars[res.Name]
-				if !ok {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf("missing variable '%s'", res.Name),
-					}
-					return
-				}
-			case program.VariableAccountMetadata:
-				sourceAccount, ok := m.getResource(res.Account)
-				if !ok {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request metadata of an account which has not yet been solved",
-							res.Name),
-					}
-					return
-				}
-				if (*sourceAccount).GetType() != core.TypeAccount {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request metadata on wrong entity: %v instead of account",
-							res.Name, (*sourceAccount).GetType()),
-					}
-					return
-				}
-				account := (*sourceAccount).(core.AccountAddress)
-				resp := make(chan core.Value)
-				resChan <- ResourceRequest{
-					Account:  string(account),
-					Key:      res.Key,
-					Response: resp,
-				}
-				val = <-resp
-				close(resp)
-				if val == nil {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf("variable '%s': tried to set nil as resource", res.Name),
-					}
-					return
-				}
-				if val.GetType() != res.Typ {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf("variable '%s': wrong type: expected %v, got %v",
-							res.Name, res.Typ, val.GetType()),
-					}
-					return
-				}
-			case program.VariableAccountBalance:
-				acc, ok := m.getResource(res.Account)
-				if !ok {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request balance of an account which has not yet been solved",
-							res.Name),
-					}
-					return
-				}
-				if (*acc).GetType() != core.TypeAccount {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request balance on wrong entity: %v instead of account",
-							res.Name, (*acc).GetType()),
-					}
-					return
-				}
-				account := (*acc).(core.AccountAddress)
 
-				ass, ok := m.getResource(res.Asset)
-				if !ok {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request balance of an account for an asset which has not yet been solved",
-							res.Name),
-					}
-					return
-				}
-				if (*ass).GetType() != core.TypeAsset {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request account balance on wrong entity: %v instead of asset",
-							res.Name, (*ass).GetType()),
-					}
-					return
-				}
-				asset := (*ass).(core.Asset)
-				resp := make(chan core.Value)
-				resChan <- ResourceRequest{
-					Account:  string(account),
-					Asset:    string(asset),
-					Response: resp,
-				}
-				amount := <-resp
-				close(resp)
-				if amount == nil {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf("variable '%s': received nil amount", res.Name),
-					}
-					return
-				}
-				if amount.GetType() != core.TypeNumber {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request balance: wrong type received: expected %v, got %v",
-							res.Name, core.TypeNumber, amount.GetType()),
-					}
-					return
-				}
-				amt := amount.(core.Number)
-				if amt.Ltz() {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"variable '%s': tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
-							res.Name, account, asset, amt),
-					}
-					return
-				}
-				val = core.Monetary{
-					Asset:  asset,
-					Amount: amt,
-				}
-			case program.Monetary:
-				ass, ok := m.getResource(res.Asset)
-				if !ok {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"tried to resolve an asset which has not yet been solved"),
-					}
-					return
-				}
-				if (*ass).GetType() != core.TypeAsset {
-					resChan <- ResourceRequest{
-						Error: fmt.Errorf(
-							"tried to resolve an asset on wrong type '%v'",
-							(*ass).GetType()),
-					}
-					return
-				}
-				asset := (*ass).(core.Asset)
-				val = core.Monetary{
-					Asset:  asset,
-					Amount: res.Amount,
-				}
-			default:
-				panic(fmt.Errorf("type %T not implemented", res))
+	m.resolveCalled = true
+	for len(m.Resources) != len(m.UnresolvedResources) {
+		idx := len(m.Resources)
+		res := m.UnresolvedResources[idx]
+		var val core.Value
+		switch res := res.(type) {
+		case program.Constant:
+			val = res.Inner
+		case program.Variable:
+			var ok bool
+			val, ok = m.Vars[res.Name]
+			if !ok {
+				return fmt.Errorf("missing variable '%s'", res.Name)
 			}
-			m.Resources = append(m.Resources, val)
+		case program.VariableAccountMetadata:
+			sourceAccount, ok := m.getResource(res.Account)
+			if !ok {
+				return fmt.Errorf(
+					"variable '%s': tried to request metadata of an account which has not yet been solved",
+					res.Name)
+			}
+			if (*sourceAccount).GetType() != core.TypeAccount {
+				return fmt.Errorf(
+					"variable '%s': tried to request metadata on wrong entity: %v instead of account",
+					res.Name, (*sourceAccount).GetType())
+			}
+
+			address := string((*sourceAccount).(core.AccountAddress))
+			account, err := store.GetAccountWithVolumes(ctx, address)
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
+			}
+
+			entry, ok := account.Metadata[res.Key]
+			if !ok {
+				return NewScriptError(ScriptErrorCompilationFailed,
+					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, address))
+			}
+
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return errors.Wrap(err, "marshaling metadata")
+			}
+			val, err = core.NewValueFromTypedJSON(data)
+			if err != nil {
+				return NewScriptError(ScriptErrorCompilationFailed,
+					errors.Wrap(err, fmt.Sprintf("invalid format for metadata at key %v for account %s",
+						res.Key, address)).Error())
+			}
+		case program.VariableAccountBalance:
+			sourceAccount, ok := m.getResource(res.Account)
+			if !ok {
+				return fmt.Errorf(
+					"variable '%s': tried to request metadata of an account which has not yet been solved",
+					res.Name)
+			}
+			if (*sourceAccount).GetType() != core.TypeAccount {
+				return fmt.Errorf(
+					"variable '%s': tried to request balance of an account which has not yet been solved",
+					res.Name)
+			}
+
+			address := string((*sourceAccount).(core.AccountAddress))
+			account, err := store.GetAccountWithVolumes(ctx, address)
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
+			}
+
+			ass, ok := m.getResource(res.Asset)
+			if !ok {
+				return fmt.Errorf(
+					"variable '%s': tried to request balance of an account for an asset which has not yet been solved",
+					res.Name)
+			}
+			if (*ass).GetType() != core.TypeAsset {
+				return fmt.Errorf(
+					"variable '%s': tried to request account balance on wrong entity: %v instead of asset",
+					res.Name, (*ass).GetType())
+			}
+
+			amt := account.Volumes[string((*ass).(core.Asset))].Balance().OrZero()
+			if amt.Ltz() {
+				return fmt.Errorf(
+					"variable '%s': tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
+					res.Name, address, string((*ass).(core.Asset)), amt)
+			}
+
+			val = core.Monetary{
+				Asset:  (*ass).(core.Asset),
+				Amount: amt,
+			}
+		case program.Monetary:
+			ass, ok := m.getResource(res.Asset)
+			if !ok {
+				return fmt.Errorf("tried to resolve an asset which has not yet been solved")
+			}
+			if (*ass).GetType() != core.TypeAsset {
+				return fmt.Errorf(
+					"tried to resolve an asset on wrong type '%v'",
+					(*ass).GetType())
+			}
+			asset := (*ass).(core.Asset)
+			val = core.Monetary{
+				Asset:  asset,
+				Amount: res.Amount,
+			}
+		default:
+			panic(fmt.Errorf("type %T not implemented", res))
 		}
-	}()
-	return resChan, nil
+		m.Resources = append(m.Resources, val)
+	}
+	return nil
 }
 
 func (m *Machine) SetVars(vars map[string]core.Value) error {

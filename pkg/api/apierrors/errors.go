@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/ledger/runner"
-	"github.com/formancehq/ledger/pkg/machine"
+	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -56,11 +56,11 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 		return http.StatusBadRequest, ErrValidation, ""
 	case runner.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
-	case machine.IsScriptErrorWithCode(err, ErrScriptNoScript),
-		machine.IsScriptErrorWithCode(err, ErrInsufficientFund),
-		machine.IsScriptErrorWithCode(err, ErrScriptCompilationFailed),
-		machine.IsScriptErrorWithCode(err, ErrScriptMetadataOverride):
-		scriptErr := &machine.ScriptError{}
+	case vm.IsScriptErrorWithCode(err, ErrScriptNoScript),
+		vm.IsScriptErrorWithCode(err, ErrInsufficientFund),
+		vm.IsScriptErrorWithCode(err, ErrScriptCompilationFailed),
+		vm.IsScriptErrorWithCode(err, ErrScriptMetadataOverride):
+		scriptErr := &vm.ScriptError{}
 		_ = errors.As(err, &scriptErr)
 		return http.StatusBadRequest, scriptErr.Code, EncodeLink(scriptErr.Message)
 	case errors.Is(err, context.Canceled):
