@@ -12,6 +12,7 @@ import (
 type Program struct {
 	Instructions   []byte
 	Resources      []Resource
+	Sources        []core.Address
 	NeededBalances map[core.Address]map[core.Address]struct{}
 }
 
@@ -133,6 +134,35 @@ func (p *Program) GetInvolvedAccounts(vars map[string]json.RawMessage) ([]string
 	}
 	ret := make([]string, 0)
 	for account := range involvedAccountsMap {
+		ret = append(ret, account)
+	}
+	return ret, nil
+}
+
+func (p *Program) GetInvolvedSources(vars map[string]json.RawMessage) ([]string, error) {
+	involvedSourcesMap := map[string]struct{}{}
+	for _, address := range p.Sources {
+		resource := p.Resources[address]
+
+		switch resource.GetType() {
+		case core.TypeAccount:
+			switch resource := resource.(type) {
+			case Constant:
+				switch inner := resource.Inner.(type) {
+				case core.AccountAddress:
+					involvedSourcesMap[string(inner)] = struct{}{}
+				}
+			case Variable:
+				value, err := core.NewValueFromJSON(core.TypeAccount, vars[resource.Name])
+				if err != nil {
+					return nil, err
+				}
+				involvedSourcesMap[string((*value).(core.AccountAddress))] = struct{}{}
+			}
+		}
+	}
+	ret := make([]string, 0)
+	for account := range involvedSourcesMap {
 		ret = append(ret, account)
 	}
 	return ret, nil

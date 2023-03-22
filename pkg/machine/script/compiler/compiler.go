@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
@@ -12,11 +13,17 @@ import (
 )
 
 type parseVisitor struct {
-	errListener    *ErrorListener
-	instructions   []byte
-	resources      []program.Resource                         // must not exceed 65536 elements
-	varIdx         map[string]core.Address                    // maps name to resource index
-	neededBalances map[core.Address]map[core.Address]struct{} // for each account, set of assets needed
+	errListener  *ErrorListener
+	instructions []byte
+	// resources must not exceed 65536 elements
+	resources []program.Resource
+	// sources store all source accounts
+	// a source can be also a destination of another posting
+	sources map[core.Address]struct{}
+	// varIdx maps name to resource index
+	varIdx map[string]core.Address
+	// needBalances store for each account, the set of assets needed
+	neededBalances map[core.Address]map[core.Address]struct{}
 }
 
 // Allocates constants if it hasn't already been,
@@ -607,6 +614,7 @@ func CompileFull(input string) CompileArtifacts {
 		resources:      make([]program.Resource, 0),
 		varIdx:         make(map[string]core.Address),
 		neededBalances: make(map[core.Address]map[core.Address]struct{}),
+		sources:        map[core.Address]struct{}{},
 	}
 
 	err := visitor.VisitScript(tree)
@@ -615,10 +623,17 @@ func CompileFull(input string) CompileArtifacts {
 		return artifacts
 	}
 
+	sources := make(core.Addresses, 0)
+	for address := range visitor.sources {
+		sources = append(sources, address)
+	}
+	sort.Stable(sources)
+
 	artifacts.Program = &program.Program{
 		Instructions:   visitor.instructions,
 		Resources:      visitor.resources,
 		NeededBalances: visitor.neededBalances,
+		Sources:        sources,
 	}
 
 	return artifacts
