@@ -29,18 +29,16 @@ func (d *InMemory) Lock(ctx context.Context, ledger string, accounts ...string) 
 	d.globalLock.RLock()
 	lock, ok := d.locks[ledger]
 	d.globalLock.RUnlock()
-	if ok {
-		goto ret
+	if !ok {
+		d.globalLock.Lock()
+		lock, ok = d.locks[ledger] // Double check, the lock can have been acquired by another go routing between RUnlock and Lock
+		if !ok {
+			lock = &sync.Mutex{}
+			d.locks[ledger] = lock
+		}
+		d.globalLock.Unlock()
 	}
 
-	d.globalLock.Lock()
-	lock, ok = d.locks[ledger] // Double check, the lock can have been acquired by another go routing between RUnlock and Lock
-	if !ok {
-		lock = &sync.Mutex{}
-		d.locks[ledger] = lock
-	}
-	d.globalLock.Unlock()
-ret:
 	unlocked := false
 	lock.Lock()
 	return func(ctx context.Context) {
