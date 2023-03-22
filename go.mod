@@ -7,7 +7,7 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.2.0
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
-	github.com/formancehq/stack/libs/go-libs v0.0.0-20230222164357-55840b21a337
+	github.com/formancehq/stack/libs/go-libs v0.0.0-20230517212829-71aaaacfd130
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/cors v1.2.1
 	github.com/golang/mock v1.4.4
