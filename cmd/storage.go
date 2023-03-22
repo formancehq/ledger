@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/system"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -36,14 +36,12 @@ func NewStorageInit() *cobra.Command {
 							if name == "" {
 								return errors.New("name is empty")
 							}
-							fmt.Printf("Creating ledger '%s'...", name)
 							s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
 							if err != nil {
 								return err
 							}
 
 							if !created {
-								fmt.Printf("Already initialized!\r\n")
 								return nil
 							}
 
@@ -51,7 +49,6 @@ func NewStorageInit() *cobra.Command {
 							if err != nil {
 								return err
 							}
-							fmt.Printf(" OK\r\n")
 							return nil
 						},
 					})
@@ -81,13 +78,10 @@ func NewStorageList() *cobra.Command {
 									return err
 								}
 								if len(ledgers) == 0 {
-									fmt.Println("No ledger found.")
+									logging.FromContext(ctx).Info("No ledger found.")
 									return nil
 								}
-								fmt.Println("Ledgers:")
-								for _, l := range ledgers {
-									fmt.Println("- " + l)
-								}
+								logging.FromContext(ctx).Infof("Ledgers: %v", ledgers)
 								return nil
 							},
 						})
@@ -119,9 +113,9 @@ func NewStorageUpgrade() *cobra.Command {
 								return err
 							}
 							if modified {
-								fmt.Printf("Storage '%s' migrated\r\n", name)
+								logging.FromContext(ctx).Infof("Storage '%s' upgraded", name)
 							} else {
-								fmt.Printf("Storage '%s' left in place\r\n", name)
+								logging.FromContext(ctx).Infof("Storage '%s' is up to date", name)
 							}
 							return nil
 						},
@@ -165,19 +159,17 @@ func NewStorageScan() *cobra.Command {
 							if ledgerName == sqlstorage.SystemSchema {
 								continue
 							}
-							fmt.Printf("Registering ledger '%s'\r\n", ledgerName)
 							// This command is dedicated to upgrade ledger version before 1.4
 							// It will be removed in a near future, so we can assert the system store type without risk
 							created, err := driver.GetSystemStore().(*system.Store).
 								Register(cmd.Context(), ledgerName)
 							if err != nil {
-								fmt.Printf("Error registering ledger '%s': %s\r\n", ledgerName, err)
 								continue
 							}
 							if created {
-								fmt.Printf("Ledger '%s' registered\r\n", ledgerName)
+								logging.FromContext(ctx).Infof("Ledger '%s' registered", ledgerName)
 							} else {
-								fmt.Printf("Ledger '%s' already registered\r\n", ledgerName)
+								logging.FromContext(ctx).Infof("Ledger '%s' already registered", ledgerName)
 							}
 						}
 
@@ -211,7 +203,6 @@ func NewStorageDelete() *cobra.Command {
 							if err := store.Delete(ctx); err != nil {
 								return err
 							}
-							fmt.Println("Storage deleted!")
 							return nil
 						},
 					})
