@@ -29,7 +29,7 @@ func TypeFromName(name string) (Type, bool) {
 	}
 }
 
-func NewValueFromTypedJSON(rawInput json.RawMessage) (*Value, error) {
+func NewValueFromTypedJSON(rawInput json.RawMessage) (Value, error) {
 	var input ValueJSON
 	if err := json.Unmarshal(rawInput, &input); err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func NewValueFromTypedJSON(rawInput json.RawMessage) (*Value, error) {
 	return NewValueFromJSON(typ, input.Value)
 }
 
-func NewValueFromJSON(typ Type, data json.RawMessage) (*Value, error) {
+func NewValueFromJSON(typ Type, data json.RawMessage) (Value, error) {
 	var value Value
 	switch typ {
 	case TypeAccount:
@@ -106,5 +106,25 @@ func NewValueFromJSON(typ Type, data json.RawMessage) (*Value, error) {
 		return nil, fmt.Errorf("invalid type '%v'", typ)
 	}
 
-	return &value, nil
+	return value, nil
+}
+
+func NewJSONFromValue(value Value) (any, error) {
+	switch value.GetType() {
+	case TypeAccount:
+		return string(value.(AccountAddress)), nil
+	case TypeAsset:
+		return string(value.(Asset)), nil
+	case TypeString:
+		return string(value.(String)), nil
+	case TypeNumber:
+		return value.(*MonetaryInt).String(), nil
+	case TypeMonetary:
+		return value, nil
+
+	case TypePortion:
+		return value.(Portion).String(), nil
+	default:
+		return nil, fmt.Errorf("invalid type '%v'", value.GetType())
+	}
 }

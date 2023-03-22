@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
@@ -115,7 +116,7 @@ func (r *Runner) acquireInflight(ctx context.Context, script core.RunScript) (*i
 
 	script.WithDefaultValues()
 	if script.Plain == "" {
-		return nil, machine.NewScriptError(machine.ScriptErrorNoScript, "no script to execute")
+		return nil, vm.NewScriptError(vm.ScriptErrorNoScript, "no script to execute")
 	}
 
 	if err := r.checkConstraints(ctx, script); err != nil {
@@ -135,12 +136,12 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool
 
 	prog, err := compiler.Compile(script.Plain)
 	if err != nil {
-		return nil, nil, machine.NewScriptError(machine.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
 	}
 
 	involvedAccounts, err := prog.GetInvolvedAccounts(script.Vars)
 	if err != nil {
-		return nil, nil, machine.NewScriptError(machine.ScriptErrorCompilationFailed, err.Error())
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, err.Error())
 	}
 
 	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
