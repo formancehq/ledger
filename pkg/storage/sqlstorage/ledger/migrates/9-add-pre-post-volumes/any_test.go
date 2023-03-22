@@ -249,20 +249,20 @@ func TestMigrate9(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		l := &ledgerstore.Log{
+		l := &add_pre_post_volumes.Log{
 			ID:   uint64(i),
 			Data: txData,
-			Type: core.NewTransactionLogType,
+			Type: core.NewTransactionLogType.String(),
 			Date: now,
 		}
-		_, err = schema.NewInsert(ledgerstore.LogTableName).
+
+		_, err = schema.NewInsert("log").
 			Model(l).
 			Column("id", "data", "type", "date").
 			Exec(context.Background())
 
 		require.NoError(t, err)
 	}
-
 	count, err := store.CountTransactions(context.Background(), *storage.NewTransactionsQuery())
 	require.NoError(t, err)
 	require.Equal(t, count, uint64(len(testCases)))

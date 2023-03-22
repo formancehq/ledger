@@ -21,11 +21,22 @@ type Transaction struct {
 	Postings core.Postings `json:"postings"`
 }
 
+type Log struct {
+	bun.BaseModel `bun:"log,alias:log"`
+
+	ID        uint64          `bun:"id,unique,type:bigint"`
+	Type      string          `bun:"type,type:varchar"`
+	Hash      string          `bun:"hash,type:varchar"`
+	Date      core.Time       `bun:"date,type:timestamptz"`
+	Data      json.RawMessage `bun:"data,type:jsonb"`
+	Reference string          `bun:"reference,type:varchar"`
+}
+
 func Upgrade(ctx context.Context, schema schema.Schema, sqlTx *schema.Tx) error {
-	sb := schema.NewSelect(ledger.LogTableName).
-		Model((*ledger.Log)(nil)).
+	sb := schema.NewSelect("log").
+		Model((*Log)(nil)).
 		Column("data").
-		Where("type = ?", core.NewTransactionLogType).
+		Where("type = ?", core.NewTransactionLogType.String()).
 		Order("id ASC")
 
 	rows, err := sqlTx.QueryContext(ctx, sb.String())

@@ -194,6 +194,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
+
 		res, err := l.CreateTransaction(r.Context(), preview, core.TxToScriptData(txData))
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
