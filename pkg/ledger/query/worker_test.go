@@ -168,9 +168,6 @@ func TestWorker(t *testing.T) {
 				Output: core.NewMonetaryInt(10),
 			},
 		},
-		Balances: map[string]*core.MonetaryInt{
-			"USD/2": core.NewMonetaryInt(90),
-		},
 	}, accountWithVolumes)
 
 	accountWithVolumes, err = ledgerStore.GetAccountWithVolumes(context.Background(), "another:account")
@@ -180,7 +177,6 @@ func TestWorker(t *testing.T) {
 			Address:  "another:account",
 			Metadata: appliedMetadataOnAccount,
 		},
-		Volumes:  map[string]core.Volumes{},
-		Balances: map[string]*core.MonetaryInt{},
+		Volumes: map[string]core.Volumes{},
 	}, accountWithVolumes)
 }

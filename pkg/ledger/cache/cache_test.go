@@ -56,15 +56,11 @@ func TestCache(t *testing.T) {
 				Output: core.NewMonetaryInt(0),
 			},
 		},
-		Balances: map[string]*core.MonetaryInt{
-			"USD/2": core.NewMonetaryInt(100),
-		},
 	}, *account)
 
 	volumes := account.Volumes["USD/2"]
 	volumes.Output = account.Volumes["USD/2"].Output.Add(core.NewMonetaryInt(10))
 	account.Volumes["USD/2"] = volumes
-	account.Balances["USD/2"] = core.NewMonetaryInt(90)
 
 	log := core.NewTransactionLog(core.Transaction{
 		TransactionData: core.TransactionData{
@@ -108,9 +104,6 @@ func TestCache(t *testing.T) {
 				Input:  core.NewMonetaryInt(10),
 				Output: core.NewMonetaryInt(0),
 			},
-		},
-		Balances: map[string]*core.MonetaryInt{
-			"USD/2": core.NewMonetaryInt(10),
 		},
 	}, *account)
 

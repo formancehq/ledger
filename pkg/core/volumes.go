@@ -54,14 +54,6 @@ func (v Volumes) copy() Volumes {
 
 type AssetsBalances map[string]*MonetaryInt
 
-func (a AssetsBalances) copy() AssetsBalances {
-	ret := AssetsBalances{}
-	for k, monetaryInt := range a {
-		ret[k] = monetaryInt.Add(NewMonetaryInt(0))
-	}
-	return ret
-}
-
 type AssetsVolumes map[string]Volumes
 
 type AccountsBalances map[string]AssetsBalances

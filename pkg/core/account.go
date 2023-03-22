@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 )
@@ -29,14 +30,22 @@ func NewAccount(address string) Account {
 type AccountWithVolumes struct {
 	Account
 	Volumes AssetsVolumes `json:"volumes"`
-	// TODO(gfyrag): Remove from domain layer, it can be computed dynamically when needed
-	Balances AssetsBalances `json:"balances" example:"COIN:100"`
+}
+
+func (v AccountWithVolumes) MarshalJSON() ([]byte, error) {
+	type aux AccountWithVolumes
+	return json.Marshal(struct {
+		aux
+		Balances AssetsBalances `json:"balanes"`
+	}{
+		aux:      aux(v),
+		Balances: v.Volumes.Balances(),
+	})
 }
 
 func (v AccountWithVolumes) Copy() AccountWithVolumes {
 	v.Account = v.Account.copy()
 	v.Volumes = v.Volumes.copy()
-	v.Balances = v.Balances.copy()
 	return v
 }
 

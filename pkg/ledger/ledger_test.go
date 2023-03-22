@@ -139,9 +139,6 @@ func TestRevertTransaction(t *testing.T) {
 					WithInput(core.NewMonetaryInt(110)).
 					WithOutput(tx.Postings[0].Amount),
 			},
-			Balances: map[string]*core.MonetaryInt{
-				"COIN": core.NewMonetaryInt(10),
-			},
 		}, *account)
 
 		rawLogs, err := l.GetLedgerStore().ReadLogsStartingFromID(context.Background(), 0)
