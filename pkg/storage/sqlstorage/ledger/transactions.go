@@ -162,6 +162,9 @@ func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.Transactio
 }
 
 func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
+	if !s.isInitialized {
+		return api.Cursor[core.ExpandedTransaction]{}, ErrStoreNotInitialized
+	}
 
 	txs := make([]core.ExpandedTransaction, 0)
 
@@ -245,12 +248,20 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 }
 
 func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
+	if !s.isInitialized {
+		return 0, ErrStoreNotInitialized
+	}
+
 	sb, _ := s.buildTransactionsQuery(ctx, q)
 	count, err := sb.Count(ctx)
 	return uint64(count), s.error(err)
 }
 
 func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	sb := s.schema.NewSelect(TransactionsTableName).
 		Model((*Transactions)(nil)).
 		Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
@@ -295,6 +306,10 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 }
 
 func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	sb := s.schema.NewSelect(TransactionsTableName).
 		Model((*Transactions)(nil)).
 		Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
@@ -421,10 +436,18 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 }
 
 func (s *Store) InsertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	return s.insertTransactions(ctx, txs...)
 }
 
 func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	metadataData, err := json.Marshal(metadata)
 	if err != nil {
 		return err

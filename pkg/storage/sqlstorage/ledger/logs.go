@@ -117,10 +117,18 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 }
 
 func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	return <-s.logsBatchWorker.WriteModels(ctx, log)
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	raw := &LogsV2{}
 	err := s.schema.NewSelect(LogTableName).
 		Model(raw).
@@ -154,6 +162,10 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 }
 
 func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {
+	if !s.isInitialized {
+		return api.Cursor[core.Log]{}, ErrStoreNotInitialized
+	}
+
 	res := []core.Log{}
 
 	if q.PageSize == 0 {
@@ -276,10 +288,18 @@ func (s *Store) getNextLogID(ctx context.Context, sq interface {
 }
 
 func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
+	if !s.isInitialized {
+		return 0, ErrStoreNotInitialized
+	}
+
 	return s.getNextLogID(ctx, &s.schema)
 }
 
 func (s *Store) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	return s.readLogsStartingFromID(ctx, &s.schema, id)
 }
 
@@ -316,6 +336,10 @@ func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
 }
 
 func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	_, err := s.schema.
 		NewInsert(LogIngestionTableName).
 		Model(&LogsIngestion{
@@ -328,6 +352,10 @@ func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 }
 
 func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	raw := &LogsV2{}
 	err := s.schema.
 		NewSelect(LogTableName).
@@ -353,6 +381,10 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 }
 
 func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	raw := &LogsV2{}
 	err := s.schema.
 		NewSelect(LogTableName).

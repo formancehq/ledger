@@ -21,6 +21,10 @@ type Volumes struct {
 }
 
 func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
+	if !s.isInitialized {
+		return ErrStoreNotInitialized
+	}
+
 	for account, accountVolumes := range volumes {
 		for asset, volumes := range accountVolumes {
 			v := &Volumes{
@@ -47,6 +51,10 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVo
 }
 
 func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	query := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
 		Column("asset", "input", "output").

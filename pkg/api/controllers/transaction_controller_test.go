@@ -637,7 +637,6 @@ func TestPostTransactionsPreview(t *testing.T) {
 
 	internal.RunTest(t, func(api chi.Router, driver storage.Driver) {
 		store := internal.GetLedgerStore(t, driver, context.Background())
-
 		t.Run("postings true", func(t *testing.T) {
 			rsp := internal.PostTransaction(t, api, controllers.PostTransactionRequest{
 				Postings: core.Postings{

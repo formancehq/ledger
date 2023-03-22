@@ -26,12 +26,16 @@ const (
 	batchTickerTime = 100 * time.Millisecond
 )
 
+var ErrStoreNotInitialized = errors.New("Store not initialized")
+
 type Store struct {
 	schema   schema.Schema
 	onClose  func(ctx context.Context) error
 	onDelete func(ctx context.Context) error
 
 	logsBatchWorker *worker.Worker[core.Log]
+
+	isInitialized bool
 }
 
 func (s *Store) error(err error) error {
@@ -64,11 +68,20 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	return migrations.Migrate(ctx, s.schema, ms...)
+	modified, err := migrations.Migrate(ctx, s.schema, ms...)
+	if err == nil {
+		s.isInitialized = true
+	}
+
+	return modified, err
 }
 
 func (s *Store) Close(ctx context.Context) error {
 	return s.onClose(ctx)
+}
+
+func (s *Store) IsInitialized() bool {
+	return s.isInitialized
 }
 
 func NewStore(
@@ -77,15 +90,16 @@ func NewStore(
 	onClose, onDelete func(ctx context.Context) error,
 ) *Store {
 	s := &Store{
-		schema:   schema,
-		onClose:  onClose,
-		onDelete: onDelete,
+		schema:        schema,
+		onClose:       onClose,
+		onDelete:      onDelete,
+		isInitialized: false,
 	}
 
 	logsBatchWorker := worker.NewWorker(batchSize, batchTickerTime, s.batchLogs)
 	s.logsBatchWorker = logsBatchWorker
 
-	go logsBatchWorker.Run(ctx)
+	go logsBatchWorker.Run(logging.ContextWithLogger(context.Background(), logging.FromContext(ctx)))
 
 	return s
 }

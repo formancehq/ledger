@@ -21,6 +21,10 @@ type BalancesPaginationToken struct {
 }
 
 func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+	if !s.isInitialized {
+		return nil, ErrStoreNotInitialized
+	}
+
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
 		ColumnExpr("asset").
@@ -64,6 +68,10 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 }
 
 func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
+	if !s.isInitialized {
+		return api.Cursor[core.AccountsBalances]{}, ErrStoreNotInitialized
+	}
+
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
 		ColumnExpr("account").

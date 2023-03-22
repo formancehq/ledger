@@ -127,7 +127,6 @@ func (w *Worker) Stop(ctx context.Context) error {
 }
 
 func (w *Worker) initLedgers(ctx context.Context) error {
-
 	ledgers, err := w.driver.GetSystemStore().ListLedgers(ctx)
 	if err != nil {
 		return err
@@ -143,12 +142,15 @@ func (w *Worker) initLedgers(ctx context.Context) error {
 }
 
 func (w *Worker) initLedger(ctx context.Context, ledger string) error {
-
 	store, _, err := w.driver.GetLedgerStore(ctx, ledger, false)
 	if err != nil && err != storage.ErrLedgerStoreNotFound {
 		return err
 	}
 	if err == storage.ErrLedgerStoreNotFound {
+		return nil
+	}
+
+	if !store.IsInitialized() {
 		return nil
 	}
 
