@@ -61,7 +61,7 @@ func Run(ctx context.Context, store Store, prog *program.Program, script core.Ru
 			}
 			req.Response <- *value
 		} else if req.Asset != "" {
-			amt := account.Balances[req.Asset].OrZero()
+			amt := account.Volumes[req.Asset].Balance().OrZero()
 			resp := *amt
 			req.Response <- &resp
 		} else {
@@ -84,7 +84,7 @@ func Run(ctx context.Context, store Store, prog *program.Program, script core.Ru
 		if err != nil {
 			return nil, errors.Wrap(err, fmt.Sprintf("could not get account %q", req.Account))
 		}
-		amt = account.Balances[req.Asset].OrZero()
+		amt = account.Volumes[req.Asset].Balance().OrZero()
 		resp := *amt
 		req.Response <- &resp
 	}

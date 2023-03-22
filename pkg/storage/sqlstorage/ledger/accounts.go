@@ -267,13 +267,10 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 		return nil, s.error(err)
 	}
 
-	res := &core.AccountWithVolumes{
+	return &core.AccountWithVolumes{
 		Account: acc,
 		Volumes: assetsVolumes,
-	}
-	res.Balances = res.Volumes.Balances()
-
-	return res, nil
+	}, nil
 }
 
 func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
@@ -357,7 +354,6 @@ func (s *Store) ComputeAccount(ctx context.Context, address string) (*core.Accou
 					volumes.Input = volumes.Input.Add(posting.Amount)
 				}
 				account.Volumes[posting.Asset] = volumes
-				account.Balances[posting.Asset] = volumes.Input.Sub(volumes.Output)
 			}
 		case core.SetMetadataLogType:
 			if log.Data.(core.SetMetadataLogPayload).TargetID == address {

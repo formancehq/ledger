@@ -68,9 +68,6 @@ var testCases = []testCase{
 				Volumes: core.AssetsVolumes{
 					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
 				},
-				Balances: map[string]*core.MonetaryInt{
-					"GEM": core.NewMonetaryInt(100),
-				},
 			},
 		},
 	},
@@ -150,9 +147,6 @@ var testCases = []testCase{
 				Account: core.NewAccount("mint"),
 				Volumes: core.AssetsVolumes{
 					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
-				},
-				Balances: map[string]*core.MonetaryInt{
-					"GEM": core.NewMonetaryInt(100),
 				},
 			},
 		},
