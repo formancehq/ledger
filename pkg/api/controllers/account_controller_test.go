@@ -437,9 +437,6 @@ func TestGetAccount(t *testing.T) {
 						"foo": "bar",
 					},
 				},
-				Balances: core.AssetsBalances{
-					"USD": core.NewMonetaryInt(100),
-				},
 				Volumes: core.AssetsVolumes{
 					"USD": {
 						Input:  core.NewMonetaryInt(100),
@@ -458,8 +455,7 @@ func TestGetAccount(t *testing.T) {
 					Address:  "bob",
 					Metadata: core.Metadata{},
 				},
-				Balances: core.AssetsBalances{},
-				Volumes:  core.AssetsVolumes{},
+				Volumes: core.AssetsVolumes{},
 			}, resp)
 		})
 

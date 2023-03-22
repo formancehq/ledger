@@ -47,7 +47,6 @@ func (c *Cache) Update(accounts core.AccountsAssetsVolumes) {
 		}
 		account := rawAccount.(*core.AccountWithVolumes)
 		account.Volumes = volumes
-		account.Balances = volumes.Balances()
 		if err := c.cache.Set(address, account); err != nil {
 			panic(err)
 		}
