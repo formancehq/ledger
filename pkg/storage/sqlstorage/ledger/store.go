@@ -90,7 +90,10 @@ func NewStore(
 	logsBatchWorker := worker.NewWorker(s.batchLogs)
 	s.logsBatchWorker = logsBatchWorker
 
-	go logsBatchWorker.Run(ctx)
+	go logsBatchWorker.Run(logging.ContextWithLogger(
+		context.Background(),
+		logging.FromContext(ctx),
+	))
 
 	return s
 }

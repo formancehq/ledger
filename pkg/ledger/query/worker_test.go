@@ -98,7 +98,7 @@ func TestWorker(t *testing.T) {
 	}
 	for _, log := range logs {
 		require.NoError(t, ledgerStore.AppendLog(context.Background(), &log))
-		worker.QueueLog(context.Background(), log, ledgerStore)
+		<-worker.QueueLog(context.Background(), log, ledgerStore)
 	}
 	require.Eventually(t, func() bool {
 		nextLogID, err := ledgerStore.GetNextLogID(context.Background())
