@@ -106,6 +106,8 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 	if err != nil {
 		return nil, err
 	}
+	entry.Lock()
+	defer entry.Unlock()
 	cp := entry.account.Copy()
 
 	return &cp, nil

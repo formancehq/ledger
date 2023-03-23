@@ -38,7 +38,7 @@ type Runner struct {
 	// nextTxID store the next transaction id to be used
 	nextTxID *atomic.Uint64
 	// locker is used to local a set of account
-	locker     lock.Locker
+	locker     *lock.Locker
 	compiler   *numscript.Compiler
 	state      *state.State
 	ledgerName string
@@ -99,7 +99,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 			errors.Wrap(err, "could not set variables"))
 	}
 
-	involvedAccounts, _, err := m.ResolveResources(ctx, r.cache)
+	involvedAccounts, involvedSources, err := m.ResolveResources(ctx, r.cache)
 	if err != nil {
 		return nil, nil, errorsutil.NewError(ErrCompilationFailed,
 			errors.Wrap(err, "could not resolve program resources"))
@@ -111,7 +111,21 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 		return nil, nil, errors.Wrap(err, "locking accounts")
 	}
 
-	unlock, err := r.locker.Lock(ctx, r.ledgerName, involvedAccounts...)
+	lockAccounts := lock.Accounts{}
+	for _, account := range involvedAccounts {
+		if account == "world" {
+			continue
+		}
+		lockAccounts.Read = append(lockAccounts.Read, account)
+	}
+	for _, account := range involvedSources {
+		if account == "world" {
+			continue
+		}
+		lockAccounts.Write = append(lockAccounts.Write, account)
+	}
+
+	unlock, err := r.locker.Lock(ctx, lockAccounts)
 	if err != nil {
 		release()
 		return nil, nil, errors.Wrap(err, "locking accounts")
@@ -185,7 +199,7 @@ func (r *Runner) GetState() *state.State {
 	return r.state
 }
 
-func New(store Store, locker lock.Locker, cache Cache, compiler *numscript.Compiler, ledgerName string, allowPastTimestamps bool) (*Runner, error) {
+func New(store Store, locker *lock.Locker, cache Cache, compiler *numscript.Compiler, ledgerName string, allowPastTimestamps bool) (*Runner, error) {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && !storage.IsNotFoundError(err) {
 		return nil, err
