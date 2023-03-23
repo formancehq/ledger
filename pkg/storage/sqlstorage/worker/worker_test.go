@@ -14,20 +14,23 @@ func TestSimpleWorker(t *testing.T) {
 	ctx := context.Background()
 	db := NewMockDB()
 
-	w := worker.NewWorker(1, 100*time.Millisecond, db.Write)
+	w := worker.NewWorker(db.Write)
 	go w.Run(ctx)
+	defer func() {
+		require.NoError(t, w.Stop(context.Background()))
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	eg := errgroup.Group{}
 	for i := 0; i < 100; i++ {
-		_i := i
+		i := i
 		eg.Go(func() error {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case err := <-w.WriteModels(ctx, &Log{id: _i}):
+			case err := <-w.WriteModels(ctx, &Log{id: i}):
 				return err
 			}
 		})
@@ -44,42 +47,7 @@ func TestBatchWorker(t *testing.T) {
 	ctx := context.Background()
 	db := NewMockDB()
 
-	w := worker.NewWorker(10, 100*time.Millisecond, db.Write)
-	go w.Run(ctx)
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	eg := errgroup.Group{}
-	for i := 0; i < 1000; i += 100 {
-		logs := make([]*Log, 0, 100)
-		for j := i; j < i+100 && j < 1000; j++ {
-			logs = append(logs, &Log{id: j})
-		}
-		eg.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case err := <-w.WriteModels(ctx, logs...):
-				return err
-			}
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		t.Fatal(err)
-	}
-
-	require.Len(t, db.ids, 1000)
-}
-
-func TestBatchTickerWorker(t *testing.T) {
-	ctx := context.Background()
-	db := NewMockDB()
-
-	// Set batch size way too high to make sure the ticker is the one triggering
-	// the write
-	w := worker.NewWorker(10000, 100*time.Millisecond, db.Write)
+	w := worker.NewWorker(db.Write)
 	go w.Run(ctx)
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
