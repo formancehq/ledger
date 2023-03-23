@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -177,8 +178,10 @@ func TestExecuteScript(t *testing.T) {
 			_, err = store.Initialize(context.Background())
 			require.NoError(t, err)
 
+			compiler := numscript.NewCompiler()
+
 			cache := cache.New(store)
-			runner, err := New(store, lock.NewInMemory(), cache, false)
+			runner, err := New(store, lock.NewInMemory(), cache, compiler, false)
 			require.NoError(t, err)
 
 			if tc.setup != nil {

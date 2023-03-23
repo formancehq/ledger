@@ -12,8 +12,8 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/machine"
-	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/pkg/errors"
@@ -35,6 +35,7 @@ type Runner struct {
 	locker lock.Locker
 	// allowPastTimestamps allow to insert transactions in the past
 	allowPastTimestamps bool
+	compiler            *numscript.Compiler
 }
 
 func (r *Runner) GetMoreRecentTransactionDate() core.Time {
@@ -134,12 +135,12 @@ func (r *Runner) acquireInflight(ctx context.Context, script core.RunScript) (*i
 
 func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool) (*core.ExpandedTransaction, map[string]core.Metadata, error) {
 
-	prog, err := compiler.Compile(script.Plain)
+	program, err := r.compiler.Compile(ctx, script.Plain)
 	if err != nil {
 		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
 	}
 
-	involvedAccounts, err := prog.GetInvolvedAccounts(script.Vars)
+	involvedAccounts, err := program.GetInvolvedAccounts(script.Vars)
 	if err != nil {
 		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, err.Error())
 	}
@@ -150,7 +151,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool
 	}
 	defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
 
-	result, err := machine.Run(ctx, r.cache, prog, script)
+	result, err := machine.Run(ctx, r.cache, program, script)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,7 +213,7 @@ func (r *Runner) releaseInFlightWithTransaction(inFlight *inFlight, transaction 
 	}
 }
 
-func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, allowPastTimestamps bool) (*Runner, error) {
+func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, compiler *numscript.Compiler, allowPastTimestamps bool) (*Runner, error) {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -246,5 +247,6 @@ func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, allo
 		allowPastTimestamps: allowPastTimestamps,
 		nextTxID:            nextTxID,
 		lastTransactionDate: lastTransactionDate,
+		compiler:            compiler,
 	}, nil
 }

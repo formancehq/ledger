@@ -1,0 +1,46 @@
+package numscript
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+
+	"github.com/bluele/gcache"
+	"github.com/formancehq/ledger/pkg/machine/script/compiler"
+	"github.com/formancehq/ledger/pkg/machine/vm"
+	"github.com/formancehq/ledger/pkg/machine/vm/program"
+	"github.com/pkg/errors"
+)
+
+type Compiler struct {
+	cache gcache.Cache
+}
+
+func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program, error) {
+
+	digest := sha256.New()
+	_, err := digest.Write([]byte(script))
+	if err != nil {
+		return nil, err
+	}
+
+	cacheKey := base64.StdEncoding.EncodeToString(digest.Sum(nil))
+	v, err := c.cache.Get(cacheKey)
+	if err == nil {
+		return v.(*program.Program), nil
+	}
+
+	program, err := compiler.Compile(script)
+	if err != nil {
+		return nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
+	}
+	_ = c.cache.Set(cacheKey, program)
+
+	return program, nil
+}
+
+func NewCompiler() *Compiler {
+	return &Compiler{
+		cache: gcache.New(1024).LFU().Build(), // TODO(gfyrag): Make configurable
+	}
+}

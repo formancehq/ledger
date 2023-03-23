@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/storage"
 )
 
@@ -16,6 +17,7 @@ type Manager struct {
 	lock                lock.Locker
 	allowPastTimestamps bool
 	cacheManager        *cache.Manager
+	compiler            *numscript.Compiler
 	// ledgers store the script runner for each ledger
 	ledgers map[string]*Runner
 }
@@ -36,7 +38,7 @@ func (m *Manager) ForLedger(ctx context.Context, ledger string) (*Runner, error)
 			return nil, err
 		}
 
-		runner, err = New(store, m.lock, cache, m.allowPastTimestamps)
+		runner, err = New(store, m.lock, cache, m.compiler, m.allowPastTimestamps)
 		if err != nil {
 			return nil, err
 		}
@@ -52,5 +54,6 @@ func NewManager(storageDriver storage.Driver, lock lock.Locker, cacheManager *ca
 		allowPastTimestamps: allowPastTimestamps,
 		cacheManager:        cacheManager,
 		ledgers:             map[string]*Runner{},
+		compiler:            numscript.NewCompiler(),
 	}
 }
