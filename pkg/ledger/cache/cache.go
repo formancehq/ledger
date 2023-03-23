@@ -7,8 +7,17 @@ import (
 
 	"github.com/bluele/gcache"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage"
+	"golang.org/x/sync/singleflight"
 )
+
+type AccountComputer interface {
+	ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error)
+}
+type AccountComputerFn func(ctx context.Context, address string) (*core.AccountWithVolumes, error)
+
+func (fn AccountComputerFn) ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	return fn(ctx, address)
+}
 
 type cacheEntry struct {
 	sync.Mutex
@@ -16,34 +25,36 @@ type cacheEntry struct {
 }
 
 type Cache struct {
-	cache gcache.Cache
-	store storage.LedgerStore
+	cache           gcache.Cache
+	accountComputer AccountComputer
+	sg              singleflight.Group
 }
 
 func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 
 	address = strings.TrimPrefix(address, "@")
 
-	entry, err := c.cache.Get(address)
-	if err != nil {
+	item, err, _ := c.sg.Do(address, func() (interface{}, error) {
+		item, err := c.cache.Get(address)
+		if err == nil {
+			return item, nil
+		}
+		entry := &cacheEntry{}
+
 		// TODO: Rename later ?
-		account, err := c.store.ComputeAccount(ctx, address)
+		entry.account, err = c.accountComputer.ComputeAccount(ctx, address)
 		if err != nil {
 			return nil, err
 		}
-
-		ce := &cacheEntry{
-			account: account,
+		if err := c.cache.Set(address, entry); err != nil {
+			return nil, err
 		}
-
-		if err := c.cache.Set(account.Address, ce); err != nil {
-			panic(err)
-		}
-
-		*account = account.Copy()
-		return account, nil
+		return entry, nil
+	})
+	if err != nil {
+		panic(err)
 	}
-	cp := entry.(*cacheEntry).account.Copy()
+	cp := item.(*cacheEntry).account.Copy()
 
 	return &cp, nil
 }
@@ -93,10 +104,10 @@ func (c *Cache) UpdateAccountMetadata(address string, m core.Metadata) error {
 	return nil
 }
 
-func New(store storage.LedgerStore) *Cache {
+func New(accountComputer AccountComputer) *Cache {
 	return &Cache{
-		store: store,
+		accountComputer: accountComputer,
 		//TODO(gfyrag): Make configurable
-		cache: gcache.New(1000).LFU().Build(),
+		cache: gcache.New(1024).LFU().Build(),
 	}
 }
