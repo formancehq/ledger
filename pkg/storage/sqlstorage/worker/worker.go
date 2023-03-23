@@ -2,110 +2,144 @@ package worker
 
 import (
 	"context"
-	"time"
 )
 
-type WorkerJob[MODEL any] func(context.Context, []*MODEL) error
+type Job[MODEL any] func(context.Context, []MODEL) error
 
-type Model[MODEL any] struct {
-	models  []*MODEL
+type modelsHolder[MODEL any] struct {
+	models  []MODEL
 	errChan chan error
 }
 
 type Worker[MODEL any] struct {
-	ctx       context.Context
-	batchSize int
-	batchTime time.Duration
-
-	models     []Model[MODEL]
-	modelsChan chan Model[MODEL]
-
-	workerJob WorkerJob[MODEL]
+	pending      []modelsHolder[MODEL]
+	writeChannel chan modelsHolder[MODEL]
+	jobs         chan []modelsHolder[MODEL]
+	releasedJob  chan struct{}
+	workerJob    Job[MODEL]
+	stopChan     chan chan struct{}
 }
 
-func NewWorker[MODEL any](batchSize int, batchTime time.Duration, workerJob WorkerJob[MODEL]) *Worker[MODEL] {
+func NewWorker[MODEL any](workerJob Job[MODEL]) *Worker[MODEL] {
 	return &Worker[MODEL]{
-		batchSize: batchSize,
-		batchTime: batchTime,
-		workerJob: workerJob,
+		workerJob:    workerJob,
+		pending:      make([]modelsHolder[MODEL], 0), // TODO(gfyrag): we need to limit the worker capacity
+		jobs:         make(chan []modelsHolder[MODEL]),
+		writeChannel: make(chan modelsHolder[MODEL], 1024), // TODO(gfyrag): Make configurable
+		releasedJob:  make(chan struct{}, 1),
+		stopChan:     make(chan chan struct{}, 1),
+	}
+}
 
-		models:     nil,
-		modelsChan: make(chan Model[MODEL], 1024),
+func (w *Worker[MODEL]) writeLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case w.releasedJob <- struct{}{}:
+		case modelsHolders := <-w.jobs:
+			models := make([]MODEL, 0)
+			for _, holder := range modelsHolders {
+				models = append(models, holder.models...)
+			}
+			err := w.workerJob(ctx, models)
+			go func() {
+				for _, holder := range modelsHolders {
+					select {
+					case <-ctx.Done():
+						return
+					case holder.errChan <- err:
+						close(holder.errChan)
+					}
+				}
+			}()
+		}
 	}
 }
 
 // Run should be called in a goroutine
 func (w *Worker[MODEL]) Run(ctx context.Context) {
-	w.ctx = ctx
-	ticker := time.NewTicker(w.batchTime)
 
-	writeFn := func(context.Context) {
-		if err := w.write(ctx); err != nil {
-			// TODO(polo): should we stop the writer in case of an error ?
-			// return err
-			return
-		}
-	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
+	go w.writeLoop(ctx)
+
+l:
 	for {
 		select {
 		case <-ctx.Done():
 			return
-
-		case ms := <-w.modelsChan:
-			w.models = append(w.models, ms)
-			if w.len() >= w.batchSize {
-				writeFn(ctx)
+		case ch := <-w.stopChan:
+			close(ch)
+			return
+		// At this level, the job is writting some models, just accumulate models in a buffer
+		case mh := <-w.writeChannel:
+			w.pending = append(w.pending, mh)
+		case <-w.releasedJob:
+			// There, write model job is not running, and we have pending models
+			// So we can try to send pending to the job channel
+			if len(w.pending) > 0 {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case ch := <-w.stopChan:
+						close(ch)
+						return
+					case w.jobs <- w.pending:
+						// Models has been handled by the job, just clear pending models
+						w.pending = make([]modelsHolder[MODEL], 0)
+						continue l
+					}
+				}
 			}
-
-		case <-ticker.C:
-			writeFn(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case ch := <-w.stopChan:
+				close(ch)
+				return
+			// There, the job is waiting, and we don't have any pending models to write
+			// so, wait for new models to write and send them directly to the job channel
+			// We can not return to the main loop as w.releasedJob will be continuously notified by the job routine
+			case mh := <-w.writeChannel:
+				select {
+				case <-ctx.Done():
+					return
+				case ch := <-w.stopChan:
+					close(ch)
+					return
+				case w.jobs <- []modelsHolder[MODEL]{mh}:
+				}
+			}
 		}
 	}
 }
 
-func (w *Worker[MODEL]) write(ctx context.Context) error {
-	if len(w.models) == 0 {
-		return nil
+func (w *Worker[MODEL]) Stop(ctx context.Context) error {
+	ch := make(chan struct{})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case w.stopChan <- ch:
+		select {
+		case <-ch:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-
-	models := make([]*MODEL, 0, w.len())
-	for _, model := range w.models {
-		models = append(models, model.models...)
-	}
-
-	err := w.workerJob(ctx, models)
-
-	for _, model := range w.models {
-		model.errChan <- err
-		close(model.errChan)
-	}
-
-	// Even if the worker job failed, we still want to release the memory, the
-	// clients will retry.
-	// Release the slice in order to release the underlying memory to the
-	// garbage collector.
-	w.models = nil
-
-	return err
 }
 
-func (w *Worker[MODEL]) len() int {
-	l := 0
-	for _, model := range w.models {
-		l += len(model.models)
-	}
-	return l
-}
-
-func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...*MODEL) <-chan error {
+func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...MODEL) <-chan error {
 	errChan := make(chan error, 1)
 
 	select {
 	case <-ctx.Done():
 		errChan <- ctx.Err()
 		close(errChan)
-	case w.modelsChan <- Model[MODEL]{
+	case w.writeChannel <- modelsHolder[MODEL]{
 		models:  models,
 		errChan: errChan,
 	}:
