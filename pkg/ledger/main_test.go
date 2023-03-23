@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
@@ -48,7 +49,10 @@ func runOnLedger(t interface {
 	cacheManager := cache.NewManager(storageDriver)
 	ledgerCache, err := cacheManager.ForLedger(context.Background(), name)
 	require.NoError(t, err)
-	runner, err := runner.New(store, lock.NewInMemory(), ledgerCache, false)
+
+	compiler := numscript.NewCompiler()
+
+	runner, err := runner.New(store, lock.NewInMemory(), ledgerCache, compiler, false)
 	require.NoError(t, err)
 
 	queryWorker := query.NewWorker(query.DefaultWorkerConfig, storageDriver, query.NewNoOpMonitor())
