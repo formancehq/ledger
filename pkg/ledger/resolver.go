@@ -20,29 +20,21 @@ type Resolver struct {
 	storageDriver   storage.Driver
 	monitor         monitor.Monitor
 	lock            sync.RWMutex
-	metricsRegsitry metrics.GlobalMetricsRegistry
-	locker          lock.Locker
+	metricsRegistry metrics.GlobalMetricsRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
 	ledgers             map[string]*Ledger
 	compiler            *numscript.Compiler
 	allowPastTimestamps bool
 }
 
-func NewResolver(
-	storageDriver storage.Driver,
-	monitor monitor.Monitor,
-	locker lock.Locker,
-	allowPastTimestamps bool,
-	metricsRegsitry metrics.GlobalMetricsRegistry,
-) *Resolver {
+func NewResolver(storageDriver storage.Driver, monitor monitor.Monitor, allowPastTimestamps bool, metricsRegistry metrics.GlobalMetricsRegistry) *Resolver {
 	return &Resolver{
 		storageDriver:       storageDriver,
 		monitor:             monitor,
-		locker:              locker,
-		metricsRegsitry:     metricsRegsitry,
 		compiler:            numscript.NewCompiler(),
 		ledgers:             map[string]*Ledger{},
 		allowPastTimestamps: allowPastTimestamps,
+		metricsRegistry:     metricsRegistry,
 	}
 }
 
@@ -64,13 +56,20 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}
 
+		locker := lock.New(name)
+		go func() {
+			if err := locker.Run(context.Background()); err != nil {
+				panic(err)
+			}
+		}()
+
 		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
 		if err != nil {
 			return nil, errors.Wrap(err, "registering metrics")
 		}
 
 		cache := cache.New(store, metricsRegistry)
-		runner, err := runner.New(store, r.locker, cache, r.compiler, name, r.allowPastTimestamps)
+		runner, err := runner.New(store, locker, cache, r.compiler, name, r.allowPastTimestamps)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating ledger runner")
 		}
@@ -86,9 +85,9 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}()
 
-		ledger = New(store, cache, runner, r.locker, queryWorker, metricsRegistry)
+		ledger = New(store, cache, runner, locker, queryWorker, metricsRegistry)
 		r.ledgers[name] = ledger
-		r.metricsRegsitry.ActiveLedgers().Add(ctx, +1)
+		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}
 
 	return ledger, nil

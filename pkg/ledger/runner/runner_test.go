@@ -236,8 +236,12 @@ func TestExecuteScript(t *testing.T) {
 			}
 
 			compiler := numscript.NewCompiler()
+			locker := lock.New(ledger)
+			go func() {
+				require.NoError(t, locker.Run(context.Background()))
+			}()
 
-			runner, err := New(store, lock.NewInMemory(), cache, compiler, ledger, false)
+			runner, err := New(store, locker, cache, compiler, ledger, false)
 			require.NoError(t, err)
 
 			if tc.setup != nil {
