@@ -19,7 +19,7 @@ import (
 type Ledger struct {
 	runner          *runner.Runner
 	store           storage.LedgerStore
-	locker          lock.Locker
+	locker          *lock.Locker
 	dbCache         *cache.Cache
 	queryWorker     *query.Worker
 	metricsRegistry metrics.PerLedgerMetricsRegistry
@@ -29,7 +29,7 @@ func New(
 	store storage.LedgerStore,
 	dbCache *cache.Cache,
 	runner *runner.Runner,
-	locker lock.Locker,
+	locker *lock.Locker,
 	queryWorker *query.Worker,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
@@ -44,12 +44,15 @@ func New(
 }
 
 func (l *Ledger) Close(ctx context.Context) error {
-	if err := l.store.Close(ctx); err != nil {
-		return errors.Wrap(err, "closing store")
-	}
 
 	if err := l.queryWorker.Stop(ctx); err != nil {
 		return errors.Wrap(err, "stopping query worker")
+	}
+
+	l.locker.Stop()
+
+	if err := l.store.Close(ctx); err != nil {
+		return errors.Wrap(err, "closing store")
 	}
 
 	return nil
@@ -101,6 +104,7 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedT
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil && !storage.IsNotFoundError(err) {
 		return nil, errors.Wrap(err, "get transaction before revert")
@@ -178,8 +182,9 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 
 	at := core.Now()
 	var (
-		err error
-		log core.Log
+		err     error
+		log     core.Log
+		release cache.Release = func() {}
 	)
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
@@ -202,7 +207,9 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 
 		// Machine can access account metadata, so store the metadata until CQRS compute final of the account
 		// The cache can still evict the account entry before CQRS part compute the view
-		unlock, err := l.locker.Lock(ctx, l.store.Name(), targetID.(string))
+		unlock, err := l.locker.Lock(ctx, lock.Accounts{
+			Write: []string{targetID.(string)},
+		})
 		if err != nil {
 			return errors.Wrap(err, "lock account")
 		}
@@ -228,11 +235,18 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	}
 
 	err = l.store.AppendLog(ctx, &log)
-	logHolder := core.NewLogHolder(&log)
 	if err == nil {
+		logHolder := core.NewLogHolder(&log)
 		if err := l.writeLog(ctx, logHolder); err != nil {
+			release()
 			return err
 		}
+		go func() {
+			<-logHolder.Ingested
+			release()
+		}()
+	} else {
+		release()
 	}
 
 	return err
