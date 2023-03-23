@@ -21,15 +21,16 @@ type workerConfig struct {
 	ChanSize int
 }
 
-type workerLog struct {
-	log   core.Log
-	store storage.LedgerStore
+type logHolder struct {
+	log      core.Log
+	store    storage.LedgerStore
+	waitChan chan struct{}
 }
 
 type Worker struct {
 	workerConfig
 	ctx                context.Context
-	logChan            chan workerLog
+	logChan            chan logHolder
 	stopChan           chan chan struct{}
 	driver             storage.Driver
 	monitor            Monitor
@@ -85,6 +86,7 @@ func (w *Worker) run() error {
 			return nil
 		case wl := <-w.logChan:
 			if w.lastProcessedLogID != nil && wl.log.ID <= *w.lastProcessedLogID {
+				close(wl.waitChan)
 				continue
 			}
 			if err := w.processLog(w.ctx, wl.store, wl.log); err != nil {
@@ -94,6 +96,7 @@ func (w *Worker) run() error {
 					logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
 				}
 
+				close(wl.waitChan)
 				// Return the error to restart the worker
 				return err
 			}
@@ -103,8 +106,11 @@ func (w *Worker) run() error {
 
 				// TODO(polo/gfyrag): add indempotency tests
 				// Return the error to restart the worker
+				close(wl.waitChan)
 				return err
 			}
+
+			close(wl.waitChan)
 		}
 	}
 }
@@ -285,17 +291,22 @@ func (w *Worker) processLog(ctx context.Context, store storage.LedgerStore, log 
 	return err
 }
 
-func (w *Worker) QueueLog(ctx context.Context, log core.Log, store storage.LedgerStore) {
+func (w *Worker) QueueLog(ctx context.Context, log core.Log, store storage.LedgerStore) <-chan struct{} {
+	waitChan := make(chan struct{})
+
 	select {
 	case <-w.ctx.Done():
-		return
-	case w.logChan <- workerLog{log, store}:
+		close(waitChan)
+		return waitChan
+	case w.logChan <- logHolder{log, store, waitChan}:
 	}
+
+	return waitChan
 }
 
 func NewWorker(config workerConfig, driver storage.Driver, monitor Monitor) *Worker {
 	return &Worker{
-		logChan:      make(chan workerLog, config.ChanSize),
+		logChan:      make(chan logHolder, config.ChanSize),
 		stopChan:     make(chan chan struct{}),
 		workerConfig: config,
 		driver:       driver,
