@@ -161,3 +161,15 @@ func HydrateLog(_type LogType, data []byte) (interface{}, error) {
 }
 
 type Accounts map[string]Account
+
+type LogHolder struct {
+	Log      *Log
+	Ingested chan struct{}
+}
+
+func NewLogHolder(log *Log) *LogHolder {
+	return &LogHolder{
+		Log:      log,
+		Ingested: make(chan struct{}),
+	}
+}

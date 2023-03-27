@@ -50,7 +50,7 @@ func main() {
 		},
 	}
 
-	err = m.ResolveResources(context.Background(), vm.EmptyStore)
+	_, _, err = m.ResolveResources(context.Background(), vm.EmptyStore)
 	if err != nil {
 		panic(err)
 	}

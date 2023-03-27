@@ -19,7 +19,7 @@ type mockAccountComputer struct {
 	calls    []mockCall
 }
 
-func (c *mockAccountComputer) ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+func (c *mockAccountComputer) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	c.calls = append(c.calls, mockCall{
 		address: address,
 	})
@@ -64,6 +64,12 @@ func TestParallelRead(t *testing.T) {
 		},
 	}
 	cache := New(mock)
+
+	release, err := cache.LockAccounts(context.Background(), "bank")
+	require.NoError(t, err)
+	defer func() {
+		release()
+	}()
 
 	eg := errgroup.Group{}
 	for i := 0; i < 1000; i++ {
@@ -113,8 +119,14 @@ func TestUpdateVolumes(t *testing.T) {
 	}
 	cache := New(mock)
 
+	release, err := cache.LockAccounts(context.Background(), "world", "bank")
+	require.NoError(t, err)
+	defer func() {
+		release()
+	}()
+
 	// Force load accounts
-	_, err := cache.GetAccountWithVolumes(context.Background(), "world")
+	_, err = cache.GetAccountWithVolumes(context.Background(), "world")
 	require.NoError(t, err)
 
 	_, err = cache.GetAccountWithVolumes(context.Background(), "bank")

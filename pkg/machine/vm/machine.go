@@ -30,21 +30,22 @@ const (
 )
 
 type Machine struct {
-	P                   uint
-	Program             program.Program
-	Vars                map[string]internal.Value
-	UnresolvedResources []program.Resource
-	Resources           []internal.Value // Constants and Variables
-	resolveCalled       bool
-	Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt // keeps track of balances throughout execution
-	setBalanceCalled    bool
-	Stack               []internal.Value
-	Postings            []Posting                                             // accumulates postings throughout execution
-	TxMeta              map[string]internal.Value                             // accumulates transaction meta throughout execution
-	AccountsMeta        map[internal.AccountAddress]map[string]internal.Value // accumulates accounts meta throughout execution
-	Printer             func(chan internal.Value)
-	printChan           chan internal.Value
-	Debug               bool
+	P                          uint
+	Program                    program.Program
+	Vars                       map[string]internal.Value
+	UnresolvedResources        []program.Resource
+	Resources                  []internal.Value // Constants and Variables
+	UnresolvedResourceBalances map[string]int
+	resolveCalled              bool
+	Balances                   map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt // keeps track of balances throughout execution
+	setBalanceCalled           bool
+	Stack                      []internal.Value
+	Postings                   []Posting                                             // accumulates postings throughout execution
+	TxMeta                     map[string]internal.Value                             // accumulates transaction meta throughout execution
+	AccountsMeta               map[internal.AccountAddress]map[string]internal.Value // accumulates accounts meta throughout execution
+	Printer                    func(chan internal.Value)
+	printChan                  chan internal.Value
+	Debug                      bool
 }
 
 type Posting struct {
@@ -60,14 +61,15 @@ func NewMachine(p program.Program) *Machine {
 	printChan := make(chan internal.Value)
 
 	m := Machine{
-		Program:             p,
-		UnresolvedResources: p.Resources,
-		Resources:           make([]internal.Value, 0),
-		printChan:           printChan,
-		Printer:             StdOutPrinter,
-		Postings:            make([]Posting, 0),
-		TxMeta:              map[string]internal.Value{},
-		AccountsMeta:        map[internal.AccountAddress]map[string]internal.Value{},
+		Program:                    p,
+		UnresolvedResources:        p.Resources,
+		Resources:                  make([]internal.Value, 0),
+		printChan:                  printChan,
+		Printer:                    StdOutPrinter,
+		Postings:                   make([]Posting, 0),
+		TxMeta:                     map[string]internal.Value{},
+		AccountsMeta:               map[internal.AccountAddress]map[string]internal.Value{},
+		UnresolvedResourceBalances: map[string]int{},
 	}
 
 	return &m
@@ -494,6 +496,23 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	}
 	m.setBalanceCalled = true
 	m.Balances = make(map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt)
+
+	for address, resourceIndex := range m.UnresolvedResourceBalances {
+		account, err := store.GetAccountWithVolumes(ctx, address)
+		if err != nil {
+			return err
+		}
+		monetary := m.Resources[resourceIndex].(internal.Monetary)
+		balance := account.Volumes[string(monetary.Asset)].Balance()
+		if balance.Cmp(core.Zero) < 0 {
+			return fmt.Errorf(
+				"tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
+				address, monetary.Asset, balance)
+		}
+		monetary.Amount = internal.NewMonetaryIntFromBigInt(account.Volumes[string(monetary.Asset)].Balance())
+		m.Resources[resourceIndex] = monetary
+	}
+
 	// for every account that we need balances of, check if it's there
 	for addr, neededAssets := range m.Program.NeededBalances {
 		account, ok := m.getResource(addr)
@@ -527,20 +546,14 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	return nil
 }
 
-type ResourceRequest struct {
-	Account  string
-	Key      string
-	Asset    string
-	Response chan internal.Value
-	Error    error
-}
-
-func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
+func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, []string, error) {
+	//TODO(gfyrag): Is that really required? Feel like defensive programming.
 	if m.resolveCalled {
-		return errors.New("tried to call ResolveResources twice")
+		return nil, nil, errors.New("tried to call ResolveResources twice")
 	}
 
 	m.resolveCalled = true
+	involvedAccountsMap := make(map[internal.Address]string)
 	for len(m.Resources) != len(m.UnresolvedResources) {
 		idx := len(m.Resources)
 		res := m.UnresolvedResources[idx]
@@ -548,21 +561,29 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 		switch res := res.(type) {
 		case program.Constant:
 			val = res.Inner
+			if val.GetType() == internal.TypeAccount {
+				involvedAccountsMap[internal.Address(idx)] = string(val.(internal.AccountAddress))
+			}
 		case program.Variable:
 			var ok bool
 			val, ok = m.Vars[res.Name]
 			if !ok {
-				return fmt.Errorf("missing variable '%s'", res.Name)
+				return nil, nil, fmt.Errorf("missing variable '%s'", res.Name)
+			}
+			if val.GetType() == internal.TypeAccount {
+				involvedAccountsMap[internal.Address(idx)] = string(val.(internal.AccountAddress))
 			}
 		case program.VariableAccountMetadata:
 			sourceAccount, ok := m.getResource(res.Account)
 			if !ok {
-				return fmt.Errorf(
+				//TODO(gfyrag): Is that really mandatory? The visitor should catch missing account?
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request metadata of an account which has not yet been solved",
 					res.Name)
 			}
 			if (*sourceAccount).GetType() != internal.TypeAccount {
-				return fmt.Errorf(
+				//TODO(gfyrag): Is that really mandatory? The visitor should catch invalid typing?
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request metadata on wrong entity: %v instead of account",
 					res.Name, (*sourceAccount).GetType())
 			}
@@ -570,74 +591,65 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 			address := string((*sourceAccount).(internal.AccountAddress))
 			account, err := store.GetAccountWithVolumes(ctx, address)
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
+				return nil, nil, errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
 			}
 
 			entry, ok := account.Metadata[res.Key]
 			if !ok {
-				return NewScriptError(ScriptErrorCompilationFailed,
+				return nil, nil, newResourceResolutionError(ResourceResolutionErrorCodeMissingMetadata,
 					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, address))
 			}
 
 			data, err := json.Marshal(entry)
 			if err != nil {
-				return errors.Wrap(err, "marshaling metadata")
+				return nil, nil, errors.Wrap(err, "marshaling metadata")
 			}
 			val, err = internal.NewValueFromTypedJSON(data)
 			if err != nil {
-				return NewScriptError(ScriptErrorCompilationFailed,
-					errors.Wrap(err, fmt.Sprintf("invalid format for metadata at key %v for account %s",
-						res.Key, address)).Error())
+				return nil, nil, newResourceResolutionError(ResourceResolutionErrorCodeInvalidTypeFromExternalSources,
+					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, address))
 			}
 		case program.VariableAccountBalance:
 			sourceAccount, ok := m.getResource(res.Account)
 			if !ok {
-				return fmt.Errorf(
+				//TODO(gfyrag): Is that really mandatory? The visitor should catch missing account?
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request metadata of an account which has not yet been solved",
 					res.Name)
 			}
 			if (*sourceAccount).GetType() != internal.TypeAccount {
-				return fmt.Errorf(
+				//TODO(gfyrag): Is that really mandatory? The visitor should catch this?
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request balance of an account which has not yet been solved",
 					res.Name)
 			}
 
 			address := string((*sourceAccount).(internal.AccountAddress))
-			account, err := store.GetAccountWithVolumes(ctx, address)
-			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
-			}
+			involvedAccountsMap[internal.Address(idx)] = address
+			m.UnresolvedResourceBalances[address] = idx
 
 			ass, ok := m.getResource(res.Asset)
 			if !ok {
-				return fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request balance of an account for an asset which has not yet been solved",
 					res.Name)
 			}
 			if (*ass).GetType() != internal.TypeAsset {
-				return fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"variable '%s': tried to request account balance on wrong entity: %v instead of asset",
 					res.Name, (*ass).GetType())
 			}
 
-			amt := account.Volumes[string((*ass).(internal.Asset))].Balance()
-			if amt.Cmp(core.Zero) < 0 {
-				return fmt.Errorf(
-					"variable '%s': tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
-					res.Name, address, string((*ass).(internal.Asset)), amt)
-			}
-
 			val = internal.Monetary{
-				Asset:  (*ass).(internal.Asset),
-				Amount: internal.NewMonetaryIntFromBigInt(amt),
+				Asset: (*ass).(internal.Asset),
 			}
 		case program.Monetary:
 			ass, ok := m.getResource(res.Asset)
 			if !ok {
-				return fmt.Errorf("tried to resolve an asset which has not yet been solved")
+				return nil, nil, fmt.Errorf("tried to resolve an asset which has not yet been solved")
 			}
 			if (*ass).GetType() != internal.TypeAsset {
-				return fmt.Errorf(
+				return nil, nil, fmt.Errorf(
 					"tried to resolve an asset on wrong type '%v'",
 					(*ass).GetType())
 			}
@@ -651,9 +663,20 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 		}
 		m.Resources = append(m.Resources, val)
 	}
-	return nil
+
+	involvedAccounts := make([]string, 0)
+	involvedSources := make([]string, 0)
+	for _, accountAddress := range involvedAccountsMap {
+		involvedAccounts = append(involvedSources, accountAddress)
+	}
+	for _, machineAddress := range m.Program.Sources {
+		involvedSources = append(involvedSources, involvedAccountsMap[machineAddress])
+	}
+
+	return involvedAccounts, involvedSources, nil
 }
 
+// TODO(gfyrag): Maybe rename to ResolveVars. Lifecycle seems to be ResolveVars -> ResolveResources -> ResolveBalances
 func (m *Machine) SetVars(vars map[string]internal.Value) error {
 
 	v, err := m.Program.ParseVariables(vars)

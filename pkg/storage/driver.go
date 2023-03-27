@@ -50,7 +50,6 @@ type LedgerStore interface {
 	AppendLog(context.Context, *core.Log) error
 	GetMigrationsAvailable() ([]core.MigrationInfo, error)
 	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
-	ComputeAccount(ctx context.Context, account string) (*core.AccountWithVolumes, error)
 	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
 	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
 }

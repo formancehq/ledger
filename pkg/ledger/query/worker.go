@@ -22,9 +22,8 @@ type workerConfig struct {
 }
 
 type logHolder struct {
-	log      core.Log
-	store    storage.LedgerStore
-	waitChan chan struct{}
+	*core.LogHolder
+	store storage.LedgerStore
 }
 
 type Worker struct {
@@ -85,32 +84,30 @@ func (w *Worker) run() error {
 			close(stopChan)
 			return nil
 		case wl := <-w.logChan:
-			if w.lastProcessedLogID != nil && wl.log.ID <= *w.lastProcessedLogID {
-				close(wl.waitChan)
+			if w.lastProcessedLogID != nil && wl.Log.ID <= *w.lastProcessedLogID {
+				close(wl.Ingested)
 				continue
 			}
-			if err := w.processLog(w.ctx, wl.store, wl.log); err != nil {
+			if err := w.processLog(w.ctx, wl.store, wl.Log); err != nil {
 				if err == context.Canceled {
 					logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
 				} else {
 					logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
 				}
+				close(wl.Ingested)
 
-				close(wl.waitChan)
 				// Return the error to restart the worker
 				return err
 			}
 
-			if err := wl.store.UpdateNextLogID(w.ctx, wl.log.ID+1); err != nil {
+			if err := wl.store.UpdateNextLogID(w.ctx, wl.Log.ID+1); err != nil {
 				logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
-
+				close(wl.Ingested)
 				// TODO(polo/gfyrag): add indempotency tests
 				// Return the error to restart the worker
-				close(wl.waitChan)
 				return err
 			}
-
-			close(wl.waitChan)
+			close(wl.Ingested)
 		}
 	}
 }
@@ -189,7 +186,7 @@ func (w *Worker) initLedger(ctx context.Context, ledger string) error {
 
 func (w *Worker) processLogs(ctx context.Context, store storage.LedgerStore, logs ...core.Log) error {
 	for _, log := range logs {
-		if err := w.processLog(ctx, store, log); err != nil {
+		if err := w.processLog(ctx, store, &log); err != nil {
 			return errors.Wrapf(err, "processing log %d", log.ID)
 		}
 	}
@@ -197,7 +194,7 @@ func (w *Worker) processLogs(ctx context.Context, store storage.LedgerStore, log
 	return nil
 }
 
-func (w *Worker) processLog(ctx context.Context, store storage.LedgerStore, log core.Log) error {
+func (w *Worker) processLog(ctx context.Context, store storage.LedgerStore, log *core.Log) error {
 	volumeAggregator := aggregator.Volumes(store)
 
 	var err error
@@ -291,17 +288,14 @@ func (w *Worker) processLog(ctx context.Context, store storage.LedgerStore, log 
 	return err
 }
 
-func (w *Worker) QueueLog(ctx context.Context, log core.Log, store storage.LedgerStore) <-chan struct{} {
-	waitChan := make(chan struct{})
-
+func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder, store storage.LedgerStore) {
 	select {
 	case <-w.ctx.Done():
-		close(waitChan)
-		return waitChan
-	case w.logChan <- logHolder{log, store, waitChan}:
+	case w.logChan <- logHolder{
+		LogHolder: log,
+		store:     store,
+	}:
 	}
-
-	return waitChan
 }
 
 func NewWorker(config workerConfig, driver storage.Driver, monitor Monitor) *Worker {

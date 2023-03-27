@@ -5,14 +5,15 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
-	"github.com/bluele/gcache"
 	"github.com/formancehq/ledger/pkg/core"
 	"golang.org/x/sync/singleflight"
 )
 
-type AccountComputer interface {
-	ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error)
+type Store interface {
+	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
 }
 type AccountComputerFn func(ctx context.Context, address string) (*core.AccountWithVolumes, error)
 
@@ -22,50 +23,89 @@ func (fn AccountComputerFn) ComputeAccount(ctx context.Context, address string) 
 
 type cacheEntry struct {
 	sync.Mutex
-	account *core.AccountWithVolumes
+	account  *core.AccountWithVolumes
+	lastUsed time.Time
+	inUse    atomic.Int64
 }
 
+type Release func()
+
+// TODO(gfyrag): Add a routine to evict all entries
 type Cache struct {
-	cache           gcache.Cache
-	accountComputer AccountComputer
-	sg              singleflight.Group
+	mu    sync.RWMutex
+	cache map[string]*cacheEntry
+	store Store
+	sg    singleflight.Group
 }
 
-func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-
-	address = strings.TrimPrefix(address, "@")
-
+func (c *Cache) getEntry(ctx context.Context, address string) (*cacheEntry, error) {
 	item, err, _ := c.sg.Do(address, func() (interface{}, error) {
-		item, err := c.cache.Get(address)
-		if err == nil {
-			return item, nil
-		}
-		entry := &cacheEntry{}
+		c.mu.RLock()
+		entry, ok := c.cache[address]
+		c.mu.RUnlock()
+		if !ok {
+			account, err := c.store.GetAccountWithVolumes(ctx, address)
+			if err != nil {
+				return nil, err
+			}
 
-		// TODO: Rename later ?
-		entry.account, err = c.accountComputer.ComputeAccount(ctx, address)
-		if err != nil {
-			return nil, err
-		}
-		if err := c.cache.Set(address, entry); err != nil {
-			return nil, err
+			entry = &cacheEntry{
+				account:  account,
+				lastUsed: time.Now(),
+			}
+			c.mu.Lock()
+			c.cache[address] = entry
+			c.mu.Unlock()
+
+			return entry, nil
 		}
 		return entry, nil
 	})
-	if err != nil {
-		panic(err)
+	return item.(*cacheEntry), err
+}
+
+func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, error) {
+	entries := make([]*cacheEntry, 0)
+	for _, address := range address {
+		entry, err := c.getEntry(ctx, address)
+		if err != nil {
+			return nil, err
+		}
+		entry.inUse.Add(1)
+		entries = append(entries, entry)
 	}
-	cp := item.(*cacheEntry).account.Copy()
+
+	released := false
+	return func() {
+		if released {
+			return
+		}
+		released = true
+		for _, entry := range entries {
+			entry.inUse.Add(-1)
+		}
+	}, nil
+}
+
+func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	address = strings.TrimPrefix(address, "@")
+
+	entry, err := c.getEntry(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+	cp := entry.account.Copy()
 
 	return &cp, nil
 }
 
 func (c *Cache) withLockOnAccount(address string, callback func(account *core.AccountWithVolumes)) {
-	item, err := c.cache.Get(address)
-	if err != nil {
-		return
+	c.mu.Lock()
+	entry, ok := c.cache[address]
+	c.mu.Unlock()
+	if !ok {
+		panic("cache empty for address: " + address)
 	}
-	entry := item.(*cacheEntry)
 	entry.Lock()
 	defer entry.Unlock()
 
@@ -103,10 +143,9 @@ func (c *Cache) UpdateAccountMetadata(address string, m core.Metadata) error {
 	return nil
 }
 
-func New(accountComputer AccountComputer) *Cache {
+func New(store Store) *Cache {
 	return &Cache{
-		accountComputer: accountComputer,
-		//TODO(gfyrag): Make configurable
-		cache: gcache.New(1024).LFU().Build(),
+		store: store,
+		cache: map[string]*cacheEntry{},
 	}
 }

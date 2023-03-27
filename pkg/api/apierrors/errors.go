@@ -56,10 +56,12 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 		return http.StatusBadRequest, ErrValidation, ""
 	case runner.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
+	// TODO(gfyrag): Those error codes are copied from vm package. We need to clean this
 	case vm.IsScriptErrorWithCode(err, ErrScriptNoScript),
 		vm.IsScriptErrorWithCode(err, ErrInsufficientFund),
 		vm.IsScriptErrorWithCode(err, ErrScriptCompilationFailed),
-		vm.IsScriptErrorWithCode(err, ErrScriptMetadataOverride):
+		vm.IsScriptErrorWithCode(err, ErrScriptMetadataOverride),
+		vm.IsResourceResolutionError(err):
 		scriptErr := &vm.ScriptError{}
 		_ = errors.As(err, &scriptErr)
 		return http.StatusBadRequest, scriptErr.Code, EncodeLink(scriptErr.Message)
