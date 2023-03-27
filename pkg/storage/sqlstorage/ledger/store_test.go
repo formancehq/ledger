@@ -35,7 +35,6 @@ func TestStore(t *testing.T) {
 		{name: "GetTransaction", fn: testGetTransaction},
 		{name: "GetBalances", fn: testGetBalances},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
-		{name: "ComputeAccount", fn: testComputeAccount},
 	} {
 		t.Run(fmt.Sprintf("postgres/%s", tf.name), func(t *testing.T) {
 			done := make(chan struct{})

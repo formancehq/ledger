@@ -42,35 +42,36 @@ func (r *Runner) GetMoreRecentTransactionDate() core.Time {
 	return r.lastTransactionDate
 }
 
+type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log
+
 func (r *Runner) Execute(
 	ctx context.Context,
 	script core.RunScript,
 	dryRun bool,
-	logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log,
-) (*core.ExpandedTransaction, core.Log, error) {
+	logComputer logComputer,
+) (*core.ExpandedTransaction, *core.LogHolder, error) {
 
 	inFlight, err := r.acquireInflight(ctx, script)
 	if err != nil {
-		return nil, core.Log{}, err
+		return nil, nil, err
 	}
 	defer r.releaseInFlight(inFlight)
 
-	transaction, accountMetadata, err := r.execute(ctx, script, dryRun)
+	transaction, logHolder, err := r.execute(ctx, script, logComputer, dryRun)
 	if err != nil {
-		return nil, core.Log{}, err
+		return nil, nil, err
 	}
 	if dryRun {
-		return transaction, core.Log{}, err
+		return transaction, nil, err
 	}
 
-	log := logComputer(*transaction, accountMetadata).WithReference(script.Reference)
-	if err := r.store.AppendLog(ctx, &log); err != nil {
-		return nil, core.Log{}, err
+	if err := r.store.AppendLog(ctx, logHolder.Log); err != nil {
+		return nil, nil, err
 	}
 
 	r.releaseInFlightWithTransaction(inFlight, &transaction.Transaction)
 
-	return transaction, log, nil
+	return transaction, logHolder, nil
 }
 
 func (r *Runner) checkConstraints(ctx context.Context, script core.RunScript) error {
@@ -133,36 +134,61 @@ func (r *Runner) acquireInflight(ctx context.Context, script core.RunScript) (*i
 	return ret, nil
 }
 
-func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool) (*core.ExpandedTransaction, map[string]core.Metadata, error) {
+func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer logComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
 
 	program, err := r.compiler.Compile(ctx, script.Plain)
 	if err != nil {
 		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
 	}
 
-	involvedAccounts, err := program.GetInvolvedAccounts(script.Vars)
-	if err != nil {
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, err.Error())
+	m := vm.NewMachine(*program)
+
+	if err := m.SetVarsFromJSON(script.Vars); err != nil {
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
+			errors.Wrap(err, "could not set variables").Error())
 	}
 
-	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
+	involvedAccounts, _, err := m.ResolveResources(ctx, r.cache)
 	if err != nil {
-		panic(err)
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
+			errors.Wrap(err, "could not resolve program resources").Error())
 	}
-	defer unlock(context.Background()) // Use a background context instead of the request one as it could have been cancelled
 
-	result, err := machine.Run(ctx, r.cache, program, script)
+	// TODO: need to release even if an error is returned later
+	release, err := r.cache.LockAccounts(ctx, involvedAccounts...)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
+	if err != nil {
+		release()
+		return nil, nil, err
+	}
+	defer unlock(context.Background())
+
+	err = m.ResolveBalances(ctx, r.cache)
+	if err != nil {
+		release()
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
+			errors.Wrap(err, "could not resolve balances").Error())
+	}
+
+	result, err := machine.Run(m, script)
+	if err != nil {
+		release()
+		return nil, nil, err
+	}
+
 	if len(result.Postings) == 0 {
+		release()
 		return nil, nil, NewValidationError("transaction has no postings")
 	}
 
 	vAggr := aggregator.Volumes(r.cache)
 	txVolumeAggr, err := vAggr.NextTxWithPostings(ctx, result.Postings...)
 	if err != nil {
+		release()
 		return nil, nil, errors.Wrap(err, "transferring volumes")
 	}
 
@@ -184,12 +210,24 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, dryRun bool
 		PostCommitVolumes: txVolumeAggr.PostCommitVolumes,
 	}
 	if dryRun {
-		return expandedTx, result.AccountMetadata, nil
+		release()
+		return expandedTx, nil, nil
 	}
 
 	r.cache.UpdateVolumeWithTX(expandedTx.Transaction)
 
-	return expandedTx, result.AccountMetadata, nil
+	log := logComputer(*expandedTx, result.AccountMetadata)
+	if script.Reference != "" {
+		log = log.WithReference(script.Reference)
+	}
+	logHolder := core.NewLogHolder(&log)
+	go func() {
+		// TODO(gfyrag): We need the app context to be able to listen on it (we cannot listen on request one)
+		<-logHolder.Ingested
+		release()
+	}()
+
+	return expandedTx, logHolder, nil
 }
 
 func (r *Runner) removeInFlight(inFlight *inFlight) {

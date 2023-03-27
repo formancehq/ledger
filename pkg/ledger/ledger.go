@@ -49,17 +49,25 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 	return l.store
 }
 
+func (l *Ledger) writeLog(ctx context.Context, logHolder *core.LogHolder) error {
+	l.queryWorker.QueueLog(ctx, logHolder, l.store)
+	// Wait for CQRS ingestion
+	// TODO(polo/gfyrag): add possiblity to disable this via request param
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-logHolder.Ingested:
+		return nil
+	}
+}
+
 func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core.RunScript) (*core.ExpandedTransaction, error) {
-	tx, log, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
 		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
 	})
 	if err == nil && !dryRun {
-		// Wait for CQRS ingestion
-		// TODO(polo/gfyrag): add possiblity to disable this via request param
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-l.queryWorker.QueueLog(ctx, log, l.store):
+		if err := l.writeLog(ctx, logHolder); err != nil {
+			return nil, err
 		}
 	}
 
@@ -112,12 +120,8 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		return core.NewRevertedTransactionLog(expandedTx.Timestamp, revertedTx.ID, expandedTx.Transaction)
 	})
 	if err == nil {
-		// Wait for CQRS ingestion
-		// TODO(polo/gfyrag): add possiblity to disable this via request param
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-l.queryWorker.QueueLog(ctx, log, l.store):
+		if err := l.writeLog(ctx, log); err != nil {
+			return nil, err
 		}
 	}
 
@@ -171,6 +175,12 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 			Metadata:   m,
 		})
 	case core.MetaTargetTypeAccount:
+		release, err := l.dbCache.LockAccounts(ctx, targetID.(string))
+		if err != nil {
+			return err
+		}
+		defer release()
+
 		// Machine can access account metadata, so store the metadata until CQRS compute final of the account
 		// The cache can still evict the account entry before CQRS part compute the view
 		unlock, err := l.locker.Lock(ctx, l.store.Name(), targetID.(string))
@@ -199,13 +209,10 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	}
 
 	err = l.store.AppendLog(ctx, &log)
+	logHolder := core.NewLogHolder(&log)
 	if err == nil {
-		// Wait for CQRS ingestion
-		// TODO(polo/gfyrag): add possiblity to disable this via request param
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-l.queryWorker.QueueLog(ctx, log, l.store):
+		if err := l.writeLog(ctx, logHolder); err != nil {
+			return err
 		}
 	}
 
