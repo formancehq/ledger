@@ -4,14 +4,13 @@ import (
 	_ "embed"
 	"net/http"
 
-	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
 
 type ConfigInfo struct {
-	Server  string      `json:"server"`
-	Version interface{} `json:"version"`
-	Config  *Config     `json:"config"`
+	Server  string  `json:"server"`
+	Version string  `json:"version"`
+	Config  *Config `json:"config"`
 }
 
 type Config struct {
@@ -23,19 +22,19 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func GetInfo(storageDriver storage.Driver, version string) func(w http.ResponseWriter, r *http.Request) {
+func GetInfo(backend Backend) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ledgers, err := storageDriver.GetSystemStore().ListLedgers(r.Context())
+		ledgers, err := backend.ListLedgers(r.Context())
 		if err != nil {
 			panic(err)
 		}
 
 		sharedapi.RawOk(w, ConfigInfo{
 			Server:  "ledger",
-			Version: version,
+			Version: backend.GetVersion(),
 			Config: &Config{
 				LedgerStorage: &LedgerStorage{
-					Driver:  storageDriver.Name(),
+					Driver:  "postgres",
 					Ledgers: ledgers,
 				},
 			},

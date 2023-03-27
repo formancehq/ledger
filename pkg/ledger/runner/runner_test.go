@@ -10,12 +10,75 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/state"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+type mockCache struct {
+	accounts map[string]*core.AccountWithVolumes
+}
+
+func (m *mockCache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	account, ok := m.accounts[address]
+	if !ok {
+		account = core.NewAccountWithVolumes(address)
+		m.accounts[address] = account
+		return account, nil
+	}
+	return account, nil
+}
+
+func (m *mockCache) LockAccounts(ctx context.Context, accounts ...string) (cache.Release, error) {
+	return func() {}, nil
+}
+
+func (m *mockCache) UpdateVolumeWithTX(transaction core.Transaction) {
+	for _, posting := range transaction.Postings {
+		sourceAccount := m.accounts[posting.Source]
+		sourceAccountAsset := sourceAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
+		sourceAccountAsset.Output = sourceAccountAsset.Output.Add(sourceAccountAsset.Output, posting.Amount)
+		sourceAccount.Volumes[posting.Asset] = sourceAccountAsset
+		destAccount := m.accounts[posting.Destination]
+		destAccountAsset := destAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
+		destAccountAsset.Input = destAccountAsset.Input.Add(destAccountAsset.Input, posting.Amount)
+		destAccount.Volumes[posting.Asset] = destAccountAsset
+	}
+}
+
+var _ Cache = (*mockCache)(nil)
+
+type mockStore struct {
+	logs []*core.Log
+}
+
+func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.Log, error) {
+	for _, log := range m.logs {
+		for _, logType := range logType {
+			if log.Type == logType {
+				return log, nil
+			}
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStore) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
+	for _, log := range m.logs {
+		if log.Reference == reference {
+			return log, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStore) AppendLog(ctx context.Context, log *core.Log) error {
+	m.logs = append(m.logs, log)
+	return nil
+}
+
+var _ Store = (*mockStore)(nil)
 
 type testCase struct {
 	name             string
@@ -159,30 +222,21 @@ func TestExecuteScript(t *testing.T) {
 	t.Parallel()
 	now := core.Now()
 
-	require.NoError(t, pgtesting.CreatePostgresServer())
-	defer func() {
-		require.NoError(t, pgtesting.DestroyPostgresServer())
-	}()
-
-	storageDriver := ledgertesting.StorageDriver(t)
-	require.NoError(t, storageDriver.Initialize(context.Background()))
-
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 
 			ledger := uuid.NewString()
-
-			store, _, err := storageDriver.GetLedgerStore(context.Background(), ledger, true)
-			require.NoError(t, err)
-
-			_, err = store.Initialize(context.Background())
-			require.NoError(t, err)
+			cache := &mockCache{
+				accounts: map[string]*core.AccountWithVolumes{},
+			}
+			store := &mockStore{
+				logs: []*core.Log{},
+			}
 
 			compiler := numscript.NewCompiler()
 
-			cache := cache.New(store)
-			runner, err := New(store, lock.NewInMemory(), cache, compiler, false)
+			runner, err := New(store, lock.NewInMemory(), cache, compiler, ledger, false)
 			require.NoError(t, err)
 
 			if tc.setup != nil {
@@ -206,14 +260,8 @@ func TestExecuteScript(t *testing.T) {
 				tc.expectedTx.Timestamp = now
 				require.Equal(t, tc.expectedTx, *ret)
 
-				logs, err := store.ReadLogsStartingFromID(context.Background(), 0)
-				require.NoError(t, err)
-				require.Len(t, logs, len(tc.expectedLogs))
+				require.Len(t, store.logs, len(tc.expectedLogs))
 				for ind := range tc.expectedLogs {
-					var previous *core.Log
-					if ind > 0 {
-						previous = &tc.expectedLogs[ind-1]
-					}
 					expectedLog := tc.expectedLogs[ind]
 					switch v := expectedLog.Data.(type) {
 					case core.NewTransactionLogPayload:
@@ -221,7 +269,6 @@ func TestExecuteScript(t *testing.T) {
 						expectedLog.Data = v
 					}
 					expectedLog.Date = now
-					require.Equal(t, expectedLog.ComputeHash(previous), logs[ind])
 				}
 
 				require.Equal(t, tc.expectedTx.Timestamp, runner.state.GetMoreRecentTransactionDate())

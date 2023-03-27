@@ -54,8 +54,8 @@ func (l Log) WithReference(reference string) Log {
 }
 
 type NewTransactionLogPayload struct {
-	Transaction     Transaction
-	AccountMetadata map[string]Metadata
+	Transaction     Transaction         `json:"transaction"`
+	AccountMetadata map[string]Metadata `json:"accountMetadata"`
 }
 
 func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]Metadata, time Time) Log {

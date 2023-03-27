@@ -2,18 +2,33 @@ package sqlstorage_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(t *testing.M) {
+	if err := pgtesting.CreatePostgresServer(); err != nil {
+		logging.Error(err)
+		os.Exit(1)
+	}
+	code := t.Run()
+	if err := pgtesting.DestroyPostgresServer(); err != nil {
+		logging.Error(err)
+	}
+	os.Exit(code)
+}
+
 func TestNewDriver(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
+	d := sqlstoragetesting.StorageDriver(t)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
@@ -36,7 +51,7 @@ func TestNewDriver(t *testing.T) {
 }
 
 func TestConfiguration(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
+	d := sqlstoragetesting.StorageDriver(t)
 
 	require.NoError(t, d.Initialize(context.Background()))
 
@@ -47,7 +62,7 @@ func TestConfiguration(t *testing.T) {
 }
 
 func TestConfigurationError(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
+	d := sqlstoragetesting.StorageDriver(t)
 
 	require.NoError(t, d.Initialize(context.Background()))
 

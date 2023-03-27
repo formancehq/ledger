@@ -103,6 +103,10 @@ func TxToScriptData(txData TransactionData) RunScript {
 		vars[v.name] = v.jsonVal
 	}
 
+	if txData.Metadata == nil {
+		txData.Metadata = Metadata{}
+	}
+
 	return RunScript{
 		Script: Script{
 			Plain: sb.String(),

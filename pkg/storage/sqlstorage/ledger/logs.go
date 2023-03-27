@@ -46,6 +46,10 @@ type LogsPaginationToken struct {
 	EndTime   core.Time `json:"endTime,omitempty"`
 }
 
+func (t LogsPaginationToken) Encode() string {
+	return encodePaginationToken(t)
+}
+
 type RawMessage json.RawMessage
 
 func (j RawMessage) Value() (driver.Value, error) {

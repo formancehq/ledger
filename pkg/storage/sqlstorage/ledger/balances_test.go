@@ -11,7 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testGetBalances(t *testing.T, store storage.LedgerStore) {
+func TestGetBalances(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"world": {
 			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
@@ -139,7 +142,10 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 	})
 }
 
-func testGetBalancesAggregated(t *testing.T, store storage.LedgerStore) {
+func TestGetBalancesAggregated(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"world": {
 			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),

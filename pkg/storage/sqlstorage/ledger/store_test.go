@@ -3,82 +3,14 @@ package ledger_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/fx"
 )
-
-func TestStore(t *testing.T) {
-	type testingFunction struct {
-		name string
-		fn   func(t *testing.T, store storage.LedgerStore)
-	}
-
-	for _, tf := range []testingFunction{
-		{name: "UpdateTransactionMetadata", fn: testUpdateTransactionMetadata},
-		{name: "UpdateAccountMetadata", fn: testUpdateAccountMetadata},
-		{name: "GetLastLog", fn: testGetLastLog},
-		{name: "GetLogs", fn: testGetLogs},
-		{name: "CountAccounts", fn: testCountAccounts},
-		{name: "GetAssetsVolumes", fn: testGetAssetsVolumes},
-		{name: "GetAccounts", fn: testGetAccounts},
-		{name: "GetAccountNotFound", fn: testGetAccountNotFound},
-		{name: "Transactions", fn: testTransactions},
-		{name: "GetTransaction", fn: testGetTransaction},
-		{name: "GetBalances", fn: testGetBalances},
-		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
-	} {
-		t.Run(fmt.Sprintf("postgres/%s", tf.name), func(t *testing.T) {
-			done := make(chan struct{})
-			app := fx.New(
-				ledgertesting.ProvideStorageDriver(t),
-				fx.NopLogger,
-				fx.Invoke(func(driver storage.Driver, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							defer func() {
-								close(done)
-							}()
-							store, _, err := driver.GetLedgerStore(ctx, uuid.NewString(), true)
-							if err != nil {
-								return err
-							}
-							defer store.Close(ctx)
-
-							if _, err = store.Initialize(context.Background()); err != nil {
-								return err
-							}
-
-							tf.fn(t, store)
-							return nil
-						},
-					})
-				}),
-			)
-			go func() {
-				require.NoError(t, app.Start(context.Background()))
-			}()
-			defer func(app *fx.App, ctx context.Context) {
-				require.NoError(t, app.Stop(ctx))
-			}(app, context.Background())
-
-			select {
-			case <-time.After(5 * time.Second):
-				t.Fatal("timeout")
-			case <-done:
-			}
-		})
-	}
-}
 
 var now = core.Now()
 var tx1 = core.ExpandedTransaction{
@@ -219,7 +151,9 @@ var tx3 = core.ExpandedTransaction{
 	},
 }
 
-func testUpdateTransactionMetadata(t *testing.T, store storage.LedgerStore) {
+func TestUpdateTransactionMetadata(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
 	tx := core.ExpandedTransaction{
 		Transaction: core.Transaction{
 			ID: 0,
@@ -250,7 +184,10 @@ func testUpdateTransactionMetadata(t *testing.T, store storage.LedgerStore) {
 	require.EqualValues(t, "bar", retrievedTransaction.Metadata["foo"])
 }
 
-func testUpdateAccountMetadata(t *testing.T, store storage.LedgerStore) {
+func TestUpdateAccountMetadata(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.EnsureAccountExists(context.Background(), "central_bank"))
 
 	err := store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
@@ -263,13 +200,19 @@ func testUpdateAccountMetadata(t *testing.T, store storage.LedgerStore) {
 	require.EqualValues(t, "bar", account.Metadata["foo"])
 }
 
-func testGetAccountNotFound(t *testing.T, store storage.LedgerStore) {
+func TestGetAccountNotFound(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	account, err := store.GetAccount(context.Background(), "account_not_existing")
 	require.True(t, storage.IsNotFoundError(err))
 	require.Nil(t, account)
 }
 
-func testCountAccounts(t *testing.T, store storage.LedgerStore) {
+func TestCountAccounts(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.EnsureAccountExists(context.Background(), "world"))
 	require.NoError(t, store.EnsureAccountExists(context.Background(), "central_bank"))
 
@@ -278,7 +221,10 @@ func testCountAccounts(t *testing.T, store storage.LedgerStore) {
 	require.EqualValues(t, 2, countAccounts) // world + central_bank
 }
 
-func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
+func TestGetAssetsVolumes(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
@@ -295,7 +241,10 @@ func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
 	require.EqualValues(t, big.NewInt(0), volumes["USD"].Output)
 }
 
-func testGetAccounts(t *testing.T, store storage.LedgerStore) {
+func TestGetAccounts(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "world", core.Metadata{
 		"foo": json.RawMessage(`"bar"`),
 	}))
@@ -380,167 +329,10 @@ func testGetAccounts(t *testing.T, store storage.LedgerStore) {
 	require.Len(t, accounts.Data, 1)
 }
 
-func testTransactions(t *testing.T, store storage.LedgerStore) {
-	require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2, tx3))
+func TestGetTransaction(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
 
-	t.Run("Count", func(t *testing.T) {
-		count, err := store.CountTransactions(context.Background(), storage.TransactionsQuery{})
-		require.NoError(t, err)
-		// Should get all the transactions
-		require.EqualValues(t, 3, count)
-
-		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Account: "world",
-			},
-		})
-		require.NoError(t, err)
-		// Should get the two first transactions involving the 'world' account.
-		require.EqualValues(t, 2, count)
-
-		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Account:   "world",
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now.Add(-1 * time.Hour),
-			},
-		})
-		require.NoError(t, err)
-		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
-		require.EqualValues(t, 1, count)
-
-		count, err = store.CountTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Metadata: map[string]string{
-					"priority": "high",
-				},
-			},
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, 1, count)
-	})
-
-	t.Run("Get", func(t *testing.T) {
-		cursor, err := store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			PageSize: 1,
-		})
-		require.NoError(t, err)
-		// Should get only the first transaction.
-		require.Equal(t, 1, cursor.PageSize)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			AfterTxID: cursor.Data[0].ID,
-			PageSize:  1,
-		})
-		require.NoError(t, err)
-		// Should get only the second transaction.
-		require.Equal(t, 1, cursor.PageSize)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Account:   "world",
-				Reference: "tx1",
-			},
-			PageSize: 1,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 1, cursor.PageSize)
-		// Should get only the first transaction.
-		require.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Account: "users:.*",
-			},
-			PageSize: 10,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 10, cursor.PageSize)
-		require.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Source: "central_bank",
-			},
-			PageSize: 10,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		require.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Destination: "users:1",
-			},
-			PageSize: 10,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		require.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Destination: "users:.*", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Destination: ".*:1", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Source: ".*bank", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now.Add(-1 * time.Hour),
-			},
-			PageSize: 10,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 10, cursor.PageSize)
-		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
-		require.Len(t, cursor.Data, 1)
-
-		cursor, err = store.GetTransactions(context.Background(), storage.TransactionsQuery{
-			Filters: storage.TransactionsQueryFilters{
-				Metadata: map[string]string{
-					"priority": "high",
-				},
-			},
-			PageSize: 10,
-		})
-		require.NoError(t, err)
-		require.Equal(t, 10, cursor.PageSize)
-		// Should get only the third transaction.
-		require.Len(t, cursor.Data, 1)
-	})
-}
-
-func testGetTransaction(t *testing.T, store storage.LedgerStore) {
 	require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2))
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
@@ -551,27 +343,18 @@ func testGetTransaction(t *testing.T, store storage.LedgerStore) {
 }
 
 func TestInitializeStore(t *testing.T) {
-	driver := ledgertesting.StorageDriver(t)
-	defer func(driver storage.Driver, ctx context.Context) {
-		require.NoError(t, driver.Close(ctx))
-	}(driver, context.Background())
-
-	err := driver.Initialize(context.Background())
-	require.NoError(t, err)
-
-	store, _, err := driver.GetLedgerStore(context.Background(), uuid.NewString(), true)
-	require.NoError(t, err)
+	t.Parallel()
+	store := newLedgerStore(t)
 
 	modified, err := store.Initialize(context.Background())
-	require.NoError(t, err)
-	require.True(t, modified)
-
-	modified, err = store.Initialize(context.Background())
 	require.NoError(t, err)
 	require.False(t, modified)
 }
 
-func testGetLastLog(t *testing.T, store storage.LedgerStore) {
+func TestGetLastLog(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	lastLog, err := store.GetLastLog(context.Background())
 	require.True(t, storage.IsNotFoundError(err))
 	require.Nil(t, lastLog)
@@ -588,7 +371,10 @@ func testGetLastLog(t *testing.T, store storage.LedgerStore) {
 	require.Equal(t, tx1.Timestamp, lastLog.Data.(core.NewTransactionLogPayload).Transaction.Timestamp)
 }
 
-func testGetLogs(t *testing.T, store storage.LedgerStore) {
+func TestGetLogs(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
 		logTx := core.NewTransactionLog(tx.Transaction, nil)
 		require.NoError(t, store.AppendLog(context.Background(), &logTx))

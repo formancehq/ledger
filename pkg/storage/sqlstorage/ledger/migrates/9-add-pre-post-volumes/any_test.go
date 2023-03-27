@@ -11,12 +11,12 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	add_pre_post_volumes "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/9-add-pre-post-volumes"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
@@ -226,7 +226,7 @@ func TestMigrate9(t *testing.T) {
 		require.NoError(t, pgtesting.DestroyPostgresServer())
 	}()
 
-	driver := ledgertesting.StorageDriver(t)
+	driver := sqlstoragetesting.StorageDriver(t)
 
 	require.NoError(t, driver.Initialize(context.Background()))
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
@@ -314,9 +314,9 @@ type Transactions struct {
 
 var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
 
-func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage.TransactionsQuery) (*bun.SelectQuery, ledgerstore.TxsPaginationToken) {
+func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage.TransactionsQuery) (*bun.SelectQuery, ledgerstore.TransactionsPaginationToken) {
 	sb := schema.NewSelect("transactions").Model((*Transactions)(nil))
-	t := ledgerstore.TxsPaginationToken{}
+	t := ledgerstore.TransactionsPaginationToken{}
 
 	var (
 		destination = p.Filters.Destination

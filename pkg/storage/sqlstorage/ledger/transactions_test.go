@@ -7,26 +7,12 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTransactions(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
-
-	assert.NoError(t, d.Initialize(context.Background()))
-
-	defer func(d *sqlstorage.Driver, ctx context.Context) {
-		assert.NoError(t, d.Close(ctx))
-	}(d, context.Background())
-
-	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
-	assert.NoError(t, err)
-
-	_, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
+	store := newLedgerStore(t)
 
 	t.Run("success inserting transaction", func(t *testing.T) {
 		tx1 := core.ExpandedTransaction{

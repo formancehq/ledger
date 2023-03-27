@@ -49,7 +49,7 @@ type Postings struct {
 	Destination  json.RawMessage `bun:"destination,type:jsonb"`
 }
 
-type TxsPaginationToken struct {
+type TransactionsPaginationToken struct {
 	AfterTxID         uint64            `json:"after"`
 	ReferenceFilter   string            `json:"reference,omitempty"`
 	AccountFilter     string            `json:"account,omitempty"`
@@ -61,9 +61,13 @@ type TxsPaginationToken struct {
 	PageSize          uint              `json:"pageSize,omitempty"`
 }
 
-func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.TransactionsQuery) (*bun.SelectQuery, TxsPaginationToken) {
+func (t TransactionsPaginationToken) Encode() string {
+	return encodePaginationToken(t)
+}
+
+func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.TransactionsQuery) (*bun.SelectQuery, TransactionsPaginationToken) {
 	sb := s.schema.NewSelect(TransactionsTableName).Model((*Transactions)(nil))
-	t := TxsPaginationToken{}
+	t := TransactionsPaginationToken{}
 
 	var (
 		destination = p.Filters.Destination
