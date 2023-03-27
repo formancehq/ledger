@@ -117,15 +117,7 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 func GetAccount(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	if !core.ValidateAddress(chi.URLParam(r, "address")) {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-			errors.New("invalid account address format")))
-		return
-	}
-
-	acc, err := l.GetAccount(
-		r.Context(),
-		chi.URLParam(r, "address"))
+	acc, err := l.GetAccount(r.Context(), chi.URLParam(r, "address"))
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return

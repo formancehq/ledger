@@ -19,10 +19,10 @@ import (
 
 type Info struct {
 	Name    string      `json:"name"`
-	Storage storageInfo `json:"storage"`
+	Storage StorageInfo `json:"storage"`
 }
 
-type storageInfo struct {
+type StorageInfo struct {
 	Migrations []core.MigrationInfo `json:"migrations"`
 }
 
@@ -32,7 +32,7 @@ func GetLedgerInfo(w http.ResponseWriter, r *http.Request) {
 	var err error
 	res := Info{
 		Name:    chi.URLParam(r, "ledger"),
-		Storage: storageInfo{},
+		Storage: StorageInfo{},
 	}
 	res.Storage.Migrations, err = ledger.GetMigrationsInfo(r.Context())
 	if err != nil {
@@ -132,7 +132,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.GetLogs(r.Context(), logsQuery)
+	cursor, err := l.GetLogs(r.Context(), *logsQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return

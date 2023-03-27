@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestVolumes(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
+	d := sqlstoragetesting.StorageDriver(t)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 

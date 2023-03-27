@@ -55,7 +55,7 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 }
 
 func (l *Ledger) writeLog(ctx context.Context, logHolder *core.LogHolder) error {
-	l.queryWorker.QueueLog(ctx, logHolder, l.store)
+	l.queryWorker.QueueLog(logHolder)
 	// Wait for CQRS ingestion
 	// TODO(polo/gfyrag): add possiblity to disable this via request param
 	select {
@@ -174,6 +174,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 
 	at := core.Now()
 	var (
+		err error
 		log core.Log
 	)
 	switch targetType {
@@ -213,21 +214,22 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	default:
 		return errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
 	}
-
-	err := l.store.AppendLog(ctx, &log)
 	if err != nil {
-		return errors.Wrap(err, "append log")
+		return err
 	}
 
+	err = l.store.AppendLog(ctx, &log)
 	logHolder := core.NewLogHolder(&log)
-	if err := l.writeLog(ctx, logHolder); err != nil {
-		return errors.Wrap(err, "write log")
+	if err == nil {
+		if err := l.writeLog(ctx, logHolder); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return err
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {
-	logs, err := l.store.GetLogs(ctx, q)
+func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (api.Cursor[core.Log], error) {
+	logs, err := l.store.GetLogs(ctx, &q)
 	return logs, errors.Wrap(err, "getting logs")
 }

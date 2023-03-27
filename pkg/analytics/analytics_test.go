@@ -11,11 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/ledgertesting"
-	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/fx"
 	"gopkg.in/segmentio/analytics-go.v3"
 )
 
@@ -76,28 +73,6 @@ const (
 	writeKey      = "key"
 )
 
-func module(t pgtesting.TestingT) fx.Option {
-	return fx.Options(
-		NewHeartbeatModule(version, writeKey, interval),
-		fx.NopLogger,
-		fx.Provide(func() AppIdProvider {
-			return AppIdProviderFn(func(ctx context.Context) (string, error) {
-				return "foo", nil
-			})
-		}),
-		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
-			driver := ledgertesting.StorageDriver(t)
-			lc.Append(fx.Hook{
-				OnStart: driver.Initialize,
-				OnStop: func(ctx context.Context) error {
-					return driver.Close(ctx)
-				},
-			})
-			return driver, nil
-		}),
-	)
-}
-
 func EventuallyQueueNotEmpty[ITEM any](t *testing.T, queue *Queue[ITEM]) {
 	require.Eventually(t, func() bool {
 		return !queue.Empty()
@@ -109,30 +84,87 @@ var emptyHttpResponse = &http.Response{
 	StatusCode: http.StatusOK,
 }
 
-func newApp(module fx.Option, t transport) *fx.App {
-	return fx.New(module, fx.Replace(analytics.Config{
-		BatchSize: 1,
-		Transport: t,
-	}))
-}
+func TestAnalytics(t *testing.T) {
+	t.Parallel()
 
-func withApp(t *testing.T, app *fx.App, fn func(t *testing.T)) {
-	require.NoError(t, app.Start(context.Background()))
-	defer func() {
-		require.NoError(t, app.Stop(context.Background()))
-	}()
-	fn(t)
-}
+	type testCase struct {
+		name      string
+		transport http.RoundTripper
+	}
+	queue := NewQueue[*http.Request]()
+	firstCallChan := make(chan struct{})
+	testCases := []testCase{
+		{
+			name: "nominal",
+			transport: transport(func(request *http.Request) (*http.Response, error) {
+				queue.Put(request)
+				return emptyHttpResponse, nil
+			}),
+		},
+		{
+			name: "with error on backend",
+			transport: transport(func(request *http.Request) (*http.Response, error) {
+				select {
+				case <-firstCallChan: // Enter this case only if the chan is closed
+					queue.Put(request)
+					return emptyHttpResponse, nil
+				default:
+					close(firstCallChan)
+					return nil, errors.New("general error")
+				}
+			}),
+		},
+	}
 
-func TestSegment(t *testing.T) {
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockLedger := NewMockLedger(ctrl)
+			backend := NewMockBackend(ctrl)
+			backend.
+				EXPECT().
+				ListLedgers(gomock.Any()).
+				AnyTimes().
+				Return([]string{"default"}, nil)
+			backend.
+				EXPECT().
+				AppID(gomock.Any()).
+				AnyTimes().
+				Return(applicationId, nil)
+			backend.
+				EXPECT().
+				GetLedgerStore(gomock.Any(), "default", false).
+				AnyTimes().
+				Return(mockLedger, false, nil)
+			t.Cleanup(func() {
+				ctrl.Finish()
+			})
+			analyticsClient, err := analytics.NewWithConfig(writeKey, analytics.Config{
+				BatchSize: 1,
+				Transport: testCase.transport,
+			})
+			require.NoError(t, err)
 
-	t.Run("Nominal case", func(t *testing.T) {
-		queue := NewQueue[*http.Request]()
-		app := newApp(module(t), func(request *http.Request) (*http.Response, error) {
-			queue.Put(request)
-			return emptyHttpResponse, nil
-		})
-		withApp(t, app, func(t *testing.T) {
+			mockLedger.
+				EXPECT().
+				CountTransactions(gomock.Any()).
+				AnyTimes().
+				Return(uint64(10), nil)
+			mockLedger.
+				EXPECT().
+				CountAccounts(gomock.Any()).
+				AnyTimes().
+				Return(uint64(20), nil)
+
+			h := newHeartbeat(backend, analyticsClient, version, interval)
+			go func() {
+				require.NoError(t, h.Run(context.Background()))
+			}()
+			t.Cleanup(func() {
+				require.NoError(t, h.Stop(context.Background()))
+			})
+
 			for i := 0; i < 10; i++ {
 				EventuallyQueueNotEmpty(t, queue)
 				request, ok := queue.Get()
@@ -153,26 +185,5 @@ func TestSegment(t *testing.T) {
 				require.Equal(t, applicationId, track.AnonymousId)
 			}
 		})
-	})
-	t.Run("With error on the backend", func(t *testing.T) {
-		firstCallChan := make(chan struct{})
-
-		queue := NewQueue[*http.Request]()
-		app := newApp(module(t), func(request *http.Request) (*http.Response, error) {
-			select {
-			case <-firstCallChan: // Enter this case only if the chan is closed
-				queue.Put(request)
-				return emptyHttpResponse, nil
-			default:
-				close(firstCallChan)
-				return nil, errors.New("general error")
-			}
-		})
-		withApp(t, app, func(t *testing.T) {
-			EventuallyQueueNotEmpty(t, queue)
-
-			_, ok := queue.Get()
-			require.True(t, ok)
-		})
-	})
+	}
 }

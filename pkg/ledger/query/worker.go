@@ -15,7 +15,7 @@ import (
 
 var (
 	DefaultWorkerConfig = WorkerConfig{
-		ChanSize: 100,
+		ChanSize: 1024,
 	}
 )
 
@@ -42,16 +42,24 @@ type Worker struct {
 	releasedJob  chan struct{}
 	errorChan    chan error
 	stopChan     chan chan struct{}
+	readyChan    chan struct{}
 
-	store              storage.LedgerStore
+	store              Store
 	monitor            monitor.Monitor
 	lastProcessedLogID *uint64
+	ledgerName         string
+}
+
+func (w *Worker) Ready() chan struct{} {
+	return w.readyChan
 }
 
 func (w *Worker) Run(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Start CQRS worker")
 
 	w.ctx = ctx
+
+	close(w.readyChan)
 
 	for {
 		select {
@@ -113,7 +121,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 				logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
 				closeLogs(modelsHolder)
 
-				// TODO(polo/gfyrag): add indempotency tests
+				// TODO(polo/gfyrag): add idempotency tests
 				// Return the error to restart the worker
 				w.errorChan <- err
 				return
@@ -278,7 +286,12 @@ func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
 		return errors.Wrap(err, "building data")
 	}
 
-	if err := w.store.RunInTransaction(ctx, func(ctx context.Context, tx storage.LedgerStore) error {
+	if err := w.store.RunInTransaction(ctx, func(ctx context.Context, tx Store) error {
+		if len(logsData.ensureAccountsExist) > 0 {
+			if err := tx.EnsureAccountsExist(ctx, logsData.ensureAccountsExist); err != nil {
+				return errors.Wrap(err, "ensuring accounts exist")
+			}
+		}
 		if len(logsData.accountsToUpdate) > 0 {
 			if err := tx.UpdateAccountsMetadata(ctx, logsData.accountsToUpdate); err != nil {
 				return errors.Wrap(err, "updating accounts metadata")
@@ -294,12 +307,6 @@ func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
 		if len(logsData.transactionsToUpdate) > 0 {
 			if err := tx.UpdateTransactionsMetadata(ctx, logsData.transactionsToUpdate...); err != nil {
 				return errors.Wrap(err, "updating transactions")
-			}
-		}
-
-		if len(logsData.ensureAccountsExist) > 0 {
-			if err := tx.EnsureAccountsExist(ctx, logsData.ensureAccountsExist); err != nil {
-				return errors.Wrap(err, "ensuring accounts exist")
 			}
 		}
 
@@ -330,6 +337,7 @@ func (w *Worker) buildData(
 	volumeAggregator := aggregator.Volumes(w.store)
 	accountsToUpdate := make(map[string]core.Metadata)
 	transactionsToUpdate := make(map[uint64]core.Metadata)
+
 	for _, log := range logs {
 		switch log.Type {
 		case core.NewTransactionLogType:
@@ -366,9 +374,9 @@ func (w *Worker) buildData(
 			logsData.volumesToUpdate = append(logsData.volumesToUpdate, txVolumeAggregator.PostCommitVolumes)
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.CommittedTransactions(ctx, w.store.Name(), expandedTx)
+				w.monitor.CommittedTransactions(ctx, w.ledgerName, expandedTx)
 				for account, metadata := range payload.AccountMetadata {
-					w.monitor.SavedMetadata(ctx, w.store.Name(), core.MetaTargetTypeAccount, account, metadata)
+					w.monitor.SavedMetadata(ctx, w.ledgerName, core.MetaTargetTypeAccount, account, metadata)
 				}
 			})
 
@@ -397,7 +405,7 @@ func (w *Worker) buildData(
 			}
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.SavedMetadata(ctx, w.store.Name(), w.store.Name(), fmt.Sprint(setMetadata.TargetID), setMetadata.Metadata)
+				w.monitor.SavedMetadata(ctx, w.ledgerName, setMetadata.TargetType, fmt.Sprint(setMetadata.TargetID), setMetadata.Metadata)
 			})
 
 		case core.RevertedTransactionLogType:
@@ -430,7 +438,7 @@ func (w *Worker) buildData(
 			}
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.RevertedTransaction(ctx, w.store.Name(), revertedTx, &expandedTx)
+				w.monitor.RevertedTransaction(ctx, w.ledgerName, revertedTx, &expandedTx)
 			})
 		}
 	}
@@ -452,14 +460,14 @@ func (w *Worker) buildData(
 	return logsData, nil
 }
 
-func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder, store storage.LedgerStore) {
+func (w *Worker) QueueLog(log *core.LogHolder) {
 	select {
 	case <-w.ctx.Done():
 	case w.writeChannel <- log:
 	}
 }
 
-func NewWorker(config WorkerConfig, store storage.LedgerStore, monitor monitor.Monitor) *Worker {
+func NewWorker(config WorkerConfig, store Store, ledgerName string, monitor monitor.Monitor) *Worker {
 	return &Worker{
 		pending:      make([]*core.LogHolder, 0),
 		jobs:         make(chan []*core.LogHolder),
@@ -467,8 +475,10 @@ func NewWorker(config WorkerConfig, store storage.LedgerStore, monitor monitor.M
 		writeChannel: make(chan *core.LogHolder, config.ChanSize),
 		errorChan:    make(chan error, 1),
 		stopChan:     make(chan chan struct{}),
+		readyChan:    make(chan struct{}),
 		WorkerConfig: config,
 		store:        store,
 		monitor:      monitor,
+		ledgerName:   ledgerName,
 	}
 }

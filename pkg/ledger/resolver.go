@@ -61,14 +61,12 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		}
 
 		cache := cache.New(store)
-		runner, err := runner.New(store, r.locker, cache, r.compiler, r.allowPastTimestamps)
+		runner, err := runner.New(store, r.locker, cache, r.compiler, name, r.allowPastTimestamps)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating ledger runner")
 		}
 
-		queryWorker := query.NewWorker(query.WorkerConfig{
-			ChanSize: 1024,
-		}, store, r.monitor)
+		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor)
 
 		go func() {
 			if err := queryWorker.Run(logging.ContextWithLogger(

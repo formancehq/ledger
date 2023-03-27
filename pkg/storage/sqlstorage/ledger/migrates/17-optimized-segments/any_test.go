@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ func TestMigrate17(t *testing.T) {
 		require.NoError(t, pgtesting.DestroyPostgresServer())
 	}()
 
-	driver := ledgertesting.StorageDriver(t)
+	driver := sqlstoragetesting.StorageDriver(t)
 
 	require.NoError(t, driver.Initialize(context.Background()))
 	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)

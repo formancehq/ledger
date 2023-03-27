@@ -27,6 +27,9 @@ type TransactionsQueryFilters struct {
 func NewTransactionsQuery() *TransactionsQuery {
 	return &TransactionsQuery{
 		PageSize: QueryDefaultPageSize,
+		Filters: TransactionsQueryFilters{
+			Metadata: map[string]string{},
+		},
 	}
 }
 
@@ -142,6 +145,9 @@ func NewBalanceOperator(s string) (BalanceOperator, bool) {
 func NewAccountsQuery() *AccountsQuery {
 	return &AccountsQuery{
 		PageSize: QueryDefaultPageSize,
+		Filters: AccountsQueryFilters{
+			Metadata: map[string]string{},
+		},
 	}
 }
 

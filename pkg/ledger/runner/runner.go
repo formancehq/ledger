@@ -18,16 +18,29 @@ import (
 	"github.com/pkg/errors"
 )
 
+type Store interface {
+	AppendLog(ctx context.Context, log *core.Log) error
+	ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.Log, error)
+	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
+}
+
+type Cache interface {
+	GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error)
+	LockAccounts(ctx context.Context, accounts ...string) (cache.Release, error)
+	UpdateVolumeWithTX(transaction core.Transaction)
+}
+
 type Runner struct {
-	store storage.LedgerStore
+	store Store
 	// cache is used to store accounts
-	cache *cache.Cache
+	cache Cache
 	// nextTxID store the next transaction id to be used
 	nextTxID *atomic.Uint64
 	// locker is used to local a set of account
-	locker   lock.Locker
-	compiler *numscript.Compiler
-	state    *state.State
+	locker     lock.Locker
+	compiler   *numscript.Compiler
+	state      *state.State
+	ledgerName string
 }
 
 type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log
@@ -95,7 +108,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 		return nil, nil, errors.Wrap(err, "locking accounts")
 	}
 
-	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
+	unlock, err := r.locker.Lock(ctx, r.ledgerName, involvedAccounts...)
 	if err != nil {
 		release()
 		return nil, nil, errors.Wrap(err, "locking accounts")
@@ -169,7 +182,7 @@ func (r *Runner) GetState() *state.State {
 	return r.state
 }
 
-func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, compiler *numscript.Compiler, allowPastTimestamps bool) (*Runner, error) {
+func New(store Store, locker lock.Locker, cache Cache, compiler *numscript.Compiler, ledgerName string, allowPastTimestamps bool) (*Runner, error) {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && !storage.IsNotFoundError(err) {
 		return nil, err
@@ -196,11 +209,12 @@ func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, comp
 		nextTxID.Add(1)
 	}
 	return &Runner{
-		state:    state.New(store, allowPastTimestamps, lastTransactionDate),
-		store:    store,
-		cache:    cache,
-		locker:   locker,
-		nextTxID: nextTxID,
-		compiler: compiler,
+		state:      state.New(store, allowPastTimestamps, lastTransactionDate),
+		store:      store,
+		cache:      cache,
+		locker:     locker,
+		nextTxID:   nextTxID,
+		compiler:   compiler,
+		ledgerName: ledgerName,
 	}, nil
 }

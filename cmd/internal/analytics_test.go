@@ -2,18 +2,14 @@ package internal
 
 import (
 	"context"
-	"net/http"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/ledgertesting"
-	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"gopkg.in/segmentio/analytics-go.v3"
 )
 
 func TestAnalyticsFlags(t *testing.T) {
@@ -78,56 +74,6 @@ func TestAnalyticsFlags(t *testing.T) {
 			require.NoError(t, cmd.Execute())
 		})
 	}
-}
-
-func TestAnalyticsModule(t *testing.T) {
-	v := viper.GetViper()
-	v.Set(telemetryEnabledFlag, true)
-	v.Set(telemetryWriteKeyFlag, "XXX")
-	v.Set(telemetryApplicationIdFlag, "appId")
-	v.Set(telemetryHeartbeatIntervalFlag, 10*time.Second)
-
-	handled := make(chan struct{})
-
-	module := NewAnalyticsModule(v, "1.0.0")
-	app := fx.New(
-		module,
-		fx.NopLogger,
-		fx.Provide(func(lc fx.Lifecycle) (storage.Driver, error) {
-			driver := ledgertesting.StorageDriver(t)
-			lc.Append(fx.Hook{
-				OnStart: driver.Initialize,
-				OnStop: func(ctx context.Context) error {
-					return driver.Close(ctx)
-				},
-			})
-			return driver, nil
-		}),
-		fx.Replace(analytics.Config{
-			BatchSize: 1,
-			Transport: roundTripperFn(func(req *http.Request) (*http.Response, error) {
-				select {
-				case <-handled:
-					// Nothing to do, the chan has already been closed
-				default:
-					close(handled)
-				}
-				return &http.Response{
-					StatusCode: http.StatusOK,
-				}, nil
-			}),
-		}))
-	require.NoError(t, app.Start(context.Background()))
-	defer func() {
-		require.NoError(t, app.Stop(context.Background()))
-	}()
-
-	select {
-	case <-time.After(time.Second):
-		require.Fail(t, "Timeout waiting first stats from analytics module")
-	case <-handled:
-	}
-
 }
 
 func TestAnalyticsModuleDisabled(t *testing.T) {

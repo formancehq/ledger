@@ -39,6 +39,10 @@ type AccountsPaginationToken struct {
 	BalanceOperatorFilter storage.BalanceOperator `json:"balanceOperator,omitempty"`
 }
 
+func (t AccountsPaginationToken) Encode() string {
+	return encodePaginationToken(t)
+}
+
 func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
 	sb := s.schema.NewSelect(accountsTableName).Model((*Accounts)(nil))
 	t := AccountsPaginationToken{}

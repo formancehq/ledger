@@ -31,6 +31,16 @@ type AccountWithVolumes struct {
 	Volumes AssetsVolumes `json:"volumes"`
 }
 
+func NewAccountWithVolumes(address string) *AccountWithVolumes {
+	return &AccountWithVolumes{
+		Account: Account{
+			Address:  address,
+			Metadata: Metadata{},
+		},
+		Volumes: map[string]Volumes{},
+	}
+}
+
 func (v AccountWithVolumes) MarshalJSON() ([]byte, error) {
 	type aux AccountWithVolumes
 	return json.Marshal(struct {
