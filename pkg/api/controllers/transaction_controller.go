@@ -46,7 +46,8 @@ func CountTransactions(w http.ResponseWriter, r *http.Request) {
 		WithSourceFilter(r.URL.Query().Get("source")).
 		WithDestinationFilter(r.URL.Query().Get("destination")).
 		WithStartTimeFilter(startTimeParsed).
-		WithEndTimeFilter(endTimeParsed)
+		WithEndTimeFilter(endTimeParsed).
+		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
 	count, err := l.CountTransactions(r.Context(), *txQuery)
 	if err != nil {
@@ -83,7 +84,7 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		token := ledgerstore.TxsPaginationToken{}
+		token := ledgerstore.TransactionsPaginationToken{}
 		if err = json.Unmarshal(res, &token); err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
@@ -275,12 +276,6 @@ func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 			errors.New("invalid transaction ID")))
-		return
-	}
-
-	_, err = l.GetTransaction(r.Context(), txId)
-	if err != nil {
-		apierrors.ResponseError(w, r, err)
 		return
 	}
 

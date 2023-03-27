@@ -1,164 +1,162 @@
 package controllers_test
 
 import (
-	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/api/controllers"
-	"github.com/formancehq/ledger/pkg/api/internal"
+	"github.com/formancehq/ledger/pkg/api/apierrors"
+	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetBalancesAggregated(t *testing.T) {
-	internal.RunTest(t, func(api chi.Router, storageDriver storage.Driver) {
-		store, _, err := storageDriver.GetLedgerStore(context.Background(), internal.TestingLedger, true)
-		require.NoError(t, err)
+	t.Parallel()
 
-		_, err = store.Initialize(context.Background())
-		require.NoError(t, err)
+	type testCase struct {
+		name        string
+		queryParams url.Values
+		expectQuery storage.BalancesQuery
+	}
 
-		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
-			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(250)),
+	testCases := []testCase{
+		{
+			name:        "nominal",
+			expectQuery: *storage.NewBalancesQuery(),
+		},
+		{
+			name: "using address",
+			queryParams: url.Values{
+				"address": []string{"foo"},
 			},
-			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(150)),
-			},
-			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
-			},
-		}))
+			expectQuery: *storage.NewBalancesQuery().WithAddressFilter("foo"),
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
 
-		t.Run("all", func(t *testing.T) {
-			rsp := internal.GetBalancesAggregated(api, url.Values{})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+			expectedBalances := core.AssetsBalances{
+				"world": big.NewInt(-100),
+			}
+			backend, mock := newTestingBackend(t)
+			mock.EXPECT().
+				GetBalancesAggregated(gomock.Any(), testCase.expectQuery).
+				Return(expectedBalances, nil)
 
-			resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-			require.Equal(t, ok, true)
-			require.Equal(t, core.AssetsBalances{"USD": big.NewInt(0)}, resp)
+			router := routes.NewRouter(backend, nil, nil)
+
+			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", nil)
+			rec := httptest.NewRecorder()
+			req.URL.RawQuery = testCase.queryParams.Encode()
+
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			balances, ok := DecodeSingleResponse[core.AssetsBalances](t, rec.Body)
+			require.True(t, ok)
+			require.Equal(t, expectedBalances, balances)
 		})
-
-		t.Run("filter by address", func(t *testing.T) {
-			rsp := internal.GetBalancesAggregated(api, url.Values{"address": []string{"world"}})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-			require.Equal(t, true, ok)
-			require.Equal(t, core.AssetsBalances{"USD": big.NewInt(-250)}, resp)
-		})
-
-		t.Run("filter by address no result", func(t *testing.T) {
-			rsp := internal.GetBalancesAggregated(api, url.Values{"address": []string{"XXX"}})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
-			require.Equal(t, ok, true)
-			require.Equal(t, core.AssetsBalances{}, resp)
-		})
-	})
+	}
 }
 
 func TestGetBalances(t *testing.T) {
-	internal.RunTest(t, func(api chi.Router, storageDriver storage.Driver) {
-		store, _, err := storageDriver.GetLedgerStore(context.Background(), internal.TestingLedger, true)
-		require.NoError(t, err)
+	t.Parallel()
 
-		_, err = store.Initialize(context.Background())
-		require.NoError(t, err)
+	type testCase struct {
+		name              string
+		queryParams       url.Values
+		expectQuery       storage.BalancesQuery
+		expectStatusCode  int
+		expectedErrorCode string
+	}
 
-		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
-			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(250)),
-				"CAD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
-				"EUR": core.NewEmptyVolumes().WithOutput(big.NewInt(400)),
+	testCases := []testCase{
+		{
+			name:        "nominal",
+			expectQuery: *storage.NewBalancesQuery(),
+		},
+		{
+			name: "empty cursor with other param",
+			queryParams: url.Values{
+				"cursor": []string{ledger.BalancesPaginationToken{}.Encode()},
+				"after":  []string{"bob"},
 			},
-			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(150)),
-				"CAD": core.NewEmptyVolumes().WithInput(big.NewInt(200)),
-				"EUR": core.NewEmptyVolumes().WithInput(big.NewInt(400)),
+			expectStatusCode:  http.StatusBadRequest,
+			expectedErrorCode: apierrors.ErrValidation,
+		},
+		{
+			name: "invalid cursor",
+			queryParams: url.Values{
+				"cursor": []string{"xxx"},
 			},
-			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
+			expectStatusCode:  http.StatusBadRequest,
+			expectedErrorCode: apierrors.ErrValidation,
+		},
+		{
+			name: "using after",
+			queryParams: url.Values{
+				"after": []string{"foo"},
 			},
-		}))
+			expectQuery: *storage.NewBalancesQuery().WithAfterAddress("foo"),
+		},
+		{
+			name: "using address",
+			queryParams: url.Values{
+				"address": []string{"foo"},
+			},
+			expectQuery: *storage.NewBalancesQuery().WithAddressFilter("foo"),
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
 
-		to := ledgerstore.BalancesPaginationToken{}
-		raw, err := json.Marshal(to)
-		require.NoError(t, err)
+			if testCase.expectStatusCode == 0 {
+				testCase.expectStatusCode = http.StatusOK
+			}
 
-		t.Run("valid empty "+controllers.QueryKeyCursor, func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{
-				controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
-			})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+			expectedCursor := sharedapi.Cursor[core.AccountsBalances]{
+				Data: []core.AccountsBalances{
+					{
+						"world": core.AssetsBalances{
+							"USD": big.NewInt(100),
+						},
+					},
+				},
+			}
+
+			backend, mock := newTestingBackend(t)
+			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
+				mock.EXPECT().
+					GetBalances(gomock.Any(), testCase.expectQuery).
+					Return(expectedCursor, nil)
+			}
+
+			router := routes.NewRouter(backend, nil, nil)
+
+			req := httptest.NewRequest(http.MethodGet, "/xxx/balances", nil)
+			rec := httptest.NewRecorder()
+			req.URL.RawQuery = testCase.queryParams.Encode()
+
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, testCase.expectStatusCode, rec.Code)
+			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
+				cursor := DecodeCursorResponse[core.AccountsBalances](t, rec.Body)
+				require.Equal(t, expectedCursor, *cursor)
+			} else {
+				err := sharedapi.ErrorResponse{}
+				Decode(t, rec.Body, &err)
+				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+			}
 		})
-
-		t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{
-				controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
-				"after":                    []string{"bob"},
-			})
-			require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-		})
-
-		t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{
-				controllers.QueryKeyCursor: []string{"invalid"},
-			})
-
-			require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-			require.Contains(t, rsp.Body.String(),
-				fmt.Sprintf(`"invalid '%s' query param"`, controllers.QueryKeyCursor))
-		})
-
-		t.Run("all", func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-			require.Equal(t, []core.AccountsBalances{
-				{"world": core.AssetsBalances{"USD": big.NewInt(-250), "EUR": big.NewInt(-400), "CAD": big.NewInt(-200)}},
-				{"bob": core.AssetsBalances{"USD": big.NewInt(100)}},
-				{"alice": core.AssetsBalances{"USD": big.NewInt(150), "EUR": big.NewInt(400), "CAD": big.NewInt(200)}},
-			}, resp.Data)
-		})
-
-		t.Run("after address", func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{"after": []string{"bob"}})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-			require.Equal(t, []core.AccountsBalances{
-				{"alice": core.AssetsBalances{"USD": big.NewInt(150), "EUR": big.NewInt(400), "CAD": big.NewInt(200)}},
-			}, resp.Data)
-		})
-
-		t.Run("filter by address", func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{"address": []string{"world"}})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-			require.Equal(t, []core.AccountsBalances{
-				{"world": core.AssetsBalances{"USD": big.NewInt(-250), "EUR": big.NewInt(-400), "CAD": big.NewInt(-200)}},
-			}, resp.Data)
-		})
-
-		t.Run("filter by address no results", func(t *testing.T) {
-			rsp := internal.GetBalances(api, url.Values{"address": []string{"TEST"}})
-			require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-
-			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
-			require.Equal(t, []core.AccountsBalances{}, resp.Data)
-		})
-	})
+	}
 }

@@ -5,26 +5,13 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAccounts(t *testing.T) {
-	d := ledgertesting.StorageDriver(t)
-
-	assert.NoError(t, d.Initialize(context.Background()))
-
-	defer func(d *sqlstorage.Driver, ctx context.Context) {
-		assert.NoError(t, d.Close(ctx))
-	}(d, context.Background())
-
-	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
-	assert.NoError(t, err)
-
-	_, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
+	t.Parallel()
+	store := newLedgerStore(t)
 
 	t.Run("success balance", func(t *testing.T) {
 		q := storage.AccountsQuery{
@@ -137,7 +124,7 @@ func TestAccounts(t *testing.T) {
 		assert.Equal(t, addr, account.Address, "account address should match")
 	})
 
-	t.Run("success ensure mulitple accounts exist", func(t *testing.T) {
+	t.Run("success ensure multiple accounts exist", func(t *testing.T) {
 		addrs := []string{"test:account:4", "test:account:5", "test:account:6"}
 
 		err := store.EnsureAccountsExist(context.Background(), addrs)

@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"context"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -28,17 +27,7 @@ func InitAnalyticsFlags(cmd *cobra.Command, defaultWriteKey string) {
 
 func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
 	if v.GetBool(telemetryEnabledFlag) {
-		applicationId := viper.GetString(telemetryApplicationIdFlag)
-		var appIdProviderModule fx.Option
-		if applicationId == "" {
-			appIdProviderModule = fx.Provide(analytics.FromStorageAppIdProvider)
-		} else {
-			appIdProviderModule = fx.Provide(func() analytics.AppIdProvider {
-				return analytics.AppIdProviderFn(func(ctx context.Context) (string, error) {
-					return applicationId, nil
-				})
-			})
-		}
+		applicationID := viper.GetString(telemetryApplicationIdFlag)
 		writeKey := viper.GetString(telemetryWriteKeyFlag)
 		interval := viper.GetDuration(telemetryHeartbeatIntervalFlag)
 		if writeKey == "" {
@@ -56,10 +45,7 @@ func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
 					l.Infof("telemetry enabled but version '%s' is not semver, skip", version)
 				})
 			} else {
-				return fx.Options(
-					appIdProviderModule,
-					analytics.NewHeartbeatModule(version, writeKey, interval),
-				)
+				return analytics.NewHeartbeatModule(version, writeKey, applicationID, interval)
 			}
 		}
 	}
