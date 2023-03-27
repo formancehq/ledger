@@ -6,7 +6,7 @@ import (
 	"math/big"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/parser"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
 )
@@ -19,7 +19,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 		c := portions[i]
 		switch c := c.(type) {
 		case *parser.AllotmentPortionConstContext:
-			portion, err := core.ParsePortionSpecific(c.GetText())
+			portion, err := internal.ParsePortionSpecific(c.GetText())
 			if err != nil {
 				return LogicError(c, err)
 			}
@@ -35,7 +35,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 			if err != nil {
 				return err
 			}
-			if ty != core.TypePortion {
+			if ty != internal.TypePortion {
 				return LogicError(c,
 					fmt.Errorf("wrong type: expected type portion for variable: %v", ty),
 				)
@@ -47,7 +47,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 					errors.New("two uses of `remaining` in the same allocation"),
 				)
 			}
-			addr, err := p.AllocateResource(program.Constant{Inner: core.NewPortionRemaining()})
+			addr, err := p.AllocateResource(program.Constant{Inner: internal.NewPortionRemaining()})
 			if err != nil {
 				return LogicError(c, err)
 			}
@@ -75,7 +75,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 			errors.New("known portions are already equal to 100%"),
 		)
 	}
-	err := p.PushInteger(core.NewNumber(int64(len(portions))))
+	err := p.PushInteger(internal.NewNumber(int64(len(portions))))
 	if err != nil {
 		return LogicError(c, err)
 	}

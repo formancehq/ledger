@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
 	"github.com/stretchr/testify/assert"
@@ -20,30 +21,30 @@ const (
 )
 
 type CaseResult struct {
-	Printed  []core.Value
+	Printed  []internal.Value
 	Postings []Posting
-	Metadata map[string]core.Value
+	Metadata map[string]internal.Value
 	ExitCode byte
 	Error    string
 }
 
 type TestCase struct {
 	program  *program.Program
-	vars     map[string]core.Value
-	meta     map[string]map[string]core.Value
-	balances map[string]map[string]*core.MonetaryInt
+	vars     map[string]internal.Value
+	meta     map[string]map[string]internal.Value
+	balances map[string]map[string]*internal.MonetaryInt
 	expected CaseResult
 }
 
 func NewTestCase() TestCase {
 	return TestCase{
-		vars:     make(map[string]core.Value),
-		meta:     make(map[string]map[string]core.Value),
-		balances: make(map[string]map[string]*core.MonetaryInt),
+		vars:     make(map[string]internal.Value),
+		meta:     make(map[string]map[string]internal.Value),
+		balances: make(map[string]map[string]*internal.MonetaryInt),
 		expected: CaseResult{
-			Printed:  []core.Value{},
+			Printed:  []internal.Value{},
 			Postings: []Posting{},
-			Metadata: make(map[string]core.Value),
+			Metadata: make(map[string]internal.Value),
 			ExitCode: EXIT_OK,
 			Error:    "",
 		},
@@ -70,9 +71,9 @@ func (c *TestCase) setVarsFromJSON(t *testing.T, str string) {
 
 func (c *TestCase) setBalance(account, asset string, amount int64) {
 	if _, ok := c.balances[account]; !ok {
-		c.balances[account] = make(map[string]*core.MonetaryInt)
+		c.balances[account] = make(map[string]*internal.MonetaryInt)
 	}
-	c.balances[account][asset] = core.NewMonetaryInt(amount)
+	c.balances[account][asset] = internal.NewMonetaryInt(amount)
 }
 
 func test(t *testing.T, testCase TestCase) {
@@ -84,7 +85,7 @@ func test(t *testing.T, testCase TestCase) {
 		store := StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 			m := core.Metadata{}
 			for s, value := range testCase.meta[address] {
-				json, err := core.NewJSONFromValue(value)
+				json, err := internal.NewJSONFromValue(value)
 				require.NoError(t, err)
 
 				m[s] = map[string]any{
@@ -100,10 +101,10 @@ func test(t *testing.T, testCase TestCase) {
 				Volumes: func() core.AssetsVolumes {
 					ret := make(core.AssetsVolumes, 0)
 					for asset, balance := range testCase.balances[address] {
-						if balance.Gt(core.NewMonetaryInt(0)) {
-							ret[asset] = core.NewEmptyVolumes().WithInput(balance)
+						if balance.Gt(internal.NewMonetaryInt(0)) {
+							ret[asset] = core.NewEmptyVolumes().WithInput((*big.Int)(balance))
 						} else {
-							ret[asset] = core.NewEmptyVolumes().WithOutput(balance.Neg())
+							ret[asset] = core.NewEmptyVolumes().WithOutput((*big.Int)(balance.Neg()))
 						}
 					}
 					return ret
@@ -126,7 +127,7 @@ func test(t *testing.T, testCase TestCase) {
 }
 
 func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec func(*Machine) (byte, error)) {
-	printed := []core.Value{}
+	printed := []internal.Value{}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -137,7 +138,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	m := NewMachine(*prog)
 	m.Debug = DEBUG
-	m.Printer = func(c chan core.Value) {
+	m.Printer = func(c chan internal.Value) {
 		for v := range c {
 			printed = append(printed, v)
 		}
@@ -160,7 +161,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 		expected.Postings = make([]Posting, 0)
 	}
 	if expected.Metadata == nil {
-		expected.Metadata = make(map[string]core.Value)
+		expected.Metadata = make(map[string]internal.Value)
 	}
 
 	assert.Equalf(t, expected.Postings, m.Postings, "unexpected postings output: %v", m.Postings)
@@ -175,7 +176,7 @@ func TestFail(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, "fail")
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
 		ExitCode: EXIT_FAIL,
 	}
@@ -185,9 +186,9 @@ func TestFail(t *testing.T) {
 func TestPrint(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, "print 29 + 15 - 2")
-	mi := core.MonetaryInt(*big.NewInt(42))
+	mi := internal.MonetaryInt(*big.NewInt(42))
 	tc.expected = CaseResult{
-		Printed:  []core.Value{&mi},
+		Printed:  []internal.Value{&mi},
 		Postings: []Posting{},
 		ExitCode: EXIT_OK,
 	}
@@ -202,11 +203,11 @@ func TestSend(t *testing.T) {
 	)`)
 	tc.setBalance("alice", "EUR/2", 100)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "alice",
 				Destination: "bob",
 			},
@@ -226,17 +227,17 @@ func TestVariables(t *testing.T) {
 		source=$rider
 		destination=$driver
 	)`)
-	tc.vars = map[string]core.Value{
-		"rider":  core.AccountAddress("users:001"),
-		"driver": core.AccountAddress("users:002"),
+	tc.vars = map[string]internal.Value{
+		"rider":  internal.AccountAddress("users:001"),
+		"driver": internal.AccountAddress("users:002"),
 	}
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      core.NewMonetaryInt(999),
+				Amount:      internal.NewMonetaryInt(999),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
@@ -267,18 +268,18 @@ func TestVariablesJSON(t *testing.T) {
 	}`)
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      core.NewMonetaryInt(999),
+				Amount:      internal.NewMonetaryInt(999),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 		},
-		Metadata: map[string]core.Value{
-			"description": core.String("midnight ride"),
-			"ride":        core.NewMonetaryInt(1),
+		Metadata: map[string]internal.Value{
+			"description": internal.String("midnight ride"),
+			"ride":        internal.NewMonetaryInt(1),
 		},
 		ExitCode: EXIT_OK,
 	}
@@ -307,17 +308,17 @@ func TestSource(t *testing.T) {
 	tc.setBalance("users:001", "GEM", 3)
 	tc.setBalance("payments:001", "GEM", 12)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(3),
+				Amount:      internal.NewMonetaryInt(3),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(12),
+				Amount:      internal.NewMonetaryInt(12),
 				Source:      "payments:001",
 				Destination: "users:002",
 			},
@@ -347,23 +348,23 @@ func TestAllocation(t *testing.T) {
 	}`)
 	tc.setBalance("users:001", "GEM", 15)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(13),
+				Amount:      internal.NewMonetaryInt(13),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(1),
+				Amount:      internal.NewMonetaryInt(1),
 				Source:      "users:001",
 				Destination: "a",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(1),
+				Amount:      internal.NewMonetaryInt(1),
 				Source:      "users:001",
 				Destination: "b",
 			},
@@ -391,17 +392,17 @@ func TestDynamicAllocation(t *testing.T) {
 	}`)
 	tc.setBalance("a", "GEM", 15)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(13),
+				Amount:      internal.NewMonetaryInt(13),
 				Source:      "a",
 				Destination: "b",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(2),
+				Amount:      internal.NewMonetaryInt(2),
 				Source:      "a",
 				Destination: "c",
 			},
@@ -419,11 +420,11 @@ func TestSendAll(t *testing.T) {
 	)`)
 	tc.setBalance("users:001", "USD/2", 17)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "USD/2",
-				Amount:      core.NewMonetaryInt(17),
+				Amount:      internal.NewMonetaryInt(17),
 				Source:      "users:001",
 				Destination: "platform",
 			},
@@ -446,17 +447,17 @@ func TestSendAllMulti(t *testing.T) {
 	tc.setBalance("users:001:wallet", "USD/2", 19)
 	tc.setBalance("users:001:credit", "USD/2", 22)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "USD/2",
-				Amount:      core.NewMonetaryInt(19),
+				Amount:      internal.NewMonetaryInt(19),
 				Source:      "users:001:wallet",
 				Destination: "platform",
 			},
 			{
 				Asset:       "USD/2",
-				Amount:      core.NewMonetaryInt(22),
+				Amount:      internal.NewMonetaryInt(22),
 				Source:      "users:001:credit",
 				Destination: "platform",
 			},
@@ -488,7 +489,7 @@ func TestInsufficientFunds(t *testing.T) {
 	tc.setBalance("users:001", "GEM", 3)
 	tc.setBalance("payments:001", "GEM", 12)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
 		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
 	}
@@ -506,17 +507,17 @@ func TestWorldSource(t *testing.T) {
 	)`)
 	tc.setBalance("a", "GEM", 1)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(1),
+				Amount:      internal.NewMonetaryInt(1),
 				Source:      "a",
 				Destination: "b",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(14),
+				Amount:      internal.NewMonetaryInt(14),
 				Source:      "world",
 				Destination: "b",
 			},
@@ -536,11 +537,11 @@ func TestNoEmptyPostings(t *testing.T) {
 		}
 	)`)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(2),
+				Amount:      internal.NewMonetaryInt(2),
 				Source:      "world",
 				Destination: "a",
 			},
@@ -558,7 +559,7 @@ func TestNoEmptyPostings2(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
 		ExitCode: EXIT_OK,
 	}
@@ -580,17 +581,17 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 	tc.setBalance("users:001", "CREDIT", 100)
 	tc.setBalance("users:002", "CREDIT", 110)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "CREDIT",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "users:001",
 				Destination: "foo",
 			},
 			{
 				Asset:       "CREDIT",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "users:002",
 				Destination: "bar",
 			},
@@ -601,7 +602,7 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	commission, _ := core.NewPortionSpecific(*big.NewRat(125, 1000))
+	commission, _ := internal.NewPortionSpecific(*big.NewRat(125, 1000))
 	tc := NewTestCase()
 	tc.compile(t, `vars {
 		account $sale
@@ -618,9 +619,9 @@ func TestMetadata(t *testing.T) {
 	tc.setVarsFromJSON(t, `{
 		"sale": "sales:042"
 	}`)
-	tc.meta = map[string]map[string]core.Value{
+	tc.meta = map[string]map[string]internal.Value{
 		"sales:042": {
-			"seller": core.AccountAddress("users:053"),
+			"seller": internal.AccountAddress("users:053"),
 		},
 		"users:053": {
 			"commission": *commission,
@@ -629,17 +630,17 @@ func TestMetadata(t *testing.T) {
 	tc.setBalance("sales:042", "EUR/2", 2500)
 	tc.setBalance("users:053", "EUR/2", 500)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      core.NewMonetaryInt(88),
+				Amount:      internal.NewMonetaryInt(88),
 				Source:      "sales:042",
 				Destination: "users:053",
 			},
 			{
 				Asset:       "EUR/2",
-				Amount:      core.NewMonetaryInt(12),
+				Amount:      internal.NewMonetaryInt(12),
 				Source:      "sales:042",
 				Destination: "platform",
 			},
@@ -662,17 +663,17 @@ func TestTrackBalances(t *testing.T) {
 	)`)
 	tc.setBalance("a", "COIN", 50)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(50),
+				Amount:      internal.NewMonetaryInt(50),
 				Source:      "world",
 				Destination: "a",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "a",
 				Destination: "b",
 			},
@@ -695,7 +696,7 @@ func TestTrackBalances2(t *testing.T) {
 	)`)
 	tc.setBalance("a", "COIN", 60)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
 		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
 	}
@@ -717,17 +718,17 @@ func TestTrackBalances3(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "COIN", 2000)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(1000),
+				Amount:      internal.NewMonetaryInt(1000),
 				Source:      "foo",
 				Destination: "bar",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(1000),
+				Amount:      internal.NewMonetaryInt(1000),
 				Source:      "foo",
 				Destination: "bar",
 			},
@@ -751,23 +752,23 @@ func TestSourceAllotment(t *testing.T) {
 	tc.setBalance("b", "COIN", 100)
 	tc.setBalance("c", "COIN", 100)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(61),
+				Amount:      internal.NewMonetaryInt(61),
 				Source:      "a",
 				Destination: "d",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(35),
+				Amount:      internal.NewMonetaryInt(35),
 				Source:      "b",
 				Destination: "d",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(4),
+				Amount:      internal.NewMonetaryInt(4),
 				Source:      "c",
 				Destination: "d",
 			},
@@ -793,17 +794,17 @@ func TestSourceOverlapping(t *testing.T) {
 	tc.setBalance("a", "COIN", 99)
 	tc.setBalance("b", "COIN", 3)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(3),
+				Amount:      internal.NewMonetaryInt(3),
 				Source:      "b",
 				Destination: "world",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(96),
+				Amount:      internal.NewMonetaryInt(96),
 				Source:      "a",
 				Destination: "world",
 			},
@@ -840,29 +841,29 @@ func TestSourceComplex(t *testing.T) {
 	tc.setBalance("c", "COIN", 1000)
 	tc.setBalance("d", "COIN", 1000)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(4),
+				Amount:      internal.NewMonetaryInt(4),
 				Source:      "a",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(40),
+				Amount:      internal.NewMonetaryInt(40),
 				Source:      "b",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(56),
+				Amount:      internal.NewMonetaryInt(56),
 				Source:      "c",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "d",
 				Destination: "platform",
 			},
@@ -886,23 +887,23 @@ func TestDestinationComplex(t *testing.T) {
 		}
 	)`)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(20),
+				Amount:      internal.NewMonetaryInt(20),
 				Source:      "world",
 				Destination: "a",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      internal.NewMonetaryInt(10),
 				Source:      "world",
 				Destination: "b",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      core.NewMonetaryInt(50),
+				Amount:      internal.NewMonetaryInt(50),
 				Source:      "world",
 				Destination: "c",
 			},
@@ -931,8 +932,8 @@ func TestNeededBalances(t *testing.T) {
 
 	m := NewMachine(*p)
 
-	err = m.SetVars(map[string]core.Value{
-		"a": core.AccountAddress("a"),
+	err = m.SetVars(map[string]internal.Value{
+		"a": internal.AccountAddress("a"),
 	})
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
@@ -1054,8 +1055,8 @@ func TestSetAccountMeta(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"acc": core.AccountAddress("test"),
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"acc": internal.AccountAddress("test"),
 		}))
 
 		err = m.ResolveResources(context.Background(), EmptyStore)
@@ -1108,17 +1109,17 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("A", "USD/2", 40)
 		tc.setBalance("C", "USD/2", 90)
 		tc.expected = CaseResult{
-			Printed: []core.Value{},
+			Printed: []internal.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(40),
+					Amount:      internal.NewMonetaryInt(40),
 					Source:      "A",
 					Destination: "B",
 				},
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(60),
+					Amount:      internal.NewMonetaryInt(60),
 					Source:      "C",
 					Destination: "D",
 				},
@@ -1134,11 +1135,11 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("A", "USD/2", 400)
 		tc.setBalance("C", "USD/2", 90)
 		tc.expected = CaseResult{
-			Printed: []core.Value{},
+			Printed: []internal.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      internal.NewMonetaryInt(100),
 					Source:      "A",
 					Destination: "B",
 				},
@@ -1171,17 +1172,17 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("C", "USD/2", 90)
 		tc.setVarsFromJSON(t, `{"acc": "A"}`)
 		tc.expected = CaseResult{
-			Printed: []core.Value{},
+			Printed: []internal.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(40),
+					Amount:      internal.NewMonetaryInt(40),
 					Source:      "A",
 					Destination: "B",
 				},
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(60),
+					Amount:      internal.NewMonetaryInt(60),
 					Source:      "C",
 					Destination: "D",
 				},
@@ -1198,11 +1199,11 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("C", "USD/2", 90)
 		tc.setVarsFromJSON(t, `{"acc": "A"}`)
 		tc.expected = CaseResult{
-			Printed: []core.Value{},
+			Printed: []internal.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      internal.NewMonetaryInt(100),
 					Source:      "A",
 					Destination: "B",
 				},
@@ -1235,29 +1236,29 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("c", "COIN", 1000)
 		tc.setBalance("d", "COIN", 1000)
 		tc.expected = CaseResult{
-			Printed: []core.Value{},
+			Printed: []internal.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "COIN",
-					Amount:      core.NewMonetaryInt(4),
+					Amount:      internal.NewMonetaryInt(4),
 					Source:      "a",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      core.NewMonetaryInt(40),
+					Amount:      internal.NewMonetaryInt(40),
 					Source:      "b",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      core.NewMonetaryInt(56),
+					Amount:      internal.NewMonetaryInt(56),
 					Source:      "c",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      internal.NewMonetaryInt(100),
 					Source:      "d",
 					Destination: "platform",
 				},
@@ -1299,12 +1300,12 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"acc": core.AccountAddress("valid:acc"),
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"acc": internal.AccountAddress("valid:acc"),
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"acc": core.AccountAddress("invalid-acc"),
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"acc": internal.AccountAddress("invalid-acc"),
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
@@ -1328,8 +1329,8 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"acc": core.AccountAddress(""),
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"acc": internal.AccountAddress(""),
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
@@ -1348,22 +1349,22 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"mon": core.Monetary{
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"mon": internal.Monetary{
 				Asset:  "EUR/2",
-				Amount: core.NewMonetaryInt(100),
+				Amount: internal.NewMonetaryInt(100),
 			},
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"mon": core.Monetary{
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"mon": internal.Monetary{
 				Asset:  "invalid-asset",
-				Amount: core.NewMonetaryInt(100),
+				Amount: internal.NewMonetaryInt(100),
 			},
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"mon": core.Monetary{
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"mon": internal.Monetary{
 				Asset:  "EUR/2",
 				Amount: nil,
 			},
@@ -1393,22 +1394,22 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"por": core.Portion{
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"por": internal.Portion{
 				Remaining: false,
 				Specific:  big.NewRat(1, 2),
 			},
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"por": core.Portion{
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"por": internal.Portion{
 				Remaining: false,
 				Specific:  nil,
 			},
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"por": core.Portion{
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"por": internal.Portion{
 				Remaining: true,
 				Specific:  big.NewRat(1, 2),
 			},
@@ -1446,16 +1447,16 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"str": core.String("valid string"),
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"str": internal.String("valid string"),
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"str": json.RawMessage(`"valid string"`),
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"str": core.NewMonetaryInt(1),
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"str": internal.NewMonetaryInt(1),
 		}))
 
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
@@ -1474,16 +1475,16 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]core.Value{
-			"nbr": core.NewMonetaryInt(100),
+		require.NoError(t, m.SetVars(map[string]internal.Value{
+			"nbr": internal.NewMonetaryInt(100),
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
 			"nbr": json.RawMessage(`100`),
 		}))
 
-		require.Error(t, m.SetVars(map[string]core.Value{
-			"nbr": core.String("invalid"),
+		require.Error(t, m.SetVars(map[string]internal.Value{
+			"nbr": internal.String("invalid"),
 		}))
 
 		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
@@ -1507,8 +1508,8 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.ErrorContains(t, m.SetVars(map[string]core.Value{
-			"nbr": core.NewMonetaryInt(100),
+		require.ErrorContains(t, m.SetVars(map[string]internal.Value{
+			"nbr": internal.NewMonetaryInt(100),
 		}), "missing variable $str")
 	})
 
@@ -1523,9 +1524,9 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.ErrorContains(t, m.SetVars(map[string]core.Value{
-			"nbr":  core.NewMonetaryInt(100),
-			"nbr2": core.NewMonetaryInt(100),
+		require.ErrorContains(t, m.SetVars(map[string]internal.Value{
+			"nbr":  internal.NewMonetaryInt(100),
+			"nbr2": internal.NewMonetaryInt(100),
 		}), "extraneous variable $nbr2")
 	})
 
@@ -1557,14 +1558,14 @@ func TestVariablesErrors(t *testing.T) {
 		destination = @bob
 	)`)
 	tc.setBalance("alice", "COIN", 10)
-	tc.vars = map[string]core.Value{
-		"mon": core.Monetary{
+	tc.vars = map[string]internal.Value{
+		"mon": internal.Monetary{
 			Asset:  "COIN",
-			Amount: core.NewMonetaryInt(-1),
+			Amount: internal.NewMonetaryInt(-1),
 		},
 	}
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
 		Error:    "negative amount",
 	}
@@ -1586,8 +1587,8 @@ func TestMachine(t *testing.T) {
 		m := NewMachine(*p)
 		m.Debug = true
 
-		err = m.SetVars(map[string]core.Value{
-			"dest": core.AccountAddress("charlie"),
+		err = m.SetVars(map[string]internal.Value{
+			"dest": internal.AccountAddress("charlie"),
 		})
 		require.NoError(t, err)
 
@@ -1612,8 +1613,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err balances nit initialized", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]core.Value{
-			"dest": core.AccountAddress("charlie"),
+		err = m.SetVars(map[string]internal.Value{
+			"dest": internal.AccountAddress("charlie"),
 		})
 		require.NoError(t, err)
 
@@ -1628,8 +1629,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err resolve resources twice", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]core.Value{
-			"dest": core.AccountAddress("charlie"),
+		err = m.SetVars(map[string]internal.Value{
+			"dest": internal.AccountAddress("charlie"),
 		})
 		require.NoError(t, err)
 
@@ -1650,8 +1651,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err resolve balances twice", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]core.Value{
-			"dest": core.AccountAddress("charlie"),
+		err = m.SetVars(map[string]internal.Value{
+			"dest": internal.AccountAddress("charlie"),
 		})
 		require.NoError(t, err)
 
@@ -1696,18 +1697,18 @@ func TestMachine_Execute(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	tests := []struct {
@@ -1750,18 +1751,18 @@ func TestMachine_GetAccountsMetaJSON(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	tests := []struct {
@@ -1799,18 +1800,18 @@ func TestMachine_GetTxMetaJSON(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	tests := []struct {
@@ -1848,18 +1849,18 @@ func TestMachine_ResolveBalances(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
@@ -1902,18 +1903,18 @@ func TestMachine_ResolveResources(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
@@ -1956,22 +1957,22 @@ func TestMachine_SetVars(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		vars map[string]core.Value
+		vars map[string]internal.Value
 	}
 	tests := []struct {
 		name    string
@@ -2009,18 +2010,18 @@ func TestMachine_SetVarsFromJSON(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
@@ -2062,23 +2063,23 @@ func TestMachine_credit(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		account core.AccountAddress
-		funding core.Funding
+		account internal.AccountAddress
+		funding internal.Funding
 	}
 	tests := []struct {
 		name   string
@@ -2115,28 +2116,28 @@ func TestMachine_getResource(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		addr core.Address
+		addr internal.Address
 	}
 	tests := []struct {
 		name   string
 		fields fields
 		args   args
-		want   *core.Value
+		want   *internal.Value
 		want1  bool
 	}{
 		// TODO: Add test cases.
@@ -2171,24 +2172,24 @@ func TestMachine_popValue(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	tests := []struct {
 		name   string
 		fields fields
-		want   core.Value
+		want   internal.Value
 	}{
 		// TODO: Add test cases.
 	}
@@ -2220,22 +2221,22 @@ func TestMachine_pushValue(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		v core.Value
+		v internal.Value
 	}
 	tests := []struct {
 		name   string
@@ -2272,22 +2273,22 @@ func TestMachine_repay(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		funding core.Funding
+		funding internal.Funding
 	}
 	tests := []struct {
 		name   string
@@ -2324,18 +2325,18 @@ func TestMachine_tick(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	tests := []struct {
@@ -2376,30 +2377,30 @@ func TestMachine_withdrawAll(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		account   core.AccountAddress
-		asset     core.Asset
-		overdraft *core.MonetaryInt
+		account   internal.AccountAddress
+		asset     internal.Asset
+		overdraft *internal.MonetaryInt
 	}
 	tests := []struct {
 		name    string
 		fields  fields
 		args    args
-		want    *core.Funding
+		want    *internal.Funding
 		wantErr assert.ErrorAssertionFunc
 	}{
 		// TODO: Add test cases.
@@ -2436,29 +2437,29 @@ func TestMachine_withdrawAlways(t *testing.T) {
 	type fields struct {
 		P                   uint
 		Program             program.Program
-		Vars                map[string]core.Value
+		Vars                map[string]internal.Value
 		UnresolvedResources []program.Resource
-		Resources           []core.Value
+		Resources           []internal.Value
 		resolveCalled       bool
-		Balances            map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
+		Balances            map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt
 		setBalanceCalled    bool
-		Stack               []core.Value
+		Stack               []internal.Value
 		Postings            []Posting
-		TxMeta              map[string]core.Value
-		AccountsMeta        map[core.AccountAddress]map[string]core.Value
-		Printer             func(chan core.Value)
-		printChan           chan core.Value
+		TxMeta              map[string]internal.Value
+		AccountsMeta        map[internal.AccountAddress]map[string]internal.Value
+		Printer             func(chan internal.Value)
+		printChan           chan internal.Value
 		Debug               bool
 	}
 	type args struct {
-		account core.AccountAddress
-		mon     core.Monetary
+		account internal.AccountAddress
+		mon     internal.Monetary
 	}
 	tests := []struct {
 		name    string
 		fields  fields
 		args    args
-		want    *core.Funding
+		want    *internal.Funding
 		wantErr assert.ErrorAssertionFunc
 	}{
 		// TODO: Add test cases.
@@ -2580,7 +2581,7 @@ func TestScriptError_Is(t *testing.T) {
 
 func TestStdOutPrinter(t *testing.T) {
 	type args struct {
-		c chan core.Value
+		c chan internal.Value
 	}
 	tests := []struct {
 		name string

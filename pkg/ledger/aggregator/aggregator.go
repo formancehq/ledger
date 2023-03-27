@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/pkg/errors"
@@ -29,11 +30,12 @@ func (tva *TxVolumeAggregator) FindInPreviousTxs(addr, asset string) *core.Volum
 func (tva *TxVolumeAggregator) Transfer(
 	ctx context.Context,
 	from, to, asset string,
-	amount *core.MonetaryInt,
+	amount *big.Int,
 ) error {
 	for _, addr := range []string{from, to} {
 		if !tva.PreCommitVolumes.HasAccountAndAsset(addr, asset) {
 			previousVolumes := tva.FindInPreviousTxs(addr, asset)
+
 			if previousVolumes != nil {
 				tva.PreCommitVolumes.SetVolumes(addr, asset, *previousVolumes)
 			} else {

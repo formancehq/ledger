@@ -2,6 +2,7 @@ package ledger_test
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -89,8 +90,8 @@ func testComputeAccount(t *testing.T, store storage.LedgerStore) {
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"world": {
 			"USD/2": {
-				Input:  core.NewMonetaryInt(100),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
 			},
 		},
 	}))
@@ -99,7 +100,7 @@ func testComputeAccount(t *testing.T, store storage.LedgerStore) {
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      big.NewInt(10),
 				Asset:       "USD/2",
 			}},
 		},
@@ -128,8 +129,8 @@ func testComputeAccount(t *testing.T, store storage.LedgerStore) {
 		},
 		Volumes: map[string]core.Volumes{
 			"USD/2": {
-				Input:  core.NewMonetaryInt(10),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(10),
+				Output: big.NewInt(0),
 			},
 		},
 	}, *account)

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"math/big"
 	"strings"
 	"sync"
 
@@ -71,20 +72,18 @@ func (c *Cache) withLockOnAccount(address string, callback func(account *core.Ac
 	callback(entry.account)
 }
 
-func (c *Cache) addOutput(address, asset string, amount *core.MonetaryInt) {
+func (c *Cache) addOutput(address, asset string, amount *big.Int) {
 	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
-		volumes := account.Volumes[asset]
-		volumes.Output = volumes.Output.OrZero().Add(amount)
-		volumes.Input = volumes.Input.OrZero()
+		volumes := account.Volumes[asset].CopyWithZerosIfNeeded()
+		volumes.Output.Add(volumes.Output, amount)
 		account.Volumes[asset] = volumes
 	})
 }
 
-func (c *Cache) addInput(address, asset string, amount *core.MonetaryInt) {
+func (c *Cache) addInput(address, asset string, amount *big.Int) {
 	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
-		volumes := account.Volumes[asset]
-		volumes.Input = volumes.Input.OrZero().Add(amount)
-		volumes.Output = volumes.Output.OrZero()
+		volumes := account.Volumes[asset].CopyWithZerosIfNeeded()
+		volumes.Input.Add(volumes.Input, amount)
 		account.Volumes[asset] = volumes
 	})
 }

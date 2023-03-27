@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -48,7 +49,7 @@ func testGetPagination(t *testing.T, api chi.Router, storageDriver storage.Drive
 			for i := 0; i < numTxs; i++ {
 				require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(
 					core.NewTransaction().
-						WithPostings(core.NewPosting("world", fmt.Sprintf("accounts:%06d", i), "USD", core.NewMonetaryInt(10))).
+						WithPostings(core.NewPosting("world", fmt.Sprintf("accounts:%06d", i), "USD", big.NewInt(10))).
 						WithReference(fmt.Sprintf("ref:%06d", i)),
 				)))
 			}
@@ -445,7 +446,7 @@ func TestCursor(t *testing.T) {
 		for i := 0; i < 30; i++ {
 			date := timestamp.Add(time.Duration(i) * time.Second)
 			tx := core.NewTransaction().
-				WithPostings(core.NewPosting("world", fmt.Sprintf("accounts:%02d", i), "USD", core.NewMonetaryInt(1))).
+				WithPostings(core.NewPosting("world", fmt.Sprintf("accounts:%02d", i), "USD", big.NewInt(1))).
 				WithReference(fmt.Sprintf("ref:%02d", i)).
 				WithMetadata(core.Metadata{"ref": "abc"}).
 				WithTimestamp(date).
@@ -459,7 +460,7 @@ func TestCursor(t *testing.T) {
 			}))
 			require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 				fmt.Sprintf("accounts:%02d", i): {
-					"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(1)),
+					"USD": core.NewEmptyVolumes().WithInput(big.NewInt(1)),
 				},
 			}))
 		}

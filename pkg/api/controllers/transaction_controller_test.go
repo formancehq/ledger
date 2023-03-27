@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -43,7 +44,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "USB",
 					},
 				},
@@ -57,7 +58,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "central_bank",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "USB",
 								},
 							},
@@ -73,7 +74,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "US1234D",
 					},
 				},
@@ -87,7 +88,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "central_bank",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "US1234D",
 								},
 							},
@@ -126,13 +127,13 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "centralbank",
-									Amount:      core.NewMonetaryInt(100),
+									Amount:      big.NewInt(100),
 									Asset:       "COIN",
 								},
 								{
 									Source:      "centralbank",
 									Destination: "users:001",
-									Amount:      core.NewMonetaryInt(100),
+									Amount:      big.NewInt(100),
 									Asset:       "COIN",
 								},
 							},
@@ -163,7 +164,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "TOK",
 								},
 							},
@@ -188,7 +189,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(-1000),
+						Amount:      big.NewInt(-1000),
 						Asset:       "USB",
 					},
 				},
@@ -206,7 +207,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "@TOK",
 					},
 				},
@@ -224,7 +225,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "1TOK",
 					},
 				},
@@ -242,7 +243,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "#fake",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "TOK",
 					},
 				},
@@ -260,7 +261,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "foo",
 						Destination: "bar",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "TOK",
 					},
 				},
@@ -279,7 +280,7 @@ func TestPostTransactions(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
+							Amount:      big.NewInt(1000),
 							Asset:       "TOK",
 						},
 					},
@@ -291,7 +292,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "bar",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "TOK",
 					},
 				},
@@ -416,7 +417,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "alice",
-						Amount:      core.NewMonetaryInt(100),
+						Amount:      big.NewInt(100),
 						Asset:       "COIN",
 					},
 				},
@@ -441,7 +442,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "bar",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "TOK",
 					},
 				},
@@ -456,7 +457,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "TOK",
 								},
 							},
@@ -487,7 +488,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "bar",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "TOK",
 								},
 							},
@@ -504,7 +505,7 @@ func TestPostTransactions(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "bar",
-							Amount:      core.NewMonetaryInt(1000),
+							Amount:      big.NewInt(1000),
 							Asset:       "TOK",
 						},
 					},
@@ -516,7 +517,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "bar",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "TOK",
 					},
 				},
@@ -532,7 +533,7 @@ func TestPostTransactions(t *testing.T) {
 			name: "script with specified timestamp prior to last tx",
 			initialTransactions: []core.Transaction{
 				core.NewTransaction().
-					WithPostings(core.NewPosting("world", "bob", "COIN", core.NewMonetaryInt(100))).
+					WithPostings(core.NewPosting("world", "bob", "COIN", big.NewInt(100))).
 					WithTimestamp(timestamp2),
 			},
 			payload: controllers.PostTransactionRequest{
@@ -558,7 +559,7 @@ func TestPostTransactions(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "F/9",
 					},
 				},
@@ -573,7 +574,7 @@ func TestPostTransactions(t *testing.T) {
 								{
 									Source:      "world",
 									Destination: "bank",
-									Amount:      core.NewMonetaryInt(1000),
+									Amount:      big.NewInt(1000),
 									Asset:       "F/9",
 								},
 							},
@@ -643,7 +644,7 @@ func TestPostTransactionsPreview(t *testing.T) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(1000),
+						Amount:      big.NewInt(1000),
 						Asset:       "USD",
 					},
 				},
@@ -712,7 +713,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(
 			core.NewTransaction().WithPostings(
-				core.NewPosting("world", "central_bank", "USD", core.NewMonetaryInt(1000)),
+				core.NewPosting("world", "central_bank", "USD", big.NewInt(1000)),
 			),
 		)))
 
@@ -783,7 +784,7 @@ func TestGetTransaction(t *testing.T) {
 
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(
 			core.NewTransaction().
-				WithPostings(core.NewPosting("world", "central_bank", "USD", core.NewMonetaryInt(1000))).
+				WithPostings(core.NewPosting("world", "central_bank", "USD", big.NewInt(1000))).
 				WithReference("ref").
 				WithTimestamp(core.Now()),
 		)))
@@ -797,7 +798,7 @@ func TestGetTransaction(t *testing.T) {
 				{
 					Source:      "world",
 					Destination: "central_bank",
-					Amount:      core.NewMonetaryInt(1000),
+					Amount:      big.NewInt(1000),
 					Asset:       "USD",
 				},
 			}, ret.Postings)
@@ -808,28 +809,28 @@ func TestGetTransaction(t *testing.T) {
 			require.EqualValues(t, core.AccountsAssetsVolumes{
 				"world": core.AssetsVolumes{
 					"USD": {
-						Input:  core.NewMonetaryInt(0),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(0),
+						Output: big.NewInt(0),
 					},
 				},
 				"central_bank": core.AssetsVolumes{
 					"USD": {
-						Input:  core.NewMonetaryInt(0),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(0),
+						Output: big.NewInt(0),
 					},
 				},
 			}, ret.PreCommitVolumes)
 			require.EqualValues(t, core.AccountsAssetsVolumes{
 				"world": core.AssetsVolumes{
 					"USD": {
-						Input:  core.NewMonetaryInt(0),
-						Output: core.NewMonetaryInt(1000),
+						Input:  big.NewInt(0),
+						Output: big.NewInt(1000),
 					},
 				},
 				"central_bank": core.AssetsVolumes{
 					"USD": {
-						Input:  core.NewMonetaryInt(1000),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(1000),
+						Output: big.NewInt(0),
 					},
 				},
 			}, ret.PostCommitVolumes)
@@ -871,7 +872,7 @@ func TestTransactions(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "central_bank1",
-							Amount:      core.NewMonetaryInt(1000),
+							Amount:      big.NewInt(1000),
 							Asset:       "USD",
 						},
 					},
@@ -888,7 +889,7 @@ func TestTransactions(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "central_bank2",
-							Amount:      core.NewMonetaryInt(1000),
+							Amount:      big.NewInt(1000),
 							Asset:       "USD",
 						},
 					},
@@ -908,7 +909,7 @@ func TestTransactions(t *testing.T) {
 						{
 							Source:      "central_bank1",
 							Destination: "alice",
-							Amount:      core.NewMonetaryInt(10),
+							Amount:      big.NewInt(10),
 							Asset:       "USD",
 						},
 					},
@@ -1236,7 +1237,7 @@ func TestGetTransactionsWithPageSize(t *testing.T) {
 							{
 								Source:      "world",
 								Destination: fmt.Sprintf("account:%d", i),
-								Amount:      core.NewMonetaryInt(1000),
+								Amount:      big.NewInt(1000),
 								Asset:       "USD",
 							},
 						},
@@ -1309,7 +1310,7 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		tx1 := core.NewTransaction().
-			WithPostings(core.NewPosting("world", "alice", "USD", core.NewMonetaryInt(100))).
+			WithPostings(core.NewPosting("world", "alice", "USD", big.NewInt(100))).
 			WithReference("ref:23434656").
 			WithMetadata(core.Metadata{
 				"foo1": "bar1",
@@ -1320,7 +1321,7 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, store.AppendLog(context.Background(), &log))
 
 		tx2 := core.NewTransaction().
-			WithPostings(core.NewPosting("world", "bob", "USD", core.NewMonetaryInt(100))).
+			WithPostings(core.NewPosting("world", "bob", "USD", big.NewInt(100))).
 			WithReference("ref:534646").
 			WithMetadata(core.Metadata{
 				"foo2": "bar2",
@@ -1332,7 +1333,7 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, store.AppendLog(context.Background(), &log2))
 
 		tx3 := core.NewTransaction().
-			WithPostings(core.NewPosting("alice", "bob", "USD", core.NewMonetaryInt(3))).
+			WithPostings(core.NewPosting("alice", "bob", "USD", big.NewInt(3))).
 			WithMetadata(core.Metadata{
 				"foo2": "bar2",
 			}).
@@ -1347,13 +1348,13 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, store.EnsureAccountExists(context.Background(), "alice"))
 		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
+				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
 			},
 			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)).WithOutput(core.NewMonetaryInt(3)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)).WithOutput(big.NewInt(3)),
 			},
 			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(103)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(103)),
 			},
 		}))
 
@@ -1417,7 +1418,7 @@ func TestPostTransactionsScriptConflict(t *testing.T) {
 		require.NoError(t, err)
 		log := core.NewTransactionLog(
 			core.NewTransaction().
-				WithPostings(core.NewPosting("world", "centralbank", "COIN", core.NewMonetaryInt(100))).
+				WithPostings(core.NewPosting("world", "centralbank", "COIN", big.NewInt(100))).
 				WithReference("1234"),
 			nil,
 		)

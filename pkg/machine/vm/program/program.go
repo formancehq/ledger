@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/pkg/errors"
 )
 
 type Program struct {
 	Instructions   []byte
 	Resources      []Resource
-	Sources        []core.Address
-	NeededBalances map[core.Address]map[core.Address]struct{}
+	Sources        []internal.Address
+	NeededBalances map[internal.Address]map[internal.Address]struct{}
 }
 
 func (p Program) String() string {
@@ -40,35 +40,35 @@ func (p Program) String() string {
 	return out
 }
 
-func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Value, error) {
-	variables := make(map[string]core.Value)
+func (p *Program) ParseVariables(vars map[string]internal.Value) (map[string]internal.Value, error) {
+	variables := make(map[string]internal.Value)
 	for _, res := range p.Resources {
 		if variable, ok := res.(Variable); ok {
 			if val, ok := vars[variable.Name]; ok && val.GetType() == variable.Typ {
 				variables[variable.Name] = val
 				switch val.GetType() {
-				case core.TypeAccount:
-					if err := core.ParseAccountAddress(val.(core.AccountAddress)); err != nil {
+				case internal.TypeAccount:
+					if err := internal.ParseAccountAddress(val.(internal.AccountAddress)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(core.AccountAddress)))
+							variable.Name, string(val.(internal.AccountAddress)))
 					}
-				case core.TypeAsset:
-					if err := core.ParseAsset(val.(core.Asset)); err != nil {
+				case internal.TypeAsset:
+					if err := internal.ParseAsset(val.(internal.Asset)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(core.Asset)))
+							variable.Name, string(val.(internal.Asset)))
 					}
-				case core.TypeMonetary:
-					if err := core.ParseMonetary(val.(core.Monetary)); err != nil {
+				case internal.TypeMonetary:
+					if err := internal.ParseMonetary(val.(internal.Monetary)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(core.Monetary).String())
+							variable.Name, val.(internal.Monetary).String())
 					}
-				case core.TypePortion:
-					if err := core.ValidatePortionSpecific(val.(core.Portion)); err != nil {
+				case internal.TypePortion:
+					if err := internal.ValidatePortionSpecific(val.(internal.Portion)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(core.Portion).String())
+							variable.Name, val.(internal.Portion).String())
 					}
-				case core.TypeString:
-				case core.TypeNumber:
+				case internal.TypeString:
+				case internal.TypeNumber:
 				default:
 					return nil, fmt.Errorf("unsupported type for variable $%s: %s",
 						variable.Name, val.GetType())
@@ -88,15 +88,15 @@ func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Va
 	return variables, nil
 }
 
-func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[string]core.Value, error) {
-	variables := make(map[string]core.Value)
+func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[string]internal.Value, error) {
+	variables := make(map[string]internal.Value)
 	for _, res := range p.Resources {
 		if param, ok := res.(Variable); ok {
 			data, ok := vars[param.Name]
 			if !ok {
 				return nil, fmt.Errorf("missing variable $%s", param.Name)
 			}
-			val, err := core.NewValueFromJSON(param.Typ, data)
+			val, err := internal.NewValueFromJSON(param.Typ, data)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"invalid JSON value for variable $%s of type %v: %w",
@@ -116,19 +116,19 @@ func (p *Program) GetInvolvedAccounts(vars map[string]json.RawMessage) ([]string
 	involvedAccountsMap := map[string]struct{}{}
 	for _, resource := range p.Resources {
 		switch resource.GetType() {
-		case core.TypeAccount:
+		case internal.TypeAccount:
 			switch resource := resource.(type) {
 			case Constant:
 				switch inner := resource.Inner.(type) {
-				case core.AccountAddress:
+				case internal.AccountAddress:
 					involvedAccountsMap[string(inner)] = struct{}{}
 				}
 			case Variable:
-				value, err := core.NewValueFromJSON(core.TypeAccount, vars[resource.Name])
+				value, err := internal.NewValueFromJSON(internal.TypeAccount, vars[resource.Name])
 				if err != nil {
 					return nil, err
 				}
-				involvedAccountsMap[string((value).(core.AccountAddress))] = struct{}{}
+				involvedAccountsMap[string((value).(internal.AccountAddress))] = struct{}{}
 			}
 		}
 	}
@@ -145,19 +145,19 @@ func (p *Program) GetInvolvedSources(vars map[string]json.RawMessage) ([]string,
 		resource := p.Resources[address]
 
 		switch resource.GetType() {
-		case core.TypeAccount:
+		case internal.TypeAccount:
 			switch resource := resource.(type) {
 			case Constant:
 				switch inner := resource.Inner.(type) {
-				case core.AccountAddress:
+				case internal.AccountAddress:
 					involvedSourcesMap[string(inner)] = struct{}{}
 				}
 			case Variable:
-				value, err := core.NewValueFromJSON(core.TypeAccount, vars[resource.Name])
+				value, err := internal.NewValueFromJSON(internal.TypeAccount, vars[resource.Name])
 				if err != nil {
 					return nil, err
 				}
-				involvedSourcesMap[string((value).(core.AccountAddress))] = struct{}{}
+				involvedSourcesMap[string((value).(internal.AccountAddress))] = struct{}{}
 			}
 		}
 	}

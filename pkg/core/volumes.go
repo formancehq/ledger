@@ -3,56 +3,84 @@ package core
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"math/big"
 )
 
 type Volumes struct {
-	Input  *MonetaryInt `json:"input"`
-	Output *MonetaryInt `json:"output"`
+	Input  *big.Int `json:"input"`
+	Output *big.Int `json:"output"`
 }
 
-func (v Volumes) WithInput(input *MonetaryInt) Volumes {
+func (v Volumes) CopyWithZerosIfNeeded() Volumes {
+	var input *big.Int
+	if v.Input == nil {
+		input = big.NewInt(0)
+	} else {
+		input = new(big.Int).Set(v.Input)
+	}
+	var output *big.Int
+	if v.Output == nil {
+		output = big.NewInt(0)
+	} else {
+		output = new(big.Int).Set(v.Output)
+	}
+	return Volumes{
+		Input:  input,
+		Output: output,
+	}
+}
+
+func (v Volumes) WithInput(input *big.Int) Volumes {
 	v.Input = input
 	return v
 }
 
-func (v Volumes) WithOutput(output *MonetaryInt) Volumes {
+func (v Volumes) WithOutput(output *big.Int) Volumes {
 	v.Output = output
 	return v
 }
 
 func NewEmptyVolumes() Volumes {
 	return Volumes{
-		Input:  NewMonetaryInt(0),
-		Output: NewMonetaryInt(0),
+		Input:  big.NewInt(0),
+		Output: big.NewInt(0),
 	}
 }
 
 type VolumesWithBalance struct {
-	Input   *MonetaryInt `json:"input"`
-	Output  *MonetaryInt `json:"output"`
-	Balance *MonetaryInt `json:"balance"`
+	Input   *big.Int `json:"input"`
+	Output  *big.Int `json:"output"`
+	Balance *big.Int `json:"balance"`
 }
 
 func (v Volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(VolumesWithBalance{
 		Input:   v.Input,
 		Output:  v.Output,
-		Balance: v.Input.Sub(v.Output),
+		Balance: v.Balance(),
 	})
 }
 
-func (v Volumes) Balance() *MonetaryInt {
-	return v.Input.Sub(v.Output)
+func (v Volumes) Balance() *big.Int {
+	input := v.Input
+	if input == nil {
+		input = Zero
+	}
+	output := v.Output
+	if output == nil {
+		output = Zero
+	}
+	return big.NewInt(0).Sub(input, output)
 }
 
 func (v Volumes) copy() Volumes {
 	return Volumes{
-		Input:  v.Input.Sub(NewMonetaryInt(0)),  // copy
-		Output: v.Output.Sub(NewMonetaryInt(0)), // copy
+		Input:  new(big.Int).Set(v.Input),
+		Output: new(big.Int).Set(v.Output),
 	}
 }
 
-type AssetsBalances map[string]*MonetaryInt
+type AssetsBalances map[string]*big.Int
 
 type AssetsVolumes map[string]Volumes
 
@@ -61,7 +89,7 @@ type AccountsBalances map[string]AssetsBalances
 func (v AssetsVolumes) Balances() AssetsBalances {
 	balances := AssetsBalances{}
 	for asset, vv := range v {
-		balances[asset] = vv.Input.Sub(vv.Output)
+		balances[asset] = new(big.Int).Sub(vv.Input, vv.Output)
 	}
 	return balances
 }
@@ -76,26 +104,22 @@ func (v AssetsVolumes) copy() AssetsVolumes {
 
 type AccountsAssetsVolumes map[string]AssetsVolumes
 
-func NewAccountsAssetsVolumes() AccountsAssetsVolumes {
-	return AccountsAssetsVolumes{}
-}
-
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	if a == nil {
 		return Volumes{
-			Input:  NewMonetaryInt(0),
-			Output: NewMonetaryInt(0),
+			Input:  big.NewInt(0),
+			Output: big.NewInt(0),
 		}
 	}
 	if assetsVolumes, ok := a[account]; !ok {
 		return Volumes{
-			Input:  NewMonetaryInt(0),
-			Output: NewMonetaryInt(0),
+			Input:  big.NewInt(0),
+			Output: big.NewInt(0),
 		}
 	} else {
 		return Volumes{
-			Input:  assetsVolumes[asset].Input.OrZero(),
-			Output: assetsVolumes[asset].Output.OrZero(),
+			Input:  assetsVolumes[asset].Input,
+			Output: assetsVolumes[asset].Output,
 		}
 	}
 }
@@ -106,51 +130,45 @@ func (a *AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volume
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
 		(*a)[account] = map[string]Volumes{
-			asset: {
-				Input:  volumes.Input.OrZero(),
-				Output: volumes.Output.OrZero(),
-			},
+			asset: volumes.CopyWithZerosIfNeeded(),
 		}
 	} else {
-		assetsVolumes[asset] = Volumes{
-			Input:  volumes.Input.OrZero(),
-			Output: volumes.Output.OrZero(),
-		}
+		assetsVolumes[asset] = volumes.CopyWithZerosIfNeeded()
 	}
 }
 
-func (a *AccountsAssetsVolumes) AddInput(account, asset string, input *MonetaryInt) {
+func (a *AccountsAssetsVolumes) AddInput(account, asset string, input *big.Int) {
 	if *a == nil {
 		*a = AccountsAssetsVolumes{}
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
 		(*a)[account] = map[string]Volumes{
 			asset: {
-				Input:  input.OrZero(),
-				Output: NewMonetaryInt(0),
+				Input:  input,
+				Output: big.NewInt(0),
 			},
 		}
 	} else {
-		volumes := assetsVolumes[asset]
-		volumes.Input = volumes.Input.Add(input)
+		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
+		volumes.Input.Add(volumes.Input, input)
 		assetsVolumes[asset] = volumes
 	}
 }
 
-func (a *AccountsAssetsVolumes) AddOutput(account, asset string, output *MonetaryInt) {
+func (a *AccountsAssetsVolumes) AddOutput(account, asset string, output *big.Int) {
 	if *a == nil {
 		*a = AccountsAssetsVolumes{}
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
 		(*a)[account] = map[string]Volumes{
 			asset: {
-				Output: output.OrZero(),
-				Input:  NewMonetaryInt(0),
+				Output: output,
+				Input:  big.NewInt(0),
 			},
 		}
 	} else {
-		volumes := assetsVolumes[asset]
-		volumes.Output = volumes.Output.Add(output)
+		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
+		volumes.Output.Add(volumes.Output, output)
 		assetsVolumes[asset] = volumes
 	}
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 )
@@ -33,18 +35,18 @@ func main() {
 	m := vm.NewMachine(*program)
 	m.Debug = true
 
-	if err = m.SetVars(map[string]core.Value{
-		"dest": core.AccountAddress("charlie"),
+	if err = m.SetVars(map[string]internal.Value{
+		"dest": internal.AccountAddress("charlie"),
 	}); err != nil {
 		panic(err)
 	}
 
 	initialVolumes := map[string]map[string]core.Volumes{
 		"alice": {
-			"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(10)),
+			"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(10)),
 		},
 		"bob": {
-			"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+			"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 		},
 	}
 

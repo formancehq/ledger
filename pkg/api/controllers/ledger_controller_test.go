@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -57,12 +58,12 @@ func TestGetStats(t *testing.T) {
 
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(
 			core.NewTransaction().WithPostings(
-				core.NewPosting("world", "alice", "USD", core.NewMonetaryInt(100)),
+				core.NewPosting("world", "alice", "USD", big.NewInt(100)),
 			),
 		)))
 		require.NoError(t, store.InsertTransactions(context.Background(), core.ExpandTransactionFromEmptyPreCommitVolumes(
 			core.NewTransaction().
-				WithPostings(core.NewPosting("world", "bob", "USD", core.NewMonetaryInt(100))).
+				WithPostings(core.NewPosting("world", "bob", "USD", big.NewInt(100))).
 				WithID(1),
 		)))
 		require.NoError(t, store.EnsureAccountExists(context.Background(), "world"))
@@ -92,7 +93,7 @@ func TestGetLogs(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "alice",
-							Amount:      core.NewMonetaryInt(100),
+							Amount:      big.NewInt(100),
 							Asset:       "USD",
 						},
 					},
@@ -108,7 +109,7 @@ func TestGetLogs(t *testing.T) {
 						{
 							Source:      "world",
 							Destination: "bob",
-							Amount:      core.NewMonetaryInt(200),
+							Amount:      big.NewInt(200),
 							Asset:       "USD",
 						},
 					},
