@@ -42,3 +42,43 @@ func NewScriptError(code string, message string) *ScriptError {
 		Message: message,
 	}
 }
+
+const (
+	ResourceResolutionErrorCodeMissingMetadata                = "MISSING_METADATA"
+	ResourceResolutionErrorCodeInvalidTypeFromExternalSources = "INVALID_TYPE_FROM_EXTERNAL_SOURCE"
+)
+
+type ResourceResolutionError struct {
+	Code string
+	text string
+}
+
+func (e ResourceResolutionError) Error() string {
+	return fmt.Sprintf("Error resolving resource: %s", e.text)
+}
+
+func (e ResourceResolutionError) Is(err error) bool {
+	eerr, ok := err.(ResourceResolutionError)
+	if !ok {
+		return false
+	}
+	return e.Code == eerr.Code
+}
+
+func newResourceResolutionError(code, text string) ResourceResolutionError {
+	return ResourceResolutionError{
+		Code: code,
+		text: text,
+	}
+}
+
+func IsResourceResolutionErrorWithCode(err error, code string) bool {
+	return errors.Is(err, &ResourceResolutionError{
+		Code: code,
+	})
+}
+
+func IsResourceResolutionError(err error) bool {
+	_, ok := err.(ResourceResolutionError)
+	return ok
+}

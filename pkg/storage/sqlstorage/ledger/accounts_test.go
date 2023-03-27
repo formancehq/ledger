@@ -2,15 +2,12 @@ package ledger_test
 
 import (
 	"context"
-	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAccounts(t *testing.T) {
@@ -82,57 +79,4 @@ func TestAccounts(t *testing.T) {
 		_, err := store.GetAccounts(context.Background(), q)
 		assert.NoError(t, err, "balance operator filter should not fail")
 	})
-}
-
-func testComputeAccount(t *testing.T, store storage.LedgerStore) {
-	require.NoError(t, store.EnsureAccountExists(context.Background(), "world"))
-	require.NoError(t, store.EnsureAccountExists(context.Background(), "bank"))
-	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
-		"world": {
-			"USD/2": {
-				Input:  big.NewInt(100),
-				Output: big.NewInt(0),
-			},
-		},
-	}))
-	log := core.NewTransactionLog(core.Transaction{
-		TransactionData: core.TransactionData{
-			Postings: []core.Posting{{
-				Source:      "world",
-				Destination: "bank",
-				Amount:      big.NewInt(10),
-				Asset:       "USD/2",
-			}},
-		},
-	}, nil)
-	require.NoError(t, store.AppendLog(context.Background(), &log))
-
-	log2 := core.NewSetMetadataLog(core.Now(), core.SetMetadataLogPayload{
-		TargetType: core.MetaTargetTypeAccount,
-		TargetID:   "bank",
-		Metadata: core.Metadata{
-			"category": "gold",
-		},
-	})
-	require.NoError(t, store.AppendLog(context.Background(), &log2))
-
-	account, err := store.ComputeAccount(context.Background(), "bank")
-	require.NoError(t, err)
-	require.NotNil(t, account)
-
-	require.Equal(t, core.AccountWithVolumes{
-		Account: core.Account{
-			Address: "bank",
-			Metadata: core.Metadata{
-				"category": "gold",
-			},
-		},
-		Volumes: map[string]core.Volumes{
-			"USD/2": {
-				Input:  big.NewInt(10),
-				Output: big.NewInt(0),
-			},
-		},
-	}, *account)
-
 }

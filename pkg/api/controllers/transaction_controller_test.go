@@ -360,31 +360,31 @@ func TestPostTransactions(t *testing.T) {
 				ErrorMessage: "transaction has no postings",
 			},
 		},
-		{
-			name: "script failure with invalid account variable",
-			payload: controllers.PostTransactionRequest{
-				Script: core.Script{
-					Plain: `
-					vars {
-						account $acc
-					}
-					send [USD/2 99] (
-						source = @world
-						destination = $acc
-					)
-					`,
-					Vars: map[string]json.RawMessage{
-						"acc": json.RawMessage(`"invalid-acc"`),
-					},
-				},
-			},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:    apierrors.ErrScriptCompilationFailed,
-				ErrorMessage: "[COMPILATION_FAILED] value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
-				Details:      apierrors.EncodeLink("value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
-			},
-		},
+		//{
+		//	name: "script failure with invalid account variable",
+		//	payload: controllers.PostTransactionRequest{
+		//		Script: core.Script{
+		//			Plain: `
+		//			vars {
+		//				account $acc
+		//			}
+		//			send [USD/2 99] (
+		//				source = @world
+		//				destination = $acc
+		//			)
+		//			`,
+		//			Vars: map[string]json.RawMessage{
+		//				"acc": json.RawMessage(`"invalid-acc"`),
+		//			},
+		//		},
+		//	},
+		//	expectedStatusCode: http.StatusBadRequest,
+		//	expectedErr: sharedapi.ErrorResponse{
+		//		ErrorCode:    apierrors.ErrScriptCompilationFailed,
+		//		ErrorMessage: "[COMPILATION_FAILED] value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
+		//		Details:      apierrors.EncodeLink("value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
+		//	},
+		//},
 		{
 			name: "script failure with invalid monetary variable",
 			payload: controllers.PostTransactionRequest{

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,7 +113,7 @@ func test(t *testing.T, testCase TestCase) {
 			}, nil
 		})
 
-		err := m.ResolveResources(context.Background(), store)
+		_, _, err := m.ResolveResources(context.Background(), store)
 		if err != nil {
 			return 128, err
 		}
@@ -938,7 +939,7 @@ func TestNeededBalances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
 	}
-	err = m.ResolveResources(context.Background(), EmptyStore)
+	_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
 
 	called := make(map[string]*struct{})
@@ -969,7 +970,7 @@ func TestSetTxMeta(t *testing.T) {
 
 	m := NewMachine(*p)
 
-	err = m.ResolveResources(context.Background(), EmptyStore)
+	_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
 	err = m.ResolveBalances(context.Background(), EmptyStore)
 	require.NoError(t, err)
@@ -1008,7 +1009,7 @@ func TestSetAccountMeta(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		err = m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1059,7 +1060,7 @@ func TestSetAccountMeta(t *testing.T) {
 			"acc": internal.AccountAddress("test"),
 		}))
 
-		err = m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1572,6 +1573,168 @@ func TestVariablesErrors(t *testing.T) {
 	test(t, tc)
 }
 
+func TestSetVarsFromJSON(t *testing.T) {
+
+	type testCase struct {
+		name          string
+		script        string
+		expectedError error
+		vars          map[string]json.RawMessage
+	}
+	for _, tc := range []testCase{
+		{
+			name: "missing var",
+			script: `vars {
+				account $dest
+			}
+			send [COIN 99] (
+				source = @world
+				destination = $dest
+			)`,
+			expectedError: fmt.Errorf("missing variable $dest"),
+		},
+		{
+			name: "invalid format for account",
+			script: `vars {
+				account $dest
+			}
+			send [COIN 99] (
+				source = @world
+				destination = $dest
+			)`,
+			vars: map[string]json.RawMessage{
+				"dest": json.RawMessage(`"invalid-acc"`),
+			},
+			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p, err := compiler.Compile(tc.script)
+			require.NoError(t, err)
+
+			m := NewMachine(*p)
+			err = m.SetVarsFromJSON(tc.vars)
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				//TODO(gfyrag): refine error handling of SetVars/ResolveResources/ResolveBalances
+				require.Equal(t, tc.expectedError.Error(), err.Error())
+			} else {
+				require.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestResolveResources(t *testing.T) {
+
+	type testCase struct {
+		name          string
+		script        string
+		expectedError error
+		vars          map[string]json.RawMessage
+	}
+	for _, tc := range []testCase{
+		{
+			name: "missing metadata",
+			script: `vars {
+				account $sale
+				account $seller = meta($sale, "seller")
+			}
+			send [COIN *] (
+				source = $sale
+				destination = $seller
+			)`,
+			vars: map[string]json.RawMessage{
+				"sale": json.RawMessage(`"sales:042"`),
+			},
+			expectedError: newResourceResolutionError(ResourceResolutionErrorCodeMissingMetadata, ""),
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p, err := compiler.Compile(tc.script)
+			require.NoError(t, err)
+
+			m := NewMachine(*p)
+			require.NoError(t, m.SetVarsFromJSON(tc.vars))
+			_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.True(t, errors.Is(tc.expectedError, err))
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestResolveBalances(t *testing.T) {
+
+	type testCase struct {
+		name          string
+		script        string
+		expectedError error
+		vars          map[string]json.RawMessage
+		store         Store
+	}
+	for _, tc := range []testCase{
+		{
+			name: "balance function with negative balance",
+			store: StaticStore{
+				"users:001": &core.AccountWithVolumes{
+					Account: core.Account{
+						Address:  "users:001",
+						Metadata: core.Metadata{},
+					},
+					Volumes: map[string]core.Volumes{
+						"COIN": {
+							Input:  big.NewInt(0),
+							Output: big.NewInt(100),
+						},
+					},
+				},
+			},
+			script: `
+				vars {
+					monetary $bal = balance(@users:001, COIN)
+				}
+				send $bal (
+					source = @users:001
+					destination = @world
+				)`,
+			expectedError: fmt.Errorf("tried to request the balance of account users:001 for asset COIN: received -100: monetary amounts must be non-negative"),
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p, err := compiler.Compile(tc.script)
+			require.NoError(t, err)
+
+			m := NewMachine(*p)
+			require.NoError(t, m.SetVarsFromJSON(tc.vars))
+			_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+			require.NoError(t, err)
+
+			store := tc.store
+			if store == nil {
+				store = EmptyStore
+			}
+
+			err = m.ResolveBalances(context.Background(), store)
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestMachine(t *testing.T) {
 	p, err := compiler.Compile(`
 		vars {
@@ -1592,7 +1755,7 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err := m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1618,7 +1781,7 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err := m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		exitCode, err := m.Execute()
@@ -1634,10 +1797,10 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err := m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		err = m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to call ResolveResources twice")
 	})
 
@@ -1656,7 +1819,7 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err := m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1669,7 +1832,7 @@ func TestMachine(t *testing.T) {
 	t.Run("err missing var", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err := m.ResolveResources(context.Background(), EmptyStore)
+		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.Error(t, err)
 	})
 }
@@ -1948,7 +2111,8 @@ func TestMachine_ResolveResources(t *testing.T) {
 				printChan:           tt.fields.printChan,
 				Debug:               tt.fields.Debug,
 			}
-			tt.wantErr(t, m.ResolveResources(tt.args.ctx, tt.args.store), fmt.Sprintf("ResolveResources(%v, %v)", tt.args.ctx, tt.args.store))
+			_, _, err := m.ResolveResources(tt.args.ctx, tt.args.store)
+			tt.wantErr(t, err, fmt.Sprintf("ResolveResources(%v, %v)", tt.args.ctx, tt.args.store))
 		})
 	}
 }

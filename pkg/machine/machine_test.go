@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
@@ -107,20 +106,6 @@ var testCases = []testCase{
 		},
 	},
 	{
-		name: "missing variable value",
-		script: `
-			vars {
-				account $dest
-			}
-
-			send [CAD/2 42] (
-				source = @world
-				destination = $dest
-			)`,
-		vars:            map[string]json.RawMessage{},
-		expectErrorCode: vm.ScriptErrorCompilationFailed,
-	},
-	{
 		name: "use empty account",
 		script: `
 			vars {
@@ -150,23 +135,6 @@ var testCases = []testCase{
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
 		},
-	},
-	{
-		name: "missing metadata",
-		script: `
-			vars {
-				account $sale
-				account $seller = meta($sale, "seller")
-			}
-
-			send [COIN *] (
-				source = $sale
-				destination = $seller
-			)`,
-		vars: map[string]json.RawMessage{
-			"sale": json.RawMessage(`"sales:042"`),
-		},
-		expectErrorCode: vm.ScriptErrorCompilationFailed,
 	},
 	{
 		name: "using metadata",
@@ -332,29 +300,6 @@ var testCases = []testCase{
 		},
 	},
 	{
-		name: "balance function with negative balance",
-		setup: func(t *testing.T, store storage.LedgerStore) {
-			require.NoError(t, store.EnsureAccountExists(context.Background(), "users:001"))
-			require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
-				"users:001": map[string]core.Volumes{
-					"COIN": {
-						Input:  big.NewInt(0),
-						Output: big.NewInt(100),
-					},
-				},
-			}))
-		},
-		script: `
-			vars {
-				monetary $bal = balance(@users:001, COIN)
-			}
-			send $bal (
-				source = @users:001
-				destination = @world
-			)`,
-		expectErrorCode: vm.ScriptErrorCompilationFailed,
-	},
-	{
 		name: "overdraft",
 		script: `
 		send [USD/2 100] (
@@ -382,15 +327,10 @@ func TestMachine(t *testing.T) {
 	storageDriver := ledgertesting.StorageDriver(t)
 	require.NoError(t, storageDriver.Initialize(context.Background()))
 
-	cacheManager := cache.NewManager(storageDriver)
-
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			ledger := uuid.NewString()
-
-			cache, err := cacheManager.ForLedger(context.Background(), ledger)
-			require.NoError(t, err)
 
 			store, _, err := storageDriver.GetLedgerStore(context.Background(), ledger, true)
 			require.NoError(t, err)
@@ -402,10 +342,17 @@ func TestMachine(t *testing.T) {
 				tc.setup(t, store)
 			}
 
-			prog, err := compiler.Compile(tc.script)
+			program, err := compiler.Compile(tc.script)
 			require.NoError(t, err)
 
-			result, err := Run(context.Background(), cache, prog, core.RunScript{
+			m := vm.NewMachine(*program)
+			require.NoError(t, m.SetVarsFromJSON(tc.vars))
+
+			_, _, err = m.ResolveResources(context.Background(), store)
+			require.NoError(t, err)
+			require.NoError(t, m.ResolveBalances(context.Background(), store))
+
+			result, err := Run(m, core.RunScript{
 				Script: core.Script{
 					Plain: tc.script,
 					Vars:  tc.vars,

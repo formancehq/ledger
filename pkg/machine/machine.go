@@ -7,12 +7,12 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/vm"
-	"github.com/formancehq/ledger/pkg/machine/vm/program"
 	"github.com/pkg/errors"
 )
 
 type Store interface {
 	GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error)
+	LockAccounts(ctx context.Context, address ...string) (func(), error)
 }
 
 type Result struct {
@@ -21,26 +21,7 @@ type Result struct {
 	AccountMetadata map[string]core.Metadata
 }
 
-func Run(ctx context.Context, store Store, prog *program.Program, script core.RunScript) (*Result, error) {
-
-	m := vm.NewMachine(*prog)
-
-	if err := m.SetVarsFromJSON(script.Vars); err != nil {
-		return nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not set variables").Error())
-	}
-
-	err := m.ResolveResources(ctx, store)
-	if err != nil {
-		return nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not resolve program resources").Error())
-	}
-
-	err = m.ResolveBalances(ctx, store)
-	if err != nil {
-		return nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not resolve balances").Error())
-	}
+func Run(m *vm.Machine, script core.RunScript) (*Result, error) {
 
 	exitCode, err := m.Execute()
 	if err != nil {
