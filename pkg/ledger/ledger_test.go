@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sync"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestAccountMetadata(t *testing.T) {
 			Postings: core.Postings{
 				{
 					Source:      "world",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      big.NewInt(100),
 					Asset:       "USD",
 					Destination: "users:001",
 				},
@@ -77,7 +78,7 @@ func TestRevertTransaction(t *testing.T) {
 			TransactionData: core.TransactionData{
 				Reference: "foo",
 				Postings: []core.Posting{
-					core.NewPosting("world", "payments:001", "COIN", core.NewMonetaryInt(100)),
+					core.NewPosting("world", "payments:001", "COIN", big.NewInt(100)),
 				},
 			},
 		}
@@ -85,7 +86,7 @@ func TestRevertTransaction(t *testing.T) {
 			Transaction: tx,
 			PreCommitVolumes: map[string]core.AssetsVolumes{
 				"world": {
-					"COIN": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(10)),
+					"COIN": core.NewEmptyVolumes().WithOutput(big.NewInt(10)),
 				},
 				"payments:001": {
 					"COIN": core.NewEmptyVolumes(),
@@ -93,10 +94,10 @@ func TestRevertTransaction(t *testing.T) {
 			},
 			PostCommitVolumes: map[string]core.AssetsVolumes{
 				"world": {
-					"COIN": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(110)),
+					"COIN": core.NewEmptyVolumes().WithOutput(big.NewInt(110)),
 				},
 				"payments:001": {
-					"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+					"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
 		}
@@ -105,10 +106,10 @@ func TestRevertTransaction(t *testing.T) {
 		require.NoError(t, l.GetLedgerStore().EnsureAccountExists(context.Background(), "payments:001"))
 		require.NoError(t, l.GetLedgerStore().UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"payments:001": {
-				"COIN": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(110)),
+				"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(110)),
 			},
 			"world": {
-				"COIN": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(110)),
+				"COIN": core.NewEmptyVolumes().WithOutput(big.NewInt(110)),
 			},
 		}))
 
@@ -119,7 +120,7 @@ func TestRevertTransaction(t *testing.T) {
 			{
 				Source:      "payments:001",
 				Destination: "world",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "COIN",
 			},
 		}, revertTx.TransactionData.Postings)
@@ -136,7 +137,7 @@ func TestRevertTransaction(t *testing.T) {
 			},
 			Volumes: core.AssetsVolumes{
 				"COIN": core.NewEmptyVolumes().
-					WithInput(core.NewMonetaryInt(110)).
+					WithInput(big.NewInt(110)).
 					WithOutput(tx.Postings[0].Amount),
 			},
 		}, *account)
@@ -152,11 +153,11 @@ func TestRevertTransaction(t *testing.T) {
 
 func TestVeryBigTransaction(t *testing.T) {
 	runOnLedger(t, func(l *Ledger) {
-		amount, err := core.ParseMonetaryInt(
-			"199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838")
-		require.NoError(t, err)
+		amount, ok := new(big.Int).SetString(
+			"199999999999999999992919191919192929292939847477171818284637291884661818183647392936472918836161728274766266161728493736383838", 10)
+		require.True(t, ok)
 
-		_, err = l.CreateTransaction(context.Background(), false,
+		_, err := l.CreateTransaction(context.Background(), false,
 			core.TxToScriptData(core.TransactionData{
 				Postings: []core.Posting{{
 					Source:      "world",

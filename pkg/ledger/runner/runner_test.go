@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -37,7 +38,7 @@ var testCases = []testCase{
 			)`,
 		expectedTx: core.ExpandedTransaction{
 			Transaction: core.NewTransaction().WithPostings(
-				core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100)),
+				core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 			),
 			PreCommitVolumes: map[string]core.AssetsVolumes{
 				"world": {
@@ -49,17 +50,17 @@ var testCases = []testCase{
 			},
 			PostCommitVolumes: map[string]core.AssetsVolumes{
 				"world": {
-					"GEM": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
 				},
 				"mint": {
-					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
 		},
 		expectedLogs: []core.Log{
 			core.NewTransactionLog(
 				core.NewTransaction().WithPostings(
-					core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100))),
+					core.NewPosting("world", "mint", "GEM", big.NewInt(100))),
 				map[string]core.Metadata{},
 			),
 		},
@@ -67,7 +68,7 @@ var testCases = []testCase{
 			"mint": {
 				Account: core.NewAccount("mint"),
 				Volumes: core.AssetsVolumes{
-					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
 		},
@@ -86,7 +87,7 @@ var testCases = []testCase{
 		name: "set reference conflict",
 		setup: func(t *testing.T, l *Runner) {
 			tx := core.NewTransaction().
-				WithPostings(core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100))).
+				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil).WithReference("tx_ref")
 			require.NoError(t, l.store.AppendLog(
@@ -113,7 +114,7 @@ var testCases = []testCase{
 		expectedTx: core.ExpandedTransaction{
 			Transaction: core.NewTransaction().
 				WithPostings(
-					core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100)),
+					core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 				).
 				WithReference("tx_ref"),
 			PreCommitVolumes: map[string]core.AssetsVolumes{
@@ -126,10 +127,10 @@ var testCases = []testCase{
 			},
 			PostCommitVolumes: map[string]core.AssetsVolumes{
 				"world": {
-					"GEM": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
 				},
 				"mint": {
-					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
 		},
@@ -137,7 +138,7 @@ var testCases = []testCase{
 			core.NewTransactionLog(
 				core.NewTransaction().
 					WithPostings(
-						core.NewPosting("world", "mint", "GEM", core.NewMonetaryInt(100)),
+						core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 					).
 					WithReference("tx_ref"),
 				map[string]core.Metadata{},
@@ -147,7 +148,7 @@ var testCases = []testCase{
 			"mint": {
 				Account: core.NewAccount("mint"),
 				Volumes: core.AssetsVolumes{
-					"GEM": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
 		},

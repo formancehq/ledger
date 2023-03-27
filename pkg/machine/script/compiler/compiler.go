@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/parser"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
 	"github.com/pkg/errors"
@@ -19,20 +19,20 @@ type parseVisitor struct {
 	resources []program.Resource
 	// sources store all source accounts
 	// a source can be also a destination of another posting
-	sources map[core.Address]struct{}
+	sources map[internal.Address]struct{}
 	// varIdx maps name to resource index
-	varIdx map[string]core.Address
+	varIdx map[string]internal.Address
 	// needBalances store for each account, the set of assets needed
-	neededBalances map[core.Address]map[core.Address]struct{}
+	neededBalances map[internal.Address]map[internal.Address]struct{}
 }
 
 // Allocates constants if it hasn't already been,
 // and returns its resource address.
-func (p *parseVisitor) findConstant(constant program.Constant) (*core.Address, bool) {
+func (p *parseVisitor) findConstant(constant program.Constant) (*internal.Address, bool) {
 	for i := 0; i < len(p.resources); i++ {
 		if c, ok := p.resources[i].(program.Constant); ok {
-			if core.ValueEquals(c.Inner, constant.Inner) {
-				addr := core.Address(i)
+			if internal.ValueEquals(c.Inner, constant.Inner) {
+				addr := internal.Address(i)
 				return &addr, true
 			}
 		}
@@ -40,7 +40,7 @@ func (p *parseVisitor) findConstant(constant program.Constant) (*core.Address, b
 	return nil, false
 }
 
-func (p *parseVisitor) AllocateResource(res program.Resource) (*core.Address, error) {
+func (p *parseVisitor) AllocateResource(res program.Resource) (*internal.Address, error) {
 	if c, ok := res.(program.Constant); ok {
 		idx, ok := p.findConstant(c)
 		if ok {
@@ -51,15 +51,15 @@ func (p *parseVisitor) AllocateResource(res program.Resource) (*core.Address, er
 		return nil, errors.New("number of unique constants exceeded 65536")
 	}
 	p.resources = append(p.resources, res)
-	addr := core.NewAddress(uint16(len(p.resources) - 1))
+	addr := internal.NewAddress(uint16(len(p.resources) - 1))
 	return &addr, nil
 }
 
-func (p *parseVisitor) isWorld(addr core.Address) bool {
+func (p *parseVisitor) isWorld(addr internal.Address) bool {
 	idx := int(addr)
 	if idx < len(p.resources) {
 		if c, ok := p.resources[idx].(program.Constant); ok {
-			if acc, ok := c.Inner.(core.AccountAddress); ok {
+			if acc, ok := c.Inner.(internal.AccountAddress); ok {
 				if string(acc) == "world" {
 					return true
 				}
@@ -69,7 +69,7 @@ func (p *parseVisitor) isWorld(addr core.Address) bool {
 	return false
 }
 
-func (p *parseVisitor) VisitVariable(c parser.IVariableContext, push bool) (core.Type, *core.Address, *CompileError) {
+func (p *parseVisitor) VisitVariable(c parser.IVariableContext, push bool) (internal.Type, *internal.Address, *CompileError) {
 	name := c.GetText()[1:] // strip '$' prefix
 	if idx, ok := p.varIdx[name]; ok {
 		res := p.resources[idx]
@@ -82,7 +82,7 @@ func (p *parseVisitor) VisitVariable(c parser.IVariableContext, push bool) (core
 	}
 }
 
-func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.Type, *core.Address, *CompileError) {
+func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (internal.Type, *internal.Address, *CompileError) {
 	switch c := c.(type) {
 	case *parser.ExprAddSubContext:
 		lhsType, lhsAddr, err := p.VisitExpr(c.GetLhs(), push)
@@ -90,12 +90,12 @@ func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.T
 			return 0, nil, err
 		}
 		switch lhsType {
-		case core.TypeNumber:
+		case internal.TypeNumber:
 			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
 			if err != nil {
 				return 0, nil, err
 			}
-			if rhsType != core.TypeNumber {
+			if rhsType != internal.TypeNumber {
 				return 0, nil, LogicError(c, fmt.Errorf(
 					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
 					lhsType, rhsType))
@@ -108,13 +108,13 @@ func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.T
 					p.AppendInstruction(program.OP_ISUB)
 				}
 			}
-			return core.TypeNumber, nil, nil
-		case core.TypeMonetary:
+			return internal.TypeNumber, nil, nil
+		case internal.TypeMonetary:
 			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
 			if err != nil {
 				return 0, nil, err
 			}
-			if rhsType != core.TypeMonetary {
+			if rhsType != internal.TypeMonetary {
 				return 0, nil, LogicError(c, fmt.Errorf(
 					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
 					lhsType, rhsType))
@@ -127,7 +127,7 @@ func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.T
 					p.AppendInstruction(program.OP_MONETARY_SUB)
 				}
 			}
-			return core.TypeMonetary, lhsAddr, nil
+			return internal.TypeMonetary, lhsAddr, nil
 		default:
 			return 0, nil, LogicError(c, fmt.Errorf(
 				"tried to do an arithmetic operation with unsupported left-hand side operand type: %s",
@@ -142,10 +142,10 @@ func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.T
 	}
 }
 
-func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type, *core.Address, *CompileError) {
+func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (internal.Type, *internal.Address, *CompileError) {
 	switch c := c.(type) {
 	case *parser.LitAccountContext:
-		account := core.AccountAddress(c.GetText()[1:])
+		account := internal.AccountAddress(c.GetText()[1:])
 		addr, err := p.AllocateResource(program.Constant{Inner: account})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -153,9 +153,9 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*addr)
 		}
-		return core.TypeAccount, addr, nil
+		return internal.TypeAccount, addr, nil
 	case *parser.LitAssetContext:
-		asset := core.Asset(c.GetText())
+		asset := internal.Asset(c.GetText())
 		addr, err := p.AllocateResource(program.Constant{Inner: asset})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -163,9 +163,9 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*addr)
 		}
-		return core.TypeAsset, addr, nil
+		return internal.TypeAsset, addr, nil
 	case *parser.LitNumberContext:
-		number, err := core.ParseNumber(c.GetText())
+		number, err := internal.ParseNumber(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
@@ -176,10 +176,10 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*addr)
 		}
-		return core.TypeNumber, addr, nil
+		return internal.TypeNumber, addr, nil
 	case *parser.LitStringContext:
 		addr, err := p.AllocateResource(program.Constant{
-			Inner: core.String(strings.Trim(c.GetText(), `"`)),
+			Inner: internal.String(strings.Trim(c.GetText(), `"`)),
 		})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -187,9 +187,9 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*addr)
 		}
-		return core.TypeString, addr, nil
+		return internal.TypeString, addr, nil
 	case *parser.LitPortionContext:
-		portion, err := core.ParsePortionSpecific(c.GetText())
+		portion, err := internal.ParsePortionSpecific(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
@@ -200,25 +200,25 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*addr)
 		}
-		return core.TypePortion, addr, nil
+		return internal.TypePortion, addr, nil
 	case *parser.LitMonetaryContext:
 		typ, assetAddr, compErr := p.VisitExpr(c.Monetary().GetAsset(), false)
 		if compErr != nil {
 			return 0, nil, compErr
 		}
-		if typ != core.TypeAsset {
+		if typ != internal.TypeAsset {
 			return 0, nil, LogicError(c, fmt.Errorf(
 				"the expression in monetary literal should be of type '%s' instead of '%s'",
-				core.TypeAsset, typ))
+				internal.TypeAsset, typ))
 		}
 
-		amt, err := core.ParseMonetaryInt(c.Monetary().GetAmt().GetText())
+		amt, err := internal.ParseMonetaryInt(c.Monetary().GetAmt().GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
 
 		var (
-			monAddr          *core.Address
+			monAddr          *internal.Address
 			alreadyAllocated bool
 		)
 		for i, r := range p.resources {
@@ -226,7 +226,7 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 			case program.Monetary:
 				if v.Asset == *assetAddr && v.Amount.Equal(amt) {
 					alreadyAllocated = true
-					tmp := core.Address(uint16(i))
+					tmp := internal.Address(uint16(i))
 					monAddr = &tmp
 					break
 				}
@@ -244,7 +244,7 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if push {
 			p.PushAddress(*monAddr)
 		}
-		return core.TypeMonetary, monAddr, nil
+		return internal.TypeMonetary, monAddr, nil
 	default:
 		return 0, nil, InternalError(c)
 	}
@@ -255,7 +255,7 @@ func (p *parseVisitor) VisitMonetaryAll(c *parser.SendContext, monAll parser.IMo
 	if compErr != nil {
 		return compErr
 	}
-	if assetType != core.TypeAsset {
+	if assetType != internal.TypeAsset {
 		return LogicError(c, fmt.Errorf(
 			"send monetary all: the expression should be of type 'asset' instead of '%s'", assetType))
 	}
@@ -281,7 +281,7 @@ func (p *parseVisitor) VisitMonetary(c *parser.SendContext, mon parser.IExpressi
 	if compErr != nil {
 		return compErr
 	}
-	if monType != core.TypeMonetary {
+	if monType != internal.TypeMonetary {
 		return LogicError(c, fmt.Errorf(
 			"send monetary: the expression should be of type 'monetary' instead of '%s'", monType))
 	}
@@ -332,7 +332,7 @@ func (p *parseVisitor) VisitMonetary(c *parser.SendContext, mon parser.IExpressi
 			}
 		}
 
-		if err := p.PushInteger(core.NewNumber(int64(n))); err != nil {
+		if err := p.PushInteger(internal.NewNumber(int64(n))); err != nil {
 			return LogicError(c, err)
 		}
 
@@ -341,12 +341,12 @@ func (p *parseVisitor) VisitMonetary(c *parser.SendContext, mon parser.IExpressi
 	return nil
 }
 
-func (p *parseVisitor) setNeededBalances(accounts map[core.Address]struct{}, addr *core.Address) {
+func (p *parseVisitor) setNeededBalances(accounts map[internal.Address]struct{}, addr *internal.Address) {
 	for acc := range accounts {
 		if b, ok := p.neededBalances[acc]; ok {
 			b[*addr] = struct{}{}
 		} else {
-			p.neededBalances[acc] = map[core.Address]struct{}{
+			p.neededBalances[acc] = map[internal.Address]struct{}{
 				*addr: {},
 			}
 		}
@@ -378,7 +378,7 @@ func (p *parseVisitor) VisitSetTxMeta(ctx *parser.SetTxMetaContext) *CompileErro
 	}
 
 	keyAddr, err := p.AllocateResource(program.Constant{
-		Inner: core.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
+		Inner: internal.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
 	})
 	if err != nil {
 		return LogicError(ctx, err)
@@ -397,7 +397,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 	}
 
 	keyAddr, err := p.AllocateResource(program.Constant{
-		Inner: core.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
+		Inner: internal.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
 	})
 	if err != nil {
 		return LogicError(ctx, err)
@@ -408,7 +408,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 	if compErr != nil {
 		return compErr
 	}
-	if ty != core.TypeAccount {
+	if ty != internal.TypeAccount {
 		return LogicError(ctx, fmt.Errorf(
 			"variable is of type %s, and should be of type account", ty))
 	}
@@ -419,6 +419,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 	return nil
 }
 
+// print statement
 func (p *parseVisitor) VisitPrint(ctx *parser.PrintContext) *CompileError {
 	_, _, err := p.VisitExpr(ctx.GetExpr(), true)
 	if err != nil {
@@ -430,6 +431,7 @@ func (p *parseVisitor) VisitPrint(ctx *parser.PrintContext) *CompileError {
 	return nil
 }
 
+// vars declaration block
 func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 	if len(c.GetV()) > 32768 {
 		return LogicError(c, fmt.Errorf("number of variables exceeded %v", 32768))
@@ -440,25 +442,25 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 		if _, ok := p.varIdx[name]; ok {
 			return LogicError(c, fmt.Errorf("duplicate variable $%s", name))
 		}
-		var ty core.Type
+		var ty internal.Type
 		switch v.GetTy().GetText() {
 		case "account":
-			ty = core.TypeAccount
+			ty = internal.TypeAccount
 		case "asset":
-			ty = core.TypeAsset
+			ty = internal.TypeAsset
 		case "number":
-			ty = core.TypeNumber
+			ty = internal.TypeNumber
 		case "string":
-			ty = core.TypeString
+			ty = internal.TypeString
 		case "monetary":
-			ty = core.TypeMonetary
+			ty = internal.TypeMonetary
 		case "portion":
-			ty = core.TypePortion
+			ty = internal.TypePortion
 		default:
 			return InternalError(c)
 		}
 
-		var addr *core.Address
+		var addr *internal.Address
 		var err error
 		if v.GetOrig() == nil {
 			addr, err = p.AllocateResource(program.Variable{Typ: ty, Name: name})
@@ -478,7 +480,7 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if srcTy != core.TypeAccount {
+			if srcTy != internal.TypeAccount {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: type should be 'account' to pull account metadata", name))
 			}
@@ -490,7 +492,7 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 				Key:     key,
 			})
 		case *parser.OriginAccountBalanceContext:
-			if ty != core.TypeMonetary {
+			if ty != internal.TypeMonetary {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: type should be 'monetary' to pull account balance", name))
 			}
@@ -498,7 +500,7 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if accTy != core.TypeAccount {
+			if accTy != internal.TypeAccount {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: the first argument to pull account balance should be of type 'account'", name))
 			}
@@ -507,7 +509,7 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if assTy != core.TypeAsset {
+			if assTy != internal.TypeAsset {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: the second argument to pull account balance should be of type 'asset'", name))
 			}
@@ -612,9 +614,9 @@ func CompileFull(input string) CompileArtifacts {
 		errListener:    errListener,
 		instructions:   make([]byte, 0),
 		resources:      make([]program.Resource, 0),
-		varIdx:         make(map[string]core.Address),
-		neededBalances: make(map[core.Address]map[core.Address]struct{}),
-		sources:        map[core.Address]struct{}{},
+		varIdx:         make(map[string]internal.Address),
+		neededBalances: make(map[internal.Address]map[internal.Address]struct{}),
+		sources:        map[internal.Address]struct{}{},
 	}
 
 	err := visitor.VisitScript(tree)
@@ -623,7 +625,7 @@ func CompileFull(input string) CompileArtifacts {
 		return artifacts
 	}
 
-	sources := make(core.Addresses, 0)
+	sources := make(internal.Addresses, 0)
 	for address := range visitor.sources {
 		sources = append(sources, address)
 	}

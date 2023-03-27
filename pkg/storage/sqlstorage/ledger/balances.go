@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -52,10 +53,9 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 			return nil, s.error(err)
 		}
 
-		balances, err := core.ParseMonetaryInt(balancesStr)
-
-		if err != nil {
-			return nil, s.error(err)
+		balances, ok := new(big.Int).SetString(balancesStr, 10)
+		if !ok {
+			panic("unable to restore big int")
 		}
 
 		aggregatedBalances[asset] = balances
@@ -126,7 +126,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 			if err != nil {
 				return api.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
-			accountsBalances[currentAccount][asset] = core.NewMonetaryInt(balances)
+			accountsBalances[currentAccount][asset] = big.NewInt(balances)
 		}
 
 		accounts = append(accounts, accountsBalances)

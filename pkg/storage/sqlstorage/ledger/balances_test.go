@@ -2,6 +2,7 @@ package ledger_test
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -13,13 +14,13 @@ import (
 func testGetBalances(t *testing.T, store storage.LedgerStore) {
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"world": {
-			"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
+			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
 		},
 		"users:1": {
-			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(1)),
+			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(1)),
 		},
 		"central_bank": {
-			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(199)),
+			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(199)),
 		},
 	}))
 
@@ -36,17 +37,17 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(-200),
+					"USD": big.NewInt(-200),
 				},
 			},
 			{
 				"users:1": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(1),
+					"USD": big.NewInt(1),
 				},
 			},
 			{
 				"central_bank": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(199),
+					"USD": big.NewInt(199),
 				},
 			},
 		}, cursor.Data)
@@ -65,7 +66,7 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(-200),
+					"USD": big.NewInt(-200),
 				},
 			},
 		}, cursor.Data)
@@ -85,7 +86,7 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(1),
+					"USD": big.NewInt(1),
 				},
 			},
 		}, cursor.Data)
@@ -105,12 +106,12 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(1),
+					"USD": big.NewInt(1),
 				},
 			},
 			{
 				"central_bank": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(199),
+					"USD": big.NewInt(199),
 				},
 			},
 		}, cursor.Data)
@@ -131,7 +132,7 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 		assert.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
-					"USD": core.NewMonetaryInt(1),
+					"USD": big.NewInt(1),
 				},
 			},
 		}, cursor.Data)
@@ -141,13 +142,13 @@ func testGetBalances(t *testing.T, store storage.LedgerStore) {
 func testGetBalancesAggregated(t *testing.T, store storage.LedgerStore) {
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"world": {
-			"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
+			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
 		},
 		"users:1": {
-			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(1)),
+			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(1)),
 		},
 		"central_bank": {
-			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(199)),
+			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(199)),
 		},
 	}))
 
@@ -157,6 +158,6 @@ func testGetBalancesAggregated(t *testing.T, store storage.LedgerStore) {
 	cursor, err := store.GetBalancesAggregated(context.Background(), q)
 	assert.NoError(t, err)
 	assert.Equal(t, core.AssetsBalances{
-		"USD": core.NewMonetaryInt(0),
+		"USD": big.NewInt(0),
 	}, cursor)
 }

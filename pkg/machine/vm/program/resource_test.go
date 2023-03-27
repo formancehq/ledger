@@ -3,34 +3,34 @@ package program
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/stretchr/testify/require"
 )
 
 func TestResource(t *testing.T) {
 	c := Constant{
-		Inner: core.NewMonetaryInt(0),
+		Inner: internal.NewMonetaryInt(0),
 	}
 	c.GetType()
 	require.Equal(t, "0", c.String())
 
 	v := Variable{
-		Typ:  core.TypeAccount,
+		Typ:  internal.TypeAccount,
 		Name: "acc",
 	}
 	require.Equal(t, "<account acc>", v.String())
 
 	vab := VariableAccountBalance{
 		Name:    "name",
-		Account: core.Address(0),
-		Asset:   core.Address(1),
+		Account: internal.Address(0),
+		Asset:   internal.Address(1),
 	}
 	require.Equal(t, "<monetary name balance(0, 1)>", vab.String())
 
 	vam := VariableAccountMetadata{
-		Typ:     core.TypeMonetary,
+		Typ:     internal.TypeMonetary,
 		Name:    "name",
-		Account: core.Address(0),
+		Account: internal.Address(0),
 		Key:     "key",
 	}
 	require.Equal(t, "<monetary name meta(0, key)>", vam.String())

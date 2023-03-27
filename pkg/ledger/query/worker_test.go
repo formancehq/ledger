@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"math/big"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func TestWorker(t *testing.T) {
 			Postings: []core.Posting{{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "USD/2",
 			}},
 			Timestamp: now,
@@ -62,7 +63,7 @@ func TestWorker(t *testing.T) {
 			Postings: []core.Posting{{
 				Source:      "bank",
 				Destination: "user:1",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      big.NewInt(10),
 				Asset:       "USD/2",
 			}},
 			Timestamp: now,
@@ -128,28 +129,28 @@ func TestWorker(t *testing.T) {
 		PreCommitVolumes: map[string]core.AssetsVolumes{
 			"bank": {
 				"USD/2": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 			"user:1": {
 				"USD/2": {
-					Output: core.NewMonetaryInt(0),
-					Input:  core.NewMonetaryInt(0),
+					Output: big.NewInt(0),
+					Input:  big.NewInt(0),
 				},
 			},
 		},
 		PostCommitVolumes: map[string]core.AssetsVolumes{
 			"bank": {
 				"USD/2": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(10),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(10),
 				},
 			},
 			"user:1": {
 				"USD/2": {
-					Input:  core.NewMonetaryInt(10),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(10),
+					Output: big.NewInt(0),
 				},
 			},
 		},
@@ -164,8 +165,8 @@ func TestWorker(t *testing.T) {
 		},
 		Volumes: map[string]core.Volumes{
 			"USD/2": {
-				Input:  core.NewMonetaryInt(100),
-				Output: core.NewMonetaryInt(10),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(10),
 			},
 		},
 	}, accountWithVolumes)

@@ -99,10 +99,8 @@ func (t *ExpandedTransaction) IsReverted() bool {
 func ExpandTransaction(tx Transaction, preCommitVolumes AccountsAssetsVolumes) ExpandedTransaction {
 	postCommitVolumes := preCommitVolumes.copy()
 	for _, posting := range tx.Postings {
-		preCommitVolumes.AddOutput(posting.Source, posting.Asset, NewMonetaryInt(0))
-		preCommitVolumes.AddInput(posting.Source, posting.Asset, NewMonetaryInt(0))
-		preCommitVolumes.AddInput(posting.Destination, posting.Asset, NewMonetaryInt(0))
-		preCommitVolumes.AddOutput(posting.Destination, posting.Asset, NewMonetaryInt(0))
+		preCommitVolumes.AddInput(posting.Destination, posting.Asset, Zero)
+		preCommitVolumes.AddOutput(posting.Source, posting.Asset, Zero)
 		postCommitVolumes.AddOutput(posting.Source, posting.Asset, posting.Amount)
 		postCommitVolumes.AddInput(posting.Destination, posting.Asset, posting.Amount)
 	}

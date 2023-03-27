@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -41,8 +42,8 @@ func TestParallelRead(t *testing.T) {
 				},
 				Volumes: map[string]core.Volumes{
 					"USD/2": {
-						Input:  core.NewMonetaryInt(100),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(100),
+						Output: big.NewInt(0),
 					},
 				},
 			},
@@ -55,8 +56,8 @@ func TestParallelRead(t *testing.T) {
 				},
 				Volumes: map[string]core.Volumes{
 					"USD/2": {
-						Input:  core.NewMonetaryInt(10),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(10),
+						Output: big.NewInt(0),
 					},
 				},
 			},
@@ -79,8 +80,8 @@ func TestParallelRead(t *testing.T) {
 				},
 				Volumes: map[string]core.Volumes{
 					"USD/2": {
-						Input:  core.NewMonetaryInt(10),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(10),
+						Output: big.NewInt(0),
 					},
 				},
 			}, *account)
@@ -120,7 +121,7 @@ func TestUpdateVolumes(t *testing.T) {
 	require.NoError(t, err)
 
 	cache.UpdateVolumeWithTX(core.NewTransaction().WithPostings(
-		core.NewPosting("world", "bank", "USD", core.NewMonetaryInt(100)),
+		core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	))
 	worldAccount, err := cache.GetAccountWithVolumes(context.Background(), "world")
 	require.NoError(t, err)
@@ -130,7 +131,7 @@ func TestUpdateVolumes(t *testing.T) {
 			Metadata: core.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{
-			"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(100)),
+			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
 		},
 	}, *worldAccount)
 
@@ -142,7 +143,7 @@ func TestUpdateVolumes(t *testing.T) {
 			Metadata: core.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{
-			"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 		},
 	}, *worldAccount)
 }

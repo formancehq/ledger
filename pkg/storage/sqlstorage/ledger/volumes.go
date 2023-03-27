@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/uptrace/bun"
@@ -78,14 +79,14 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 			return nil, s.error(err)
 		}
 
-		input, err := core.ParseMonetaryInt(inputStr)
-		if err != nil {
-			return nil, s.error(err)
+		input, ok := new(big.Int).SetString(inputStr, 10)
+		if !ok {
+			panic("unable to restore big int")
 		}
 
-		output, err := core.ParseMonetaryInt(outputStr)
-		if err != nil {
-			return nil, s.error(err)
+		output, ok := new(big.Int).SetString(outputStr, 10)
+		if !ok {
+			panic("unable to restore big int")
 		}
 
 		volumes[asset] = core.Volumes{

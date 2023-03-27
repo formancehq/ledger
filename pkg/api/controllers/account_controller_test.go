@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -42,13 +43,13 @@ func TestGetAccounts(t *testing.T) {
 		require.NoError(t, store.UpdateAccountMetadata(context.Background(), "bob", meta))
 		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(250)),
+				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(250)),
 			},
 			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(150)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(150)),
 			},
 			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 			},
 		}))
 
@@ -421,7 +422,7 @@ func TestGetAccount(t *testing.T) {
 		}))
 		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 			},
 		}))
 
@@ -439,8 +440,8 @@ func TestGetAccount(t *testing.T) {
 				},
 				Volumes: core.AssetsVolumes{
 					"USD": {
-						Input:  core.NewMonetaryInt(100),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(100),
+						Output: big.NewInt(0),
 					},
 				},
 			}, resp)

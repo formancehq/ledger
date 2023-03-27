@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ var tx1 = core.ExpandedTransaction{
 				{
 					Source:      "world",
 					Destination: "central_bank",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      big.NewInt(100),
 					Asset:       "USD",
 				},
 			},
@@ -98,28 +99,28 @@ var tx1 = core.ExpandedTransaction{
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(100),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(100),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(100),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
 			},
 		},
 	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(0),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(0),
 			},
 		},
 	},
@@ -132,7 +133,7 @@ var tx2 = core.ExpandedTransaction{
 				{
 					Source:      "world",
 					Destination: "central_bank",
-					Amount:      core.NewMonetaryInt(100),
+					Amount:      big.NewInt(100),
 					Asset:       "USD",
 				},
 			},
@@ -143,28 +144,28 @@ var tx2 = core.ExpandedTransaction{
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(200),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(200),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(200),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(200),
+				Output: big.NewInt(0),
 			},
 		},
 	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(100),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(100),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(100),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
 			},
 		},
 	},
@@ -177,7 +178,7 @@ var tx3 = core.ExpandedTransaction{
 				{
 					Source:      "central_bank",
 					Destination: "users:1",
-					Amount:      core.NewMonetaryInt(1),
+					Amount:      big.NewInt(1),
 					Asset:       "USD",
 				},
 			},
@@ -191,28 +192,28 @@ var tx3 = core.ExpandedTransaction{
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(200),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(200),
+				Output: big.NewInt(0),
 			},
 		},
 		"users:1": {
 			"USD": {
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(0),
 			},
 		},
 	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(200),
-				Output: core.NewMonetaryInt(1),
+				Input:  big.NewInt(200),
+				Output: big.NewInt(1),
 			},
 		},
 		"users:1": {
 			"USD": {
-				Input:  core.NewMonetaryInt(1),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(1),
+				Output: big.NewInt(0),
 			},
 		},
 	},
@@ -227,7 +228,7 @@ func testUpdateTransactionMetadata(t *testing.T, store storage.LedgerStore) {
 					{
 						Source:      "world",
 						Destination: "central_bank",
-						Amount:      core.NewMonetaryInt(100),
+						Amount:      big.NewInt(100),
 						Asset:       "USD",
 					},
 				},
@@ -275,8 +276,8 @@ func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
 	require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
-				Input:  core.NewMonetaryInt(100),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
 			},
 		},
 	}))
@@ -284,8 +285,8 @@ func testGetAssetsVolumes(t *testing.T, store storage.LedgerStore) {
 	volumes, err := store.GetAssetsVolumes(context.Background(), "central_bank")
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
-	require.EqualValues(t, core.NewMonetaryInt(100), volumes["USD"].Input)
-	require.EqualValues(t, core.NewMonetaryInt(0), volumes["USD"].Output)
+	require.EqualValues(t, big.NewInt(100), volumes["USD"].Input)
+	require.EqualValues(t, big.NewInt(0), volumes["USD"].Output)
 }
 
 func testGetAccounts(t *testing.T, store storage.LedgerStore) {

@@ -1,4 +1,4 @@
-package core
+package internal
 
 import (
 	"fmt"
@@ -142,6 +142,10 @@ func (a *MonetaryInt) UnmarshalText(b []byte) error {
 
 func NewMonetaryInt(i int64) *MonetaryInt {
 	return (*MonetaryInt)(big.NewInt(i))
+}
+
+func NewMonetaryIntFromBigInt(v *big.Int) *MonetaryInt {
+	return (*MonetaryInt)(v)
 }
 
 func ParseMonetaryInt(s string) (*MonetaryInt, error) {

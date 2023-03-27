@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -36,7 +37,7 @@ var testCases = []testCase{
 			)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "user:001", "USD/2", core.NewMonetaryInt(99)),
+				core.NewPosting("world", "user:001", "USD/2", big.NewInt(99)),
 			},
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -99,7 +100,7 @@ var testCases = []testCase{
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "user:001", "CAD/2", core.NewMonetaryInt(42)),
+				core.NewPosting("world", "user:001", "CAD/2", big.NewInt(42)),
 			},
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -143,8 +144,8 @@ var testCases = []testCase{
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "bob", "EUR", core.NewMonetaryInt(1)),
-				core.NewPosting("bob", "alice", "EUR", core.NewMonetaryInt(1)),
+				core.NewPosting("world", "bob", "EUR", big.NewInt(1)),
+				core.NewPosting("bob", "alice", "EUR", big.NewInt(1)),
 			},
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -173,8 +174,8 @@ var testCases = []testCase{
 			require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 				"sales:001": {
 					"COIN": {
-						Input:  core.NewMonetaryInt(100),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(100),
+						Output: big.NewInt(0),
 					},
 				},
 			}))
@@ -211,8 +212,8 @@ var testCases = []testCase{
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("sales:001", "users:001", "COIN", core.NewMonetaryInt(85)),
-				core.NewPosting("sales:001", "platform", "COIN", core.NewMonetaryInt(15)),
+				core.NewPosting("sales:001", "users:001", "COIN", big.NewInt(85)),
+				core.NewPosting("sales:001", "platform", "COIN", big.NewInt(15)),
 			},
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -230,7 +231,7 @@ var testCases = []testCase{
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "users:001", "USD/2", core.NewMonetaryInt(99)),
+				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
 			Metadata: core.Metadata{
 				"priority": "low",
@@ -248,7 +249,7 @@ var testCases = []testCase{
 			)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "users:001", "USD/2", core.NewMonetaryInt(99)),
+				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
 			Metadata: core.Metadata{
 				"priority": map[string]any{
@@ -287,7 +288,7 @@ var testCases = []testCase{
 		`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("world", "users:001", "USD/2", core.NewMonetaryInt(99)),
+				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
 			Metadata: core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{
@@ -308,8 +309,8 @@ var testCases = []testCase{
 			require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 				"users:001": map[string]core.Volumes{
 					"COIN": {
-						Input:  core.NewMonetaryInt(100),
-						Output: core.NewMonetaryInt(0),
+						Input:  big.NewInt(100),
+						Output: big.NewInt(0),
 					},
 				},
 			}))
@@ -324,7 +325,7 @@ var testCases = []testCase{
 			)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("users:001", "world", "COIN", core.NewMonetaryInt(100)),
+				core.NewPosting("users:001", "world", "COIN", big.NewInt(100)),
 			},
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -337,8 +338,8 @@ var testCases = []testCase{
 			require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 				"users:001": map[string]core.Volumes{
 					"COIN": {
-						Input:  core.NewMonetaryInt(0),
-						Output: core.NewMonetaryInt(100),
+						Input:  big.NewInt(0),
+						Output: big.NewInt(100),
 					},
 				},
 			}))
@@ -362,7 +363,7 @@ var testCases = []testCase{
 		)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				core.NewPosting("users:001", "users:002", "USD/2", core.NewMonetaryInt(100)),
+				core.NewPosting("users:001", "users:002", "USD/2", big.NewInt(100)),
 			},
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},

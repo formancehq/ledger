@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"fmt"
 	"regexp"
 )
 
@@ -49,24 +48,6 @@ func (v AccountWithVolumes) Copy() AccountWithVolumes {
 	return v
 }
 
-const accountPattern = "^[a-zA-Z_]+[a-zA-Z0-9_:]*$"
+const AccountPattern = "^[a-zA-Z_]+[a-zA-Z0-9_:]*$"
 
-var accountRegexp = regexp.MustCompile(accountPattern)
-
-type AccountAddress string
-
-func (AccountAddress) GetType() Type { return TypeAccount }
-func (a AccountAddress) String() string {
-	return fmt.Sprintf("@%v", string(a))
-}
-
-func ParseAccountAddress(acc AccountAddress) error {
-	// TODO: handle properly in ledger v1.10
-	if acc == "" {
-		return nil
-	}
-	if !accountRegexp.MatchString(string(acc)) {
-		return fmt.Errorf("accounts should respect pattern %s", accountPattern)
-	}
-	return nil
-}
+var AccountRegexp = regexp.MustCompile(AccountPattern)
