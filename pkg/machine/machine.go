@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/vm"
@@ -72,7 +73,7 @@ func Run(ctx context.Context, store Store, prog *program.Program, script core.Ru
 		result.Postings[j] = core.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
-			Amount:      posting.Amount,
+			Amount:      (*big.Int)(posting.Amount),
 			Asset:       posting.Asset,
 		}
 	}

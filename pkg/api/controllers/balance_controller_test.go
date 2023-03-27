@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
@@ -28,13 +29,13 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(250)),
+				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(250)),
 			},
 			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(150)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(150)),
 			},
 			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 			},
 		}))
 
@@ -44,7 +45,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 			resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 			require.Equal(t, ok, true)
-			require.Equal(t, core.AssetsBalances{"USD": core.NewMonetaryInt(0)}, resp)
+			require.Equal(t, core.AssetsBalances{"USD": big.NewInt(0)}, resp)
 		})
 
 		t.Run("filter by address", func(t *testing.T) {
@@ -53,7 +54,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 			resp, ok := internal.DecodeSingleResponse[core.AssetsBalances](t, rsp.Body)
 			require.Equal(t, true, ok)
-			require.Equal(t, core.AssetsBalances{"USD": core.NewMonetaryInt(-250)}, resp)
+			require.Equal(t, core.AssetsBalances{"USD": big.NewInt(-250)}, resp)
 		})
 
 		t.Run("filter by address no result", func(t *testing.T) {
@@ -77,17 +78,17 @@ func TestGetBalances(t *testing.T) {
 
 		require.NoError(t, store.UpdateVolumes(context.Background(), core.AccountsAssetsVolumes{
 			"world": {
-				"USD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(250)),
-				"CAD": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(200)),
-				"EUR": core.NewEmptyVolumes().WithOutput(core.NewMonetaryInt(400)),
+				"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(250)),
+				"CAD": core.NewEmptyVolumes().WithOutput(big.NewInt(200)),
+				"EUR": core.NewEmptyVolumes().WithOutput(big.NewInt(400)),
 			},
 			"alice": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(150)),
-				"CAD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(200)),
-				"EUR": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(400)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(150)),
+				"CAD": core.NewEmptyVolumes().WithInput(big.NewInt(200)),
+				"EUR": core.NewEmptyVolumes().WithInput(big.NewInt(400)),
 			},
 			"bob": {
-				"USD": core.NewEmptyVolumes().WithInput(core.NewMonetaryInt(100)),
+				"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 			},
 		}))
 
@@ -126,9 +127,9 @@ func TestGetBalances(t *testing.T) {
 
 			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 			require.Equal(t, []core.AccountsBalances{
-				{"world": core.AssetsBalances{"USD": core.NewMonetaryInt(-250), "EUR": core.NewMonetaryInt(-400), "CAD": core.NewMonetaryInt(-200)}},
-				{"bob": core.AssetsBalances{"USD": core.NewMonetaryInt(100)}},
-				{"alice": core.AssetsBalances{"USD": core.NewMonetaryInt(150), "EUR": core.NewMonetaryInt(400), "CAD": core.NewMonetaryInt(200)}},
+				{"world": core.AssetsBalances{"USD": big.NewInt(-250), "EUR": big.NewInt(-400), "CAD": big.NewInt(-200)}},
+				{"bob": core.AssetsBalances{"USD": big.NewInt(100)}},
+				{"alice": core.AssetsBalances{"USD": big.NewInt(150), "EUR": big.NewInt(400), "CAD": big.NewInt(200)}},
 			}, resp.Data)
 		})
 
@@ -138,7 +139,7 @@ func TestGetBalances(t *testing.T) {
 
 			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 			require.Equal(t, []core.AccountsBalances{
-				{"alice": core.AssetsBalances{"USD": core.NewMonetaryInt(150), "EUR": core.NewMonetaryInt(400), "CAD": core.NewMonetaryInt(200)}},
+				{"alice": core.AssetsBalances{"USD": big.NewInt(150), "EUR": big.NewInt(400), "CAD": big.NewInt(200)}},
 			}, resp.Data)
 		})
 
@@ -148,7 +149,7 @@ func TestGetBalances(t *testing.T) {
 
 			resp := internal.DecodeCursorResponse[core.AccountsBalances](t, rsp.Body)
 			require.Equal(t, []core.AccountsBalances{
-				{"world": core.AssetsBalances{"USD": core.NewMonetaryInt(-250), "EUR": core.NewMonetaryInt(-400), "CAD": core.NewMonetaryInt(-200)}},
+				{"world": core.AssetsBalances{"USD": big.NewInt(-250), "EUR": big.NewInt(-400), "CAD": big.NewInt(-200)}},
 			}, resp.Data)
 		})
 

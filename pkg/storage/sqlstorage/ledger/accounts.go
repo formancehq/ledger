@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -244,14 +245,14 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 
 		if asset.Valid {
 			assetsVolumes[asset.String] = core.Volumes{
-				Input:  core.NewMonetaryInt(0),
-				Output: core.NewMonetaryInt(0),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(0),
 			}
 
 			if inputStr.Valid {
-				input, err := core.ParseMonetaryInt(inputStr.String)
-				if err != nil {
-					return nil, s.error(err)
+				input, ok := new(big.Int).SetString(inputStr.String, 10)
+				if !ok {
+					panic("unable to create big int")
 				}
 				assetsVolumes[asset.String] = core.Volumes{
 					Input:  input,
@@ -260,9 +261,9 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 			}
 
 			if outputStr.Valid {
-				output, err := core.ParseMonetaryInt(outputStr.String)
-				if err != nil {
-					return nil, s.error(err)
+				output, ok := new(big.Int).SetString(outputStr.String, 10)
+				if !ok {
+					panic("unable to create big int")
 				}
 				assetsVolumes[asset.String] = core.Volumes{
 					Input:  assetsVolumes[asset.String].Input,
@@ -372,14 +373,14 @@ func (s *Store) ComputeAccount(ctx context.Context, address string) (*core.Accou
 			for _, posting := range log.Data.(core.NewTransactionLogPayload).Transaction.Postings {
 				volumes, ok := account.Volumes[posting.Asset]
 				if !ok {
-					volumes.Input = core.NewMonetaryInt(0)
-					volumes.Output = core.NewMonetaryInt(0)
+					volumes.Input = big.NewInt(0)
+					volumes.Output = big.NewInt(0)
 				}
 				switch {
 				case posting.Source == address:
-					volumes.Output = volumes.Output.Add(posting.Amount)
+					volumes.Output.Add(volumes.Output, posting.Amount)
 				case posting.Destination == address:
-					volumes.Input = volumes.Input.Add(posting.Amount)
+					volumes.Input.Add(volumes.Input, posting.Amount)
 				}
 				account.Volumes[posting.Asset] = volumes
 			}

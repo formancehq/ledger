@@ -108,10 +108,7 @@ func Upgrade(ctx context.Context, schema schema.Schema, sqlTx *schema.Tx) error 
 
 		for account, accountVolumes := range postCommitVolumes {
 			for asset, volumes := range accountVolumes {
-				aggregatedVolumes.SetVolumes(account, asset, core.Volumes{
-					Input:  volumes.Input.OrZero(),
-					Output: volumes.Output.OrZero(),
-				})
+				aggregatedVolumes.SetVolumes(account, asset, volumes.CopyWithZerosIfNeeded())
 			}
 		}
 

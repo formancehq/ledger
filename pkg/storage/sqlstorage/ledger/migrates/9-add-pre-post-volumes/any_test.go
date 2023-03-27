@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"testing"
@@ -34,35 +35,35 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "USD",
 			},
 		},
 		expectedPreCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(0),
 				},
 			},
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(0),
 				},
 			},
 		},
 		expectedPostCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(100),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(100),
 				},
 			},
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 		},
@@ -72,35 +73,35 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank2",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "USD",
 			},
 		},
 		expectedPreCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(100),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(100),
 				},
 			},
 			"bank2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(0),
 				},
 			},
 		},
 		expectedPostCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(200),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(200),
 				},
 			},
 			"bank2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 		},
@@ -110,53 +111,53 @@ var testCases = []testCase{
 			{
 				Source:      "world",
 				Destination: "bank",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "USD",
 			},
 			{
 				Source:      "world",
 				Destination: "bank2",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      big.NewInt(100),
 				Asset:       "USD",
 			},
 		},
 		expectedPreCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(200),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(200),
 				},
 			},
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 			"bank2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(100),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 		},
 		expectedPostCommitVolumes: core.AccountsAssetsVolumes{
 			"world": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(400),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(400),
 				},
 			},
 			"bank2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(200),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(200),
+					Output: big.NewInt(0),
 				},
 			},
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(200),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(200),
+					Output: big.NewInt(0),
 				},
 			},
 		},
@@ -166,53 +167,53 @@ var testCases = []testCase{
 			{
 				Source:      "bank",
 				Destination: "user:1",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      big.NewInt(10),
 				Asset:       "USD",
 			},
 			{
 				Source:      "bank",
 				Destination: "user:2",
-				Amount:      core.NewMonetaryInt(90),
+				Amount:      big.NewInt(90),
 				Asset:       "USD",
 			},
 		},
 		expectedPreCommitVolumes: core.AccountsAssetsVolumes{
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(200),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(200),
+					Output: big.NewInt(0),
 				},
 			},
 			"user:1": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(0),
 				},
 			},
 			"user:2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(0),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(0),
 				},
 			},
 		},
 		expectedPostCommitVolumes: core.AccountsAssetsVolumes{
 			"bank": {
 				"USD": {
-					Input:  core.NewMonetaryInt(200),
-					Output: core.NewMonetaryInt(100),
+					Input:  big.NewInt(200),
+					Output: big.NewInt(100),
 				},
 			},
 			"user:1": {
 				"USD": {
-					Input:  core.NewMonetaryInt(10),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(10),
+					Output: big.NewInt(0),
 				},
 			},
 			"user:2": {
 				"USD": {
-					Input:  core.NewMonetaryInt(90),
-					Output: core.NewMonetaryInt(0),
+					Input:  big.NewInt(90),
+					Output: big.NewInt(0),
 				},
 			},
 		},
