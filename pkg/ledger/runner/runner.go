@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -50,7 +49,6 @@ func (r *Runner) Execute(
 	dryRun bool,
 	logComputer logComputer,
 ) (*core.ExpandedTransaction, *core.LogHolder, error) {
-
 	inFlight, err := r.acquireInflight(ctx, script)
 	if err != nil {
 		return nil, nil, err
@@ -105,7 +103,7 @@ func (r *Runner) checkConstraints(ctx context.Context, script core.RunScript) er
 			// Log found
 			return NewConflictError("reference found in storage")
 		}
-		if err != sql.ErrNoRows {
+		if !storage.IsNotFound(err) {
 			return err
 		}
 	}
@@ -253,7 +251,7 @@ func (r *Runner) releaseInFlightWithTransaction(inFlight *inFlight, transaction 
 
 func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, compiler *numscript.Compiler, allowPastTimestamps bool) (*Runner, error) {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !storage.IsNotFound(err) {
 		return nil, err
 	}
 	var (

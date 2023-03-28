@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/ledgertesting"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/stretchr/testify/assert"
@@ -43,4 +44,14 @@ func TestConfiguration(t *testing.T) {
 	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
 	require.NoError(t, err)
 	require.Equal(t, "bar", bar)
+}
+
+func TestConfigurationError(t *testing.T) {
+	d := ledgertesting.StorageDriver(t)
+
+	require.NoError(t, d.Initialize(context.Background()))
+
+	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
+	require.Error(t, err)
+	require.True(t, storage.IsNotFound(err))
 }

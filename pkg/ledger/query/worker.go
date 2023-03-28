@@ -158,7 +158,7 @@ func (w *Worker) initLedger(ctx context.Context, ledger string) error {
 	}
 
 	lastReadLogID, err := store.GetNextLogID(ctx)
-	if err != nil {
+	if err != nil && !storage.IsNotFound(err) {
 		return errors.Wrap(err, "reading last log")
 	}
 

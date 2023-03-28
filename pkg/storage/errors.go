@@ -1,54 +1,43 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
+
+	"github.com/lib/pq"
+	"github.com/pkg/errors"
 )
 
 var (
-	ErrConfigurationNotFound = errors.New("configuration not found")
+	ErrNotFound            = errors.New("not found")
+	ErrStoreNotInitialized = errors.New("store not initialized")
 )
 
-type Code string
-
-const (
-	ConstraintFailed Code = "CONSTRAINT_FAILED"
-	TooManyClient    Code = "TOO_MANY_CLIENT"
+var (
+	// Specific pq sql errors
+	ErrConstraintFailed = pq.ErrorCode("23505")
+	ErrTooManyClient    = pq.ErrorCode("53300")
 )
+
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrNotFound)
+}
 
 type Error struct {
-	Code          Code
-	OriginalError error
+	code pq.ErrorCode
+	err  error
 }
 
-func (e Error) Is(err error) bool {
-	storageErr, ok := err.(*Error)
-	if !ok {
-		return false
-	}
-	if storageErr.Code == "" {
-		return true
-	}
-	return storageErr.Code == e.Code
-}
-
-func (e Error) Error() string {
-	return fmt.Sprintf("%s [%s]", e.OriginalError, e.Code)
-}
-
-func NewError(code Code, originalError error) *Error {
+func NewError(code pq.ErrorCode, err error) *Error {
 	return &Error{
-		Code:          code,
-		OriginalError: originalError,
+		code: code,
+		err:  err,
 	}
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("[%s] %s", e.code, e.err)
 }
 
 func IsError(err error) bool {
-	return IsErrorCode(err, "")
-}
-
-func IsErrorCode(err error, code Code) bool {
-	return errors.Is(err, &Error{
-		Code: code,
-	})
+	return errors.Is(err, &Error{})
 }

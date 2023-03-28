@@ -5,7 +5,6 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
@@ -18,8 +17,6 @@ const (
 	SQLCustomFuncMetaCompare = "meta_compare"
 )
 
-var ErrStoreNotInitialized = errors.New("Store not initialized")
-
 type Store struct {
 	schema   schema.Schema
 	onClose  func(ctx context.Context) error
@@ -28,13 +25,6 @@ type Store struct {
 	logsBatchWorker *worker.Worker[*core.Log]
 
 	isInitialized bool
-}
-
-func (s *Store) error(err error) error {
-	if err == nil {
-		return nil
-	}
-	return sqlerrors.PostgresError(err)
 }
 
 func (s *Store) Schema() schema.Schema {
