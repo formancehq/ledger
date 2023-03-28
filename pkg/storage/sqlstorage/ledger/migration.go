@@ -5,13 +5,14 @@ import (
 	"embed"
 
 	"github.com/formancehq/ledger/pkg/core"
+	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/pkg/errors"
 )
 
 func (s *Store) GetMigrationsDone(ctx context.Context) ([]core.MigrationInfo, error) {
 	migrations, err := migrations.GetMigrations(ctx, s.schema)
-	return migrations, s.error(err)
+	return migrations, sqlerrors.PostgresError(err)
 }
 
 func (s *Store) GetMigrationsAvailable() ([]core.MigrationInfo, error) {

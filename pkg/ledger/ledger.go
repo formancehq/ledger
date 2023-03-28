@@ -84,10 +84,11 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 
 func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
-	if err != nil {
+	if err != nil && !storage.IsNotFound(err) {
 		return nil, err
 	}
-	if tx == nil {
+
+	if storage.IsNotFound(err) {
 		return nil, runner.NewNotFoundError("transaction not found")
 	}
 
@@ -95,12 +96,11 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedT
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
-
 	revertedTx, err := l.store.GetTransaction(ctx, id)
-	if err != nil {
+	if err != nil && !storage.IsNotFound(err) {
 		return nil, errors.Wrap(err, fmt.Sprintf("getting transaction %d", id))
 	}
-	if revertedTx == nil {
+	if storage.IsNotFound(err) {
 		return nil, runner.NewNotFoundError(fmt.Sprintf("transaction %d not found", id))
 	}
 	if revertedTx.IsReverted() {

@@ -2,10 +2,9 @@ package system
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage"
+	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -39,16 +38,11 @@ func (s *Store) GetConfiguration(ctx context.Context, key string) (string, error
 
 	row := s.schema.QueryRowContext(ctx, query)
 	if row.Err() != nil {
-		if row.Err() != sql.ErrNoRows {
-			return "", nil
-		}
+		return "", sqlerrors.PostgresError(row.Err())
 	}
 	var value string
 	if err := row.Scan(&value); err != nil {
-		if err == sql.ErrNoRows {
-			return "", storage.ErrConfigurationNotFound
-		}
-		return "", err
+		return "", sqlerrors.PostgresError(err)
 	}
 
 	return value, nil
