@@ -52,7 +52,22 @@ var testCases = []testCase{
 		expectErrorCode: vm.ScriptErrorInsufficientFund,
 	},
 	{
-		name: "send 0$",
+		name: "send $0",
+		script: `
+			send [USD/2 0] (
+				source = @alice
+				destination = @user:001
+			)`,
+		expectResult: Result{
+			Postings: []core.Posting{
+				core.NewPosting("alice", "user:001", "USD/2", big.NewInt(0)),
+			},
+			Metadata:        map[string]any{},
+			AccountMetadata: map[string]core.Metadata{},
+		},
+	},
+	{
+		name: "send $0 world",
 		script: `
 			send [USD/2 0] (
 				source = @world
@@ -60,8 +75,7 @@ var testCases = []testCase{
 			)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				// TODO: The machine should return a posting with 0 as amount
-				//core.NewPosting("world", "user:001", "USD/2", core.NewMonetaryInt(0)),
+				core.NewPosting("world", "user:001", "USD/2", big.NewInt(0)),
 			},
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -76,8 +90,7 @@ var testCases = []testCase{
 			)`,
 		expectResult: Result{
 			Postings: []core.Posting{
-				// TODO: The machine should return a posting with 0 as amount
-				//core.NewPosting("world", "user:001", "USD/2", core.NewMonetaryInt(0)),
+				core.NewPosting("alice", "user:001", "USD/2", big.NewInt(0)),
 			},
 			Metadata:        map[string]any{},
 			AccountMetadata: map[string]core.Metadata{},
@@ -309,6 +322,63 @@ var testCases = []testCase{
 		expectResult: Result{
 			Postings: []core.Posting{
 				core.NewPosting("users:001", "users:002", "USD/2", big.NewInt(100)),
+			},
+			Metadata:        core.Metadata{},
+			AccountMetadata: map[string]core.Metadata{},
+		},
+	},
+	{
+		name: "send amount 0",
+		setup: func(t *testing.T, store storage.LedgerStore) {
+			require.NoError(t, store.EnsureAccountExists(context.Background(), "alice"))
+		},
+		script: `
+			send [USD 0] (
+				source = @alice
+				destination = @bob
+			)`,
+		expectResult: Result{
+			Postings: []core.Posting{
+				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
+			},
+			Metadata:        core.Metadata{},
+			AccountMetadata: map[string]core.Metadata{},
+		},
+	},
+	{
+		name: "send all with balance 0",
+		setup: func(t *testing.T, store storage.LedgerStore) {
+			require.NoError(t, store.EnsureAccountExists(context.Background(), "alice"))
+		},
+		script: `
+			send [USD *] (
+				source = @alice
+				destination = @bob
+			)`,
+		expectResult: Result{
+			Postings: []core.Posting{
+				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
+			},
+			Metadata:        core.Metadata{},
+			AccountMetadata: map[string]core.Metadata{},
+		},
+	},
+	{
+		name: "send account balance of 0",
+		setup: func(t *testing.T, store storage.LedgerStore) {
+			require.NoError(t, store.EnsureAccountExists(context.Background(), "alice"))
+		},
+		script: `
+			vars {
+				monetary $bal = balance(@alice, USD)
+			}
+			send $bal (
+				source = @alice
+				destination = @bob
+			)`,
+		expectResult: Result{
+			Postings: []core.Posting{
+				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
 			},
 			Metadata:        core.Metadata{},
 			AccountMetadata: map[string]core.Metadata{},
