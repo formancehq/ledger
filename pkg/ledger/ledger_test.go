@@ -8,11 +8,6 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
-	"github.com/formancehq/ledger/pkg/ledger/lock"
-	"github.com/formancehq/ledger/pkg/ledger/query"
-	"github.com/formancehq/ledger/pkg/ledger/runner"
-	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -171,32 +166,11 @@ func TestVeryBigTransaction(t *testing.T) {
 }
 
 func BenchmarkSequentialWrites(b *testing.B) {
-	driver := ledgertesting.StorageDriver(b)
-	require.NoError(b, driver.Initialize(context.Background()))
-
 	ledgerName := uuid.NewString()
-	store, _, err := driver.GetLedgerStore(context.Background(), ledgerName, true)
+	resolver := newResolver(b)
+
+	ledger, err := resolver.GetLedger(context.TODO(), ledgerName)
 	require.NoError(b, err)
-
-	_, err = store.Initialize(context.Background())
-	require.NoError(b, err)
-
-	cacheManager := cache.NewManager(driver)
-	cache, err := cacheManager.ForLedger(context.Background(), ledgerName)
-	require.NoError(b, err)
-
-	locker := lock.NewInMemory()
-
-	runnerManager := runner.NewManager(driver, locker, cacheManager, false)
-	runner, err := runnerManager.ForLedger(context.Background(), ledgerName)
-	require.NoError(b, err)
-
-	queryWorker := query.NewWorker(query.DefaultWorkerConfig, driver, query.NewNoOpMonitor())
-	go func() {
-		require.NoError(b, queryWorker.Run(context.Background()))
-	}()
-
-	ledger := New(store, cache, runner, locker, queryWorker)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -213,32 +187,10 @@ func BenchmarkSequentialWrites(b *testing.B) {
 }
 
 func BenchmarkParallelWrites(b *testing.B) {
-	driver := ledgertesting.StorageDriver(b)
-	require.NoError(b, driver.Initialize(context.Background()))
+	resolver := newResolver(b)
 
-	ledgerName := uuid.NewString()
-	store, _, err := driver.GetLedgerStore(context.Background(), ledgerName, true)
+	ledger, err := resolver.GetLedger(context.Background(), uuid.NewString())
 	require.NoError(b, err)
-
-	_, err = store.Initialize(context.Background())
-	require.NoError(b, err)
-
-	cacheManager := cache.NewManager(driver)
-	cache, err := cacheManager.ForLedger(context.Background(), ledgerName)
-	require.NoError(b, err)
-
-	locker := lock.NewInMemory()
-
-	runnerManager := runner.NewManager(driver, locker, cacheManager, false)
-	runner, err := runnerManager.ForLedger(context.Background(), ledgerName)
-	require.NoError(b, err)
-
-	queryWorker := query.NewWorker(query.DefaultWorkerConfig, driver, query.NewNoOpMonitor())
-	go func() {
-		require.NoError(b, queryWorker.Run(context.Background()))
-	}()
-
-	ledger := New(store, cache, runner, locker, queryWorker)
 
 	b.ResetTimer()
 	wg := sync.WaitGroup{}

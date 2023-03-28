@@ -15,10 +15,8 @@ import (
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/query"
-	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -208,15 +206,12 @@ func RunTest(t *testing.T, callback func(api chi.Router, storageDriver storage.D
 	storageDriver := ledgertesting.StorageDriver(t)
 	require.NoError(t, storageDriver.Initialize(context.Background()))
 
-	cacheManager := cache.NewManager(storageDriver)
-	lock := lock.NewInMemory()
-	runnerManager := runner.NewManager(storageDriver, lock, cacheManager, false)
 	queryWorker := query.NewWorker(query.DefaultWorkerConfig, storageDriver, query.NewNoOpMonitor())
 	go func() {
 		require.NoError(t, queryWorker.Run(context.Background()))
 	}()
-	resolver := ledger.NewResolver(storageDriver, lock, cacheManager, runnerManager, queryWorker)
 
+	resolver := ledger.NewResolver(storageDriver, lock.NewInMemory(), queryWorker, false)
 	router := routes.NewRouter(storageDriver, "latest", resolver,
 		logging.FromContext(context.Background()), &health.HealthController{})
 
