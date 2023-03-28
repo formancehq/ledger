@@ -5,6 +5,8 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/storage"
+	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -23,7 +25,7 @@ type Volumes struct {
 
 func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
 	if !s.isInitialized {
-		return ErrStoreNotInitialized
+		return storage.ErrStoreNotInitialized
 	}
 
 	for account, accountVolumes := range volumes {
@@ -43,7 +45,7 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVo
 
 			_, err := s.schema.ExecContext(ctx, query)
 			if err != nil {
-				return s.error(err)
+				return sqlerrors.PostgresError(err)
 			}
 		}
 	}
@@ -53,7 +55,7 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVo
 
 func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
 	if !s.isInitialized {
-		return nil, ErrStoreNotInitialized
+		return nil, storage.ErrStoreNotInitialized
 	}
 
 	query := s.schema.NewSelect(volumesTableName).
@@ -64,7 +66,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 
 	rows, err := s.schema.QueryContext(ctx, query)
 	if err != nil {
-		return nil, s.error(err)
+		return nil, sqlerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -76,7 +78,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 			outputStr string
 		)
 		if err := rows.Scan(&asset, &inputStr, &outputStr); err != nil {
-			return nil, s.error(err)
+			return nil, sqlerrors.PostgresError(err)
 		}
 
 		input, ok := new(big.Int).SetString(inputStr, 10)
@@ -95,7 +97,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, s.error(err)
+		return nil, sqlerrors.PostgresError(err)
 	}
 
 	return volumes, nil

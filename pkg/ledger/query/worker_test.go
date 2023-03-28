@@ -78,6 +78,10 @@ func TestWorker(t *testing.T) {
 		"category": "gold",
 	}
 
+	nextLogID, err := ledgerStore.GetNextLogID(context.Background())
+	require.True(t, storage.IsNotFound(err))
+	require.Equal(t, uint64(0), nextLogID)
+
 	logs := []core.Log{
 		core.NewTransactionLog(tx0, nil),
 		core.NewTransactionLog(tx1, nil),

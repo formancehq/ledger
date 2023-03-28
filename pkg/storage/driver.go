@@ -35,7 +35,6 @@ type LedgerStore interface {
 	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
 	UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error
 	EnsureAccountExists(ctx context.Context, account string) error
-	GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error)
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
 	GetTransactions(context.Context, TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error)
 	GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error)

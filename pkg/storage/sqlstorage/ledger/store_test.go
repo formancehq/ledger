@@ -31,6 +31,7 @@ func TestStore(t *testing.T) {
 		{name: "CountAccounts", fn: testCountAccounts},
 		{name: "GetAssetsVolumes", fn: testGetAssetsVolumes},
 		{name: "GetAccounts", fn: testGetAccounts},
+		{name: "GetAccountNotFound", fn: testGetAccountNotFound},
 		{name: "Transactions", fn: testTransactions},
 		{name: "GetTransaction", fn: testGetTransaction},
 		{name: "GetBalances", fn: testGetBalances},
@@ -260,6 +261,12 @@ func testUpdateAccountMetadata(t *testing.T, store storage.LedgerStore) {
 	account, err := store.GetAccount(context.Background(), "central_bank")
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", account.Metadata["foo"])
+}
+
+func testGetAccountNotFound(t *testing.T, store storage.LedgerStore) {
+	account, err := store.GetAccount(context.Background(), "account_not_existing")
+	require.True(t, storage.IsNotFound(err))
+	require.Nil(t, account)
 }
 
 func testCountAccounts(t *testing.T, store storage.LedgerStore) {
@@ -565,10 +572,14 @@ func TestInitializeStore(t *testing.T) {
 }
 
 func testGetLastLog(t *testing.T, store storage.LedgerStore) {
+	lastLog, err := store.GetLastLog(context.Background())
+	require.True(t, storage.IsNotFound(err))
+	require.Nil(t, lastLog)
+
 	logTx := core.NewTransactionLog(tx1.Transaction, nil)
 	require.NoError(t, store.AppendLog(context.Background(), &logTx))
 
-	lastLog, err := store.GetLastLog(context.Background())
+	lastLog, err = store.GetLastLog(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
 
