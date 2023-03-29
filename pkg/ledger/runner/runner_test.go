@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
+	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -101,7 +102,7 @@ var testCases = []testCase{
 				destination = @mint
 			)`,
 		reference:     "tx_ref",
-		expectedError: NewConflictError(""),
+		expectedError: state.NewConflictError(""),
 	},
 	{
 		name: "set reference",
@@ -224,7 +225,7 @@ func TestExecuteScript(t *testing.T) {
 					require.Equal(t, expectedLog.ComputeHash(previous), logs[ind])
 				}
 
-				require.Equal(t, tc.expectedTx.Timestamp, runner.lastTransactionDate)
+				require.Equal(t, tc.expectedTx.Timestamp, runner.state.GetMoreRecentTransactionDate())
 
 				for address, account := range tc.expectedAccounts {
 					accountFromCache, err := runner.cache.GetAccountWithVolumes(context.Background(), address)

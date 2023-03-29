@@ -3,15 +3,14 @@ package runner
 import (
 	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
+	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -19,26 +18,15 @@ import (
 )
 
 type Runner struct {
-	mu    sync.Mutex
 	store storage.LedgerStore
 	// cache is used to store accounts
 	cache *cache.Cache
-	// inFlights container in flight transactions
-	inFlights map[*inFlight]struct{}
-	// lastTransactionDate store the more recent processed transactions
-	// the matching log could be written or not
-	lastTransactionDate core.Time
 	// nextTxID store the next transaction id to be used
 	nextTxID *atomic.Uint64
 	// locker is used to local a set of account
-	locker lock.Locker
-	// allowPastTimestamps allow to insert transactions in the past
-	allowPastTimestamps bool
-	compiler            *numscript.Compiler
-}
-
-func (r *Runner) GetMoreRecentTransactionDate() core.Time {
-	return r.lastTransactionDate
+	locker   lock.Locker
+	compiler *numscript.Compiler
+	state    *state.State
 }
 
 type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log
@@ -49,11 +37,19 @@ func (r *Runner) Execute(
 	dryRun bool,
 	logComputer logComputer,
 ) (*core.ExpandedTransaction, *core.LogHolder, error) {
-	inFlight, err := r.acquireInflight(ctx, script)
+
+	if script.Plain == "" {
+		return nil, nil, vm.NewScriptError(vm.ScriptErrorNoScript, "no script to execute")
+	}
+
+	reserve, err := r.state.Reserve(ctx, state.ReserveRequest{
+		Timestamp: script.Timestamp,
+		Reference: script.Reference,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	defer r.releaseInFlight(inFlight)
+	defer reserve.Clear(nil)
 
 	transaction, logHolder, err := r.execute(ctx, script, logComputer, dryRun)
 	if err != nil {
@@ -67,69 +63,9 @@ func (r *Runner) Execute(
 		return nil, nil, err
 	}
 
-	r.releaseInFlightWithTransaction(inFlight, &transaction.Transaction)
+	reserve.Clear(&transaction.Transaction)
 
 	return transaction, logHolder, nil
-}
-
-func (r *Runner) checkConstraints(ctx context.Context, script core.RunScript) error {
-	var validationError = func(date core.Time) error {
-		return NewValidationError(fmt.Sprintf(
-			"cannot pass a timestamp prior to the last transaction: %s (passed) is %s before %s (last)",
-			script.Timestamp.Format(time.RFC3339Nano),
-			date.Sub(script.Timestamp),
-			date.Format(time.RFC3339Nano)))
-	}
-	for inFlight := range r.inFlights {
-		if !r.allowPastTimestamps {
-			if inFlight.timestamp.After(script.Timestamp) {
-				return validationError(inFlight.timestamp)
-			}
-		}
-		if inFlight.reference != "" && inFlight.reference == script.Reference {
-			return NewConflictError("reference already used, in flight occurring")
-		}
-	}
-
-	if !r.allowPastTimestamps {
-		if r.lastTransactionDate.After(script.Timestamp) {
-			return validationError(script.Timestamp)
-		}
-	}
-
-	if script.Reference != "" {
-		_, err := r.store.ReadLogWithReference(ctx, script.Reference)
-		if err == nil {
-			// Log found
-			return NewConflictError("reference found in storage")
-		}
-		if !storage.IsNotFound(err) {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *Runner) acquireInflight(ctx context.Context, script core.RunScript) (*inFlight, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	script.WithDefaultValues()
-	if script.Plain == "" {
-		return nil, vm.NewScriptError(vm.ScriptErrorNoScript, "no script to execute")
-	}
-
-	if err := r.checkConstraints(ctx, script); err != nil {
-		return nil, err
-	}
-
-	ret := &inFlight{
-		reference: script.Reference,
-		timestamp: script.Timestamp,
-	}
-	r.inFlights[ret] = struct{}{}
-
-	return ret, nil
 }
 
 func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer logComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
@@ -180,7 +116,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 
 	if len(result.Postings) == 0 {
 		release()
-		return nil, nil, NewValidationError("transaction has no postings")
+		return nil, nil, newErrNoPostings()
 	}
 
 	vAggr := aggregator.Volumes(r.cache)
@@ -228,25 +164,8 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	return expandedTx, logHolder, nil
 }
 
-func (r *Runner) removeInFlight(inFlight *inFlight) {
-	delete(r.inFlights, inFlight)
-}
-
-func (r *Runner) releaseInFlight(inFlight *inFlight) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.removeInFlight(inFlight)
-}
-
-func (r *Runner) releaseInFlightWithTransaction(inFlight *inFlight, transaction *core.Transaction) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.removeInFlight(inFlight)
-	if transaction.Timestamp.After(r.lastTransactionDate) {
-		r.lastTransactionDate = transaction.Timestamp
-	}
+func (r *Runner) GetState() *state.State {
+	return r.state
 }
 
 func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, compiler *numscript.Compiler, allowPastTimestamps bool) (*Runner, error) {
@@ -276,13 +195,11 @@ func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, comp
 		nextTxID.Add(1)
 	}
 	return &Runner{
-		store:               store,
-		cache:               cache,
-		inFlights:           map[*inFlight]struct{}{},
-		locker:              locker,
-		allowPastTimestamps: allowPastTimestamps,
-		nextTxID:            nextTxID,
-		lastTransactionDate: lastTransactionDate,
-		compiler:            compiler,
+		state:    state.New(store, allowPastTimestamps, lastTransactionDate),
+		store:    store,
+		cache:    cache,
+		locker:   locker,
+		nextTxID: nextTxID,
+		compiler: compiler,
 	}, nil
 }
