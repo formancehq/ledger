@@ -9,8 +9,15 @@ import (
 )
 
 type Schema struct {
-	*bun.DB
+	bun.IDB
 	name string
+}
+
+func NewSchema(db bun.IDB, name string) Schema {
+	return Schema{
+		IDB:  db,
+		name: name,
+	}
 }
 
 func (s *Schema) Name() string {
@@ -40,7 +47,7 @@ func (s *Schema) Delete(ctx context.Context) error {
 }
 
 func (s *Schema) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
-	bunTx, err := s.DB.BeginTx(ctx, opts)
+	bunTx, err := s.IDB.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -55,30 +62,30 @@ func (s *Schema) Flavor() string {
 }
 
 func (s *Schema) Close(ctx context.Context) error {
-	// Do not close the DB, it is shared with other schemas
+	// Do not close the IDB, it is shared with other schemas
 	return nil
 }
 
 // Override all bun methods to use the schema name
 
 func (s *Schema) NewInsert(tableName string) *bun.InsertQuery {
-	return s.DB.NewInsert().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
+	return s.IDB.NewInsert().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
 }
 
 func (s *Schema) NewUpdate(tableName string) *bun.UpdateQuery {
-	return s.DB.NewUpdate().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
+	return s.IDB.NewUpdate().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
 }
 
 func (s *Schema) NewSelect(tableName string) *bun.SelectQuery {
-	return s.DB.NewSelect().ModelTableExpr("?0.?1 as ?1", bun.Ident(s.Name()), bun.Ident(tableName))
+	return s.IDB.NewSelect().ModelTableExpr("?0.?1 as ?1", bun.Ident(s.Name()), bun.Ident(tableName))
 }
 
 func (s *Schema) NewCreateTable(tableName string) *bun.CreateTableQuery {
-	return s.DB.NewCreateTable().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
+	return s.IDB.NewCreateTable().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
 }
 
 func (s *Schema) NewDelete(tableName string) *bun.DeleteQuery {
-	return s.DB.NewDelete().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
+	return s.IDB.NewDelete().ModelTableExpr("?0.?1", bun.Ident(s.Name()), bun.Ident(tableName))
 }
 
 type DB interface {
@@ -105,7 +112,7 @@ func (p *postgresDB) Initialize(ctx context.Context) error {
 
 func (p *postgresDB) Schema(ctx context.Context, name string) (Schema, error) {
 	return Schema{
-		DB:   p.db,
+		IDB:  p.db,
 		name: name,
 	}, nil
 }

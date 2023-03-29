@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -64,6 +65,36 @@ func (s *Store) Close(ctx context.Context) error {
 
 func (s *Store) IsInitialized() bool {
 	return s.isInitialized
+}
+
+func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context, store storage.LedgerStore) error) error {
+	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Create a fake store to use the tx instead of the bun.DB struct
+	newStore := NewStore(
+		ctx,
+		schema.NewSchema(tx.Tx, s.schema.Name()),
+		s.onClose,
+		s.onDelete,
+	)
+
+	newStore.isInitialized = s.isInitialized
+
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	err = f(ctx, newStore)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func NewStore(

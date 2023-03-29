@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
@@ -34,7 +33,8 @@ func LedgerMiddleware(resolver *ledger.Resolver) func(handler http.Handler) http
 				apierrors.ResponseError(w, r, err)
 				return
 			}
-			defer l.Close(context.Background())
+			// TODO(polo/gfyrag): close ledger if not used for x minutes
+			// defer l.Close(context.Background())
 
 			r = r.WithContext(controllers.ContextWithLedger(r.Context(), l))
 

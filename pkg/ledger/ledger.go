@@ -42,6 +42,11 @@ func (l *Ledger) Close(ctx context.Context) error {
 	if err := l.store.Close(ctx); err != nil {
 		return errors.Wrap(err, "closing store")
 	}
+
+	if err := l.queryWorker.Stop(ctx); err != nil {
+		return errors.Wrap(err, "stopping query worker")
+	}
+
 	return nil
 }
 

@@ -23,31 +23,40 @@ type Volumes struct {
 	Output  uint64 `bun:"output,type:numeric"`
 }
 
-func (s *Store) UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
+func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAssetsVolumes) error {
 	if !s.isInitialized {
 		return storage.ErrStoreNotInitialized
 	}
 
-	for account, accountVolumes := range volumes {
-		for asset, volumes := range accountVolumes {
-			v := &Volumes{
-				Account: account,
-				Asset:   asset,
-				Input:   volumes.Input.Uint64(),
-				Output:  volumes.Output.Uint64(),
-			}
-
-			query := s.schema.NewInsert(volumesTableName).
-				Model(v).
-				On("CONFLICT (account, asset) DO UPDATE").
-				Set("input = EXCLUDED.input, output = EXCLUDED.output").
-				String()
-
-			_, err := s.schema.ExecContext(ctx, query)
-			if err != nil {
-				return sqlerrors.PostgresError(err)
+	volumesMap := make(map[string]*Volumes)
+	for _, vs := range volumes {
+		for account, accountVolumes := range vs {
+			for asset, volumes := range accountVolumes {
+				// De-duplicate same volumes to only have the last version
+				volumesMap[account+asset] = &Volumes{
+					Account: account,
+					Asset:   asset,
+					Input:   volumes.Input.Uint64(),
+					Output:  volumes.Output.Uint64(),
+				}
 			}
 		}
+	}
+
+	vls := make([]*Volumes, 0, len(volumes))
+	for _, v := range volumesMap {
+		vls = append(vls, v)
+	}
+
+	query := s.schema.NewInsert(volumesTableName).
+		Model(&vls).
+		On("CONFLICT (account, asset) DO UPDATE").
+		Set("input = EXCLUDED.input, output = EXCLUDED.output").
+		String()
+
+	_, err := s.schema.ExecContext(ctx, query)
+	if err != nil {
+		return sqlerrors.PostgresError(err)
 	}
 
 	return nil

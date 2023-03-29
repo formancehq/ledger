@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -78,5 +79,75 @@ func TestAccounts(t *testing.T) {
 
 		_, err := store.GetAccounts(context.Background(), q)
 		assert.NoError(t, err, "balance operator filter should not fail")
+	})
+
+	t.Run("success account insertion", func(t *testing.T) {
+		addr := "test:account"
+		metadata := core.Metadata(map[string]any{
+			"foo": "bar",
+		})
+
+		err := store.UpdateAccountMetadata(context.Background(), addr, metadata)
+		assert.NoError(t, err, "account insertion should not fail")
+
+		account, err := store.GetAccount(context.Background(), addr)
+		assert.NoError(t, err, "account retrieval should not fail")
+
+		assert.Equal(t, addr, account.Address, "account address should match")
+		assert.Equal(t, metadata, account.Metadata, "account metadata should match")
+	})
+
+	t.Run("success multiple account insertions", func(t *testing.T) {
+		accounts := []core.Account{
+			{
+				Address:  "test:account1",
+				Metadata: core.Metadata(map[string]any{"foo1": "bar1"}),
+			},
+			{
+				Address:  "test:account2",
+				Metadata: core.Metadata(map[string]any{"foo2": "bar2"}),
+			},
+			{
+				Address:  "test:account3",
+				Metadata: core.Metadata(map[string]any{"foo3": "bar3"}),
+			},
+		}
+
+		err := store.UpdateAccountsMetadata(context.Background(), accounts)
+		assert.NoError(t, err, "account insertion should not fail")
+
+		for _, account := range accounts {
+			acc, err := store.GetAccount(context.Background(), account.Address)
+			assert.NoError(t, err, "account retrieval should not fail")
+
+			assert.Equal(t, account.Address, acc.Address, "account address should match")
+			assert.Equal(t, account.Metadata, acc.Metadata, "account metadata should match")
+		}
+	})
+
+	t.Run("success ensure account exists", func(t *testing.T) {
+		addr := "test:account:4"
+
+		err := store.EnsureAccountExists(context.Background(), addr)
+		assert.NoError(t, err, "account insertion should not fail")
+
+		account, err := store.GetAccount(context.Background(), addr)
+		assert.NoError(t, err, "account retrieval should not fail")
+
+		assert.Equal(t, addr, account.Address, "account address should match")
+	})
+
+	t.Run("success ensure mulitple accounts exist", func(t *testing.T) {
+		addrs := []string{"test:account:4", "test:account:5", "test:account:6"}
+
+		err := store.EnsureAccountsExist(context.Background(), addrs)
+		assert.NoError(t, err, "account insertion should not fail")
+
+		for _, addr := range addrs {
+			account, err := store.GetAccount(context.Background(), addr)
+			assert.NoError(t, err, "account retrieval should not fail")
+
+			assert.Equal(t, addr, account.Address, "account address should match")
+		}
 	})
 }
