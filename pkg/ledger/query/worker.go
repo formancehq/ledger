@@ -42,7 +42,6 @@ type Worker struct {
 	errorChan    chan error
 	stopChan     chan chan struct{}
 
-	driver             storage.Driver
 	store              storage.LedgerStore
 	monitor            monitor.Monitor
 	lastProcessedLogID *uint64
@@ -125,7 +124,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 }
 
 func (w *Worker) run() error {
-	if err := w.initLedgers(w.ctx); err != nil {
+	if err := w.initLedger(w.ctx); err != nil {
 		if err == context.Canceled {
 			logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
 		} else {
@@ -236,40 +235,17 @@ func (w *Worker) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (w *Worker) initLedgers(ctx context.Context) error {
-	ledgers, err := w.driver.GetSystemStore().ListLedgers(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, ledger := range ledgers {
-		if err := w.initLedger(ctx, ledger); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (w *Worker) initLedger(ctx context.Context, ledger string) error {
-	store, _, err := w.driver.GetLedgerStore(ctx, ledger, false)
-	if err != nil && err != storage.ErrLedgerStoreNotFound {
-		return err
-	}
-	if err == storage.ErrLedgerStoreNotFound {
+func (w *Worker) initLedger(ctx context.Context) error {
+	if !w.store.IsInitialized() {
 		return nil
 	}
 
-	if !store.IsInitialized() {
-		return nil
-	}
-
-	lastReadLogID, err := store.GetNextLogID(ctx)
+	lastReadLogID, err := w.store.GetNextLogID(ctx)
 	if err != nil && !storage.IsNotFound(err) {
 		return errors.Wrap(err, "reading last log")
 	}
 
-	logs, err := store.ReadLogsStartingFromID(ctx, lastReadLogID)
+	logs, err := w.store.ReadLogsStartingFromID(ctx, lastReadLogID)
 	if err != nil {
 		return errors.Wrap(err, "reading logs since last ID")
 	}
@@ -282,7 +258,7 @@ func (w *Worker) initLedger(ctx context.Context, ledger string) error {
 		return errors.Wrap(err, "processing logs")
 	}
 
-	if err := store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
+	if err := w.store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
 		return errors.Wrap(err, "updating last read log")
 	}
 	lastProcessedLogID := logs[len(logs)-1].ID
@@ -479,7 +455,7 @@ func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder, store storag
 	}
 }
 
-func NewWorker(config WorkerConfig, driver storage.Driver, store storage.LedgerStore, monitor monitor.Monitor) *Worker {
+func NewWorker(config WorkerConfig, store storage.LedgerStore, monitor monitor.Monitor) *Worker {
 	return &Worker{
 		pending:      make([]*core.LogHolder, 0),
 		jobs:         make(chan []*core.LogHolder),
@@ -489,7 +465,6 @@ func NewWorker(config WorkerConfig, driver storage.Driver, store storage.LedgerS
 		stopChan:     make(chan chan struct{}),
 		WorkerConfig: config,
 		store:        store,
-		driver:       driver,
 		monitor:      monitor,
 	}
 }

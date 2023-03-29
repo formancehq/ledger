@@ -69,7 +69,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 		queryWorker := query.NewWorker(query.WorkerConfig{
 			ChanSize: 1024,
-		}, r.storageDriver, store, r.monitor)
+		}, store, r.monitor)
 
 		go func() {
 			if err := queryWorker.Run(logging.ContextWithLogger(
