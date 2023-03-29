@@ -26,31 +26,41 @@ type LedgerStore interface {
 	IsInitialized() bool
 	Name() string
 
+	RunInTransaction(ctx context.Context, f func(ctx context.Context, store LedgerStore) error) error
+
+	AppendLog(context.Context, *core.Log) error
 	GetNextLogID(ctx context.Context) (uint64, error)
 	ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error)
 	UpdateNextLogID(ctx context.Context, id uint64) error
+	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
+	GetLastLog(context.Context) (*core.Log, error)
+	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
+	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
+
 	InsertTransactions(ctx context.Context, transaction ...core.ExpandedTransaction) error
-	UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata) error
 	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error
-	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
-	UpdateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error
-	EnsureAccountExists(ctx context.Context, account string) error
+	UpdateTransactionsMetadata(ctx context.Context, txs ...core.TransactionWithMetadata) error
 	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
 	GetTransactions(context.Context, TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error)
 	GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error)
-	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
-	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
+
+	UpdateAccountMetadata(ctx context.Context, id string, metadata core.Metadata) error
+	UpdateAccountsMetadata(ctx context.Context, accounts []core.Account) error
+	EnsureAccountExists(ctx context.Context, account string) error
+	EnsureAccountsExist(ctx context.Context, accounts []string) error
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (api.Cursor[core.Account], error)
+	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
+	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
+
+	UpdateVolumes(ctx context.Context, volumes ...core.AccountsAssetsVolumes) error
+	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
+
 	GetBalances(context.Context, BalancesQuery) (api.Cursor[core.AccountsBalances], error)
 	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-	GetLastLog(context.Context) (*core.Log, error)
-	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
-	AppendLog(context.Context, *core.Log) error
+
 	GetMigrationsAvailable() ([]core.MigrationInfo, error)
 	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
-	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
-	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
 }
 
 type Driver interface {

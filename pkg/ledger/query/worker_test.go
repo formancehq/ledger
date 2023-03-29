@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -32,9 +33,9 @@ func TestWorker(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, modified)
 
-	worker := NewWorker(workerConfig{
+	worker := NewWorker(WorkerConfig{
 		ChanSize: 1024,
-	}, driver, NewNoOpMonitor())
+	}, driver, ledgerStore, monitor.NewNoOpMonitor())
 	go func() {
 		require.NoError(t, worker.Run(context.Background()))
 	}()
