@@ -35,7 +35,7 @@ func TestWorker(t *testing.T) {
 
 	worker := NewWorker(WorkerConfig{
 		ChanSize: 1024,
-	}, driver, ledgerStore, monitor.NewNoOpMonitor())
+	}, ledgerStore, monitor.NewNoOpMonitor())
 	go func() {
 		require.NoError(t, worker.Run(context.Background()))
 	}()
