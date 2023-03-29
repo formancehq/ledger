@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
+	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
@@ -50,11 +52,14 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 
 func coreErrorToErrorCode(err error) (int, string, string) {
 	switch {
-	case runner.IsConflictError(err):
+	case state.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
-	case runner.IsValidationError(err):
+	case
+		ledger.IsValidationError(err),
+		state.IsPastTransaction(err),
+		runner.IsNoPostingsError(err):
 		return http.StatusBadRequest, ErrValidation, ""
-	case runner.IsNotFoundError(err):
+	case ledger.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
 	// TODO(gfyrag): Those error codes are copied from vm package. We need to clean this
 	case vm.IsScriptErrorWithCode(err, ErrScriptNoScript),

@@ -84,27 +84,27 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 
 func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
-	if err != nil && !storage.IsNotFound(err) {
-		return nil, err
-	}
-
 	if storage.IsNotFound(err) {
-		return nil, runner.NewNotFoundError("transaction not found")
+		return nil, NewErrNotFound("transaction not found")
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return tx, nil
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil && !storage.IsNotFound(err) {
 		return nil, errors.Wrap(err, fmt.Sprintf("getting transaction %d", id))
 	}
 	if storage.IsNotFound(err) {
-		return nil, runner.NewNotFoundError(fmt.Sprintf("transaction %d not found", id))
+		return nil, NewErrNotFound(fmt.Sprintf("transaction %d not found", id))
 	}
 	if revertedTx.IsReverted() {
-		return nil, runner.NewValidationError(fmt.Sprintf("transaction %d already reverted", id))
+		return nil, NewValidationError(fmt.Sprintf("transaction %d already reverted", id))
 	}
 
 	rt := revertedTx.Reverse()
@@ -155,11 +155,11 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	}
 
 	if targetType == "" {
-		return runner.NewValidationError("empty target type")
+		return NewValidationError("empty target type")
 	}
 
 	if targetID == "" {
-		return runner.NewValidationError("empty target id")
+		return NewValidationError("empty target id")
 	}
 
 	at := core.Now()
@@ -202,7 +202,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 			Metadata:   m,
 		})
 	default:
-		return runner.NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
+		return NewValidationError(fmt.Sprintf("unknown target type '%s'", targetType))
 	}
 	if err != nil {
 		return err

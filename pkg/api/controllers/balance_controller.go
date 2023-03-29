@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
-	"github.com/formancehq/ledger/pkg/ledger/runner"
+	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -37,21 +37,21 @@ func GetBalances(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("after") != "" ||
 			r.URL.Query().Get("address") != "" ||
 			r.URL.Query().Get(QueryKeyPageSize) != "" {
-			apierrors.ResponseError(w, r, runner.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
 		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
 		if err != nil {
-			apierrors.ResponseError(w, r, runner.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := ledgerstore.BalancesPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, runner.NewValidationError(
+			apierrors.ResponseError(w, r, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
