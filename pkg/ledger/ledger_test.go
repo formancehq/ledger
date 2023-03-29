@@ -121,7 +121,7 @@ func TestRevertTransaction(t *testing.T) {
 		}, revertTx.TransactionData.Postings)
 
 		require.EqualValues(t, fmt.Sprintf("%d", tx.ID), revertTx.Metadata[core.RevertMetadataSpecKey()])
-		require.Equal(t, revertTx.Timestamp, l.runner.GetMoreRecentTransactionDate())
+		require.Equal(t, revertTx.Timestamp, l.runner.GetState().GetMoreRecentTransactionDate())
 
 		account, err := l.dbCache.GetAccountWithVolumes(context.Background(), "payments:001")
 		require.NoError(t, err)
