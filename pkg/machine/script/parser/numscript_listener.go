@@ -44,13 +44,13 @@ type NumScriptListener interface {
 	// EnterExprVariable is called when entering the ExprVariable production.
 	EnterExprVariable(c *ExprVariableContext)
 
-	// EnterAllotmentPortionConst is called when entering the allotmentPortionConst production.
+	// EnterAllotmentPortionConst is called when entering the AllotmentPortionConst production.
 	EnterAllotmentPortionConst(c *AllotmentPortionConstContext)
 
-	// EnterAllotmentPortionVar is called when entering the allotmentPortionVar production.
+	// EnterAllotmentPortionVar is called when entering the AllotmentPortionVar production.
 	EnterAllotmentPortionVar(c *AllotmentPortionVarContext)
 
-	// EnterAllotmentPortionRemaining is called when entering the allotmentPortionRemaining production.
+	// EnterAllotmentPortionRemaining is called when entering the AllotmentPortionRemaining production.
 	EnterAllotmentPortionRemaining(c *AllotmentPortionRemainingContext)
 
 	// EnterDestinationInOrder is called when entering the destinationInOrder production.
@@ -59,10 +59,10 @@ type NumScriptListener interface {
 	// EnterDestinationAllotment is called when entering the destinationAllotment production.
 	EnterDestinationAllotment(c *DestinationAllotmentContext)
 
-	// EnterIsDestination is called when entering the isDestination production.
+	// EnterIsDestination is called when entering the IsDestination production.
 	EnterIsDestination(c *IsDestinationContext)
 
-	// EnterIsKept is called when entering the isKept production.
+	// EnterIsKept is called when entering the IsKept production.
 	EnterIsKept(c *IsKeptContext)
 
 	// EnterDestAccount is called when entering the DestAccount production.
@@ -176,13 +176,13 @@ type NumScriptListener interface {
 	// ExitExprVariable is called when exiting the ExprVariable production.
 	ExitExprVariable(c *ExprVariableContext)
 
-	// ExitAllotmentPortionConst is called when exiting the allotmentPortionConst production.
+	// ExitAllotmentPortionConst is called when exiting the AllotmentPortionConst production.
 	ExitAllotmentPortionConst(c *AllotmentPortionConstContext)
 
-	// ExitAllotmentPortionVar is called when exiting the allotmentPortionVar production.
+	// ExitAllotmentPortionVar is called when exiting the AllotmentPortionVar production.
 	ExitAllotmentPortionVar(c *AllotmentPortionVarContext)
 
-	// ExitAllotmentPortionRemaining is called when exiting the allotmentPortionRemaining production.
+	// ExitAllotmentPortionRemaining is called when exiting the AllotmentPortionRemaining production.
 	ExitAllotmentPortionRemaining(c *AllotmentPortionRemainingContext)
 
 	// ExitDestinationInOrder is called when exiting the destinationInOrder production.
@@ -191,10 +191,10 @@ type NumScriptListener interface {
 	// ExitDestinationAllotment is called when exiting the destinationAllotment production.
 	ExitDestinationAllotment(c *DestinationAllotmentContext)
 
-	// ExitIsDestination is called when exiting the isDestination production.
+	// ExitIsDestination is called when exiting the IsDestination production.
 	ExitIsDestination(c *IsDestinationContext)
 
-	// ExitIsKept is called when exiting the isKept production.
+	// ExitIsKept is called when exiting the IsKept production.
 	ExitIsKept(c *IsKeptContext)
 
 	// ExitDestAccount is called when exiting the DestAccount production.

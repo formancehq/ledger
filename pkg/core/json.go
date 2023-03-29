@@ -60,6 +60,9 @@ func NewValueFromJSON(typ Type, data json.RawMessage) (*Value, error) {
 		if err := json.Unmarshal(data, &asset); err != nil {
 			return nil, err
 		}
+		if err := ParseAsset(asset); err != nil {
+			return nil, errors.Wrapf(err, "value %s", asset.String())
+		}
 		value = asset
 	case TypeNumber:
 		var number Number
