@@ -93,23 +93,23 @@ func (s *BaseNumScriptListener) EnterExprVariable(ctx *ExprVariableContext) {}
 // ExitExprVariable is called when production ExprVariable is exited.
 func (s *BaseNumScriptListener) ExitExprVariable(ctx *ExprVariableContext) {}
 
-// EnterAllotmentPortionConst is called when production allotmentPortionConst is entered.
+// EnterAllotmentPortionConst is called when production AllotmentPortionConst is entered.
 func (s *BaseNumScriptListener) EnterAllotmentPortionConst(ctx *AllotmentPortionConstContext) {}
 
-// ExitAllotmentPortionConst is called when production allotmentPortionConst is exited.
+// ExitAllotmentPortionConst is called when production AllotmentPortionConst is exited.
 func (s *BaseNumScriptListener) ExitAllotmentPortionConst(ctx *AllotmentPortionConstContext) {}
 
-// EnterAllotmentPortionVar is called when production allotmentPortionVar is entered.
+// EnterAllotmentPortionVar is called when production AllotmentPortionVar is entered.
 func (s *BaseNumScriptListener) EnterAllotmentPortionVar(ctx *AllotmentPortionVarContext) {}
 
-// ExitAllotmentPortionVar is called when production allotmentPortionVar is exited.
+// ExitAllotmentPortionVar is called when production AllotmentPortionVar is exited.
 func (s *BaseNumScriptListener) ExitAllotmentPortionVar(ctx *AllotmentPortionVarContext) {}
 
-// EnterAllotmentPortionRemaining is called when production allotmentPortionRemaining is entered.
+// EnterAllotmentPortionRemaining is called when production AllotmentPortionRemaining is entered.
 func (s *BaseNumScriptListener) EnterAllotmentPortionRemaining(ctx *AllotmentPortionRemainingContext) {
 }
 
-// ExitAllotmentPortionRemaining is called when production allotmentPortionRemaining is exited.
+// ExitAllotmentPortionRemaining is called when production AllotmentPortionRemaining is exited.
 func (s *BaseNumScriptListener) ExitAllotmentPortionRemaining(ctx *AllotmentPortionRemainingContext) {
 }
 
@@ -125,16 +125,16 @@ func (s *BaseNumScriptListener) EnterDestinationAllotment(ctx *DestinationAllotm
 // ExitDestinationAllotment is called when production destinationAllotment is exited.
 func (s *BaseNumScriptListener) ExitDestinationAllotment(ctx *DestinationAllotmentContext) {}
 
-// EnterIsDestination is called when production isDestination is entered.
+// EnterIsDestination is called when production IsDestination is entered.
 func (s *BaseNumScriptListener) EnterIsDestination(ctx *IsDestinationContext) {}
 
-// ExitIsDestination is called when production isDestination is exited.
+// ExitIsDestination is called when production IsDestination is exited.
 func (s *BaseNumScriptListener) ExitIsDestination(ctx *IsDestinationContext) {}
 
-// EnterIsKept is called when production isKept is entered.
+// EnterIsKept is called when production IsKept is entered.
 func (s *BaseNumScriptListener) EnterIsKept(ctx *IsKeptContext) {}
 
-// ExitIsKept is called when production isKept is exited.
+// ExitIsKept is called when production IsKept is exited.
 func (s *BaseNumScriptListener) ExitIsKept(ctx *IsKeptContext) {}
 
 // EnterDestAccount is called when production DestAccount is entered.
