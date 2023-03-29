@@ -17,16 +17,13 @@ type Posting struct {
 
 type Postings []Posting
 
-func (ps Postings) Reverse() {
-	if len(ps) == 1 {
-		ps[0].Source, ps[0].Destination = ps[0].Destination, ps[0].Source
-		return
+func (p Postings) Reverse() {
+	for i := range p {
+		p[i].Source, p[i].Destination = p[i].Destination, p[i].Source
 	}
-	for i := len(ps)/2 - 1; i >= 0; i-- {
-		opp := len(ps) - 1 - i
-		ps[i], ps[opp] = ps[opp], ps[i]
-		ps[i].Source, ps[i].Destination = ps[i].Destination, ps[i].Source
-		ps[opp].Source, ps[opp].Destination = ps[opp].Destination, ps[opp].Source
+
+	for i := 0; i < len(p)/2; i++ {
+		p[i], p[len(p)-i-1] = p[len(p)-i-1], p[i]
 	}
 }
 
