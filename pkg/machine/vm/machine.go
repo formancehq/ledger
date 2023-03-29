@@ -610,7 +610,7 @@ func (m *Machine) ResolveResources() (chan ResourceRequest, error) {
 					return
 				}
 			case program.VariableAccountBalance:
-				sourceAccount, ok := m.getResource(res.Account)
+				acc, ok := m.getResource(res.Account)
 				if !ok {
 					resChan <- ResourceRequest{
 						Error: fmt.Errorf(
@@ -619,19 +619,38 @@ func (m *Machine) ResolveResources() (chan ResourceRequest, error) {
 					}
 					return
 				}
-				if (*sourceAccount).GetType() != core.TypeAccount {
+				if (*acc).GetType() != core.TypeAccount {
 					resChan <- ResourceRequest{
 						Error: fmt.Errorf(
 							"variable '%s': tried to request balance on wrong entity: %v instead of account",
-							res.Name, (*sourceAccount).GetType()),
+							res.Name, (*acc).GetType()),
 					}
 					return
 				}
-				account := (*sourceAccount).(core.AccountAddress)
+				account := (*acc).(core.AccountAddress)
+
+				ass, ok := m.getResource(res.Asset)
+				if !ok {
+					resChan <- ResourceRequest{
+						Error: fmt.Errorf(
+							"variable '%s': tried to request balance of an account for an asset which has not yet been solved",
+							res.Name),
+					}
+					return
+				}
+				if (*ass).GetType() != core.TypeAsset {
+					resChan <- ResourceRequest{
+						Error: fmt.Errorf(
+							"variable '%s': tried to request account balance on wrong entity: %v instead of asset",
+							res.Name, (*ass).GetType()),
+					}
+					return
+				}
+				asset := (*ass).(core.Asset)
 				resp := make(chan core.Value)
 				resChan <- ResourceRequest{
 					Account:  string(account),
-					Asset:    res.Asset,
+					Asset:    string(asset),
 					Response: resp,
 				}
 				amount := <-resp
@@ -655,13 +674,35 @@ func (m *Machine) ResolveResources() (chan ResourceRequest, error) {
 					resChan <- ResourceRequest{
 						Error: fmt.Errorf(
 							"variable '%s': tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
-							res.Name, account, res.Asset, amt),
+							res.Name, account, asset, amt),
 					}
 					return
 				}
 				val = core.Monetary{
-					Asset:  core.Asset(res.Asset),
+					Asset:  asset,
 					Amount: amt,
+				}
+			case program.Monetary:
+				ass, ok := m.getResource(res.Asset)
+				if !ok {
+					resChan <- ResourceRequest{
+						Error: fmt.Errorf(
+							"tried to resolve an asset which has not yet been solved"),
+					}
+					return
+				}
+				if (*ass).GetType() != core.TypeAsset {
+					resChan <- ResourceRequest{
+						Error: fmt.Errorf(
+							"tried to resolve an asset on wrong type '%v'",
+							(*ass).GetType()),
+					}
+					return
+				}
+				asset := (*ass).(core.Asset)
+				val = core.Monetary{
+					Asset:  asset,
+					Amount: res.Amount,
 				}
 			default:
 				panic(fmt.Errorf("type %T not implemented", res))

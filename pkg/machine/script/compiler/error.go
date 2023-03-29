@@ -102,10 +102,6 @@ func (l *ErrorListener) SyntaxError(recognizer antlr.Recognizer, offendingSymbol
 
 func LogicError(c antlr.ParserRuleContext, err error) *CompileError {
 	endC := c.GetStop().GetColumn() + len(c.GetStop().GetText())
-	// fmt.Println(c.GetStart().GetLine(),
-	// 	c.GetStart().GetColumn(),
-	// 	c.GetStop().GetLine(),
-	// 	endC)
 	return &CompileError{
 		StartL: c.GetStart().GetLine(),
 		StartC: c.GetStart().GetColumn(),
