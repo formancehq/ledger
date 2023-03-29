@@ -2,7 +2,7 @@ package ledger
 
 import (
 	"github.com/formancehq/ledger/pkg/ledger/lock"
-	"github.com/formancehq/ledger/pkg/ledger/query"
+	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
@@ -12,11 +12,11 @@ func Module(allowPastTimestamp bool) fx.Option {
 		lock.Module(),
 		fx.Provide(func(
 			storageDriver storage.Driver,
+			monitor monitor.Monitor,
 			locker lock.Locker,
-			queryWorker *query.Worker,
 		) *Resolver {
-			return NewResolver(storageDriver, locker, queryWorker, allowPastTimestamp)
+			return NewResolver(storageDriver, monitor, locker, allowPastTimestamp)
 		}),
-		query.Module(),
+		fx.Provide(fx.Annotate(monitor.NewNoOpMonitor, fx.As(new(monitor.Monitor)))),
 	)
 }

@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/base64"
 	"encoding/json"
@@ -60,7 +61,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		return errors.Wrap(err, "reading last log")
 	}
 
-	txn, err := s.schema.Begin()
+	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -176,13 +177,13 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 	}
 	defer rows.Close()
 
-	rawLogsV2 := []LogsV2{}
-	err = s.schema.ScanRows(ctx, rows, &rawLogsV2)
-	if err != nil {
-		return api.Cursor[core.Log]{}, errors.Wrap(err, "scanning rows")
-	}
+	for rows.Next() {
+		var raw LogsV2
+		err = rows.Scan(&raw.ID, &raw.Type, &raw.Hash, &raw.Date, &raw.Data, &raw.Reference)
+		if err != nil {
+			return api.Cursor[core.Log]{}, sqlerrors.PostgresError(err)
+		}
 
-	for _, raw := range rawLogsV2 {
 		payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 		if err != nil {
 			return api.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")

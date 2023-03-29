@@ -48,6 +48,11 @@ type Transaction struct {
 	ID uint64 `json:"txid"`
 }
 
+type TransactionWithMetadata struct {
+	ID       uint64
+	Metadata Metadata
+}
+
 func (t Transaction) WithPostings(postings ...Posting) Transaction {
 	t.TransactionData = t.TransactionData.WithPostings(postings...)
 	return t

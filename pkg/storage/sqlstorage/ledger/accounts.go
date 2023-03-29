@@ -312,6 +312,27 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 	return sqlerrors.PostgresError(err)
 }
 
+func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) error {
+	if !s.isInitialized {
+		return storage.ErrStoreNotInitialized
+	}
+
+	accs := make([]*Accounts, len(accounts))
+	for i, a := range accounts {
+		accs[i] = &Accounts{
+			Address:  a,
+			Metadata: make(map[string]interface{}),
+		}
+	}
+
+	_, err := s.schema.NewInsert(accountsTableName).
+		Model(&accs).
+		Ignore().
+		Exec(ctx)
+
+	return sqlerrors.PostgresError(err)
+}
+
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
 	if !s.isInitialized {
 		return storage.ErrStoreNotInitialized
@@ -327,6 +348,26 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		On("CONFLICT (address) DO UPDATE").
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
-	return err
+	return sqlerrors.PostgresError(err)
+}
 
+func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Account) error {
+	if !s.isInitialized {
+		return storage.ErrStoreNotInitialized
+	}
+
+	accs := make([]*Accounts, len(accounts))
+	for i, a := range accounts {
+		accs[i] = &Accounts{
+			Address:  a.Address,
+			Metadata: a.Metadata,
+		}
+	}
+
+	_, err := s.schema.NewInsert(accountsTableName).
+		Model(&accs).
+		On("CONFLICT (address) DO UPDATE").
+		Set("metadata = accounts.metadata || EXCLUDED.metadata").
+		Exec(ctx)
+	return sqlerrors.PostgresError(err)
 }

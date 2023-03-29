@@ -1,4 +1,4 @@
-package query
+package monitor
 
 import (
 	"context"

@@ -408,3 +408,33 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 
 	return sqlerrors.PostgresError(err)
 }
+
+func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWithMetadata ...core.TransactionWithMetadata) error {
+	if !s.isInitialized {
+		return storage.ErrStoreNotInitialized
+	}
+
+	txs := make([]*Transactions, 0, len(transactionsWithMetadata))
+	for _, tx := range transactionsWithMetadata {
+		metadataData, err := json.Marshal(tx.Metadata)
+		if err != nil {
+			return err
+		}
+
+		txs = append(txs, &Transactions{
+			ID:       tx.ID,
+			Metadata: metadataData,
+		})
+	}
+
+	values := s.schema.NewValues(&txs)
+
+	_, err := s.schema.NewUpdate(TransactionsTableName).
+		With("_data", values).
+		Model((*Transactions)(nil)).
+		TableExpr("_data").
+		Set("metadata = transactions.metadata || _data.metadata").
+		Where(fmt.Sprintf("%s.id = _data.id", TransactionsTableName)).
+		Exec(ctx)
+	return err
+}

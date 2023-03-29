@@ -17,6 +17,10 @@ func StorageDriver(t pgtesting.TestingT) *sqlstorage.Driver {
 	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
 	require.NoError(t, err)
 
+	t.Cleanup(func() {
+		db.Close()
+	})
+
 	return sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db))
 }
 
