@@ -22,11 +22,11 @@ const (
 )
 
 type CaseResult struct {
-	Printed  []internal.Value
-	Postings []Posting
-	Metadata map[string]internal.Value
-	ExitCode byte
-	Error    string
+	Printed       []internal.Value
+	Postings      []Posting
+	Metadata      map[string]internal.Value
+	Error         error
+	ErrorContains string
 }
 
 type TestCase struct {
@@ -46,8 +46,7 @@ func NewTestCase() TestCase {
 			Printed:  []internal.Value{},
 			Postings: []Posting{},
 			Metadata: make(map[string]internal.Value),
-			ExitCode: EXIT_OK,
-			Error:    "",
+			Error:    nil,
 		},
 	}
 }
@@ -78,9 +77,9 @@ func (c *TestCase) setBalance(account, asset string, amount int64) {
 }
 
 func test(t *testing.T, testCase TestCase) {
-	testImpl(t, testCase.program, testCase.expected, func(m *Machine) (byte, error) {
+	testImpl(t, testCase.program, testCase.expected, func(m *Machine) error {
 		if err := m.SetVars(testCase.vars); err != nil {
-			return 0, err
+			return err
 		}
 
 		store := StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
@@ -115,19 +114,19 @@ func test(t *testing.T, testCase TestCase) {
 
 		_, _, err := m.ResolveResources(context.Background(), store)
 		if err != nil {
-			return 128, err
+			return err
 		}
 
 		err = m.ResolveBalances(context.Background(), store)
 		if err != nil {
-			return 128, err
+			return err
 		}
 
 		return m.Execute()
 	})
 }
 
-func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec func(*Machine) (byte, error)) {
+func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec func(*Machine) error) {
 	printed := []internal.Value{}
 
 	var wg sync.WaitGroup
@@ -146,15 +145,18 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 		wg.Done()
 	}
 
-	exitCode, err := exec(m)
-	require.Equal(t, expected.ExitCode, exitCode)
-	if expected.Error != "" {
-		require.ErrorContains(t, err, expected.Error)
+	err := exec(m)
+	if expected.Error != nil {
+		require.True(t, errors.Is(err, expected.Error), "got wrong error, want: %v, got: %v", expected.Error, err)
+		if expected.ErrorContains != "" {
+			require.ErrorContains(t, err, expected.ErrorContains)
+		}
+
 	} else {
 		require.NoError(t, err)
 	}
 
-	if exitCode != EXIT_OK {
+	if err != nil {
 		return
 	}
 
@@ -179,7 +181,7 @@ func TestFail(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL,
+		Error:    ErrScriptFailed,
 	}
 	test(t, tc)
 }
@@ -191,7 +193,7 @@ func TestPrint(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{&mi},
 		Postings: []Posting{},
-		ExitCode: EXIT_OK,
+		Error:    nil,
 	}
 	test(t, tc)
 }
@@ -213,7 +215,7 @@ func TestSend(t *testing.T) {
 				Destination: "bob",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -243,7 +245,7 @@ func TestVariables(t *testing.T) {
 				Destination: "users:002",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 }
 
@@ -282,7 +284,7 @@ func TestVariablesJSON(t *testing.T) {
 			"description": internal.String("midnight ride"),
 			"ride":        internal.NewMonetaryInt(1),
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -324,7 +326,7 @@ func TestSource(t *testing.T) {
 				Destination: "users:002",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -370,7 +372,7 @@ func TestAllocation(t *testing.T) {
 				Destination: "b",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -408,7 +410,7 @@ func TestDynamicAllocation(t *testing.T) {
 				Destination: "c",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -430,7 +432,7 @@ func TestSendAll(t *testing.T) {
 				Destination: "platform",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -463,7 +465,7 @@ func TestSendAllMulti(t *testing.T) {
 				Destination: "platform",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -492,7 +494,7 @@ func TestInsufficientFunds(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -523,7 +525,7 @@ func TestWorldSource(t *testing.T) {
 				Destination: "b",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -547,7 +549,7 @@ func TestNoEmptyPostings(t *testing.T) {
 				Destination: "a",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -569,7 +571,7 @@ func TestEmptyPostings(t *testing.T) {
 				Asset:       "GEM",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -604,7 +606,7 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 				Destination: "bar",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -653,7 +655,7 @@ func TestMetadata(t *testing.T) {
 				Destination: "platform",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -686,7 +688,7 @@ func TestTrackBalances(t *testing.T) {
 				Destination: "b",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -706,7 +708,7 @@ func TestTrackBalances2(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -741,7 +743,7 @@ func TestTrackBalances3(t *testing.T) {
 				Destination: "bar",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -781,7 +783,7 @@ func TestSourceAllotment(t *testing.T) {
 				Destination: "d",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -817,7 +819,7 @@ func TestSourceOverlapping(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -876,7 +878,7 @@ func TestSourceComplex(t *testing.T) {
 				Destination: "platform",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -916,7 +918,7 @@ func TestDestinationComplex(t *testing.T) {
 				Destination: "c",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -962,6 +964,7 @@ func TestNeededBalances(t *testing.T) {
 	}))
 	require.NotNil(t, called["a"])
 	require.NotNil(t, called["b"])
+	require.NoError(t, err)
 }
 
 func TestSetTxMeta(t *testing.T) {
@@ -982,9 +985,8 @@ func TestSetTxMeta(t *testing.T) {
 	err = m.ResolveBalances(context.Background(), EmptyStore)
 	require.NoError(t, err)
 
-	exitCode, err := m.Execute()
+	err = m.Execute()
 	require.NoError(t, err)
-	require.Equal(t, EXIT_OK, exitCode)
 
 	expectedMeta := map[string]json.RawMessage{
 		"aaa": json.RawMessage(`{"type":"account","value":"platform"}`),
@@ -1022,9 +1024,8 @@ func TestSetAccountMeta(t *testing.T) {
 		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		exitCode, err := m.Execute()
+		err = m.Execute()
 		require.NoError(t, err)
-		require.Equal(t, EXIT_OK, exitCode)
 
 		expectedMeta := map[string]json.RawMessage{
 			"aaa": json.RawMessage(`{"type":"account","value":"platform"}`),
@@ -1073,9 +1074,8 @@ func TestSetAccountMeta(t *testing.T) {
 		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		exitCode, err := m.Execute()
+		err = m.Execute()
 		require.NoError(t, err)
-		require.Equal(t, EXIT_OK, exitCode)
 
 		expectedMeta := map[string]json.RawMessage{
 			"fees": json.RawMessage(`{"type":"portion","value":{"remaining":false,"specific":"1/100"}}`),
@@ -1132,7 +1132,7 @@ func TestVariableBalance(t *testing.T) {
 					Destination: "D",
 				},
 			},
-			ExitCode: EXIT_OK,
+			Error: nil,
 		}
 		test(t, tc)
 	})
@@ -1152,7 +1152,7 @@ func TestVariableBalance(t *testing.T) {
 					Destination: "B",
 				},
 			},
-			ExitCode: EXIT_OK,
+			Error: nil,
 		}
 		test(t, tc)
 	})
@@ -1195,7 +1195,7 @@ func TestVariableBalance(t *testing.T) {
 					Destination: "D",
 				},
 			},
-			ExitCode: EXIT_OK,
+			Error: nil,
 		}
 		test(t, tc)
 	})
@@ -1216,7 +1216,7 @@ func TestVariableBalance(t *testing.T) {
 					Destination: "B",
 				},
 			},
-			ExitCode: EXIT_OK,
+			Error: nil,
 		}
 		test(t, tc)
 	})
@@ -1271,7 +1271,7 @@ func TestVariableBalance(t *testing.T) {
 					Destination: "platform",
 				},
 			},
-			ExitCode: EXIT_OK,
+			Error: nil,
 		}
 		test(t, tc)
 	})
@@ -1289,8 +1289,8 @@ func TestVariableBalance(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("world", "USD/2", -40)
 		tc.expected = CaseResult{
-			ExitCode: 128,
-			Error:    "must be non-negative",
+			Error:         ErrNegativeMonetaryAmount,
+			ErrorContains: "must be non-negative",
 		}
 		test(t, tc)
 	})
@@ -1573,9 +1573,10 @@ func TestVariablesErrors(t *testing.T) {
 		},
 	}
 	tc.expected = CaseResult{
-		Printed:  []internal.Value{},
-		Postings: []Posting{},
-		Error:    "negative amount",
+		Printed:       []internal.Value{},
+		Postings:      []Posting{},
+		Error:         ErrInvalidVars,
+		ErrorContains: "negative amount",
 	}
 	test(t, tc)
 }
@@ -1656,7 +1657,7 @@ func TestResolveResources(t *testing.T) {
 			vars: map[string]json.RawMessage{
 				"sale": json.RawMessage(`"sales:042"`),
 			},
-			expectedError: newResourceResolutionError(ResourceResolutionErrorCodeMissingMetadata, ""),
+			expectedError: ErrResourceResolutionMissingMetadata,
 		},
 	} {
 		tc := tc
@@ -1670,7 +1671,7 @@ func TestResolveResources(t *testing.T) {
 			_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 			if tc.expectedError != nil {
 				require.Error(t, err)
-				require.True(t, errors.Is(tc.expectedError, err))
+				require.True(t, errors.Is(err, tc.expectedError))
 			} else {
 				require.NoError(t, err)
 			}
@@ -1712,7 +1713,7 @@ func TestResolveBalances(t *testing.T) {
 					source = @users:001
 					destination = @world
 				)`,
-			expectedError: fmt.Errorf("tried to request the balance of account users:001 for asset COIN: received -100: monetary amounts must be non-negative"),
+			expectedError: ErrNegativeMonetaryAmount,
 		},
 	} {
 		tc := tc
@@ -1734,7 +1735,7 @@ func TestResolveBalances(t *testing.T) {
 			err = m.ResolveBalances(context.Background(), store)
 			if tc.expectedError != nil {
 				require.Error(t, err)
-				require.Equal(t, tc.expectedError, err)
+				require.True(t, errors.Is(err, tc.expectedError))
 			} else {
 				require.NoError(t, err)
 			}
@@ -1768,16 +1769,14 @@ func TestMachine(t *testing.T) {
 		err = m.ResolveBalances(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		exitCode, err := m.Execute()
+		err = m.Execute()
 		require.NoError(t, err)
-		require.Equal(t, EXIT_OK, exitCode)
 	})
 
 	t.Run("err resources", func(t *testing.T) {
 		m := NewMachine(*p)
-		exitCode, err := m.Execute()
-		require.ErrorContains(t, err, "resources haven't been initialized")
-		require.Equal(t, byte(0), exitCode)
+		err := m.Execute()
+		require.True(t, errors.Is(err, ErrResourcesNotInitialized))
 	})
 
 	t.Run("err balances nit initialized", func(t *testing.T) {
@@ -1791,9 +1790,8 @@ func TestMachine(t *testing.T) {
 		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		exitCode, err := m.Execute()
-		require.ErrorContains(t, err, "balances haven't been initialized")
-		require.Equal(t, byte(0), exitCode)
+		err = m.Execute()
+		require.True(t, errors.Is(err, ErrBalancesNotInitialized))
 	})
 
 	t.Run("err resolve resources twice", func(t *testing.T) {
@@ -1844,25 +1842,6 @@ func TestMachine(t *testing.T) {
 	})
 }
 
-func TestIsScriptErrorWithCode(t *testing.T) {
-	type args struct {
-		err  error
-		code string
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, IsScriptErrorWithCode(tt.args.err, tt.args.code), "IsScriptErrorWithCode(%v, %v)", tt.args.err, tt.args.code)
-		})
-	}
-}
-
 func TestMachine_Execute(t *testing.T) {
 	type fields struct {
 		P                   uint
@@ -1908,11 +1887,10 @@ func TestMachine_Execute(t *testing.T) {
 				printChan:           tt.fields.printChan,
 				Debug:               tt.fields.Debug,
 			}
-			got, err := m.Execute()
+			err := m.Execute()
 			if !tt.wantErr(t, err, "Execute()") {
 				return
 			}
-			assert.Equalf(t, tt.want, got, "Execute()")
 		})
 	}
 }
@@ -2677,75 +2655,6 @@ func TestNewMachine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equalf(t, tt.want, NewMachine(tt.args.p), "NewMachine(%v)", tt.args.p)
-		})
-	}
-}
-
-func TestNewScriptError(t *testing.T) {
-	type args struct {
-		code    string
-		message string
-	}
-	tests := []struct {
-		name string
-		args args
-		want *ScriptError
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, NewScriptError(tt.args.code, tt.args.message), "NewScriptError(%v, %v)", tt.args.code, tt.args.message)
-		})
-	}
-}
-
-func TestScriptError_Error(t *testing.T) {
-	type fields struct {
-		Code    string
-		Message string
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := ScriptError{
-				Code:    tt.fields.Code,
-				Message: tt.fields.Message,
-			}
-			assert.Equalf(t, tt.want, e.Error(), "Error()")
-		})
-	}
-}
-
-func TestScriptError_Is(t *testing.T) {
-	type fields struct {
-		Code    string
-		Message string
-	}
-	type args struct {
-		err error
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := ScriptError{
-				Code:    tt.fields.Code,
-				Message: tt.fields.Message,
-			}
-			assert.Equalf(t, tt.want, e.Is(tt.args.err), "Is(%v)", tt.args.err)
 		})
 	}
 }

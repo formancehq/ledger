@@ -407,7 +407,7 @@ func TestPostTransactions(t *testing.T) {
 			expectedErr: sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrScriptCompilationFailed,
 				ErrorMessage: "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount",
-				Details:      apierrors.EncodeLink("could not set variables: invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount"),
+				Details:      apierrors.EncodeLink("invalid JSON value for variable $mon of type monetary: value [COIN -1]: negative amount"),
 			},
 		},
 		{
@@ -741,7 +741,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			internal.Decode(t, rsp.Body, &err)
 			require.EqualValues(t, sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrNotFound,
-				ErrorMessage: "transaction not found",
+				ErrorMessage: "not found",
 			}, err)
 		})
 
@@ -844,7 +844,7 @@ func TestGetTransaction(t *testing.T) {
 			internal.Decode(t, rsp.Body, &err)
 			require.EqualValues(t, sharedapi.ErrorResponse{
 				ErrorCode:    apierrors.ErrNotFound,
-				ErrorMessage: "transaction not found",
+				ErrorMessage: "not found",
 			}, err)
 		})
 

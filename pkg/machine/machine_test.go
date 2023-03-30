@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"testing"
 
@@ -20,7 +21,7 @@ type testCase struct {
 	name            string
 	script          string
 	vars            map[string]json.RawMessage
-	expectErrorCode string
+	expectErrorCode error
 	expectResult    Result
 	setup           func(t *testing.T, store storage.LedgerStore)
 	metadata        core.Metadata
@@ -49,7 +50,7 @@ var testCases = []testCase{
 				source = @bank
 				destination = @user:001
 			)`,
-		expectErrorCode: vm.ScriptErrorInsufficientFund,
+		expectErrorCode: vm.ErrInsufficientFund,
 	},
 	{
 		name: "send $0",
@@ -252,7 +253,7 @@ var testCases = []testCase{
 		metadata: core.Metadata{
 			"priority": "low",
 		},
-		expectErrorCode: vm.ScriptErrorMetadataOverride,
+		expectErrorCode: vm.ErrMetadataOverride,
 	},
 	{
 		name: "set account meta",
@@ -429,8 +430,8 @@ func TestMachine(t *testing.T) {
 				},
 				Metadata: tc.metadata,
 			})
-			if tc.expectErrorCode != "" {
-				require.True(t, vm.IsScriptErrorWithCode(err, tc.expectErrorCode))
+			if tc.expectErrorCode != nil {
+				require.True(t, errors.Is(err, tc.expectErrorCode))
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, result)

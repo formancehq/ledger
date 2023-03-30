@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
-	"github.com/pkg/errors"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 )
 
 type Compiler struct {
@@ -21,7 +21,7 @@ func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program
 	digest := sha256.New()
 	_, err := digest.Write([]byte(script))
 	if err != nil {
-		return nil, err
+		return nil, errorsutil.NewError(vm.ErrCompilationFailed, err)
 	}
 
 	cacheKey := base64.StdEncoding.EncodeToString(digest.Sum(nil))
@@ -32,7 +32,7 @@ func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program
 
 	program, err := compiler.Compile(script)
 	if err != nil {
-		return nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
+		return nil, errorsutil.NewError(vm.ErrCompilationFailed, err)
 	}
 	_ = c.cache.Set(cacheKey, program)
 

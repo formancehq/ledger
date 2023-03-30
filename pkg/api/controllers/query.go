@@ -6,6 +6,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -20,11 +22,11 @@ const (
 )
 
 var (
-	ErrInvalidPageSize        = ledger.NewValidationError("invalid 'pageSize' query param")
-	ErrInvalidBalanceOperator = ledger.NewValidationError(
+	ErrInvalidPageSize        = errors.New("invalid 'pageSize' query param")
+	ErrInvalidBalanceOperator = errors.New(
 		"invalid parameter 'balanceOperator', should be one of 'e, ne, gt, gte, lt, lte'")
-	ErrInvalidStartTime = ledger.NewValidationError("invalid 'startTime' query param")
-	ErrInvalidEndTime   = ledger.NewValidationError("invalid 'endTime' query param")
+	ErrInvalidStartTime = errors.New("invalid 'startTime' query param")
+	ErrInvalidEndTime   = errors.New("invalid 'endTime' query param")
 )
 
 func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
@@ -38,7 +40,7 @@ func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
 	if pageSizeParam != "" {
 		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
 		if err != nil {
-			return 0, ErrInvalidPageSize
+			return 0, errorsutil.NewError(ledger.ErrValidation, ErrInvalidPageSize)
 		}
 	}
 
@@ -55,7 +57,7 @@ func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.Balance
 	if balanceOperatorStr != "" {
 		var ok bool
 		if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
-			return "", ErrInvalidBalanceOperator
+			return "", errorsutil.NewError(ledger.ErrValidation, ErrInvalidBalanceOperator)
 		}
 	}
 

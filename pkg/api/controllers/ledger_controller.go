@@ -3,7 +3,6 @@ package controllers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -13,7 +12,9 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/go-chi/chi/v5"
+	"github.com/pkg/errors"
 )
 
 type Info struct {
@@ -64,22 +65,22 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			r.URL.Query().Get(QueryKeyStartTime) != "" ||
 			r.URL.Query().Get(QueryKeyEndTime) != "" ||
 			r.URL.Query().Get(QueryKeyPageSize) != "" {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("no other query params can be set with '%s'", QueryKeyCursor)))
+			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+				errors.Errorf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
 		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
 		if err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
+			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
 		token := ledgerstore.LogsPaginationToken{}
 		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
+			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
@@ -95,8 +96,8 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("after") != "" {
 			afterIDParsed, err = strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 			if err != nil {
-				apierrors.ResponseError(w, r, ledger.NewValidationError(
-					"invalid 'after' query param"))
+				apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+					errors.New("invalid 'after' query param")))
 				return
 			}
 		}
@@ -105,7 +106,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get(QueryKeyStartTime) != "" {
 			startTimeParsed, err = core.ParseTime(r.URL.Query().Get(QueryKeyStartTime))
 			if err != nil {
-				apierrors.ResponseError(w, r, ErrInvalidStartTime)
+				apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation, ErrInvalidStartTime))
 				return
 			}
 		}
@@ -113,7 +114,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get(QueryKeyEndTime) != "" {
 			endTimeParsed, err = core.ParseTime(r.URL.Query().Get(QueryKeyEndTime))
 			if err != nil {
-				apierrors.ResponseError(w, r, ErrInvalidEndTime)
+				apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation, ErrInvalidEndTime))
 				return
 			}
 		}

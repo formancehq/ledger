@@ -1,43 +1,38 @@
 package storage
 
 import (
-	"fmt"
-
-	"github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
 var (
 	ErrNotFound            = errors.New("not found")
+	ErrConstraintFailed    = errors.New("23505: constraint failed")
+	ErrTooManyClients      = errors.New("53300: too many clients")
+	ErrJson                = errors.New("json marshal/unmarshal error")
+	ErrParsingBalance      = errors.New("parsing balance error")
 	ErrStoreNotInitialized = errors.New("store not initialized")
-)
-
-var (
-	// Specific pq sql errors
-	ErrConstraintFailed = pq.ErrorCode("23505")
-	ErrTooManyClient    = pq.ErrorCode("53300")
 )
 
 func IsNotFound(err error) bool {
 	return errors.Is(err, ErrNotFound)
 }
 
-type Error struct {
-	code pq.ErrorCode
-	err  error
+func IsContraintFailed(err error) bool {
+	return errors.Is(err, ErrConstraintFailed)
 }
 
-func NewError(code pq.ErrorCode, err error) *Error {
-	return &Error{
-		code: code,
-		err:  err,
-	}
+func IsErrTooManyClients(err error) bool {
+	return errors.Is(err, ErrTooManyClients)
 }
 
-func (e *Error) Error() string {
-	return fmt.Sprintf("[%s] %s", e.code, e.err)
+func IsErrJson(err error) bool {
+	return errors.Is(err, ErrJson)
 }
 
-func IsError(err error) bool {
-	return errors.Is(err, &Error{})
+func IsErrParsingBalance(err error) bool {
+	return errors.Is(err, ErrParsingBalance)
+}
+
+func IsStoreNotInitialized(err error) bool {
+	return errors.Is(err, ErrStoreNotInitialized)
 }

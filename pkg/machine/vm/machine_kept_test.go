@@ -42,7 +42,7 @@ func TestKeptDestinationAllotment(t *testing.T) {
 				Destination: "y",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -112,7 +112,7 @@ func TestKeptComplex(t *testing.T) {
 				Destination: "quz",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -139,13 +140,13 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 			Metadata: core.Metadata{},
 		}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return api.Cursor[core.Account]{}, err
+			return api.Cursor[core.Account]{}, sqlerrors.PostgresError(err)
 		}
 
 		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return api.Cursor[core.Account]{}, rows.Err()
+		return api.Cursor[core.Account]{}, sqlerrors.PostgresError(rows.Err())
 	}
 
 	var previous, next string
@@ -158,7 +159,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Account]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Account]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -168,7 +169,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Account]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Account]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -195,7 +196,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 
 	row := s.schema.QueryRowContext(ctx, query)
 	if err := row.Err(); err != nil {
-		return nil, err
+		return nil, sqlerrors.PostgresError(err)
 	}
 
 	var account core.Account
@@ -203,6 +204,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	if err != nil {
 		return nil, sqlerrors.PostgresError(err)
 	}
+
 	return &account, nil
 }
 
@@ -348,6 +350,7 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		On("CONFLICT (address) DO UPDATE").
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
+
 	return sqlerrors.PostgresError(err)
 }
 
@@ -369,5 +372,6 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Acco
 		On("CONFLICT (address) DO UPDATE").
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
+
 	return sqlerrors.PostgresError(err)
 }

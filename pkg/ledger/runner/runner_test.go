@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/ledgertesting"
-	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -77,12 +76,12 @@ var testCases = []testCase{
 	{
 		name:          "no script",
 		script:        ``,
-		expectedError: vm.NewScriptError(vm.ScriptErrorNoScript, ""),
+		expectedError: ErrNoScript,
 	},
 	{
 		name:          "invalid script",
 		script:        `XXX`,
-		expectedError: vm.NewScriptError(vm.ScriptErrorCompilationFailed, ""),
+		expectedError: ErrCompilationFailed,
 	},
 	{
 		name: "set reference conflict",
@@ -102,7 +101,7 @@ var testCases = []testCase{
 				destination = @mint
 			)`,
 		reference:     "tx_ref",
-		expectedError: state.NewConflictError(""),
+		expectedError: state.ErrConflictError,
 	},
 	{
 		name: "set reference",

@@ -16,7 +16,7 @@ func TestOverdraftNotEnough(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -38,7 +38,7 @@ func TestOverdraftEnough(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -60,7 +60,7 @@ func TestOverdraftUnbounded(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -102,7 +102,7 @@ func TestOverdraftSourceAllotmentSuccess(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -152,7 +152,7 @@ func TestOverdraftSourceInOrderSuccess(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -195,7 +195,7 @@ func TestOverdraftBalanceTracking(t *testing.T) {
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -227,7 +227,7 @@ func TestWorldIsUnbounded(t *testing.T) {
 				Destination: "foo",
 			},
 		},
-		ExitCode: EXIT_OK,
+		Error: nil,
 	}
 	test(t, tc)
 }
@@ -250,7 +250,7 @@ func TestOverdraftComplexFailure(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -265,7 +265,7 @@ func TestNegativeBalance(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    ErrInsufficientFund,
 	}
 	test(t, tc)
 }

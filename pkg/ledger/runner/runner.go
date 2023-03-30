@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
 
@@ -39,7 +40,7 @@ func (r *Runner) Execute(
 ) (*core.ExpandedTransaction, *core.LogHolder, error) {
 
 	if script.Plain == "" {
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorNoScript, "no script to execute")
+		return nil, nil, ErrNoScript
 	}
 
 	reserve, err := r.state.Reserve(ctx, state.ReserveRequest{
@@ -47,7 +48,7 @@ func (r *Runner) Execute(
 		Reference: script.Reference,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, StateErrorToRunnerError(err)
 	}
 	defer reserve.Clear(nil)
 
@@ -55,12 +56,13 @@ func (r *Runner) Execute(
 	if err != nil {
 		return nil, nil, err
 	}
+
 	if dryRun {
 		return transaction, nil, err
 	}
 
 	if err := r.store.AppendLog(ctx, logHolder.Log); err != nil {
-		return nil, nil, err
+		return nil, nil, errorsutil.NewError(ErrStorage, err)
 	}
 
 	reserve.Clear(&transaction.Transaction)
@@ -69,61 +71,60 @@ func (r *Runner) Execute(
 }
 
 func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer logComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
-
 	program, err := r.compiler.Compile(ctx, script.Plain)
 	if err != nil {
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed, errors.Wrap(err, "compiling numscript").Error())
+		return nil, nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
 	}
 
 	m := vm.NewMachine(*program)
 
 	if err := m.SetVarsFromJSON(script.Vars); err != nil {
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not set variables").Error())
+		return nil, nil, errorsutil.NewError(ErrCompilationFailed,
+			errors.Wrap(err, "could not set variables"))
 	}
 
 	involvedAccounts, _, err := m.ResolveResources(ctx, r.cache)
 	if err != nil {
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not resolve program resources").Error())
+		return nil, nil, errorsutil.NewError(ErrCompilationFailed,
+			errors.Wrap(err, "could not resolve program resources"))
 	}
 
 	// TODO: need to release even if an error is returned later
 	release, err := r.cache.LockAccounts(ctx, involvedAccounts...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errorsutil.NewError(ErrRunner, err)
 	}
 
 	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
 	if err != nil {
 		release()
-		return nil, nil, err
+		return nil, nil, errorsutil.NewError(ErrRunner, err)
 	}
 	defer unlock(context.Background())
 
 	err = m.ResolveBalances(ctx, r.cache)
 	if err != nil {
 		release()
-		return nil, nil, vm.NewScriptError(vm.ScriptErrorCompilationFailed,
-			errors.Wrap(err, "could not resolve balances").Error())
+		return nil, nil, errorsutil.NewError(ErrCompilationFailed,
+			errors.Wrap(err, "could not resolve balances"))
 	}
 
 	result, err := machine.Run(m, script)
 	if err != nil {
 		release()
-		return nil, nil, err
+		return nil, nil, VMErrorToRunnerError(err)
 	}
 
 	if len(result.Postings) == 0 {
 		release()
-		return nil, nil, newErrNoPostings()
+		return nil, nil, ErrNoPostings
 	}
 
 	vAggr := aggregator.Volumes(r.cache)
 	txVolumeAggr, err := vAggr.NextTxWithPostings(ctx, result.Postings...)
 	if err != nil {
 		release()
-		return nil, nil, errors.Wrap(err, "transferring volumes")
+		return nil, nil, errorsutil.NewError(ErrRunner, errors.Wrap(err, "transferring volumes"))
 	}
 
 	txID := r.nextTxID.Load()

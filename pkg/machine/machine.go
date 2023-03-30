@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/vm"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
 
@@ -22,26 +23,9 @@ type Result struct {
 }
 
 func Run(m *vm.Machine, script core.RunScript) (*Result, error) {
-
-	exitCode, err := m.Execute()
+	err := m.Execute()
 	if err != nil {
 		return nil, errors.Wrap(err, "script execution failed")
-	}
-
-	if exitCode != vm.EXIT_OK {
-		switch exitCode {
-		case vm.EXIT_FAIL:
-			return nil, errors.New("script exited with error code EXIT_FAIL")
-		case vm.EXIT_FAIL_INVALID:
-			return nil, errors.New("internal error: compiled script was invalid")
-		case vm.EXIT_FAIL_INSUFFICIENT_FUNDS:
-			// TODO: If the machine can provide the asset which is failing
-			// we should be able to use InsufficientFundError{} instead of error code
-			return nil, vm.NewScriptError(vm.ScriptErrorInsufficientFund,
-				"account had insufficient funds")
-		default:
-			return nil, errors.New("script execution failed")
-		}
 	}
 
 	result := Result{
@@ -70,7 +54,8 @@ func Run(m *vm.Machine, script core.RunScript) (*Result, error) {
 	for k, v := range script.Metadata {
 		_, ok := result.Metadata[k]
 		if ok {
-			return nil, vm.NewScriptError(vm.ScriptErrorMetadataOverride, "cannot override metadata from script")
+			return nil, errorsutil.NewError(vm.ErrMetadataOverride,
+				errors.New("cannot override metadata from script"))
 		}
 		result.Metadata[k] = v
 	}
