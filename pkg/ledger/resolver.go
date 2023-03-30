@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
@@ -43,7 +44,6 @@ func NewResolver(
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
-
 	r.lock.RLock()
 	ledger, ok := r.ledgers[name]
 	r.lock.RUnlock()
@@ -53,18 +53,19 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 		store, _, err := r.storageDriver.GetLedgerStore(ctx, name, true)
 		if err != nil {
-			return nil, errors.Wrap(err, "retrieving ledger store")
+			return nil, errorsutil.NewError(ErrStorage,
+				errors.Wrap(err, "retrieving ledger store"))
 		}
 		if !store.IsInitialized() {
 			if _, err := store.Initialize(ctx); err != nil {
-				return nil, err
+				return nil, errorsutil.NewError(ErrStorage, err)
 			}
 		}
 
 		cache := cache.New(store)
 		runner, err := runner.New(store, r.locker, cache, r.compiler, r.allowPastTimestamps)
 		if err != nil {
-			return nil, err
+			return nil, errorsutil.NewError(ErrRunner, err)
 		}
 
 		queryWorker := query.NewWorker(query.WorkerConfig{

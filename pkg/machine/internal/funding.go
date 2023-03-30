@@ -89,7 +89,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 		i++
 	}
 	if !remainingToWithdraw.Eq(NewMonetaryInt(0)) {
-		return Funding{}, Funding{}, errors.New("insufficient funding")
+		return Funding{}, Funding{}, errors.New("account had insufficient funds")
 	}
 	return result, remainder, nil
 }

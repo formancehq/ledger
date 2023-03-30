@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
@@ -70,7 +71,7 @@ func (s *Store) IsInitialized() bool {
 func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context, store storage.LedgerStore) error) error {
 	tx, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return err
+		return sqlerrors.PostgresError(err)
 	}
 
 	// Create a fake store to use the tx instead of the bun.DB struct
@@ -91,10 +92,10 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 
 	err = f(ctx, newStore)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "running transaction function")
 	}
 
-	return tx.Commit()
+	return sqlerrors.PostgresError(tx.Commit())
 }
 
 func NewStore(

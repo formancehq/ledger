@@ -55,11 +55,7 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAsset
 		String()
 
 	_, err := s.schema.ExecContext(ctx, query)
-	if err != nil {
-		return sqlerrors.PostgresError(err)
-	}
-
-	return nil
+	return sqlerrors.PostgresError(err)
 }
 
 func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {

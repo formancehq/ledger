@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/uptrace/bun"
 )
 
@@ -203,6 +204,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		); err != nil {
 			return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
 		}
+
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
 			tx.Metadata = core.Metadata{}
@@ -210,6 +212,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		tx.Timestamp = tx.Timestamp.UTC()
 		txs = append(txs, tx)
 	}
+
 	if rows.Err() != nil {
 		return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
 	}
@@ -222,7 +225,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		txs = txs[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.ExpandedTransaction]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -233,7 +236,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.ExpandedTransaction]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -310,25 +313,25 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	for i, tx := range txs {
 		postingsData, err := json.Marshal(tx.Postings)
 		if err != nil {
-			panic(err)
+			return errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		metadataData := []byte("{}")
 		if tx.Metadata != nil {
 			metadataData, err = json.Marshal(tx.Metadata)
 			if err != nil {
-				panic(err)
+				return errorsutil.NewError(storage.ErrJson, err)
 			}
 		}
 
 		preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
 		if err != nil {
-			panic(err)
+			return errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
 		if err != nil {
-			panic(err)
+			return errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		ts[i].ID = tx.ID
@@ -346,11 +349,11 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		for i, p := range tx.Postings {
 			sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
 			if err != nil {
-				panic(err)
+				return errorsutil.NewError(storage.ErrJson, err)
 			}
 			destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
 			if err != nil {
-				panic(err)
+				return errorsutil.NewError(storage.ErrJson, err)
 			}
 			ps = append(ps, Postings{
 				TxID:         tx.ID,
@@ -397,7 +400,8 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 
 	metadataData, err := json.Marshal(metadata)
 	if err != nil {
-		return err
+		return errorsutil.NewError(storage.ErrJson, err)
+
 	}
 
 	_, err = s.schema.NewUpdate(TransactionsTableName).
@@ -418,7 +422,7 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 	for _, tx := range transactionsWithMetadata {
 		metadataData, err := json.Marshal(tx.Metadata)
 		if err != nil {
-			return err
+			return errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		txs = append(txs, &Transactions{
@@ -436,5 +440,6 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 		Set("metadata = transactions.metadata || _data.metadata").
 		Where(fmt.Sprintf("%s.id = _data.id", TransactionsTableName)).
 		Exec(ctx)
-	return err
+
+	return sqlerrors.PostgresError(err)
 }

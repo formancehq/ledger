@@ -64,7 +64,7 @@ func TestStateWithError(t *testing.T) {
 		Timestamp: now.Add(-10 * time.Millisecond),
 	})
 	require.Error(t, err)
-	require.IsType(t, ErrPastTransaction{}, err)
+	require.True(t, IsPastTransaction(err))
 }
 
 func BenchmarkState(b *testing.B) {

@@ -4,18 +4,21 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
 
 func (l *Ledger) GetMigrationsInfo(ctx context.Context) ([]core.MigrationInfo, error) {
 	migrationsAvailable, err := l.store.GetMigrationsAvailable()
 	if err != nil {
-		return []core.MigrationInfo{}, errors.Wrap(err, "getting migrations available")
+		return []core.MigrationInfo{}, errorsutil.NewError(ErrMigration,
+			errors.Wrap(err, "getting migrations available"))
 	}
 
 	migrationsDone, err := l.store.GetMigrationsDone(ctx)
 	if err != nil {
-		return []core.MigrationInfo{}, errors.Wrap(err, "getting migrations done")
+		return []core.MigrationInfo{}, errorsutil.NewError(ErrMigration,
+			errors.Wrap(err, "getting migrations done"))
 	}
 
 	res := make([]core.MigrationInfo, 0)

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/lib/pq"
 )
 
@@ -125,7 +126,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 			balancesString := split[1]
 			balances, err := strconv.ParseInt(balancesString, 10, 64)
 			if err != nil {
-				return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+				return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrParsingBalance, err)
 			}
 			accountsBalances[currentAccount][asset] = big.NewInt(balances)
 		}
@@ -147,7 +148,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -157,7 +158,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}

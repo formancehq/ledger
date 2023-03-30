@@ -1,84 +1,68 @@
 package vm
 
 import (
-	"fmt"
-
 	"github.com/pkg/errors"
 )
 
-const (
-	ScriptErrorInsufficientFund  = "INSUFFICIENT_FUND"
-	ScriptErrorCompilationFailed = "COMPILATION_FAILED"
-	ScriptErrorNoScript          = "NO_SCRIPT"
-	ScriptErrorMetadataOverride  = "METADATA_OVERRIDE"
+var (
+	ErrInsufficientFund                            = errors.New("insufficient fund")
+	ErrCompilationFailed                           = errors.New("compilation failed")
+	ErrInvalidScript                               = errors.New("invalid script")
+	ErrScriptFailed                                = errors.New("script exited with error code")
+	ErrMetadataOverride                            = errors.New("metadata override")
+	ErrResourcesNotInitialized                     = errors.New("resources not initialized")
+	ErrBalancesNotInitialized                      = errors.New("balances not initialized")
+	ErrResourceNotFound                            = errors.New("resource not found")
+	ErrNegativeMonetaryAmount                      = errors.New("negative monetary amount")
+	ErrInvalidVars                                 = errors.New("invalid vars")
+	ErrResourceResolutionMissingMetadata           = errors.New("missing metadata")
+	ErrResourceResolutionInvalidTypeFromExtSources = errors.New("invalid type from external sources")
 )
 
-type ScriptError struct {
-	Code    string
-	Message string
+func IsInsufficientFundError(err error) bool {
+	return errors.Is(err, ErrInsufficientFund)
 }
 
-func (e ScriptError) Error() string {
-	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
+func IsCompilationFailedError(err error) bool {
+	return errors.Is(err, ErrCompilationFailed)
 }
 
-func (e ScriptError) Is(err error) bool {
-	eerr, ok := err.(*ScriptError)
-	if !ok {
-		return false
-	}
-	return e.Code == eerr.Code
+func IsMetadataOverrideError(err error) bool {
+	return errors.Is(err, ErrMetadataOverride)
 }
 
-func IsScriptErrorWithCode(err error, code string) bool {
-	return errors.Is(err, &ScriptError{
-		Code: code,
-	})
+func IsResourceResolutionMissingMetadataError(err error) bool {
+	return errors.Is(err, ErrResourceResolutionMissingMetadata)
 }
 
-func NewScriptError(code string, message string) *ScriptError {
-	return &ScriptError{
-		Code:    code,
-		Message: message,
-	}
+func IsResourceResolutionInvalidTypeFromExtSourcesError(err error) bool {
+	return errors.Is(err, ErrResourceResolutionInvalidTypeFromExtSources)
 }
 
-const (
-	ResourceResolutionErrorCodeMissingMetadata                = "MISSING_METADATA"
-	ResourceResolutionErrorCodeInvalidTypeFromExternalSources = "INVALID_TYPE_FROM_EXTERNAL_SOURCE"
-)
-
-type ResourceResolutionError struct {
-	Code string
-	text string
+func IsResourcesNotInitializedError(err error) bool {
+	return errors.Is(err, ErrResourcesNotInitialized)
 }
 
-func (e ResourceResolutionError) Error() string {
-	return fmt.Sprintf("Error resolving resource: %s", e.text)
+func IsBalancesNotInitializedError(err error) bool {
+	return errors.Is(err, ErrBalancesNotInitialized)
 }
 
-func (e ResourceResolutionError) Is(err error) bool {
-	eerr, ok := err.(ResourceResolutionError)
-	if !ok {
-		return false
-	}
-	return e.Code == eerr.Code
+func IsResourceNotFoundError(err error) bool {
+	return errors.Is(err, ErrResourceNotFound)
 }
 
-func newResourceResolutionError(code, text string) ResourceResolutionError {
-	return ResourceResolutionError{
-		Code: code,
-		text: text,
-	}
+func IsNegativeMonetaryAmountError(err error) bool {
+	return errors.Is(err, ErrNegativeMonetaryAmount)
 }
 
-func IsResourceResolutionErrorWithCode(err error, code string) bool {
-	return errors.Is(err, &ResourceResolutionError{
-		Code: code,
-	})
+func IsInvalidVarsError(err error) bool {
+	return errors.Is(err, ErrInvalidVars)
 }
 
-func IsResourceResolutionError(err error) bool {
-	_, ok := err.(ResourceResolutionError)
-	return ok
+func IsInvalidScriptError(err error) bool {
+	return errors.Is(err, ErrInvalidScript)
+}
+
+func IsScriptFailedError(err error) bool {
+	return errors.Is(err, ErrScriptFailed)
 }
