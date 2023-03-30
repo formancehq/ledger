@@ -3,9 +3,12 @@ package state
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/pkg/errors"
 )
 
 type ReserveRequest struct {
@@ -44,21 +47,25 @@ type State struct {
 func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
 	if !s.allowPastTimestamps {
 		if s.moreRecentInFlight != nil && s.moreRecentInFlight.timestamp.After(r.Timestamp) {
-			return newErrPastTransaction(s.moreRecentInFlight.timestamp, r.Timestamp)
+			return errorsutil.NewError(ErrPastTransaction,
+				errors.Errorf("%s (passed) is %s before %s (last)", r.Timestamp.Format(time.RFC3339Nano),
+					s.moreRecentInFlight.timestamp.Sub(r.Timestamp),
+					s.moreRecentInFlight.timestamp.Format(time.RFC3339Nano)))
 		}
 	}
 
 	if r.Reference != "" {
 		if _, ok := s.inFlightsByReference[r.Reference]; ok {
-			return NewConflictError("reference already used, in flight occurring")
+			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, in flight occurring"))
 		}
 		_, err := s.store.ReadLogWithReference(ctx, r.Reference)
 		if err == nil {
 			// Log found
-			return NewConflictError("reference found in storage")
+			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, log found in storage"))
 		}
+
 		if !storage.IsNotFound(err) {
-			return err
+			return errorsutil.NewError(ErrStorage, err)
 		}
 	}
 

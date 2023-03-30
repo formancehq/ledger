@@ -18,15 +18,9 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/logrusorgru/aurora"
 	"github.com/pkg/errors"
-)
-
-const (
-	EXIT_OK = byte(iota + 1)
-	EXIT_FAIL
-	EXIT_FAIL_INVALID
-	EXIT_FAIL_INSUFFICIENT_FUNDS
 )
 
 type Machine struct {
@@ -194,7 +188,7 @@ func (m *Machine) repay(funding internal.Funding) {
 	}
 }
 
-func (m *Machine) tick() (bool, byte, error) {
+func (m *Machine) tick() (bool, error) {
 	op := m.Program.Instructions[m.P]
 
 	if m.Debug {
@@ -209,7 +203,7 @@ func (m *Machine) tick() (bool, byte, error) {
 		bytes := m.Program.Instructions[m.P+1 : m.P+3]
 		v, ok := m.getResource(internal.Address(binary.LittleEndian.Uint16(bytes)))
 		if !ok {
-			return true, EXIT_FAIL, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, ErrResourceNotFound
 		}
 		m.Stack = append(m.Stack, *v)
 		m.P += 2
@@ -224,7 +218,8 @@ func (m *Machine) tick() (bool, byte, error) {
 	case program.OP_DELETE:
 		n := m.popValue()
 		if n.GetType() == internal.TypeFunding {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.Errorf("wrong type: want: %v, got: %v", n.GetType(), internal.TypeFunding))
 		}
 
 	case program.OP_IADD:
@@ -242,7 +237,7 @@ func (m *Machine) tick() (bool, byte, error) {
 		m.printChan <- a
 
 	case program.OP_FAIL:
-		return true, EXIT_FAIL, nil
+		return true, ErrScriptFailed
 
 	case program.OP_ASSET:
 		v := m.popValue()
@@ -254,7 +249,8 @@ func (m *Machine) tick() (bool, byte, error) {
 		case internal.Funding:
 			m.pushValue(v.Asset)
 		default:
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.Errorf("wrong type for op asset: %v", v.GetType()))
 		}
 
 	case program.OP_MONETARY_NEW:
@@ -269,8 +265,8 @@ func (m *Machine) tick() (bool, byte, error) {
 		b := pop[internal.Monetary](m)
 		a := pop[internal.Monetary](m)
 		if a.Asset != b.Asset {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf(
-				"tried to add two monetary with different assets: '%s' and '%s'", a.Asset, b.Asset)
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.Errorf("cannot add different assets: %v and %v", a.Asset, b.Asset))
 		}
 		m.pushValue(internal.Monetary{
 			Asset:  a.Asset,
@@ -297,7 +293,7 @@ func (m *Machine) tick() (bool, byte, error) {
 		}
 		allotment, err := internal.NewAllotment(portions)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript, err)
 		}
 		m.pushValue(*allotment)
 
@@ -306,7 +302,7 @@ func (m *Machine) tick() (bool, byte, error) {
 		account := pop[internal.AccountAddress](m)
 		funding, err := m.withdrawAll(account, overdraft.Asset, overdraft.Amount)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript, err)
 		}
 		m.pushValue(*funding)
 
@@ -315,7 +311,7 @@ func (m *Machine) tick() (bool, byte, error) {
 		account := pop[internal.AccountAddress](m)
 		funding, err := m.withdrawAlways(account, mon)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript, err)
 		}
 		m.pushValue(*funding)
 
@@ -323,11 +319,12 @@ func (m *Machine) tick() (bool, byte, error) {
 		mon := pop[internal.Monetary](m)
 		funding := pop[internal.Funding](m)
 		if funding.Asset != mon.Asset {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.Errorf("cannot take from different assets: %v and %v", funding.Asset, mon.Asset))
 		}
 		result, remainder, err := funding.Take(mon.Amount)
 		if err != nil {
-			return true, EXIT_FAIL_INSUFFICIENT_FUNDS, nil
+			return true, errorsutil.NewError(ErrInsufficientFund, err)
 		}
 		m.pushValue(remainder)
 		m.pushValue(result)
@@ -335,13 +332,14 @@ func (m *Machine) tick() (bool, byte, error) {
 	case program.OP_TAKE_MAX:
 		mon := pop[internal.Monetary](m)
 		if mon.Amount.Ltz() {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf(
+			return true, fmt.Errorf(
 				"cannot send a monetary with a negative amount: [%s %s]",
 				string(mon.Asset), mon.Amount)
 		}
 		funding := pop[internal.Funding](m)
 		if funding.Asset != mon.Asset {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.Errorf("cannot take from different assets: %v and %v", funding.Asset, mon.Asset))
 		}
 		missing := internal.NewMonetaryInt(0)
 		total := funding.Total()
@@ -360,7 +358,8 @@ func (m *Machine) tick() (bool, byte, error) {
 		num := pop[internal.Number](m)
 		n := int(num.Uint64())
 		if n == 0 {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, errorsutil.NewError(ErrInvalidScript,
+				errors.New("cannot assemble zero fundings"))
 		}
 		first := pop[internal.Funding](m)
 		result := internal.Funding{
@@ -371,14 +370,15 @@ func (m *Machine) tick() (bool, byte, error) {
 		for i := 1; i < n; i++ {
 			f := pop[internal.Funding](m)
 			if f.Asset != result.Asset {
-				return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+				return true, errorsutil.NewError(ErrInvalidScript,
+					errors.Errorf("cannot assemble different assets: %v and %v", f.Asset, result.Asset))
 			}
 			fundings_rev[i] = f
 		}
 		for i := 0; i < n; i++ {
 			res, err := result.Concat(fundings_rev[n-1-i])
 			if err != nil {
-				return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+				return true, errorsutil.NewError(ErrInvalidScript, err)
 			}
 			result = res
 		}
@@ -443,35 +443,37 @@ func (m *Machine) tick() (bool, byte, error) {
 		m.AccountsMeta[a][string(k)] = v
 
 	default:
-		return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+		return true, errorsutil.NewError(ErrInvalidScript,
+			errors.Errorf("invalid opcode: %v", op))
 	}
 
 	m.P += 1
 
 	if int(m.P) >= len(m.Program.Instructions) {
-		return true, EXIT_OK, nil
+		return true, nil
 	}
 
-	return false, 0, nil
+	return false, nil
 }
 
-func (m *Machine) Execute() (byte, error) {
+func (m *Machine) Execute() error {
 	go m.Printer(m.printChan)
 	defer close(m.printChan)
 
 	if len(m.Resources) != len(m.UnresolvedResources) {
-		return 0, errors.New("resources haven't been initialized")
+		return ErrResourcesNotInitialized
 	} else if m.Balances == nil {
-		return 0, errors.New("balances haven't been initialized")
+		return ErrBalancesNotInitialized
 	}
 
 	for {
-		finished, exitCode, err := m.tick()
+		finished, err := m.tick()
 		if finished {
-			if exitCode == EXIT_OK && len(m.Stack) != 0 {
-				return EXIT_FAIL_INVALID, err
+			if err == nil && len(m.Stack) != 0 {
+				return errorsutil.NewError(ErrInvalidScript,
+					errors.New("stack not empty after execution"))
 			} else {
-				return exitCode, err
+				return err
 			}
 		}
 	}
@@ -502,9 +504,9 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 		monetary := m.Resources[resourceIndex].(internal.Monetary)
 		balance := account.Volumes[string(monetary.Asset)].Balance()
 		if balance.Cmp(core.Zero) < 0 {
-			return fmt.Errorf(
+			return errorsutil.NewError(ErrNegativeMonetaryAmount, fmt.Errorf(
 				"tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
-				address, monetary.Asset, balance)
+				address, monetary.Asset, balance))
 		}
 		monetary.Amount = internal.NewMonetaryIntFromBigInt(account.Volumes[string(monetary.Asset)].Balance())
 		m.Resources[resourceIndex] = monetary
@@ -593,8 +595,8 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 
 			entry, ok := account.Metadata[res.Key]
 			if !ok {
-				return nil, nil, newResourceResolutionError(ResourceResolutionErrorCodeMissingMetadata,
-					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, address))
+				return nil, nil, errorsutil.NewError(ErrResourceResolutionMissingMetadata, errors.New(
+					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, address)))
 			}
 
 			data, err := json.Marshal(entry)
@@ -603,8 +605,8 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			}
 			val, err = internal.NewValueFromTypedJSON(data)
 			if err != nil {
-				return nil, nil, newResourceResolutionError(ResourceResolutionErrorCodeInvalidTypeFromExternalSources,
-					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, address))
+				return nil, nil, errorsutil.NewError(ErrResourceResolutionInvalidTypeFromExtSources, errors.New(
+					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, address)))
 			}
 		case program.VariableAccountBalance:
 			sourceAccount, ok := m.getResource(res.Account)
@@ -678,7 +680,7 @@ func (m *Machine) SetVars(vars map[string]internal.Value) error {
 
 	v, err := m.Program.ParseVariables(vars)
 	if err != nil {
-		return err
+		return errorsutil.NewError(ErrInvalidVars, err)
 	}
 	m.Vars = v
 	return nil
@@ -687,7 +689,7 @@ func (m *Machine) SetVars(vars map[string]internal.Value) error {
 func (m *Machine) SetVarsFromJSON(vars map[string]json.RawMessage) error {
 	v, err := m.Program.ParseVariablesJSON(vars)
 	if err != nil {
-		return err
+		return errorsutil.NewError(ErrInvalidVars, err)
 	}
 	m.Vars = v
 	return nil

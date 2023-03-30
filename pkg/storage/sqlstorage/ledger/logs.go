@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -63,7 +64,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 
 	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return err
+		return sqlerrors.PostgresError(err)
 	}
 
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
@@ -73,14 +74,14 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		"id", "type", "hash", "date", "data", "reference",
 	))
 	if err != nil {
-		return err
+		return sqlerrors.PostgresError(err)
 	}
 
 	ls := make([]LogsV2, len(logs))
 	for i, l := range logs {
 		data, err := json.Marshal(l.Data)
 		if err != nil {
-			panic(err)
+			return errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		id := uint64(0)
@@ -143,7 +144,7 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errors.Wrap(err, "hydrating log")
+		return nil, errorsutil.NewError(storage.ErrJson, err)
 	}
 
 	l := &core.Log{
@@ -186,7 +187,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 
 		payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 		if err != nil {
-			return api.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log")
+			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 
 		res = append(res, core.Log{
@@ -210,7 +211,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		res = res[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Log]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -221,7 +222,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		t.AfterID = res[len(res)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Log]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -278,6 +279,7 @@ func (s *Store) getNextLogID(ctx context.Context, sq interface {
 	if err != nil {
 		return 0, sqlerrors.PostgresError(err)
 	}
+
 	return logID, nil
 }
 
@@ -315,7 +317,7 @@ func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
 	for index, rawLog := range rawLogs {
 		payload, err := core.HydrateLog(core.LogType(rawLog.Type), rawLog.Data)
 		if err != nil {
-			return nil, errors.Wrap(err, "hydrating log")
+			return nil, errorsutil.NewError(storage.ErrJson, err)
 		}
 		logs[index] = core.Log{
 			ID:        rawLog.ID,
@@ -362,10 +364,12 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 	if err != nil {
 		return nil, sqlerrors.PostgresError(err)
 	}
+
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errors.Wrap(err, "hydrating log")
+		return nil, errorsutil.NewError(storage.ErrJson, err)
 	}
+
 	return &core.Log{
 		ID:        raw.ID,
 		Type:      core.LogType(raw.Type),
@@ -396,7 +400,7 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errors.Wrap(err, "hydrating log")
+		return nil, errorsutil.NewError(storage.ErrJson, err)
 	}
 
 	return &core.Log{

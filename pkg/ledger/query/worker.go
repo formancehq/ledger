@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
@@ -242,12 +243,14 @@ func (w *Worker) initLedger(ctx context.Context) error {
 
 	lastReadLogID, err := w.store.GetNextLogID(ctx)
 	if err != nil && !storage.IsNotFound(err) {
-		return errors.Wrap(err, "reading last log")
+		return errorsutil.NewError(ErrStorage,
+			errors.Wrap(err, "reading last log"))
 	}
 
 	logs, err := w.store.ReadLogsStartingFromID(ctx, lastReadLogID)
 	if err != nil {
-		return errors.Wrap(err, "reading logs since last ID")
+		return errorsutil.NewError(ErrStorage,
+			errors.Wrap(err, "reading logs since last ID"))
 	}
 
 	if len(logs) == 0 {
@@ -259,7 +262,8 @@ func (w *Worker) initLedger(ctx context.Context) error {
 	}
 
 	if err := w.store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
-		return errors.Wrap(err, "updating last read log")
+		return errorsutil.NewError(ErrStorage,
+			errors.Wrap(err, "updating last read log"))
 	}
 	lastProcessedLogID := logs[len(logs)-1].ID
 	w.lastProcessedLogID = &lastProcessedLogID
@@ -305,7 +309,7 @@ func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
 
 		return nil
 	}); err != nil {
-		return err
+		return errorsutil.NewError(ErrStorage, err)
 	}
 
 	if w.monitor != nil {
@@ -410,7 +414,7 @@ func (w *Worker) buildData(
 
 			txVolumeAggregator, err := volumeAggregator.NextTxWithPostings(ctx, payload.RevertTransaction.Postings...)
 			if err != nil {
-				return nil, errors.Wrap(err, "aggregating volumes")
+				return nil, errorsutil.NewError(ErrStorage, errors.Wrap(err, "aggregating volumes"))
 			}
 
 			expandedTx := core.ExpandedTransaction{
@@ -422,7 +426,7 @@ func (w *Worker) buildData(
 
 			revertedTx, err := w.store.GetTransaction(ctx, payload.RevertedTransactionID)
 			if err != nil {
-				return nil, err
+				return nil, errorsutil.NewError(ErrStorage, err)
 			}
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {

@@ -68,12 +68,11 @@ func main() {
 		panic(err)
 	}
 
-	exitCode, err := m.Execute()
+	err = m.Execute()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Exit code:", exitCode)
 	fmt.Println(m.Postings)
 	fmt.Println(m.TxMeta)
 }
