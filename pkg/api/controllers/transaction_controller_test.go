@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -192,7 +193,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			body: core.Metadata{
+			body: metadata.Metadata{
 				"foo": "bar",
 			},
 		},

@@ -10,10 +10,10 @@ import (
 )
 
 func TestAccountTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"type": "account",
 		"value": "users:001"
-	}`)
+	}`
 	value, err := NewValueFromTypedJSON(j)
 	require.NoError(t, err)
 
@@ -23,10 +23,10 @@ func TestAccountTypedJSON(t *testing.T) {
 }
 
 func TestAssetTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"type": "asset",
 		"value": "EUR/2"
-	}`)
+	}`
 	value, err := NewValueFromTypedJSON(j)
 	require.NoError(t, err)
 
@@ -36,10 +36,10 @@ func TestAssetTypedJSON(t *testing.T) {
 }
 
 func TestNumberTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"type": "number",
 		"value": 89849865111111111111111111111111111555555555555555555555555555555555555555555555555999999999999999999999
-	}`)
+	}`
 	value, err := NewValueFromTypedJSON(j)
 	require.NoError(t, err)
 
@@ -52,13 +52,13 @@ func TestNumberTypedJSON(t *testing.T) {
 }
 
 func TestMonetaryTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"type": "monetary",
 		"value": {
 			"asset": "EUR/2",
 			"amount": 123456
 		}
-	}`)
+	}`
 	value, err := NewValueFromTypedJSON(j)
 	require.NoError(t, err)
 
@@ -71,10 +71,10 @@ func TestMonetaryTypedJSON(t *testing.T) {
 }
 
 func TestPortionTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"type": "portion",
 		"value": "90%"
-	}`)
+	}`
 	value, err := NewValueFromTypedJSON(j)
 	require.NoError(t, err)
 
@@ -87,12 +87,12 @@ func TestPortionTypedJSON(t *testing.T) {
 }
 
 func TestInvalidTypedJSON(t *testing.T) {
-	j := json.RawMessage(`{
+	j := `{
 		"value": {
 			"asset": "EUR/2",
 			"amount": 123456
 		}
-	}`)
+	}`
 	_, err := NewValueFromTypedJSON(j)
 	require.Error(t, err)
 }

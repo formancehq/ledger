@@ -7,13 +7,14 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 //go:generate mockgen -source api.go -destination api_test.go -package controllers_test . Ledger
 
 type Ledger interface {
 	GetAccount(ctx context.Context, param string) (*core.AccountWithVolumes, error)
-	SaveMeta(ctx context.Context, targetType string, targetID any, m core.Metadata) error
+	SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata) error
 	GetAccounts(ctx context.Context, query storage.AccountsQuery) (api.Cursor[core.Account], error)
 	CountAccounts(ctx context.Context, query storage.AccountsQuery) (uint64, error)
 	GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error)

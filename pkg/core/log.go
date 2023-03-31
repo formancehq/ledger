@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type LogType int16
@@ -54,11 +56,11 @@ func (l Log) WithReference(reference string) Log {
 }
 
 type NewTransactionLogPayload struct {
-	Transaction     Transaction         `json:"transaction"`
-	AccountMetadata map[string]Metadata `json:"accountMetadata"`
+	Transaction     Transaction                  `json:"transaction"`
+	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 
-func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]Metadata, time Time) Log {
+func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metadata.Metadata, time Time) Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return Log{
@@ -71,21 +73,21 @@ func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]Metada
 	}
 }
 
-func NewTransactionLog(tx Transaction, accountMetadata map[string]Metadata) Log {
+func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metadata) Log {
 	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp).WithReference(tx.Reference)
 }
 
 type SetMetadataLogPayload struct {
-	TargetType string      `json:"targetType"`
-	TargetID   interface{} `json:"targetId"`
-	Metadata   Metadata    `json:"metadata"`
+	TargetType string            `json:"targetType"`
+	TargetID   interface{}       `json:"targetId"`
+	Metadata   metadata.Metadata `json:"metadata"`
 }
 
 func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 	type X struct {
-		TargetType string          `json:"targetType"`
-		TargetID   json.RawMessage `json:"targetId"`
-		Metadata   Metadata        `json:"metadata"`
+		TargetType string            `json:"targetType"`
+		TargetID   json.RawMessage   `json:"targetId"`
+		Metadata   metadata.Metadata `json:"metadata"`
 	}
 	x := X{}
 	err := json.Unmarshal(data, &x)

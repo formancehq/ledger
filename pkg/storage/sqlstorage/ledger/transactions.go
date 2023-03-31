@@ -14,6 +14,7 @@ import (
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/uptrace/bun"
 )
 
@@ -211,7 +212,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
-			tx.Metadata = core.Metadata{}
+			tx.Metadata = metadata.Metadata{}
 		}
 		tx.Timestamp = tx.Timestamp.UTC()
 		txs = append(txs, tx)
@@ -285,7 +286,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 		Transaction: core.Transaction{
 			TransactionData: core.TransactionData{
 				Postings: core.Postings{},
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 		},
 		PreCommitVolumes:  core.AccountsAssetsVolumes{},
@@ -397,7 +398,7 @@ func (s *Store) InsertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	return storageerrors.PostgresError(s.insertTransactions(ctx, txs...))
 }
 
-func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}

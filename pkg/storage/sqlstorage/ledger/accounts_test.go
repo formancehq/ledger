@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,9 +71,9 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("success account insertion", func(t *testing.T) {
 		addr := "test:account"
-		metadata := core.Metadata(map[string]any{
+		metadata := metadata.Metadata{
 			"foo": "bar",
-		})
+		}
 
 		err := store.UpdateAccountMetadata(context.Background(), addr, metadata)
 		assert.NoError(t, err, "account insertion should not fail")
@@ -88,15 +89,15 @@ func TestAccounts(t *testing.T) {
 		accounts := []core.Account{
 			{
 				Address:  "test:account1",
-				Metadata: core.Metadata(map[string]any{"foo1": "bar1"}),
+				Metadata: metadata.Metadata{"foo1": "bar1"},
 			},
 			{
 				Address:  "test:account2",
-				Metadata: core.Metadata(map[string]any{"foo2": "bar2"}),
+				Metadata: metadata.Metadata{"foo2": "bar2"},
 			},
 			{
 				Address:  "test:account3",
-				Metadata: core.Metadata(map[string]any{"foo3": "bar3"}),
+				Metadata: metadata.Metadata{"foo3": "bar3"},
 			},
 		}
 

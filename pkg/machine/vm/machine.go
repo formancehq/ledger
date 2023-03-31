@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/logrusorgru/aurora"
 	"github.com/pkg/errors"
@@ -75,8 +76,8 @@ func StdOutPrinter(c chan internal.Value) {
 	}
 }
 
-func (m *Machine) GetTxMetaJSON() Metadata {
-	meta := make(Metadata)
+func (m *Machine) GetTxMetaJSON() metadata.Metadata {
+	meta := metadata.Metadata{}
 	for k, v := range m.TxMeta {
 		valJSON, err := json.Marshal(v)
 		if err != nil {
@@ -89,17 +90,17 @@ func (m *Machine) GetTxMetaJSON() Metadata {
 		if err != nil {
 			panic(err)
 		}
-		meta[k] = v
+		meta[k] = string(v)
 	}
 	return meta
 }
 
-func (m *Machine) GetAccountsMetaJSON() Metadata {
-	res := Metadata{}
+func (m *Machine) GetAccountsMetaJSON() map[string]metadata.Metadata {
+	res := make(map[string]metadata.Metadata)
 	for account, meta := range m.AccountsMeta {
 		for k, v := range meta {
-			if _, ok := res[account.String()]; !ok {
-				res[account.String()] = map[string][]byte{}
+			if _, ok := res[string(account)]; !ok {
+				res[string(account)] = metadata.Metadata{}
 			}
 			valJSON, err := json.Marshal(v)
 			if err != nil {
@@ -112,7 +113,7 @@ func (m *Machine) GetAccountsMetaJSON() Metadata {
 			if err != nil {
 				panic(err)
 			}
-			res[account.String()].(map[string][]byte)[k] = v
+			res[string(account)][k] = string(v)
 		}
 	}
 
@@ -586,11 +587,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, addr)))
 			}
 
-			data, err := json.Marshal(entry)
-			if err != nil {
-				return nil, nil, errors.Wrap(err, "marshaling metadata")
-			}
-			val, err = internal.NewValueFromTypedJSON(data)
+			val, err = internal.NewValueFromTypedJSON(entry)
 			if err != nil {
 				return nil, nil, errorsutil.NewError(ErrResourceResolutionInvalidTypeFromExtSources, errors.New(
 					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, addr)))
@@ -612,6 +609,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 					"variable '%s': tried to request account balance for an asset on wrong entity: %v instead of asset",
 					res.Name, (*ass).GetType())
 			}
+
 			val = internal.Monetary{
 				Asset: (*ass).(internal.Asset),
 			}

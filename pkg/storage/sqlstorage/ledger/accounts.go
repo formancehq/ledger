@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -25,8 +26,8 @@ const (
 type Accounts struct {
 	bun.BaseModel `bun:"accounts,alias:accounts"`
 
-	Address  string         `bun:"address,type:varchar,unique,notnull"`
-	Metadata map[string]any `bun:"metadata,type:jsonb,default:'{}'"`
+	Address  string            `bun:"address,type:varchar,unique,notnull"`
+	Metadata map[string]string `bun:"metadata,type:jsonb,default:'{}'"`
 }
 
 type AccountsPaginationToken struct {
@@ -141,7 +142,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 
 	for rows.Next() {
 		account := core.Account{
-			Metadata: core.Metadata{},
+			Metadata: metadata.Metadata{},
 		}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
 			return api.Cursor[core.Account]{}, storageerrors.PostgresError(err)
@@ -233,7 +234,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 
 	acc := core.Account{
 		Address:  account,
-		Metadata: core.Metadata{},
+		Metadata: metadata.Metadata{},
 	}
 	assetsVolumes := core.AssetsVolumes{}
 
@@ -307,7 +308,7 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 
 	a := &Accounts{
 		Address:  account,
-		Metadata: make(map[string]interface{}),
+		Metadata: metadata.Metadata{},
 	}
 
 	_, err := s.schema.NewInsert(accountsTableName).
@@ -327,7 +328,7 @@ func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) erro
 	for i, a := range accounts {
 		accs[i] = &Accounts{
 			Address:  a,
-			Metadata: make(map[string]interface{}),
+			Metadata: metadata.Metadata{},
 		}
 	}
 
@@ -339,7 +340,7 @@ func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) erro
 	return storageerrors.PostgresError(err)
 }
 
-func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
+func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata metadata.Metadata) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}

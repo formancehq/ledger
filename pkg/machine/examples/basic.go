@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 func main() {
@@ -59,7 +60,7 @@ func main() {
 		return &core.AccountWithVolumes{
 			Account: core.Account{
 				Address:  address,
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 			Volumes: initialVolumes[address],
 		}, nil
