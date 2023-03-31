@@ -12,9 +12,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -107,7 +106,8 @@ func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery)
 
 func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.Cursor[core.Account], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.Account]{}, storage.ErrStoreNotInitialized
+		return api.Cursor[core.Account]{},
+			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	accounts := make([]core.Account, 0)
@@ -131,7 +131,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
 	if err != nil {
-		return api.Cursor[core.Account]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.Account]{}, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -140,13 +140,13 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 			Metadata: core.Metadata{},
 		}
 		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return api.Cursor[core.Account]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Account]{}, storageerrors.PostgresError(err)
 		}
 
 		accounts = append(accounts, account)
 	}
 	if rows.Err() != nil {
-		return api.Cursor[core.Account]{}, sqlerrors.PostgresError(rows.Err())
+		return api.Cursor[core.Account]{}, storageerrors.PostgresError(rows.Err())
 	}
 
 	var previous, next string
@@ -159,7 +159,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Account]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.Account]{}, errors.Wrap(err, "failed to marshal pagination token")
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -169,7 +169,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Account]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.Account]{}, errors.Wrap(err, "failed to marshal pagination token")
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -186,7 +186,7 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	query := s.schema.NewSelect(accountsTableName).
@@ -196,13 +196,13 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 
 	row := s.schema.QueryRowContext(ctx, query)
 	if err := row.Err(); err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	var account core.Account
 	err := row.Scan(&account.Address, &account.Metadata)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	return &account, nil
@@ -223,7 +223,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 
 	rows, err := exec.QueryContext(ctx, query)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -236,7 +236,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 	for rows.Next() {
 		var asset, inputStr, outputStr sql.NullString
 		if err := rows.Scan(&acc.Metadata, &asset, &inputStr, &outputStr); err != nil {
-			return nil, sqlerrors.PostgresError(err)
+			return nil, storageerrors.PostgresError(err)
 		}
 
 		if asset.Valid {
@@ -269,7 +269,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	return &core.AccountWithVolumes{
@@ -280,7 +280,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 
 func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	return s.getAccountWithVolumes(ctx, s.schema, account)
@@ -288,17 +288,17 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 
 func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uint64, error) {
 	if !s.isInitialized {
-		return 0, storage.ErrStoreNotInitialized
+		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	sb, _ := s.buildAccountsQuery(ctx, q)
 	count, err := sb.Count(ctx)
-	return uint64(count), sqlerrors.PostgresError(err)
+	return uint64(count), storageerrors.PostgresError(err)
 }
 
 func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	a := &Accounts{
@@ -311,12 +311,12 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 		Ignore().
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	accs := make([]*Accounts, len(accounts))
@@ -332,12 +332,12 @@ func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) erro
 		Ignore().
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	a := &Accounts{
@@ -351,12 +351,12 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Account) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	accs := make([]*Accounts, len(accounts))
@@ -373,5 +373,5 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Acco
 		Set("metadata = accounts.metadata || EXCLUDED.metadata").
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }

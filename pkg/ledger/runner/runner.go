@@ -48,7 +48,7 @@ func (r *Runner) Execute(
 		Reference: script.Reference,
 	})
 	if err != nil {
-		return nil, nil, StateErrorToRunnerError(err)
+		return nil, nil, errorsutil.NewError(ErrState, err)
 	}
 	defer reserve.Clear(nil)
 
@@ -62,7 +62,7 @@ func (r *Runner) Execute(
 	}
 
 	if err := r.store.AppendLog(ctx, logHolder.Log); err != nil {
-		return nil, nil, errorsutil.NewError(ErrStorage, err)
+		return nil, nil, errors.Wrap(err, "appending log")
 	}
 
 	reserve.Clear(&transaction.Transaction)
@@ -92,13 +92,13 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	// TODO: need to release even if an error is returned later
 	release, err := r.cache.LockAccounts(ctx, involvedAccounts...)
 	if err != nil {
-		return nil, nil, errorsutil.NewError(ErrRunner, err)
+		return nil, nil, errors.Wrap(err, "locking accounts")
 	}
 
 	unlock, err := r.locker.Lock(ctx, r.store.Name(), involvedAccounts...)
 	if err != nil {
 		release()
-		return nil, nil, errorsutil.NewError(ErrRunner, err)
+		return nil, nil, errors.Wrap(err, "locking accounts")
 	}
 	defer unlock(context.Background())
 
@@ -112,7 +112,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	result, err := machine.Run(m, script)
 	if err != nil {
 		release()
-		return nil, nil, VMErrorToRunnerError(err)
+		return nil, nil, errors.Wrap(err, "running numscript")
 	}
 
 	if len(result.Postings) == 0 {
@@ -124,7 +124,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	txVolumeAggr, err := vAggr.NextTxWithPostings(ctx, result.Postings...)
 	if err != nil {
 		release()
-		return nil, nil, errorsutil.NewError(ErrRunner, errors.Wrap(err, "transferring volumes"))
+		return nil, nil, errors.Wrap(err, "transferring volumes")
 	}
 
 	txID := r.nextTxID.Load()
@@ -171,7 +171,7 @@ func (r *Runner) GetState() *state.State {
 
 func New(store storage.LedgerStore, locker lock.Locker, cache *cache.Cache, compiler *numscript.Compiler, allowPastTimestamps bool) (*Runner, error) {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
-	if err != nil && !storage.IsNotFound(err) {
+	if err != nil && !storage.IsNotFoundError(err) {
 		return nil, err
 	}
 	var (

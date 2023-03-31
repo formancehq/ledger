@@ -11,9 +11,9 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -165,7 +165,7 @@ func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.Transactio
 
 func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.ExpandedTransaction]{}, storage.ErrStoreNotInitialized
+		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	txs := make([]core.ExpandedTransaction, 0)
@@ -186,7 +186,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
 	if err != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -202,7 +202,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 			&tx.PreCommitVolumes,
 			&tx.PostCommitVolumes,
 		); err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
 		}
 
 		tx.Reference = ref.String
@@ -214,7 +214,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	}
 
 	if rows.Err() != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
 	}
 
 	var previous, next string
@@ -225,7 +225,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		txs = txs[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.ExpandedTransaction]{}, errors.Wrap(err, "failed to marshal cursor")
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -236,7 +236,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 		t.AfterTxID = txs[len(txs)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.ExpandedTransaction]{}, errors.Wrap(err, "failed to marshal cursor")
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -253,17 +253,17 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 
 func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
 	if !s.isInitialized {
-		return 0, storage.ErrStoreNotInitialized
+		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	sb, _ := s.buildTransactionsQuery(ctx, q)
 	count, err := sb.Count(ctx)
-	return uint64(count), sqlerrors.PostgresError(err)
+	return uint64(count), storageerrors.PostgresError(err)
 }
 
 func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	sb := s.schema.NewSelect(TransactionsTableName).
@@ -274,7 +274,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 
 	row := s.schema.QueryRowContext(ctx, sb.String())
 	if row.Err() != nil {
-		return nil, sqlerrors.PostgresError(row.Err())
+		return nil, storageerrors.PostgresError(row.Err())
 	}
 
 	tx := core.ExpandedTransaction{
@@ -298,7 +298,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 		&tx.PreCommitVolumes,
 		&tx.PostCommitVolumes,
 	); err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 	tx.Timestamp = tx.Timestamp.UTC()
 	tx.Reference = ref.String
@@ -313,25 +313,25 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	for i, tx := range txs {
 		postingsData, err := json.Marshal(tx.Postings)
 		if err != nil {
-			return errorsutil.NewError(storage.ErrJson, err)
+			return errors.Wrap(err, "failed to marshal postings")
 		}
 
 		metadataData := []byte("{}")
 		if tx.Metadata != nil {
 			metadataData, err = json.Marshal(tx.Metadata)
 			if err != nil {
-				return errorsutil.NewError(storage.ErrJson, err)
+				return errors.Wrap(err, "failed to marshal metadata")
 			}
 		}
 
 		preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
 		if err != nil {
-			return errorsutil.NewError(storage.ErrJson, err)
+			return errors.Wrap(err, "failed to marshal pre-commit volumes")
 		}
 
 		postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
 		if err != nil {
-			return errorsutil.NewError(storage.ErrJson, err)
+			return errors.Wrap(err, "failed to marshal post-commit volumes")
 		}
 
 		ts[i].ID = tx.ID
@@ -349,11 +349,11 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		for i, p := range tx.Postings {
 			sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
 			if err != nil {
-				return errorsutil.NewError(storage.ErrJson, err)
+				return errors.Wrap(err, "failed to marshal source")
 			}
 			destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
 			if err != nil {
-				return errorsutil.NewError(storage.ErrJson, err)
+				return errors.Wrap(err, "failed to marshal destination")
 			}
 			ps = append(ps, Postings{
 				TxID:         tx.ID,
@@ -374,7 +374,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		// On("CONFLICT (txid, posting_index) DO NOTHING").
 		Exec(ctx)
 	if err != nil {
-		return sqlerrors.PostgresError(err)
+		return storageerrors.PostgresError(err)
 	}
 
 	_, err = s.schema.NewInsert(TransactionsTableName).
@@ -382,25 +382,25 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		On("CONFLICT (id) DO NOTHING").
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) InsertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
-	return sqlerrors.PostgresError(s.insertTransactions(ctx, txs...))
+	return storageerrors.PostgresError(s.insertTransactions(ctx, txs...))
 }
 
 func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata core.Metadata) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	metadataData, err := json.Marshal(metadata)
 	if err != nil {
-		return errorsutil.NewError(storage.ErrJson, err)
+		return errors.Wrap(err, "failed to marshal metadata")
 
 	}
 
@@ -410,19 +410,19 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		Where("id = ?", id).
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWithMetadata ...core.TransactionWithMetadata) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	txs := make([]*Transactions, 0, len(transactionsWithMetadata))
 	for _, tx := range transactionsWithMetadata {
 		metadataData, err := json.Marshal(tx.Metadata)
 		if err != nil {
-			return errorsutil.NewError(storage.ErrJson, err)
+			return errors.Wrap(err, "failed to marshal metadata")
 		}
 
 		txs = append(txs, &Transactions{
@@ -441,5 +441,5 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 		Where(fmt.Sprintf("%s.id = _data.id", TransactionsTableName)).
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }

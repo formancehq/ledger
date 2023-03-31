@@ -6,7 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -25,7 +25,7 @@ type Volumes struct {
 
 func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAssetsVolumes) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	volumesMap := make(map[string]*Volumes)
@@ -55,12 +55,12 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAsset
 		String()
 
 	_, err := s.schema.ExecContext(ctx, query)
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	query := s.schema.NewSelect(volumesTableName).
@@ -71,7 +71,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 
 	rows, err := s.schema.QueryContext(ctx, query)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -83,7 +83,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 			outputStr string
 		)
 		if err := rows.Scan(&asset, &inputStr, &outputStr); err != nil {
-			return nil, sqlerrors.PostgresError(err)
+			return nil, storageerrors.PostgresError(err)
 		}
 
 		input, ok := new(big.Int).SetString(inputStr, 10)
@@ -102,7 +102,7 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	return volumes, nil

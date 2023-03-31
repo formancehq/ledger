@@ -9,9 +9,8 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -58,13 +57,13 @@ func (j RawMessage) Value() (driver.Value, error) {
 
 func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 	previousLog, err := s.GetLastLog(ctx)
-	if err != nil && !storage.IsNotFound(err) {
+	if err != nil && !storage.IsNotFoundError(err) {
 		return errors.Wrap(err, "reading last log")
 	}
 
 	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return sqlerrors.PostgresError(err)
+		return storageerrors.PostgresError(err)
 	}
 
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
@@ -74,14 +73,14 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		"id", "type", "hash", "date", "data", "reference",
 	))
 	if err != nil {
-		return sqlerrors.PostgresError(err)
+		return storageerrors.PostgresError(err)
 	}
 
 	ls := make([]LogsV2, len(logs))
 	for i, l := range logs {
 		data, err := json.Marshal(l.Data)
 		if err != nil {
-			return errorsutil.NewError(storage.ErrJson, err)
+			return errors.Wrap(err, "marshaling log data")
 		}
 
 		id := uint64(0)
@@ -101,26 +100,26 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		previousLog = logs[i]
 		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].Reference)
 		if err != nil {
-			return sqlerrors.PostgresError(err)
+			return storageerrors.PostgresError(err)
 		}
 	}
 
 	_, err = stmt.Exec()
 	if err != nil {
-		return sqlerrors.PostgresError(err)
+		return storageerrors.PostgresError(err)
 	}
 
 	err = stmt.Close()
 	if err != nil {
-		return sqlerrors.PostgresError(err)
+		return storageerrors.PostgresError(err)
 	}
 
-	return sqlerrors.PostgresError(txn.Commit())
+	return storageerrors.PostgresError(txn.Commit())
 }
 
 func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	return <-s.logsBatchWorker.WriteModels(ctx, log)
@@ -128,7 +127,7 @@ func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	raw := &LogsV2{}
@@ -139,12 +138,12 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errorsutil.NewError(storage.ErrJson, err)
+		return nil, errors.Wrap(err, "hydrating log data")
 	}
 
 	l := &core.Log{
@@ -161,7 +160,8 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 
 func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.Log]{}, storage.ErrStoreNotInitialized
+		return api.Cursor[core.Log]{},
+			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	res := []core.Log{}
@@ -174,7 +174,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
 	if err != nil {
-		return api.Cursor[core.Log]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.Log]{}, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -182,12 +182,12 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		var raw LogsV2
 		err = rows.Scan(&raw.ID, &raw.Type, &raw.Hash, &raw.Date, &raw.Data, &raw.Reference)
 		if err != nil {
-			return api.Cursor[core.Log]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.Log]{}, storageerrors.PostgresError(err)
 		}
 
 		payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 		if err != nil {
-			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log data")
 		}
 
 		res = append(res, core.Log{
@@ -200,7 +200,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		})
 	}
 	if rows.Err() != nil {
-		return api.Cursor[core.Log]{}, sqlerrors.PostgresError(rows.Err())
+		return api.Cursor[core.Log]{}, storageerrors.PostgresError(rows.Err())
 	}
 
 	var previous, next string
@@ -211,7 +211,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		res = res[1:]
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.Log]{}, errors.Wrap(err, "marshaling cursor")
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -222,7 +222,7 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		t.AfterID = res[len(res)-1].ID
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.Log]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.Log]{}, errors.Wrap(err, "marshaling cursor")
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -277,7 +277,7 @@ func (s *Store) getNextLogID(ctx context.Context, sq interface {
 		Limit(1).
 		Scan(ctx, &logID)
 	if err != nil {
-		return 0, sqlerrors.PostgresError(err)
+		return 0, storageerrors.PostgresError(err)
 	}
 
 	return logID, nil
@@ -285,7 +285,7 @@ func (s *Store) getNextLogID(ctx context.Context, sq interface {
 
 func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
 	if !s.isInitialized {
-		return 0, storage.ErrStoreNotInitialized
+		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	return s.getNextLogID(ctx, &s.schema)
@@ -293,7 +293,7 @@ func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
 
 func (s *Store) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	return s.readLogsStartingFromID(ctx, &s.schema, id)
@@ -310,14 +310,14 @@ func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
 		Model(&rawLogs).
 		Scan(ctx)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	logs := make([]core.Log, len(rawLogs))
 	for index, rawLog := range rawLogs {
 		payload, err := core.HydrateLog(core.LogType(rawLog.Type), rawLog.Data)
 		if err != nil {
-			return nil, errorsutil.NewError(storage.ErrJson, err)
+			return nil, errors.Wrap(err, "hydrating log data")
 		}
 		logs[index] = core.Log{
 			ID:        rawLog.ID,
@@ -334,7 +334,7 @@ func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
 
 func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 	if !s.isInitialized {
-		return storage.ErrStoreNotInitialized
+		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	_, err := s.schema.
@@ -346,12 +346,12 @@ func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 		Set("log_id = EXCLUDED.log_id").
 		Exec(ctx)
 
-	return sqlerrors.PostgresError(err)
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	raw := &LogsV2{}
@@ -362,12 +362,12 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errorsutil.NewError(storage.ErrJson, err)
+		return nil, errors.Wrap(err, "failed to hydrate log")
 	}
 
 	return &core.Log{
@@ -382,7 +382,7 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 
 func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.Log, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	raw := &LogsV2{}
@@ -395,12 +395,12 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 		Scan(ctx)
 
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
 	if err != nil {
-		return nil, errorsutil.NewError(storage.ErrJson, err)
+		return nil, errors.Wrap(err, "failed to hydrate log")
 	}
 
 	return &core.Log{

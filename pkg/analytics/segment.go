@@ -45,10 +45,10 @@ func FromStorageAppIdProvider(driver storage.Driver) AppIdProvider {
 		var err error
 		if appId == "" {
 			appId, err = driver.GetSystemStore().GetConfiguration(ctx, "appId")
-			if err != nil && !storage.IsNotFound(err) {
+			if err != nil && !storage.IsNotFoundError(err) {
 				return "", err
 			}
-			if storage.IsNotFound(err) {
+			if storage.IsNotFoundError(err) {
 				appId = uuid.New()
 				if err := driver.GetSystemStore().InsertConfiguration(ctx, "appId", appId); err != nil {
 					return "", err

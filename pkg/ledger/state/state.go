@@ -64,8 +64,8 @@ func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
 			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, log found in storage"))
 		}
 
-		if !storage.IsNotFound(err) {
-			return errorsutil.NewError(ErrStorage, err)
+		if !storage.IsNotFoundError(err) {
+			return errors.Wrap(err, "failed to read log with reference")
 		}
 	}
 
