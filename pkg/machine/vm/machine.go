@@ -573,30 +573,17 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 				involvedAccountsMap[internal.Address(idx)] = string(val.(internal.AccountAddress))
 			}
 		case program.VariableAccountMetadata:
-			sourceAccount, ok := m.getResource(res.Account)
-			if !ok {
-				//TODO(gfyrag): Is that really mandatory? The visitor should catch missing account?
-				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request metadata of an account which has not yet been solved",
-					res.Name)
-			}
-			if (*sourceAccount).GetType() != internal.TypeAccount {
-				//TODO(gfyrag): Is that really mandatory? The visitor should catch invalid typing?
-				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request metadata on wrong entity: %v instead of account",
-					res.Name, (*sourceAccount).GetType())
-			}
-
-			address := string((*sourceAccount).(internal.AccountAddress))
-			account, err := store.GetAccountWithVolumes(ctx, address)
+			acc, _ := m.getResource(res.Account)
+			addr := string((*acc).(internal.AccountAddress))
+			account, err := store.GetAccountWithVolumes(ctx, addr)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, fmt.Sprintf("could not get account %s", address))
+				return nil, nil, errors.Wrap(err, fmt.Sprintf("could not get account %s", addr))
 			}
 
 			entry, ok := account.Metadata[res.Key]
 			if !ok {
 				return nil, nil, errorsutil.NewError(ErrResourceResolutionMissingMetadata, errors.New(
-					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, address)))
+					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, addr)))
 			}
 
 			data, err := json.Marshal(entry)
@@ -606,55 +593,32 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			val, err = internal.NewValueFromTypedJSON(data)
 			if err != nil {
 				return nil, nil, errorsutil.NewError(ErrResourceResolutionInvalidTypeFromExtSources, errors.New(
-					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, address)))
+					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, addr)))
 			}
 		case program.VariableAccountBalance:
-			sourceAccount, ok := m.getResource(res.Account)
-			if !ok {
-				//TODO(gfyrag): Is that really mandatory? The visitor should catch missing account?
-				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request metadata of an account which has not yet been solved",
-					res.Name)
-			}
-			if (*sourceAccount).GetType() != internal.TypeAccount {
-				//TODO(gfyrag): Is that really mandatory? The visitor should catch this?
-				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request balance of an account which has not yet been solved",
-					res.Name)
-			}
-
-			address := string((*sourceAccount).(internal.AccountAddress))
+			acc, _ := m.getResource(res.Account)
+			address := string((*acc).(internal.AccountAddress))
 			involvedAccountsMap[internal.Address(idx)] = address
 			m.UnresolvedResourceBalances[address] = idx
 
 			ass, ok := m.getResource(res.Asset)
 			if !ok {
 				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request balance of an account for an asset which has not yet been solved",
+					"variable '%s': tried to request account balance of an asset which has not yet been solved",
 					res.Name)
 			}
 			if (*ass).GetType() != internal.TypeAsset {
 				return nil, nil, fmt.Errorf(
-					"variable '%s': tried to request account balance on wrong entity: %v instead of asset",
+					"variable '%s': tried to request account balance for an asset on wrong entity: %v instead of asset",
 					res.Name, (*ass).GetType())
 			}
-
 			val = internal.Monetary{
 				Asset: (*ass).(internal.Asset),
 			}
 		case program.Monetary:
-			ass, ok := m.getResource(res.Asset)
-			if !ok {
-				return nil, nil, fmt.Errorf("tried to resolve an asset which has not yet been solved")
-			}
-			if (*ass).GetType() != internal.TypeAsset {
-				return nil, nil, fmt.Errorf(
-					"tried to resolve an asset on wrong type '%v'",
-					(*ass).GetType())
-			}
-			asset := (*ass).(internal.Asset)
+			ass, _ := m.getResource(res.Asset)
 			val = internal.Monetary{
-				Asset:  asset,
+				Asset:  (*ass).(internal.Asset),
 				Amount: res.Amount,
 			}
 		default:
@@ -677,7 +641,6 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 
 // TODO(gfyrag): Maybe rename to ResolveVars. Lifecycle seems to be ResolveVars -> ResolveResources -> ResolveBalances
 func (m *Machine) SetVars(vars map[string]internal.Value) error {
-
 	v, err := m.Program.ParseVariables(vars)
 	if err != nil {
 		return errorsutil.NewError(ErrInvalidVars, err)
