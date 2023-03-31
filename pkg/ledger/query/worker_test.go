@@ -80,7 +80,7 @@ func TestWorker(t *testing.T) {
 	}
 
 	nextLogID, err := ledgerStore.GetNextLogID(context.Background())
-	require.True(t, storage.IsNotFound(err))
+	require.True(t, storage.IsNotFoundError(err))
 	require.Equal(t, uint64(0), nextLogID)
 
 	logs := []core.Log{

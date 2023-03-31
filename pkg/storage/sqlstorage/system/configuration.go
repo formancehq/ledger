@@ -4,8 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
-	"github.com/pkg/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -25,7 +24,7 @@ func (s *Store) CreateConfigurationTable(ctx context.Context) error {
 		IfNotExists().
 		Exec(ctx)
 
-	return err
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) GetConfiguration(ctx context.Context, key string) (string, error) {
@@ -38,11 +37,11 @@ func (s *Store) GetConfiguration(ctx context.Context, key string) (string, error
 
 	row := s.schema.QueryRowContext(ctx, query)
 	if row.Err() != nil {
-		return "", sqlerrors.PostgresError(row.Err())
+		return "", storageerrors.PostgresError(row.Err())
 	}
 	var value string
 	if err := row.Scan(&value); err != nil {
-		return "", sqlerrors.PostgresError(err)
+		return "", storageerrors.PostgresError(err)
 	}
 
 	return value, nil
@@ -59,5 +58,5 @@ func (s *Store) InsertConfiguration(ctx context.Context, key, value string) erro
 		Model(config).
 		Exec(ctx)
 
-	return errors.Wrap(err, "inserting configuration")
+	return storageerrors.PostgresError(err)
 }

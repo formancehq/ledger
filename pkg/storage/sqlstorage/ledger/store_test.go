@@ -265,7 +265,7 @@ func testUpdateAccountMetadata(t *testing.T, store storage.LedgerStore) {
 
 func testGetAccountNotFound(t *testing.T, store storage.LedgerStore) {
 	account, err := store.GetAccount(context.Background(), "account_not_existing")
-	require.True(t, storage.IsNotFound(err))
+	require.True(t, storage.IsNotFoundError(err))
 	require.Nil(t, account)
 }
 
@@ -573,7 +573,7 @@ func TestInitializeStore(t *testing.T) {
 
 func testGetLastLog(t *testing.T, store storage.LedgerStore) {
 	lastLog, err := store.GetLastLog(context.Background())
-	require.True(t, storage.IsNotFound(err))
+	require.True(t, storage.IsNotFoundError(err))
 	require.Nil(t, lastLog)
 
 	logTx := core.NewTransactionLog(tx1.Transaction, nil)

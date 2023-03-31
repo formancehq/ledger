@@ -9,6 +9,10 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/runner"
+	"github.com/formancehq/ledger/pkg/ledger/state"
+	"github.com/formancehq/ledger/pkg/machine/vm"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
@@ -54,34 +58,36 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func coreErrorToErrorCode(err error) (int, string, string) {
+	fmt.Println(err)
 	switch {
-	case ledger.IsConflictError(err):
+	case state.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
 	case
 		ledger.IsValidationError(err),
-		ledger.IsPastTransactionError(err),
-		ledger.IsNoPostingsError(err):
+		state.IsPastTransactionError(err),
+		runner.IsNoPostingsError(err):
 		return http.StatusBadRequest, ErrValidation, ""
-	case ledger.IsNotFoundError(err):
+	case storage.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
-	case ledger.IsNoScriptError(err):
+	case runner.IsNoScriptError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorNoScript, EncodeLink(baseError.Error())
-	case ledger.IsInsufficientFundError(err):
+	case vm.IsInsufficientFundError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorInsufficientFund, EncodeLink(baseError.Error())
-	case ledger.IsCompilationFailedError(err):
+	case runner.IsCompilationFailedError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorCompilationFailed, EncodeLink(baseError.Error())
-	case ledger.IsScriptMetadataOverrideError(err):
+	case vm.IsMetadataOverrideError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorMetadataOverride, EncodeLink(baseError.Error())
-	case ledger.IsInvalidResourceResolutionError(err):
+	case vm.IsResourceResolutionInvalidTypeFromExtSourcesError(err),
+		vm.IsResourceResolutionMissingMetadataError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ResourceResolutionError, EncodeLink(baseError.Error())
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled, ""
-	case ledger.IsStorageError(err):
+	case storage.IsStorageError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
 		return http.StatusInternalServerError, ErrInternal, ""

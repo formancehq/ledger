@@ -32,7 +32,7 @@ func TestStateInsertInPastWithNotAllowedPastTimestamp(t *testing.T) {
 		Timestamp: now.Add(-time.Second),
 	})
 	require.Error(t, err)
-	require.True(t, IsPastTransaction(err))
+	require.True(t, IsPastTransactionError(err))
 }
 
 func TestStateInsertInPastWithAllowPastTimestamps(t *testing.T) {
@@ -64,7 +64,7 @@ func TestStateWithError(t *testing.T) {
 		Timestamp: now.Add(-10 * time.Millisecond),
 	})
 	require.Error(t, err)
-	require.True(t, IsPastTransaction(err))
+	require.True(t, IsPastTransactionError(err))
 }
 
 func BenchmarkState(b *testing.B) {

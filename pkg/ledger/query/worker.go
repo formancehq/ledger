@@ -242,7 +242,7 @@ func (w *Worker) initLedger(ctx context.Context) error {
 	}
 
 	lastReadLogID, err := w.store.GetNextLogID(ctx)
-	if err != nil && !storage.IsNotFound(err) {
+	if err != nil && !storage.IsNotFoundError(err) {
 		return errorsutil.NewError(ErrStorage,
 			errors.Wrap(err, "reading last log"))
 	}

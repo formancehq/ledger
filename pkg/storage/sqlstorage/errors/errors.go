@@ -20,12 +20,24 @@ func PostgresError(err error) error {
 		case *pq.Error:
 			switch pge.Code {
 			case "23505":
-				return errorsutil.NewError(storage.ErrConstraintFailed, err)
+				return errorsutil.NewError(storage.ErrStorage,
+					errorsutil.NewError(storage.ErrConstraintFailed, err))
 			case "53300":
-				return errorsutil.NewError(storage.ErrTooManyClients, err)
+				return errorsutil.NewError(storage.ErrStorage,
+					errorsutil.NewError(storage.ErrTooManyClients, err))
 			}
 		}
+
+		return errorsutil.NewError(storage.ErrStorage, err)
 	}
 
-	return err
+	return nil
+}
+
+func StorageError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return errorsutil.NewError(storage.ErrStorage, err)
 }
