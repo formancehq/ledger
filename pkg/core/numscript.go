@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type variable struct {
@@ -104,7 +106,7 @@ func TxToScriptData(txData TransactionData) RunScript {
 	}
 
 	if txData.Metadata == nil {
-		txData.Metadata = Metadata{}
+		txData.Metadata = metadata.Metadata{}
 	}
 
 	return RunScript{

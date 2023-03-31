@@ -29,9 +29,9 @@ func TypeFromName(name string) (Type, bool) {
 	}
 }
 
-func NewValueFromTypedJSON(rawInput json.RawMessage) (Value, error) {
+func NewValueFromTypedJSON(rawInput string) (Value, error) {
 	var input ValueJSON
-	if err := json.Unmarshal(rawInput, &input); err != nil {
+	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
 		return nil, err
 	}
 
@@ -121,7 +121,6 @@ func NewJSONFromValue(value Value) (any, error) {
 		return value.(*MonetaryInt).String(), nil
 	case TypeMonetary:
 		return value, nil
-
 	case TypePortion:
 		return value.(Portion).String(), nil
 	default:

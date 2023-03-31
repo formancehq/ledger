@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +29,7 @@ func TestTransactions(t *testing.T) {
 						},
 					},
 					Timestamp: now.Add(-3 * time.Hour),
-					Metadata:  core.Metadata{},
+					Metadata:  metadata.Metadata{},
 				},
 			},
 		}
@@ -55,7 +56,7 @@ func TestTransactions(t *testing.T) {
 						},
 					},
 					Timestamp: now.Add(-2 * time.Hour),
-					Metadata:  core.Metadata{},
+					Metadata:  metadata.Metadata{},
 				},
 			},
 		}
@@ -73,7 +74,7 @@ func TestTransactions(t *testing.T) {
 						},
 					},
 					Timestamp: now.Add(-1 * time.Hour),
-					Metadata:  core.Metadata{},
+					Metadata:  metadata.Metadata{},
 				},
 			},
 		}
@@ -97,9 +98,9 @@ func TestTransactions(t *testing.T) {
 	})
 
 	t.Run("success updating transaction metadata", func(t *testing.T) {
-		metadata := core.Metadata(map[string]any{
+		metadata := metadata.Metadata{
 			"foo": "bar",
-		})
+		}
 		err := store.UpdateTransactionMetadata(context.Background(), 0, metadata)
 		assert.NoError(t, err, "updating transaction metadata should not fail")
 
@@ -111,11 +112,11 @@ func TestTransactions(t *testing.T) {
 	t.Run("success updating multiple transaction metadata", func(t *testing.T) {
 		txToUpdate1 := core.TransactionWithMetadata{
 			ID:       1,
-			Metadata: core.Metadata(map[string]any{"foo1": "bar2"}),
+			Metadata: metadata.Metadata{"foo1": "bar2"},
 		}
 		txToUpdate2 := core.TransactionWithMetadata{
 			ID:       2,
-			Metadata: core.Metadata(map[string]any{"foo2": "bar2"}),
+			Metadata: metadata.Metadata{"foo2": "bar2"},
 		}
 		txs := []core.TransactionWithMetadata{txToUpdate1, txToUpdate2}
 

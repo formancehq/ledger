@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type Store interface {
@@ -19,7 +20,7 @@ var EmptyStore = StoreFn(func(ctx context.Context, address string) (*core.Accoun
 	return &core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  address,
-			Metadata: core.Metadata{},
+			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{},
 	}, nil
@@ -33,7 +34,7 @@ func (s StaticStore) GetAccountWithVolumes(ctx context.Context, address string) 
 		return &core.AccountWithVolumes{
 			Account: core.Account{
 				Address:  address,
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 			Volumes: map[string]core.Volumes{},
 		}, nil

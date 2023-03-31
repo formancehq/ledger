@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -124,7 +125,7 @@ var testCases = []testCase{
 			core.NewTransactionLog(
 				core.NewTransaction().WithPostings(
 					core.NewPosting("world", "mint", "GEM", big.NewInt(100))),
-				map[string]core.Metadata{},
+				map[string]metadata.Metadata{},
 			),
 		},
 		expectedAccounts: map[string]core.AccountWithVolumes{
@@ -204,7 +205,7 @@ var testCases = []testCase{
 						core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 					).
 					WithReference("tx_ref"),
-				map[string]core.Metadata{},
+				map[string]metadata.Metadata{},
 			).WithReference("tx_ref"),
 		},
 		expectedAccounts: map[string]core.AccountWithVolumes{
@@ -248,7 +249,7 @@ func TestExecuteScript(t *testing.T) {
 				},
 				Timestamp: now,
 				Reference: tc.reference,
-			}, false, func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+			}, false, func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
 				return core.NewTransactionLog(transaction.Transaction, accountMetadata)
 			})
 

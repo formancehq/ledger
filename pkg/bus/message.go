@@ -2,6 +2,7 @@ package bus
 
 import (
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 const (
@@ -41,10 +42,10 @@ func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
 }
 
 type SavedMetadata struct {
-	Ledger     string        `json:"ledger"`
-	TargetType string        `json:"targetType"`
-	TargetID   string        `json:"targetId"`
-	Metadata   core.Metadata `json:"metadata"`
+	Ledger     string            `json:"ledger"`
+	TargetType string            `json:"targetType"`
+	TargetID   string            `json:"targetId"`
+	Metadata   metadata.Metadata `json:"metadata"`
 }
 
 func newEventSavedMetadata(metadata SavedMetadata) EventMessage {

@@ -139,10 +139,11 @@ paths:
           in: query
           description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
           style: deepObject
-          explode: true
           schema:
             type: object
             properties: {}
+            additionalProperties:
+              type: string
           example: { admin: true, a: { nested: { key: value}} }
         - name: balance
           in: query
@@ -460,13 +461,14 @@ paths:
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: metadata
           in: query
-          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: Filter transactions by metadata key value pairs.
           style: deepObject
-          explode: true
           schema:
             type: object
             properties: { }
-          example: { admin: true, a: { nested: { key: value}} }
+            additionalProperties:
+              type: string
+          example: { admin: "true" }
       responses:
         "200":
           description: OK
@@ -966,9 +968,9 @@ components:
 
     Metadata:
       type: object
-      nullable: true
-      additionalProperties: {}
-      example: { admin: true, a: { nested: { key: value } } }
+      additionalProperties:
+        type: string
+      example: { admin: "true" }
 
     ConfigInfo:
       type: object
@@ -988,6 +990,7 @@ components:
       type: object
       required:
         - address
+        - metadata
       properties:
         address:
           type: string
@@ -998,12 +1001,17 @@ components:
         metadata:
           type: object
           properties: {}
-          example: { admin: true, a: { nested: { key: value}} }
+          additionalProperties:
+            type: string
+          example: { admin: "true" }
 
     AccountWithVolumesAndBalances:
       type: object
       required:
         - address
+        - metadata
+        - volumes
+        - balances
       properties:
         address:
           type: string
@@ -1014,7 +1022,9 @@ components:
         metadata:
           type: object
           properties: {}
-          example: { admin: true, a: { nested: { key: value}} }
+          additionalProperties:
+            type: string
+          example: { admin: "true" }
         volumes:
           type: object
           additionalProperties:
@@ -1124,9 +1134,12 @@ components:
         - postings
         - timestamp
         - txid
+        - metadata
 
     PostTransaction:
       type: object
+      required:
+      - metadata
       properties:
         timestamp:
           type: string

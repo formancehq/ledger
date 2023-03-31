@@ -13,6 +13,7 @@ import (
 	ledger "github.com/formancehq/ledger/pkg/ledger"
 	storage "github.com/formancehq/ledger/pkg/storage"
 	api "github.com/formancehq/stack/libs/go-libs/api"
+	metadata "github.com/formancehq/stack/libs/go-libs/metadata"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -220,7 +221,7 @@ func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, id interface{}) *gomock
 }
 
 // SaveMeta mocks base method.
-func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m core.Metadata) error {
+func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata) error {
 	m_2.ctrl.T.Helper()
 	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, targetType, targetID, m)
 	ret0, _ := ret[0].(error)

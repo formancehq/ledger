@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 )
 
@@ -35,7 +36,7 @@ func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string
 		}))
 }
 
-func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata core.Metadata) {
+func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata metadata.Metadata) {
 	l.publish(ctx, EventTypeSavedMetadata,
 		newEventSavedMetadata(SavedMetadata{
 			Ledger:     ledger,

@@ -15,6 +15,7 @@ import (
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
 )
@@ -159,11 +160,11 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 type PostTransactionRequest struct {
-	Postings  core.Postings `json:"postings"`
-	Script    core.Script   `json:"script"`
-	Timestamp core.Time     `json:"timestamp"`
-	Reference string        `json:"reference"`
-	Metadata  core.Metadata `json:"metadata" swaggertype:"object"`
+	Postings  core.Postings     `json:"postings"`
+	Script    core.Script       `json:"script"`
+	Timestamp core.Time         `json:"timestamp"`
+	Reference string            `json:"reference"`
+	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func PostTransaction(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +266,7 @@ func RevertTransaction(w http.ResponseWriter, r *http.Request) {
 func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	var m core.Metadata
+	var m metadata.Metadata
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 			errors.New("invalid metadata format")))

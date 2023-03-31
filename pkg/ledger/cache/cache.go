@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -135,7 +136,7 @@ func (c *Cache) UpdateVolumeWithTX(tx core.Transaction) {
 	}
 }
 
-func (c *Cache) UpdateAccountMetadata(address string, m core.Metadata) error {
+func (c *Cache) UpdateAccountMetadata(address string, m metadata.Metadata) error {
 	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
 		account.Metadata = account.Metadata.Merge(m)
 	})
