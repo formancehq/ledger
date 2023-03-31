@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 
@@ -67,7 +68,7 @@ func (l *Ledger) writeLog(ctx context.Context, logHolder *core.LogHolder) error 
 }
 
 func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core.RunScript) (*core.ExpandedTransaction, error) {
-	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
 		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
 	})
 
@@ -109,15 +110,14 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 	}
 
 	rt := revertedTx.Reverse()
-	rt.Metadata = core.Metadata{}
-	rt.Metadata.MarkReverts(revertedTx.ID)
+	rt.Metadata = core.MarkReverts(metadata.Metadata{}, revertedTx.ID)
 
 	scriptData := core.TxsToScriptsData(core.TransactionData{
 		Postings:  rt.Postings,
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
 	})
-	tx, log, err := l.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log {
+	tx, log, err := l.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
 		return core.NewRevertedTransactionLog(expandedTx.Timestamp, revertedTx.ID, expandedTx.Transaction)
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 }
 
 // TODO(gfyrag): maybe we should check transaction exists on the log store before set a metadata ? (accounts always exists even if never used)
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m core.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m metadata.Metadata) error {
 	if m == nil {
 		return nil
 	}
@@ -179,6 +179,11 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	)
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
+		_, err = l.GetTransaction(ctx, targetID.(uint64))
+		if err != nil {
+			return err
+		}
+
 		log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeTransaction,
 			TargetID:   targetID.(uint64),

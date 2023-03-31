@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm/program"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,15 +84,12 @@ func test(t *testing.T, testCase TestCase) {
 		}
 
 		store := StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-			m := core.Metadata{}
+			m := metadata.Metadata{}
 			for s, value := range testCase.meta[address] {
 				json, err := internal.NewJSONFromValue(value)
 				require.NoError(t, err)
 
-				m[s] = map[string]any{
-					"type":  value.GetType().String(),
-					"value": json,
-				}
+				m[s] = fmt.Sprintf(`{"type": "%s", "value": "%s"}`, value.GetType().String(), json)
 			}
 			return &core.AccountWithVolumes{
 				Account: core.Account{
@@ -971,11 +969,12 @@ func TestNeededBalances(t *testing.T) {
 		return &core.AccountWithVolumes{
 			Account: core.Account{
 				Address:  address,
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 			Volumes: map[string]core.Volumes{},
 		}, nil
 	}))
+	require.NoError(t, err)
 	require.NotNil(t, called["a"])
 	require.NotNil(t, called["b"])
 	require.NoError(t, err)
@@ -1015,7 +1014,7 @@ func TestSetTxMeta(t *testing.T) {
 	assert.Equal(t, 6, len(resMeta))
 
 	for key, val := range resMeta {
-		assert.Equal(t, string(expectedMeta[key]), string(val.([]byte)))
+		assert.Equal(t, string(expectedMeta[key]), val)
 	}
 }
 
@@ -1041,23 +1040,22 @@ func TestSetAccountMeta(t *testing.T) {
 		err = m.Execute()
 		require.NoError(t, err)
 
-		expectedMeta := map[string]json.RawMessage{
-			"aaa": json.RawMessage(`{"type":"account","value":"platform"}`),
-			"bbb": json.RawMessage(`{"type":"asset","value":"GEM"}`),
-			"ccc": json.RawMessage(`{"type":"number","value":45}`),
-			"ddd": json.RawMessage(`{"type":"string","value":"hello"}`),
-			"eee": json.RawMessage(`{"type":"monetary","value":{"asset":"COIN","amount":30}}`),
-			"fff": json.RawMessage(`{"type":"portion","value":{"remaining":false,"specific":"3/20"}}`),
+		expectedMeta := metadata.Metadata{
+			"aaa": `{"type":"account","value":"platform"}`,
+			"bbb": `{"type":"asset","value":"GEM"}`,
+			"ccc": `{"type":"number","value":45}`,
+			"ddd": `{"type":"string","value":"hello"}`,
+			"eee": `{"type":"monetary","value":{"asset":"COIN","amount":30}}`,
+			"fff": `{"type":"portion","value":{"remaining":false,"specific":"3/20"}}`,
 		}
 
 		resMeta := m.GetAccountsMetaJSON()
 		assert.Equal(t, 1, len(resMeta))
 
 		for acc, meta := range resMeta {
-			assert.Equal(t, "@platform", acc)
-			m := meta.(map[string][]byte)
-			assert.Equal(t, 6, len(m))
-			for key, val := range m {
+			assert.Equal(t, "platform", acc)
+			assert.Equal(t, 6, len(meta))
+			for key, val := range meta {
 				assert.Equal(t, string(expectedMeta[key]), string(val))
 			}
 		}
@@ -1099,10 +1097,9 @@ func TestSetAccountMeta(t *testing.T) {
 		assert.Equal(t, 1, len(resMeta))
 
 		for acc, meta := range resMeta {
-			assert.Equal(t, "@test", acc)
-			m := meta.(map[string][]byte)
-			assert.Equal(t, 1, len(m))
-			for key, val := range m {
+			assert.Equal(t, "test", acc)
+			assert.Equal(t, 1, len(meta))
+			for key, val := range meta {
 				assert.Equal(t, string(expectedMeta[key]), string(val))
 			}
 		}
@@ -1737,7 +1734,7 @@ func TestResolveBalances(t *testing.T) {
 				"users:001": &core.AccountWithVolumes{
 					Account: core.Account{
 						Address:  "users:001",
-						Metadata: core.Metadata{},
+						Metadata: metadata.Metadata{},
 					},
 					Volumes: map[string]core.Volumes{
 						"COIN": {

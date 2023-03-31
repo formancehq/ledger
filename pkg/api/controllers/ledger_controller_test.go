@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -179,7 +180,7 @@ func TestGetLogs(t *testing.T) {
 
 			expectedCursor := sharedapi.Cursor[core.Log]{
 				Data: []core.Log{
-					core.NewTransactionLog(core.Transaction{}, map[string]core.Metadata{}),
+					core.NewTransactionLog(core.Transaction{}, map[string]metadata.Metadata{}),
 				},
 			}
 

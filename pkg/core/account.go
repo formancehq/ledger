@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/json"
 	"regexp"
+
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 const (
@@ -10,19 +12,19 @@ const (
 )
 
 type Account struct {
-	Address  string   `json:"address" example:"users:001"`
-	Metadata Metadata `json:"metadata" swaggertype:"object"`
+	Address  string            `json:"address" example:"users:001"`
+	Metadata metadata.Metadata `json:"metadata" swaggertype:"object"`
 }
 
 func (a Account) copy() Account {
-	a.Metadata = a.Metadata.copy()
+	a.Metadata = a.Metadata.Copy()
 	return a
 }
 
 func NewAccount(address string) Account {
 	return Account{
 		Address:  address,
-		Metadata: Metadata{},
+		Metadata: metadata.Metadata{},
 	}
 }
 
@@ -35,7 +37,7 @@ func NewAccountWithVolumes(address string) *AccountWithVolumes {
 	return &AccountWithVolumes{
 		Account: Account{
 			Address:  address,
-			Metadata: Metadata{},
+			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]Volumes{},
 	}

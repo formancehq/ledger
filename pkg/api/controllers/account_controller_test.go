@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -170,7 +171,7 @@ func TestGetAccounts(t *testing.T) {
 				Data: []core.Account{
 					{
 						Address:  "world",
-						Metadata: map[string]any{},
+						Metadata: metadata.Metadata{},
 					},
 				},
 			}
@@ -209,7 +210,7 @@ func TestGetAccount(t *testing.T) {
 	account := core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  "foo",
-			Metadata: map[string]any{},
+			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{},
 	}
@@ -247,7 +248,7 @@ func TestPostAccountMetadata(t *testing.T) {
 		{
 			name:    "nominal",
 			account: "world",
-			body: core.Metadata{
+			body: metadata.Metadata{
 				"foo": "bar",
 			},
 		},

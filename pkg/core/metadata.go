@@ -1,10 +1,9 @@
 package core
 
 import (
-	"database/sql/driver"
-	"encoding/json"
 	"fmt"
-	"reflect"
+
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 const (
@@ -19,63 +18,8 @@ func SpecMetadata(name string) string {
 	return formanceNamespace + name
 }
 
-type Metadata map[string]any
-
-// IsEquivalentTo allow to compare to metadata object.
-func (m1 Metadata) IsEquivalentTo(m2 Metadata) bool {
-	return reflect.DeepEqual(m1, m2)
-}
-
-func (m1 Metadata) Merge(m2 Metadata) Metadata {
-	for k, v := range m2 {
-		m1[k] = v
-	}
-	return m1
-}
-
-func (m Metadata) MarkReverts(txID uint64) {
-	m.Merge(RevertMetadata(txID))
-}
-
-func (m Metadata) IsReverted() bool {
-	return m[SpecMetadata(revertedKey)].(string) == "\"reverted\""
-}
-
-// Scan - Implement the database/sql scanner interface
-func (m *Metadata) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-	v, err := driver.String.ConvertValue(value)
-	if err != nil {
-		return err
-	}
-
-	*m = Metadata{}
-	switch vv := v.(type) {
-	case []uint8:
-		return json.Unmarshal(vv, m)
-	case string:
-		return json.Unmarshal([]byte(vv), m)
-	default:
-		panic("not handled type")
-	}
-}
-
-func (m Metadata) ConvertValue(v interface{}) (driver.Value, error) {
-	return json.Marshal(v)
-}
-
-func (m1 Metadata) copy() Metadata {
-	ret := Metadata{}
-	for k, v := range m1 {
-		ret[k] = v
-	}
-	return ret
-}
-
-type RevertedMetadataSpecValue struct {
-	By uint64 `json:"by"`
+func MarkReverts(m metadata.Metadata, txID uint64) metadata.Metadata {
+	return m.Merge(RevertMetadata(txID))
 }
 
 func RevertedMetadataSpecKey() string {
@@ -86,18 +30,16 @@ func RevertMetadataSpecKey() string {
 	return SpecMetadata(revertKey)
 }
 
-func ComputeMetadata(key string, value interface{}) Metadata {
-	return Metadata{
+func ComputeMetadata(key, value string) metadata.Metadata {
+	return metadata.Metadata{
 		key: value,
 	}
 }
 
-func RevertedMetadata(by uint64) Metadata {
-	return ComputeMetadata(RevertedMetadataSpecKey(), RevertedMetadataSpecValue{
-		By: by,
-	})
+func RevertedMetadata(by uint64) metadata.Metadata {
+	return ComputeMetadata(RevertedMetadataSpecKey(), fmt.Sprint(by))
 }
 
-func RevertMetadata(tx uint64) Metadata {
+func RevertMetadata(tx uint64) metadata.Metadata {
 	return ComputeMetadata(RevertMetadataSpecKey(), fmt.Sprint(tx))
 }

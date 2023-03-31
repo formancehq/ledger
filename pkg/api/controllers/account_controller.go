@@ -14,6 +14,7 @@ import (
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
 )
@@ -135,7 +136,7 @@ func PostAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var m core.Metadata
+	var m metadata.Metadata
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
 		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 			errors.New("invalid metadata format")))

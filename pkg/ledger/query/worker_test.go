@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +56,7 @@ func (m *mockStore) EnsureAccountsExist(ctx context.Context, accounts []string) 
 		m.accounts[address] = &core.AccountWithVolumes{
 			Account: core.Account{
 				Address:  address,
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 			Volumes: map[string]core.Volumes{},
 		}
@@ -101,7 +102,7 @@ func (m *mockStore) GetAccountWithVolumes(ctx context.Context, address string) (
 		return &core.AccountWithVolumes{
 			Account: core.Account{
 				Address:  address,
-				Metadata: core.Metadata{},
+				Metadata: metadata.Metadata{},
 			},
 			Volumes: map[string]core.Volumes{},
 		}, nil
@@ -144,10 +145,10 @@ func TestWorker(t *testing.T) {
 		core.NewPosting("bank", "user:1", "USD/2", big.NewInt(10)),
 	).WithID(1)
 
-	appliedMetadataOnTX1 := core.Metadata{
+	appliedMetadataOnTX1 := metadata.Metadata{
 		"paymentID": "1234",
 	}
-	appliedMetadataOnAccount := core.Metadata{
+	appliedMetadataOnAccount := metadata.Metadata{
 		"category": "gold",
 	}
 

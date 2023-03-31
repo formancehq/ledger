@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 
@@ -43,7 +44,7 @@ type Runner struct {
 	ledgerName string
 }
 
-type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]core.Metadata) core.Log
+type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log
 
 func (r *Runner) Execute(
 	ctx context.Context,

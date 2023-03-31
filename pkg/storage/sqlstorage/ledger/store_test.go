@@ -2,13 +2,13 @@ package ledger_test
 
 import (
 	"context"
-	"encoding/json"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,8 +115,8 @@ var tx3 = core.ExpandedTransaction{
 				},
 			},
 			Reference: "tx3",
-			Metadata: core.Metadata{
-				"priority": json.RawMessage(`"high"`),
+			Metadata: metadata.Metadata{
+				"priority": "high",
 			},
 			Timestamp: now.Add(-1 * time.Hour),
 		},
@@ -174,7 +174,7 @@ func TestUpdateTransactionMetadata(t *testing.T) {
 	err := store.InsertTransactions(context.Background(), tx)
 	require.NoError(t, err)
 
-	err = store.UpdateTransactionMetadata(context.Background(), tx.ID, core.Metadata{
+	err = store.UpdateTransactionMetadata(context.Background(), tx.ID, metadata.Metadata{
 		"foo": "bar",
 	})
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestUpdateAccountMetadata(t *testing.T) {
 
 	require.NoError(t, store.EnsureAccountExists(context.Background(), "central_bank"))
 
-	err := store.UpdateAccountMetadata(context.Background(), "central_bank", core.Metadata{
+	err := store.UpdateAccountMetadata(context.Background(), "central_bank", metadata.Metadata{
 		"foo": "bar",
 	})
 	require.NoError(t, err)
@@ -245,19 +245,19 @@ func TestGetAccounts(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 
-	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "world", core.Metadata{
-		"foo": json.RawMessage(`"bar"`),
+	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "world", metadata.Metadata{
+		"foo": "bar",
 	}))
-	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "bank", core.Metadata{
-		"hello": json.RawMessage(`"world"`),
+	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "bank", metadata.Metadata{
+		"hello": "world",
 	}))
-	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:1", core.Metadata{
-		"hello": json.RawMessage(`"world"`),
+	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:1", metadata.Metadata{
+		"hello": "world",
 	}))
-	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:2", core.Metadata{
-		"number":  json.RawMessage(`3`),
-		"boolean": json.RawMessage(`true`),
-		"a":       json.RawMessage(`{"super": {"nested": {"key": "hello"}}}`),
+	require.NoError(t, store.UpdateAccountMetadata(context.Background(), "order:2", metadata.Metadata{
+		"number":  `3`,
+		"boolean": `true`,
+		"a":       `{"super": {"nested": {"key": "hello"}}}`,
 	}))
 
 	accounts, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
@@ -311,17 +311,6 @@ func TestGetAccounts(t *testing.T) {
 		Filters: storage.AccountsQueryFilters{
 			Metadata: map[string]string{
 				"boolean": "true",
-			},
-		},
-	})
-	require.NoError(t, err)
-	require.Len(t, accounts.Data, 1)
-
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 10,
-		Filters: storage.AccountsQueryFilters{
-			Metadata: map[string]string{
-				"a.super.nested.key": "hello",
 			},
 		},
 	})

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type Transactions struct {
@@ -11,10 +13,10 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings  Postings `json:"postings"`
-	Reference string   `json:"reference"`
-	Metadata  Metadata `json:"metadata" swaggertype:"object"`
-	Timestamp Time     `json:"timestamp"`
+	Postings  Postings          `json:"postings"`
+	Reference string            `json:"reference"`
+	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Timestamp Time              `json:"timestamp"`
 }
 
 func (d TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -24,7 +26,7 @@ func (d TransactionData) WithPostings(postings ...Posting) TransactionData {
 
 func NewTransactionData() TransactionData {
 	return TransactionData{
-		Metadata: Metadata{},
+		Metadata: metadata.Metadata{},
 	}
 }
 
@@ -50,7 +52,7 @@ type Transaction struct {
 
 type TransactionWithMetadata struct {
 	ID       uint64
-	Metadata Metadata
+	Metadata metadata.Metadata
 }
 
 func (t Transaction) WithPostings(postings ...Posting) Transaction {
@@ -73,7 +75,7 @@ func (t Transaction) WithID(id uint64) Transaction {
 	return t
 }
 
-func (t Transaction) WithMetadata(m Metadata) Transaction {
+func (t Transaction) WithMetadata(m metadata.Metadata) Transaction {
 	t.Metadata = m
 	return t
 }

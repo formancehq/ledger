@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 
@@ -335,8 +336,8 @@ func (w *Worker) buildData(
 	logsData := &logsData{}
 
 	volumeAggregator := aggregator.Volumes(w.store)
-	accountsToUpdate := make(map[string]core.Metadata)
-	transactionsToUpdate := make(map[uint64]core.Metadata)
+	accountsToUpdate := make(map[string]metadata.Metadata)
+	transactionsToUpdate := make(map[uint64]metadata.Metadata)
 
 	for _, log := range logs {
 		switch log.Type {

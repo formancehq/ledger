@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -38,7 +39,7 @@ func TestParallelRead(t *testing.T) {
 			{
 				Account: core.Account{
 					Address:  "world",
-					Metadata: core.Metadata{},
+					Metadata: metadata.Metadata{},
 				},
 				Volumes: map[string]core.Volumes{
 					"USD/2": {
@@ -50,7 +51,7 @@ func TestParallelRead(t *testing.T) {
 			{
 				Account: core.Account{
 					Address: "bank",
-					Metadata: core.Metadata{
+					Metadata: metadata.Metadata{
 						"category": "gold",
 					},
 				},
@@ -80,7 +81,7 @@ func TestParallelRead(t *testing.T) {
 			require.Equal(t, core.AccountWithVolumes{
 				Account: core.Account{
 					Address: "bank",
-					Metadata: core.Metadata{
+					Metadata: metadata.Metadata{
 						"category": "gold",
 					},
 				},
@@ -140,7 +141,7 @@ func TestUpdateVolumes(t *testing.T) {
 	require.EqualValues(t, core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  "world",
-			Metadata: core.Metadata{},
+			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{
 			"USD": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
@@ -152,7 +153,7 @@ func TestUpdateVolumes(t *testing.T) {
 	require.Equal(t, core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  "bank",
-			Metadata: core.Metadata{},
+			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]core.Volumes{
 			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),

@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +21,7 @@ type testCase struct {
 	expectErrorCode error
 	expectResult    Result
 	store           vm.Store
-	metadata        core.Metadata
+	metadata        metadata.Metadata
 }
 
 var testCases = []testCase{
@@ -35,8 +36,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("world", "user:001", "USD/2", big.NewInt(99)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -59,8 +60,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("alice", "user:001", "USD/2", big.NewInt(0)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -74,8 +75,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("world", "user:001", "USD/2", big.NewInt(0)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -89,8 +90,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("alice", "user:001", "USD/2", big.NewInt(0)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -111,8 +112,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("world", "user:001", "CAD/2", big.NewInt(42)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -142,8 +143,8 @@ var testCases = []testCase{
 				core.NewPosting("world", "bob", "EUR", big.NewInt(1)),
 				core.NewPosting("bob", "alice", "EUR", big.NewInt(1)),
 			},
-			Metadata:        map[string]any{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -152,11 +153,11 @@ var testCases = []testCase{
 			"sales:001": &core.AccountWithVolumes{
 				Account: core.Account{
 					Address: "sales:001",
-					Metadata: core.Metadata{
-						"seller": json.RawMessage(`{
+					Metadata: metadata.Metadata{
+						"seller": `{
 							"type":  "account",
 							"value": "users:001"
-						}`),
+						}`,
 					},
 				},
 				Volumes: map[string]core.Volumes{
@@ -169,11 +170,11 @@ var testCases = []testCase{
 			"users:001": &core.AccountWithVolumes{
 				Account: core.Account{
 					Address: "sales:001",
-					Metadata: core.Metadata{
-						"commission": json.RawMessage(`{
+					Metadata: metadata.Metadata{
+						"commission": `{
 							"type":  "portion",
 							"value": "15.5%"
-						}`),
+						}`,
 					},
 				},
 				Volumes: map[string]core.Volumes{},
@@ -202,8 +203,8 @@ var testCases = []testCase{
 				core.NewPosting("sales:001", "users:001", "COIN", big.NewInt(85)),
 				core.NewPosting("sales:001", "platform", "COIN", big.NewInt(15)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -213,17 +214,17 @@ var testCases = []testCase{
 				source = @world
 				destination = @users:001
 			)`,
-		metadata: core.Metadata{
+		metadata: metadata.Metadata{
 			"priority": "low",
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
 				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
-			Metadata: core.Metadata{
+			Metadata: metadata.Metadata{
 				"priority": "low",
 			},
-			AccountMetadata: map[string]core.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -238,13 +239,10 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
-			Metadata: core.Metadata{
-				"priority": map[string]any{
-					"type":  "string",
-					"value": "low",
-				},
+			Metadata: metadata.Metadata{
+				"priority": `{"type":"string","value":"low"}`,
 			},
-			AccountMetadata: map[string]core.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -255,7 +253,7 @@ var testCases = []testCase{
 				source = @world
 				destination = @users:001
 			)`,
-		metadata: core.Metadata{
+		metadata: metadata.Metadata{
 			"priority": "low",
 		},
 		expectErrorCode: vm.ErrMetadataOverride,
@@ -277,14 +275,14 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
-			Metadata: core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{
+			Metadata: metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{
 				"alice": {
-					"aaa": map[string]any{"type": "string", "value": "string meta"},
-					"bbb": map[string]any{"type": "number", "value": 42.},
-					"ccc": map[string]any{"type": "asset", "value": "COIN"},
-					"ddd": map[string]any{"type": "monetary", "value": map[string]any{"asset": "COIN", "amount": 30.}},
-					"eee": map[string]any{"type": "account", "value": "bob"},
+					"aaa": `{"type":"string","value":"string meta"}`,
+					"bbb": `{"type":"number","value":42}`,
+					"ccc": `{"type":"asset","value":"COIN"}`,
+					"ddd": `{"type":"monetary","value":{"asset":"COIN","amount":30}}`,
+					"eee": `{"type":"account","value":"bob"}`,
 				},
 			},
 		},
@@ -295,7 +293,7 @@ var testCases = []testCase{
 			"users:001": {
 				Account: core.Account{
 					Address:  "users:001",
-					Metadata: core.Metadata{},
+					Metadata: metadata.Metadata{},
 				},
 				Volumes: map[string]core.Volumes{
 					"COIN": {
@@ -317,8 +315,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("users:001", "world", "COIN", big.NewInt(100)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -332,8 +330,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("users:001", "users:002", "USD/2", big.NewInt(100)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -342,7 +340,7 @@ var testCases = []testCase{
 			"alice": {
 				Account: core.Account{
 					Address:  "alice",
-					Metadata: core.Metadata{},
+					Metadata: metadata.Metadata{},
 				},
 				Volumes: map[string]core.Volumes{},
 			},
@@ -356,8 +354,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -366,7 +364,7 @@ var testCases = []testCase{
 			"alice": {
 				Account: core.Account{
 					Address:  "alice",
-					Metadata: core.Metadata{},
+					Metadata: metadata.Metadata{},
 				},
 				Volumes: map[string]core.Volumes{},
 			},
@@ -380,8 +378,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 	{
@@ -390,7 +388,7 @@ var testCases = []testCase{
 			"alice": {
 				Account: core.Account{
 					Address:  "alice",
-					Metadata: core.Metadata{},
+					Metadata: metadata.Metadata{},
 				},
 				Volumes: map[string]core.Volumes{},
 			},
@@ -407,8 +405,8 @@ var testCases = []testCase{
 			Postings: []core.Posting{
 				core.NewPosting("alice", "bob", "USD", big.NewInt(0)),
 			},
-			Metadata:        core.Metadata{},
-			AccountMetadata: map[string]core.Metadata{},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
 		},
 	},
 }
