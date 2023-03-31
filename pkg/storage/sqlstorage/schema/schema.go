@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -34,7 +35,7 @@ const (
 
 func (s *Schema) Initialize(ctx context.Context) error {
 	_, err := s.ExecContext(ctx, fmt.Sprintf(createSchemaQuery, s.name))
-	return err
+	return storageerrors.PostgresError(err)
 }
 
 const (
@@ -43,13 +44,13 @@ const (
 
 func (s *Schema) Delete(ctx context.Context) error {
 	_, err := s.ExecContext(ctx, fmt.Sprintf(deleteSchemaQuery, s.name))
-	return err
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Schema) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	bunTx, err := s.IDB.BeginTx(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, storageerrors.PostgresError(err)
 	}
 	return &Tx{
 		schema: s,
@@ -101,11 +102,11 @@ type postgresDB struct {
 func (p *postgresDB) Initialize(ctx context.Context) error {
 	_, err := p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pgcrypto")
 	if err != nil {
-		return err
+		return storageerrors.PostgresError(err)
 	}
 	_, err = p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
 	if err != nil {
-		return err
+		return storageerrors.PostgresError(err)
 	}
 	return nil
 }

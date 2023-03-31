@@ -10,10 +10,10 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/lib/pq"
+	"github.com/pkg/errors"
 )
 
 type BalancesPaginationToken struct {
@@ -25,7 +25,7 @@ type BalancesPaginationToken struct {
 
 func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	if !s.isInitialized {
-		return nil, storage.ErrStoreNotInitialized
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	sb := s.schema.NewSelect(volumesTableName).
@@ -40,7 +40,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
 	if err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -52,7 +52,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 			balancesStr string
 		)
 		if err = rows.Scan(&asset, &balancesStr); err != nil {
-			return nil, sqlerrors.PostgresError(err)
+			return nil, storageerrors.PostgresError(err)
 		}
 
 		balances, ok := new(big.Int).SetString(balancesStr, 10)
@@ -63,7 +63,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 		aggregatedBalances[asset] = balances
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sqlerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	return aggregatedBalances, nil
@@ -71,7 +71,8 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 
 func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.AccountsBalances]{}, storage.ErrStoreNotInitialized
+		return api.Cursor[core.AccountsBalances]{},
+			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 
 	sb := s.schema.NewSelect(volumesTableName).
@@ -99,7 +100,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
 	if err != nil {
-		return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -109,7 +110,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		var currentAccount string
 		var arrayAgg []string
 		if err = rows.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
-			return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+			return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
 		}
 
 		accountsBalances := core.AccountsBalances{
@@ -126,7 +127,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 			balancesString := split[1]
 			balances, err := strconv.ParseInt(balancesString, 10, 64)
 			if err != nil {
-				return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrParsingBalance, err)
+				return api.Cursor[core.AccountsBalances]{}, storageerrors.StorageError(err)
 			}
 			accountsBalances[currentAccount][asset] = big.NewInt(balances)
 		}
@@ -135,7 +136,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 	}
 
 	if err := rows.Err(); err != nil {
-		return api.Cursor[core.AccountsBalances]{}, sqlerrors.PostgresError(err)
+		return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
 	}
 
 	var previous, next string
@@ -148,7 +149,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		}
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.AccountsBalances]{}, errors.Wrap(err, "unable to marshal pagination token")
 		}
 		previous = base64.RawURLEncoding.EncodeToString(raw)
 	}
@@ -158,7 +159,7 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		t.Offset = q.Offset + q.PageSize
 		raw, err := json.Marshal(t)
 		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, errorsutil.NewError(storage.ErrJson, err)
+			return api.Cursor[core.AccountsBalances]{}, errors.Wrap(err, "unable to marshal pagination token")
 		}
 		next = base64.RawURLEncoding.EncodeToString(raw)
 	}

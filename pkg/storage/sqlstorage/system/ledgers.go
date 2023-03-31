@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -23,7 +24,7 @@ func (s *Store) CreateLedgersTable(ctx context.Context) error {
 		IfNotExists().
 		Exec(ctx)
 
-	return err
+	return storageerrors.PostgresError(err)
 }
 
 func (s *Store) ListLedgers(ctx context.Context) ([]string, error) {
@@ -34,7 +35,7 @@ func (s *Store) ListLedgers(ctx context.Context) ([]string, error) {
 
 	rows, err := s.schema.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, storageerrors.PostgresError(err)
 	}
 	defer rows.Close()
 
@@ -42,7 +43,7 @@ func (s *Store) ListLedgers(ctx context.Context) ([]string, error) {
 	for rows.Next() {
 		var ledger string
 		if err := rows.Scan(&ledger); err != nil {
-			return nil, err
+			return nil, storageerrors.PostgresError(err)
 		}
 		res = append(res, ledger)
 	}
@@ -55,7 +56,7 @@ func (s *Store) DeleteLedger(ctx context.Context, name string) error {
 		Where("ledger = ?", name).
 		Exec(ctx)
 
-	return errors.Wrap(err, "delete ledger from system store")
+	return errors.Wrap(storageerrors.PostgresError(err), "delete ledger from system store")
 }
 
 func (s *Store) Register(ctx context.Context, ledger string) (bool, error) {
@@ -69,12 +70,12 @@ func (s *Store) Register(ctx context.Context, ledger string) (bool, error) {
 		Ignore().
 		Exec(ctx)
 	if err != nil {
-		return false, err
+		return false, storageerrors.PostgresError(err)
 	}
 
 	affected, err := ret.RowsAffected()
 	if err != nil {
-		return false, err
+		return false, storageerrors.PostgresError(err)
 	}
 
 	return affected > 0, nil

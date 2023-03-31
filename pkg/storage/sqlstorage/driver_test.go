@@ -53,5 +53,5 @@ func TestConfigurationError(t *testing.T) {
 
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
-	require.True(t, storage.IsNotFound(err))
+	require.True(t, storage.IsNotFoundError(err))
 }

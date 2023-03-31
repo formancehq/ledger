@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
+	"github.com/pkg/errors"
 )
 
 type Stats struct {
@@ -17,12 +17,12 @@ func (l *Ledger) Stats(ctx context.Context) (Stats, error) {
 
 	transactions, err := l.store.CountTransactions(ctx, storage.TransactionsQuery{})
 	if err != nil {
-		return stats, errorsutil.NewError(ErrStorage, err)
+		return stats, errors.Wrap(err, "counting transactions")
 	}
 
 	accounts, err := l.store.CountAccounts(ctx, storage.AccountsQuery{})
 	if err != nil {
-		return stats, errorsutil.NewError(ErrStorage, err)
+		return stats, errors.Wrap(err, "counting accounts")
 	}
 
 	return Stats{

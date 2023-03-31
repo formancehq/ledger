@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 )
 
@@ -17,10 +18,10 @@ func NewStore(schema schema.Schema) *Store {
 
 func (s *Store) Initialize(ctx context.Context) error {
 	if err := s.CreateLedgersTable(ctx); err != nil {
-		return err
+		return storageerrors.PostgresError(err)
 	}
 
-	return s.CreateConfigurationTable(ctx)
+	return storageerrors.PostgresError(s.CreateConfigurationTable(ctx))
 }
 
 func (s *Store) Close(ctx context.Context) error {
