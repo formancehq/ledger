@@ -32,9 +32,6 @@ func NewAllotment(portions []Portion) (*Allotment, error) {
 	if total.Cmp(big.NewRat(1, 1)) == 1 {
 		return nil, errors.New("sum of portions exceeded 100%")
 	}
-	if remainingIdx != nil && total.Cmp(big.NewRat(1, 1)) != -1 {
-		return nil, errors.New("portions include 'remaining' but sum is 100% or more")
-	}
 	if remainingIdx != nil {
 		remaining := big.NewRat(1, 1)
 		remaining.Sub(remaining, total)
