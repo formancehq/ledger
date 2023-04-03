@@ -28,6 +28,27 @@ func TestAllocate(t *testing.T) {
 	}
 }
 
+func TestAllocateEmptyRemainder(t *testing.T) {
+	allotment, err := NewAllotment([]Portion{
+		{Specific: big.NewRat(1, 2)},
+		{Specific: big.NewRat(1, 2)},
+		{Remaining: true},
+	})
+	require.NoError(t, err)
+
+	parts := allotment.Allocate(NewMonetaryInt(15))
+	expectedParts := []*MonetaryInt{NewMonetaryInt(8), NewMonetaryInt(7), NewMonetaryInt(0)}
+	if len(parts) != len(expectedParts) {
+		t.Fatalf("unexpected output %v != %v", parts, expectedParts)
+	}
+	for i := range parts {
+		if !parts[i].Equal(expectedParts[i]) {
+			t.Fatalf("unexpected output %v != %v", parts, expectedParts)
+		}
+	}
+
+}
+
 func TestInvalidAllotments(t *testing.T) {
 	_, err := NewAllotment([]Portion{
 		{Remaining: true},
@@ -42,11 +63,4 @@ func TestInvalidAllotments(t *testing.T) {
 		{Specific: big.NewRat(1, 2)},
 	})
 	assert.Errorf(t, err, "allowed more than 100%")
-
-	_, err = NewAllotment([]Portion{
-		{Specific: big.NewRat(1, 2)},
-		{Specific: big.NewRat(1, 2)},
-		{Remaining: true},
-	})
-	assert.Errorf(t, err, "allowed remaining but already at 100%")
 }
