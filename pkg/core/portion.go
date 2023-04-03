@@ -22,8 +22,8 @@ func NewPortionRemaining() Portion {
 }
 
 func NewPortionSpecific(r big.Rat) (*Portion, error) {
-	if r.Cmp(big.NewRat(0, 1)) != 1 || r.Cmp(big.NewRat(1, 1)) != -1 {
-		return nil, errors.New("portion must be between 0% and 100% exclusive")
+	if r.Cmp(big.NewRat(0, 1)) == -1 || r.Cmp(big.NewRat(1, 1)) == 1 {
+		return nil, errors.New("portion must be between 0% and 100% inclusive")
 	}
 	return &Portion{
 		Remaining: false,
@@ -38,8 +38,8 @@ func ValidatePortionSpecific(p Portion) error {
 	if p.Specific == nil {
 		return errors.New("specific portion should not be nil")
 	}
-	if p.Specific.Cmp(big.NewRat(0, 1)) != 1 || p.Specific.Cmp(big.NewRat(1, 1)) != -1 {
-		return errors.New("specific portion must be between 0% and 100% exclusive")
+	if p.Specific.Cmp(big.NewRat(0, 1)) == -1 || p.Specific.Cmp(big.NewRat(1, 1)) == 1 {
+		return errors.New("specific portion must be between 0% and 100% inclusive")
 	}
 	return nil
 }
