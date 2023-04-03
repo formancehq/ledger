@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/ThreeDotsLabs/watermill v1.2.0
+	github.com/alitto/pond v1.8.3
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/formancehq/stack/libs/go-libs v0.0.0-20230222164357-55840b21a337

@@ -10,17 +10,13 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"golang.org/x/sync/singleflight"
+	"github.com/pkg/errors"
 )
 
 type Store interface {
 	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
-}
-type AccountComputerFn func(ctx context.Context, address string) (*core.AccountWithVolumes, error)
-
-func (fn AccountComputerFn) ComputeAccount(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-	return fn(ctx, address)
 }
 
 type cacheEntry struct {
@@ -28,6 +24,8 @@ type cacheEntry struct {
 	account  *core.AccountWithVolumes
 	lastUsed time.Time
 	inUse    atomic.Int64
+	ready    chan struct{}
+	evicted chan struct{}
 }
 
 type Release func()
@@ -36,50 +34,58 @@ type Release func()
 // and update metrics:
 // c.metricsRegistry.CacheNumberEntries.Add(ctx, -1) for all evicted entries
 type Cache struct {
-	mu              sync.RWMutex
-	cache           map[string]*cacheEntry
+	cache           sync.Map
 	store           Store
-	sg              singleflight.Group
 	metricsRegistry metrics.PerLedgerMetricsRegistry
+	counter         atomic.Int64
 }
 
-func (c *Cache) getEntry(ctx context.Context, address string) (*cacheEntry, error) {
-	item, err, _ := c.sg.Do(address, func() (interface{}, error) {
-		c.mu.RLock()
-		entry, ok := c.cache[address]
-		c.mu.RUnlock()
-		if !ok {
-			// cache miss
-			c.metricsRegistry.CacheMisses().Add(ctx, 1)
+func (c *Cache) loadEntry(ctx context.Context, address string, inUse bool) (*cacheEntry, error) {
 
-			account, err := c.store.GetAccountWithVolumes(ctx, address)
-			if err != nil {
-				return nil, err
-			}
+	ce := &cacheEntry{
+		ready: make(chan struct{}),
+		evicted: make(chan struct{}),
+	}
+	entry, loaded := c.cache.LoadOrStore(address, ce)
+	if !loaded {
+		// cache miss
+		c.metricsRegistry.CacheMisses().Add(ctx, 1)
 
-			entry = &cacheEntry{
-				account:  account,
-				lastUsed: time.Now(),
-			}
-			c.mu.Lock()
-			c.cache[address] = entry
-			c.mu.Unlock()
-
-			if c.metricsRegistry != nil {
-				c.metricsRegistry.CacheNumberEntries().Add(ctx, +1)
-			}
-
-			return entry, nil
+		account, err := c.store.GetAccountWithVolumes(ctx, address)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			panic(err)
 		}
-		return entry, nil
-	})
-	return item.(*cacheEntry), err
+		if errors.Is(err, storage.ErrNotFound) {
+			account = core.NewAccountWithVolumes(address)
+		}
+		ce.account = account
+
+		close(ce.ready)
+		c.metricsRegistry.CacheNumberEntries().Add(ctx, 1)
+	}
+
+	ce = entry.(*cacheEntry)
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-ce.ready:
+	case <-ce.evicted:
+		return c.loadEntry(ctx, address, inUse)
+	}
+
+	ce.lastUsed = time.Now()
+	if inUse {
+		ce.inUse.Add(1)
+	}
+
+	return ce, nil
 }
 
 func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, error) {
 	entries := make([]*cacheEntry, 0)
 	for _, address := range address {
-		entry, err := c.getEntry(ctx, address)
+		entry, err := c.loadEntry(ctx, address, true)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +108,7 @@ func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, e
 func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	address = strings.TrimPrefix(address, "@")
 
-	entry, err := c.getEntry(ctx, address)
+	entry, err := c.loadEntry(ctx, address, false)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +120,11 @@ func (c *Cache) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 }
 
 func (c *Cache) withLockOnAccount(address string, callback func(account *core.AccountWithVolumes)) {
-	c.mu.Lock()
-	entry, ok := c.cache[address]
-	c.mu.Unlock()
+	e, ok := c.cache.Load(address)
 	if !ok {
 		panic("cache empty for address: " + address)
 	}
+	entry := e.(*cacheEntry)
 	entry.Lock()
 	defer entry.Unlock()
 
@@ -157,10 +162,39 @@ func (c *Cache) UpdateAccountMetadata(address string, m metadata.Metadata) error
 	return nil
 }
 
+//func (c *Cache) runEviction() {
+//	for {
+//		select {
+//		case <-time.After(time.Minute):
+//			c.cache.Range(func(key, value any) bool {
+//				cacheEntry := value.(*cacheEntry)
+//				if cacheEntry.inUse.Load() == 0 {
+//
+//				}
+//				return true
+//			})
+//		}
+//	}
+//}
+
 func New(store Store, metricsRegistry metrics.PerLedgerMetricsRegistry) *Cache {
-	return &Cache{
+	if metricsRegistry == nil {
+		metricsRegistry = metrics.NewNoOpMetricsRegistry()
+	}
+	c := &Cache{
 		store:           store,
-		cache:           map[string]*cacheEntry{},
 		metricsRegistry: metricsRegistry,
 	}
+	go func() {
+		for {
+			c.cache.Range(func(key, value any) bool {
+				entry := value.(*cacheEntry)
+				if entry.inUse.Load() == 0 && entry.lastUsed.Before(time.Now().Add(-time.Minute)) {
+					entry.
+				}
+			})
+		}
+	}()
+
+	return c
 }
