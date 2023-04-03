@@ -2,11 +2,15 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -22,6 +26,8 @@ type mockAccountComputer struct {
 }
 
 func (c *mockAccountComputer) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	// Simulate a real process for benchs
+	<-time.After(5 * time.Millisecond)
 	c.calls = append(c.calls, mockCall{
 		address: address,
 	})
@@ -30,7 +36,7 @@ func (c *mockAccountComputer) GetAccountWithVolumes(ctx context.Context, address
 			return accountWithVolumes, nil
 		}
 	}
-	return nil, nil
+	return nil, storage.ErrNotFound
 }
 
 func TestParallelRead(t *testing.T) {
@@ -160,4 +166,36 @@ func TestUpdateVolumes(t *testing.T) {
 			"USD": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 		},
 	}, *worldAccount)
+}
+
+func BenchmarkCache(b *testing.B) {
+	accounts := []*core.AccountWithVolumes{
+		{
+			Account: core.Account{
+				Address: "world",
+			},
+			Volumes: map[string]core.Volumes{},
+		},
+	}
+	accountsNumber := 100
+	for i := 0; i < accountsNumber; i++ {
+		accounts = append(accounts, &core.AccountWithVolumes{
+			Account: core.NewAccount(fmt.Sprintf("account:%d", i)),
+			Volumes: map[string]core.Volumes{},
+		})
+	}
+	mock := &mockAccountComputer{
+		accounts: accounts,
+	}
+	cache := New(mock, metrics.NewNoOpMetricsRegistry())
+
+	pool := pond.New(accountsNumber, accountsNumber)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pool.Submit(func() {
+			_, err := cache.GetAccountWithVolumes(context.Background(), fmt.Sprintf("account:%d", i%accountsNumber))
+			require.NoError(b, err)
+		})
+	}
+	pool.StopAndWait()
 }
