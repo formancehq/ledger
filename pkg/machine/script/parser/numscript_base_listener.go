@@ -231,6 +231,12 @@ func (s *BaseNumScriptListener) EnterPrint(ctx *PrintContext) {}
 // ExitPrint is called when production Print is exited.
 func (s *BaseNumScriptListener) ExitPrint(ctx *PrintContext) {}
 
+// EnterSaveFromAccount is called when production SaveFromAccount is entered.
+func (s *BaseNumScriptListener) EnterSaveFromAccount(ctx *SaveFromAccountContext) {}
+
+// ExitSaveFromAccount is called when production SaveFromAccount is exited.
+func (s *BaseNumScriptListener) ExitSaveFromAccount(ctx *SaveFromAccountContext) {}
+
 // EnterSetTxMeta is called when production SetTxMeta is entered.
 func (s *BaseNumScriptListener) EnterSetTxMeta(ctx *SetTxMetaContext) {}
 

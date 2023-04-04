@@ -130,9 +130,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	if prog == nil {
-		t.Fatal("no program")
-	}
+	require.NotNil(t, prog)
 
 	m := NewMachine(*prog)
 	m.Debug = DEBUG
@@ -149,11 +147,9 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 		if expected.ErrorContains != "" {
 			require.ErrorContains(t, err, expected.ErrorContains)
 		}
-
 	} else {
 		require.NoError(t, err)
 	}
-
 	if err != nil {
 		return
 	}
@@ -1818,7 +1814,7 @@ func TestMachine(t *testing.T) {
 		require.True(t, errors.Is(err, ErrResourcesNotInitialized))
 	})
 
-	t.Run("err balances nit initialized", func(t *testing.T) {
+	t.Run("err balances not initialized", func(t *testing.T) {
 		m := NewMachine(*p)
 
 		err = m.SetVars(map[string]internal.Value{
@@ -1942,6 +1938,298 @@ func TestVariableAsset(t *testing.T) {
 		Error: nil,
 	}
 	test(t, tc)
+}
+
+func TestSaveFromAccount(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		script := `
+ 			save [USD 10] from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(10),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(20),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("save all", func(t *testing.T) {
+		script := `
+ 			save [USD *] from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(0),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(30),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("save more than balance", func(t *testing.T) {
+		script := `
+ 			save [USD 30] from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(0),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(30),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("with asset var", func(t *testing.T) {
+		script := `
+			vars {
+				asset $ass
+			}
+ 			save [$ass 10] from @alice
+
+ 			send [$ass 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.vars = map[string]internal.Value{
+			"ass": internal.Asset("USD"),
+		}
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(10),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(20),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("with monetary var", func(t *testing.T) {
+		script := `
+			vars {
+				monetary $mon
+			}
+
+ 			save $mon from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.vars = map[string]internal.Value{
+			"mon": internal.Monetary{
+				Asset:  "USD",
+				Amount: internal.NewMonetaryInt(10),
+			},
+		}
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(10),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(20),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("multi postings", func(t *testing.T) {
+		script := `
+ 			send [USD 10] (
+ 			   source = @alice
+ 			   destination = @bob
+ 			)
+
+			save [USD 5] from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(10),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(5),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(25),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("save a different asset", func(t *testing.T) {
+		script := `
+			save [COIN 100] from @alice
+
+ 			send [USD 30] (
+ 			   source = {
+ 				  @alice
+ 				  @world
+ 			   }
+ 			   destination = @bob
+ 			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "COIN", 100)
+		tc.setBalance("alice", "USD", 20)
+		tc.expected = CaseResult{
+			Printed: []internal.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(20),
+					Source:      "alice",
+					Destination: "bob",
+				},
+				{
+					Asset:       "USD",
+					Amount:      internal.NewMonetaryInt(10),
+					Source:      "world",
+					Destination: "bob",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	t.Run("negative amount", func(t *testing.T) {
+		script := `
+			vars {
+			  monetary $amt = balance(@A, USD)
+			}
+			save $amt from @A`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("A", "USD", -100)
+		tc.expected = CaseResult{
+			Printed:  []internal.Value{},
+			Postings: []Posting{},
+			Error:    ErrNegativeMonetaryAmount,
+		}
+		test(t, tc)
+	})
 }
 
 func TestMachine_Execute(t *testing.T) {

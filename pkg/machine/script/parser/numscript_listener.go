@@ -110,6 +110,9 @@ type NumScriptListener interface {
 	// EnterPrint is called when entering the Print production.
 	EnterPrint(c *PrintContext)
 
+	// EnterSaveFromAccount is called when entering the SaveFromAccount production.
+	EnterSaveFromAccount(c *SaveFromAccountContext)
+
 	// EnterSetTxMeta is called when entering the SetTxMeta production.
 	EnterSetTxMeta(c *SetTxMetaContext)
 
@@ -241,6 +244,9 @@ type NumScriptListener interface {
 
 	// ExitPrint is called when exiting the Print production.
 	ExitPrint(c *PrintContext)
+
+	// ExitSaveFromAccount is called when exiting the SaveFromAccount production.
+	ExitSaveFromAccount(c *SaveFromAccountContext)
 
 	// ExitSetTxMeta is called when exiting the SetTxMeta production.
 	ExitSetTxMeta(c *SetTxMetaContext)
