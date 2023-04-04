@@ -81,7 +81,7 @@ paths:
           schema:
             type: object
             properties: {}
-          example: { admin: true, a: { nested: { key: value}} }
+          example: { admin: "true" }
       responses:
         "200":
           description: OK
@@ -144,7 +144,7 @@ paths:
             properties: {}
             additionalProperties:
               type: string
-          example: { admin: true, a: { nested: { key: value}} }
+          example: { admin: "true" }
         - name: balance
           in: query
           description: Filter accounts by their balance (default operator is gte)
@@ -355,11 +355,12 @@ paths:
           in: query
           description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
           style: deepObject
-          explode: true
           schema:
             type: object
             properties: { }
-          example: { admin: true, a: { nested: { key: value}} }
+            additionalProperties:
+              type: string
+          example: { admin: "true" }
       responses:
         "200":
           description: OK
