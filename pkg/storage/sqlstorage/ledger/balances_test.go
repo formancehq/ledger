@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,15 +28,13 @@ func TestGetBalances(t *testing.T) {
 
 	t.Run("all accounts", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
-			storage.BalancesQuery{
-				PageSize: 10,
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		assert.Equal(t, false, cursor.HasMore)
-		assert.Equal(t, "", cursor.Previous)
-		assert.Equal(t, "", cursor.Next)
-		assert.Equal(t, []core.AccountsBalances{
+			storage.NewBalancesQuery().WithPageSize(10))
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
+		require.Equal(t, false, cursor.HasMore)
+		require.Equal(t, "", cursor.Previous)
+		require.Equal(t, "", cursor.Next)
+		require.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
 					"USD": big.NewInt(-200),
@@ -58,15 +55,14 @@ func TestGetBalances(t *testing.T) {
 
 	t.Run("limit", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
-			storage.BalancesQuery{
-				PageSize: 1,
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
-		assert.Equal(t, true, cursor.HasMore)
-		assert.Equal(t, "", cursor.Previous)
-		assert.NotEqual(t, "", cursor.Next)
-		assert.Equal(t, []core.AccountsBalances{
+			storage.NewBalancesQuery().WithPageSize(1),
+		)
+		require.NoError(t, err)
+		require.Equal(t, 1, cursor.PageSize)
+		require.Equal(t, true, cursor.HasMore)
+		require.Equal(t, "", cursor.Previous)
+		require.NotEqual(t, "", cursor.Next)
+		require.Equal(t, []core.AccountsBalances{
 			{
 				"world": core.AssetsBalances{
 					"USD": big.NewInt(-200),
@@ -75,38 +71,16 @@ func TestGetBalances(t *testing.T) {
 		}, cursor.Data)
 	})
 
-	t.Run("limit and offset", func(t *testing.T) {
-		cursor, err := store.GetBalances(context.Background(),
-			storage.BalancesQuery{
-				PageSize: 1,
-				Offset:   1,
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, 1, cursor.PageSize)
-		assert.Equal(t, true, cursor.HasMore)
-		assert.NotEqual(t, "", cursor.Previous)
-		assert.NotEqual(t, "", cursor.Next)
-		assert.Equal(t, []core.AccountsBalances{
-			{
-				"users:1": core.AssetsBalances{
-					"USD": big.NewInt(1),
-				},
-			},
-		}, cursor.Data)
-	})
-
 	t.Run("after", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
-			storage.BalancesQuery{
-				PageSize:     10,
-				AfterAddress: "world",
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		assert.Equal(t, false, cursor.HasMore)
-		assert.Equal(t, "", cursor.Previous)
-		assert.Equal(t, "", cursor.Next)
-		assert.Equal(t, []core.AccountsBalances{
+			storage.NewBalancesQuery().WithPageSize(10).WithAfterAddress("world"),
+		)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
+		require.Equal(t, false, cursor.HasMore)
+		require.Equal(t, "", cursor.Previous)
+		require.Equal(t, "", cursor.Next)
+		require.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
 					"USD": big.NewInt(1),
@@ -122,17 +96,17 @@ func TestGetBalances(t *testing.T) {
 
 	t.Run("after and filter on address", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
-			storage.BalancesQuery{
-				PageSize:     10,
-				AfterAddress: "world",
-				Filters:      storage.BalancesQueryFilters{AddressRegexp: "users.+"},
-			})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
-		assert.Equal(t, false, cursor.HasMore)
-		assert.Equal(t, "", cursor.Previous)
-		assert.Equal(t, "", cursor.Next)
-		assert.Equal(t, []core.AccountsBalances{
+			storage.NewBalancesQuery().
+				WithPageSize(10).
+				WithAfterAddress("world").
+				WithAddressFilter("users.+"),
+		)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
+		require.Equal(t, false, cursor.HasMore)
+		require.Equal(t, "", cursor.Previous)
+		require.Equal(t, "", cursor.Next)
+		require.Equal(t, []core.AccountsBalances{
 			{
 				"users:1": core.AssetsBalances{
 					"USD": big.NewInt(1),
@@ -158,12 +132,10 @@ func TestGetBalancesAggregated(t *testing.T) {
 		},
 	}))
 
-	q := storage.BalancesQuery{
-		PageSize: 10,
-	}
+	q := storage.NewBalancesQuery().WithPageSize(10)
 	cursor, err := store.GetBalancesAggregated(context.Background(), q)
-	assert.NoError(t, err)
-	assert.Equal(t, core.AssetsBalances{
+	require.NoError(t, err)
+	require.Equal(t, core.AssetsBalances{
 		"USD": big.NewInt(0),
 	}, cursor)
 }

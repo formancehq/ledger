@@ -2,8 +2,6 @@ package ledger
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"math/big"
 	"strconv"
 	"strings"
@@ -11,21 +9,10 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/pagination"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/lib/pq"
-	"github.com/pkg/errors"
 )
-
-type BalancesPaginationToken struct {
-	PageSize            uint   `json:"pageSize"`
-	Offset              uint   `json:"offset"`
-	AfterAddress        string `json:"after,omitempty"`
-	AddressRegexpFilter string `json:"address,omitempty"`
-}
-
-func (t BalancesPaginationToken) Encode() string {
-	return encodePaginationToken(t)
-}
 
 func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
 	if !s.isInitialized {
@@ -75,9 +62,9 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 	return aggregatedBalances, nil
 }
 
-func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
+func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.AccountsBalances]{},
+		return nil,
 			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "get_balances")
@@ -90,94 +77,41 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		Group("account").
 		Order("account DESC")
 
-	t := BalancesPaginationToken{}
-
-	if q.AfterAddress != "" {
-		sb.Where("account < ?", q.AfterAddress)
-		t.AfterAddress = q.AfterAddress
+	if q.Filters.AfterAddress != "" {
+		sb.Where("account < ?", q.Filters.AfterAddress)
 	}
 
 	if q.Filters.AddressRegexp != "" {
 		sb.Where("account ~* ?", "^"+q.Filters.AddressRegexp+"$")
-		t.AddressRegexpFilter = q.Filters.AddressRegexp
 	}
 
-	sb.Limit(int(q.PageSize + 1))
-	t.PageSize = q.PageSize
-	sb.Offset(int(q.Offset))
-
-	rows, err := s.schema.QueryContext(ctx, sb.String())
-	if err != nil {
-		return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
-	}
-	defer rows.Close()
-
-	accounts := make([]core.AccountsBalances, 0)
-
-	for rows.Next() {
-		var currentAccount string
-		var arrayAgg []string
-		if err = rows.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
-			return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
-		}
-
-		accountsBalances := core.AccountsBalances{
-			currentAccount: core.AssetsBalances{},
-		}
-
-		// arrayAgg is in the form: []string{"(USD,-250)","(EUR,1000)"}
-		for _, agg := range arrayAgg {
-			// Remove parenthesis
-			agg = agg[1 : len(agg)-1]
-			// Split the asset and balances on the comma separator
-			split := strings.Split(agg, ",")
-			asset := split[0]
-			balancesString := split[1]
-			balances, err := strconv.ParseInt(balancesString, 10, 64)
-			if err != nil {
-				return api.Cursor[core.AccountsBalances]{}, storageerrors.StorageError(err)
+	return pagination.UsingOffset(ctx, sb, storage.OffsetPaginatedQuery[storage.BalancesQueryFilters](q),
+		func(accountsBalances *core.AccountsBalances, scanner interface{ Scan(args ...any) error }) error {
+			var currentAccount string
+			var arrayAgg []string
+			if err := scanner.Scan(&currentAccount, pq.Array(&arrayAgg)); err != nil {
+				return err
 			}
-			accountsBalances[currentAccount][asset] = big.NewInt(balances)
-		}
 
-		accounts = append(accounts, accountsBalances)
-	}
+			*accountsBalances = core.AccountsBalances{
+				currentAccount: map[string]*big.Int{},
+			}
 
-	if err := rows.Err(); err != nil {
-		return api.Cursor[core.AccountsBalances]{}, storageerrors.PostgresError(err)
-	}
+			// arrayAgg is in the form: []string{"(USD,-250)","(EUR,1000)"}
+			for _, agg := range arrayAgg {
+				// Remove parenthesis
+				agg = agg[1 : len(agg)-1]
+				// Split the asset and balances on the comma separator
+				split := strings.Split(agg, ",")
+				asset := split[0]
+				balancesString := split[1]
+				balances, err := strconv.ParseInt(balancesString, 10, 64)
+				if err != nil {
+					return err
+				}
+				(*accountsBalances)[currentAccount][asset] = big.NewInt(balances)
+			}
 
-	var previous, next string
-	if q.Offset > 0 {
-		offset := int(q.Offset) - int(q.PageSize)
-		if offset < 0 {
-			t.Offset = 0
-		} else {
-			t.Offset = uint(offset)
-		}
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, errors.Wrap(err, "unable to marshal pagination token")
-		}
-		previous = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	if len(accounts) == int(q.PageSize+1) {
-		accounts = accounts[:len(accounts)-1]
-		t.Offset = q.Offset + q.PageSize
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.AccountsBalances]{}, errors.Wrap(err, "unable to marshal pagination token")
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	hasMore := next != ""
-	return api.Cursor[core.AccountsBalances]{
-		PageSize: int(q.PageSize),
-		HasMore:  hasMore,
-		Previous: previous,
-		Next:     next,
-		Data:     accounts,
-	}, nil
+			return nil
+		})
 }

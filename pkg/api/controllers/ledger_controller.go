@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -10,7 +8,6 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/go-chi/chi/v5"
@@ -70,26 +67,12 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
+		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &logsQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
-
-		token := ledgerstore.LogsPaginationToken{}
-		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		logsQuery = logsQuery.
-			WithAfterID(token.AfterID).
-			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime).
-			WithPageSize(token.PageSize)
-
 	} else {
 		var err error
 		var afterIDParsed uint64
@@ -119,7 +102,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		pageSize, err := getPageSize(w, r)
+		pageSize, err := getPageSize(r)
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -132,11 +115,11 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.GetLogs(r.Context(), *logsQuery)
+	cursor, err := l.GetLogs(r.Context(), logsQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	sharedapi.RenderCursor(w, cursor)
+	sharedapi.RenderCursor(w, *cursor)
 }

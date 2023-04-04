@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -50,7 +48,7 @@ func CountTransactions(w http.ResponseWriter, r *http.Request) {
 		WithEndTimeFilter(endTimeParsed).
 		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
-	count, err := l.CountTransactions(r.Context(), *txQuery)
+	count, err := l.CountTransactions(r.Context(), txQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -78,34 +76,17 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
+		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &txQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
-
-		token := ledgerstore.TransactionsPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		txQuery = txQuery.
-			WithAfterTxID(token.AfterTxID).
-			WithReferenceFilter(token.ReferenceFilter).
-			WithAccountFilter(token.AccountFilter).
-			WithSourceFilter(token.SourceFilter).
-			WithDestinationFilter(token.DestinationFilter).
-			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime).
-			WithMetadataFilter(token.MetadataFilter).
-			WithPageSize(token.PageSize)
-
 	} else {
-		var err error
-		var afterTxIDParsed uint64
+		var (
+			err             error
+			afterTxIDParsed uint64
+		)
 		if r.URL.Query().Get("after") != "" {
 			afterTxIDParsed, err = strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 			if err != nil {
@@ -132,7 +113,7 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		pageSize, err := getPageSize(w, r)
+		pageSize, err := getPageSize(r)
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -150,13 +131,13 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.GetTransactions(r.Context(), *txQuery)
+	cursor, err := l.GetTransactions(r.Context(), txQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	sharedapi.RenderCursor(w, cursor)
+	sharedapi.RenderCursor(w, *cursor)
 }
 
 type PostTransactionRequest struct {

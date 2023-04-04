@@ -3,8 +3,6 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -13,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/pagination"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
@@ -30,58 +29,34 @@ type Accounts struct {
 	Metadata map[string]string `bun:"metadata,type:jsonb,default:'{}'"`
 }
 
-type AccountsPaginationToken struct {
-	PageSize              uint                    `json:"pageSize"`
-	Offset                uint                    `json:"offset"`
-	AfterAddress          string                  `json:"after,omitempty"`
-	AddressRegexpFilter   string                  `json:"address,omitempty"`
-	MetadataFilter        map[string]string       `json:"metadata,omitempty"`
-	BalanceFilter         string                  `json:"balance,omitempty"`
-	BalanceOperatorFilter storage.BalanceOperator `json:"balanceOperator,omitempty"`
-}
-
-func (t AccountsPaginationToken) Encode() string {
-	return encodePaginationToken(t)
-}
-
-func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery) (*bun.SelectQuery, AccountsPaginationToken) {
+func (s *Store) buildAccountsQuery(p storage.AccountsQuery) *bun.SelectQuery {
 	sb := s.schema.NewSelect(accountsTableName).Model((*Accounts)(nil))
-	t := AccountsPaginationToken{}
 
-	var (
-		address         = p.Filters.Address
-		metadata        = p.Filters.Metadata
-		balance         = p.Filters.Balance
-		balanceOperator = p.Filters.BalanceOperator
-	)
-
-	if address != "" {
-		sb.Where("address ~* ?", "^"+address+"$")
-		t.AddressRegexpFilter = address
+	if p.Filters.Address != "" {
+		sb.Where("address ~* ?", "^"+p.Filters.Address+"$")
 	}
 
-	for key, value := range metadata {
+	for key, value := range p.Filters.Metadata {
 		// TODO: Need to find another way to specify the prefix since Table() methods does not make sense for functions and procedures
 		sb.Where(s.schema.Table(
 			fmt.Sprintf("%s(metadata, ?, '%s')",
 				SQLCustomFuncMetaCompare, strings.ReplaceAll(key, ".", "', '")),
 		), value)
 	}
-	t.MetadataFilter = metadata
 
-	if balance != "" {
+	if p.Filters.Balance != "" {
 		sb.Join("JOIN " + s.schema.Table(volumesTableName)).
 			JoinOn("accounts.address = volumes.account")
 		balanceOperation := "volumes.input - volumes.output"
 
-		balanceValue, err := strconv.ParseInt(balance, 10, 0)
+		balanceValue, err := strconv.ParseInt(p.Filters.Balance, 10, 0)
 		if err != nil {
 			// parameter is validated in the controller for now
 			panic(errors.Wrap(err, "invalid balance parameter"))
 		}
 
-		if balanceOperator != "" {
-			switch balanceOperator {
+		if p.Filters.BalanceOperator != "" {
+			switch p.Filters.BalanceOperator {
 			case storage.BalanceOperatorLte:
 				sb.Where(fmt.Sprintf("%s <= ?", balanceOperation), balanceValue)
 			case storage.BalanceOperatorLt:
@@ -101,94 +76,22 @@ func (s *Store) buildAccountsQuery(ctx context.Context, p storage.AccountsQuery)
 		} else { // if no operator is given, default to gte
 			sb.Where(fmt.Sprintf("%s >= ?", balanceOperation), balanceValue)
 		}
-
-		t.BalanceFilter = balance
-		t.BalanceOperatorFilter = balanceOperator
 	}
 
-	return sb, t
+	return sb
 }
 
-func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.Cursor[core.Account], error) {
+func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (*api.Cursor[core.Account], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.Account]{},
-			storageerrors.StorageError(storage.ErrStoreNotInitialized)
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "get_accounts")
 	defer recordMetrics()
 
-	accounts := make([]core.Account, 0)
-
-	if q.PageSize == 0 {
-		return api.Cursor[core.Account]{Data: accounts}, nil
-	}
-
-	sb, t := s.buildAccountsQuery(ctx, q)
-	sb.OrderExpr("address desc")
-
-	if q.AfterAddress != "" {
-		sb.Where("address < ?", q.AfterAddress)
-		t.AfterAddress = q.AfterAddress
-	}
-
-	// We fetch an additional account to know if there is more
-	sb.Limit(int(q.PageSize + 1))
-	t.PageSize = q.PageSize
-	sb.Offset(int(q.Offset))
-
-	rows, err := s.schema.QueryContext(ctx, sb.String())
-	if err != nil {
-		return api.Cursor[core.Account]{}, storageerrors.PostgresError(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		account := core.Account{
-			Metadata: metadata.Metadata{},
-		}
-		if err := rows.Scan(&account.Address, &account.Metadata); err != nil {
-			return api.Cursor[core.Account]{}, storageerrors.PostgresError(err)
-		}
-
-		accounts = append(accounts, account)
-	}
-	if rows.Err() != nil {
-		return api.Cursor[core.Account]{}, storageerrors.PostgresError(rows.Err())
-	}
-
-	var previous, next string
-	if q.Offset > 0 {
-		offset := int(q.Offset) - int(q.PageSize)
-		if offset < 0 {
-			t.Offset = 0
-		} else {
-			t.Offset = uint(offset)
-		}
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.Account]{}, errors.Wrap(err, "failed to marshal pagination token")
-		}
-		previous = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	if len(accounts) == int(q.PageSize+1) {
-		accounts = accounts[:len(accounts)-1]
-		t.Offset = q.Offset + q.PageSize
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.Account]{}, errors.Wrap(err, "failed to marshal pagination token")
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	hasMore := next != ""
-	return api.Cursor[core.Account]{
-		PageSize: int(q.PageSize),
-		HasMore:  hasMore,
-		Previous: previous,
-		Next:     next,
-		Data:     accounts,
-	}, nil
+	return pagination.UsingOffset(ctx, s.buildAccountsQuery(q), storage.OffsetPaginatedQuery[storage.AccountsQueryFilters](q),
+		func(account *core.Account, scanner interface{ Scan(args ...any) error }) error {
+			return scanner.Scan(&account.Address, &account.Metadata)
+		})
 }
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
@@ -304,7 +207,7 @@ func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uin
 	recordMetrics := s.instrumentalized(ctx, "count_accounts")
 	defer recordMetrics()
 
-	sb, _ := s.buildAccountsQuery(ctx, q)
+	sb := s.buildAccountsQuery(q)
 	count, err := sb.Count(ctx)
 	return uint64(count), storageerrors.PostgresError(err)
 }

@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/psanford/memfs"
@@ -85,7 +85,7 @@ func TestMigrationsOrders(t *testing.T) {
 
 func TestMigrates(t *testing.T) {
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	sqlDB, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
+	sqlDB, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
 	if err != nil {
 		t.Fatal(err)
 	}

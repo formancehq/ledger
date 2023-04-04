@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -30,14 +29,14 @@ func TestGetBalancesAggregated(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: *storage.NewBalancesQuery(),
+			expectQuery: storage.NewBalancesQuery(),
 		},
 		{
 			name: "using address",
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: *storage.NewBalancesQuery().WithAddressFilter("foo"),
+			expectQuery: storage.NewBalancesQuery().WithAddressFilter("foo"),
 		},
 	}
 	for _, testCase := range testCases {
@@ -82,12 +81,12 @@ func TestGetBalances(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: *storage.NewBalancesQuery(),
+			expectQuery: storage.NewBalancesQuery(),
 		},
 		{
 			name: "empty cursor with other param",
 			queryParams: url.Values{
-				"cursor": []string{ledger.BalancesPaginationToken{}.Encode()},
+				"cursor": []string{storage.EncodeCursor(storage.NewBalancesQuery())},
 				"after":  []string{"bob"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
@@ -106,14 +105,14 @@ func TestGetBalances(t *testing.T) {
 			queryParams: url.Values{
 				"after": []string{"foo"},
 			},
-			expectQuery: *storage.NewBalancesQuery().WithAfterAddress("foo"),
+			expectQuery: storage.NewBalancesQuery().WithAfterAddress("foo"),
 		},
 		{
 			name: "using address",
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: *storage.NewBalancesQuery().WithAddressFilter("foo"),
+			expectQuery: storage.NewBalancesQuery().WithAddressFilter("foo"),
 		},
 	}
 	for _, testCase := range testCases {
@@ -138,7 +137,7 @@ func TestGetBalances(t *testing.T) {
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mock.EXPECT().
 					GetBalances(gomock.Any(), testCase.expectQuery).
-					Return(expectedCursor, nil)
+					Return(&expectedCursor, nil)
 			}
 
 			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
