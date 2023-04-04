@@ -443,6 +443,18 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.AccountsMeta[a][string(k)] = v
 
+	case program.OP_SAVE:
+		a := pop[internal.AccountAddress](m)
+		v := m.popValue()
+		switch v := v.(type) {
+		case internal.Asset:
+			m.Balances[a][v] = internal.NewMonetaryInt(0)
+		case internal.Monetary:
+			m.Balances[a][v.Asset] = m.Balances[a][v.Asset].Sub(v.Amount)
+		default:
+			panic(fmt.Errorf("invalid value type: %T", v))
+		}
+
 	default:
 		return true, errorsutil.NewError(ErrInvalidScript,
 			errors.Errorf("invalid opcode: %v", op))

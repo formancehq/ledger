@@ -1366,9 +1366,9 @@ func TestPrint(t *testing.T) {
 				program.OP_PRINT,
 			},
 			Resources: []program.Resource{
-				program.Constant{Inner: core.NewMonetaryInt(1)},
-				program.Constant{Inner: core.NewMonetaryInt(2)},
-				program.Constant{Inner: core.NewMonetaryInt(3)},
+				program.Constant{Inner: internal.NewMonetaryInt(1)},
+				program.Constant{Inner: internal.NewMonetaryInt(2)},
+				program.Constant{Inner: internal.NewMonetaryInt(3)},
 			},
 		},
 	})
@@ -1415,30 +1415,30 @@ func TestSendWithArithmetic(t *testing.T) {
 				},
 				Resources: []program.Resource{
 					program.Variable{
-						Typ:  core.TypeAsset,
+						Typ:  internal.TypeAsset,
 						Name: "ass",
 					},
 					program.Variable{
-						Typ:  core.TypeMonetary,
+						Typ:  internal.TypeMonetary,
 						Name: "mon",
 					},
-					program.Constant{Inner: core.Asset("EUR")},
+					program.Constant{Inner: internal.Asset("EUR")},
 					program.Monetary{
 						Asset:  2,
-						Amount: core.NewMonetaryInt(1),
+						Amount: internal.NewMonetaryInt(1),
 					},
 					program.Monetary{
 						Asset:  0,
-						Amount: core.NewMonetaryInt(3),
+						Amount: internal.NewMonetaryInt(3),
 					},
 					program.Monetary{
 						Asset:  2,
-						Amount: core.NewMonetaryInt(4),
+						Amount: internal.NewMonetaryInt(4),
 					},
-					program.Constant{Inner: core.AccountAddress("a")},
-					program.Constant{Inner: core.NewMonetaryInt(0)},
-					program.Constant{Inner: core.NewMonetaryInt(1)},
-					program.Constant{Inner: core.AccountAddress("b")},
+					program.Constant{Inner: internal.AccountAddress("a")},
+					program.Constant{Inner: internal.NewMonetaryInt(0)},
+					program.Constant{Inner: internal.NewMonetaryInt(1)},
+					program.Constant{Inner: internal.AccountAddress("b")},
 				},
 			},
 		})
@@ -1476,6 +1476,235 @@ func TestSendWithArithmetic(t *testing.T) {
 				Instructions: []byte{},
 				Resources:    []program.Resource{},
 				Error:        "tried to do an arithmetic operation with incompatible left and right-hand side operand types: monetary and number",
+			},
+		})
+	})
+}
+
+func TestSaveFromAccount(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+ 			save [EUR 10] from @alice
+
+ 			send [EUR 20] (
+ 				source = @alice
+ 				destination = @bob
+ 			)`,
+			Expected: CaseResult{
+				Instructions: []byte{
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 02, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+				},
+				Resources: []program.Resource{
+					program.Constant{Inner: internal.Asset("EUR")},
+					program.Monetary{
+						Asset:  0,
+						Amount: internal.NewMonetaryInt(10),
+					},
+					program.Constant{Inner: internal.AccountAddress("alice")},
+					program.Monetary{
+						Asset:  0,
+						Amount: internal.NewMonetaryInt(20),
+					},
+					program.Constant{Inner: internal.NewMonetaryInt(0)},
+					program.Constant{Inner: internal.NewMonetaryInt(1)},
+					program.Constant{Inner: internal.AccountAddress("bob")},
+				},
+			},
+		})
+	})
+
+	t.Run("save all", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+ 			save [EUR *] from @alice
+
+ 			send [EUR 20] (
+ 				source = @alice
+ 				destination = @bob
+ 			)`,
+			Expected: CaseResult{
+				Instructions: []byte{
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 03, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 02, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 04, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+				},
+				Resources: []program.Resource{
+					program.Constant{Inner: internal.Asset("EUR")},
+					program.Constant{Inner: internal.AccountAddress("alice")},
+					program.Monetary{
+						Asset:  0,
+						Amount: internal.NewMonetaryInt(20),
+					},
+					program.Constant{Inner: internal.NewMonetaryInt(0)},
+					program.Constant{Inner: internal.NewMonetaryInt(1)},
+					program.Constant{Inner: internal.AccountAddress("bob")},
+				},
+			},
+		})
+	})
+
+	t.Run("with asset var", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+			vars {
+				asset $ass
+			}
+
+ 			save [$ass 10] from @alice
+
+ 			send [$ass 20] (
+ 				source = @alice
+ 				destination = @bob
+ 			)`,
+			Expected: CaseResult{
+				Instructions: []byte{
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 02, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+				},
+				Resources: []program.Resource{
+					program.Variable{Typ: internal.TypeAsset, Name: "ass"},
+					program.Monetary{
+						Asset:  0,
+						Amount: internal.NewMonetaryInt(10),
+					},
+					program.Constant{Inner: internal.AccountAddress("alice")},
+					program.Monetary{
+						Asset:  0,
+						Amount: internal.NewMonetaryInt(20),
+					},
+					program.Constant{Inner: internal.NewMonetaryInt(0)},
+					program.Constant{Inner: internal.NewMonetaryInt(1)},
+					program.Constant{Inner: internal.AccountAddress("bob")},
+				},
+			},
+		})
+	})
+
+	t.Run("with monetary var", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+			vars {
+				monetary $mon
+			}
+
+ 			save $mon from @alice
+
+ 			send [EUR 20] (
+ 				source = @alice
+ 				destination = @bob
+ 			)`,
+			Expected: CaseResult{
+				Instructions: []byte{
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+				},
+				Resources: []program.Resource{
+					program.Variable{Typ: internal.TypeMonetary, Name: "mon"},
+					program.Constant{Inner: internal.AccountAddress("alice")},
+					program.Constant{Inner: internal.Asset("EUR")},
+					program.Monetary{
+						Asset:  2,
+						Amount: internal.NewMonetaryInt(20),
+					},
+					program.Constant{Inner: internal.NewMonetaryInt(0)},
+					program.Constant{Inner: internal.NewMonetaryInt(1)},
+					program.Constant{Inner: internal.AccountAddress("bob")},
+				},
+			},
+		})
+	})
+
+	t.Run("error wrong type monetary", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+				save 30 from @alice
+			`,
+			Expected: CaseResult{
+				Instructions: []byte{},
+				Resources:    []program.Resource{},
+				Error:        "save monetary from account: the first expression should be of type 'monetary' instead of 'number'",
+			},
+		})
+	})
+
+	t.Run("error wrong type account", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `
+				save [EUR 30] from ALICE
+			`,
+			Expected: CaseResult{
+				Instructions: []byte{},
+				Resources:    []program.Resource{},
+				Error:        "save monetary from account: the second expression should be of type 'account' instead of 'asset'",
 			},
 		})
 	})

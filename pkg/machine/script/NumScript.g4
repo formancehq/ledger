@@ -41,6 +41,7 @@ PORTION:
 REMAINING: 'remaining';
 KEPT: 'kept';
 BALANCE: 'balance';
+SAVE: 'save';
 NUMBER: [0-9]+;
 PERCENT: '%';
 VARIABLE_NAME: '$' [a-z_]+ [a-z0-9_]*;
@@ -132,6 +133,7 @@ valueAwareSource
 
 statement
     : PRINT expr=expression # Print
+    | SAVE (mon=expression | monAll=monetaryAll) FROM acc=expression # SaveFromAccount
     | SET_TX_META '(' key=STRING ',' value=expression ')' # SetTxMeta
     | SET_ACCOUNT_META '(' acc=expression ',' key=STRING ',' value=expression ')' # SetAccountMeta
     | FAIL # Fail

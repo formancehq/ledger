@@ -410,7 +410,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 	}
 	if ty != internal.TypeAccount {
 		return LogicError(ctx, fmt.Errorf(
-			"variable is of type %s, and should be of type account", ty))
+			"set_account_meta: expression is of type %s, and should be of type account", ty))
 	}
 	p.PushAddress(*accAddr)
 
@@ -419,7 +419,48 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 	return nil
 }
 
-// print statement
+func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *CompileError {
+	var (
+		typ     internal.Type
+		addr    *internal.Address
+		compErr *CompileError
+	)
+	if monAll := c.GetMonAll(); monAll != nil {
+		typ, addr, compErr = p.VisitExpr(monAll.GetAsset(), false)
+		if compErr != nil {
+			return compErr
+		}
+		if typ != internal.TypeAsset {
+			return LogicError(c, fmt.Errorf(
+				"save monetary all from account: the first expression should be of type 'asset' instead of '%s'", typ))
+		}
+	} else if mon := c.GetMon(); mon != nil {
+		typ, addr, compErr = p.VisitExpr(mon, false)
+		if compErr != nil {
+			return compErr
+		}
+		if typ != internal.TypeMonetary {
+			return LogicError(c, fmt.Errorf(
+				"save monetary from account: the first expression should be of type 'monetary' instead of '%s'", typ))
+		}
+	}
+	p.PushAddress(*addr)
+
+	typ, addr, compErr = p.VisitExpr(c.GetAcc(), false)
+	if compErr != nil {
+		return compErr
+	}
+	if typ != internal.TypeAccount {
+		return LogicError(c, fmt.Errorf(
+			"save monetary from account: the second expression should be of type 'account' instead of '%s'", typ))
+	}
+	p.PushAddress(*addr)
+
+	p.AppendInstruction(program.OP_SAVE)
+
+	return nil
+}
+
 func (p *parseVisitor) VisitPrint(ctx *parser.PrintContext) *CompileError {
 	_, _, err := p.VisitExpr(ctx.GetExpr(), true)
 	if err != nil {
@@ -431,7 +472,6 @@ func (p *parseVisitor) VisitPrint(ctx *parser.PrintContext) *CompileError {
 	return nil
 }
 
-// vars declaration block
 func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 	if len(c.GetV()) > 32768 {
 		return LogicError(c, fmt.Errorf("number of variables exceeded %v", 32768))
@@ -561,6 +601,8 @@ func (p *parseVisitor) VisitScript(c parser.IScriptContext) *CompileError {
 				err = p.VisitSetTxMeta(c)
 			case *parser.SetAccountMetaContext:
 				err = p.VisitSetAccountMeta(c)
+			case *parser.SaveFromAccountContext:
+				err = p.VisitSaveFromAccount(c)
 			default:
 				return InternalError(c)
 			}
