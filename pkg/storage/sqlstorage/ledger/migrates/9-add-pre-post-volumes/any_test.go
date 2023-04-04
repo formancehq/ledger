@@ -271,7 +271,7 @@ func TestMigrate9(t *testing.T) {
 	}
 
 	transactionQuery := storage.NewTransactionsQuery()
-	sb, _ := buildTransactionsQuery(context.Background(), schema, *transactionQuery)
+	sb := buildTransactionsQuery(context.Background(), schema, transactionQuery)
 	count, err := sb.Count(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, uint64(count), uint64(len(testCases)))
@@ -314,9 +314,8 @@ type Transactions struct {
 
 var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
 
-func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage.TransactionsQuery) (*bun.SelectQuery, ledgerstore.TransactionsPaginationToken) {
+func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage.TransactionsQuery) *bun.SelectQuery {
 	sb := schema.NewSelect("transactions").Model((*Transactions)(nil))
-	t := ledgerstore.TransactionsPaginationToken{}
 
 	var (
 		destination = p.Filters.Destination
@@ -354,7 +353,6 @@ func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage
 				sb.Where(fmt.Sprintf("postings.source @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
 			}
 		}
-		t.SourceFilter = source
 	}
 	if destination != "" {
 		if !addressQueryRegexp.MatchString(destination) {
@@ -372,7 +370,6 @@ func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage
 				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
 			}
 		}
-		t.DestinationFilter = destination
 	}
 	if account != "" {
 		if !addressQueryRegexp.MatchString(account) {
@@ -390,19 +387,15 @@ func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage
 				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || ?0::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || ?0::text || '\"')::jsonpath)", i, i), segment)
 			}
 		}
-		t.AccountFilter = account
 	}
 	if reference != "" {
 		sb.Where("reference = ?", reference)
-		t.ReferenceFilter = reference
 	}
 	if !startTime.IsZero() {
 		sb.Where("timestamp >= ?", startTime.UTC())
-		t.StartTime = startTime
 	}
 	if !endTime.IsZero() {
 		sb.Where("timestamp < ?", endTime.UTC())
-		t.EndTime = endTime
 	}
 
 	for key, value := range metadata {
@@ -411,7 +404,6 @@ func buildTransactionsQuery(ctx context.Context, schema schema.Schema, p storage
 				ledgerstore.SQLCustomFuncMetaCompare, strings.ReplaceAll(key, ".", "', '")),
 		), value)
 	}
-	t.MetadataFilter = metadata
 
-	return sb, t
+	return sb
 }

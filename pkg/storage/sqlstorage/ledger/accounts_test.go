@@ -15,24 +15,18 @@ func TestAccounts(t *testing.T) {
 	store := newLedgerStore(t)
 
 	t.Run("success balance", func(t *testing.T) {
-		q := storage.AccountsQuery{
-			PageSize: 10,
-			Filters: storage.AccountsQueryFilters{
-				Balance: "50",
-			},
-		}
+		q := storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithBalanceFilter("50")
 
 		_, err := store.GetAccounts(context.Background(), q)
 		assert.NoError(t, err, "balance filter should not fail")
 	})
 
 	t.Run("panic invalid balance", func(t *testing.T) {
-		q := storage.AccountsQuery{
-			PageSize: 10,
-			Filters: storage.AccountsQueryFilters{
-				Balance: "TEST",
-			},
-		}
+		q := storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithBalanceFilter("TEST")
 
 		assert.PanicsWithError(
 			t, `invalid balance parameter: strconv.ParseInt: parsing "TEST": invalid syntax`,
@@ -44,26 +38,20 @@ func TestAccounts(t *testing.T) {
 
 	t.Run("panic invalid balance operator", func(t *testing.T) {
 		assert.PanicsWithValue(t, "invalid balance operator parameter", func() {
-			q := storage.AccountsQuery{
-				PageSize: 10,
-				Filters: storage.AccountsQueryFilters{
-					Balance:         "50",
-					BalanceOperator: "TEST",
-				},
-			}
+			q := storage.NewAccountsQuery().
+				WithPageSize(10).
+				WithBalanceFilter("50").
+				WithBalanceOperatorFilter("TEST")
 
 			_, _ = store.GetAccounts(context.Background(), q)
 		}, "invalid balance operator in storage should panic")
 	})
 
 	t.Run("success balance operator", func(t *testing.T) {
-		q := storage.AccountsQuery{
-			PageSize: 10,
-			Filters: storage.AccountsQueryFilters{
-				Balance:         "50",
-				BalanceOperator: storage.BalanceOperatorGte,
-			},
-		}
+		q := storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithBalanceFilter("50").
+			WithBalanceOperatorFilter(storage.BalanceOperatorLte)
 
 		_, err := store.GetAccounts(context.Background(), q)
 		assert.NoError(t, err, "balance operator filter should not fail")

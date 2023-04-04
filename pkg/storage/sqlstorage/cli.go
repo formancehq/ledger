@@ -1,17 +1,15 @@
 package sqlstorage
 
 import (
-	"database/sql"
-
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 	"go.uber.org/fx"
 )
 
@@ -34,21 +32,7 @@ type PostgresConfig struct {
 type ModuleConfig struct {
 	PostgresConfig *PostgresConfig
 	StoreConfig    ledgerstore.StoreConfig
-}
-
-func OpenSQLDB(dataSourceName string) (*bun.DB, error) {
-	sqldb, err := sql.Open("postgres", dataSourceName)
-	if err != nil {
-		return nil, err
-	}
-
-	db := bun.NewDB(sqldb, pgdialect.New())
-
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
-
-	return db, nil
+	Debug          bool
 }
 
 func CLIDriverModule(v *viper.Viper) fx.Option {
@@ -67,7 +51,7 @@ func CLIDriverModule(v *viper.Viper) fx.Option {
 	options := make([]fx.Option, 0)
 
 	options = append(options, fx.Provide(func() (*bun.DB, error) {
-		return OpenSQLDB(cfg.PostgresConfig.ConnString)
+		return utils.OpenSQLDB(cfg.PostgresConfig.ConnString, cfg.Debug)
 	}))
 	options = append(options, fx.Provide(func(db *bun.DB) schema.DB {
 		return schema.NewPostgresDB(db)

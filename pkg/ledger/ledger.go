@@ -85,7 +85,7 @@ func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core
 	return tx, errors.Wrap(err, "create transactions")
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
 	txs, err := l.store.GetTransactions(ctx, q)
 	return txs, errors.Wrap(err, "getting transactions")
 }
@@ -142,7 +142,7 @@ func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (ui
 	return count, errors.Wrap(err, "counting accounts")
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (api.Cursor[core.Account], error) {
+func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (*api.Cursor[core.Account], error) {
 	accounts, err := l.store.GetAccounts(ctx, a)
 	return accounts, errors.Wrap(err, "getting accounts")
 }
@@ -152,7 +152,7 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountW
 	return accounts, errors.Wrap(err, "getting account")
 }
 
-func (l *Ledger) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
+func (l *Ledger) GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
 	balances, err := l.store.GetBalances(ctx, q)
 	return balances, errors.Wrap(err, "getting balances")
 }
@@ -238,7 +238,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	return err
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (api.Cursor[core.Log], error) {
-	logs, err := l.store.GetLogs(ctx, &q)
+func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.Log], error) {
+	logs, err := l.store.GetLogs(ctx, q)
 	return logs, errors.Wrap(err, "getting logs")
 }

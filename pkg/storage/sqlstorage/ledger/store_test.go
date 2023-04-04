@@ -260,60 +260,55 @@ func TestGetAccounts(t *testing.T) {
 		"a":       `{"super": {"nested": {"key": "hello"}}}`,
 	}))
 
-	accounts, err := store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 1,
-	})
+	accounts, err := store.GetAccounts(context.Background(),
+		storage.NewAccountsQuery().WithPageSize(1),
+	)
 	require.NoError(t, err)
 	require.Equal(t, 1, accounts.PageSize)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize:     1,
-		AfterAddress: string(accounts.Data[0].Address),
-	})
+	accounts, err = store.GetAccounts(context.Background(),
+		storage.NewAccountsQuery().
+			WithPageSize(1).
+			WithAfterAddress(accounts.Data[0].Address),
+	)
 	require.NoError(t, err)
 	require.Equal(t, 1, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 10,
-		Filters: storage.AccountsQueryFilters{
-			Address: ".*der.*",
-		},
-	})
+	accounts, err = store.GetAccounts(context.Background(),
+		storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithAddressFilter(".*der.*"),
+	)
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 2)
 	require.Equal(t, 10, accounts.PageSize)
 
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 10,
-		Filters: storage.AccountsQueryFilters{
-			Metadata: map[string]string{
+	accounts, err = store.GetAccounts(context.Background(),
+		storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithMetadataFilter(metadata.Metadata{
 				"foo": "bar",
-			},
-		},
-	})
+			}),
+	)
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 10,
-		Filters: storage.AccountsQueryFilters{
-			Metadata: map[string]string{
-				"number": "3",
-			},
-		},
-	})
+	accounts, err = store.GetAccounts(context.Background(), storage.NewAccountsQuery().
+		WithPageSize(10).
+		WithMetadataFilter(metadata.Metadata{
+			"number": "3",
+		}))
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 
-	accounts, err = store.GetAccounts(context.Background(), storage.AccountsQuery{
-		PageSize: 10,
-		Filters: storage.AccountsQueryFilters{
-			Metadata: map[string]string{
+	accounts, err = store.GetAccounts(context.Background(),
+		storage.NewAccountsQuery().
+			WithPageSize(10).
+			WithMetadataFilter(metadata.Metadata{
 				"boolean": "true",
-			},
-		},
-	})
+			}),
+	)
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 1)
 }
@@ -379,30 +374,22 @@ func TestGetLogs(t *testing.T) {
 	require.Equal(t, tx3.Reference, cursor.Data[0].Data.(core.NewTransactionLogPayload).Transaction.Reference)
 	require.Equal(t, tx3.Timestamp, cursor.Data[0].Data.(core.NewTransactionLogPayload).Transaction.Timestamp)
 
-	cursor, err = store.GetLogs(context.Background(), &storage.LogsQuery{
-		PageSize: 1,
-	})
+	cursor, err = store.GetLogs(context.Background(), storage.NewLogsQuery().WithPageSize(1))
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
 	require.Equal(t, uint64(2), cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(context.Background(), &storage.LogsQuery{
-		AfterID:  cursor.Data[0].ID,
-		PageSize: 1,
-	})
+	cursor, err = store.GetLogs(context.Background(), storage.NewLogsQuery().WithPageSize(1).WithAfterID(cursor.Data[0].ID))
 	require.NoError(t, err)
 	// Should get only the second log.
 	require.Equal(t, 1, cursor.PageSize)
 	require.Equal(t, uint64(1), cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(context.Background(), &storage.LogsQuery{
-		Filters: storage.LogsQueryFilters{
-			StartTime: now.Add(-2 * time.Hour),
-			EndTime:   now.Add(-1 * time.Hour),
-		},
-		PageSize: 10,
-	})
+	cursor, err = store.GetLogs(context.Background(), storage.NewLogsQuery().
+		WithStartTimeFilter(now.Add(-2*time.Hour)).
+		WithEndTimeFilter(now.Add(-1*time.Hour)).
+		WithPageSize(10))
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)
 	// Should get only the second log, as StartTime is inclusive and EndTime exclusive.

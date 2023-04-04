@@ -58,7 +58,6 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func coreErrorToErrorCode(err error) (int, string, string) {
-	fmt.Println(err)
 	switch {
 	case state.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""

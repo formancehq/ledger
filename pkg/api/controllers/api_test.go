@@ -101,10 +101,10 @@ func (mr *MockLedgerMockRecorder) GetAccount(ctx, param interface{}) *gomock.Cal
 }
 
 // GetAccounts mocks base method.
-func (m *MockLedger) GetAccounts(ctx context.Context, query storage.AccountsQuery) (api.Cursor[core.Account], error) {
+func (m *MockLedger) GetAccounts(ctx context.Context, query storage.AccountsQuery) (*api.Cursor[core.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccounts", ctx, query)
-	ret0, _ := ret[0].(api.Cursor[core.Account])
+	ret0, _ := ret[0].(*api.Cursor[core.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -116,10 +116,10 @@ func (mr *MockLedgerMockRecorder) GetAccounts(ctx, query interface{}) *gomock.Ca
 }
 
 // GetBalances mocks base method.
-func (m *MockLedger) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.Cursor[core.AccountsBalances], error) {
+func (m *MockLedger) GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, q)
-	ret0, _ := ret[0].(api.Cursor[core.AccountsBalances])
+	ret0, _ := ret[0].(*api.Cursor[core.AccountsBalances])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -146,10 +146,10 @@ func (mr *MockLedgerMockRecorder) GetBalancesAggregated(ctx, q interface{}) *gom
 }
 
 // GetLogs mocks base method.
-func (m *MockLedger) GetLogs(ctx context.Context, query storage.LogsQuery) (api.Cursor[core.Log], error) {
+func (m *MockLedger) GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", ctx, query)
-	ret0, _ := ret[0].(api.Cursor[core.Log])
+	ret0, _ := ret[0].(*api.Cursor[core.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -191,10 +191,10 @@ func (mr *MockLedgerMockRecorder) GetTransaction(ctx, id interface{}) *gomock.Ca
 }
 
 // GetTransactions mocks base method.
-func (m *MockLedger) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
+func (m *MockLedger) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactions", ctx, query)
-	ret0, _ := ret[0].(api.Cursor[core.ExpandedTransaction])
+	ret0, _ := ret[0].(*api.Cursor[core.ExpandedTransaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

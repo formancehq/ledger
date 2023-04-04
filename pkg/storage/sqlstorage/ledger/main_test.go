@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
@@ -28,11 +28,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newLedgerStore(t *testing.T) storage.LedgerStore {
+func newLedgerStore(t *testing.T) *ledgerstore.Store {
 	t.Helper()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := sqlstorage.OpenSQLDB(pgServer.ConnString())
+	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
@@ -47,5 +47,5 @@ func newLedgerStore(t *testing.T) storage.LedgerStore {
 	_, err = ledgerStore.Initialize(context.Background())
 	require.NoError(t, err)
 
-	return ledgerStore
+	return ledgerStore.(*ledgerstore.Store)
 }

@@ -29,7 +29,7 @@ var (
 	ErrInvalidEndTime   = errors.New("invalid 'endTime' query param")
 )
 
-func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
+func getPageSize(r *http.Request) (uint64, error) {
 	pageSizeParam := r.URL.Query().Get(QueryKeyPageSize)
 	if pageSizeParam == "" {
 		return DefaultPageSize, nil
@@ -48,7 +48,7 @@ func getPageSize(w http.ResponseWriter, r *http.Request) (uint, error) {
 		return MaxPageSize, nil
 	}
 
-	return uint(pageSize), nil
+	return pageSize, nil
 }
 
 func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.BalanceOperator, error) {
