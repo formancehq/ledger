@@ -3,7 +3,6 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -12,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/pagination"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
@@ -50,52 +50,25 @@ type Postings struct {
 	Destination  json.RawMessage `bun:"destination,type:jsonb"`
 }
 
-type TransactionsPaginationToken struct {
-	AfterTxID         uint64            `json:"after"`
-	ReferenceFilter   string            `json:"reference,omitempty"`
-	AccountFilter     string            `json:"account,omitempty"`
-	SourceFilter      string            `json:"source,omitempty"`
-	DestinationFilter string            `json:"destination,omitempty"`
-	StartTime         core.Time         `json:"startTime,omitempty"`
-	EndTime           core.Time         `json:"endTime,omitempty"`
-	MetadataFilter    map[string]string `json:"metadata,omitempty"`
-	PageSize          uint              `json:"pageSize,omitempty"`
-}
-
-func (t TransactionsPaginationToken) Encode() string {
-	return encodePaginationToken(t)
-}
-
-func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.TransactionsQuery) (*bun.SelectQuery, TransactionsPaginationToken) {
+func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) *bun.SelectQuery {
 	sb := s.schema.NewSelect(TransactionsTableName).Model((*Transactions)(nil))
-	t := TransactionsPaginationToken{}
-
-	var (
-		destination = p.Filters.Destination
-		source      = p.Filters.Source
-		account     = p.Filters.Account
-		reference   = p.Filters.Reference
-		startTime   = p.Filters.StartTime
-		endTime     = p.Filters.EndTime
-		metadata    = p.Filters.Metadata
-	)
 
 	sb.Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
 		Distinct()
-	if source != "" || destination != "" || account != "" {
+	if p.Filters.Source != "" || p.Filters.Destination != "" || p.Filters.Account != "" {
 		// new wildcard handling
 		sb.Join(fmt.Sprintf(
 			"JOIN %s postings",
 			s.schema.Table(PostingsTableName),
 		)).JoinOn(fmt.Sprintf("postings.txid = %s.id", TransactionsTableName))
 	}
-	if source != "" {
-		if !addressQueryRegexp.MatchString(source) {
+	if p.Filters.Source != "" {
+		if !addressQueryRegexp.MatchString(p.Filters.Source) {
 			// deprecated regex handling
-			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account_as_source")), source)
+			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account_as_source")), p.Filters.Source)
 		} else {
 			// new wildcard handling
-			src := strings.Split(source, ":")
+			src := strings.Split(p.Filters.Source, ":")
 			sb.Where(fmt.Sprintf("jsonb_array_length(postings.source) = %d", len(src)))
 
 			for i, segment := range src {
@@ -106,15 +79,14 @@ func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.Transactio
 				sb.Where(fmt.Sprintf("postings.source @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
 			}
 		}
-		t.SourceFilter = source
 	}
-	if destination != "" {
-		if !addressQueryRegexp.MatchString(destination) {
+	if p.Filters.Destination != "" {
+		if !addressQueryRegexp.MatchString(p.Filters.Destination) {
 			// deprecated regex handling
-			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account_as_destination")), destination)
+			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account_as_destination")), p.Filters.Destination)
 		} else {
 			// new wildcard handling
-			dst := strings.Split(destination, ":")
+			dst := strings.Split(p.Filters.Destination, ":")
 			sb.Where(fmt.Sprintf("jsonb_array_length(postings.destination) = %d", len(dst)))
 			for i, segment := range dst {
 				if segment == ".*" || segment == "*" || segment == "" {
@@ -124,15 +96,14 @@ func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.Transactio
 				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
 			}
 		}
-		t.DestinationFilter = destination
 	}
-	if account != "" {
-		if !addressQueryRegexp.MatchString(account) {
+	if p.Filters.Account != "" {
+		if !addressQueryRegexp.MatchString(p.Filters.Account) {
 			// deprecated regex handling
-			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account")), account)
+			sb.Where(fmt.Sprintf("%s(postings, ?)", s.schema.Table("use_account")), p.Filters.Account)
 		} else {
 			// new wildcard handling
-			dst := strings.Split(account, ":")
+			dst := strings.Split(p.Filters.Account, ":")
 			sb.Where(fmt.Sprintf("(jsonb_array_length(postings.destination) = %d OR jsonb_array_length(postings.source) = %d)", len(dst), len(dst)))
 			for i, segment := range dst {
 				if segment == ".*" || segment == "*" || segment == "" {
@@ -142,120 +113,53 @@ func (s *Store) buildTransactionsQuery(ctx context.Context, p storage.Transactio
 				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || ?0::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || ?0::text || '\"')::jsonpath)", i, i), segment)
 			}
 		}
-		t.AccountFilter = account
 	}
-	if reference != "" {
-		sb.Where("reference = ?", reference)
-		t.ReferenceFilter = reference
+	if p.Filters.Reference != "" {
+		sb.Where("reference = ?", p.Filters.Reference)
 	}
-	if !startTime.IsZero() {
-		sb.Where("timestamp >= ?", startTime.UTC())
-		t.StartTime = startTime
+	if !p.Filters.StartTime.IsZero() {
+		sb.Where("timestamp >= ?", p.Filters.StartTime.UTC())
 	}
-	if !endTime.IsZero() {
-		sb.Where("timestamp < ?", endTime.UTC())
-		t.EndTime = endTime
+	if !p.Filters.EndTime.IsZero() {
+		sb.Where("timestamp < ?", p.Filters.EndTime.UTC())
+	}
+	if p.Filters.AfterTxID > 0 {
+		sb.Where("id > ?", p.Filters.AfterTxID)
 	}
 
-	for key, value := range metadata {
+	for key, value := range p.Filters.Metadata {
 		sb.Where(s.schema.Table(
 			fmt.Sprintf("%s(metadata, ?, '%s')",
 				SQLCustomFuncMetaCompare, strings.ReplaceAll(key, ".", "', '")),
 		), value)
 	}
-	t.MetadataFilter = metadata
 
-	return sb, t
+	return sb
 }
 
-func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
+func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.StorageError(storage.ErrStoreNotInitialized)
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "get_transactions")
 	defer recordMetrics()
 
-	txs := make([]core.ExpandedTransaction, 0)
+	return pagination.UsingColumn(ctx, s.buildTransactionsQuery(q), storage.ColumnPaginatedQuery[storage.TransactionsQueryFilters](q),
+		func(tx *core.ExpandedTransaction, scanner interface{ Scan(args ...any) error }) (uint64, error) {
+			//TODO(gfyrag): try to use sql.Scan on ExpandedTransaction
+			var ref sql.NullString
+			if err := scanner.Scan(&tx.ID, &tx.Timestamp, &ref, &tx.Metadata, &tx.Postings, &tx.PreCommitVolumes, &tx.PostCommitVolumes); err != nil {
+				return 0, err
+			}
 
-	if q.PageSize == 0 {
-		return api.Cursor[core.ExpandedTransaction]{Data: txs}, nil
-	}
+			tx.Reference = ref.String
+			if tx.Metadata == nil {
+				tx.Metadata = metadata.Metadata{}
+			}
+			tx.Timestamp = tx.Timestamp.UTC()
 
-	sb, t := s.buildTransactionsQuery(ctx, q)
-	sb.OrderExpr("id DESC")
-	if q.AfterTxID > 0 {
-		sb.Where("id <= ?", q.AfterTxID)
-	}
-
-	// We fetch additional transactions to know if there are more before and/or after.
-	sb.Limit(int(q.PageSize + 2))
-	t.PageSize = q.PageSize
-
-	rows, err := s.schema.QueryContext(ctx, sb.String())
-	if err != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var ref sql.NullString
-		tx := core.ExpandedTransaction{}
-		if err := rows.Scan(
-			&tx.ID,
-			&tx.Timestamp,
-			&ref,
-			&tx.Metadata,
-			&tx.Postings,
-			&tx.PreCommitVolumes,
-			&tx.PostCommitVolumes,
-		); err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
-		}
-
-		tx.Reference = ref.String
-		if tx.Metadata == nil {
-			tx.Metadata = metadata.Metadata{}
-		}
-		tx.Timestamp = tx.Timestamp.UTC()
-		txs = append(txs, tx)
-	}
-
-	if rows.Err() != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.PostgresError(err)
-	}
-
-	var previous, next string
-
-	// Page with transactions before
-	if q.AfterTxID > 0 && len(txs) > 1 && txs[0].ID == q.AfterTxID {
-		t.AfterTxID = txs[0].ID + uint64(q.PageSize)
-		txs = txs[1:]
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, errors.Wrap(err, "failed to marshal cursor")
-		}
-		previous = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	// Page with transactions after
-	if len(txs) > int(q.PageSize) {
-		txs = txs[:q.PageSize]
-		t.AfterTxID = txs[len(txs)-1].ID
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, errors.Wrap(err, "failed to marshal cursor")
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	hasMore := next != ""
-	return api.Cursor[core.ExpandedTransaction]{
-		PageSize: int(q.PageSize),
-		HasMore:  hasMore,
-		Previous: previous,
-		Next:     next,
-		Data:     txs,
-	}, nil
+			return tx.ID, nil
+		})
 }
 
 func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
@@ -265,8 +169,7 @@ func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQue
 	recordMetrics := s.instrumentalized(ctx, "count_transactions")
 	defer recordMetrics()
 
-	sb, _ := s.buildTransactionsQuery(ctx, q)
-	count, err := sb.Count(ctx)
+	count, err := s.buildTransactionsQuery(q).Count(ctx)
 	return uint64(count), storageerrors.PostgresError(err)
 }
 
@@ -300,15 +203,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 	}
 
 	var ref sql.NullString
-	if err := row.Scan(
-		&tx.ID,
-		&tx.Timestamp,
-		&ref,
-		&tx.Metadata,
-		&tx.Postings,
-		&tx.PreCommitVolumes,
-		&tx.PostCommitVolumes,
-	); err != nil {
+	if err := row.Scan(&tx.ID, &tx.Timestamp, &ref, &tx.Metadata, &tx.Postings, &tx.PreCommitVolumes, &tx.PostCommitVolumes); err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
 	tx.Timestamp = tx.Timestamp.UTC()

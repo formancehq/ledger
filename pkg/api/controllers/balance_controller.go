@@ -1,14 +1,11 @@
 package controllers
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
@@ -17,10 +14,8 @@ import (
 func GetBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	balancesQuery := storage.NewBalancesQuery().
-		WithAddressFilter(r.URL.Query().Get("address"))
-	balances, err := l.GetBalancesAggregated(
-		r.Context(), *balancesQuery)
+	balancesQuery := storage.NewBalancesQuery().WithAddressFilter(r.URL.Query().Get("address"))
+	balances, err := l.GetBalancesAggregated(r.Context(), balancesQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -43,28 +38,15 @@ func GetBalances(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
+		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &balancesQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
 
-		token := ledgerstore.BalancesPaginationToken{}
-		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		balancesQuery = balancesQuery.
-			WithOffset(token.Offset).
-			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter).
-			WithPageSize(token.PageSize)
-
 	} else {
-		pageSize, err := getPageSize(w, r)
+		pageSize, err := getPageSize(r)
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -76,11 +58,11 @@ func GetBalances(w http.ResponseWriter, r *http.Request) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.GetBalances(r.Context(), *balancesQuery)
+	cursor, err := l.GetBalances(r.Context(), balancesQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	sharedapi.RenderCursor(w, cursor)
+	sharedapi.RenderCursor(w, *cursor)
 }

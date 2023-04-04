@@ -401,7 +401,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
         - name: after
           in: query
           description: Pagination cursor, will return transactions after given txid

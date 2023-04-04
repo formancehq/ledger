@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/storage"
-	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -26,7 +24,7 @@ func CountAccounts(w http.ResponseWriter, r *http.Request) {
 		WithAddressFilter(r.URL.Query().Get("address")).
 		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
-	count, err := l.CountAccounts(r.Context(), *accountsQuery)
+	count, err := l.CountAccounts(r.Context(), accountsQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -52,29 +50,12 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(r.URL.Query().Get(QueryKeyCursor))
+		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &accountsQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
-
-		token := ledgerstore.AccountsPaginationToken{}
-		if err := json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		accountsQuery = accountsQuery.
-			WithOffset(token.Offset).
-			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter).
-			WithBalanceFilter(token.BalanceFilter).
-			WithBalanceOperatorFilter(token.BalanceOperatorFilter).
-			WithMetadataFilter(token.MetadataFilter).
-			WithPageSize(token.PageSize)
-
 	} else {
 		balance := r.URL.Query().Get("balance")
 		if balance != "" {
@@ -91,7 +72,7 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		pageSize, err := getPageSize(w, r)
+		pageSize, err := getPageSize(r)
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -106,13 +87,13 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			WithPageSize(pageSize)
 	}
 
-	cursor, err := l.GetAccounts(r.Context(), *accountsQuery)
+	cursor, err := l.GetAccounts(r.Context(), accountsQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}
 
-	sharedapi.RenderCursor(w, cursor)
+	sharedapi.RenderCursor(w, *cursor)
 }
 
 func GetAccount(w http.ResponseWriter, r *http.Request) {

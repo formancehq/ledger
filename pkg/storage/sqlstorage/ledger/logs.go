@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/base64"
 	"encoding/json"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/pagination"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -37,17 +37,6 @@ type LogsIngestion struct {
 
 	OnerowId bool   `bun:"onerow_id,pk,type:bool,default:true"`
 	LogId    uint64 `bun:"log_id,type:bigint"`
-}
-
-type LogsPaginationToken struct {
-	AfterID   uint64    `json:"after"`
-	PageSize  uint      `json:"pageSize,omitempty"`
-	StartTime core.Time `json:"startTime,omitempty"`
-	EndTime   core.Time `json:"endTime,omitempty"`
-}
-
-func (t LogsPaginationToken) Encode() string {
-	return encodePaginationToken(t)
 }
 
 type RawMessage json.RawMessage
@@ -169,114 +158,55 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	return l, nil
 }
 
-func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[core.Log], error) {
+func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.Log], error) {
 	if !s.isInitialized {
-		return api.Cursor[core.Log]{},
-			storageerrors.StorageError(storage.ErrStoreNotInitialized)
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "get_logs")
 	defer recordMetrics()
 
-	res := []core.Log{}
+	return pagination.UsingColumn[storage.LogsQueryFilters, core.Log](ctx,
+		s.buildLogsQuery(q.Filters),
+		storage.ColumnPaginatedQuery[storage.LogsQueryFilters](q),
+		func(log *core.Log, scanner interface{ Scan(args ...any) error }) (uint64, error) {
+			var raw LogsV2
+			err := scanner.Scan(&raw.ID, &raw.Type, &raw.Hash, &raw.Date, &raw.Data, &raw.Reference)
+			if err != nil {
+				return 0, err
+			}
 
-	if q.PageSize == 0 {
-		return api.Cursor[core.Log]{Data: res}, nil
-	}
+			payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
+			if err != nil {
+				return 0, errors.Wrap(err, "hydrating log data")
+			}
 
-	sb, t := s.buildLogsQuery(q)
+			log.ID = raw.ID
+			log.Type = core.LogType(raw.Type)
+			log.Data = payload
+			log.Hash = raw.Hash
+			log.Date = raw.Date.UTC()
+			log.Reference = raw.Reference
 
-	rows, err := s.schema.QueryContext(ctx, sb.String())
-	if err != nil {
-		return api.Cursor[core.Log]{}, storageerrors.PostgresError(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var raw LogsV2
-		err = rows.Scan(&raw.ID, &raw.Type, &raw.Hash, &raw.Date, &raw.Data, &raw.Reference)
-		if err != nil {
-			return api.Cursor[core.Log]{}, storageerrors.PostgresError(err)
-		}
-
-		payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
-		if err != nil {
-			return api.Cursor[core.Log]{}, errors.Wrap(err, "hydrating log data")
-		}
-
-		res = append(res, core.Log{
-			ID:        raw.ID,
-			Type:      core.LogType(raw.Type),
-			Data:      payload,
-			Hash:      raw.Hash,
-			Date:      raw.Date.UTC(),
-			Reference: raw.Reference,
+			return log.ID, nil
 		})
-	}
-	if rows.Err() != nil {
-		return api.Cursor[core.Log]{}, storageerrors.PostgresError(rows.Err())
-	}
-
-	var previous, next string
-
-	// Page with logs before
-	if q.AfterID > 0 && len(res) > 1 && res[0].ID == q.AfterID {
-		t.AfterID = res[0].ID + uint64(q.PageSize)
-		res = res[1:]
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.Log]{}, errors.Wrap(err, "marshaling cursor")
-		}
-		previous = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	// Page with logs after
-	if len(res) > int(q.PageSize) {
-		res = res[:q.PageSize]
-		t.AfterID = res[len(res)-1].ID
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.Log]{}, errors.Wrap(err, "marshaling cursor")
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	hasMore := next != ""
-	return api.Cursor[core.Log]{
-		PageSize: int(q.PageSize),
-		HasMore:  hasMore,
-		Previous: previous,
-		Next:     next,
-		Data:     res,
-	}, nil
 }
 
-func (s *Store) buildLogsQuery(q *storage.LogsQuery) (*bun.SelectQuery, LogsPaginationToken) {
-	t := LogsPaginationToken{}
+func (s *Store) buildLogsQuery(q storage.LogsQueryFilters) *bun.SelectQuery {
 	sb := s.schema.NewSelect(LogTableName).
 		Model((*LogsV2)(nil)).
 		Column("id", "type", "hash", "date", "data", "reference")
 
-	if !q.Filters.StartTime.IsZero() {
-		sb.Where("date >= ?", q.Filters.StartTime.UTC())
-		t.StartTime = q.Filters.StartTime
+	if !q.StartTime.IsZero() {
+		sb.Where("date >= ?", q.StartTime.UTC())
 	}
-
-	if !q.Filters.EndTime.IsZero() {
-		sb.Where("date < ?", q.Filters.EndTime.UTC())
-		t.EndTime = q.Filters.EndTime
+	if !q.EndTime.IsZero() {
+		sb.Where("date < ?", q.EndTime.UTC())
 	}
-
-	sb.OrderExpr("id DESC")
-
 	if q.AfterID > 0 {
-		sb.Where("id <= ?", q.AfterID)
+		sb.Where("id < ?", q.AfterID)
 	}
 
-	// We fetch additional logs to know if there are more before and/or after.
-	sb.Limit(int(q.PageSize + 2))
-	t.PageSize = q.PageSize
-
-	return sb, t
+	return sb
 }
 
 func (s *Store) getNextLogID(ctx context.Context, sq interface {

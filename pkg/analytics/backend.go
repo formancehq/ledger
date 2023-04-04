@@ -20,11 +20,11 @@ type defaultLedger struct {
 }
 
 func (d defaultLedger) CountTransactions(ctx context.Context) (uint64, error) {
-	return d.store.CountTransactions(ctx, *storage.NewTransactionsQuery())
+	return d.store.CountTransactions(ctx, storage.NewTransactionsQuery())
 }
 
 func (d defaultLedger) CountAccounts(ctx context.Context) (uint64, error) {
-	return d.store.CountAccounts(ctx, *storage.NewAccountsQuery())
+	return d.store.CountAccounts(ctx, storage.NewAccountsQuery())
 }
 
 var _ Ledger = (*defaultLedger)(nil)
