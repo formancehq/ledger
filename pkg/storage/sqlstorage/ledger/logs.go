@@ -60,6 +60,9 @@ func (j RawMessage) Value() (driver.Value, error) {
 }
 
 func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
+	recordMetrics := s.instrumentalized(ctx, "batch_logs")
+	defer recordMetrics()
+
 	previousLog, err := s.GetLastLog(ctx)
 	if err != nil && !storage.IsNotFoundError(err) {
 		return errors.Wrap(err, "reading last log")
@@ -125,6 +128,8 @@ func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "append_log")
+	defer recordMetrics()
 
 	return <-s.logsBatchWorker.WriteModels(ctx, log)
 }
@@ -133,6 +138,8 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_last_log")
+	defer recordMetrics()
 
 	raw := &LogsV2{}
 	err := s.schema.NewSelect(LogTableName).
@@ -167,6 +174,8 @@ func (s *Store) GetLogs(ctx context.Context, q *storage.LogsQuery) (api.Cursor[c
 		return api.Cursor[core.Log]{},
 			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_logs")
+	defer recordMetrics()
 
 	res := []core.Log{}
 
@@ -291,6 +300,8 @@ func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
 	if !s.isInitialized {
 		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_next_log_id")
+	defer recordMetrics()
 
 	return s.getNextLogID(ctx, &s.schema)
 }
@@ -299,6 +310,8 @@ func (s *Store) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.L
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "read_logs_starting_from_id")
+	defer recordMetrics()
 
 	return s.readLogsStartingFromID(ctx, &s.schema, id)
 }
@@ -340,6 +353,8 @@ func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_next_log_id")
+	defer recordMetrics()
 
 	_, err := s.schema.
 		NewInsert(LogIngestionTableName).
@@ -357,6 +372,8 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "read_log_with_reference")
+	defer recordMetrics()
 
 	raw := &LogsV2{}
 	err := s.schema.
@@ -388,6 +405,8 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "read_last_log_with_type")
+	defer recordMetrics()
 
 	raw := &LogsV2{}
 	err := s.schema.

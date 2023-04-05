@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -64,7 +65,7 @@ func TestParallelRead(t *testing.T) {
 			},
 		},
 	}
-	cache := New(mock)
+	cache := New(mock, metrics.NewNoOpMetricsRegistry())
 
 	release, err := cache.LockAccounts(context.Background(), "bank")
 	require.NoError(t, err)
@@ -118,7 +119,7 @@ func TestUpdateVolumes(t *testing.T) {
 			},
 		},
 	}
-	cache := New(mock)
+	cache := New(mock, metrics.NewNoOpMetricsRegistry())
 
 	release, err := cache.LockAccounts(context.Background(), "world", "bank")
 	require.NoError(t, err)

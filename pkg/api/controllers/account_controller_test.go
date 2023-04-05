@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -183,7 +184,7 @@ func TestGetAccounts(t *testing.T) {
 					Return(expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil)
+			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
@@ -220,7 +221,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccount(gomock.Any(), "foo").
 		Return(&account, nil)
 
-	router := routes.NewRouter(backend, nil, nil)
+	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo", nil)
 	rec := httptest.NewRecorder()
@@ -281,7 +282,7 @@ func TestPostAccountMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil)
+			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

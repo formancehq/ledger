@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
@@ -16,11 +17,12 @@ import (
 )
 
 type Ledger struct {
-	runner      *runner.Runner
-	store       storage.LedgerStore
-	locker      lock.Locker
-	dbCache     *cache.Cache
-	queryWorker *query.Worker
+	runner          *runner.Runner
+	store           storage.LedgerStore
+	locker          lock.Locker
+	dbCache         *cache.Cache
+	queryWorker     *query.Worker
+	metricsRegistry metrics.PerLedgerMetricsRegistry
 }
 
 func New(
@@ -29,13 +31,15 @@ func New(
 	runner *runner.Runner,
 	locker lock.Locker,
 	queryWorker *query.Worker,
+	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
 	return &Ledger{
-		store:       store,
-		dbCache:     dbCache,
-		runner:      runner,
-		locker:      locker,
-		queryWorker: queryWorker,
+		store:           store,
+		dbCache:         dbCache,
+		runner:          runner,
+		locker:          locker,
+		queryWorker:     queryWorker,
+		metricsRegistry: metricsRegistry,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -45,8 +46,10 @@ type Worker struct {
 	stopChan     chan chan struct{}
 	readyChan    chan struct{}
 
-	store              Store
-	monitor            monitor.Monitor
+	store           Store
+	monitor         monitor.Monitor
+	metricsRegistry metrics.PerLedgerMetricsRegistry
+
 	lastProcessedLogID *uint64
 	ledgerName         string
 }
@@ -174,6 +177,8 @@ l:
 			}
 
 			w.pending = append(w.pending, wl)
+			w.metricsRegistry.QueryPendingMessages().Add(w.ctx, int64(len(w.pending)))
+
 		case <-w.releasedJob:
 			// There, write model job is not running, and we have pending models
 			// So we can try to send pending to the job channel
@@ -281,7 +286,6 @@ func (w *Worker) initLedger(ctx context.Context) error {
 }
 
 func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
-
 	logsData, err := w.buildData(ctx, logs...)
 	if err != nil {
 		return errors.Wrap(err, "building data")
@@ -325,6 +329,8 @@ func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
 			monitor(ctx, w.monitor)
 		}
 	}
+
+	w.metricsRegistry.QueryProcessedLogs().Add(w.ctx, int64(len(logs)))
 
 	return nil
 }
@@ -465,21 +471,29 @@ func (w *Worker) QueueLog(log *core.LogHolder) {
 	select {
 	case <-w.ctx.Done():
 	case w.writeChannel <- log:
+		w.metricsRegistry.QueryInboundLogs().Add(w.ctx, 1)
 	}
 }
 
-func NewWorker(config WorkerConfig, store Store, ledgerName string, monitor monitor.Monitor) *Worker {
+func NewWorker(
+	config WorkerConfig,
+	store Store,
+	ledgerName string,
+	monitor monitor.Monitor,
+	metricsRegistry metrics.PerLedgerMetricsRegistry,
+) *Worker {
 	return &Worker{
-		pending:      make([]*core.LogHolder, 0),
-		jobs:         make(chan []*core.LogHolder),
-		releasedJob:  make(chan struct{}, 1),
-		writeChannel: make(chan *core.LogHolder, config.ChanSize),
-		errorChan:    make(chan error, 1),
-		stopChan:     make(chan chan struct{}),
-		readyChan:    make(chan struct{}),
-		WorkerConfig: config,
-		store:        store,
-		monitor:      monitor,
-		ledgerName:   ledgerName,
+		pending:         make([]*core.LogHolder, 0),
+		jobs:            make(chan []*core.LogHolder),
+		releasedJob:     make(chan struct{}, 1),
+		writeChannel:    make(chan *core.LogHolder, config.ChanSize),
+		errorChan:       make(chan error, 1),
+		stopChan:        make(chan chan struct{}),
+		readyChan:       make(chan struct{}),
+		WorkerConfig:    config,
+		store:           store,
+		monitor:         monitor,
+		ledgerName:      ledgerName,
+		metricsRegistry: metricsRegistry,
 	}
 }
