@@ -272,6 +272,20 @@ func (m *MockBackend) EXPECT() *MockBackendMockRecorder {
 	return m.recorder
 }
 
+// CloseLedgers mocks base method.
+func (m *MockBackend) CloseLedgers(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CloseLedgers", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CloseLedgers indicates an expected call of CloseLedgers.
+func (mr *MockBackendMockRecorder) CloseLedgers(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseLedgers", reflect.TypeOf((*MockBackend)(nil).CloseLedgers), ctx)
+}
+
 // GetLedger mocks base method.
 func (m *MockBackend) GetLedger(ctx context.Context, name string) (controllers.Ledger, error) {
 	m.ctrl.T.Helper()

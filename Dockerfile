@@ -12,7 +12,7 @@ ARG SEGMENT_WRITE_KEY
 WORKDIR /src
 COPY . .
 WORKDIR /src/components/ledger
-RUN go mod download
+RUN --mount=type=cache,mode=0755,target=/go/pkg/mod go mod download
 RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \

@@ -93,3 +93,14 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 
 	return ledger, nil
 }
+
+func (r *Resolver) CloseLedgers(ctx context.Context) error {
+	for name, ledger := range r.ledgers {
+		if err := ledger.Close(ctx); err != nil {
+			return err
+		}
+		delete(r.ledgers, name)
+	}
+
+	return nil
+}
