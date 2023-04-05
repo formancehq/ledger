@@ -1,1 +1,1 @@
-web: bin/ledger server start --server.http.bind_address 0.0.0.0:${PORT} --storage.driver postgres --storage.postgres.conn_string ${DATABASE_URL} --lock-strategy redis --lock-strategy-redis-url ${REDIS_URL}
+web: bin/ledger server start --server.http.bind_address 0.0.0.0:${PORT} --storage.driver postgres --storage-postgres-conn-string ${DATABASE_URL} --lock-strategy redis --lock-strategy-redis-url ${REDIS_URL}

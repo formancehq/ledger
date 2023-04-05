@@ -4,12 +4,28 @@ import (
 	"database/sql"
 
 	"github.com/formancehq/ledger/pkg/storage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
 	"github.com/formancehq/stack/libs/go-libs/health"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"go.uber.org/fx"
 )
+
+const (
+	StoreWorkerMaxPendingSize           = "store-worker-max-pending-size"
+	StoreWorkerMaxWriteChanSize         = "store-worker-max-write-chan-size"
+	StoragePostgresConnectionStringFlag = "storage-postgres-conn-string"
+)
+
+func InitCLIFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().Int(StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
+	cmd.PersistentFlags().Int(StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
+	cmd.PersistentFlags().String(StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
+}
 
 type PostgresConfig struct {
 	ConnString string
@@ -17,6 +33,7 @@ type PostgresConfig struct {
 
 type ModuleConfig struct {
 	PostgresConfig *PostgresConfig
+	StoreConfig    ledgerstore.StoreConfig
 }
 
 func OpenSQLDB(dataSourceName string) (*bun.DB, error) {
@@ -34,7 +51,19 @@ func OpenSQLDB(dataSourceName string) (*bun.DB, error) {
 	return db, nil
 }
 
-func DriverModule(cfg ModuleConfig) fx.Option {
+func CLIDriverModule(v *viper.Viper) fx.Option {
+	cfg := ModuleConfig{
+		PostgresConfig: &PostgresConfig{
+			ConnString: v.GetString(StoragePostgresConnectionStringFlag),
+		},
+		StoreConfig: ledgerstore.StoreConfig{
+			StoreWorkerConfig: worker.WorkerConfig{
+				MaxPendingSize:   v.GetInt(StoreWorkerMaxPendingSize),
+				MaxWriteChanSize: v.GetInt(StoreWorkerMaxWriteChanSize),
+			},
+		},
+	}
+
 	options := make([]fx.Option, 0)
 
 	options = append(options, fx.Provide(func() (*bun.DB, error) {
@@ -44,7 +73,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 		return schema.NewPostgresDB(db)
 	}))
 	options = append(options, fx.Provide(func(db schema.DB) (*Driver, error) {
-		return NewDriver("postgres", db), nil
+		return NewDriver("postgres", db, cfg.StoreConfig), nil
 	}))
 	options = append(options, health.ProvideHealthCheck(func(db *bun.DB) health.NamedCheck {
 		return health.NewNamedCheck("postgres", health.CheckFn(db.PingContext))
