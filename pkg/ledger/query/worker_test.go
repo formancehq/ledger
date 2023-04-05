@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
@@ -125,7 +126,7 @@ func TestWorker(t *testing.T) {
 
 	worker := NewWorker(WorkerConfig{
 		ChanSize: 1024,
-	}, ledgerStore, "default", monitor.NewNoOpMonitor())
+	}, ledgerStore, "default", monitor.NewNoOpMonitor(), metrics.NewNoOpMetricsRegistry())
 	go func() {
 		require.NoError(t, worker.Run(context.Background()))
 	}()

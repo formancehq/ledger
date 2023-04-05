@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -25,7 +26,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil)
+	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 	migrationInfo := []core.MigrationInfo{
 		{
@@ -68,7 +69,7 @@ func TestGetStats(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil)
+	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 	expectedStats := ledger.Stats{
 		Transactions: 10,
@@ -191,7 +192,7 @@ func TestGetLogs(t *testing.T) {
 					Return(expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil)
+			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/logs", nil)
 			rec := httptest.NewRecorder()

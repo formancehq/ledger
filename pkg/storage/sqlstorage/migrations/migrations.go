@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/opentelemetry"
+	"github.com/formancehq/ledger/pkg/opentelemetry/tracer"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -41,7 +41,7 @@ func createMigrationsTable(ctx context.Context, schema schema.Schema) error {
 }
 
 func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (bool, error) {
-	ctx, span := opentelemetry.Start(ctx, "Migrate")
+	ctx, span := tracer.Start(ctx, "Migrate")
 	defer span.End()
 
 	if err := createMigrationsTable(ctx, s); err != nil {

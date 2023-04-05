@@ -114,6 +114,8 @@ func (s *Store) GetAccounts(ctx context.Context, q storage.AccountsQuery) (api.C
 		return api.Cursor[core.Account]{},
 			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_accounts")
+	defer recordMetrics()
 
 	accounts := make([]core.Account, 0)
 
@@ -193,6 +195,8 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_account")
+	defer recordMetrics()
 
 	query := s.schema.NewSelect(accountsTableName).
 		Model((*Accounts)(nil)).
@@ -287,6 +291,8 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_account_with_volumes")
+	defer recordMetrics()
 
 	return s.getAccountWithVolumes(ctx, s.schema, account)
 }
@@ -295,6 +301,8 @@ func (s *Store) CountAccounts(ctx context.Context, q storage.AccountsQuery) (uin
 	if !s.isInitialized {
 		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "count_accounts")
+	defer recordMetrics()
 
 	sb, _ := s.buildAccountsQuery(ctx, q)
 	count, err := sb.Count(ctx)
@@ -305,6 +313,8 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "ensure_account_exists")
+	defer recordMetrics()
 
 	a := &Accounts{
 		Address:  account,
@@ -323,6 +333,8 @@ func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) erro
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "ensure_accounts_exist")
+	defer recordMetrics()
 
 	accs := make([]*Accounts, len(accounts))
 	for i, a := range accounts {
@@ -344,6 +356,8 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_account_metadata")
+	defer recordMetrics()
 
 	a := &Accounts{
 		Address:  address,
@@ -363,6 +377,8 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Acco
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_accounts_metadata")
+	defer recordMetrics()
 
 	accs := make([]*Accounts, len(accounts))
 	for i, a := range accounts {

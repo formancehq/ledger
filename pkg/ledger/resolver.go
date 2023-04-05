@@ -10,16 +10,18 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
 
 type Resolver struct {
-	storageDriver storage.Driver
-	monitor       monitor.Monitor
-	lock          sync.RWMutex
-	locker        lock.Locker
+	storageDriver   storage.Driver
+	monitor         monitor.Monitor
+	lock            sync.RWMutex
+	metricsRegsitry metrics.GlobalMetricsRegistry
+	locker          lock.Locker
 	//TODO(gfyrag): add a routine to clean old ledger
 	ledgers             map[string]*Ledger
 	compiler            *numscript.Compiler
@@ -31,11 +33,13 @@ func NewResolver(
 	monitor monitor.Monitor,
 	locker lock.Locker,
 	allowPastTimestamps bool,
+	metricsRegsitry metrics.GlobalMetricsRegistry,
 ) *Resolver {
 	return &Resolver{
 		storageDriver:       storageDriver,
 		monitor:             monitor,
 		locker:              locker,
+		metricsRegsitry:     metricsRegsitry,
 		compiler:            numscript.NewCompiler(),
 		ledgers:             map[string]*Ledger{},
 		allowPastTimestamps: allowPastTimestamps,
@@ -60,13 +64,18 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}
 
-		cache := cache.New(store)
+		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
+		if err != nil {
+			return nil, errors.Wrap(err, "registering metrics")
+		}
+
+		cache := cache.New(store, metricsRegistry)
 		runner, err := runner.New(store, r.locker, cache, r.compiler, name, r.allowPastTimestamps)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating ledger runner")
 		}
 
-		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor)
+		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor, metricsRegistry)
 
 		go func() {
 			if err := queryWorker.Run(logging.ContextWithLogger(
@@ -77,8 +86,9 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}()
 
-		ledger = New(store, cache, runner, r.locker, queryWorker)
+		ledger = New(store, cache, runner, r.locker, queryWorker, metricsRegistry)
 		r.ledgers[name] = ledger
+		r.metricsRegsitry.ActiveLedgers().Add(ctx, +1)
 	}
 
 	return ledger, nil

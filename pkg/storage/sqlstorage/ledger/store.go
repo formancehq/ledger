@@ -3,16 +3,19 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	sqlerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/migrations"
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -20,9 +23,10 @@ const (
 )
 
 type Store struct {
-	schema   schema.Schema
-	onClose  func(ctx context.Context) error
-	onDelete func(ctx context.Context) error
+	schema          schema.Schema
+	metricsRegistry *metrics.SQLStorageMetricsRegistry
+	onClose         func(ctx context.Context) error
+	onDelete        func(ctx context.Context) error
 
 	logsBatchWorker *worker.Worker[*core.Log]
 
@@ -75,12 +79,17 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 	}
 
 	// Create a fake store to use the tx instead of the bun.DB struct
-	newStore := NewStore(
+	// TODO(polo): it can be heavy to create and drop store for each transaction
+	// since we're creating workers etc...
+	newStore, err := NewStore(
 		ctx,
 		schema.NewSchema(tx.Tx, s.schema.Name()),
 		s.onClose,
 		s.onDelete,
 	)
+	if err != nil {
+		return errors.Wrap(err, "creating new store")
+	}
 
 	newStore.isInitialized = s.isInitialized
 
@@ -98,11 +107,24 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 	return sqlerrors.PostgresError(tx.Commit())
 }
 
+func (s *Store) instrumentalized(ctx context.Context, name string) func() {
+	now := time.Now()
+	attrs := []attribute.KeyValue{
+		attribute.String("schema", s.schema.Name()),
+		attribute.String("op", name),
+	}
+
+	return func() {
+		latency := time.Since(now)
+		s.metricsRegistry.Latencies.Record(ctx, latency.Milliseconds(), attrs...)
+	}
+}
+
 func NewStore(
 	ctx context.Context,
 	schema schema.Schema,
 	onClose, onDelete func(ctx context.Context) error,
-) *Store {
+) (*Store, error) {
 	s := &Store{
 		schema:   schema,
 		onClose:  onClose,
@@ -112,12 +134,18 @@ func NewStore(
 	logsBatchWorker := worker.NewWorker(s.batchLogs)
 	s.logsBatchWorker = logsBatchWorker
 
+	metricsRegistry, err := metrics.RegisterSQLStorageMetrics(s.schema.Name())
+	if err != nil {
+		return nil, errors.Wrap(err, "registering metrics")
+	}
+	s.metricsRegistry = metricsRegistry
+
 	go logsBatchWorker.Run(logging.ContextWithLogger(
 		context.Background(),
 		logging.FromContext(ctx),
 	))
 
-	return s
+	return s, nil
 }
 
 var _ storage.LedgerStore = &Store{}

@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -51,7 +52,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 				GetBalancesAggregated(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
-			router := routes.NewRouter(backend, nil, nil)
+			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", nil)
 			rec := httptest.NewRecorder()
@@ -140,7 +141,7 @@ func TestGetBalances(t *testing.T) {
 					Return(expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil)
+			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/balances", nil)
 			rec := httptest.NewRecorder()
