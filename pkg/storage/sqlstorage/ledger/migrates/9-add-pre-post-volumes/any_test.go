@@ -284,7 +284,7 @@ func TestMigrate9(t *testing.T) {
 
 	for i, tc := range testCases {
 		sb := schema.NewSelect(ledgerstore.TransactionsTableName).
-			Model((*ledgerstore.Transactions)(nil)).
+			Model((*ledgerstore.Transaction)(nil)).
 			Column("pre_commit_volumes", "post_commit_volumes").
 			Where("id = ?", i)
 		row := schema.QueryRowContext(context.Background(), sb.String())

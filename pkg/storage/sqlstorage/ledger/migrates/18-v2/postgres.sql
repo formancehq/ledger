@@ -18,3 +18,9 @@ create table if not exists "VAR_LEDGER_NAME".logs_v2 (
     "reference" text,
 	UNIQUE ("id")
 );
+--statement
+alter table "VAR_LEDGER_NAME".transactions
+alter column id type uuid using (uuid_generate_v4());;
+--statement
+alter table "VAR_LEDGER_NAME".postings
+alter column txid type uuid using (uuid_generate_v4());;
