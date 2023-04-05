@@ -13,8 +13,8 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/pkg/errors"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 
@@ -172,6 +172,8 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	if !s.isInitialized {
 		return api.Cursor[core.ExpandedTransaction]{}, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_transactions")
+	defer recordMetrics()
 
 	txs := make([]core.ExpandedTransaction, 0)
 
@@ -260,6 +262,8 @@ func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQue
 	if !s.isInitialized {
 		return 0, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "count_transactions")
+	defer recordMetrics()
 
 	sb, _ := s.buildTransactionsQuery(ctx, q)
 	count, err := sb.Count(ctx)
@@ -270,6 +274,8 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_transaction")
+	defer recordMetrics()
 
 	sb := s.schema.NewSelect(TransactionsTableName).
 		Model((*Transactions)(nil)).
@@ -394,6 +400,8 @@ func (s *Store) InsertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "insert_transactions")
+	defer recordMetrics()
 
 	return storageerrors.PostgresError(s.insertTransactions(ctx, txs...))
 }
@@ -402,6 +410,8 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_transaction_metadata")
+	defer recordMetrics()
 
 	metadataData, err := json.Marshal(metadata)
 	if err != nil {
@@ -422,6 +432,8 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_transactions_metadata")
+	defer recordMetrics()
 
 	txs := make([]*Transactions, 0, len(transactionsWithMetadata))
 	for _, tx := range transactionsWithMetadata {

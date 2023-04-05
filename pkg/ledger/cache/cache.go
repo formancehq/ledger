@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"golang.org/x/sync/singleflight"
 )
@@ -32,11 +33,14 @@ type cacheEntry struct {
 type Release func()
 
 // TODO(gfyrag): Add a routine to evict all entries
+// and update metrics:
+// c.metricsRegistry.CacheNumberEntries.Add(ctx, -1) for all evicted entries
 type Cache struct {
-	mu    sync.RWMutex
-	cache map[string]*cacheEntry
-	store Store
-	sg    singleflight.Group
+	mu              sync.RWMutex
+	cache           map[string]*cacheEntry
+	store           Store
+	sg              singleflight.Group
+	metricsRegistry metrics.PerLedgerMetricsRegistry
 }
 
 func (c *Cache) getEntry(ctx context.Context, address string) (*cacheEntry, error) {
@@ -45,6 +49,9 @@ func (c *Cache) getEntry(ctx context.Context, address string) (*cacheEntry, erro
 		entry, ok := c.cache[address]
 		c.mu.RUnlock()
 		if !ok {
+			// cache miss
+			c.metricsRegistry.CacheMisses().Add(ctx, 1)
+
 			account, err := c.store.GetAccountWithVolumes(ctx, address)
 			if err != nil {
 				return nil, err
@@ -57,6 +64,10 @@ func (c *Cache) getEntry(ctx context.Context, address string) (*cacheEntry, erro
 			c.mu.Lock()
 			c.cache[address] = entry
 			c.mu.Unlock()
+
+			if c.metricsRegistry != nil {
+				c.metricsRegistry.CacheNumberEntries().Add(ctx, +1)
+			}
 
 			return entry, nil
 		}
@@ -144,9 +155,10 @@ func (c *Cache) UpdateAccountMetadata(address string, m metadata.Metadata) error
 	return nil
 }
 
-func New(store Store) *Cache {
+func New(store Store, metricsRegistry metrics.PerLedgerMetricsRegistry) *Cache {
 	return &Cache{
-		store: store,
-		cache: map[string]*cacheEntry{},
+		store:           store,
+		cache:           map[string]*cacheEntry{},
+		metricsRegistry: metricsRegistry,
 	}
 }

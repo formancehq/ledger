@@ -27,6 +27,8 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAsset
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "update_volumes")
+	defer recordMetrics()
 
 	volumesMap := make(map[string]*Volumes)
 	for _, vs := range volumes {
@@ -62,6 +64,8 @@ func (s *Store) GetAssetsVolumes(ctx context.Context, accountAddress string) (co
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_assets_volumes")
+	defer recordMetrics()
 
 	query := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).

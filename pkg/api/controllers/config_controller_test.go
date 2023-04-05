@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/routes"
+	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, _ := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil)
+	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
 	backend.
 		EXPECT().

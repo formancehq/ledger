@@ -31,6 +31,8 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q storage.BalancesQue
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_balances_aggregated")
+	defer recordMetrics()
 
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).
@@ -78,6 +80,8 @@ func (s *Store) GetBalances(ctx context.Context, q storage.BalancesQuery) (api.C
 		return api.Cursor[core.AccountsBalances]{},
 			storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
+	recordMetrics := s.instrumentalized(ctx, "get_balances")
+	defer recordMetrics()
 
 	sb := s.schema.NewSelect(volumesTableName).
 		Model((*Volumes)(nil)).

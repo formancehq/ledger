@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/cmd/internal"
 	_ "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/9-add-pre-post-volumes"
+	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/formancehq/stack/libs/go-libs/service"
@@ -60,6 +61,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
+	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
