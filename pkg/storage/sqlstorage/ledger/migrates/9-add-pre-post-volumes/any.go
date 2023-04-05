@@ -113,7 +113,7 @@ func Upgrade(ctx context.Context, schema schema.Schema, sqlTx *schema.Tx) error 
 		}
 
 		ub := schema.NewUpdate(ledger.TransactionsTableName).
-			Model((*ledger.Transactions)(nil)).
+			Model((*ledger.Transaction)(nil)).
 			Set("pre_commit_volumes = ?", preCommitVolumes).
 			Set("post_commit_volumes = ?", postCommitVolumes).
 			Where("id = ?", tx.ID)

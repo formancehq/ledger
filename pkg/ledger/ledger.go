@@ -98,23 +98,22 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 	return count, errors.Wrap(err, "counting transactions")
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (l *Ledger) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	return tx, errors.Wrap(err, "getting transaction")
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
-
+func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil && !storage.IsNotFoundError(err) {
 		return nil, errors.Wrap(err, "get transaction before revert")
 	}
 	if storage.IsNotFoundError(err) {
-		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
+		return nil, errorsutil.NewError(err, errors.Errorf("transaction %s not found", id))
 	}
 	if revertedTx.IsReverted() {
 		return nil, errorsutil.NewError(ErrValidation,
-			errors.Errorf("transaction %d already reverted", id))
+			errors.Errorf("transaction %s already reverted", id))
 	}
 
 	rt := revertedTx.Reverse()
@@ -167,7 +166,7 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 }
 
 // TODO(gfyrag): maybe we should check transaction exists on the log store before set a metadata ? (accounts always exists even if never used)
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m metadata.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m metadata.Metadata) error {
 	if m == nil {
 		return nil
 	}
@@ -188,18 +187,18 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	)
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
-		_, err = l.GetTransaction(ctx, targetID.(uint64))
+		_, err = l.GetTransaction(ctx, targetID)
 		if err != nil {
 			return err
 		}
 
 		log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeTransaction,
-			TargetID:   targetID.(uint64),
+			TargetID:   targetID,
 			Metadata:   m,
 		})
 	case core.MetaTargetTypeAccount:
-		release, err := l.dbCache.LockAccounts(ctx, targetID.(string))
+		release, err := l.dbCache.LockAccounts(ctx, targetID)
 		if err != nil {
 			return errors.Wrap(err, "lock account")
 		}
@@ -208,14 +207,14 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 		// Machine can access account metadata, so store the metadata until CQRS compute final of the account
 		// The cache can still evict the account entry before CQRS part compute the view
 		unlock, err := l.locker.Lock(ctx, lock.Accounts{
-			Write: []string{targetID.(string)},
+			Write: []string{targetID},
 		})
 		if err != nil {
 			return errors.Wrap(err, "lock account")
 		}
 		defer unlock(context.Background())
 
-		err = l.dbCache.UpdateAccountMetadata(targetID.(string), m)
+		err = l.dbCache.UpdateAccountMetadata(targetID, m)
 		if err != nil {
 			return errors.Wrap(err, "update account metadata")
 		}
@@ -224,7 +223,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 
 		log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeAccount,
-			TargetID:   targetID.(string),
+			TargetID:   targetID,
 			Metadata:   m,
 		})
 	default:

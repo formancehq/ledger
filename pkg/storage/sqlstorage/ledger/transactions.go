@@ -28,10 +28,10 @@ const (
 // which allows segmented address pattern matching, e.g; "foo:bar:*"
 var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
 
-type Transactions struct {
+type Transaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
-	ID                uint64          `bun:"id,type:bigint,unique"`
+	ID                string          `bun:"id,type:uuid,unique"`
 	Timestamp         core.Time       `bun:"timestamp,type:timestamptz"`
 	Reference         string          `bun:"reference,type:varchar,unique,nullzero"`
 	Hash              string          `bun:"hash,type:varchar"`
@@ -44,16 +44,18 @@ type Transactions struct {
 type Postings struct {
 	bun.BaseModel `bun:"postings,alias:postings"`
 
-	TxID         uint64          `bun:"txid,type:bigint"`
+	TxID         string          `bun:"txid,type:uuid"`
 	PostingIndex int             `bun:"posting_index,type:integer"`
 	Source       json.RawMessage `bun:"source,type:jsonb"`
 	Destination  json.RawMessage `bun:"destination,type:jsonb"`
 }
 
 func (s *Store) buildTransactionsQuery(p storage.TransactionsQuery) *bun.SelectQuery {
-	sb := s.schema.NewSelect(TransactionsTableName).Model((*Transactions)(nil))
+	sb := s.schema.NewSelect(TransactionsTableName).Model((*Transaction)(nil))
 
-	sb.Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
+	sb.
+		Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
+		OrderExpr("timestamp DESC").
 		Distinct()
 	if p.Filters.Source != "" || p.Filters.Destination != "" || p.Filters.Account != "" {
 		// new wildcard handling
@@ -144,12 +146,12 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 	recordMetrics := s.instrumentalized(ctx, "get_transactions")
 	defer recordMetrics()
 
-	return pagination.UsingColumn(ctx, s.buildTransactionsQuery(q), storage.ColumnPaginatedQuery[storage.TransactionsQueryFilters](q),
-		func(tx *core.ExpandedTransaction, scanner interface{ Scan(args ...any) error }) (uint64, error) {
+	return pagination.UsingOffset(ctx, s.buildTransactionsQuery(q), storage.OffsetPaginatedQuery[storage.TransactionsQueryFilters](q),
+		func(tx *core.ExpandedTransaction, scanner interface{ Scan(args ...any) error }) error {
 			//TODO(gfyrag): try to use sql.Scan on ExpandedTransaction
 			var ref sql.NullString
 			if err := scanner.Scan(&tx.ID, &tx.Timestamp, &ref, &tx.Metadata, &tx.Postings, &tx.PreCommitVolumes, &tx.PostCommitVolumes); err != nil {
-				return 0, err
+				return err
 			}
 
 			tx.Reference = ref.String
@@ -158,7 +160,7 @@ func (s *Store) GetTransactions(ctx context.Context, q storage.TransactionsQuery
 			}
 			tx.Timestamp = tx.Timestamp.UTC()
 
-			return tx.ID, nil
+			return nil
 		})
 }
 
@@ -173,7 +175,7 @@ func (s *Store) CountTransactions(ctx context.Context, q storage.TransactionsQue
 	return uint64(count), storageerrors.PostgresError(err)
 }
 
-func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {
+func (s *Store) GetTransaction(ctx context.Context, txId string) (*core.ExpandedTransaction, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -181,7 +183,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 	defer recordMetrics()
 
 	sb := s.schema.NewSelect(TransactionsTableName).
-		Model((*Transactions)(nil)).
+		Model((*Transaction)(nil)).
 		Column("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
 		Where("id = ?", txId).
 		OrderExpr("id DESC")
@@ -213,7 +215,7 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 }
 
 func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
-	ts := make([]Transactions, len(txs))
+	ts := make([]Transaction, len(txs))
 	ps := make([]Postings, 0)
 
 	for i, tx := range txs {
@@ -301,7 +303,7 @@ func (s *Store) InsertTransactions(ctx context.Context, txs ...core.ExpandedTran
 	return storageerrors.PostgresError(s.insertTransactions(ctx, txs...))
 }
 
-func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error {
+func (s *Store) UpdateTransactionMetadata(ctx context.Context, id string, metadata metadata.Metadata) error {
 	if !s.isInitialized {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -315,7 +317,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 	}
 
 	_, err = s.schema.NewUpdate(TransactionsTableName).
-		Model((*Transactions)(nil)).
+		Model((*Transaction)(nil)).
 		Set("metadata = metadata || ?", string(metadataData)).
 		Where("id = ?", id).
 		Exec(ctx)
@@ -330,14 +332,14 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 	recordMetrics := s.instrumentalized(ctx, "update_transactions_metadata")
 	defer recordMetrics()
 
-	txs := make([]*Transactions, 0, len(transactionsWithMetadata))
+	txs := make([]*Transaction, 0, len(transactionsWithMetadata))
 	for _, tx := range transactionsWithMetadata {
 		metadataData, err := json.Marshal(tx.Metadata)
 		if err != nil {
 			return errors.Wrap(err, "failed to marshal metadata")
 		}
 
-		txs = append(txs, &Transactions{
+		txs = append(txs, &Transaction{
 			ID:       tx.ID,
 			Metadata: metadataData,
 		})
@@ -347,7 +349,7 @@ func (s *Store) UpdateTransactionsMetadata(ctx context.Context, transactionsWith
 
 	_, err := s.schema.NewUpdate(TransactionsTableName).
 		With("_data", values).
-		Model((*Transactions)(nil)).
+		Model((*Transaction)(nil)).
 		TableExpr("_data").
 		Set("metadata = transactions.metadata || _data.metadata").
 		Where(fmt.Sprintf("%s.id = _data.id", TransactionsTableName)).

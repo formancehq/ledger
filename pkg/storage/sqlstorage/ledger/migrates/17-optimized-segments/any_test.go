@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type Transaction struct {
+	ledgerstore.Transaction
+	ID uint64 `bun:"id,type:bigint,unique"`
+}
+
 func TestMigrate17(t *testing.T) {
 	require.NoError(t, pgtesting.CreatePostgresServer())
 	defer func() {
@@ -36,13 +41,15 @@ func TestMigrate17(t *testing.T) {
 
 	now := core.Now()
 
-	tr := &ledgerstore.Transactions{
-		ID:        0,
-		Timestamp: now,
-		Postings: []byte(`[
-			{"source": "world", "destination": "users:001", "asset": "USD", "amount": 100}
-		]`),
-		Metadata: []byte(`{}`),
+	tr := &Transaction{
+		ID: 0,
+		Transaction: ledgerstore.Transaction{
+			Timestamp: now,
+			Postings: []byte(`[
+				{"source": "world", "destination": "users:001", "asset": "USD", "amount": 100}
+			]`),
+			Metadata: []byte(`{}`),
+		},
 	}
 	_, err = schema.NewInsert(ledgerstore.TransactionsTableName).
 		Column("id", "timestamp", "postings", "metadata").

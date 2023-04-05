@@ -100,11 +100,11 @@ type postgresDB struct {
 }
 
 func (p *postgresDB) Initialize(ctx context.Context) error {
-	_, err := p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pgcrypto")
-	if err != nil {
-		return storageerrors.PostgresError(err)
-	}
-	_, err = p.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pg_trgm")
+	_, err := p.db.ExecContext(ctx, `
+		CREATE EXTENSION IF NOT EXISTS pgcrypto;
+		CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+		CREATE EXTENSION IF NOT EXISTS pg_trgm
+	`)
 	if err != nil {
 		return storageerrors.PostgresError(err)
 	}
