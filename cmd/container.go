@@ -34,13 +34,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 		api.Module(api.Config{
 			Version: Version,
 		}),
-		sqlstorage.DriverModule(sqlstorage.ModuleConfig{
-			PostgresConfig: func() *sqlstorage.PostgresConfig {
-				return &sqlstorage.PostgresConfig{
-					ConnString: v.GetString(storagePostgresConnectionStringFlag),
-				}
-			}(),
-		}),
+		sqlstorage.CLIDriverModule(v),
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(v.GetString(commitPolicyFlag) == "allow-past-timestamps"),
 	)

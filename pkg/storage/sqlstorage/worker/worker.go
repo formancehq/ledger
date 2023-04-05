@@ -20,12 +20,24 @@ type Worker[MODEL any] struct {
 	stopChan     chan chan struct{}
 }
 
-func NewWorker[MODEL any](workerJob Job[MODEL]) *Worker[MODEL] {
+type WorkerConfig struct {
+	MaxPendingSize   int
+	MaxWriteChanSize int
+}
+
+var (
+	DefaultConfig = WorkerConfig{
+		MaxPendingSize:   0,
+		MaxWriteChanSize: 1024,
+	}
+)
+
+func NewWorker[MODEL any](workerJob Job[MODEL], cfg WorkerConfig) *Worker[MODEL] {
 	return &Worker[MODEL]{
 		workerJob:    workerJob,
-		pending:      make([]modelsHolder[MODEL], 0), // TODO(gfyrag): we need to limit the worker capacity
+		pending:      make([]modelsHolder[MODEL], cfg.MaxPendingSize),
 		jobs:         make(chan []modelsHolder[MODEL]),
-		writeChannel: make(chan modelsHolder[MODEL], 1024), // TODO(gfyrag): Make configurable
+		writeChannel: make(chan modelsHolder[MODEL], cfg.MaxWriteChanSize),
 		releasedJob:  make(chan struct{}, 1),
 		stopChan:     make(chan chan struct{}, 1),
 	}

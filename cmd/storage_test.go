@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
@@ -12,7 +13,7 @@ import (
 func Test_StorageCommands(t *testing.T) {
 	db := pgtesting.NewPostgresDatabase(t)
 
-	viper.Set(storagePostgresConnectionStringFlag, db.ConnString())
+	viper.Set(sqlstorage.StoragePostgresConnectionStringFlag, db.ConnString())
 
 	require.NoError(t, NewStorageList().Execute())
 

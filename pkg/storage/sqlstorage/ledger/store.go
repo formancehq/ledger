@@ -25,6 +25,7 @@ const (
 type Store struct {
 	schema          schema.Schema
 	metricsRegistry *metrics.SQLStorageMetricsRegistry
+	storeConfig     StoreConfig
 	onClose         func(ctx context.Context) error
 	onDelete        func(ctx context.Context) error
 
@@ -32,6 +33,16 @@ type Store struct {
 
 	isInitialized bool
 }
+
+type StoreConfig struct {
+	StoreWorkerConfig worker.WorkerConfig
+}
+
+var (
+	DefaultStoreConfig = StoreConfig{
+		StoreWorkerConfig: worker.DefaultConfig,
+	}
+)
 
 func (s *Store) Schema() schema.Schema {
 	return s.schema
@@ -86,6 +97,7 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 		schema.NewSchema(tx.Tx, s.schema.Name()),
 		s.onClose,
 		s.onDelete,
+		s.storeConfig,
 	)
 	if err != nil {
 		return errors.Wrap(err, "creating new store")
@@ -124,14 +136,16 @@ func NewStore(
 	ctx context.Context,
 	schema schema.Schema,
 	onClose, onDelete func(ctx context.Context) error,
+	storeConfig StoreConfig,
 ) (*Store, error) {
 	s := &Store{
-		schema:   schema,
-		onClose:  onClose,
-		onDelete: onDelete,
+		schema:      schema,
+		onClose:     onClose,
+		onDelete:    onDelete,
+		storeConfig: storeConfig,
 	}
 
-	logsBatchWorker := worker.NewWorker(s.batchLogs)
+	logsBatchWorker := worker.NewWorker(s.batchLogs, storeConfig.StoreWorkerConfig)
 	s.logsBatchWorker = logsBatchWorker
 
 	metricsRegistry, err := metrics.RegisterSQLStorageMetrics(s.schema.Name())
