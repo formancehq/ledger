@@ -14,7 +14,7 @@ func TestSimpleWorker(t *testing.T) {
 	ctx := context.Background()
 	db := NewMockDB()
 
-	w := worker.NewWorker(db.Write)
+	w := worker.NewWorker(db.Write, worker.DefaultConfig)
 	go w.Run(ctx)
 	defer func() {
 		require.NoError(t, w.Stop(context.Background()))
@@ -47,7 +47,7 @@ func TestBatchWorker(t *testing.T) {
 	ctx := context.Background()
 	db := NewMockDB()
 
-	w := worker.NewWorker(db.Write)
+	w := worker.NewWorker(db.Write, worker.DefaultConfig)
 	go w.Run(ctx)
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

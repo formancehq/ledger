@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -37,7 +38,7 @@ func newLedgerStore(t *testing.T) storage.LedgerStore {
 		require.NoError(t, db.Close())
 	})
 
-	driver := sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db))
+	driver := sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db), ledgerstore.DefaultStoreConfig)
 	require.NoError(t, driver.Initialize(context.Background()))
 
 	ledgerStore, _, err := driver.GetLedgerStore(context.Background(), uuid.NewString(), true)
