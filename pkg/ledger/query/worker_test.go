@@ -43,7 +43,11 @@ func (m *mockStore) InsertTransactions(ctx context.Context, insert ...core.Expan
 
 func (m *mockStore) UpdateTransactionsMetadata(ctx context.Context, update ...core.TransactionWithMetadata) error {
 	for _, tx := range update {
-		m.transactions[tx.ID].Metadata = m.transactions[tx.ID].Metadata.Merge(tx.Metadata)
+		for _, existingTX := range m.transactions {
+			if existingTX.ID == tx.ID {
+				existingTX.Metadata = existingTX.Metadata.Merge(tx.Metadata)
+			}
+		}
 	}
 	return nil
 }
@@ -111,8 +115,13 @@ func (m *mockStore) GetAccountWithVolumes(ctx context.Context, address string) (
 	return account, nil
 }
 
-func (m *mockStore) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
-	return m.transactions[id], nil
+func (m *mockStore) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+	for _, tx := range m.transactions {
+		if tx.ID == id {
+			return tx, nil
+		}
+	}
+	return nil, nil
 }
 
 var _ Store = (*mockStore)(nil)
@@ -144,7 +153,7 @@ func TestWorker(t *testing.T) {
 	)
 	tx1 := core.NewTransaction().WithPostings(
 		core.NewPosting("bank", "user:1", "USD/2", big.NewInt(10)),
-	).WithID(1)
+	)
 
 	appliedMetadataOnTX1 := metadata.Metadata{
 		"paymentID": "1234",

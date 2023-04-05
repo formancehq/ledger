@@ -263,6 +263,8 @@ func TestExecuteScript(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, ret)
 				tc.expectedTx.Timestamp = now
+				tc.expectedTx.ID = ""
+				ret.ID = ""
 				require.Equal(t, tc.expectedTx, *ret)
 
 				require.Len(t, store.logs, len(tc.expectedLogs))

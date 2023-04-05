@@ -127,11 +127,11 @@ func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
 }
 
 type RevertedTransactionLogPayload struct {
-	RevertedTransactionID uint64
+	RevertedTransactionID string
 	RevertTransaction     Transaction
 }
 
-func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) Log {
+func NewRevertedTransactionLog(at Time, revertedTxID string, tx Transaction) Log {
 	return Log{
 		Type: RevertedTransactionLogType,
 		Date: at,

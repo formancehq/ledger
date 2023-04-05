@@ -176,7 +176,7 @@ func (mr *MockLedgerMockRecorder) GetMigrationsInfo(ctx interface{}) *gomock.Cal
 }
 
 // GetTransaction mocks base method.
-func (m *MockLedger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, id)
 	ret0, _ := ret[0].(*core.ExpandedTransaction)
@@ -206,7 +206,7 @@ func (mr *MockLedgerMockRecorder) GetTransactions(ctx, query interface{}) *gomoc
 }
 
 // RevertTransaction mocks base method.
-func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) RevertTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id)
 	ret0, _ := ret[0].(*core.ExpandedTransaction)
@@ -221,7 +221,7 @@ func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, id interface{}) *gomock
 }
 
 // SaveMeta mocks base method.
-func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata) error {
+func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType, targetID string, m metadata.Metadata) error {
 	m_2.ctrl.T.Helper()
 	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, targetType, targetID, m)
 	ret0, _ := ret[0].(error)

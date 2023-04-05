@@ -8,23 +8,23 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVolumes(t *testing.T) {
 	d := sqlstoragetesting.StorageDriver(t)
 
-	assert.NoError(t, d.Initialize(context.Background()))
+	require.NoError(t, d.Initialize(context.Background()))
 
 	defer func(d *sqlstorage.Driver, ctx context.Context) {
-		assert.NoError(t, d.Close(ctx))
+		require.NoError(t, d.Close(ctx))
 	}(d, context.Background())
 
 	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Run("success update volumes", func(t *testing.T) {
 		foo := core.AssetsVolumes{
@@ -47,15 +47,15 @@ func TestVolumes(t *testing.T) {
 		}
 
 		err := store.UpdateVolumes(context.Background(), volumes)
-		assert.NoError(t, err, "update volumes should not fail")
+		require.NoError(t, err, "update volumes should not fail")
 
 		assetVolumes, err := store.GetAssetsVolumes(context.Background(), "foo")
-		assert.NoError(t, err, "get asset volumes should not fail")
-		assert.Equal(t, foo, assetVolumes, "asset volumes should be equal")
+		require.NoError(t, err, "get asset volumes should not fail")
+		require.Equal(t, foo, assetVolumes, "asset volumes should be equal")
 
 		assetVolumes, err = store.GetAssetsVolumes(context.Background(), "foo2")
-		assert.NoError(t, err, "get asset volumes should not fail")
-		assert.Equal(t, foo2, assetVolumes, "asset volumes should be equal")
+		require.NoError(t, err, "get asset volumes should not fail")
+		require.Equal(t, foo2, assetVolumes, "asset volumes should be equal")
 	})
 
 	t.Run("success update same volume", func(t *testing.T) {
@@ -83,10 +83,10 @@ func TestVolumes(t *testing.T) {
 		}
 
 		err := store.UpdateVolumes(context.Background(), volumes...)
-		assert.NoError(t, err, "update volumes should not fail")
+		require.NoError(t, err, "update volumes should not fail")
 
 		assetVolumes, err := store.GetAssetsVolumes(context.Background(), "foo")
-		assert.NoError(t, err, "get asset volumes should not fail")
-		assert.Equal(t, foo2, assetVolumes, "asset volumes should be equal")
+		require.NoError(t, err, "get asset volumes should not fail")
+		require.Equal(t, foo2, assetVolumes, "asset volumes should be equal")
 	})
 }

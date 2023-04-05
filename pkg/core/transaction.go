@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/google/uuid"
 )
 
 type Transactions struct {
@@ -38,7 +39,7 @@ func (t *TransactionData) Reverse() TransactionData {
 	ret := TransactionData{
 		Postings: postings,
 	}
-	//TODO(gfyra): Do we keep this for v2?
+	//TODO(gfyrag): Do we keep this for v2?
 	if t.Reference != "" {
 		ret.Reference = "revert_" + t.Reference
 	}
@@ -47,11 +48,11 @@ func (t *TransactionData) Reverse() TransactionData {
 
 type Transaction struct {
 	TransactionData
-	ID uint64 `json:"txid"`
+	ID string `json:"txid"`
 }
 
 type TransactionWithMetadata struct {
-	ID       uint64
+	ID       string
 	Metadata metadata.Metadata
 }
 
@@ -70,7 +71,7 @@ func (t Transaction) WithTimestamp(ts Time) Transaction {
 	return t
 }
 
-func (t Transaction) WithID(id uint64) Transaction {
+func (t Transaction) WithID(id string) Transaction {
 	t.ID = id
 	return t
 }
@@ -83,6 +84,7 @@ func (t Transaction) WithMetadata(m metadata.Metadata) Transaction {
 func NewTransaction() Transaction {
 	return Transaction{
 		TransactionData: NewTransactionData(),
+		ID:              uuid.NewString(),
 	}
 }
 

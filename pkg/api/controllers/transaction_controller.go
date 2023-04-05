@@ -209,14 +209,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 func GetTransaction(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	txId, err := strconv.ParseUint(chi.URLParam(r, "txid"), 10, 64)
-	if err != nil {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-			errors.New("invalid transaction ID")))
-		return
-	}
-
-	tx, err := l.GetTransaction(r.Context(), txId)
+	tx, err := l.GetTransaction(r.Context(), chi.URLParam(r, "txid"))
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -228,14 +221,7 @@ func GetTransaction(w http.ResponseWriter, r *http.Request) {
 func RevertTransaction(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	txId, err := strconv.ParseUint(chi.URLParam(r, "txid"), 10, 64)
-	if err != nil {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-			errors.New("invalid transaction ID")))
-		return
-	}
-
-	tx, err := l.RevertTransaction(r.Context(), txId)
+	tx, err := l.RevertTransaction(r.Context(), chi.URLParam(r, "txid"))
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -254,14 +240,7 @@ func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txId, err := strconv.ParseUint(chi.URLParam(r, "txid"), 10, 64)
-	if err != nil {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-			errors.New("invalid transaction ID")))
-		return
-	}
-
-	if err := l.SaveMeta(r.Context(), core.MetaTargetTypeTransaction, txId, m); err != nil {
+	if err := l.SaveMeta(r.Context(), core.MetaTargetTypeTransaction, chi.URLParam(r, "txid"), m); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}

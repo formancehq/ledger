@@ -545,10 +545,8 @@ paths:
           description: Transaction ID.
           required: true
           schema:
-            type: integer
-            format: int64
-            minimum: 0
-            example: 1234
+            type: string
+            format: uuid
       responses:
         "200":
           description: OK
@@ -582,10 +580,8 @@ paths:
           description: Transaction ID.
           required: true
           schema:
-            type: integer
-            format: int64
-            minimum: 0
-            example: 1234
+            type: string
+            format: uuid
       requestBody:
         description: metadata
         content:
@@ -622,10 +618,8 @@ paths:
           description: Transaction ID.
           required: true
           schema:
-            type: integer
-            format: int64
-            minimum: 0
-            example: 1234
+            type: string
+            format: uuid
       responses:
         "200":
           description: OK
@@ -1123,9 +1117,8 @@ components:
         metadata:
           $ref: '#/components/schemas/Metadata'
         txid:
-          type: integer
-          format: int64
-          minimum: 0
+          type: string
+          format: uuid
         preCommitVolumes:
           $ref: '#/components/schemas/AggregatedVolumes'
         postCommitVolumes:
