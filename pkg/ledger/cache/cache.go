@@ -25,7 +25,7 @@ type cacheEntry struct {
 	lastUsed time.Time
 	inUse    atomic.Int64
 	ready    chan struct{}
-	evicted chan struct{}
+	evicted  chan struct{}
 }
 
 type Release func()
@@ -37,49 +37,58 @@ type Cache struct {
 	cache           sync.Map
 	store           Store
 	metricsRegistry metrics.PerLedgerMetricsRegistry
+	running         chan struct{}
 	counter         atomic.Int64
 }
 
 func (c *Cache) loadEntry(ctx context.Context, address string, inUse bool) (*cacheEntry, error) {
 
-	ce := &cacheEntry{
-		ready: make(chan struct{}),
-		evicted: make(chan struct{}),
-	}
-	entry, loaded := c.cache.LoadOrStore(address, ce)
-	if !loaded {
-		// cache miss
-		c.metricsRegistry.CacheMisses().Add(ctx, 1)
-
-		account, err := c.store.GetAccountWithVolumes(ctx, address)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			panic(err)
-		}
-		if errors.Is(err, storage.ErrNotFound) {
-			account = core.NewAccountWithVolumes(address)
-		}
-		ce.account = account
-
-		close(ce.ready)
-		c.metricsRegistry.CacheNumberEntries().Add(ctx, 1)
-	}
-
-	ce = entry.(*cacheEntry)
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-ce.ready:
-	case <-ce.evicted:
-		return c.loadEntry(ctx, address, inUse)
-	}
+	case <-c.running:
+		c.counter.Add(1)
+		defer c.counter.Add(-1)
 
-	ce.lastUsed = time.Now()
-	if inUse {
-		ce.inUse.Add(1)
-	}
+		ce := &cacheEntry{
+			ready:   make(chan struct{}),
+			evicted: make(chan struct{}),
+		}
+		entry, loaded := c.cache.LoadOrStore(address, ce)
+		if !loaded {
+			// cache miss
+			c.metricsRegistry.CacheMisses().Add(ctx, 1)
 
-	return ce, nil
+			account, err := c.store.GetAccountWithVolumes(ctx, address)
+			if err != nil && !errors.Is(err, storage.ErrNotFound) {
+				panic(err)
+			}
+			if errors.Is(err, storage.ErrNotFound) {
+				account = core.NewAccountWithVolumes(address)
+			}
+			ce.account = account
+
+			close(ce.ready)
+			c.metricsRegistry.CacheNumberEntries().Add(ctx, 1)
+		}
+
+		ce = entry.(*cacheEntry)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ce.ready:
+		case <-ce.evicted:
+			return c.loadEntry(ctx, address, inUse)
+		}
+
+		ce.lastUsed = time.Now()
+		if inUse {
+			ce.inUse.Add(1)
+		}
+
+		return ce, nil
+	}
 }
 
 func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, error) {
@@ -162,39 +171,15 @@ func (c *Cache) UpdateAccountMetadata(address string, m metadata.Metadata) error
 	return nil
 }
 
-//func (c *Cache) runEviction() {
-//	for {
-//		select {
-//		case <-time.After(time.Minute):
-//			c.cache.Range(func(key, value any) bool {
-//				cacheEntry := value.(*cacheEntry)
-//				if cacheEntry.inUse.Load() == 0 {
-//
-//				}
-//				return true
-//			})
-//		}
-//	}
-//}
-
 func New(store Store, metricsRegistry metrics.PerLedgerMetricsRegistry) *Cache {
 	if metricsRegistry == nil {
 		metricsRegistry = metrics.NewNoOpMetricsRegistry()
 	}
-	c := &Cache{
+	running := make(chan struct{})
+	close(running)
+	return &Cache{
 		store:           store,
 		metricsRegistry: metricsRegistry,
+		running:         running,
 	}
-	go func() {
-		for {
-			c.cache.Range(func(key, value any) bool {
-				entry := value.(*cacheEntry)
-				if entry.inUse.Load() == 0 && entry.lastUsed.Before(time.Now().Add(-time.Minute)) {
-					entry.
-				}
-			})
-		}
-	}()
-
-	return c
 }
