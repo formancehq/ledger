@@ -19,6 +19,9 @@ const (
 	StoragePostgresConnectionStringFlag = "storage-postgres-conn-string"
 )
 
+// TODO(gfyrag): maybe move flag handling inside cmd/internal (as telemetry flags)
+// Or make the inverse (move analytics flags to pkg/analytics)
+// IMO, flags are more easily discoverable if located inside cmd/
 func InitCLIFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().Int(StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
 	cmd.PersistentFlags().Int(StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")

@@ -36,7 +36,13 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 		}),
 		sqlstorage.CLIDriverModule(v),
 		internal.NewAnalyticsModule(v, Version),
-		ledger.Module(v.GetString(commitPolicyFlag) == "allow-past-timestamps"),
+		ledger.Module(ledger.Configuration{
+			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",
+			Cache: ledger.CacheConfiguration{
+				EvictionRetainDelay: v.GetDuration(cacheEvictionRetainDelay),
+				EvictionPeriod:      v.GetDuration(cacheEvictionPeriodFlag),
+			},
+		}),
 	)
 
 	return append(options, userOptions...)

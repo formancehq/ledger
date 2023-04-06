@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
@@ -16,26 +17,66 @@ import (
 	"github.com/pkg/errors"
 )
 
+type option func(r *Resolver)
+
+func WithMonitor(monitor monitor.Monitor) option {
+	return func(r *Resolver) {
+		r.monitor = monitor
+	}
+}
+
+func WithAllowPastTimestamps() option {
+	return func(r *Resolver) {
+		r.allowPastTimestamps = true
+	}
+}
+
+func WithMetricsRegistry(registry metrics.GlobalMetricsRegistry) option {
+	return func(r *Resolver) {
+		r.metricsRegistry = registry
+	}
+}
+
+func WithCacheEvictionRetainDelay(t time.Duration) option {
+	return func(r *Resolver) {
+		r.cacheEvictionRetainDelay = t
+	}
+}
+
+func WithCacheEvictionPeriod(t time.Duration) option {
+	return func(r *Resolver) {
+		r.cacheEvictionPeriod = t
+	}
+}
+
+var defaultOptions = []option{
+	WithMetricsRegistry(metrics.NewNoOpMetricsRegistry()),
+	WithMonitor(monitor.NewNoOpMonitor()),
+}
+
 type Resolver struct {
 	storageDriver   storage.Driver
 	monitor         monitor.Monitor
 	lock            sync.RWMutex
 	metricsRegistry metrics.GlobalMetricsRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
-	ledgers             map[string]*Ledger
-	compiler            *numscript.Compiler
-	allowPastTimestamps bool
+	ledgers                                       map[string]*Ledger
+	compiler                                      *numscript.Compiler
+	allowPastTimestamps                           bool
+	cacheEvictionPeriod, cacheEvictionRetainDelay time.Duration
 }
 
-func NewResolver(storageDriver storage.Driver, monitor monitor.Monitor, allowPastTimestamps bool, metricsRegistry metrics.GlobalMetricsRegistry) *Resolver {
-	return &Resolver{
-		storageDriver:       storageDriver,
-		monitor:             monitor,
-		compiler:            numscript.NewCompiler(),
-		ledgers:             map[string]*Ledger{},
-		allowPastTimestamps: allowPastTimestamps,
-		metricsRegistry:     metricsRegistry,
+func NewResolver(storageDriver storage.Driver, options ...option) *Resolver {
+	r := &Resolver{
+		storageDriver: storageDriver,
+		compiler:      numscript.NewCompiler(),
+		ledgers:       map[string]*Ledger{},
 	}
+	for _, opt := range append(defaultOptions, options...) {
+		opt(r)
+	}
+
+	return r
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
@@ -68,7 +109,23 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return nil, errors.Wrap(err, "registering metrics")
 		}
 
-		cache := cache.New(store, metricsRegistry)
+		cacheOptions := []cache.Option{
+			cache.WithMetricsRegistry(metricsRegistry),
+		}
+		if r.cacheEvictionPeriod != 0 {
+			cacheOptions = append(cacheOptions, cache.WithEvictionPeriod(r.cacheEvictionPeriod))
+		}
+		if r.cacheEvictionRetainDelay != 0 {
+			cacheOptions = append(cacheOptions, cache.WithRetainDelay(r.cacheEvictionRetainDelay))
+		}
+
+		cache := cache.New(store, cacheOptions...)
+		go func() {
+			if err := cache.Run(context.Background()); err != nil {
+				panic(err)
+			}
+		}()
+
 		runner, err := runner.New(store, locker, cache, r.compiler, name, r.allowPastTimestamps)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating ledger runner")

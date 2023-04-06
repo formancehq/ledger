@@ -9,28 +9,19 @@ import (
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
 
-type mockCall struct {
-	address string
-}
-
 type mockAccountComputer struct {
 	accounts []*core.AccountWithVolumes
-	calls    []mockCall
+	calls    []string
 }
 
 func (c *mockAccountComputer) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-	// Simulate a real process for benchs
-	<-time.After(5 * time.Millisecond)
-	c.calls = append(c.calls, mockCall{
-		address: address,
-	})
+	c.calls = append(c.calls, address)
 	for _, accountWithVolumes := range c.accounts {
 		if accountWithVolumes.Address == address {
 			return accountWithVolumes, nil
@@ -71,7 +62,13 @@ func TestParallelRead(t *testing.T) {
 			},
 		},
 	}
-	cache := New(mock, metrics.NewNoOpMetricsRegistry())
+	cache := New(mock)
+	go func() {
+		require.NoError(t, cache.Run(context.Background()))
+	}()
+	defer func() {
+		require.NoError(t, cache.Stop(context.Background()))
+	}()
 
 	release, err := cache.LockAccounts(context.Background(), "bank")
 	require.NoError(t, err)
@@ -125,7 +122,13 @@ func TestUpdateVolumes(t *testing.T) {
 			},
 		},
 	}
-	cache := New(mock, metrics.NewNoOpMetricsRegistry())
+	cache := New(mock)
+	go func() {
+		require.NoError(t, cache.Run(context.Background()))
+	}()
+	defer func() {
+		require.NoError(t, cache.Stop(context.Background()))
+	}()
 
 	release, err := cache.LockAccounts(context.Background(), "world", "bank")
 	require.NoError(t, err)
@@ -168,6 +171,43 @@ func TestUpdateVolumes(t *testing.T) {
 	}, *worldAccount)
 }
 
+func TestCacheEviction(t *testing.T) {
+
+	evictionPeriod := 100 * time.Millisecond
+	mock := &mockAccountComputer{
+		accounts: []*core.AccountWithVolumes{
+			{
+				Account: core.Account{
+					Address: "world",
+				},
+				Volumes: map[string]core.Volumes{},
+			},
+		},
+	}
+	cache := New(mock, WithEvictionPeriod(evictionPeriod), WithRetainDelay(evictionPeriod))
+	go func() {
+		require.NoError(t, cache.Run(context.Background()))
+	}()
+	defer func() {
+		require.NoError(t, cache.Stop(context.Background()))
+	}()
+
+	_, err := cache.GetAccountWithVolumes(context.Background(), "world")
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.Count())
+
+	require.Eventually(t, func() bool {
+		return cache.Count() == 0
+	}, 3*evictionPeriod, evictionPeriod)
+
+	_, err = cache.LockAccounts(context.Background(), "world")
+	require.NoError(t, err)
+
+	<-time.After(2 * evictionPeriod)
+
+	require.Equal(t, 1, cache.Count())
+}
+
 func BenchmarkCache(b *testing.B) {
 	accounts := []*core.AccountWithVolumes{
 		{
@@ -187,7 +227,13 @@ func BenchmarkCache(b *testing.B) {
 	mock := &mockAccountComputer{
 		accounts: accounts,
 	}
-	cache := New(mock, metrics.NewNoOpMetricsRegistry())
+	cache := New(mock)
+	go func() {
+		require.NoError(b, cache.Run(context.Background()))
+	}()
+	defer func() {
+		require.NoError(b, cache.Stop(context.Background()))
+	}()
 
 	pool := pond.New(accountsNumber, accountsNumber)
 	b.ResetTimer()

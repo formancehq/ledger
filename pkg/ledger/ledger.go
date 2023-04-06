@@ -49,7 +49,13 @@ func (l *Ledger) Close(ctx context.Context) error {
 		return errors.Wrap(err, "stopping query worker")
 	}
 
-	l.locker.Stop()
+	if err := l.locker.Stop(ctx); err != nil {
+		return errors.Wrap(err, "stopping cache")
+	}
+
+	if err := l.dbCache.Stop(ctx); err != nil {
+		return errors.Wrap(err, "stopping cache")
+	}
 
 	if err := l.store.Close(ctx); err != nil {
 		return errors.Wrap(err, "closing store")
