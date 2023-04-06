@@ -62,6 +62,13 @@ func (w *Worker) Run(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Start CQRS worker")
 
 	w.ctx = ctx
+	lastProcessedLogID, err := w.store.GetNextLogID(w.ctx)
+	if err != nil && !storage.IsNotFoundError(err) {
+		return errorsutil.NewError(ErrStorage,
+			errors.Wrap(err, "reading last log"))
+	}
+
+	w.lastProcessedLogID = &lastProcessedLogID
 
 	close(w.readyChan)
 
@@ -108,7 +115,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 				logs[i] = *holder.Log
 			}
 
-			if err := w.processLogs(w.ctx, logs...); err != nil {
+			if err := processLogs(w.ctx, w.ledgerName, w.store, w.monitor, logs...); err != nil {
 				if err == context.Canceled {
 					logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
 				} else {
@@ -120,6 +127,8 @@ func (w *Worker) writeLoop(ctx context.Context) {
 				w.errorChan <- err
 				return
 			}
+
+			w.metricsRegistry.QueryProcessedLogs().Add(w.ctx, int64(len(logs)))
 
 			if err := w.store.UpdateNextLogID(w.ctx, logs[len(logs)-1].ID+1); err != nil {
 				logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
@@ -137,16 +146,6 @@ func (w *Worker) writeLoop(ctx context.Context) {
 }
 
 func (w *Worker) run() error {
-	if err := w.initLedger(w.ctx); err != nil {
-		if err == context.Canceled {
-			logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
-		} else {
-			logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
-		}
-
-		return err
-	}
-
 	ctx, cancel := context.WithCancel(w.ctx)
 	defer cancel()
 
@@ -250,48 +249,61 @@ func (w *Worker) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (w *Worker) initLedger(ctx context.Context) error {
-	if !w.store.IsInitialized() {
-		return nil
+func initLedger(
+	ctx context.Context,
+	ledgerName string,
+	store Store,
+	monitor monitor.Monitor,
+	metricsRegistry metrics.PerLedgerMetricsRegistry,
+) (uint64, error) {
+	if !store.IsInitialized() {
+		return 0, nil
 	}
 
-	lastReadLogID, err := w.store.GetNextLogID(ctx)
+	lastReadLogID, err := store.GetNextLogID(ctx)
 	if err != nil && !storage.IsNotFoundError(err) {
-		return errorsutil.NewError(ErrStorage,
+		return 0, errorsutil.NewError(ErrStorage,
 			errors.Wrap(err, "reading last log"))
 	}
 
-	logs, err := w.store.ReadLogsStartingFromID(ctx, lastReadLogID)
+	logs, err := store.ReadLogsStartingFromID(ctx, lastReadLogID)
 	if err != nil {
-		return errorsutil.NewError(ErrStorage,
+		return 0, errorsutil.NewError(ErrStorage,
 			errors.Wrap(err, "reading logs since last ID"))
 	}
 
 	if len(logs) == 0 {
-		return nil
+		return 0, nil
 	}
 
-	if err := w.processLogs(ctx, logs...); err != nil {
-		return errors.Wrap(err, "processing logs")
+	if err := processLogs(ctx, ledgerName, store, monitor, logs...); err != nil {
+		return 0, errors.Wrap(err, "processing logs")
 	}
 
-	if err := w.store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
-		return errorsutil.NewError(ErrStorage,
+	metricsRegistry.QueryProcessedLogs().Add(ctx, int64(len(logs)))
+
+	if err := store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
+		return 0, errorsutil.NewError(ErrStorage,
 			errors.Wrap(err, "updating last read log"))
 	}
 	lastProcessedLogID := logs[len(logs)-1].ID
-	w.lastProcessedLogID = &lastProcessedLogID
 
-	return nil
+	return lastProcessedLogID, nil
 }
 
-func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
-	logsData, err := w.buildData(ctx, logs...)
+func processLogs(
+	ctx context.Context,
+	ledgerName string,
+	store Store,
+	m monitor.Monitor,
+	logs ...core.Log,
+) error {
+	logsData, err := buildData(ctx, ledgerName, store, logs...)
 	if err != nil {
 		return errors.Wrap(err, "building data")
 	}
 
-	if err := w.store.RunInTransaction(ctx, func(ctx context.Context, tx Store) error {
+	if err := store.RunInTransaction(ctx, func(ctx context.Context, tx Store) error {
 		if len(logsData.ensureAccountsExist) > 0 {
 			if err := tx.EnsureAccountsExist(ctx, logsData.ensureAccountsExist); err != nil {
 				return errors.Wrap(err, "ensuring accounts exist")
@@ -324,24 +336,24 @@ func (w *Worker) processLogs(ctx context.Context, logs ...core.Log) error {
 		return errorsutil.NewError(ErrStorage, err)
 	}
 
-	if w.monitor != nil {
+	if m != nil {
 		for _, monitor := range logsData.monitors {
-			monitor(ctx, w.monitor)
+			monitor(ctx, m)
 		}
 	}
-
-	w.metricsRegistry.QueryProcessedLogs().Add(w.ctx, int64(len(logs)))
 
 	return nil
 }
 
-func (w *Worker) buildData(
+func buildData(
 	ctx context.Context,
+	ledgerName string,
+	store Store,
 	logs ...core.Log,
 ) (*logsData, error) {
 	logsData := &logsData{}
 
-	volumeAggregator := aggregator.Volumes(w.store)
+	volumeAggregator := aggregator.Volumes(store)
 	accountsToUpdate := make(map[string]metadata.Metadata)
 	transactionsToUpdate := make(map[uint64]metadata.Metadata)
 
@@ -381,9 +393,9 @@ func (w *Worker) buildData(
 			logsData.volumesToUpdate = append(logsData.volumesToUpdate, txVolumeAggregator.PostCommitVolumes)
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.CommittedTransactions(ctx, w.ledgerName, expandedTx)
+				monitor.CommittedTransactions(ctx, ledgerName, expandedTx)
 				for account, metadata := range payload.AccountMetadata {
-					w.monitor.SavedMetadata(ctx, w.ledgerName, core.MetaTargetTypeAccount, account, metadata)
+					monitor.SavedMetadata(ctx, ledgerName, core.MetaTargetTypeAccount, account, metadata)
 				}
 			})
 
@@ -412,7 +424,7 @@ func (w *Worker) buildData(
 			}
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.SavedMetadata(ctx, w.ledgerName, setMetadata.TargetType, fmt.Sprint(setMetadata.TargetID), setMetadata.Metadata)
+				monitor.SavedMetadata(ctx, ledgerName, setMetadata.TargetType, fmt.Sprint(setMetadata.TargetID), setMetadata.Metadata)
 			})
 
 		case core.RevertedTransactionLogType:
@@ -439,13 +451,13 @@ func (w *Worker) buildData(
 			}
 			logsData.transactionsToInsert = append(logsData.transactionsToInsert, expandedTx)
 
-			revertedTx, err := w.store.GetTransaction(ctx, payload.RevertedTransactionID)
+			revertedTx, err := store.GetTransaction(ctx, payload.RevertedTransactionID)
 			if err != nil {
 				return nil, errorsutil.NewError(ErrStorage, err)
 			}
 
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
-				w.monitor.RevertedTransaction(ctx, w.ledgerName, revertedTx, &expandedTx)
+				monitor.RevertedTransaction(ctx, ledgerName, revertedTx, &expandedTx)
 			})
 		}
 	}
