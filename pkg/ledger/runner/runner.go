@@ -105,7 +105,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	// TODO: need to release even if an error is returned later
 	release, err := r.cache.LockAccounts(ctx, involvedAccounts...)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "locking accounts")
+		return nil, nil, errors.Wrap(err, "locking accounts into cache")
 	}
 
 	lockAccounts := lock.Accounts{}
@@ -125,7 +125,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 	unlock, err := r.locker.Lock(ctx, lockAccounts)
 	if err != nil {
 		release()
-		return nil, nil, errors.Wrap(err, "locking accounts")
+		return nil, nil, errors.Wrap(err, "locking accounts for tx processing")
 	}
 	defer unlock(context.Background())
 
