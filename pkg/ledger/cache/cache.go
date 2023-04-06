@@ -15,6 +15,15 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	DefaultRetainDelay    = time.Minute
+	DefaultEvictionPeriod = 5 * time.Minute
+)
+
+var (
+	ErrStopped = errors.New("cache stopped")
+)
+
 type Store interface {
 	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
 }
@@ -25,70 +34,70 @@ type cacheEntry struct {
 	lastUsed time.Time
 	inUse    atomic.Int64
 	ready    chan struct{}
-	evicted  chan struct{}
 }
 
 type Release func()
 
-// TODO(gfyrag): Add a routine to evict all entries
-// and update metrics:
-// c.metricsRegistry.CacheNumberEntries.Add(ctx, -1) for all evicted entries
 type Cache struct {
 	cache           sync.Map
 	store           Store
 	metricsRegistry metrics.PerLedgerMetricsRegistry
-	running         chan struct{}
-	counter         atomic.Int64
+	mu              sync.RWMutex
+	stop            chan chan struct{}
+	stopped         chan struct{}
+	evictionPeriod  time.Duration
+	retainDelay     time.Duration
 }
 
 func (c *Cache) loadEntry(ctx context.Context, address string, inUse bool) (*cacheEntry, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ce := &cacheEntry{
+		ready: make(chan struct{}),
+	}
+	entry, loaded := c.cache.LoadOrStore(address, ce)
+	if !loaded {
+		account, err := c.store.GetAccountWithVolumes(ctx, address)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			panic(err)
+		}
+		if errors.Is(err, storage.ErrNotFound) {
+			account = core.NewAccountWithVolumes(address)
+		}
+		ce.account = account
+
+		close(ce.ready)
+		// cache miss
+		c.metricsRegistry.CacheMisses().Add(ctx, 1)
+		c.metricsRegistry.CacheNumberEntries().Add(ctx, 1)
+	}
+
+	ce = entry.(*cacheEntry)
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-c.running:
-		c.counter.Add(1)
-		defer c.counter.Add(-1)
-
-		ce := &cacheEntry{
-			ready:   make(chan struct{}),
-			evicted: make(chan struct{}),
-		}
-		entry, loaded := c.cache.LoadOrStore(address, ce)
-		if !loaded {
-			// cache miss
-			c.metricsRegistry.CacheMisses().Add(ctx, 1)
-
-			account, err := c.store.GetAccountWithVolumes(ctx, address)
-			if err != nil && !errors.Is(err, storage.ErrNotFound) {
-				panic(err)
-			}
-			if errors.Is(err, storage.ErrNotFound) {
-				account = core.NewAccountWithVolumes(address)
-			}
-			ce.account = account
-
-			close(ce.ready)
-			c.metricsRegistry.CacheNumberEntries().Add(ctx, 1)
-		}
-
-		ce = entry.(*cacheEntry)
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ce.ready:
-		case <-ce.evicted:
-			return c.loadEntry(ctx, address, inUse)
-		}
-
-		ce.lastUsed = time.Now()
-		if inUse {
-			ce.inUse.Add(1)
-		}
-
-		return ce, nil
+	case <-c.stopped:
+		return nil, ErrStopped
+	case <-ce.ready:
 	}
+
+	ce.lastUsed = time.Now()
+	if inUse {
+		ce.inUse.Add(1)
+	}
+
+	return ce, nil
+}
+
+func (c *Cache) Count() int {
+	counter := 0
+	c.cache.Range(func(key, value any) bool {
+		counter++
+		return true
+	})
+	return counter
 }
 
 func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, error) {
@@ -98,7 +107,6 @@ func (c *Cache) LockAccounts(ctx context.Context, address ...string) (Release, e
 		if err != nil {
 			return nil, err
 		}
-		entry.inUse.Add(1)
 		entries = append(entries, entry)
 	}
 
@@ -171,15 +179,93 @@ func (c *Cache) UpdateAccountMetadata(address string, m metadata.Metadata) error
 	return nil
 }
 
-func New(store Store, metricsRegistry metrics.PerLedgerMetricsRegistry) *Cache {
-	if metricsRegistry == nil {
-		metricsRegistry = metrics.NewNoOpMetricsRegistry()
+func (c *Cache) Stop(ctx context.Context) error {
+	ch := make(chan struct{})
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.stop <- ch:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+			return nil
+		}
 	}
-	running := make(chan struct{})
-	close(running)
-	return &Cache{
-		store:           store,
-		metricsRegistry: metricsRegistry,
-		running:         running,
+}
+
+func (c *Cache) Run(ctx context.Context) error {
+	for {
+		dirty := make(map[string]*cacheEntry)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case stop := <-c.stop:
+			close(c.stopped)
+			close(stop)
+			return nil
+		case <-time.After(c.evictionPeriod):
+			c.cache.Range(func(key, value any) bool {
+				entry := value.(*cacheEntry)
+				if entry.inUse.Load() == 0 && time.Since(entry.lastUsed) > c.retainDelay {
+					dirty[key.(string)] = entry
+				}
+				return true
+			})
+			if len(dirty) > 0 {
+				func() {
+					c.mu.Lock()
+					defer c.mu.Unlock()
+
+					for addr, entry := range dirty {
+						if entry.inUse.Load() > 0 {
+							continue
+						}
+						c.cache.Delete(addr)
+						c.metricsRegistry.CacheNumberEntries().Add(ctx, -1)
+					}
+				}()
+			}
+		}
 	}
+}
+
+type Option func(c *Cache)
+
+func WithRetainDelay(t time.Duration) Option {
+	return func(c *Cache) {
+		c.retainDelay = t
+	}
+}
+
+func WithEvictionPeriod(t time.Duration) Option {
+	return func(c *Cache) {
+		c.evictionPeriod = t
+	}
+}
+
+func WithMetricsRegistry(registry metrics.PerLedgerMetricsRegistry) Option {
+	return func(c *Cache) {
+		c.metricsRegistry = registry
+	}
+}
+
+var defaultOptions = []Option{
+	WithRetainDelay(DefaultRetainDelay),
+	WithEvictionPeriod(DefaultEvictionPeriod),
+	WithMetricsRegistry(metrics.NewNoOpMetricsRegistry()),
+}
+
+func New(store Store, options ...Option) *Cache {
+	c := &Cache{
+		store:   store,
+		stop:    make(chan chan struct{}),
+		stopped: make(chan struct{}),
+	}
+	for _, opt := range append(defaultOptions, options...) {
+		opt(c)
+	}
+
+	return c
 }

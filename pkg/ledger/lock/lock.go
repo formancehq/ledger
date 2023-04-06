@@ -127,10 +127,19 @@ func (d *Locker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	return <-q.ready, nil
 }
 
-func (d *Locker) Stop() {
+func (d *Locker) Stop(ctx context.Context) error {
 	ch := make(chan struct{})
-	d.stopChan <- ch
-	<-ch
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case d.stopChan <- ch:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+			return nil
+		}
+	}
 }
 
 func New(ledger string) *Locker {

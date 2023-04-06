@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
 	app "github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/go-chi/chi/v5"
@@ -9,8 +10,13 @@ import (
 	"go.uber.org/fx"
 )
 
+const (
+	cacheEvictionPeriodFlag  = "cache-eviction-period"
+	cacheEvictionRetainDelay = "cache-eviction-retain-delay"
+)
+
 func NewServe() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
@@ -21,4 +27,7 @@ func NewServe() *cobra.Command {
 			)...).Run(cmd.Context())
 		},
 	}
+	cmd.Flags().Duration(cacheEvictionPeriodFlag, cache.DefaultEvictionPeriod, "Cache eviction period")
+	cmd.Flags().Duration(cacheEvictionRetainDelay, cache.DefaultRetainDelay, "Cache retain delay")
+	return cmd
 }
