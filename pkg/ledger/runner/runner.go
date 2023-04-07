@@ -41,13 +41,13 @@ type Runner struct {
 	ledgerName string
 }
 
-type logComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log
+type LogComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log
 
 func (r *Runner) Execute(
 	ctx context.Context,
 	script core.RunScript,
 	dryRun bool,
-	logComputer logComputer,
+	logComputer LogComputer,
 ) (*core.ExpandedTransaction, *core.LogHolder, error) {
 
 	if script.Plain == "" {
@@ -83,7 +83,7 @@ func (r *Runner) Execute(
 	return transaction, logHolder, nil
 }
 
-func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer logComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
+func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer LogComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
 	program, err := r.compiler.Compile(ctx, script.Plain)
 	if err != nil {
 		return nil, nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))

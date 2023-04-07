@@ -99,10 +99,7 @@ func (t *ExpandedTransaction) AppendPosting(p Posting) {
 }
 
 func (t *ExpandedTransaction) IsReverted() bool {
-	if _, ok := t.Metadata[RevertedMetadataSpecKey()]; ok {
-		return true
-	}
-	return false
+	return IsReverted(t.Metadata)
 }
 
 func ExpandTransaction(tx Transaction, preCommitVolumes AccountsAssetsVolumes) ExpandedTransaction {
