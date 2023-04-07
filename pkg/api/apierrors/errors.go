@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/revert"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/machine/vm"
@@ -64,7 +65,9 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 	case
 		ledger.IsValidationError(err),
 		state.IsPastTransactionError(err),
-		runner.IsNoPostingsError(err):
+		runner.IsNoPostingsError(err),
+		errors.Is(err, revert.ErrAlreadyReverted),
+		errors.Is(err, revert.ErrRevertOccurring):
 		return http.StatusBadRequest, ErrValidation, ""
 	case storage.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""

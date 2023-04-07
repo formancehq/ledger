@@ -41,3 +41,10 @@ func RevertedMetadata(by string) metadata.Metadata {
 func RevertMetadata(tx string) metadata.Metadata {
 	return ComputeMetadata(RevertMetadataSpecKey(), tx)
 }
+
+func IsReverted(m metadata.Metadata) bool {
+	if _, ok := m[RevertedMetadataSpecKey()]; ok {
+		return true
+	}
+	return false
+}
