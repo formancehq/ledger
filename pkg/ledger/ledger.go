@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/query"
+	"github.com/formancehq/ledger/pkg/ledger/revert"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -17,6 +18,7 @@ import (
 )
 
 type Ledger struct {
+	*revert.Reverter
 	runner          *runner.Runner
 	store           storage.LedgerStore
 	locker          *lock.Locker
@@ -34,6 +36,7 @@ func New(
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
 	return &Ledger{
+		Reverter:        revert.NewReverter(store, runner, queryWorker),
 		store:           store,
 		dbCache:         dbCache,
 		runner:          runner,
@@ -107,43 +110,6 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 func (l *Ledger) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	return tx, errors.Wrap(err, "getting transaction")
-}
-
-func (l *Ledger) RevertTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
-	revertedTx, err := l.store.GetTransaction(ctx, id)
-	if err != nil && !storage.IsNotFoundError(err) {
-		return nil, errors.Wrap(err, "get transaction before revert")
-	}
-	if storage.IsNotFoundError(err) {
-		return nil, errorsutil.NewError(err, errors.Errorf("transaction %s not found", id))
-	}
-	if revertedTx.IsReverted() {
-		return nil, errorsutil.NewError(ErrValidation,
-			errors.Errorf("transaction %s already reverted", id))
-	}
-
-	rt := revertedTx.Reverse()
-	rt.Metadata = core.MarkReverts(metadata.Metadata{}, revertedTx.ID)
-
-	scriptData := core.TxsToScriptsData(core.TransactionData{
-		Postings:  rt.Postings,
-		Reference: rt.Reference,
-		Metadata:  rt.Metadata,
-	})
-	tx, log, err := l.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
-		return core.NewRevertedTransactionLog(expandedTx.Timestamp, revertedTx.ID, expandedTx.Transaction)
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "revert transaction")
-	}
-
-	if err == nil {
-		if err := l.writeLog(ctx, log); err != nil {
-			return nil, errors.Wrap(err, "writing log")
-		}
-	}
-
-	return tx, nil
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
