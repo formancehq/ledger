@@ -14,8 +14,6 @@ import (
 func TestVolumes(t *testing.T) {
 	d := sqlstoragetesting.StorageDriver(t)
 
-	require.NoError(t, d.Initialize(context.Background()))
-
 	defer func(d *sqlstorage.Driver, ctx context.Context) {
 		require.NoError(t, d.Close(ctx))
 	}(d, context.Background())

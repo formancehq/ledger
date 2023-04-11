@@ -31,7 +31,7 @@ type Runner interface {
 }
 
 type LogIngester interface {
-	QueueLog(log *core.LogHolder)
+	QueueLog(ctx context.Context, log *core.LogHolder) error
 }
 
 type Reverter struct {
@@ -81,7 +81,10 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id string) (*core.Expa
 		return nil, errors.Wrap(err, "revert transaction")
 	}
 
-	r.logIngester.QueueLog(logHolder)
+	err = r.logIngester.QueueLog(ctx, logHolder)
+	if err != nil {
+		return nil, err
+	}
 	// Wait for CQRS ingestion
 	// TODO(polo/gfyrag): add possiblity to disable this via request param
 	select {

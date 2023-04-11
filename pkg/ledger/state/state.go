@@ -76,18 +76,17 @@ func (s *State) Reserve(ctx context.Context, r ReserveRequest) (*Reserve, *core.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if r.Timestamp.IsZero() {
+		r.Timestamp = core.Now()
+	}
+
 	if err := s.checkConstraints(ctx, r); err != nil {
 		return nil, nil, err
 	}
 
-	ts := r.Timestamp
-	if ts.IsZero() {
-		ts = core.Now()
-	}
-
 	ret := &inFlight{
 		reference: r.Reference,
-		timestamp: ts,
+		timestamp: r.Timestamp,
 	}
 	s.inFlights[ret] = struct{}{}
 	if r.Reference != "" {
@@ -106,7 +105,7 @@ func (s *State) Reserve(ctx context.Context, r ReserveRequest) (*Reserve, *core.
 	return &Reserve{
 		inFlight: ret,
 		state:    s,
-	}, &ts, nil
+	}, &r.Timestamp, nil
 }
 
 func (s *State) GetMoreRecentTransactionDate() core.Time {
@@ -115,9 +114,7 @@ func (s *State) GetMoreRecentTransactionDate() core.Time {
 
 func New(store Store, allowPastTimestamps bool, lastTransactionDate core.Time) *State {
 	return &State{
-		mu:                   sync.Mutex{},
 		store:                store,
-		moreRecentInFlight:   nil,
 		inFlights:            map[*inFlight]struct{}{},
 		inFlightsByReference: map[string]*inFlight{},
 		lastTransactionDate:  lastTransactionDate,

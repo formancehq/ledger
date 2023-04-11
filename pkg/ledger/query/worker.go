@@ -35,15 +35,15 @@ type logsData struct {
 
 type Worker struct {
 	WorkerConfig
-	ctx context.Context
 
-	pending      []*core.LogHolder
-	writeChannel chan *core.LogHolder
-	jobs         chan []*core.LogHolder
-	releasedJob  chan struct{}
-	errorChan    chan error
-	stopChan     chan chan struct{}
-	readyChan    chan struct{}
+	pending             []*core.LogHolder
+	writeChannel        chan *core.LogHolder
+	jobs                chan []*core.LogHolder
+	releasedJob         chan struct{}
+	stopChan            chan chan struct{}
+	stoppedChan         chan struct{}
+	writeLoopTerminated chan struct{}
+	readyChan           chan struct{}
 
 	store           Store
 	monitor         monitor.Monitor
@@ -59,28 +59,71 @@ func (w *Worker) Ready() chan struct{} {
 func (w *Worker) Run(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Start CQRS worker")
 
-	w.ctx = ctx
-
 	close(w.readyChan)
 
+	go w.writeLoop(ctx)
+
+	stop := func(stopChan chan struct{}) {
+		close(w.stoppedChan)
+		select {
+		case <-ctx.Done():
+		case <-w.writeLoopTerminated:
+		}
+		close(stopChan)
+	}
+
+l:
 	for {
 		select {
-		case <-w.ctx.Done():
-			// Stop the worker if the context is done
-			return w.ctx.Err()
-		default:
-			if err := w.run(); err != nil {
-				// TODO(polo): add metrics
-				if err == context.Canceled {
-					// Stop the worker if the context is canceled
-					return err
-				}
+		case <-ctx.Done():
+			return ctx.Err()
 
-				// Restart the worker if there is an error
-			} else {
-				// No error was returned, it means the worker was stopped
-				// using the stopChan, let's stop this loop too
+		case stopChan := <-w.stopChan:
+			stop(stopChan)
+			return nil
+
+		// At this level, the job is writting some models, just accumulate models in a buffer
+		case wl := <-w.writeChannel:
+			w.pending = append(w.pending, wl)
+			w.metricsRegistry.QueryPendingMessages().Add(ctx, int64(len(w.pending)))
+
+		case <-w.releasedJob:
+			// There, write model job is not running, and we have pending models
+			// So we can try to send pending to the job channel
+			if len(w.pending) > 0 {
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+
+					case stopChan := <-w.stopChan:
+						stop(stopChan)
+						return nil
+
+					case w.jobs <- w.pending:
+						w.pending = make([]*core.LogHolder, 0)
+						continue l
+					}
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case stopChan := <-w.stopChan:
+				stop(stopChan)
 				return nil
+			// There, the job is waiting, and we don't have any pending models to write
+			// so, wait for new models to write and send them directly to the job channel
+			// We can not return to the main loop as w.releasedJob will be continuously notified by the job routine
+			case mh := <-w.writeChannel:
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case stopChan := <-w.stopChan:
+					stop(stopChan)
+					return nil
+				case w.jobs <- []*core.LogHolder{mh}:
+				}
 			}
 		}
 	}
@@ -97,124 +140,28 @@ func (w *Worker) writeLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-
+		case <-w.stoppedChan:
+			close(w.writeLoopTerminated)
+			return
 		case w.releasedJob <- struct{}{}:
-
 		case modelsHolder := <-w.jobs:
 			logs := make([]core.Log, len(modelsHolder))
 			for i, holder := range modelsHolder {
 				logs[i] = *holder.Log
 			}
 
-			if err := processLogs(w.ctx, w.ledgerName, w.store, w.monitor, logs...); err != nil {
-				if err == context.Canceled {
-					logging.FromContext(w.ctx).Debugf("CQRS worker canceled")
-				} else {
-					logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
-				}
-				closeLogs(modelsHolder)
-
-				// Return the error to restart the worker
-				w.errorChan <- err
-				return
+			if err := processLogs(ctx, w.ledgerName, w.store, w.monitor, logs...); err != nil {
+				panic(err)
 			}
 
-			w.metricsRegistry.QueryProcessedLogs().Add(w.ctx, int64(len(logs)))
+			w.metricsRegistry.QueryProcessedLogs().Add(ctx, int64(len(logs)))
 
-			if err := w.store.UpdateNextLogID(w.ctx, logs[len(logs)-1].ID+1); err != nil {
-				logging.FromContext(w.ctx).Errorf("CQRS worker error: %s", err)
-				closeLogs(modelsHolder)
-
-				// TODO(polo/gfyrag): add idempotency tests
-				// Return the error to restart the worker
-				w.errorChan <- err
-				return
+			if err := w.store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
+				panic(err)
 			}
 
-			logging.FromContext(ctx).Infof("Ingested logs until: %d", logs[len(logs)-1].ID)
+			logging.FromContext(ctx).Debugf("Ingested logs until: %d", logs[len(logs)-1].ID)
 			closeLogs(modelsHolder)
-		}
-	}
-}
-
-func (w *Worker) run() error {
-	ctx, cancel := context.WithCancel(w.ctx)
-	defer cancel()
-
-	go w.writeLoop(ctx)
-
-l:
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		case stopChan := <-w.stopChan:
-			logging.FromContext(ctx).Debugf("CQRS worker stopped")
-			close(stopChan)
-			return nil
-
-		case err := <-w.errorChan:
-			// In this case, we failed to write the models, so we need to
-			// restart the worker
-			logging.FromContext(ctx).Debugf("write loop error: %s", err)
-			return err
-
-		// At this level, the job is writting some models, just accumulate models in a buffer
-		case wl := <-w.writeChannel:
-			w.pending = append(w.pending, wl)
-			w.metricsRegistry.QueryPendingMessages().Add(w.ctx, int64(len(w.pending)))
-
-		case <-w.releasedJob:
-			// There, write model job is not running, and we have pending models
-			// So we can try to send pending to the job channel
-			if len(w.pending) > 0 {
-				for {
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-
-					case stopChan := <-w.stopChan:
-						logging.FromContext(ctx).Debugf("CQRS worker stopped")
-						close(stopChan)
-						return nil
-
-					case err := <-w.errorChan:
-						logging.FromContext(ctx).Debugf("write loop error: %s", err)
-						return err
-
-					case w.jobs <- w.pending:
-						w.pending = make([]*core.LogHolder, 0)
-						continue l
-					}
-				}
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-
-			case stopChan := <-w.stopChan:
-				logging.FromContext(ctx).Debugf("CQRS worker stopped")
-				close(stopChan)
-				return nil
-
-			case err := <-w.errorChan:
-				logging.FromContext(ctx).Debugf("write loop error: %s", err)
-				return err
-
-			// There, the job is waiting, and we don't have any pending models to write
-			// so, wait for new models to write and send them directly to the job channel
-			// We can not return to the main loop as w.releasedJob will be continuously notified by the job routine
-			case mh := <-w.writeChannel:
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case stopChan := <-w.stopChan:
-					close(stopChan)
-					return nil
-				case w.jobs <- []*core.LogHolder{mh}:
-				}
-			}
 		}
 	}
 }
@@ -225,12 +172,11 @@ func (w *Worker) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case w.stopChan <- ch:
-	}
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-ch:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+		}
 	}
 
 	return nil
@@ -424,11 +370,13 @@ func buildData(
 	return logsData, nil
 }
 
-func (w *Worker) QueueLog(log *core.LogHolder) {
+func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder) error {
 	select {
-	case <-w.ctx.Done():
+	case <-w.stoppedChan:
+		return errors.New("worker stopped")
 	case w.writeChannel <- log:
-		w.metricsRegistry.QueryInboundLogs().Add(w.ctx, 1)
+		w.metricsRegistry.QueryInboundLogs().Add(ctx, 1)
+		return nil
 	}
 }
 
@@ -440,17 +388,18 @@ func NewWorker(
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Worker {
 	return &Worker{
-		pending:         make([]*core.LogHolder, 0),
-		jobs:            make(chan []*core.LogHolder),
-		releasedJob:     make(chan struct{}, 1),
-		writeChannel:    make(chan *core.LogHolder, config.ChanSize),
-		errorChan:       make(chan error, 1),
-		stopChan:        make(chan chan struct{}),
-		readyChan:       make(chan struct{}),
-		WorkerConfig:    config,
-		store:           store,
-		monitor:         monitor,
-		ledgerName:      ledgerName,
-		metricsRegistry: metricsRegistry,
+		pending:             make([]*core.LogHolder, 0),
+		jobs:                make(chan []*core.LogHolder),
+		releasedJob:         make(chan struct{}, 1),
+		writeChannel:        make(chan *core.LogHolder, config.ChanSize),
+		stopChan:            make(chan chan struct{}),
+		readyChan:           make(chan struct{}),
+		stoppedChan:         make(chan struct{}),
+		writeLoopTerminated: make(chan struct{}),
+		WorkerConfig:        config,
+		store:               store,
+		monitor:             monitor,
+		ledgerName:          ledgerName,
+		metricsRegistry:     metricsRegistry,
 	}
 }
