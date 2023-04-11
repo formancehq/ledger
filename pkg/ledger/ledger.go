@@ -72,7 +72,9 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 }
 
 func (l *Ledger) writeLog(ctx context.Context, logHolder *core.LogHolder) error {
-	l.queryWorker.QueueLog(logHolder)
+	if err := l.queryWorker.QueueLog(ctx, logHolder); err != nil {
+		return err
+	}
 	// Wait for CQRS ingestion
 	// TODO(polo/gfyrag): add possiblity to disable this via request param
 	select {

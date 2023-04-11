@@ -30,8 +30,6 @@ func TestMain(t *testing.M) {
 func TestNewDriver(t *testing.T) {
 	d := sqlstoragetesting.StorageDriver(t)
 
-	assert.NoError(t, d.Initialize(context.Background()))
-
 	defer func(d *sqlstorage.Driver, ctx context.Context) {
 		assert.NoError(t, d.Close(ctx))
 	}(d, context.Background())
@@ -53,8 +51,6 @@ func TestNewDriver(t *testing.T) {
 func TestConfiguration(t *testing.T) {
 	d := sqlstoragetesting.StorageDriver(t)
 
-	require.NoError(t, d.Initialize(context.Background()))
-
 	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))
 	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
 	require.NoError(t, err)
@@ -63,8 +59,6 @@ func TestConfiguration(t *testing.T) {
 
 func TestConfigurationError(t *testing.T) {
 	d := sqlstoragetesting.StorageDriver(t)
-
-	require.NoError(t, d.Initialize(context.Background()))
 
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
