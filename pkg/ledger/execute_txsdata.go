@@ -114,6 +114,9 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...co
 				if account == core.WORLD {
 					continue
 				}
+				if volume.Balance().Gte(txVolumeAggr.PreCommitVolumes[account][asset].Balance()) {
+					continue
+				}
 
 				for _, contract := range contracts {
 					if contract.Match(account) {

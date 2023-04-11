@@ -42,6 +42,42 @@ func TestCompilationError(t *testing.T) {
 	})
 }
 
+func TestMappingIgnoreDestinations(t *testing.T) {
+	runOnLedger(func(l *ledger.Ledger) {
+		script := core.ScriptData{
+			Script: core.Script{
+				Plain: `
+					send [USD/2 1100] (
+						source = @A allowing overdraft up to [USD/2 1100]
+						destination = @B
+					)`,
+			},
+		}
+		_, err := l.ExecuteScript(context.Background(), false, script)
+		require.NoError(t, err)
+
+		_, err = l.ExecuteTxsData(context.Background(), false, core.TransactionData{
+			Postings: []core.Posting{{
+				Source:      "B",
+				Destination: "A",
+				Amount:      core.NewMonetaryInt(100),
+				Asset:       "USD/2",
+			}},
+		})
+		require.NoError(t, err)
+
+		_, err = l.ExecuteTxsData(context.Background(), false, core.TransactionData{
+			Postings: []core.Posting{{
+				Source:      "B",
+				Destination: "A",
+				Amount:      core.NewMonetaryInt(0),
+				Asset:       "USD/2",
+			}},
+		})
+		require.NoError(t, err)
+	})
+}
+
 func TestSend(t *testing.T) {
 	runOnLedger(func(l *ledger.Ledger) {
 		t.Run("nominal", func(t *testing.T) {
