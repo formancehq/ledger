@@ -40,6 +40,6 @@ func Module(configuration Configuration) fx.Option {
 		}),
 		fx.Provide(fx.Annotate(monitor.NewNoOpMonitor, fx.As(new(monitor.Monitor)))),
 		fx.Provide(fx.Annotate(metrics.NewNoOpMetricsRegistry, fx.As(new(metrics.GlobalMetricsRegistry)))),
-		query.QueryInitModule(),
+		query.InitModule(),
 	)
 }

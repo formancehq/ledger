@@ -106,6 +106,7 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 	newStore.isInitialized = s.isInitialized
 
 	defer func() {
+		// TODO(gfyrag): add recover() to rollback txs
 		if err != nil {
 			_ = tx.Rollback()
 		}

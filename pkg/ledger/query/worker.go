@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -50,8 +49,7 @@ type Worker struct {
 	monitor         monitor.Monitor
 	metricsRegistry metrics.PerLedgerMetricsRegistry
 
-	lastProcessedLogID *uint64
-	ledgerName         string
+	ledgerName string
 }
 
 func (w *Worker) Ready() chan struct{} {
@@ -62,13 +60,6 @@ func (w *Worker) Run(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Start CQRS worker")
 
 	w.ctx = ctx
-	lastProcessedLogID, err := w.store.GetNextLogID(w.ctx)
-	if err != nil && !storage.IsNotFoundError(err) {
-		return errorsutil.NewError(ErrStorage,
-			errors.Wrap(err, "reading last log"))
-	}
-
-	w.lastProcessedLogID = &lastProcessedLogID
 
 	close(w.readyChan)
 
@@ -140,6 +131,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 				return
 			}
 
+			logging.FromContext(ctx).Infof("Ingested logs until: %d", logs[len(logs)-1].ID)
 			closeLogs(modelsHolder)
 		}
 	}
@@ -170,11 +162,6 @@ l:
 
 		// At this level, the job is writting some models, just accumulate models in a buffer
 		case wl := <-w.writeChannel:
-			if w.lastProcessedLogID != nil && wl.Log.ID <= *w.lastProcessedLogID {
-				close(wl.Ingested)
-				continue
-			}
-
 			w.pending = append(w.pending, wl)
 			w.metricsRegistry.QueryPendingMessages().Add(w.ctx, int64(len(w.pending)))
 
@@ -247,48 +234,6 @@ func (w *Worker) Stop(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func initLedger(
-	ctx context.Context,
-	ledgerName string,
-	store Store,
-	monitor monitor.Monitor,
-	metricsRegistry metrics.PerLedgerMetricsRegistry,
-) (uint64, error) {
-	if !store.IsInitialized() {
-		return 0, nil
-	}
-
-	lastReadLogID, err := store.GetNextLogID(ctx)
-	if err != nil && !storage.IsNotFoundError(err) {
-		return 0, errorsutil.NewError(ErrStorage,
-			errors.Wrap(err, "reading last log"))
-	}
-
-	logs, err := store.ReadLogsStartingFromID(ctx, lastReadLogID)
-	if err != nil {
-		return 0, errorsutil.NewError(ErrStorage,
-			errors.Wrap(err, "reading logs since last ID"))
-	}
-
-	if len(logs) == 0 {
-		return 0, nil
-	}
-
-	if err := processLogs(ctx, ledgerName, store, monitor, logs...); err != nil {
-		return 0, errors.Wrap(err, "processing logs")
-	}
-
-	metricsRegistry.QueryProcessedLogs().Add(ctx, int64(len(logs)))
-
-	if err := store.UpdateNextLogID(ctx, logs[len(logs)-1].ID+1); err != nil {
-		return 0, errorsutil.NewError(ErrStorage,
-			errors.Wrap(err, "updating last read log"))
-	}
-	lastProcessedLogID := logs[len(logs)-1].ID
-
-	return lastProcessedLogID, nil
 }
 
 func processLogs(
