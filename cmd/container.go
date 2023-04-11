@@ -42,6 +42,9 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 				EvictionRetainDelay: v.GetDuration(cacheEvictionRetainDelay),
 				EvictionPeriod:      v.GetDuration(cacheEvictionPeriodFlag),
 			},
+			Query: ledger.QueryConfiguration{
+				LimitReadLogs: v.GetInt(queryLimitReadLogsFlag),
+			},
 		}),
 	)
 

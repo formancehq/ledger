@@ -15,6 +15,7 @@ import (
 
 type mockStore struct {
 	nextLogID    uint64
+	logs         []core.Log
 	accounts     map[string]*core.AccountWithVolumes
 	transactions []*core.ExpandedTransaction
 }
@@ -93,7 +94,15 @@ func (m *mockStore) GetNextLogID(ctx context.Context) (uint64, error) {
 	return m.nextLogID, nil
 }
 
-func (m *mockStore) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error) {
+func (m *mockStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error) {
+	if idMax > uint64(len(m.logs)) {
+		idMax = uint64(len(m.logs))
+	}
+
+	if idMin < uint64(len(m.logs)) {
+		return m.logs[idMin:idMax], nil
+	}
+
 	return []core.Log{}, nil
 }
 

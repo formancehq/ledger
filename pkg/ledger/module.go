@@ -15,9 +15,14 @@ type CacheConfiguration struct {
 	EvictionPeriod      time.Duration
 }
 
+type QueryConfiguration struct {
+	LimitReadLogs int
+}
+
 type Configuration struct {
 	AllowPastTimestamp bool
 	Cache              CacheConfiguration
+	Query              QueryConfiguration
 }
 
 func Module(configuration Configuration) fx.Option {
@@ -41,5 +46,8 @@ func Module(configuration Configuration) fx.Option {
 		fx.Provide(fx.Annotate(monitor.NewNoOpMonitor, fx.As(new(monitor.Monitor)))),
 		fx.Provide(fx.Annotate(metrics.NewNoOpMetricsRegistry, fx.As(new(metrics.GlobalMetricsRegistry)))),
 		query.InitModule(),
+		fx.Decorate(func() *query.InitLedgerConfig {
+			return query.NewInitLedgerConfig(configuration.Query.LimitReadLogs)
+		}),
 	)
 }
