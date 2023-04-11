@@ -31,7 +31,7 @@ type LedgerStore interface {
 
 	AppendLog(context.Context, *core.Log) error
 	GetNextLogID(ctx context.Context) (uint64, error)
-	ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error)
+	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error)
 	UpdateNextLogID(ctx context.Context, id uint64) error
 	GetLogs(context.Context, LogsQuery) (*api.Cursor[core.Log], error)
 	GetLastLog(context.Context) (*core.Log, error)
