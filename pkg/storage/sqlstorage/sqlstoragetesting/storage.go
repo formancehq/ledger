@@ -1,6 +1,7 @@
 package sqlstoragetesting
 
 import (
+	"context"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -21,5 +22,9 @@ func StorageDriver(t pgtesting.TestingT) *sqlstorage.Driver {
 		db.Close()
 	})
 
-	return sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db), ledgerstore.DefaultStoreConfig)
+	d := sqlstorage.NewDriver("postgres", schema.NewPostgresDB(db), ledgerstore.DefaultStoreConfig)
+
+	require.NoError(t, d.Initialize(context.Background()))
+
+	return d
 }

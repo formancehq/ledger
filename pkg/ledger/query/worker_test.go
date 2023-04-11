@@ -193,7 +193,7 @@ func TestWorker(t *testing.T) {
 	for i, log := range logs {
 		log.ID = uint64(i)
 		logHolder := core.NewLogHolder(&log)
-		worker.QueueLog(logHolder)
+		require.NoError(t, worker.QueueLog(context.Background(), logHolder))
 		<-logHolder.Ingested
 	}
 	require.Eventually(t, func() bool {
