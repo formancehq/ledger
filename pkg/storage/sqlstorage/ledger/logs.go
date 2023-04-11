@@ -236,24 +236,25 @@ func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
 	return s.getNextLogID(ctx, &s.schema)
 }
 
-func (s *Store) ReadLogsStartingFromID(ctx context.Context, id uint64) ([]core.Log, error) {
+func (s *Store) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "read_logs_starting_from_id")
 	defer recordMetrics()
 
-	return s.readLogsStartingFromID(ctx, &s.schema, id)
+	return s.readLogsRange(ctx, &s.schema, idMin, idMax)
 }
 
-func (s *Store) readLogsStartingFromID(ctx context.Context, exec interface {
+func (s *Store) readLogsRange(ctx context.Context, exec interface {
 	NewSelect(tableName string) *bun.SelectQuery
-}, id uint64) ([]core.Log, error) {
+}, idMin, idMax uint64) ([]core.Log, error) {
 
 	rawLogs := make([]LogsV2, 0)
 	err := exec.
 		NewSelect(LogTableName).
-		Where("id >= ?", id).
+		Where("id >= ?", idMin).
+		Where("id < ?", idMax).
 		Model(&rawLogs).
 		Scan(ctx)
 	if err != nil {

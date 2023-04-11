@@ -13,6 +13,7 @@ import (
 const (
 	cacheEvictionPeriodFlag  = "cache-eviction-period"
 	cacheEvictionRetainDelay = "cache-eviction-retain-delay"
+	queryLimitReadLogsFlag   = "query-limit-read-logs"
 )
 
 func NewServe() *cobra.Command {
@@ -29,5 +30,6 @@ func NewServe() *cobra.Command {
 	}
 	cmd.Flags().Duration(cacheEvictionPeriodFlag, cache.DefaultEvictionPeriod, "Cache eviction period")
 	cmd.Flags().Duration(cacheEvictionRetainDelay, cache.DefaultRetainDelay, "Cache retain delay")
+	cmd.Flags().Int(queryLimitReadLogsFlag, 10000, "Query limit read logs")
 	return cmd
 }
