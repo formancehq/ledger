@@ -6,7 +6,6 @@ import (
 
 	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
-	_ "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/9-add-pre-post-volumes"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
