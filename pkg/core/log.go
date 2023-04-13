@@ -1,11 +1,14 @@
 package core
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"reflect"
-	"strconv"
-	"strings"
+	"sort"
+	"sync"
 
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
@@ -30,19 +33,67 @@ func (l LogType) String() string {
 	return ""
 }
 
-// TODO(polo): create Log struct and extended Log struct
-type Log struct {
-	ID        uint64      `json:"id"`
-	Type      LogType     `json:"type"`
-	Data      interface{} `json:"data"`
-	Hash      string      `json:"hash"`
-	Date      Time        `json:"date"`
-	Reference string      `json:"reference"`
+type hashable interface {
+	hashString(buf *buffer)
 }
 
-func (l Log) ComputeHash(previous *Log) Log {
-	l.Hash = Hash(previous, l)
-	return l
+// TODO(polo): create Log struct and extended Log struct
+type Log struct {
+	ID        uint64   `json:"id"`
+	Type      LogType  `json:"type"`
+	Data      hashable `json:"data"`
+	Hash      []byte   `json:"hash"`
+	Date      Time     `json:"date"`
+	Reference string   `json:"reference"`
+}
+
+func (l *Log) UnmarshalJSON(data []byte) error {
+	type auxLog Log
+	type log struct {
+		auxLog
+		Data json.RawMessage `json:"data"`
+	}
+	rawLog := log{}
+	if err := json.Unmarshal(data, &rawLog); err != nil {
+		return err
+	}
+
+	var err error
+	rawLog.auxLog.Data, err = HydrateLog(rawLog.Type, rawLog.Data)
+	if err != nil {
+		return err
+	}
+	*l = Log(rawLog.auxLog)
+	return err
+}
+
+func (l *Log) ComputeHash(previous *Log) {
+
+	buf := bufferPool.Get().(*buffer)
+	defer func() {
+		buf.reset()
+		bufferPool.Put(buf)
+	}()
+	hashLog := func(l *Log) {
+		buf.writeUInt64(l.ID)
+		buf.writeUInt16(uint16(l.Type))
+		buf.writeUInt64(uint64(l.Date.UnixNano()))
+		buf.writeString(l.Reference)
+		l.Data.hashString(buf)
+	}
+
+	if previous != nil {
+		hashLog(previous)
+	}
+	hashLog(l)
+
+	h := sha256.New()
+	_, err := h.Write(buf.bytes())
+	if err != nil {
+		panic(err)
+	}
+
+	l.Hash = h.Sum(nil)
 }
 
 func (l Log) WithDate(date Time) Log {
@@ -55,9 +106,31 @@ func (l Log) WithReference(reference string) Log {
 	return l
 }
 
+type AccountMetadata map[string]metadata.Metadata
+
+func (m AccountMetadata) hashString(buf *buffer) {
+	if len(m) == 0 {
+		return
+	}
+	accounts := collectionutils.Keys(m)
+	if len(accounts) > 1 {
+		sort.Strings(accounts)
+	}
+
+	for _, account := range accounts {
+		buf.writeString(account)
+		hashStringMetadata(buf, m[account])
+	}
+}
+
 type NewTransactionLogPayload struct {
-	Transaction     Transaction                  `json:"transaction"`
-	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
+	Transaction     Transaction     `json:"transaction"`
+	AccountMetadata AccountMetadata `json:"accountMetadata"`
+}
+
+func (n NewTransactionLogPayload) hashString(buf *buffer) {
+	n.AccountMetadata.hashString(buf)
+	n.Transaction.hashString(buf)
 }
 
 func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metadata.Metadata, time Time) Log {
@@ -79,41 +152,14 @@ func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metad
 
 type SetMetadataLogPayload struct {
 	TargetType string            `json:"targetType"`
-	TargetID   interface{}       `json:"targetId"`
+	TargetID   string            `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
-	type X struct {
-		TargetType string            `json:"targetType"`
-		TargetID   json.RawMessage   `json:"targetId"`
-		Metadata   metadata.Metadata `json:"metadata"`
-	}
-	x := X{}
-	err := json.Unmarshal(data, &x)
-	if err != nil {
-		return err
-	}
-	var id interface{}
-	switch strings.ToUpper(x.TargetType) {
-	case strings.ToUpper(MetaTargetTypeAccount):
-		id = ""
-		err = json.Unmarshal(x.TargetID, &id)
-	case strings.ToUpper(MetaTargetTypeTransaction):
-		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
-	default:
-		panic("unknown type")
-	}
-	if err != nil {
-		return err
-	}
-
-	*s = SetMetadataLogPayload{
-		TargetType: x.TargetType,
-		TargetID:   id,
-		Metadata:   x.Metadata,
-	}
-	return nil
+func (s SetMetadataLogPayload) hashString(buf *buffer) {
+	buf.writeString(s.TargetType)
+	buf.writeString(s.TargetID)
+	hashStringMetadata(buf, s.Metadata)
 }
 
 func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
@@ -131,6 +177,11 @@ type RevertedTransactionLogPayload struct {
 	RevertTransaction     Transaction
 }
 
+func (r RevertedTransactionLogPayload) hashString(buf *buffer) {
+	buf.writeString(r.RevertedTransactionID)
+	r.RevertTransaction.hashString(buf)
+}
+
 func NewRevertedTransactionLog(at Time, revertedTxID string, tx Transaction) Log {
 	return Log{
 		Type: RevertedTransactionLogType,
@@ -142,7 +193,7 @@ func NewRevertedTransactionLog(at Time, revertedTxID string, tx Transaction) Log
 	}
 }
 
-func HydrateLog(_type LogType, data []byte) (interface{}, error) {
+func HydrateLog(_type LogType, data []byte) (hashable, error) {
 	var payload any
 	switch _type {
 	case NewTransactionLogType:
@@ -159,7 +210,7 @@ func HydrateLog(_type LogType, data []byte) (interface{}, error) {
 		return nil, err
 	}
 
-	return reflect.ValueOf(payload).Elem().Interface(), nil
+	return reflect.ValueOf(payload).Elem().Interface().(hashable), nil
 }
 
 type Accounts map[string]Account
@@ -175,3 +226,57 @@ func NewLogHolder(log *Log) *LogHolder {
 		Ingested: make(chan struct{}),
 	}
 }
+
+type buffer struct {
+	buf *bytes.Buffer
+}
+
+func (b *buffer) must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *buffer) mustWithValue(v any, err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (b *buffer) writeUInt64(v uint64) {
+	b.must(b.buf.WriteByte(byte(v >> 24)))
+	b.must(b.buf.WriteByte(byte((v >> 16) & 0xFF)))
+	b.must(b.buf.WriteByte(byte((v >> 8) & 0xFF)))
+	b.must(b.buf.WriteByte(byte(v & 0xFF)))
+}
+
+func (b *buffer) writeUInt16(v uint16) {
+	b.must(b.buf.WriteByte(byte((v >> 8) & 0xFF)))
+	b.must(b.buf.WriteByte(byte(v & 0xFF)))
+}
+
+func (b *buffer) writeString(v string) {
+	b.mustWithValue(b.buf.WriteString(v))
+}
+
+func (b *buffer) reset() {
+	b.buf.Reset()
+}
+
+func (b *buffer) bytes() []byte {
+	return b.buf.Bytes()
+}
+
+func (b *buffer) write(bytes []byte) {
+	b.mustWithValue(b.buf.Write(bytes))
+}
+
+var (
+	bufferPool = sync.Pool{
+		New: func() any {
+			return &buffer{
+				buf: bytes.NewBuffer(make([]byte, 4096)),
+			}
+		},
+	}
+)

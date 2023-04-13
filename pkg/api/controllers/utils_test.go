@@ -9,6 +9,7 @@ import (
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Encode(t *testing.T, v interface{}) []byte {
@@ -21,17 +22,14 @@ func Buffer(t *testing.T, v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(Encode(t, v))
 }
 
-func Decode(t *testing.T, reader io.Reader, v interface{}) bool {
+func Decode(t *testing.T, reader io.Reader, v interface{}) {
 	err := json.NewDecoder(reader).Decode(v)
-	return assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func DecodeSingleResponse[T any](t *testing.T, reader io.Reader) (T, bool) {
 	res := sharedapi.BaseResponse[T]{}
-	if !Decode(t, reader, &res) {
-		var zero T
-		return zero, false
-	}
+	Decode(t, reader, &res)
 	return *res.Data, true
 }
 

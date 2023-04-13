@@ -16,6 +16,13 @@ type Posting struct {
 	Asset       string   `json:"asset"`
 }
 
+func (p Posting) hashString(buf *buffer) {
+	buf.writeString(p.Source)
+	buf.writeString(p.Destination)
+	buf.write(p.Amount.Bytes())
+	buf.writeString(p.Asset)
+}
+
 func NewPosting(source string, destination string, asset string, amount *big.Int) Posting {
 	return Posting{
 		Source:      source,
