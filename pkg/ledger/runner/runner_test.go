@@ -37,11 +37,11 @@ func (m *mockCache) LockAccounts(ctx context.Context, accounts ...string) (cache
 
 func (m *mockCache) UpdateVolumeWithTX(transaction core.Transaction) {
 	for _, posting := range transaction.Postings {
-		sourceAccount := m.accounts[posting.Source]
+		sourceAccount, _ := m.GetAccountWithVolumes(context.Background(), posting.Source)
 		sourceAccountAsset := sourceAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
 		sourceAccountAsset.Output = sourceAccountAsset.Output.Add(sourceAccountAsset.Output, posting.Amount)
 		sourceAccount.Volumes[posting.Asset] = sourceAccountAsset
-		destAccount := m.accounts[posting.Destination]
+		destAccount, _ := m.GetAccountWithVolumes(context.Background(), posting.Destination)
 		destAccountAsset := destAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
 		destAccountAsset.Input = destAccountAsset.Input.Add(destAccountAsset.Input, posting.Amount)
 		destAccount.Volumes[posting.Asset] = destAccountAsset
@@ -87,7 +87,7 @@ type testCase struct {
 	script           string
 	reference        string
 	expectedError    error
-	expectedTx       core.ExpandedTransaction
+	expectedTx       core.Transaction
 	expectedLogs     []core.Log
 	expectedAccounts map[string]core.AccountWithVolumes
 }
@@ -100,27 +100,9 @@ var testCases = []testCase{
 				source = @world
 				destination = @mint
 			)`,
-		expectedTx: core.ExpandedTransaction{
-			Transaction: core.NewTransaction().WithPostings(
-				core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
-			),
-			PreCommitVolumes: map[string]core.AssetsVolumes{
-				"world": {
-					"GEM": core.NewEmptyVolumes(),
-				},
-				"mint": {
-					"GEM": core.NewEmptyVolumes(),
-				},
-			},
-			PostCommitVolumes: map[string]core.AssetsVolumes{
-				"world": {
-					"GEM": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
-				},
-				"mint": {
-					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
-				},
-			},
-		},
+		expectedTx: core.NewTransaction().WithPostings(
+			core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
+		),
 		expectedLogs: []core.Log{
 			core.NewTransactionLog(
 				core.NewTransaction().WithPostings(
@@ -175,29 +157,11 @@ var testCases = []testCase{
 				destination = @mint
 			)`,
 		reference: "tx_ref",
-		expectedTx: core.ExpandedTransaction{
-			Transaction: core.NewTransaction().
-				WithPostings(
-					core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
-				).
-				WithReference("tx_ref"),
-			PreCommitVolumes: map[string]core.AssetsVolumes{
-				"world": {
-					"GEM": core.NewEmptyVolumes(),
-				},
-				"mint": {
-					"GEM": core.NewEmptyVolumes(),
-				},
-			},
-			PostCommitVolumes: map[string]core.AssetsVolumes{
-				"world": {
-					"GEM": core.NewEmptyVolumes().WithOutput(big.NewInt(100)),
-				},
-				"mint": {
-					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
-				},
-			},
-		},
+		expectedTx: core.NewTransaction().
+			WithPostings(
+				core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
+			).
+			WithReference("tx_ref"),
 		expectedLogs: []core.Log{
 			core.NewTransactionLog(
 				core.NewTransaction().
@@ -253,8 +217,8 @@ func TestExecuteScript(t *testing.T) {
 				},
 				Timestamp: now,
 				Reference: tc.reference,
-			}, false, func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
-				return core.NewTransactionLog(transaction.Transaction, accountMetadata)
+			}, false, func(transaction core.Transaction, accountMetadata map[string]metadata.Metadata) core.Log {
+				return core.NewTransactionLog(transaction, accountMetadata)
 			})
 
 			if tc.expectedError != nil {

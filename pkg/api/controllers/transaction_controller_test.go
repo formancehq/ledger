@@ -143,11 +143,8 @@ func TestPostTransactions(t *testing.T) {
 				testCase.expectedStatusCode = http.StatusOK
 			}
 
-			expectedTx := core.ExpandTransaction(
-				core.NewTransaction().WithPostings(
-					core.NewPosting("world", "bank", "USD", big.NewInt(100)),
-				),
-				nil,
+			expectedTx := core.NewTransaction().WithPostings(
+				core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			)
 
 			backend, mockLedger := newTestingBackend(t)
@@ -167,7 +164,7 @@ func TestPostTransactions(t *testing.T) {
 
 			require.Equal(t, testCase.expectedStatusCode, rec.Code)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
-				tx, ok := DecodeSingleResponse[core.ExpandedTransaction](t, rec.Body)
+				tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
 				require.True(t, ok)
 				require.Equal(t, expectedTx, tx)
 			} else {
@@ -610,11 +607,8 @@ func TestCountTransactions(t *testing.T) {
 
 func TestRevertTransaction(t *testing.T) {
 
-	expectedTx := core.ExpandTransaction(
-		core.NewTransaction().WithPostings(
-			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
-		),
-		nil,
+	expectedTx := core.NewTransaction().WithPostings(
+		core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	)
 
 	backend, mockLedger := newTestingBackend(t)
@@ -632,7 +626,7 @@ func TestRevertTransaction(t *testing.T) {
 
 	// TODO(gfyrag): Change to 201
 	require.Equal(t, http.StatusOK, rec.Code)
-	tx, ok := DecodeSingleResponse[core.ExpandedTransaction](t, rec.Body)
+	tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
 	require.True(t, ok)
 	require.Equal(t, expectedTx, tx)
 }

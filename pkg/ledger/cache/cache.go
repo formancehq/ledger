@@ -158,6 +158,9 @@ func (c *Cache) addOutput(address, asset string, amount *big.Int) {
 
 func (c *Cache) addInput(address, asset string, amount *big.Int) {
 	c.withLockOnAccount(address, func(account *core.AccountWithVolumes) {
+		if account == nil {
+			panic("account " + address + " is nil")
+		}
 		volumes := account.Volumes[asset].CopyWithZerosIfNeeded()
 		volumes.Input.Add(volumes.Input, amount)
 		account.Volumes[asset] = volumes
