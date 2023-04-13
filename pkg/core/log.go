@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
@@ -152,14 +154,52 @@ func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metad
 
 type SetMetadataLogPayload struct {
 	TargetType string            `json:"targetType"`
-	TargetID   string            `json:"targetId"`
+	TargetID   any               `json:"targetId"`
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
 func (s SetMetadataLogPayload) hashString(buf *buffer) {
 	buf.writeString(s.TargetType)
-	buf.writeString(s.TargetID)
+	switch targetID := s.TargetID.(type) {
+	case string:
+		buf.writeString(targetID)
+	case uint64:
+		buf.writeUInt64(targetID)
+	}
 	hashStringMetadata(buf, s.Metadata)
+}
+
+func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
+	type X struct {
+		TargetType string            `json:"targetType"`
+		TargetID   json.RawMessage   `json:"targetId"`
+		Metadata   metadata.Metadata `json:"metadata"`
+	}
+	x := X{}
+	err := json.Unmarshal(data, &x)
+	if err != nil {
+		return err
+	}
+	var id interface{}
+	switch strings.ToUpper(x.TargetType) {
+	case strings.ToUpper(MetaTargetTypeAccount):
+		id = ""
+		err = json.Unmarshal(x.TargetID, &id)
+	case strings.ToUpper(MetaTargetTypeTransaction):
+		id, err = strconv.ParseUint(string(x.TargetID), 10, 64)
+	default:
+		panic("unknown type")
+	}
+	if err != nil {
+		return err
+	}
+
+	*s = SetMetadataLogPayload{
+		TargetType: x.TargetType,
+		TargetID:   id,
+		Metadata:   x.Metadata,
+	}
+	return nil
 }
 
 func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
@@ -173,16 +213,16 @@ func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
 }
 
 type RevertedTransactionLogPayload struct {
-	RevertedTransactionID string
+	RevertedTransactionID uint64
 	RevertTransaction     Transaction
 }
 
 func (r RevertedTransactionLogPayload) hashString(buf *buffer) {
-	buf.writeString(r.RevertedTransactionID)
+	buf.writeUInt64(r.RevertedTransactionID)
 	r.RevertTransaction.hashString(buf)
 }
 
-func NewRevertedTransactionLog(at Time, revertedTxID string, tx Transaction) Log {
+func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) Log {
 	return Log{
 		Type: RevertedTransactionLogType,
 		Date: at,

@@ -5,11 +5,12 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
-type TransactionsQuery OffsetPaginatedQuery[TransactionsQueryFilters]
+type TransactionsQuery ColumnPaginatedQuery[TransactionsQueryFilters]
 
 func NewTransactionsQuery() TransactionsQuery {
 	return TransactionsQuery{
 		PageSize: QueryDefaultPageSize,
+		Column:   "id",
 		Order:    OrderDesc,
 		Filters: TransactionsQueryFilters{
 			Metadata: metadata.Metadata{},

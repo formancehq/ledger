@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
@@ -34,6 +35,8 @@ type Runner struct {
 	store Store
 	// cache is used to store accounts
 	cache Cache
+	// nextTxID store the next transaction id to be used
+	nextTxID *atomic.Uint64
 	// locker is used to local a set of account
 	locker     *lock.Locker
 	compiler   *numscript.Compiler
@@ -154,12 +157,20 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 		return nil, nil, errors.Wrap(err, "transferring volumes")
 	}
 
+	txID := r.nextTxID.Load()
+	if !dryRun {
+		defer func() {
+			r.nextTxID.Add(1)
+		}()
+	}
+
 	expandedTx := &core.ExpandedTransaction{
 		Transaction: core.NewTransaction().
 			WithPostings(result.Postings...).
 			WithReference(script.Reference).
 			WithMetadata(result.Metadata).
-			WithTimestamp(script.Timestamp),
+			WithTimestamp(script.Timestamp).
+			WithID(txID),
 		PreCommitVolumes:  txVolumeAggr.PreCommitVolumes,
 		PostCommitVolumes: txVolumeAggr.PostCommitVolumes,
 	}
@@ -194,23 +205,32 @@ func New(store Store, locker *lock.Locker, cache Cache, compiler *numscript.Comp
 		return nil, err
 	}
 	var (
+		lastTxID            *uint64
 		lastTransactionDate core.Time
 	)
 	if err == nil {
 		switch payload := log.Data.(type) {
 		case core.NewTransactionLogPayload:
+			lastTxID = &payload.Transaction.ID
 			lastTransactionDate = payload.Transaction.Timestamp
 		case core.RevertedTransactionLogPayload:
+			lastTxID = &payload.RevertTransaction.ID
 			lastTransactionDate = payload.RevertTransaction.Timestamp
 		default:
 			panic(fmt.Sprintf("unhandled payload type: %T", payload))
 		}
+	}
+	nextTxID := &atomic.Uint64{}
+	if lastTxID != nil {
+		nextTxID.Add(*lastTxID)
+		nextTxID.Add(1)
 	}
 	return &Runner{
 		state:      state.New(store, allowPastTimestamps, lastTransactionDate),
 		store:      store,
 		cache:      cache,
 		locker:     locker,
+		nextTxID:   nextTxID,
 		compiler:   compiler,
 		ledgerName: ledgerName,
 	}, nil

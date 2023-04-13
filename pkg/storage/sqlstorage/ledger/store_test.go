@@ -14,12 +14,20 @@ import (
 
 var now = core.Now()
 var tx1 = core.ExpandedTransaction{
-	Transaction: core.NewTransaction().
-		WithPostings(
-			core.NewPosting("world", "central_bank", "USD", big.NewInt(100)),
-		).
-		WithReference("tx1").
-		WithTimestamp(now.Add(-3 * time.Hour)),
+	Transaction: core.Transaction{
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      big.NewInt(100),
+					Asset:       "USD",
+				},
+			},
+			Reference: "tx1",
+			Timestamp: now.Add(-3 * time.Hour),
+		},
+	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
@@ -50,12 +58,21 @@ var tx1 = core.ExpandedTransaction{
 	},
 }
 var tx2 = core.ExpandedTransaction{
-	Transaction: core.NewTransaction().
-		WithPostings(
-			core.NewPosting("world", "central_bank", "USD", big.NewInt(100)),
-		).
-		WithReference("tx2").
-		WithTimestamp(now.Add(-2 * time.Hour)),
+	Transaction: core.Transaction{
+		ID: 1,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "world",
+					Destination: "central_bank",
+					Amount:      big.NewInt(100),
+					Asset:       "USD",
+				},
+			},
+			Reference: "tx2",
+			Timestamp: now.Add(-2 * time.Hour),
+		},
+	},
 	PostCommitVolumes: core.AccountsAssetsVolumes{
 		"world": {
 			"USD": {
@@ -86,15 +103,24 @@ var tx2 = core.ExpandedTransaction{
 	},
 }
 var tx3 = core.ExpandedTransaction{
-	Transaction: core.NewTransaction().
-		WithPostings(
-			core.NewPosting("central_bank", "users:1", "USD", big.NewInt(1)),
-		).
-		WithReference("tx3").
-		WithTimestamp(now.Add(-1 * time.Hour)).
-		WithMetadata(metadata.Metadata{
-			"priority": "high",
-		}),
+	Transaction: core.Transaction{
+		ID: 2,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "central_bank",
+					Destination: "users:1",
+					Amount:      big.NewInt(1),
+					Asset:       "USD",
+				},
+			},
+			Reference: "tx3",
+			Metadata: metadata.Metadata{
+				"priority": "high",
+			},
+			Timestamp: now.Add(-1 * time.Hour),
+		},
+	},
 	PreCommitVolumes: core.AccountsAssetsVolumes{
 		"central_bank": {
 			"USD": {
@@ -129,12 +155,21 @@ func TestUpdateTransactionMetadata(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	tx := core.ExpandedTransaction{
-		Transaction: core.NewTransaction().
-			WithPostings(
-				core.NewPosting("world", "central_bank", "USD", big.NewInt(100)),
-			).
-			WithReference("foo").
-			WithTimestamp(core.Now()),
+		Transaction: core.Transaction{
+			ID: 0,
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+					},
+				},
+				Reference: "foo",
+				Timestamp: core.Now(),
+			},
+		},
 	}
 	err := store.InsertTransactions(context.Background(), tx)
 	require.NoError(t, err)

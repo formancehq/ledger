@@ -68,23 +68,22 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".migrations (
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".postings (
-    txid uuid,
-    posting_index integer,
-    source jsonb,
-    destination jsonb
-);
-
---statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".transactions (
-    id uuid unique,
+    id bigint unique,
     "timestamp" timestamp with time zone,
     reference character varying unique,
-    hash character varying,
     postings jsonb,
     metadata jsonb DEFAULT '{}'::jsonb,
     pre_commit_volumes jsonb,
     post_commit_volumes jsonb
+);
+
+--statement
+CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".postings (
+    txid bigint,
+    posting_index integer,
+    source jsonb,
+    destination jsonb
 );
 
 --statement

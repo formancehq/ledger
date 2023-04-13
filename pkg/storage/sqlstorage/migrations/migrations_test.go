@@ -138,7 +138,7 @@ func TestMigrates(t *testing.T) {
 				"any": {
 					func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 						sb := s.NewUpdate(ledgerstore.TransactionsTableName).
-							Model((*ledgerstore.Transaction)(nil)).
+							Model((*ledgerstore.Transactions)(nil)).
 							Set("timestamp = ?", core.Now()).
 							Where("TRUE")
 
