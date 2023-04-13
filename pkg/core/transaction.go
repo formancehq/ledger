@@ -2,12 +2,7 @@ package core
 
 import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/google/uuid"
 )
-
-func init() {
-	uuid.EnableRandPool()
-}
 
 type Transactions struct {
 	Transactions []TransactionData `json:"transactions"`
@@ -39,7 +34,7 @@ func (t *TransactionData) Reverse() TransactionData {
 	ret := TransactionData{
 		Postings: postings,
 	}
-	//TODO(gfyrag): Do we keep this for v2?
+	//TODO(gfyra): Do we keep this for v2?
 	if t.Reference != "" {
 		ret.Reference = "revert_" + t.Reference
 	}
@@ -57,11 +52,11 @@ func (d TransactionData) hashString(buf *buffer) {
 
 type Transaction struct {
 	TransactionData
-	ID string `json:"txid"`
+	ID uint64 `json:"txid"`
 }
 
 type TransactionWithMetadata struct {
-	ID       string
+	ID       uint64
 	Metadata metadata.Metadata
 }
 
@@ -80,7 +75,7 @@ func (t Transaction) WithTimestamp(ts Time) Transaction {
 	return t
 }
 
-func (t Transaction) WithID(id string) Transaction {
+func (t Transaction) WithID(id uint64) Transaction {
 	t.ID = id
 	return t
 }
@@ -91,14 +86,13 @@ func (t Transaction) WithMetadata(m metadata.Metadata) Transaction {
 }
 
 func (t Transaction) hashString(buf *buffer) {
-	buf.writeString(t.ID)
+	buf.writeUInt64(t.ID)
 	t.TransactionData.hashString(buf)
 }
 
 func NewTransaction() Transaction {
 	return Transaction{
 		TransactionData: NewTransactionData(),
-		ID:              uuid.NewString(),
 	}
 }
 

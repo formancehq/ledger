@@ -109,7 +109,7 @@ func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQu
 	return count, errors.Wrap(err, "counting transactions")
 }
 
-func (l *Ledger) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransaction(ctx, id)
 	return tx, errors.Wrap(err, "getting transaction")
 }
@@ -140,7 +140,7 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 }
 
 // TODO(gfyrag): maybe we should check transaction exists on the log store before set a metadata ? (accounts always exists even if never used)
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID string, m metadata.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m metadata.Metadata) error {
 	if m == nil {
 		return nil
 	}
@@ -161,18 +161,18 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 	)
 	switch targetType {
 	case core.MetaTargetTypeTransaction:
-		_, err = l.GetTransaction(ctx, targetID)
+		_, err = l.GetTransaction(ctx, targetID.(uint64))
 		if err != nil {
 			return err
 		}
 
 		log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeTransaction,
-			TargetID:   targetID,
+			TargetID:   targetID.(uint64),
 			Metadata:   m,
 		})
 	case core.MetaTargetTypeAccount:
-		release, err := l.dbCache.LockAccounts(ctx, targetID)
+		release, err := l.dbCache.LockAccounts(ctx, targetID.(string))
 		if err != nil {
 			return errors.Wrap(err, "lock account")
 		}
@@ -181,14 +181,14 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 		// Machine can access account metadata, so store the metadata until CQRS compute final of the account
 		// The cache can still evict the account entry before CQRS part compute the view
 		unlock, err := l.locker.Lock(ctx, lock.Accounts{
-			Write: []string{targetID},
+			Write: []string{targetID.(string)},
 		})
 		if err != nil {
 			return errors.Wrap(err, "lock account")
 		}
 		defer unlock(context.Background())
 
-		err = l.dbCache.UpdateAccountMetadata(targetID, m)
+		err = l.dbCache.UpdateAccountMetadata(targetID.(string), m)
 		if err != nil {
 			return errors.Wrap(err, "update account metadata")
 		}
@@ -197,7 +197,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID strin
 
 		log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeAccount,
-			TargetID:   targetID,
+			TargetID:   targetID.(string),
 			Metadata:   m,
 		})
 	default:

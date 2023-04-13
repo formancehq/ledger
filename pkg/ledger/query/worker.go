@@ -246,7 +246,7 @@ func buildData(
 
 	volumeAggregator := aggregator.Volumes(store)
 	accountsToUpdate := make(map[string]metadata.Metadata)
-	transactionsToUpdate := make(map[string]metadata.Metadata)
+	transactionsToUpdate := make(map[uint64]metadata.Metadata)
 
 	for _, log := range logs {
 		switch log.Type {
@@ -294,7 +294,7 @@ func buildData(
 			setMetadata := log.Data.(core.SetMetadataLogPayload)
 			switch setMetadata.TargetType {
 			case core.MetaTargetTypeAccount:
-				addr := setMetadata.TargetID
+				addr := setMetadata.TargetID.(string)
 				if m, ok := accountsToUpdate[addr]; !ok {
 					accountsToUpdate[addr] = setMetadata.Metadata
 				} else {
@@ -304,7 +304,7 @@ func buildData(
 				}
 
 			case core.MetaTargetTypeTransaction:
-				id := setMetadata.TargetID
+				id := setMetadata.TargetID.(uint64)
 				if m, ok := transactionsToUpdate[id]; !ok {
 					transactionsToUpdate[id] = setMetadata.Metadata
 				} else {

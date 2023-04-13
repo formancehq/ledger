@@ -6,14 +6,13 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/runner"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
-type storeFn func(ctx context.Context, id string) (*core.ExpandedTransaction, error)
+type storeFn func(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
 
-func (fn storeFn) GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+func (fn storeFn) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	return fn(ctx, id)
 }
 
@@ -47,8 +46,8 @@ var _ LogIngester = (logIngesterFn)(nil)
 
 func TestReverter(t *testing.T) {
 
-	txID := uuid.NewString()
-	store := storeFn(func(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+	txID := uint64(0)
+	store := storeFn(func(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 		require.Equal(t, txID, id)
 		return &core.ExpandedTransaction{}, nil
 	})
@@ -67,9 +66,9 @@ func TestReverter(t *testing.T) {
 func TestReverterWithAlreadyReverted(t *testing.T) {
 
 	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(core.NewTransaction().WithMetadata(
-		core.RevertedMetadata(uuid.NewString()),
+		core.RevertedMetadata(uint64(0)),
 	))
-	store := storeFn(func(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+	store := storeFn(func(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 		require.Equal(t, tx.ID, id)
 
 		return &tx, nil
@@ -88,7 +87,7 @@ func TestReverterWithAlreadyReverted(t *testing.T) {
 func TestReverterWithRevertOccurring(t *testing.T) {
 
 	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(core.NewTransaction())
-	store := storeFn(func(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+	store := storeFn(func(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 		require.Equal(t, tx.ID, id)
 
 		return &tx, nil

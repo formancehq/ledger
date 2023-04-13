@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAccounts(t *testing.T) {
@@ -20,7 +20,7 @@ func TestAccounts(t *testing.T) {
 			WithBalanceFilter("50")
 
 		_, err := store.GetAccounts(context.Background(), q)
-		require.NoError(t, err, "balance filter should not fail")
+		assert.NoError(t, err, "balance filter should not fail")
 	})
 
 	t.Run("panic invalid balance", func(t *testing.T) {
@@ -28,7 +28,7 @@ func TestAccounts(t *testing.T) {
 			WithPageSize(10).
 			WithBalanceFilter("TEST")
 
-		require.PanicsWithError(
+		assert.PanicsWithError(
 			t, `invalid balance parameter: strconv.ParseInt: parsing "TEST": invalid syntax`,
 
 			func() {
@@ -37,7 +37,7 @@ func TestAccounts(t *testing.T) {
 	})
 
 	t.Run("panic invalid balance operator", func(t *testing.T) {
-		require.PanicsWithValue(t, "invalid balance operator parameter", func() {
+		assert.PanicsWithValue(t, "invalid balance operator parameter", func() {
 			q := storage.NewAccountsQuery().
 				WithPageSize(10).
 				WithBalanceFilter("50").
@@ -54,7 +54,7 @@ func TestAccounts(t *testing.T) {
 			WithBalanceOperatorFilter(storage.BalanceOperatorLte)
 
 		_, err := store.GetAccounts(context.Background(), q)
-		require.NoError(t, err, "balance operator filter should not fail")
+		assert.NoError(t, err, "balance operator filter should not fail")
 	})
 
 	t.Run("success account insertion", func(t *testing.T) {
@@ -64,13 +64,13 @@ func TestAccounts(t *testing.T) {
 		}
 
 		err := store.UpdateAccountMetadata(context.Background(), addr, metadata)
-		require.NoError(t, err, "account insertion should not fail")
+		assert.NoError(t, err, "account insertion should not fail")
 
 		account, err := store.GetAccount(context.Background(), addr)
-		require.NoError(t, err, "account retrieval should not fail")
+		assert.NoError(t, err, "account retrieval should not fail")
 
-		require.Equal(t, addr, account.Address, "account address should match")
-		require.Equal(t, metadata, account.Metadata, "account metadata should match")
+		assert.Equal(t, addr, account.Address, "account address should match")
+		assert.Equal(t, metadata, account.Metadata, "account metadata should match")
 	})
 
 	t.Run("success multiple account insertions", func(t *testing.T) {
@@ -90,14 +90,14 @@ func TestAccounts(t *testing.T) {
 		}
 
 		err := store.UpdateAccountsMetadata(context.Background(), accounts)
-		require.NoError(t, err, "account insertion should not fail")
+		assert.NoError(t, err, "account insertion should not fail")
 
 		for _, account := range accounts {
 			acc, err := store.GetAccount(context.Background(), account.Address)
-			require.NoError(t, err, "account retrieval should not fail")
+			assert.NoError(t, err, "account retrieval should not fail")
 
-			require.Equal(t, account.Address, acc.Address, "account address should match")
-			require.Equal(t, account.Metadata, acc.Metadata, "account metadata should match")
+			assert.Equal(t, account.Address, acc.Address, "account address should match")
+			assert.Equal(t, account.Metadata, acc.Metadata, "account metadata should match")
 		}
 	})
 
@@ -105,25 +105,25 @@ func TestAccounts(t *testing.T) {
 		addr := "test:account:4"
 
 		err := store.EnsureAccountExists(context.Background(), addr)
-		require.NoError(t, err, "account insertion should not fail")
+		assert.NoError(t, err, "account insertion should not fail")
 
 		account, err := store.GetAccount(context.Background(), addr)
-		require.NoError(t, err, "account retrieval should not fail")
+		assert.NoError(t, err, "account retrieval should not fail")
 
-		require.Equal(t, addr, account.Address, "account address should match")
+		assert.Equal(t, addr, account.Address, "account address should match")
 	})
 
 	t.Run("success ensure multiple accounts exist", func(t *testing.T) {
 		addrs := []string{"test:account:4", "test:account:5", "test:account:6"}
 
 		err := store.EnsureAccountsExist(context.Background(), addrs)
-		require.NoError(t, err, "account insertion should not fail")
+		assert.NoError(t, err, "account insertion should not fail")
 
 		for _, addr := range addrs {
 			account, err := store.GetAccount(context.Background(), addr)
-			require.NoError(t, err, "account retrieval should not fail")
+			assert.NoError(t, err, "account retrieval should not fail")
 
-			require.Equal(t, addr, account.Address, "account address should match")
+			assert.Equal(t, addr, account.Address, "account address should match")
 		}
 	})
 }
