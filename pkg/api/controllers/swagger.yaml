@@ -163,7 +163,6 @@ paths:
           schema:
             type: integer
             format: int64
-            minimum: 0
             example: 2400
         - name: balanceOperator
           in: query
@@ -1339,7 +1338,6 @@ components:
           additionalProperties:
             type: integer
             format: int64
-            minimum: 0
           example:
             COIN: 100
 
@@ -1360,7 +1358,6 @@ components:
       additionalProperties:
         type: integer
         format: int64
-        minimum: 0
       example:
         USD: 100
         EUR: 12
