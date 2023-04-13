@@ -9,14 +9,18 @@ import (
 	"github.com/google/uuid"
 )
 
+func init() {
+	uuid.EnableRandPool()
+}
+
 type Transactions struct {
-	Transactions []TransactionData `json:"transactions" binding:"required,dive"`
+	Transactions []TransactionData `json:"transactions"`
 }
 
 type TransactionData struct {
 	Postings  Postings          `json:"postings"`
 	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Metadata  metadata.Metadata `json:"metadata"`
 	Timestamp Time              `json:"timestamp"`
 }
 
