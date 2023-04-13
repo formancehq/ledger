@@ -16,7 +16,6 @@ import (
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -213,17 +212,16 @@ func TestPostTransactionMetadata(t *testing.T) {
 				testCase.expectStatusCode = http.StatusNoContent
 			}
 
-			id := uuid.NewString()
 			backend, mock := newTestingBackend(t)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
-					SaveMeta(gomock.Any(), core.MetaTargetTypeTransaction, id, testCase.body).
+					SaveMeta(gomock.Any(), core.MetaTargetTypeTransaction, uint64(0), testCase.body).
 					Return(nil)
 			}
 
 			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
-			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/"+id+"/metadata", Buffer(t, testCase.body))
+			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/metadata", Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()
 			req.URL.RawQuery = testCase.queryParams.Encode()
 
@@ -251,12 +249,12 @@ func TestGetTransaction(t *testing.T) {
 
 	backend, mock := newTestingBackend(t)
 	mock.EXPECT().
-		GetTransaction(gomock.Any(), tx.ID).
+		GetTransaction(gomock.Any(), uint64(0)).
 		Return(&tx, nil)
 
 	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
-	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/"+tx.ID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -622,12 +620,12 @@ func TestRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), expectedTx.ID).
+		RevertTransaction(gomock.Any(), uint64(0)).
 		Return(&expectedTx, nil)
 
 	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
-	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/"+expectedTx.ID+"/revert", nil)
+	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

@@ -18,7 +18,7 @@ var (
 )
 
 type Store interface {
-	GetTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error)
+	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
 }
 
 type Runner interface {
@@ -41,7 +41,7 @@ type Reverter struct {
 	logIngester LogIngester
 }
 
-func (r *Reverter) RevertTransaction(ctx context.Context, id string) (*core.ExpandedTransaction, error) {
+func (r *Reverter) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
 	_, loaded := r.Map.LoadOrStore(id, struct{}{})
 	if loaded {
 		return nil, ErrRevertOccurring
@@ -59,11 +59,11 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id string) (*core.Expa
 	}
 
 	if storage.IsNotFoundError(err) {
-		return nil, errorsutil.NewError(err, errors.Errorf("transaction %s not found", id))
+		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
 	}
 
 	if tx.IsReverted() {
-		return nil, errorsutil.NewError(ErrAlreadyReverted, errors.Errorf("transaction %s already reverted", id))
+		return nil, errorsutil.NewError(ErrAlreadyReverted, errors.Errorf("transaction %d already reverted", id))
 	}
 
 	rt := tx.Reverse()
