@@ -71,10 +71,10 @@ func (mr *MockLedgerMockRecorder) CountTransactions(ctx, query interface{}) *gom
 }
 
 // CreateTransaction mocks base method.
-func (m *MockLedger) CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTransaction", ctx, dryRun, async, data)
-	ret0, _ := ret[0].(*core.ExpandedTransaction)
+	ret0, _ := ret[0].(*core.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -206,10 +206,10 @@ func (mr *MockLedgerMockRecorder) GetTransactions(ctx, query interface{}) *gomoc
 }
 
 // RevertTransaction mocks base method.
-func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, async)
-	ret0, _ := ret[0].(*core.ExpandedTransaction)
+	ret0, _ := ret[0].(*core.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -287,6 +287,10 @@ type LogHolder struct {
 	Ingested chan struct{}
 }
 
+func (h *LogHolder) SetIngested() {
+	close(h.Ingested)
+}
+
 func NewLogHolder(log *Log) *LogHolder {
 	return &LogHolder{
 		Log:      log,

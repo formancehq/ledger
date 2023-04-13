@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/lock"
 	"github.com/formancehq/ledger/pkg/ledger/numscript"
@@ -35,8 +34,8 @@ type Runner struct {
 	store Store
 	// cache is used to store accounts
 	cache Cache
-	// nextTxID store the next transaction id to be used
-	nextTxID *atomic.Uint64
+	// lastTXID store the next transaction id to be used
+	lastTXID *atomic.Int64
 	// locker is used to local a set of account
 	locker     *lock.Locker
 	compiler   *numscript.Compiler
@@ -44,14 +43,14 @@ type Runner struct {
 	ledgerName string
 }
 
-type LogComputer func(transaction core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log
+type LogComputer func(transaction core.Transaction, accountMetadata map[string]metadata.Metadata) core.Log
 
 func (r *Runner) Execute(
 	ctx context.Context,
 	script core.RunScript,
 	dryRun bool,
 	logComputer LogComputer,
-) (*core.ExpandedTransaction, *core.LogHolder, error) {
+) (*core.Transaction, *core.LogHolder, error) {
 
 	if script.Plain == "" {
 		return nil, nil, ErrNoScript
@@ -81,12 +80,12 @@ func (r *Runner) Execute(
 		return nil, nil, errors.Wrap(err, "appending log")
 	}
 
-	reserve.Clear(&transaction.Transaction)
+	reserve.Clear(transaction)
 
 	return transaction, logHolder, nil
 }
 
-func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer LogComputer, dryRun bool) (*core.ExpandedTransaction, *core.LogHolder, error) {
+func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer LogComputer, dryRun bool) (*core.Transaction, *core.LogHolder, error) {
 	program, err := r.compiler.Compile(ctx, script.Plain)
 	if err != nil {
 		return nil, nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
@@ -150,38 +149,20 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 		return nil, nil, ErrNoPostings
 	}
 
-	vAggr := aggregator.Volumes(r.cache)
-	txVolumeAggr, err := vAggr.NextTxWithPostings(ctx, result.Postings...)
-	if err != nil {
-		release()
-		return nil, nil, errors.Wrap(err, "transferring volumes")
-	}
-
-	txID := r.nextTxID.Load()
-	if !dryRun {
-		defer func() {
-			r.nextTxID.Add(1)
-		}()
-	}
-
-	expandedTx := &core.ExpandedTransaction{
-		Transaction: core.NewTransaction().
-			WithPostings(result.Postings...).
-			WithReference(script.Reference).
-			WithMetadata(result.Metadata).
-			WithTimestamp(script.Timestamp).
-			WithID(txID),
-		PreCommitVolumes:  txVolumeAggr.PreCommitVolumes,
-		PostCommitVolumes: txVolumeAggr.PostCommitVolumes,
-	}
+	tx := core.NewTransaction().
+		WithPostings(result.Postings...).
+		WithReference(script.Reference).
+		WithMetadata(result.Metadata).
+		WithTimestamp(script.Timestamp).
+		WithID(uint64(r.lastTXID.Add(1)))
 	if dryRun {
 		release()
-		return expandedTx, nil, nil
+		return &tx, nil, nil
 	}
 
-	r.cache.UpdateVolumeWithTX(expandedTx.Transaction)
+	r.cache.UpdateVolumeWithTX(tx)
 
-	log := logComputer(*expandedTx, result.AccountMetadata)
+	log := logComputer(tx, result.AccountMetadata)
 	if script.Reference != "" {
 		log = log.WithReference(script.Reference)
 	}
@@ -192,7 +173,7 @@ func (r *Runner) execute(ctx context.Context, script core.RunScript, logComputer
 		release()
 	}()
 
-	return expandedTx, logHolder, nil
+	return &tx, logHolder, nil
 }
 
 func (r *Runner) GetState() *state.State {
@@ -220,17 +201,18 @@ func New(store Store, locker *lock.Locker, cache Cache, compiler *numscript.Comp
 			panic(fmt.Sprintf("unhandled payload type: %T", payload))
 		}
 	}
-	nextTxID := &atomic.Uint64{}
+	lastTXID := &atomic.Int64{}
 	if lastTxID != nil {
-		nextTxID.Add(*lastTxID)
-		nextTxID.Add(1)
+		lastTXID.Add(int64(*lastTxID))
+	} else {
+		lastTXID.Add(-1)
 	}
 	return &Runner{
 		state:      state.New(store, allowPastTimestamps, lastTransactionDate),
 		store:      store,
 		cache:      cache,
 		locker:     locker,
-		nextTxID:   nextTxID,
+		lastTXID:   lastTXID,
 		compiler:   compiler,
 		ledgerName: ledgerName,
 	}, nil

@@ -27,7 +27,7 @@ type Runner interface {
 		script core.RunScript,
 		dryRun bool,
 		logComputer runner.LogComputer,
-	) (*core.ExpandedTransaction, *core.LogHolder, error)
+	) (*core.Transaction, *core.LogHolder, error)
 }
 
 type LogIngester interface {
@@ -41,7 +41,7 @@ type Reverter struct {
 	logIngester LogIngester
 }
 
-func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.ExpandedTransaction, error) {
+func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.Transaction, error) {
 	_, loaded := r.Map.LoadOrStore(id, struct{}{})
 	if loaded {
 		return nil, ErrRevertOccurring
@@ -50,7 +50,7 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool)
 		r.Map.Delete(id)
 	}()
 
-	tx, err := r.store.GetTransaction(ctx, id)
+	transactionToRevert, err := r.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -62,20 +62,20 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool)
 		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
 	}
 
-	if tx.IsReverted() {
+	if transactionToRevert.IsReverted() {
 		return nil, errorsutil.NewError(ErrAlreadyReverted, errors.Errorf("transaction %d already reverted", id))
 	}
 
-	rt := tx.Reverse()
-	rt.Metadata = core.MarkReverts(metadata.Metadata{}, tx.ID)
+	rt := transactionToRevert.Reverse()
+	rt.Metadata = core.MarkReverts(metadata.Metadata{}, transactionToRevert.ID)
 
 	scriptData := core.TxsToScriptsData(core.TransactionData{
 		Postings:  rt.Postings,
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
 	})
-	tx, logHolder, err := r.runner.Execute(ctx, scriptData[0], false, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
-		return core.NewRevertedTransactionLog(expandedTx.Timestamp, tx.ID, expandedTx.Transaction)
+	newTx, logHolder, err := r.runner.Execute(ctx, scriptData[0], false, func(tx core.Transaction, accountMetadata map[string]metadata.Metadata) core.Log {
+		return core.NewRevertedTransactionLog(tx.Timestamp, transactionToRevert.ID, tx)
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "revert transaction")
@@ -85,14 +85,7 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool)
 	if err != nil {
 		return nil, err
 	}
-	// Wait for CQRS ingestion
-	// TODO(polo/gfyrag): add possiblity to disable this via request param
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-logHolder.Ingested:
-		return tx, nil
-	}
+	return newTx, nil
 }
 
 func NewReverter(store Store, runner Runner, logIngester LogIngester) *Reverter {
