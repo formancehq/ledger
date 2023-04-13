@@ -342,12 +342,11 @@ func buildData(
 			}
 			logsData.transactionsToInsert = append(logsData.transactionsToInsert, expandedTx)
 
-			revertedTx, err := store.GetTransaction(ctx, payload.RevertedTransactionID)
-			if err != nil {
-				return nil, errorsutil.NewError(ErrStorage, err)
-			}
-
 			logsData.monitors = append(logsData.monitors, func(ctx context.Context, monitor monitor.Monitor) {
+				revertedTx, err := store.GetTransaction(ctx, payload.RevertedTransactionID)
+				if err != nil {
+					panic(err)
+				}
 				monitor.RevertedTransaction(ctx, ledgerName, revertedTx, &expandedTx)
 			})
 		}

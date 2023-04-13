@@ -24,9 +24,9 @@ type Ledger interface {
 	GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.Log], error)
 	CountTransactions(ctx context.Context, query storage.TransactionsQuery) (uint64, error)
 	GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
-	CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.ExpandedTransaction, error)
+	CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.Transaction, error)
 	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
-	RevertTransaction(ctx context.Context, id uint64, async bool) (*core.ExpandedTransaction, error)
+	RevertTransaction(ctx context.Context, id uint64, async bool) (*core.Transaction, error)
 }
 
 type Backend interface {

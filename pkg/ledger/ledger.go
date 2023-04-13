@@ -71,9 +71,9 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 	return l.store
 }
 
-func (l *Ledger) CreateTransaction(ctx context.Context, dryRun, async bool, script core.RunScript) (*core.ExpandedTransaction, error) {
-	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
-		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
+func (l *Ledger) CreateTransaction(ctx context.Context, dryRun, async bool, script core.RunScript) (*core.Transaction, error) {
+	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(tx core.Transaction, accountMetadata map[string]metadata.Metadata) core.Log {
+		return core.NewTransactionLog(tx, accountMetadata)
 	})
 
 	if err == nil && !dryRun {

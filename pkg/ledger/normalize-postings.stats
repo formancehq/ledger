@@ -1,0 +1,15 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/formancehq/ledger/pkg/ledger
+BenchmarkParallelWrites-8   	  199840	    184078 ns/op
+BenchmarkParallelWrites-8   	  177517	    183666 ns/op
+BenchmarkParallelWrites-8   	  194018	    185514 ns/op
+BenchmarkParallelWrites-8   	  201234	    182895 ns/op
+BenchmarkParallelWrites-8   	  208939	    181500 ns/op
+BenchmarkParallelWrites-8   	  211213	    178119 ns/op
+BenchmarkParallelWrites-8   	  194299	    177224 ns/op
+BenchmarkParallelWrites-8   	  198339	    177981 ns/op
+BenchmarkParallelWrites-8   	  184341	    185403 ns/op
+BenchmarkParallelWrites-8   	  185210	    196022 ns/op
+PASS
+ok  	github.com/formancehq/ledger/pkg/ledger	392.497s
