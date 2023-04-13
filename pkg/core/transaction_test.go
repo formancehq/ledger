@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -136,4 +137,18 @@ func TestReverseTransaction(t *testing.T) {
 		}
 		require.Equal(t, expected, tx.Reverse())
 	})
+}
+
+func BenchmarkHash(b *testing.B) {
+	logs := make([]Log, b.N)
+	for i := 0; i < b.N; i++ {
+		logs[i] = NewTransactionLog(NewTransaction().WithPostings(
+			NewPosting("world", "bank", "USD", big.NewInt(100)),
+		), map[string]metadata.Metadata{})
+	}
+
+	b.ResetTimer()
+	for i := 1; i < b.N; i++ {
+		logs[i].ComputeHash(&logs[i-1])
+	}
 }
