@@ -640,7 +640,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 	involvedAccounts := make([]string, 0)
 	involvedSources := make([]string, 0)
 	for _, accountAddress := range involvedAccountsMap {
-		involvedAccounts = append(involvedSources, accountAddress)
+		involvedAccounts = append(involvedAccounts, accountAddress)
 	}
 	for _, machineAddress := range m.Program.Sources {
 		involvedSources = append(involvedSources, involvedAccountsMap[machineAddress])
