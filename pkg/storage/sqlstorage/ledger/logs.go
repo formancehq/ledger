@@ -26,7 +26,7 @@ type LogsV2 struct {
 
 	ID        uint64    `bun:"id,unique,type:bigint"`
 	Type      int16     `bun:"type,type:smallint"`
-	Hash      string    `bun:"hash,type:varchar(256)"`
+	Hash      []byte    `bun:"hash,type:varchar(256)"`
 	Date      core.Time `bun:"date,type:timestamptz"`
 	Data      []byte    `bun:"data,type:bytea"`
 	Reference string    `bun:"reference,type:text"`
@@ -84,7 +84,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 			id = previousLog.ID + 1
 		}
 		logs[i].ID = id
-		logs[i].Hash = core.Hash(previousLog, &logs[i])
+		logs[i].ComputeHash(previousLog)
 
 		ls[i].ID = id
 		ls[i].Type = int16(l.Type)

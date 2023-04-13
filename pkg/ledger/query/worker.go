@@ -294,7 +294,7 @@ func buildData(
 			setMetadata := log.Data.(core.SetMetadataLogPayload)
 			switch setMetadata.TargetType {
 			case core.MetaTargetTypeAccount:
-				addr := setMetadata.TargetID.(string)
+				addr := setMetadata.TargetID
 				if m, ok := accountsToUpdate[addr]; !ok {
 					accountsToUpdate[addr] = setMetadata.Metadata
 				} else {
@@ -304,7 +304,7 @@ func buildData(
 				}
 
 			case core.MetaTargetTypeTransaction:
-				id := setMetadata.TargetID.(string)
+				id := setMetadata.TargetID
 				if m, ok := transactionsToUpdate[id]; !ok {
 					transactionsToUpdate[id] = setMetadata.Metadata
 				} else {

@@ -1,10 +1,6 @@
 package core
 
 import (
-	"crypto/sha256"
-	"encoding/json"
-	"fmt"
-
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/google/uuid"
 )
@@ -50,6 +46,15 @@ func (t *TransactionData) Reverse() TransactionData {
 	return ret
 }
 
+func (d TransactionData) hashString(buf *buffer) {
+	buf.writeString(d.Reference)
+	buf.writeUInt64(uint64(d.Timestamp.UnixNano()))
+	hashStringMetadata(buf, d.Metadata)
+	for _, posting := range d.Postings {
+		posting.hashString(buf)
+	}
+}
+
 type Transaction struct {
 	TransactionData
 	ID string `json:"txid"`
@@ -83,6 +88,11 @@ func (t Transaction) WithID(id string) Transaction {
 func (t Transaction) WithMetadata(m metadata.Metadata) Transaction {
 	t.Metadata = m
 	return t
+}
+
+func (t Transaction) hashString(buf *buffer) {
+	buf.writeString(t.ID)
+	t.TransactionData.hashString(buf)
 }
 
 func NewTransaction() Transaction {
@@ -123,28 +133,4 @@ func ExpandTransaction(tx Transaction, preCommitVolumes AccountsAssetsVolumes) E
 
 func ExpandTransactionFromEmptyPreCommitVolumes(tx Transaction) ExpandedTransaction {
 	return ExpandTransaction(tx, AccountsAssetsVolumes{})
-}
-
-func Hash(t1, t2 interface{}) string {
-	b1, err := json.Marshal(t1)
-	if err != nil {
-		panic(err)
-	}
-
-	b2, err := json.Marshal(t2)
-	if err != nil {
-		panic(err)
-	}
-
-	h := sha256.New()
-	_, err = h.Write(b1)
-	if err != nil {
-		panic(err)
-	}
-	_, err = h.Write(b2)
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprintf("%x", h.Sum(nil))
 }

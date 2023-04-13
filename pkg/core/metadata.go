@@ -1,6 +1,9 @@
 package core
 
 import (
+	"sort"
+
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
@@ -47,4 +50,18 @@ func IsReverted(m metadata.Metadata) bool {
 		return true
 	}
 	return false
+}
+
+func hashStringMetadata(buf *buffer, m metadata.Metadata) {
+	if len(m) == 0 {
+		return
+	}
+	keysOfAccount := collectionutils.Keys(m)
+	if len(m) > 1 {
+		sort.Strings(keysOfAccount)
+	}
+	for _, key := range keysOfAccount {
+		buf.writeString(key)
+		buf.writeString(m[key])
+	}
 }
