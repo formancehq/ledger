@@ -284,6 +284,10 @@ func (b *buffer) mustWithValue(v any, err error) {
 }
 
 func (b *buffer) writeUInt64(v uint64) {
+	b.must(b.buf.WriteByte(byte((v >> 56) & 0xFF)))
+	b.must(b.buf.WriteByte(byte((v >> 48) & 0xFF)))
+	b.must(b.buf.WriteByte(byte((v >> 40) & 0xFF)))
+	b.must(b.buf.WriteByte(byte((v >> 32) & 0xFF)))
 	b.must(b.buf.WriteByte(byte(v >> 24)))
 	b.must(b.buf.WriteByte(byte((v >> 16) & 0xFF)))
 	b.must(b.buf.WriteByte(byte((v >> 8) & 0xFF)))
