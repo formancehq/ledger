@@ -71,18 +71,18 @@ func (mr *MockLedgerMockRecorder) CountTransactions(ctx, query interface{}) *gom
 }
 
 // CreateTransaction mocks base method.
-func (m *MockLedger) CreateTransaction(ctx context.Context, preview bool, data core.RunScript) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.ExpandedTransaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTransaction", ctx, preview, data)
+	ret := m.ctrl.Call(m, "CreateTransaction", ctx, dryRun, async, data)
 	ret0, _ := ret[0].(*core.ExpandedTransaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTransaction indicates an expected call of CreateTransaction.
-func (mr *MockLedgerMockRecorder) CreateTransaction(ctx, preview, data interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) CreateTransaction(ctx, dryRun, async, data interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockLedger)(nil).CreateTransaction), ctx, preview, data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockLedger)(nil).CreateTransaction), ctx, dryRun, async, data)
 }
 
 // GetAccount mocks base method.
@@ -206,32 +206,32 @@ func (mr *MockLedgerMockRecorder) GetTransactions(ctx, query interface{}) *gomoc
 }
 
 // RevertTransaction mocks base method.
-func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.ExpandedTransaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id)
+	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, async)
 	ret0, _ := ret[0].(*core.ExpandedTransaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
-func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, id interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, id, async interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, id, async)
 }
 
 // SaveMeta mocks base method.
-func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata) error {
+func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata, async bool) error {
 	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, targetType, targetID, m)
+	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, targetType, targetID, m, async)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveMeta indicates an expected call of SaveMeta.
-func (mr *MockLedgerMockRecorder) SaveMeta(ctx, targetType, targetID, m interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) SaveMeta(ctx, targetType, targetID, m, async interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveMeta", reflect.TypeOf((*MockLedger)(nil).SaveMeta), ctx, targetType, targetID, m)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveMeta", reflect.TypeOf((*MockLedger)(nil).SaveMeta), ctx, targetType, targetID, m, async)
 }
 
 // Stats mocks base method.

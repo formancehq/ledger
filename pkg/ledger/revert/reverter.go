@@ -31,7 +31,7 @@ type Runner interface {
 }
 
 type LogIngester interface {
-	QueueLog(ctx context.Context, log *core.LogHolder) error
+	QueueLog(ctx context.Context, log *core.LogHolder, async bool) error
 }
 
 type Reverter struct {
@@ -41,7 +41,7 @@ type Reverter struct {
 	logIngester LogIngester
 }
 
-func (r *Reverter) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (r *Reverter) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.ExpandedTransaction, error) {
 	_, loaded := r.Map.LoadOrStore(id, struct{}{})
 	if loaded {
 		return nil, ErrRevertOccurring
@@ -81,7 +81,7 @@ func (r *Reverter) RevertTransaction(ctx context.Context, id uint64) (*core.Expa
 		return nil, errors.Wrap(err, "revert transaction")
 	}
 
-	err = r.logIngester.QueueLog(ctx, logHolder)
+	err = r.logIngester.QueueLog(ctx, logHolder, async)
 	if err != nil {
 		return nil, err
 	}

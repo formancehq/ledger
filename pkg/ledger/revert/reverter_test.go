@@ -36,10 +36,10 @@ func (fn runnerFn) Execute(
 
 var _ Runner = (runnerFn)(nil)
 
-type logIngesterFn func(ctx context.Context, log *core.LogHolder) error
+type logIngesterFn func(ctx context.Context, log *core.LogHolder, async bool) error
 
-func (l logIngesterFn) QueueLog(ctx context.Context, log *core.LogHolder) error {
-	return l(ctx, log)
+func (l logIngesterFn) QueueLog(ctx context.Context, log *core.LogHolder, async bool) error {
+	return l(ctx, log, async)
 }
 
 var _ LogIngester = (logIngesterFn)(nil)
@@ -54,11 +54,11 @@ func TestReverter(t *testing.T) {
 	runner := runnerFn(func(ctx context.Context, script core.RunScript, dryRun bool, logComputer runner.LogComputer) (*core.ExpandedTransaction, *core.LogHolder, error) {
 		return &core.ExpandedTransaction{}, core.NewLogHolder(nil), nil
 	})
-	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder) error {
+	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder, async bool) error {
 		close(log.Ingested)
 		return nil
 	}))
-	_, err := reverter.RevertTransaction(context.Background(), txID)
+	_, err := reverter.RevertTransaction(context.Background(), txID, false)
 	require.NoError(t, err)
 
 }
@@ -76,11 +76,11 @@ func TestReverterWithAlreadyReverted(t *testing.T) {
 	runner := runnerFn(func(ctx context.Context, script core.RunScript, dryRun bool, logComputer runner.LogComputer) (*core.ExpandedTransaction, *core.LogHolder, error) {
 		return &core.ExpandedTransaction{}, core.NewLogHolder(nil), nil
 	})
-	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder) error {
+	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder, async bool) error {
 		close(log.Ingested)
 		return nil
 	}))
-	_, err := reverter.RevertTransaction(context.Background(), tx.ID)
+	_, err := reverter.RevertTransaction(context.Background(), tx.ID, false)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
 }
 
@@ -96,17 +96,17 @@ func TestReverterWithRevertOccurring(t *testing.T) {
 		return &core.ExpandedTransaction{}, core.NewLogHolder(nil), nil
 	})
 	ingestedLog := make(chan *core.LogHolder, 1)
-	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder) error {
+	reverter := NewReverter(store, runner, logIngesterFn(func(ctx context.Context, log *core.LogHolder, async bool) error {
 		ingestedLog <- log
 		return nil
 	}))
 	go func() {
-		_, err := reverter.RevertTransaction(context.Background(), tx.ID)
+		_, err := reverter.RevertTransaction(context.Background(), tx.ID, false)
 		require.NoError(t, err)
 	}()
 
 	<-ingestedLog
 
-	_, err := reverter.RevertTransaction(context.Background(), tx.ID)
+	_, err := reverter.RevertTransaction(context.Background(), tx.ID, false)
 	require.True(t, errors.Is(err, ErrRevertOccurring))
 }

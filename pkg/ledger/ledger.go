@@ -71,27 +71,13 @@ func (l *Ledger) GetLedgerStore() storage.LedgerStore {
 	return l.store
 }
 
-func (l *Ledger) writeLog(ctx context.Context, logHolder *core.LogHolder) error {
-	if err := l.queryWorker.QueueLog(ctx, logHolder); err != nil {
-		return err
-	}
-	// Wait for CQRS ingestion
-	// TODO(polo/gfyrag): add possiblity to disable this via request param
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-logHolder.Ingested:
-		return nil
-	}
-}
-
-func (l *Ledger) CreateTransaction(ctx context.Context, dryRun bool, script core.RunScript) (*core.ExpandedTransaction, error) {
+func (l *Ledger) CreateTransaction(ctx context.Context, dryRun, async bool, script core.RunScript) (*core.ExpandedTransaction, error) {
 	tx, logHolder, err := l.runner.Execute(ctx, script, dryRun, func(expandedTx core.ExpandedTransaction, accountMetadata map[string]metadata.Metadata) core.Log {
 		return core.NewTransactionLog(expandedTx.Transaction, accountMetadata)
 	})
 
 	if err == nil && !dryRun {
-		if err := l.writeLog(ctx, logHolder); err != nil {
+		if err := l.queryWorker.QueueLog(ctx, logHolder, async); err != nil {
 			return nil, errors.Wrap(err, "writing log")
 		}
 	}
@@ -140,7 +126,7 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 }
 
 // TODO(gfyrag): maybe we should check transaction exists on the log store before set a metadata ? (accounts always exists even if never used)
-func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m metadata.Metadata) error {
+func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID interface{}, m metadata.Metadata, async bool) error {
 	if m == nil {
 		return nil
 	}
@@ -210,9 +196,9 @@ func (l *Ledger) SaveMeta(ctx context.Context, targetType string, targetID inter
 	err = l.store.AppendLog(ctx, &log)
 	if err == nil {
 		logHolder := core.NewLogHolder(&log)
-		if err := l.writeLog(ctx, logHolder); err != nil {
+		if err := l.queryWorker.QueueLog(ctx, logHolder, async); err != nil {
 			release()
-			return err
+			return errors.Wrap(err, "writing log")
 		}
 		go func() {
 			<-logHolder.Ingested
