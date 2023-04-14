@@ -24,6 +24,10 @@ func (o Order) String() string {
 	panic("should not happen")
 }
 
+func (o Order) Reverse() Order {
+	return (o + 1) % 2
+}
+
 type ColumnPaginatedQuery[FILTERS any] struct {
 	PageSize     uint64  `json:"pageSize"`
 	Bottom       *uint64 `json:"bottom"`

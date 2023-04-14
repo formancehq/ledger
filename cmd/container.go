@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+
 	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/bus"
@@ -16,10 +18,11 @@ import (
 
 const ServiceName = "ledger"
 
-func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
+func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options, fx.NopLogger)
 
+	v := viper.GetViper()
 	debug := v.GetBool(service.DebugFlag)
 	if debug {
 		sqlstorage.InstrumentalizeSQLDriver()
@@ -33,7 +36,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 		api.Module(api.Config{
 			Version: Version,
 		}),
-		sqlstorage.CLIDriverModule(v),
+		sqlstorage.CLIDriverModule(v, output),
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(ledger.Configuration{
 			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",

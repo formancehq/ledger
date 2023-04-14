@@ -11,6 +11,7 @@ import (
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/pagination"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -30,6 +31,22 @@ type LogsV2 struct {
 	Date      core.Time `bun:"date,type:timestamptz"`
 	Data      []byte    `bun:"data,type:bytea"`
 	Reference string    `bun:"reference,type:text"`
+}
+
+func (log LogsV2) toCore() core.Log {
+	payload, err := core.HydrateLog(core.LogType(log.Type), log.Data)
+	if err != nil {
+		panic(errors.Wrap(err, "hydrating log data"))
+	}
+
+	return core.Log{
+		ID:        log.ID,
+		Type:      core.LogType(log.Type),
+		Data:      payload,
+		Hash:      log.Hash,
+		Date:      log.Date.UTC(),
+		Reference: log.Reference,
+	}
 }
 
 type LogsIngestion struct {
@@ -140,7 +157,6 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	raw := &LogsV2{}
 	err := s.schema.NewSelect(LogTableName).
 		Model(raw).
-		Column("id", "type", "hash", "date", "data", "reference").
 		OrderExpr("id desc").
 		Limit(1).
 		Scan(ctx)
@@ -148,21 +164,8 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
-	if err != nil {
-		return nil, errors.Wrap(err, "hydrating log data")
-	}
-
-	l := &core.Log{
-		ID:        raw.ID,
-		Type:      core.LogType(raw.Type),
-		Data:      payload,
-		Hash:      raw.Hash,
-		Date:      raw.Date.UTC(),
-		Reference: raw.Reference,
-	}
-
-	return l, nil
+	l := raw.toCore()
+	return &l, nil
 }
 
 func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.Log], error) {
@@ -172,35 +175,20 @@ func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[c
 	recordMetrics := s.instrumentalized(ctx, "get_logs")
 	defer recordMetrics()
 
-	return pagination.UsingColumn[storage.LogsQueryFilters, core.Log](ctx,
-		s.buildLogsQuery(q.Filters),
+	cursor, err := pagination.UsingColumn[storage.LogsQueryFilters, LogsV2](ctx,
+		s.buildLogsQuery,
 		storage.ColumnPaginatedQuery[storage.LogsQueryFilters](q),
-		func(log *core.Log, scanner interface{ Scan(args ...any) error }) (uint64, error) {
-			var raw LogsV2
-			err := scanner.Scan(&raw.ID, &raw.Type, &raw.Hash, &raw.Date, &raw.Data, &raw.Reference)
-			if err != nil {
-				return 0, err
-			}
+	)
+	if err != nil {
+		return nil, err
+	}
 
-			payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
-			if err != nil {
-				return 0, errors.Wrap(err, "hydrating log data")
-			}
-
-			log.ID = raw.ID
-			log.Type = core.LogType(raw.Type)
-			log.Data = payload
-			log.Hash = raw.Hash
-			log.Date = raw.Date.UTC()
-			log.Reference = raw.Reference
-
-			return log.ID, nil
-		})
+	return api.MapCursor(cursor, LogsV2.toCore), nil
 }
 
-func (s *Store) buildLogsQuery(q storage.LogsQueryFilters) *bun.SelectQuery {
+func (s *Store) buildLogsQuery(q storage.LogsQueryFilters, models *[]LogsV2) *bun.SelectQuery {
 	sb := s.schema.NewSelect(LogTableName).
-		Model((*LogsV2)(nil)).
+		Model(models).
 		Column("id", "type", "hash", "date", "data", "reference")
 
 	if !q.StartTime.IsZero() {
@@ -265,23 +253,7 @@ func (s *Store) readLogsRange(ctx context.Context, exec interface {
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	logs := make([]core.Log, len(rawLogs))
-	for index, rawLog := range rawLogs {
-		payload, err := core.HydrateLog(core.LogType(rawLog.Type), rawLog.Data)
-		if err != nil {
-			return nil, errors.Wrap(err, "hydrating log data")
-		}
-		logs[index] = core.Log{
-			ID:        rawLog.ID,
-			Type:      core.LogType(rawLog.Type),
-			Hash:      rawLog.Hash,
-			Date:      rawLog.Date,
-			Data:      payload,
-			Reference: rawLog.Reference,
-		}
-	}
-
-	return logs, nil
+	return collectionutils.Map(rawLogs, LogsV2.toCore), nil
 }
 
 func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
@@ -320,20 +292,9 @@ func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*co
 	if err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
+	ret := raw.toCore()
 
-	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to hydrate log")
-	}
-
-	return &core.Log{
-		ID:        raw.ID,
-		Type:      core.LogType(raw.Type),
-		Data:      payload,
-		Hash:      raw.Hash,
-		Date:      raw.Date,
-		Reference: raw.Reference,
-	}, nil
+	return &ret, nil
 }
 
 func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.Log, error) {
@@ -355,18 +316,7 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 	if err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
+	ret := raw.toCore()
 
-	payload, err := core.HydrateLog(core.LogType(raw.Type), raw.Data)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to hydrate log")
-	}
-
-	return &core.Log{
-		ID:        raw.ID,
-		Type:      core.LogType(raw.Type),
-		Data:      payload,
-		Hash:      raw.Hash,
-		Date:      raw.Date,
-		Reference: raw.Reference,
-	}, nil
+	return &ret, nil
 }

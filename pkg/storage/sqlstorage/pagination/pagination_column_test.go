@@ -2,6 +2,7 @@ package pagination_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/storage"
@@ -9,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 )
 
 func ptr[T any](t T) *T {
@@ -18,7 +20,7 @@ func ptr[T any](t T) *T {
 func TestColumnPagination(t *testing.T) {
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
+	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
 	require.NoError(t, err)
 
 	_, err = db.Exec(`
@@ -311,22 +313,16 @@ func TestColumnPagination(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-
-			query := db.NewSelect().Model(&models).Column("id")
-			if tc.query.Filters {
-				query = query.Where("pair = ?", true)
-			}
 			cursor, err := pagination.UsingColumn(
 				context.Background(),
-				query,
-				tc.query,
-				func(t *model, scanner interface{ Scan(args ...any) error }) (uint64, error) {
-					err := scanner.Scan(&t.ID)
-					if err != nil {
-						return 0, err
+				func(filters bool, models *[]model) *bun.SelectQuery {
+					query := db.NewSelect().Model(models).Column("id")
+					if tc.query.Filters {
+						query = query.Where("pair = ?", true)
 					}
-					return t.ID, nil
-				})
+					return query
+				},
+				tc.query)
 			require.NoError(t, err)
 
 			if tc.expectedNext == nil {

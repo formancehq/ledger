@@ -85,7 +85,7 @@ func TestMigrationsOrders(t *testing.T) {
 
 func TestMigrates(t *testing.T) {
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	sqlDB, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
+	sqlDB, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestMigrates(t *testing.T) {
 				"any": {
 					func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
 						sb := s.NewUpdate(ledgerstore.TransactionsTableName).
-							Model((*ledgerstore.Transactions)(nil)).
+							Model((*ledgerstore.Transaction)(nil)).
 							Set("timestamp = ?", core.Now()).
 							Where("TRUE")
 

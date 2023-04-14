@@ -1,12 +1,15 @@
 package sqlstorage
 
 import (
+	"io"
+
 	"github.com/formancehq/ledger/pkg/storage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
 	"github.com/formancehq/stack/libs/go-libs/health"
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/uptrace/bun"
@@ -38,7 +41,7 @@ type ModuleConfig struct {
 	Debug          bool
 }
 
-func CLIDriverModule(v *viper.Viper) fx.Option {
+func CLIDriverModule(v *viper.Viper, output io.Writer) fx.Option {
 	cfg := ModuleConfig{
 		PostgresConfig: &PostgresConfig{
 			ConnString: v.GetString(StoragePostgresConnectionStringFlag),
@@ -49,12 +52,13 @@ func CLIDriverModule(v *viper.Viper) fx.Option {
 				MaxWriteChanSize: v.GetInt(StoreWorkerMaxWriteChanSize),
 			},
 		},
+		Debug: viper.GetBool(service.DebugFlag),
 	}
 
 	options := make([]fx.Option, 0)
 
 	options = append(options, fx.Provide(func() (*bun.DB, error) {
-		return utils.OpenSQLDB(cfg.PostgresConfig.ConnString, cfg.Debug)
+		return utils.OpenSQLDB(cfg.PostgresConfig.ConnString, cfg.Debug, output)
 	}))
 	options = append(options, fx.Provide(func(db *bun.DB) schema.DB {
 		return schema.NewPostgresDB(db)

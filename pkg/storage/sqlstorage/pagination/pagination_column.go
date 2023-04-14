@@ -3,6 +3,8 @@ package pagination
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/formancehq/ledger/pkg/storage"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/sqlstorage/errors"
@@ -10,17 +12,16 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type columnScanner[T any] func(t *T, scanner interface {
-	Scan(args ...any) error
-}) (uint64, error)
+func UsingColumn[FILTERS any, ENTITY any](ctx context.Context,
+	builder func(filters FILTERS, models *[]ENTITY) *bun.SelectQuery,
+	query storage.ColumnPaginatedQuery[FILTERS]) (*api.Cursor[ENTITY], error) {
+	ret := make([]ENTITY, 0)
 
-func UsingColumn[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query storage.ColumnPaginatedQuery[Q], fn columnScanner[T]) (*api.Cursor[T], error) {
-	ret := make([]T, 0)
-
+	sb := builder(query.Filters, &ret)
 	sb = sb.Limit(int(query.PageSize) + 1) // Fetch one additional item to find the next token
 	order := query.Order
 	if query.Reverse {
-		order = (order + 1) % 2
+		order = order.Reverse()
 	}
 	sb = sb.OrderExpr(fmt.Sprintf("%s %s", query.Column, order))
 
@@ -42,29 +43,33 @@ func UsingColumn[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query s
 		}
 	}
 
-	rows, err := sb.Rows(ctx)
-	if err != nil {
+	if err := sb.Scan(ctx); err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
-	defer rows.Close()
+	var (
+		paginatedColumnIndex = 0
+	)
+	typeOfT := reflect.TypeOf(ret).Elem()
+	for ; paginatedColumnIndex < typeOfT.NumField(); paginatedColumnIndex++ {
+		field := typeOfT.Field(paginatedColumnIndex)
+		tag := field.Tag.Get("bun")
+		column := strings.Split(tag, ",")[0]
+		if column == query.Column {
+			break
+		}
+	}
 
 	var (
 		paginationIDs = make([]uint64, 0)
 	)
-	for rows.Next() {
-		var t T
-		paginationID, err := fn(&t, rows)
-		if err != nil {
-			return nil, err
-		}
+	for _, t := range ret {
+		paginationID := reflect.ValueOf(t).
+			Field(paginatedColumnIndex).
+			Interface().(uint64)
 		if query.Bottom == nil {
 			query.Bottom = &paginationID
 		}
 		paginationIDs = append(paginationIDs, paginationID)
-		ret = append(ret, t)
-	}
-	if rows.Err() != nil {
-		return nil, storageerrors.PostgresError(err)
 	}
 
 	hasMore := len(ret) > int(query.PageSize)
@@ -77,7 +82,7 @@ func UsingColumn[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query s
 		}
 	}
 
-	var previous, next *storage.ColumnPaginatedQuery[Q]
+	var previous, next *storage.ColumnPaginatedQuery[FILTERS]
 
 	if query.Reverse {
 		cp := query
@@ -104,7 +109,7 @@ func UsingColumn[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query s
 		}
 	}
 
-	return &api.Cursor[T]{
+	return &api.Cursor[ENTITY]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
 		Previous: previous.EncodeAsCursor(),
