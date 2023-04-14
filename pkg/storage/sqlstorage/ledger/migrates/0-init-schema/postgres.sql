@@ -70,34 +70,31 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".migrations (
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".transactions (
     id bigint unique,
-    "timestamp" timestamp with time zone,
+    "timestamp" timestamp with time zone not null,
     reference character varying unique,
-    postings jsonb,
     metadata jsonb DEFAULT '{}'::jsonb,
-    pre_commit_volumes jsonb,
-    post_commit_volumes jsonb
+    pre_commit_volumes bytea,
+    post_commit_volumes bytea
 );
 
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".postings (
-    txid bigint,
-    posting_index integer,
-    source jsonb,
-    destination jsonb
+    txid bigint references "VAR_LEDGER_NAME".transactions(id),
+    amount bigint not null,
+    asset varchar not null,
+    source jsonb not null,
+    destination jsonb not null
 );
 
 --statement
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".volumes (
-    account character varying,
-    asset character varying,
-    input numeric,
-    output numeric,
+    account character varying not null,
+    asset character varying not null,
+    input numeric not null,
+    output numeric not null,
 
     unique(account, asset)
 );
-
---statement
-CREATE INDEX IF NOT EXISTS postings_addresses ON "VAR_LEDGER_NAME".transactions USING gin (postings);
 
 --statement
 CREATE INDEX IF NOT EXISTS postings_dest ON "VAR_LEDGER_NAME".postings USING gin (destination);

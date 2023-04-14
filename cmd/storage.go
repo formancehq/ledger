@@ -29,30 +29,32 @@ func NewStorageInit() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(
 				cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							name := viper.GetString("name")
-							if name == "" {
-								return errors.New("name is empty")
-							}
-							s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
-							if err != nil {
-								return err
-							}
+				resolveOptions(
+					cmd.OutOrStdout(),
+					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+						lc.Append(fx.Hook{
+							OnStart: func(ctx context.Context) error {
+								name := viper.GetString("name")
+								if name == "" {
+									return errors.New("name is empty")
+								}
+								s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
+								if err != nil {
+									return err
+								}
 
-							if !created {
+								if !created {
+									return nil
+								}
+
+								_, err = s.Initialize(ctx)
+								if err != nil {
+									return err
+								}
 								return nil
-							}
-
-							_, err = s.Initialize(ctx)
-							if err != nil {
-								return err
-							}
-							return nil
-						},
-					})
-				}))...,
+							},
+						})
+					}))...,
 			)
 			return app.Start(cmd.Context())
 		},
@@ -69,7 +71,8 @@ func NewStorageList() *cobra.Command {
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(),
+				resolveOptions(
+					cmd.OutOrStdout(),
 					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
@@ -100,27 +103,29 @@ func NewStorageUpgrade() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							name := args[0]
-							store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
-							if err != nil {
-								return err
-							}
-							modified, err := store.Initialize(ctx)
-							if err != nil {
-								return err
-							}
-							if modified {
-								logging.FromContext(ctx).Infof("Storage '%s' upgraded", name)
-							} else {
-								logging.FromContext(ctx).Infof("Storage '%s' is up to date", name)
-							}
-							return nil
-						},
-					})
-				}))...,
+				resolveOptions(
+					cmd.OutOrStdout(),
+					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+						lc.Append(fx.Hook{
+							OnStart: func(ctx context.Context) error {
+								name := args[0]
+								store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
+								if err != nil {
+									return err
+								}
+								modified, err := store.Initialize(ctx)
+								if err != nil {
+									return err
+								}
+								if modified {
+									logging.FromContext(ctx).Infof("Storage '%s' upgraded", name)
+								} else {
+									logging.FromContext(ctx).Infof("Storage '%s' is up to date", name)
+								}
+								return nil
+							},
+						})
+					}))...,
 			)
 			return app.Start(cmd.Context())
 		},
@@ -178,7 +183,10 @@ func NewStorageScan() *cobra.Command {
 				})
 			})
 
-			app := service.New(cmd.OutOrStdout(), resolveOptions(viper.GetViper(), opt)...)
+			app := service.New(cmd.OutOrStdout(), resolveOptions(
+				cmd.OutOrStdout(),
+				opt,
+			)...)
 			return app.Start(cmd.Context())
 		},
 	}
@@ -192,21 +200,23 @@ func NewStorageDelete() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := service.New(
 				cmd.OutOrStdout(),
-				resolveOptions(viper.GetViper(), fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							name := args[0]
-							store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
-							if err != nil {
-								return err
-							}
-							if err := store.Delete(ctx); err != nil {
-								return err
-							}
-							return nil
-						},
-					})
-				}))...,
+				resolveOptions(
+					cmd.OutOrStdout(),
+					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+						lc.Append(fx.Hook{
+							OnStart: func(ctx context.Context) error {
+								name := args[0]
+								store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
+								if err != nil {
+									return err
+								}
+								if err := store.Delete(ctx); err != nil {
+									return err
+								}
+								return nil
+							},
+						})
+					}))...,
 			)
 			return app.Start(cmd.Context())
 		},
