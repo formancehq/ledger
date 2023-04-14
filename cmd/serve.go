@@ -15,7 +15,6 @@ const (
 	cacheEvictionPeriodFlag  = "cache-eviction-period"
 	cacheEvictionRetainDelay = "cache-eviction-retain-delay"
 	queryLimitReadLogsFlag   = "query-limit-read-logs"
-
 	ballastSizeInBytesFlag = "ballast-size"
 )
 
@@ -24,7 +23,7 @@ func NewServe() *cobra.Command {
 		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
-				viper.GetViper(),
+				cmd.OutOrStdout(),
 				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
 					lc.Append(httpserver.NewHook(viper.GetString(bindFlag), h))

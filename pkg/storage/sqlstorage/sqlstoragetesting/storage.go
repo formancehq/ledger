@@ -2,6 +2,7 @@ package sqlstoragetesting
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
@@ -15,7 +16,7 @@ import (
 func StorageDriver(t pgtesting.TestingT) *sqlstorage.Driver {
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
+	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

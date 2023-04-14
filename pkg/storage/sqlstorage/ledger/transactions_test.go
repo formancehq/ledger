@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
@@ -131,4 +132,85 @@ func TestTransactions(t *testing.T) {
 		require.NoError(t, err, "getting transaction should not fail")
 		require.Equal(t, tx.Metadata, txToUpdate2.Metadata, "metadata should be equal")
 	})
+}
+
+func TestListTransactions(t *testing.T) {
+	store := newLedgerStore(t)
+
+	tx1 := core.ExpandTransactionFromEmptyPreCommitVolumes(
+		core.NewTransaction().
+			WithID(0).
+			WithPostings(
+				core.NewPosting("world", "alice", "USD", big.NewInt(100)),
+			).
+			WithTimestamp(now.Add(-3 * time.Hour)),
+	)
+	tx2 := core.ExpandTransactionFromEmptyPreCommitVolumes(
+		core.NewTransaction().
+			WithID(1).
+			WithPostings(
+				core.NewPosting("world", "bob", "USD", big.NewInt(100)),
+			).
+			WithTimestamp(now.Add(-2 * time.Hour)),
+	)
+	tx3 := core.ExpandTransactionFromEmptyPreCommitVolumes(
+		core.NewTransaction().
+			WithID(2).
+			WithPostings(
+				core.NewPosting("world", "users:marley", "USD", big.NewInt(100)),
+			).
+			WithTimestamp(now.Add(-time.Hour)),
+	)
+
+	require.NoError(t, store.InsertTransactions(context.Background(), tx1, tx2, tx3))
+
+	type testCase struct {
+		name     string
+		query    storage.TransactionsQuery
+		expected *api.Cursor[core.ExpandedTransaction]
+	}
+	testCases := []testCase{
+		{
+			name:  "nominal",
+			query: storage.NewTransactionsQuery(),
+			expected: &api.Cursor[core.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     []core.ExpandedTransaction{tx3, tx2, tx1},
+			},
+		},
+		{
+			name: "address filter",
+			query: storage.NewTransactionsQuery().
+				WithAccountFilter("bob"),
+			expected: &api.Cursor[core.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     []core.ExpandedTransaction{tx2},
+			},
+		},
+		{
+			name: "address filter using segment",
+			query: storage.NewTransactionsQuery().
+				WithAccountFilter("users:"),
+			expected: &api.Cursor[core.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     []core.ExpandedTransaction{tx3},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cursor, err := store.GetTransactions(context.Background(), tc.query)
+			require.NoError(t, err)
+			require.Equal(t, *tc.expected, *cursor)
+
+			count, err := store.CountTransactions(context.Background(), tc.query)
+			require.NoError(t, err)
+			require.EqualValues(t, len(tc.expected.Data), count)
+		})
+	}
 }

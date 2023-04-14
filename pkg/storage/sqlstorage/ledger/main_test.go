@@ -32,7 +32,7 @@ func newLedgerStore(t *testing.T) *ledgerstore.Store {
 	t.Helper()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
+	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())

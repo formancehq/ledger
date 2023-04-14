@@ -2,6 +2,7 @@ package pagination_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/storage"
@@ -14,7 +15,7 @@ import (
 func TestOffsetPagination(t *testing.T) {
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose())
+	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
 	require.NoError(t, err)
 
 	_, err = db.Exec(`

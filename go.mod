@@ -27,6 +27,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	github.com/uptrace/bun v1.1.12
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
+	github.com/uptrace/bun/extra/bunbig v1.1.12
 	github.com/uptrace/bun/extra/bundebug v1.1.12
 	go.nhat.io/otelsql v0.9.0
 	go.opentelemetry.io/otel v1.14.0
