@@ -48,14 +48,21 @@ func (j RawMessage) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
+func (s *Store) initLastLog(ctx context.Context) {
+	s.once.Do(func() {
+		var err error
+		s.previousLog, err = s.GetLastLog(ctx)
+		if err != nil && !storage.IsNotFoundError(err) {
+			panic(errors.Wrap(err, "reading last log"))
+		}
+	})
+}
+
 func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 	recordMetrics := s.instrumentalized(ctx, "batch_logs")
 	defer recordMetrics()
 
-	previousLog, err := s.GetLastLog(ctx)
-	if err != nil && !storage.IsNotFoundError(err) {
-		return errors.Wrap(err, "reading last log")
-	}
+	s.initLastLog(ctx)
 
 	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -80,11 +87,11 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		}
 
 		id := uint64(0)
-		if previousLog != nil {
-			id = previousLog.ID + 1
+		if s.previousLog != nil {
+			id = s.previousLog.ID + 1
 		}
 		logs[i].ID = id
-		logs[i].ComputeHash(previousLog)
+		logs[i].ComputeHash(s.previousLog)
 
 		ls[i].ID = id
 		ls[i].Type = int16(l.Type)
@@ -93,7 +100,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		ls[i].Data = data
 		ls[i].Reference = l.Reference
 
-		previousLog = logs[i]
+		s.previousLog = logs[i]
 		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].Reference)
 		if err != nil {
 			return storageerrors.PostgresError(err)

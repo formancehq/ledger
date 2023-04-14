@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -30,6 +31,8 @@ type Store struct {
 	onDelete        func(ctx context.Context) error
 
 	logsBatchWorker *worker.Worker[*core.Log]
+	previousLog     *core.Log
+	once            sync.Once
 
 	isInitialized bool
 }
