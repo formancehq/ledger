@@ -25,7 +25,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		worker.Submit(func() {
-			_, err := ledger.CreateTransaction(context.Background(), false, core.RunScript{
+			_, err := ledger.CreateTransaction(context.Background(), false, true, core.RunScript{
 				Script: core.Script{
 					Plain: `send [USD/2 100] (
 					source = @world
