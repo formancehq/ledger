@@ -7,7 +7,6 @@ import (
 type LogsQueryFilters struct {
 	EndTime   core.Time `json:"endTime"`
 	StartTime core.Time `json:"startTime"`
-	AfterID   uint64    `json:"afterID"`
 }
 
 type LogsQuery ColumnPaginatedQuery[LogsQueryFilters]
@@ -48,9 +47,4 @@ func (l LogsQuery) WithEndTimeFilter(end core.Time) LogsQuery {
 	}
 
 	return l
-}
-
-func (q LogsQuery) WithAfterID(id uint64) LogsQuery {
-	q.Filters.AfterID = id
-	return q
 }
