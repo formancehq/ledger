@@ -209,9 +209,6 @@ func (s *Store) buildLogsQuery(q storage.LogsQueryFilters) *bun.SelectQuery {
 	if !q.EndTime.IsZero() {
 		sb.Where("date < ?", q.EndTime.UTC())
 	}
-	if q.AfterID > 0 {
-		sb.Where("id < ?", q.AfterID)
-	}
 
 	return sb
 }

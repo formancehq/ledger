@@ -45,9 +45,9 @@ func (s *Store) buildAccountsQuery(p storage.AccountsQuery) *bun.SelectQuery {
 	}
 
 	if p.Filters.Balance != "" {
-		sb.Join("JOIN " + s.schema.Table(volumesTableName)).
+		sb.Join("LEFT JOIN " + s.schema.Table(volumesTableName)).
 			JoinOn("accounts.address = volumes.account")
-		balanceOperation := "volumes.input - volumes.output"
+		balanceOperation := "coalesce(volumes.input - volumes.output, 0)"
 
 		balanceValue, err := strconv.ParseInt(p.Filters.Balance, 10, 0)
 		if err != nil {
