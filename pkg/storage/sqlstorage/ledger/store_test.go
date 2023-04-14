@@ -380,12 +380,6 @@ func TestGetLogs(t *testing.T) {
 	require.Equal(t, 1, cursor.PageSize)
 	require.Equal(t, uint64(2), cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(context.Background(), storage.NewLogsQuery().WithPageSize(1).WithAfterID(cursor.Data[0].ID))
-	require.NoError(t, err)
-	// Should get only the second log.
-	require.Equal(t, 1, cursor.PageSize)
-	require.Equal(t, uint64(1), cursor.Data[0].ID)
-
 	cursor, err = store.GetLogs(context.Background(), storage.NewLogsQuery().
 		WithStartTimeFilter(now.Add(-2*time.Hour)).
 		WithEndTimeFilter(now.Add(-1*time.Hour)).

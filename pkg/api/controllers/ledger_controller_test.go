@@ -110,21 +110,6 @@ func TestGetLogs(t *testing.T) {
 			expectQuery: storage.NewLogsQuery(),
 		},
 		{
-			name: "using after",
-			queryParams: url.Values{
-				"after": []string{"10"},
-			},
-			expectQuery: storage.NewLogsQuery().WithAfterID(10),
-		},
-		{
-			name: "using invalid after",
-			queryParams: url.Values{
-				"after": []string{"xxx"},
-			},
-			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: apierrors.ErrValidation,
-		},
-		{
 			name: "using start time",
 			queryParams: url.Values{
 				"startTime": []string{now.Format(core.DateFormat)},

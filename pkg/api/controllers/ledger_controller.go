@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
@@ -58,8 +57,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 	logsQuery := storage.NewLogsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		if r.URL.Query().Get("after") != "" ||
-			r.URL.Query().Get(QueryKeyStartTime) != "" ||
+		if r.URL.Query().Get(QueryKeyStartTime) != "" ||
 			r.URL.Query().Get(QueryKeyEndTime) != "" ||
 			r.URL.Query().Get(QueryKeyPageSize) != "" {
 			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
@@ -75,15 +73,6 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		var err error
-		var afterIDParsed uint64
-		if r.URL.Query().Get("after") != "" {
-			afterIDParsed, err = strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
-			if err != nil {
-				apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
-					errors.New("invalid 'after' query param")))
-				return
-			}
-		}
 
 		var startTimeParsed, endTimeParsed core.Time
 		if r.URL.Query().Get(QueryKeyStartTime) != "" {
@@ -109,7 +98,6 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		logsQuery = logsQuery.
-			WithAfterID(afterIDParsed).
 			WithStartTimeFilter(startTimeParsed).
 			WithEndTimeFilter(endTimeParsed).
 			WithPageSize(pageSize)
