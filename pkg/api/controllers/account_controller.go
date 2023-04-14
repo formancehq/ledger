@@ -124,8 +124,7 @@ func PostAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := l.SaveMeta(r.Context(),
-		core.MetaTargetTypeAccount, chi.URLParam(r, "address"), m)
+	err := l.SaveMeta(r.Context(), core.MetaTargetTypeAccount, chi.URLParam(r, "address"), m, false)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return

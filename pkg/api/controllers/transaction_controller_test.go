@@ -153,7 +153,7 @@ func TestPostTransactions(t *testing.T) {
 			backend, mockLedger := newTestingBackend(t)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), testCase.expectedDryRun, testCase.expectedRunScript).
+					CreateTransaction(gomock.Any(), testCase.expectedDryRun, false, testCase.expectedRunScript).
 					Return(&expectedTx, nil)
 			}
 
@@ -215,7 +215,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			backend, mock := newTestingBackend(t)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
-					SaveMeta(gomock.Any(), core.MetaTargetTypeTransaction, uint64(0), testCase.body).
+					SaveMeta(gomock.Any(), core.MetaTargetTypeTransaction, uint64(0), testCase.body, false).
 					Return(nil)
 			}
 
@@ -620,7 +620,7 @@ func TestRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), uint64(0)).
+		RevertTransaction(gomock.Any(), uint64(0), false).
 		Return(&expectedTx, nil)
 
 	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())

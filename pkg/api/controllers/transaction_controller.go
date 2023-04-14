@@ -180,7 +180,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		res, err := l.CreateTransaction(r.Context(), preview, core.TxToScriptData(txData))
+		res, err := l.CreateTransaction(r.Context(), preview, false, core.TxToScriptData(txData))
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -197,7 +197,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 		Metadata:  payload.Metadata,
 	}
 
-	res, err := l.CreateTransaction(r.Context(), preview, script)
+	res, err := l.CreateTransaction(r.Context(), preview, false, script)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -235,7 +235,7 @@ func RevertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), txId)
+	tx, err := l.RevertTransaction(r.Context(), txId, false)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -261,7 +261,7 @@ func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := l.SaveMeta(r.Context(), core.MetaTargetTypeTransaction, txId, m); err != nil {
+	if err := l.SaveMeta(r.Context(), core.MetaTargetTypeTransaction, txId, m, false); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}

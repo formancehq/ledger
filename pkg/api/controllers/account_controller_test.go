@@ -276,7 +276,7 @@ func TestPostAccountMetadata(t *testing.T) {
 			backend, mock := newTestingBackend(t)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
-					SaveMeta(gomock.Any(), core.MetaTargetTypeAccount, testCase.account, testCase.body).
+					SaveMeta(gomock.Any(), core.MetaTargetTypeAccount, testCase.account, testCase.body, false).
 					Return(nil)
 			}
 
