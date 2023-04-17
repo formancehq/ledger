@@ -54,7 +54,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 		Asset: f.Asset,
 	}
 
-	if amount.Eq(NewMonetaryInt(0)) && len(f.Parts) > 0 {
+	if amount.Eq(Zero) && len(f.Parts) > 0 {
 		result.Parts = append(result.Parts, FundingPart{
 			Account: f.Parts[0].Account,
 			Amount:  amount,
@@ -63,7 +63,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 
 	remainingToWithdraw := amount
 	i := 0
-	for remainingToWithdraw.Gt(NewMonetaryInt(0)) && i < len(f.Parts) {
+	for remainingToWithdraw.Gt(Zero) && i < len(f.Parts) {
 		amtToWithdraw := f.Parts[i].Amount
 		// if this part has excess balance, put it in the remainder & only take what's needed
 		if amtToWithdraw.Gt(remainingToWithdraw) {
@@ -88,7 +88,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 		})
 		i++
 	}
-	if !remainingToWithdraw.Eq(NewMonetaryInt(0)) {
+	if !remainingToWithdraw.Eq(Zero) {
 		return Funding{}, Funding{}, errors.New("account had insufficient funds")
 	}
 	return result, remainder, nil
@@ -103,7 +103,7 @@ func (f Funding) TakeMax(amount *MonetaryInt) (Funding, Funding) {
 	}
 	remainingToWithdraw := amount
 	i := 0
-	for remainingToWithdraw.Gt(NewMonetaryInt(0)) && i < len(f.Parts) {
+	for remainingToWithdraw.Gt(Zero) && i < len(f.Parts) {
 		amtToWithdraw := f.Parts[i].Amount
 		// if this part has excess balance, put it in the remainder & only take what's needed
 		if amtToWithdraw.Gt(remainingToWithdraw) {
@@ -149,7 +149,7 @@ func (f Funding) Concat(other Funding) (Funding, error) {
 }
 
 func (f Funding) Total() *MonetaryInt {
-	total := NewMonetaryInt(0)
+	total := Zero
 	for _, part := range f.Parts {
 		total = total.Add(part.Amount)
 	}
