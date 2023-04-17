@@ -1,4 +1,4 @@
-package lock
+package command
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type unlockQuery struct {
 	done     chan struct{}
 }
 
-type Locker struct {
+type DefaultLocker struct {
 	readLocks     map[string]struct{}
 	writeLocks    map[string]struct{}
 	ledger        string
@@ -31,7 +31,7 @@ type Locker struct {
 	stopChan      chan chan struct{}
 }
 
-func (d *Locker) Run(ctx context.Context) error {
+func (d *DefaultLocker) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -52,7 +52,7 @@ func (d *Locker) Run(ctx context.Context) error {
 	}
 }
 
-func (d *Locker) process(ctx context.Context, query lockQuery) bool {
+func (d *DefaultLocker) process(ctx context.Context, query lockQuery) bool {
 	unlock, acquired := d.tryLock(ctx, query.accounts)
 	if acquired {
 		query.ready <- unlock
@@ -61,7 +61,7 @@ func (d *Locker) process(ctx context.Context, query lockQuery) bool {
 	return false
 }
 
-func (d *Locker) tryNext(ctx context.Context) {
+func (d *DefaultLocker) tryNext(ctx context.Context) {
 	for _, query := range d.pending {
 		if d.process(ctx, *query) {
 			return
@@ -69,7 +69,7 @@ func (d *Locker) tryNext(ctx context.Context) {
 	}
 }
 
-func (d *Locker) tryLock(ctx context.Context, accounts Accounts) (Unlock, bool) {
+func (d *DefaultLocker) tryLock(ctx context.Context, accounts Accounts) (Unlock, bool) {
 
 	for _, account := range accounts.Read {
 		_, ok := d.writeLocks[account]
@@ -109,7 +109,7 @@ func (d *Locker) tryLock(ctx context.Context, accounts Accounts) (Unlock, bool) 
 	}, true
 }
 
-func (d *Locker) unlock(ctx context.Context, accounts Accounts) {
+func (d *DefaultLocker) unlock(ctx context.Context, accounts Accounts) {
 	for _, account := range accounts.Read {
 		delete(d.readLocks, account)
 	}
@@ -118,7 +118,7 @@ func (d *Locker) unlock(ctx context.Context, accounts Accounts) {
 	}
 }
 
-func (d *Locker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
+func (d *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	q := lockQuery{
 		accounts: accounts,
 		ready:    make(chan Unlock, 1),
@@ -127,7 +127,7 @@ func (d *Locker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	return <-q.ready, nil
 }
 
-func (d *Locker) Stop(ctx context.Context) error {
+func (d *DefaultLocker) Stop(ctx context.Context) error {
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -142,8 +142,8 @@ func (d *Locker) Stop(ctx context.Context) error {
 	}
 }
 
-func New(ledger string) *Locker {
-	return &Locker{
+func NewDefaultLocker(ledger string) *DefaultLocker {
+	return &DefaultLocker{
 		readLocks:     map[string]struct{}{},
 		writeLocks:    map[string]struct{}{},
 		ledger:        ledger,

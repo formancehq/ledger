@@ -1,4 +1,4 @@
-package state
+package command
 
 import (
 	"github.com/formancehq/ledger/pkg/core"

@@ -8,10 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/ledger/revert"
-	"github.com/formancehq/ledger/pkg/ledger/runner"
-	"github.com/formancehq/ledger/pkg/ledger/state"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
@@ -60,24 +57,24 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 
 func coreErrorToErrorCode(err error) (int, string, string) {
 	switch {
-	case state.IsConflictError(err):
+	case command.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
 	case
-		ledger.IsValidationError(err),
-		state.IsPastTransactionError(err),
-		runner.IsNoPostingsError(err),
-		errors.Is(err, revert.ErrAlreadyReverted),
-		errors.Is(err, revert.ErrRevertOccurring):
+		command.IsValidationError(err),
+		command.IsPastTransactionError(err),
+		command.IsNoPostingsError(err),
+		errors.Is(err, command.ErrAlreadyReverted),
+		errors.Is(err, command.ErrRevertOccurring):
 		return http.StatusBadRequest, ErrValidation, ""
 	case storage.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
-	case runner.IsNoScriptError(err):
+	case command.IsNoScriptError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorNoScript, EncodeLink(baseError.Error())
 	case vm.IsInsufficientFundError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorInsufficientFund, EncodeLink(baseError.Error())
-	case runner.IsCompilationFailedError(err):
+	case command.IsCompilationFailedError(err):
 		baseError := errors.Cause(err)
 		return http.StatusBadRequest, ScriptErrorCompilationFailed, EncodeLink(baseError.Error())
 	case vm.IsMetadataOverrideError(err):

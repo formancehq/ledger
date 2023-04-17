@@ -1,4 +1,4 @@
-package state
+package command
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestState(t *testing.T) {
-	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
+	state := Load(AlwaysEmptyStore, false)
 	reserve, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: core.Now(),
 	})
@@ -20,7 +20,7 @@ func TestState(t *testing.T) {
 }
 
 func TestStateInsertInPastWithNotAllowedPastTimestamp(t *testing.T) {
-	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
+	state := Load(AlwaysEmptyStore, false)
 	now := core.Now()
 	reserve1, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now,
@@ -36,7 +36,7 @@ func TestStateInsertInPastWithNotAllowedPastTimestamp(t *testing.T) {
 }
 
 func TestStateInsertInPastWithAllowPastTimestamps(t *testing.T) {
-	state := New(NoOpStore, true, core.Now().Add(-10*time.Second))
+	state := Load(AlwaysEmptyStore, true)
 	now := core.Now()
 	reserve1, _, err := state.Reserve(context.Background(), ReserveRequest{
 		Timestamp: now,
@@ -52,7 +52,7 @@ func TestStateInsertInPastWithAllowPastTimestamps(t *testing.T) {
 }
 
 func TestStateWithError(t *testing.T) {
-	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
+	state := Load(AlwaysEmptyStore, false)
 	now := core.Now()
 
 	_, _, err := state.Reserve(context.Background(), ReserveRequest{
@@ -68,7 +68,7 @@ func TestStateWithError(t *testing.T) {
 }
 
 func BenchmarkState(b *testing.B) {
-	state := New(NoOpStore, false, core.Now().Add(-10*time.Second))
+	state := Load(AlwaysEmptyStore, false)
 	b.ResetTimer()
 	now := core.Now()
 	eg := errgroup.Group{}

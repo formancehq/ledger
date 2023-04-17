@@ -1,4 +1,4 @@
-package runner
+package command
 
 import (
 	"context"
@@ -7,18 +7,22 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
-	"github.com/formancehq/ledger/pkg/ledger/lock"
-	"github.com/formancehq/ledger/pkg/ledger/numscript"
-	"github.com/formancehq/ledger/pkg/ledger/state"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
 type mockCache struct {
 	accounts map[string]*core.AccountWithVolumes
+}
+
+func (m *mockCache) UpdateAccountMetadata(s string, m2 metadata.Metadata) error {
+	panic("not implemented")
+}
+
+func (m *mockCache) Stop(ctx context.Context) error {
+	return nil
 }
 
 func (m *mockCache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
@@ -35,7 +39,7 @@ func (m *mockCache) LockAccounts(ctx context.Context, accounts ...string) (cache
 	return func() {}, nil
 }
 
-func (m *mockCache) UpdateVolumeWithTX(transaction core.Transaction) {
+func (m *mockCache) UpdateVolumeWithTX(transaction *core.Transaction) {
 	for _, posting := range transaction.Postings {
 		sourceAccount, _ := m.GetAccountWithVolumes(context.Background(), posting.Source)
 		sourceAccountAsset := sourceAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
@@ -50,8 +54,27 @@ func (m *mockCache) UpdateVolumeWithTX(transaction core.Transaction) {
 
 var _ Cache = (*mockCache)(nil)
 
+func newMockCache() *mockCache {
+	return &mockCache{
+		accounts: map[string]*core.AccountWithVolumes{},
+	}
+}
+
 type mockStore struct {
-	logs []*core.Log
+	logs         []*core.Log
+	transactions map[uint64]*core.ExpandedTransaction
+}
+
+func (m *mockStore) Close(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockStore) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+	tx, ok := m.transactions[id]
+	if ok {
+		return tx, nil
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.Log, error) {
@@ -81,9 +104,16 @@ func (m *mockStore) AppendLog(ctx context.Context, log *core.Log) error {
 
 var _ Store = (*mockStore)(nil)
 
+func newMockStore() *mockStore {
+	return &mockStore{
+		logs:         []*core.Log{},
+		transactions: map[uint64]*core.ExpandedTransaction{},
+	}
+}
+
 type testCase struct {
 	name             string
-	setup            func(t *testing.T, r *Runner)
+	setup            func(t *testing.T, r Store)
 	script           string
 	reference        string
 	expectedError    error
@@ -131,12 +161,12 @@ var testCases = []testCase{
 	},
 	{
 		name: "set reference conflict",
-		setup: func(t *testing.T, l *Runner) {
+		setup: func(t *testing.T, store Store) {
 			tx := core.NewTransaction().
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil).WithReference("tx_ref")
-			require.NoError(t, l.store.AppendLog(
+			require.NoError(t, store.AppendLog(
 				context.Background(),
 				&log,
 			))
@@ -147,7 +177,7 @@ var testCases = []testCase{
 				destination = @mint
 			)`,
 		reference:     "tx_ref",
-		expectedError: state.ErrConflictError,
+		expectedError: ErrConflictError,
 	},
 	{
 		name: "set reference",
@@ -183,7 +213,7 @@ var testCases = []testCase{
 	},
 }
 
-func TestExecuteScript(t *testing.T) {
+func TestCreateTransaction(t *testing.T) {
 	t.Parallel()
 	now := core.Now()
 
@@ -191,34 +221,20 @@ func TestExecuteScript(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 
-			ledger := uuid.NewString()
-			cache := &mockCache{
-				accounts: map[string]*core.AccountWithVolumes{},
-			}
-			store := &mockStore{
-				logs: []*core.Log{},
-			}
+			store := newMockStore()
+			cache := newMockCache()
 
-			compiler := numscript.NewCompiler()
-			locker := lock.New(ledger)
-			go func() {
-				require.NoError(t, locker.Run(context.Background()))
-			}()
-
-			runner, err := New(store, locker, cache, compiler, ledger, false)
-			require.NoError(t, err)
+			ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
 
 			if tc.setup != nil {
-				tc.setup(t, runner)
+				tc.setup(t, store)
 			}
-			ret, _, err := runner.Execute(context.Background(), core.RunScript{
+			ret, err := ledger.CreateTransaction(context.Background(), Parameters{}, core.RunScript{
 				Script: core.Script{
 					Plain: tc.script,
 				},
 				Timestamp: now,
 				Reference: tc.reference,
-			}, false, func(transaction core.Transaction, accountMetadata map[string]metadata.Metadata) core.Log {
-				return core.NewTransactionLog(transaction, accountMetadata)
 			})
 
 			if tc.expectedError != nil {
@@ -240,10 +256,10 @@ func TestExecuteScript(t *testing.T) {
 					expectedLog.Date = now
 				}
 
-				require.Equal(t, tc.expectedTx.Timestamp, runner.state.GetMoreRecentTransactionDate())
+				require.Equal(t, tc.expectedTx.Timestamp, ledger.state.GetMoreRecentTransactionDate())
 
 				for address, account := range tc.expectedAccounts {
-					accountFromCache, err := runner.cache.GetAccountWithVolumes(context.Background(), address)
+					accountFromCache, err := ledger.cache.GetAccountWithVolumes(context.Background(), address)
 					require.NoError(t, err)
 					require.NotNil(t, accountFromCache)
 					require.Equal(t, account, *accountFromCache)
@@ -251,4 +267,104 @@ func TestExecuteScript(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRevert(t *testing.T) {
+	txID := uint64(0)
+	store := newMockStore()
+	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(
+		core.NewTransaction().WithPostings(
+			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
+		),
+	)
+	store.transactions[txID] = &tx
+	cache := newMockCache()
+	cache.accounts["bank"] = &core.AccountWithVolumes{
+		Account: core.Account{
+			Address:  "bank",
+			Metadata: metadata.Metadata{},
+		},
+		Volumes: map[string]core.Volumes{
+			"USD": {
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
+			},
+		},
+	}
+
+	ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
+	_, err := ledger.RevertTransaction(context.Background(), txID, false)
+	require.NoError(t, err)
+}
+
+func TestRevertWithAlreadyReverted(t *testing.T) {
+
+	store := newMockStore()
+	cache := newMockCache()
+	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(core.NewTransaction().WithMetadata(
+		core.RevertedMetadata(uint64(0)),
+	))
+	store.transactions[uint64(0)] = &tx
+	cache.accounts["bank"] = &core.AccountWithVolumes{
+		Account: core.Account{
+			Address:  "bank",
+			Metadata: metadata.Metadata{},
+		},
+		Volumes: map[string]core.Volumes{
+			"USD": {
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
+			},
+		},
+	}
+
+	ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
+
+	_, err := ledger.RevertTransaction(context.Background(), tx.ID, false)
+	require.True(t, errors.Is(err, ErrAlreadyReverted))
+}
+
+func TestRevertWithRevertOccurring(t *testing.T) {
+
+	store := newMockStore()
+	cache := newMockCache()
+	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(
+		core.NewTransaction().WithPostings(
+			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
+		),
+	)
+	store.transactions[uint64(0)] = &tx
+	cache.accounts["bank"] = &core.AccountWithVolumes{
+		Account: core.Account{
+			Address:  "bank",
+			Metadata: metadata.Metadata{},
+		},
+		Volumes: map[string]core.Volumes{
+			"USD": {
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
+			},
+		},
+	}
+
+	ingestedLog := make(chan *core.LogHolder, 1)
+
+	ledger := New(store, cache, NoOpLocker, LogIngesterFn(func(ctx context.Context, log *core.LogHolder) error {
+		ingestedLog <- log
+		<-log.Ingested
+		return nil
+	}), Load(store, false), nil)
+	go func() {
+		_, err := ledger.RevertTransaction(context.Background(), uint64(0), false)
+		require.NoError(t, err)
+
+	}()
+
+	log := <-ingestedLog
+	defer func() {
+		log.SetIngested()
+	}()
+
+	_, err := ledger.RevertTransaction(context.Background(), tx.ID, false)
+	require.True(t, errors.Is(err, ErrRevertOccurring))
 }

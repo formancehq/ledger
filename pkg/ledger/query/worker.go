@@ -369,23 +369,13 @@ func buildData(
 	return logsData, nil
 }
 
-func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder, async bool) error {
+func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder) error {
 	select {
 	case <-w.stoppedChan:
 		return errors.New("worker stopped")
 	case w.writeChannel <- log:
 		w.metricsRegistry.QueryInboundLogs().Add(ctx, 1)
-		if async {
-			return nil
-		}
-		// Wait for CQRS ingestion
-		// TODO(polo/gfyrag): add possiblity to disable this via request param
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-log.Ingested:
-			return nil
-		}
+		return nil
 	}
 }
 
