@@ -55,7 +55,7 @@ func (a Allotment) String() string {
 func (a Allotment) Allocate(amount *MonetaryInt) []*MonetaryInt {
 	amtBigint := big.Int(*amount)
 	parts := make([]*MonetaryInt, len(a))
-	totalAllocated := NewMonetaryInt(0)
+	totalAllocated := Zero
 	// for every part in the allotment, calculate the floored value
 	for i, allot := range a {
 		var res big.Int

@@ -119,13 +119,16 @@ func (s *Store) buildTransactionsQuery(p storage.TransactionsQueryFilters, model
 	sb := s.schema.
 		NewSelect(TransactionsTableName).
 		Model(models).
-		Join(fmt.Sprintf("JOIN %s", s.schema.Table(PostingsTableName))).
-		JoinOn("postings.txid = transactions.id").
 		Relation("Postings", func(sb *bun.SelectQuery) *bun.SelectQuery {
 			return sb.With("postings", s.schema.NewSelect(PostingsTableName))
 		}).
 		Distinct()
 
+	if p.Source != "" || p.Destination != "" || p.Account != "" {
+		sb = sb.
+			Join(fmt.Sprintf("JOIN %s", s.schema.Table(PostingsTableName))).
+			JoinOn("postings.txid = transactions.id")
+	}
 	if p.Source != "" {
 		src := strings.Split(p.Source, ":")
 		sb.Where(fmt.Sprintf("jsonb_array_length(postings.source) = %d", len(src)))

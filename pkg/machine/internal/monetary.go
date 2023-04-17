@@ -24,6 +24,8 @@ func (m Monetary) String() string {
 
 func (m Monetary) GetAsset() Asset { return m.Asset }
 
+var Zero = NewMonetaryInt(0)
+
 func ParseMonetary(mon Monetary) error {
 	if err := ParseAsset(mon.Asset); err != nil {
 		return errors.Wrapf(err, "asset '%s'", mon.Asset)
