@@ -17,8 +17,11 @@ import (
 )
 
 const (
-	storageDirFlag                      = "storage.dir"
-	storageDriverFlag                   = "storage.driver"
+	// Deprecated
+	storageDirFlag = "storage.dir"
+	// Deprecated
+	storageDriverFlag = "storage.driver"
+	// Deprecated
 	storageSQLiteDBNameFlag             = "storage.sqlite.db_name"
 	storagePostgresConnectionStringFlag = "storage.postgres.conn_string"
 	// Deprecated
@@ -59,6 +62,10 @@ func NewRootCommand() *cobra.Command {
 		Short:             "Numary",
 		DisableAutoGenTag: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if viper.GetString(storageDriverFlag) == "sqlite" {
+				_, _ = fmt.Fprintln(os.Stderr,
+					"WARNING: SQLite is being deprecated and will not be supported starting from the v2 of the Formance Ledger. Please use Postgres instead.")
+			}
 			err := os.MkdirAll(viper.GetString(storageDirFlag), 0700)
 			if err != nil {
 				return errors.Wrap(err, "creating storage directory")
@@ -102,10 +109,26 @@ func NewRootCommand() *cobra.Command {
 
 	root.PersistentFlags().Bool(service.DebugFlag, false, "Debug mode")
 	root.PersistentFlags().String(storageDriverFlag, "sqlite", "Storage driver")
+	if err := root.PersistentFlags().MarkDeprecated(storageDriverFlag,
+		"SQLite is being deprecated and will not be supported starting from the v2 of the Formance Ledger. Only Postgres will be supported and this flag will be deprecated."); err != nil {
+		panic(err)
+	}
 	root.PersistentFlags().String(storageDirFlag, path.Join(home, ".numary/data"), "Storage directory (for sqlite)")
+	if err := root.PersistentFlags().MarkDeprecated(storageDirFlag,
+		"SQLite is being deprecated and will not be supported starting from the v2 of the Formance Ledger. Only Postgres will be supported and this flag will be deprecated."); err != nil {
+		panic(err)
+	}
 	root.PersistentFlags().String(storageSQLiteDBNameFlag, "numary", "SQLite database name")
-	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgre connection string")
+	if err := root.PersistentFlags().MarkDeprecated(storageSQLiteDBNameFlag,
+		"SQLite is being deprecated and will not be supported starting from the v2 of the Formance Ledger. Only Postgres will be supported and this flag will be deprecated."); err != nil {
+		panic(err)
+	}
+	root.PersistentFlags().String(storagePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
 	root.PersistentFlags().Bool(storageCacheFlag, true, "Storage cache")
+	if err := root.PersistentFlags().MarkDeprecated(storageCacheFlag,
+		"Storage cache is being deprecated and will not be supported from the v2 of the Formance Ledger."); err != nil {
+		panic(err)
+	}
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
 	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
