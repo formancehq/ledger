@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
@@ -40,7 +40,7 @@ func getPageSize(r *http.Request) (uint64, error) {
 	if pageSizeParam != "" {
 		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
 		if err != nil {
-			return 0, errorsutil.NewError(ledger.ErrValidation, ErrInvalidPageSize)
+			return 0, errorsutil.NewError(command.ErrValidation, ErrInvalidPageSize)
 		}
 	}
 
@@ -57,7 +57,7 @@ func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.Balance
 	if balanceOperatorStr != "" {
 		var ok bool
 		if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
-			return "", errorsutil.NewError(ledger.ErrValidation, ErrInvalidBalanceOperator)
+			return "", errorsutil.NewError(command.ErrValidation, ErrInvalidBalanceOperator)
 		}
 	}
 

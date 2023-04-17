@@ -15,7 +15,7 @@ const (
 	cacheEvictionPeriodFlag  = "cache-eviction-period"
 	cacheEvictionRetainDelay = "cache-eviction-retain-delay"
 	queryLimitReadLogsFlag   = "query-limit-read-logs"
-	ballastSizeInBytesFlag = "ballast-size"
+	ballastSizeInBytesFlag   = "ballast-size"
 )
 
 func NewServe() *cobra.Command {

@@ -6,11 +6,9 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/ledger/cache"
-	"github.com/formancehq/ledger/pkg/ledger/lock"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
-	"github.com/formancehq/ledger/pkg/ledger/numscript"
 	"github.com/formancehq/ledger/pkg/ledger/query"
-	"github.com/formancehq/ledger/pkg/ledger/runner"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -61,7 +59,7 @@ type Resolver struct {
 	metricsRegistry metrics.GlobalMetricsRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
 	ledgers                                       map[string]*Ledger
-	compiler                                      *numscript.Compiler
+	compiler                                      *command.Compiler
 	allowPastTimestamps                           bool
 	cacheEvictionPeriod, cacheEvictionRetainDelay time.Duration
 }
@@ -69,7 +67,7 @@ type Resolver struct {
 func NewResolver(storageDriver storage.Driver, options ...option) *Resolver {
 	r := &Resolver{
 		storageDriver: storageDriver,
-		compiler:      numscript.NewCompiler(),
+		compiler:      command.NewCompiler(),
 		ledgers:       map[string]*Ledger{},
 	}
 	for _, opt := range append(defaultOptions, options...) {
@@ -97,12 +95,20 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}
 
-		locker := lock.New(name)
-		go func() {
-			if err := locker.Run(context.Background()); err != nil {
-				panic(err)
-			}
-		}()
+		backgroundContext := logging.ContextWithLogger(
+			context.Background(),
+			logging.FromContext(ctx),
+		)
+		runOrPanic := func(task func(context.Context) error) {
+			go func() {
+				if err := task(backgroundContext); err != nil {
+					panic(err)
+				}
+			}()
+		}
+
+		locker := command.NewDefaultLocker(name)
+		runOrPanic(locker.Run)
 
 		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
 		if err != nil {
@@ -120,29 +126,12 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		}
 
 		cache := cache.New(store, cacheOptions...)
-		go func() {
-			if err := cache.Run(context.Background()); err != nil {
-				panic(err)
-			}
-		}()
-
-		runner, err := runner.New(store, locker, cache, r.compiler, name, r.allowPastTimestamps)
-		if err != nil {
-			return nil, errors.Wrap(err, "creating ledger runner")
-		}
+		runOrPanic(cache.Run)
 
 		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor, metricsRegistry)
+		runOrPanic(queryWorker.Run)
 
-		go func() {
-			if err := queryWorker.Run(logging.ContextWithLogger(
-				context.Background(),
-				logging.FromContext(ctx),
-			)); err != nil {
-				panic(err)
-			}
-		}()
-
-		ledger = New(store, cache, runner, locker, queryWorker, metricsRegistry)
+		ledger = New(store, cache, locker, queryWorker, command.Load(store, r.allowPastTimestamps), metricsRegistry)
 		r.ledgers[name] = ledger
 		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}

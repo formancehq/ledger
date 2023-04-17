@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
@@ -45,14 +45,14 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			r.URL.Query().Get("balance") != "" ||
 			r.URL.Query().Get(QueryKeyBalanceOperator) != "" ||
 			r.URL.Query().Get(QueryKeyPageSize) != "" {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
 		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &accountsQuery)
 		if err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
@@ -60,7 +60,7 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 		balance := r.URL.Query().Get("balance")
 		if balance != "" {
 			if _, err := strconv.ParseInt(balance, 10, 64); err != nil {
-				apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+				apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 					errors.New("invalid parameter 'balance', should be a number")))
 				return
 			}
@@ -112,14 +112,14 @@ func PostAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
 	if !core.ValidateAddress(chi.URLParam(r, "address")) {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+		apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 			errors.New("invalid account address format")))
 		return
 	}
 
 	var m metadata.Metadata
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+		apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 			errors.New("invalid metadata format")))
 		return
 	}

@@ -1,4 +1,4 @@
-package numscript
+package command
 
 import (
 	"context"

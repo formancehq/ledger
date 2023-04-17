@@ -11,6 +11,7 @@ import (
 	controllers "github.com/formancehq/ledger/pkg/api/controllers"
 	core "github.com/formancehq/ledger/pkg/core"
 	ledger "github.com/formancehq/ledger/pkg/ledger"
+	command "github.com/formancehq/ledger/pkg/ledger/command"
 	storage "github.com/formancehq/ledger/pkg/storage"
 	api "github.com/formancehq/stack/libs/go-libs/api"
 	metadata "github.com/formancehq/stack/libs/go-libs/metadata"
@@ -71,18 +72,18 @@ func (mr *MockLedgerMockRecorder) CountTransactions(ctx, query interface{}) *gom
 }
 
 // CreateTransaction mocks base method.
-func (m *MockLedger) CreateTransaction(ctx context.Context, dryRun, async bool, data core.RunScript) (*core.Transaction, error) {
+func (m *MockLedger) CreateTransaction(ctx context.Context, parameters command.Parameters, data core.RunScript) (*core.Transaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTransaction", ctx, dryRun, async, data)
+	ret := m.ctrl.Call(m, "CreateTransaction", ctx, parameters, data)
 	ret0, _ := ret[0].(*core.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTransaction indicates an expected call of CreateTransaction.
-func (mr *MockLedgerMockRecorder) CreateTransaction(ctx, dryRun, async, data interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) CreateTransaction(ctx, parameters, data interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockLedger)(nil).CreateTransaction), ctx, dryRun, async, data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTransaction", reflect.TypeOf((*MockLedger)(nil).CreateTransaction), ctx, parameters, data)
 }
 
 // GetAccount mocks base method.

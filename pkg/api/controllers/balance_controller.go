@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
-	"github.com/formancehq/ledger/pkg/ledger"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
@@ -33,14 +33,14 @@ func GetBalances(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("after") != "" ||
 			r.URL.Query().Get("address") != "" ||
 			r.URL.Query().Get(QueryKeyPageSize) != "" {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("no other query params can be set with '%s'", QueryKeyCursor)))
 			return
 		}
 
 		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &balancesQuery)
 		if err != nil {
-			apierrors.ResponseError(w, r, errorsutil.NewError(ledger.ErrValidation,
+			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}

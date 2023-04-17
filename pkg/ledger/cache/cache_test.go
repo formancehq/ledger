@@ -143,9 +143,10 @@ func TestUpdateVolumes(t *testing.T) {
 	_, err = cache.GetAccountWithVolumes(context.Background(), "bank")
 	require.NoError(t, err)
 
-	cache.UpdateVolumeWithTX(core.NewTransaction().WithPostings(
+	tx := core.NewTransaction().WithPostings(
 		core.NewPosting("world", "bank", "USD", big.NewInt(100)),
-	))
+	)
+	cache.UpdateVolumeWithTX(&tx)
 	worldAccount, err := cache.GetAccountWithVolumes(context.Background(), "world")
 	require.NoError(t, err)
 	require.EqualValues(t, core.AccountWithVolumes{

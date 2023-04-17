@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -150,7 +151,10 @@ func TestPostTransactions(t *testing.T) {
 			backend, mockLedger := newTestingBackend(t)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
 				mockLedger.EXPECT().
-					CreateTransaction(gomock.Any(), testCase.expectedDryRun, false, testCase.expectedRunScript).
+					CreateTransaction(gomock.Any(), command.Parameters{
+						DryRun: tc.expectedDryRun,
+						Async:  false,
+					}, testCase.expectedRunScript).
 					Return(&expectedTx, nil)
 			}
 
