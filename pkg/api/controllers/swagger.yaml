@@ -1418,10 +1418,8 @@ components:
           type: object
           properties: {}
           example: {
-            "vars": {
               "user": "users:042"
             }
-          }
         reference:
           type: string
           example: order_1234
@@ -1507,10 +1505,8 @@ components:
               type: object
               properties: {}
               example: {
-                "vars": {
                   "user": "users:042"
                 }
-              }
           required:
             - plain
         reference:
