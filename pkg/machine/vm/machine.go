@@ -131,9 +131,10 @@ func (m *Machine) getResource(addr internal.Address) (*internal.Value, bool) {
 func (m *Machine) withdrawAll(account internal.AccountAddress, asset internal.Asset, overdraft *internal.MonetaryInt) (*internal.Funding, error) {
 	if accBalances, ok := m.Balances[account]; ok {
 		if balance, ok := accBalances[asset]; ok {
-			amountTaken := internal.NewMonetaryInt(0)
-			if balance.Add(overdraft).Gt(internal.NewMonetaryInt(0)) {
-				amountTaken = balance.Add(overdraft)
+			amountTaken := internal.Zero
+			balanceWithOverdraft := balance.Add(overdraft)
+			if balanceWithOverdraft.Gt(internal.Zero) {
+				amountTaken = balanceWithOverdraft
 				accBalances[asset] = overdraft.Neg()
 			}
 
@@ -342,7 +343,7 @@ func (m *Machine) tick() (bool, error) {
 			return true, errorsutil.NewError(ErrInvalidScript,
 				errors.Errorf("cannot take from different assets: %v and %v", funding.Asset, mon.Asset))
 		}
-		missing := internal.NewMonetaryInt(0)
+		missing := internal.Zero
 		total := funding.Total()
 		if mon.Amount.Gt(total) {
 			missing = mon.Amount.Sub(total)
@@ -448,7 +449,7 @@ func (m *Machine) tick() (bool, error) {
 		v := m.popValue()
 		switch v := v.(type) {
 		case internal.Asset:
-			m.Balances[a][v] = internal.NewMonetaryInt(0)
+			m.Balances[a][v] = internal.Zero
 		case internal.Monetary:
 			m.Balances[a][v.Asset] = m.Balances[a][v.Asset].Sub(v.Amount)
 		default:
@@ -542,7 +543,7 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 
 			asset := (*mon).(internal.HasAsset).GetAsset()
 			if string(accountAddress) == "world" {
-				m.Balances[accountAddress][asset] = internal.NewMonetaryInt(0)
+				m.Balances[accountAddress][asset] = internal.Zero
 				continue
 			}
 
