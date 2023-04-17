@@ -17,7 +17,6 @@ import (
 const ServiceName = "ledger"
 
 func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
-
 	options := make([]fx.Option, 0)
 	options = append(options, fx.NopLogger)
 
