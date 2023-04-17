@@ -1,8 +1,10 @@
-package state
+package command
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -14,19 +16,6 @@ import (
 type ReserveRequest struct {
 	Timestamp core.Time
 	Reference string
-}
-
-type Store interface {
-	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
-}
-type StoreFn func(ctx context.Context, reference string) (*core.Log, error)
-
-func (fn StoreFn) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
-	return fn(ctx, reference)
-}
-
-var NoOpStore StoreFn = func(ctx context.Context, reference string) (*core.Log, error) {
-	return nil, nil
 }
 
 // State store in flight transactions
@@ -42,6 +31,7 @@ type State struct {
 	lastTransactionDate core.Time
 	// allowPastTimestamps allow to insert transactions in the past
 	allowPastTimestamps bool
+	lastTXID            *atomic.Int64
 }
 
 func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
@@ -112,12 +102,43 @@ func (s *State) GetMoreRecentTransactionDate() core.Time {
 	return s.lastTransactionDate
 }
 
-func New(store Store, allowPastTimestamps bool, lastTransactionDate core.Time) *State {
+func (s *State) GetNextTXID() uint64 {
+	return uint64(s.lastTXID.Add(1))
+}
+
+func Load(store Store, allowPastTimestamps bool) *State {
+	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
+	if err != nil && !storage.IsNotFoundError(err) {
+		panic(err)
+	}
+	var (
+		lastTxID            *uint64
+		lastTransactionDate core.Time
+	)
+	if err == nil {
+		switch payload := log.Data.(type) {
+		case core.NewTransactionLogPayload:
+			lastTxID = &payload.Transaction.ID
+			lastTransactionDate = payload.Transaction.Timestamp
+		case core.RevertedTransactionLogPayload:
+			lastTxID = &payload.RevertTransaction.ID
+			lastTransactionDate = payload.RevertTransaction.Timestamp
+		default:
+			panic(fmt.Sprintf("unhandled payload type: %T", payload))
+		}
+	}
+	lastTXID := &atomic.Int64{}
+	if lastTxID != nil {
+		lastTXID.Add(int64(*lastTxID))
+	} else {
+		lastTXID.Add(-1)
+	}
 	return &State{
 		store:                store,
 		inFlights:            map[*inFlight]struct{}{},
 		inFlightsByReference: map[string]*inFlight{},
 		lastTransactionDate:  lastTransactionDate,
 		allowPastTimestamps:  allowPastTimestamps,
+		lastTXID:             lastTXID,
 	}
 }

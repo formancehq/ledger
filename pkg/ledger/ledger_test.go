@@ -6,6 +6,7 @@ import (
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		worker.Submit(func() {
-			_, err := ledger.CreateTransaction(context.Background(), false, false, core.RunScript{
+			_, err := ledger.CreateTransaction(context.Background(), command.Parameters{}, core.RunScript{
 				Script: core.Script{
 					Plain: `send [USD/2 100] (
 					source = @world

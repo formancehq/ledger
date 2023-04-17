@@ -167,7 +167,7 @@ func (c *Cache) addInput(address, asset string, amount *big.Int) {
 	})
 }
 
-func (c *Cache) UpdateVolumeWithTX(tx core.Transaction) {
+func (c *Cache) UpdateVolumeWithTX(tx *core.Transaction) {
 	for _, posting := range tx.Postings {
 		c.addOutput(posting.Source, posting.Asset, posting.Amount)
 		c.addInput(posting.Destination, posting.Asset, posting.Amount)
