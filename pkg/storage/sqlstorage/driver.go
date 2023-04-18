@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"sync"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/api/idempotency"
 	"github.com/numary/ledger/pkg/ledger"
@@ -102,6 +103,7 @@ type Driver struct {
 	db                DB
 	systemSchema      Schema
 	registeredLedgers map[string]struct{}
+	lock              sync.Mutex
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
@@ -114,6 +116,8 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 	if name == SystemSchema {
 		return nil, false, errors.New("reserved name")
 	}
+	d.lock.Lock()
+	defer d.lock.Unlock()
 
 	ctx, span := opentelemetry.Start(ctx, "Load store")
 	defer span.End()
@@ -168,7 +172,7 @@ func (d *Driver) Name() string {
 }
 
 func (d *Driver) Initialize(ctx context.Context) (err error) {
-	logging.GetLogger(ctx).Debugf("Initialize driver %s", d.name)
+	logging.FromContext(ctx).Debugf("Initialize driver %s", d.name)
 
 	if err = d.db.Initialize(ctx); err != nil {
 		return

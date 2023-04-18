@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/health"
+	"github.com/formancehq/stack/libs/go-libs/auth"
+	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/idempotency"

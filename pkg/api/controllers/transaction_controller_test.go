@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/numary/ledger/internal/pgtesting"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/apierrors"
@@ -1109,7 +1109,7 @@ func TestGetTransaction(t *testing.T) {
 	}))
 }
 
-func TestGetTransactions(t *testing.T) {
+func TestTransactions(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
@@ -1174,255 +1174,391 @@ func TestGetTransactions(t *testing.T) {
 				err := store.Commit(context.Background(), tx1, tx2, tx3)
 				require.NoError(t, err)
 
-				rsp := internal.CountTransactions(api, url.Values{})
-				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-				require.Equal(t, "3", rsp.Header().Get("Count"))
-
 				var tx1Timestamp, tx2Timestamp time.Time
-				t.Run("all", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// all transactions
-					require.Len(t, cursor.Data, 3)
-					require.Equal(t, cursor.Data[0].ID, uint64(2))
-					require.Equal(t, cursor.Data[1].ID, uint64(1))
-					require.Equal(t, cursor.Data[2].ID, uint64(0))
+				t.Run("Get", func(t *testing.T) {
+					t.Run("all", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// all transactions
+						require.Len(t, cursor.Data, 3)
+						require.Equal(t, cursor.Data[0].ID, uint64(2))
+						require.Equal(t, cursor.Data[1].ID, uint64(1))
+						require.Equal(t, cursor.Data[2].ID, uint64(0))
 
-					tx1Timestamp = cursor.Data[1].Timestamp
-					tx2Timestamp = cursor.Data[0].Timestamp
+						tx1Timestamp = cursor.Data[1].Timestamp
+						tx2Timestamp = cursor.Data[0].Timestamp
+					})
+
+					t.Run("metadata", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"metadata[priority]": []string{"high"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+
+						require.Len(t, cursor.Data, 1)
+						require.Equal(t, cursor.Data[0].ID, tx3.ID)
+					})
+
+					t.Run("after", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"after": []string{"1"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 1 transaction: txid 0
+						require.Len(t, cursor.Data, 1)
+						require.Equal(t, cursor.Data[0].ID, uint64(0))
+					})
+
+					t.Run("invalid after", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"after": []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           "invalid 'after' query param",
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: "invalid 'after' query param",
+						}, err)
+					})
+
+					t.Run("reference", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"reference": []string{"ref:001"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 1 transaction: txid 0
+						require.Len(t, cursor.Data, 1)
+						require.Equal(t, cursor.Data[0].ID, uint64(0))
+					})
+
+					t.Run("destination", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"destination": []string{"central_bank1"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 1 transaction: txid 0
+						require.Len(t, cursor.Data, 1)
+						require.Equal(t, cursor.Data[0].ID, uint64(0))
+					})
+
+					t.Run("source", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"source": []string{"world"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 2 transactions: txid 0 and txid 1
+						require.Len(t, cursor.Data, 2)
+						require.Equal(t, cursor.Data[0].ID, uint64(1))
+						require.Equal(t, cursor.Data[1].ID, uint64(0))
+					})
+
+					t.Run("account", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"account": []string{"world"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 2 transactions: txid 0 and txid 1
+						require.Len(t, cursor.Data, 2)
+						require.Equal(t, cursor.Data[0].ID, uint64(1))
+						require.Equal(t, cursor.Data[1].ID, uint64(0))
+					})
+
+					t.Run("account no result", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"account": []string{"central"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						require.Len(t, cursor.Data, 0)
+					})
+
+					t.Run("account regex expr", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							"account": []string{"central.*"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						require.Len(t, cursor.Data, 3)
+					})
+
+					t.Run("time range", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
+							controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// 1 transaction: txid 1
+						require.Len(t, cursor.Data, 1)
+					})
+
+					t.Run("only start time", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// no transaction
+						require.Len(t, cursor.Data, 0)
+					})
+
+					t.Run("only end time", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
+						// all transactions
+						require.Len(t, cursor.Data, 3)
+					})
+
+					t.Run("invalid start time", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyStartTime: []string{"invalid time"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
+						}, err)
+					})
+
+					t.Run("invalid start time deprecated", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyStartTimeDeprecated: []string{"invalid time"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidStartTimeDeprecated.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidStartTimeDeprecated.Error(),
+						}, err)
+					})
+
+					t.Run("invalid end time", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyEndTime: []string{"invalid time"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
+						}, err)
+					})
+
+					t.Run("invalid end time deprecated", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyEndTimeDeprecated: []string{"invalid time"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidEndTimeDeprecated.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidEndTimeDeprecated.Error(),
+						}, err)
+					})
+
+					t.Run("invalid page size", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyPageSize: []string{"invalid page size"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidPageSize.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidPageSize.Error(),
+						}, err)
+					})
+
+					t.Run("invalid page size deprecated", func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyPageSizeDeprecated: []string{"invalid page size"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidPageSizeDeprecated.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidPageSizeDeprecated.Error(),
+						}, err)
+					})
+
+					to := sqlstorage.TxsPaginationToken{}
+					raw, err := json.Marshal(to)
+					require.NoError(t, err)
+
+					t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursor), func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
+					})
+
+					t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
+							"after":                    []string{"1"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
+						}, err)
+					})
+
+					t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyCursor: []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+						}, err)
+					})
+
+					t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
+						rsp := internal.GetTransactions(api, url.Values{
+							controllers.QueryKeyCursor: []string{"@!/"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
+						}, err)
+					})
 				})
 
-				t.Run("metadata", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"metadata[priority]": []string{"high"},
+				t.Run("Count", func(t *testing.T) {
+					t.Run("all", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						require.Equal(t, "3", rsp.Header().Get("Count"))
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
 
-					require.Len(t, cursor.Data, 1)
-					require.Equal(t, cursor.Data[0].ID, tx3.ID)
-				})
-
-				t.Run("after", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"after": []string{"1"},
+					t.Run("time range", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{
+							controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
+							controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						require.Equal(t, "1", rsp.Header().Get("Count"))
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 1 transaction: txid 0
-					require.Len(t, cursor.Data, 1)
-					require.Equal(t, cursor.Data[0].ID, uint64(0))
-				})
 
-				t.Run("invalid after", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"after": []string{"invalid"},
+					t.Run("invalid start time", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{
+							controllers.QueryKeyStartTime: []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
+						}, err)
 					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           "invalid 'after' query param",
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: "invalid 'after' query param",
-					}, err)
-				})
+					t.Run("invalid start time deprecated", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{
+							controllers.QueryKeyStartTimeDeprecated: []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
 
-				t.Run("reference", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"reference": []string{"ref:001"},
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidStartTimeDeprecated.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidStartTimeDeprecated.Error(),
+						}, err)
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 1 transaction: txid 0
-					require.Len(t, cursor.Data, 1)
-					require.Equal(t, cursor.Data[0].ID, uint64(0))
-				})
 
-				t.Run("destination", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"destination": []string{"central_bank1"},
+					t.Run("invalid end time", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{
+							controllers.QueryKeyEndTime: []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
+						}, err)
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 1 transaction: txid 0
-					require.Len(t, cursor.Data, 1)
-					require.Equal(t, cursor.Data[0].ID, uint64(0))
-				})
 
-				t.Run("source", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"source": []string{"world"},
+					t.Run("invalid end time deprecated", func(t *testing.T) {
+						rsp := internal.CountTransactions(api, url.Values{
+							controllers.QueryKeyEndTimeDeprecated: []string{"invalid"},
+						})
+						require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+						err := sharedapi.ErrorResponse{}
+						internal.Decode(t, rsp.Body, &err)
+						require.EqualValues(t, sharedapi.ErrorResponse{
+							ErrorCode:              apierrors.ErrValidation,
+							ErrorMessage:           controllers.ErrInvalidEndTimeDeprecated.Error(),
+							ErrorCodeDeprecated:    apierrors.ErrValidation,
+							ErrorMessageDeprecated: controllers.ErrInvalidEndTimeDeprecated.Error(),
+						}, err)
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 2 transactions: txid 0 and txid 1
-					require.Len(t, cursor.Data, 2)
-					require.Equal(t, cursor.Data[0].ID, uint64(1))
-					require.Equal(t, cursor.Data[1].ID, uint64(0))
-				})
-
-				t.Run("account", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"account": []string{"world"},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 2 transactions: txid 0 and txid 1
-					require.Len(t, cursor.Data, 2)
-					require.Equal(t, cursor.Data[0].ID, uint64(1))
-					require.Equal(t, cursor.Data[1].ID, uint64(0))
-				})
-
-				t.Run("account no result", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"account": []string{"central"},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					require.Len(t, cursor.Data, 0)
-				})
-
-				t.Run("account regex expr", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						"account": []string{"central.*"},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					require.Len(t, cursor.Data, 3)
-				})
-
-				t.Run("time range", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
-						controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// 1 transaction: txid 1
-					require.Len(t, cursor.Data, 1)
-
-					rsp = internal.CountTransactions(api, url.Values{
-						controllers.QueryKeyStartTime: []string{tx1Timestamp.Format(time.RFC3339)},
-						controllers.QueryKeyEndTime:   []string{tx2Timestamp.Format(time.RFC3339)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					require.Equal(t, "1", rsp.Header().Get("Count"))
-				})
-
-				t.Run("only start time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyStartTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// no transaction
-					require.Len(t, cursor.Data, 0)
-				})
-
-				t.Run("only end time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyEndTime: []string{time.Now().Add(time.Second).Format(time.RFC3339)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					cursor := internal.DecodeCursorResponse[core.ExpandedTransaction](t, rsp.Body)
-					// all transactions
-					require.Len(t, cursor.Data, 3)
-				})
-
-				t.Run("invalid start time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyStartTime: []string{"invalid time"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           controllers.ErrInvalidStartTime.Error(),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: controllers.ErrInvalidStartTime.Error(),
-					}, err)
-				})
-
-				t.Run("invalid end time", func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyEndTime: []string{"invalid time"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           controllers.ErrInvalidEndTime.Error(),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: controllers.ErrInvalidEndTime.Error(),
-					}, err)
-				})
-
-				to := sqlstorage.TxsPaginationToken{}
-				raw, err := json.Marshal(to)
-				require.NoError(t, err)
-
-				t.Run(fmt.Sprintf("valid empty %s", controllers.QueryKeyCursor), func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
-					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode, rsp.Body.String())
-				})
-
-				t.Run(fmt.Sprintf("valid empty %s with any other param is forbidden", controllers.QueryKeyCursor), func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyCursor: []string{base64.RawURLEncoding.EncodeToString(raw)},
-						"after":                    []string{"1"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("no other query params can be set with '%s'", controllers.QueryKeyCursor),
-					}, err)
-				})
-
-				t.Run(fmt.Sprintf("invalid %s", controllers.QueryKeyCursor), func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyCursor: []string{"invalid"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-					}, err)
-				})
-
-				t.Run(fmt.Sprintf("invalid %s not base64", controllers.QueryKeyCursor), func(t *testing.T) {
-					rsp = internal.GetTransactions(api, url.Values{
-						controllers.QueryKeyCursor: []string{"@!/"},
-					})
-					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
-
-					err := sharedapi.ErrorResponse{}
-					internal.Decode(t, rsp.Body, &err)
-					require.EqualValues(t, sharedapi.ErrorResponse{
-						ErrorCode:              apierrors.ErrValidation,
-						ErrorMessage:           fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-						ErrorCodeDeprecated:    apierrors.ErrValidation,
-						ErrorMessageDeprecated: fmt.Sprintf("invalid '%s' query param", controllers.QueryKeyCursor),
-					}, err)
 				})
 
 				return nil
@@ -2152,6 +2288,51 @@ func TestPostTransactionsBatch(t *testing.T) {
 						ErrorMessage:           "invalid transactions format",
 						ErrorCodeDeprecated:    apierrors.ErrValidation,
 						ErrorMessageDeprecated: "invalid transactions format",
+					}, err)
+				})
+
+				t.Run("no transactions", func(t *testing.T) {
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: []core.TransactionData{},
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "no transaction to insert",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "no transaction to insert",
+					}, err)
+				})
+
+				t.Run("invalid posting", func(t *testing.T) {
+					batch := []core.TransactionData{
+						{
+							Postings: []core.Posting{
+								{
+									Source:      "world",
+									Destination: "player",
+									Asset:       "GEM",
+									Amount:      core.NewMonetaryInt(-100),
+								},
+							},
+						},
+					}
+
+					rsp := internal.PostTransactionBatch(t, api, core.Transactions{
+						Transactions: batch,
+					})
+					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode)
+
+					err := sharedapi.ErrorResponse{}
+					internal.Decode(t, rsp.Body, &err)
+					require.EqualValues(t, sharedapi.ErrorResponse{
+						ErrorCode:              apierrors.ErrValidation,
+						ErrorMessage:           "invalid transaction 0: posting 0: negative amount",
+						ErrorCodeDeprecated:    apierrors.ErrValidation,
+						ErrorMessageDeprecated: "invalid transaction 0: posting 0: negative amount",
 					}, err)
 				})
 

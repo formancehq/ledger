@@ -77,6 +77,8 @@ Alternatively, you can use the dashboard by heading to [control.formance.com](ht
 
 If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Slack](https://bit.ly/formance-slack) - looking forward to see you there!
 
+![Frame 1 (2)](https://user-images.githubusercontent.com/1770991/134163361-d86c5728-6075-4510-8de7-06df1f6ed740.png)
+
 # Quick deploy
 
 Want to give a shot to the latest version? You can easily deploy a test instance with Heroku and the button below:

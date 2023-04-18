@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
@@ -49,7 +49,7 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 			code = apierrors.ErrConflict
 			message = e.Error()
 		default:
-			logging.GetLogger(c.Request.Context()).Errorf(
+			logging.FromContext(c.Request.Context()).Errorf(
 				"internal errors executing script: %s", err)
 		}
 		res.ErrorResponse = api.ErrorResponse{
