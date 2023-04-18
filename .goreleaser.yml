@@ -1,7 +1,4 @@
 project_name: numary
-monorepo:
-  tag_prefix: components/ledger/
-  dir: ./components/ledger/
 
 builds:
   - binary: numary
