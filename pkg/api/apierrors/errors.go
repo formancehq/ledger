@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
@@ -69,7 +69,7 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 	case storage.IsError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
-		logging.GetLogger(c.Request.Context()).Errorf(
+		logging.FromContext(c.Request.Context()).Errorf(
 			"unknown API response error: %s", err)
 		return http.StatusInternalServerError, ErrInternal, ""
 	}

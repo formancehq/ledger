@@ -306,7 +306,13 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 			})
 		})
 
-		t.Run("empty", func(t *testing.T) {
+		t.Run("no transaction data", func(t *testing.T) {
+			_, err := l.ExecuteTxsData(context.Background(), true)
+			assert.Error(t, err)
+			assert.ErrorContains(t, err, "no transaction data to execute")
+		})
+
+		t.Run("no postings", func(t *testing.T) {
 			_, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{})
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, "executing transaction data 0: no postings")

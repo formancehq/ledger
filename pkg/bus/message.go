@@ -22,8 +22,6 @@ type EventMessage struct {
 	Version string    `json:"version"`
 	Type    string    `json:"type"`
 	Payload any       `json:"payload"`
-	// TODO: deprecated in future version
-	Ledger string `json:"ledger"`
 }
 
 type CommittedTransactions struct {
@@ -42,7 +40,6 @@ func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
 		Version: EventVersion,
 		Type:    EventTypeCommittedTransactions,
 		Payload: txs,
-		Ledger:  txs.Ledger,
 	}
 }
 
@@ -60,7 +57,6 @@ func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
 		Version: EventVersion,
 		Type:    EventTypeSavedMetadata,
 		Payload: metadata,
-		Ledger:  metadata.Ledger,
 	}
 }
 
@@ -76,7 +72,6 @@ func newEventUpdatedMapping(mapping UpdatedMapping) EventMessage {
 		Version: EventVersion,
 		Type:    EventTypeUpdatedMapping,
 		Payload: mapping,
-		Ledger:  mapping.Ledger,
 	}
 }
 
@@ -93,6 +88,5 @@ func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
 		Version: EventVersion,
 		Type:    EventTypeRevertedTransaction,
 		Payload: tx,
-		Ledger:  tx.Ledger,
 	}
 }

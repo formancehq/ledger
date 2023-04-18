@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/lib/pq"
 	"github.com/numary/ledger/pkg/core"

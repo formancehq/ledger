@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/DmitriyVTitov/size"
-	"github.com/formancehq/machine/script/compiler"
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/numary/ledger/pkg/machine/script/compiler"
 	"github.com/numary/ledger/pkg/opentelemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

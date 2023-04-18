@@ -7,9 +7,9 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
-	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMonitor(t *testing.T) {
@@ -18,13 +18,11 @@ func TestMonitor(t *testing.T) {
 		gochannel.Config{
 			BlockPublishUntilSubscriberAck: true,
 		},
-		watermill.NewStdLogger(false, false),
+		watermill.NewStdLogger(testing.Verbose(), testing.Verbose()),
 	)
 	messages, err := pubSub.Subscribe(context.Background(), "testing")
-	if !assert.NoError(t, err) {
-		return
-	}
-	p := publish.NewTopicMapperPublisher(pubSub, map[string]string{
+	require.NoError(t, err)
+	p := publish.NewTopicMapperPublisherDecorator(pubSub, map[string]string{
 		"*": "testing",
 	})
 	m := newLedgerMonitor(p)

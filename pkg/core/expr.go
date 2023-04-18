@@ -19,7 +19,7 @@ type Expr interface {
 	Eval(EvalContext) bool
 }
 
-type Value interface {
+type ExprValue interface {
 	eval(ctx EvalContext) interface{}
 }
 
@@ -58,8 +58,8 @@ func (e ExprAnd) MarshalJSON() ([]byte, error) {
 }
 
 type ExprEq struct {
-	Op1 Value
-	Op2 Value
+	Op1 ExprValue
+	Op2 ExprValue
 }
 
 func (o *ExprEq) Eval(ctx EvalContext) bool {
@@ -73,8 +73,8 @@ func (e ExprEq) MarshalJSON() ([]byte, error) {
 }
 
 type ExprGt struct {
-	Op1 Value
-	Op2 Value
+	Op1 ExprValue
+	Op2 ExprValue
 }
 
 func (o *ExprGt) Eval(ctx EvalContext) bool {
@@ -88,8 +88,8 @@ func (e ExprGt) MarshalJSON() ([]byte, error) {
 }
 
 type ExprLt struct {
-	Op1 Value
-	Op2 Value
+	Op1 ExprValue
+	Op2 ExprValue
 }
 
 func (o *ExprLt) Eval(ctx EvalContext) bool {
@@ -103,8 +103,8 @@ func (e ExprLt) MarshalJSON() ([]byte, error) {
 }
 
 type ExprGte struct {
-	Op1 Value
-	Op2 Value
+	Op1 ExprValue
+	Op2 ExprValue
 }
 
 func (o *ExprGte) Eval(ctx EvalContext) bool {
@@ -118,8 +118,8 @@ func (e ExprGte) MarshalJSON() ([]byte, error) {
 }
 
 type ExprLte struct {
-	Op1 Value
-	Op2 Value
+	Op1 ExprValue
+	Op2 ExprValue
 }
 
 func (o *ExprLte) Eval(ctx EvalContext) bool {
@@ -221,7 +221,7 @@ func parse(v interface{}) (expr interface{}, err error) {
 					if err != nil {
 						return nil, err
 					}
-					op1Value, ok := op1.(Value)
+					op1Value, ok := op1.(ExprValue)
 					if !ok {
 						return nil, errors.New("op1 must be valuable")
 					}
@@ -229,7 +229,7 @@ func parse(v interface{}) (expr interface{}, err error) {
 					if err != nil {
 						return nil, err
 					}
-					op2Value, ok := op2.(Value)
+					op2Value, ok := op2.(ExprValue)
 					if !ok {
 						return nil, errors.New("op2 must be valuable")
 					}
