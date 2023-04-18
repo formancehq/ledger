@@ -56,6 +56,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(NewDocCommand())
 
 	root.PersistentFlags().Bool(service.DebugFlag, false, "Debug mode")
+	root.PersistentFlags().Bool(service.JsonFormattingLoggerFlag, true, "Json formatting mode for logger")
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
 	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
