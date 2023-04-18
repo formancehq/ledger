@@ -1,0 +1,15 @@
+numary
+coverage*
+/dist/
+cmd/control/*
+!cmd/control/gitkeep
+.DS_Store
+.idea
+vendor
+sdk/swagger.yaml
+sdk/swagger.yaml-e
+sdk/sdks
+.vscode
+.env
+sqlstorage.test
+ledger.test

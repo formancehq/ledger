@@ -1,0 +1,64 @@
+project_name: numary
+env:
+  - GO111MODULE=on
+  - GOPROXY=https://proxy.golang.org
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - binary: numary
+    id: numary_darwin
+    ldflags:
+      - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
+      - -X github.com/numary/ledger/cmd.Version={{ .Version }}
+      - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
+      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
+      - -s
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=json1
+
+archives:
+  - id: "numary"
+    builds:
+      - numary_darwin
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{.ProjectName}}_{{.Version}}_{{.Os}}-{{.Arch}}"
+    replacements:
+      amd64: 64bit
+      386: 32bit
+      arm: ARM
+      arm64: ARM64
+      darwin: macOS
+      linux: Linux
+      windows: Windows
+
+
+checksum:
+  name_template: 'checksums-darwin.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}"
+
+brews:
+  - tap:
+      owner: formancehq
+      name: homebrew-tap
+    name: numary
+    folder: Formula
+    homepage: https://formance.com
+    skip_upload: auto
+    test: |
+      system "#{bin}/numary version"
+    install: |
+      bin.install "numary"

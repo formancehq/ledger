@@ -1,0 +1,221 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  PKG: "./..."
+  FAILFAST: "-failfast"
+  TIMEOUT: "10m"
+  RUN: ".*"
+  TAGS: "-tags json1,netgo"
+  BENCH_TIME: "30s"
+  BENCH_RESULTS_DIR: "/tmp/benchmarks"
+  BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
+  BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
+  BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
+  VERBOSE: "false"
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+      - task: tests:local
+
+  lint:
+    cmds:
+      - golangci-lint run --fix {{if eq .VERBOSE "true"}}-v{{end}}
+
+  tests:
+    cmds:
+      - >
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic {{.PKG}}
+
+  tests:local:
+    cmds:
+      - task: tests:local:sqlite
+      - task: tests:local:postgres
+
+  tests:local:sqlite:
+    cmds:
+      - >
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
+        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: print:coverage
+
+  tests:local:postgres:
+    deps: [postgres]
+    cmds:
+      - >
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
+        -coverprofile coverage.out -covermode atomic
+        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
+        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
+        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
+      - task: print:coverage
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  print:coverage:
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+      - cov-report ./coverage.out
+      - echo "To open the html coverage file, use one of the following commands:"
+      - echo "open coverage.html on mac"
+      - echo "xdg-open coverage.html on linux"
+    silent: true
+
+  bench:
+    deps: [postgres]
+    cmds:
+      - mkdir -p {{.BENCH_RESULTS_DIR}}
+      - >
+        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}}
+        -run=XXX -bench={{.RUN}} -benchmem -benchtime={{.BENCH_TIME}} -timeout {{.TIMEOUT}}
+        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
+        | tee {{.BENCH_RESULTS_FILE}}
+      - benchstat {{.BENCH_RESULTS_FILE}}
+    env:
+      NUMARY_STORAGE_DRIVER: "postgres"
+      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+
+  bench:cpu:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_CPU_PROFILE}}
+
+  bench:mem:
+    cmds:
+      - go tool pprof -http=":" {{.BENCH_MEM_PROFILE}}
+
+  install:
+    deps:
+    - install:golangci-lint
+    - install:perf
+
+  install:golangci-lint:
+    cmds:
+      - >
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+        sh -s -- -b $(go env GOPATH)/bin latest
+      - golangci-lint --version
+
+  install:perf:
+    - go install golang.org/x/perf/cmd/...@latest
+
+  postgres:
+    cmds:
+      - docker compose up -d postgres
+
+  clean:
+    cmds:
+      - go clean
+      - rm -f {{.SERVICE}} coverage.out coverage.html
+      - docker compose down -v
+
+  sdk:template:
+    desc: Extract templates
+    dir: ./sdk
+    preconditions:
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
+        msg: Please specify generator as first cli arg (ie "task template -- go")
+    cmds:
+      - >
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author
+        template -g {{.CLI_ARGS}} -o templates/{{.CLI_ARGS}}
+
+  sdk:generate:
+    desc: Generate client code
+    dir: ./sdk
+    preconditions:
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
+        msg: Please specify generator as first cli arg (ie "task generate -- go")
+    cmds:
+      - wget https://raw.githubusercontent.com/formancehq/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
+      - sed -i -e "s/LEDGER_VERSION/{{.VERSION}}/g" swagger.yaml
+      - >
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest generate
+        -i ./swagger.yaml
+        -g {{ (split "-" .CLI_ARGS)._0 }}
+        -c ./configs/{{.CLI_ARGS}}.yaml
+        -o ./sdks/{{.CLI_ARGS}}
+        --git-user-id=formancehq
+        --git-repo-id=numary-sdk-{{.CLI_ARGS}}
+        -p packageVersion={{.VERSION}}
+
+  sdk:test:
+    desc: Test client code
+    dir: ./sdk
+    preconditions:
+      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
+        msg: Please specify generator as first cli arg (ie "task test -- go")
+      - sh: "[[ -e sdks/{{.CLI_ARGS}}/Taskfile.yml ]]"
+        msg: "Not Taskfile found. You have to create a taskfile in ./sdks/{{.CLI_ARGS}}/ with a 'test' task"
+    vars:
+      RANDOM:
+        sh: "echo $$"
+    cmds:
+      - |
+        cd ./sdks/{{.CLI_ARGS}}
+        task test
+
+  goreleaser:test:pkg:
+    desc: Test a package
+    cmds:
+      - docker run --platform linux/{{.Platform}} --rm --workdir /tmp -v $PWD/dist:/tmp {{.Image}} sh -c '{{.Cmd}} && goreleaser --version'
+
+  goreleaser:test:rpm:
+    desc: Tests rpm packages
+    vars:
+      rpm: "rpm --nodeps -ivh"
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "amd64"
+          Image: fedora
+          Cmd: "{{.rpm}} numary_*_linux_amd64.rpm"
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "arm64"
+          Image: fedora
+          Cmd: "{{.rpm}} numary_*_linux_arm64.rpm"
+
+  goreleaser:test:deb:
+    desc: Tests deb packages
+    vars:
+      dpkg: "dpkg --ignore-depends=git -i"
+    cmds:
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "amd64"
+          Image: ubuntu
+          Cmd: "{{.dpkg}} numary_*_linux_amd64.deb"
+      - task: goreleaser:test:pkg
+        vars:
+          Platform: "arm64"
+          Image: ubuntu
+          Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"
+
+  run:
+    cmds:
+      - docker compose up -d --remove-orphans
+
+  stop:
+    cmds:
+      - docker compose stop
+
+  ps:
+    cmds:
+      - docker compose ps
+
+  rm:
+    deps: [stop]
+    cmds:
+      - docker compose rm -f
+      - docker volume prune -f
+      - rm -f {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}
