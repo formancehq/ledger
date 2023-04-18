@@ -3,7 +3,7 @@ package idempotency
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,6 +22,6 @@ func (r Response) write(c *gin.Context) {
 	}
 	c.Writer.WriteHeader(r.StatusCode)
 	if _, err := c.Writer.WriteString(r.Body); err != nil {
-		logging.GetLogger(c.Request.Context()).Errorf("Error writing stored response: %s", err)
+		logging.FromContext(c.Request.Context()).Errorf("Error writing stored response: %s", err)
 	}
 }

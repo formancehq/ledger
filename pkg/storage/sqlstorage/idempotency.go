@@ -22,7 +22,7 @@ func (s *Store) CreateIK(ctx context.Context, key string, response idempotency.R
 	q, args := ib.
 		InsertInto(s.schema.Table("idempotency")).
 		Cols("key", "date", "status_code", "headers", "body", "request_hash").
-		Values(key, time.Now().UTC(), response.StatusCode, string(data), response.Body, response.RequestHash).
+		Values(key, time.Now().UTC().Format(time.RFC3339), response.StatusCode, string(data), response.Body, response.RequestHash).
 		BuildWithFlavor(s.schema.Flavor())
 
 	executor, err := s.executorProvider(ctx)

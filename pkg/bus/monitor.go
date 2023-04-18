@@ -3,20 +3,21 @@ package bus
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/publish"
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"go.uber.org/fx"
 )
 
 type ledgerMonitor struct {
-	publisher *publish.TopicMapperPublisher
+	publisher message.Publisher
 }
 
 var _ ledger.Monitor = &ledgerMonitor{}
 
-func newLedgerMonitor(publisher *publish.TopicMapperPublisher) *ledgerMonitor {
+func newLedgerMonitor(publisher message.Publisher) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
 	}
@@ -77,8 +78,8 @@ func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, 
 }
 
 func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev EventMessage) {
-	if err := l.publisher.Publish(ctx, topic, ev); err != nil {
-		logging.GetLogger(ctx).Errorf("publishing message: %s", err)
+	if err := l.publisher.Publish(topic, publish.NewMessage(ctx, ev)); err != nil {
+		logging.FromContext(ctx).Errorf("publishing message: %s", err)
 		return
 	}
 }

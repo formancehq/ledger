@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pbnjay/memory"
@@ -73,7 +73,7 @@ func (m *heartbeat) Run(ctx context.Context) error {
 	enqueue := func() {
 		err := m.enqueue(ctx)
 		if err != nil {
-			logging.GetLogger(ctx).WithFields(map[string]interface{}{
+			logging.FromContext(ctx).WithFields(map[string]interface{}{
 				"error": err,
 			}).Error("enqueuing analytics")
 		}

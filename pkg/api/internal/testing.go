@@ -12,10 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/go-libs/logging/logginglogrus"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/numary/ledger/pkg/api"
@@ -26,7 +24,6 @@ import (
 	"github.com/numary/ledger/pkg/ledgertesting"
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/pborman/uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -237,12 +234,6 @@ func GetLedgerStore(t *testing.T, driver storage.Driver[ledger.Store], ctx conte
 }
 
 func RunTest(t *testing.T, options ...fx.Option) {
-	l := logrus.New()
-	if testing.Verbose() {
-		l.Level = logrus.DebugLevel
-	}
-	logging.SetFactory(logging.StaticLoggerFactory(logginglogrus.New(l)))
-
 	testingLedger = uuid.New()
 	ch := make(chan struct{})
 

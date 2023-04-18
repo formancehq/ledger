@@ -120,7 +120,7 @@ func (a Accounts) ensureExists(accounts ...string) {
 		_, ok := a[account]
 		if !ok {
 			a[account] = Account{
-				Address:  account,
+				Address:  AccountAddress(account),
 				Metadata: Metadata{},
 			}
 		}

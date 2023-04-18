@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/formancehq/go-libs/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -35,7 +34,7 @@ func openuri(uri string) bool {
 
 var UICmd = &cobra.Command{
 	Use: "ui",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		addr := viper.GetString("ui.http.bind_address")
 
 		handler := http.FileServer(http.FS(uipath))
@@ -55,6 +54,9 @@ var UICmd = &cobra.Command{
 		fmt.Printf("Numary control is live on http://%s\n", addr)
 
 		httpErr := http.ListenAndServe(addr, nil)
-		logging.Errorf("http.ListenAndServe: %s", httpErr)
+		if httpErr != nil && httpErr != http.ErrServerClosed {
+			return httpErr
+		}
+		return nil
 	},
 }

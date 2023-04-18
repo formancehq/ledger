@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/numary/ledger/pkg/api"
 	"github.com/numary/ledger/pkg/api/controllers"
 	"github.com/numary/ledger/pkg/api/internal"
@@ -184,17 +184,17 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				// First account of the page
 				if i == 0 {
 					assert.Equal(t, "world",
-						cursor.Data[0].Address)
+						string(cursor.Data[0].Address))
 				} else {
 					assert.Equal(t,
 						fmt.Sprintf("accounts:%06d", (accPages-i)*pageSize+additionalAccs-1),
-						cursor.Data[0].Address)
+						string(cursor.Data[0].Address))
 				}
 
 				// Last account of the page
 				assert.Equal(t,
 					fmt.Sprintf("accounts:%06d", (accPages-i-1)*pageSize+additionalAccs),
-					cursor.Data[len(cursor.Data)-1].Address)
+					string(cursor.Data[len(cursor.Data)-1].Address))
 
 				paginationToken = cursor.Next
 			}
@@ -211,17 +211,17 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 				// First account of the last page
 				if accPages == 0 {
 					assert.Equal(t, "world",
-						cursor.Data[0].Address)
+						string(cursor.Data[0].Address))
 				} else {
 					assert.Equal(t,
 						fmt.Sprintf("accounts:%06d", additionalAccs-1),
-						cursor.Data[0].Address)
+						string(cursor.Data[0].Address))
 				}
 
 				// Last account of the last page
 				assert.Equal(t,
 					fmt.Sprintf("accounts:%06d", 0),
-					cursor.Data[len(cursor.Data)-1].Address)
+					string(cursor.Data[len(cursor.Data)-1].Address))
 			}
 
 			assert.Empty(t, cursor.Next)
@@ -248,12 +248,12 @@ func testGetPagination(t *testing.T, api *api.API, txsPages, additionalTxs int) 
 
 				// First account of the first page
 				assert.Equal(t, "world",
-					cursor.Data[0].Address)
+					string(cursor.Data[0].Address))
 
 				// Last account of the first page
 				assert.Equal(t,
 					fmt.Sprintf("accounts:%06d", (txsPages-1)*pageSize+additionalTxs+1),
-					cursor.Data[len(cursor.Data)-1].Address)
+					string(cursor.Data[len(cursor.Data)-1].Address))
 			}
 
 			assert.Empty(t, cursor.Previous)

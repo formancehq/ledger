@@ -75,7 +75,7 @@ paths:
             example: users:.+
         - name: metadata
           in: query
-          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: Filter accounts by metadata key value pairs. The filter can be used like this metadata[key]=value1&metadata[a.nested.key]=value2
           style: deepObject
           explode: true
           schema:
@@ -163,7 +163,6 @@ paths:
           schema:
             type: integer
             format: int64
-            minimum: 0
             example: 2400
         - name: balanceOperator
           in: query
@@ -1339,7 +1338,6 @@ components:
           additionalProperties:
             type: integer
             format: int64
-            minimum: 0
           example:
             COIN: 100
 
@@ -1360,7 +1358,6 @@ components:
       additionalProperties:
         type: integer
         format: int64
-        minimum: 0
       example:
         USD: 100
         EUR: 12
