@@ -53,7 +53,7 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   DockerRelease:
-    if: github.event_name == 'rxzelease'
+    if: github.event_name == 'release'
     uses: ./.github/workflows/template_docker.yaml
     with:
       VERSION: ${{ github.event.release.tag_name }}
