@@ -8,15 +8,20 @@ import (
 )
 
 type Store interface {
-	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
 	AppendLog(ctx context.Context, log *core.Log) error
 	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
-	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
+	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error)
+	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
+	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
 }
 
 type alwaysEmptyStore struct{}
 
-func (e alwaysEmptyStore) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (e alwaysEmptyStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (e alwaysEmptyStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
 	return nil, storage.ErrNotFound
 }
 
@@ -28,7 +33,7 @@ func (e alwaysEmptyStore) ReadLastLogWithType(ctx context.Context, logType ...co
 	return nil, storage.ErrNotFound
 }
 
-func (e alwaysEmptyStore) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
+func (e alwaysEmptyStore) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error) {
 	return nil, storage.ErrNotFound
 }
 
