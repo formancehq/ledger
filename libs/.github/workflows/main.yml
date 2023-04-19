@@ -1,0 +1,12 @@
+on:
+  push:
+    branches:
+      - main
+
+name: Main
+jobs:
+  lint:
+    uses: formancehq/gh-workflows/.github/workflows/golang-lint.yml@main
+
+  test:
+    uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
