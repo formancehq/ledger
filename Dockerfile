@@ -9,9 +9,14 @@ ARG TARGETARCH
 ARG APP_SHA
 ARG VERSION
 ARG SEGMENT_WRITE_KEY
-WORKDIR /src
+WORKDIR /go/src/github.com/numary/ledger
+# get deps first so it's cached
+COPY go.mod .
+COPY go.sum .
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
+    go mod download
 COPY . .
-RUN go mod download
 RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
@@ -24,7 +29,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
 
 FROM ubuntu:jammy as app
 RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /src/numary /usr/local/bin/numary
+COPY --from=builder /go/src/github.com/numary/ledger/numary /usr/local/bin/numary
 EXPOSE 3068
 ENTRYPOINT ["numary"]
 ENV OTEL_SERVICE_NAME ledger
