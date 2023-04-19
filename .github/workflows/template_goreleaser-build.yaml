@@ -1,0 +1,53 @@
+name: GoReleaser Build
+on:
+  workflow_call:
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+        description: GitHub token with access to the repo
+      SEGMENT_WRITE_KEY_OSS:
+        required: true
+        description: Segment write key for the OSS repo
+
+jobs:
+  goreleaser:
+    name: GoReleaser Build
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: fetch numary control
+        uses: actions/download-artifact@v2
+        with:
+          name: control-dist
+          path: cmd/control/
+      - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Run GoReleaser for Linux
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: build --parallelism 4 --rm-dist --skip-validate --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - name: Run GoReleaser for MacOS
+        if: ${{ matrix.os == 'macos-latest' }}
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: build -f .goreleaser-darwin.yml --parallelism 4 --rm-dist --skip-validate --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: dist
+          path: ./dist/**

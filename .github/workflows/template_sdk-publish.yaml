@@ -1,0 +1,57 @@
+name: SDK Publish
+on:
+  workflow_dispatch:
+    inputs:
+      VERSION:
+        type: string
+        required: true
+        description: Version of the SDK to publish
+  workflow_call:
+    inputs:
+      VERSION:
+        type: string
+        required: true
+        description: Version of the SDK to publish
+    secrets:
+      NUMARY_GITHUB_TOKEN:
+        required: true
+        description: GitHub token with access to the repo
+
+jobs:
+  Sdk:
+    name: 'Publish SDK'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: [ go, php, python, typescript-node, java ]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          repository: numary/numary-sdk-${{ matrix.sdk }}
+          path: ./sdk/sdks/${{ matrix.sdk }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Install Task
+        uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Launch Generate
+        run: task sdk:generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
+      - uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: Upgrade Release to ${{ inputs.VERSION }}
+          create_branch: true
+          branch: release/${{ inputs.VERSION }}
+          repository: ./sdk/sdks/${{ matrix.sdk }}
+          commit_user_name: NumaryBot
+          commit_user_email: support@numary.com
+      - run: gh pr create --base main --head release/${{ inputs.VERSION }} --title "Upgrade to ${{ inputs.VERSION }}" --body "Upgrade to ${{ inputs.VERSION }}"
+        working-directory: ./sdk/sdks/${{ matrix.sdk }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
