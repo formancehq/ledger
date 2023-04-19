@@ -1,4 +1,10 @@
 project_name: numary
+env:
+  - GO111MODULE=on
+  - GOPROXY=https://proxy.golang.org
+before:
+  hooks:
+    - go mod download
 
 builds:
   - binary: numary
@@ -73,7 +79,7 @@ archives:
 
 
 checksum:
-  name_template: '{{.ProjectName}}_checksums.txt'
+  name_template: 'checksums.txt'
 
 snapshot:
   name_template: "{{ .Tag }}"
@@ -103,9 +109,11 @@ changelog:
 release:
   prerelease: auto
   footer: |
+    ## Want to try this version ?
+    [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/numary/ledger/tree/{{ .Tag }}&version={{ .Tag }})
     ## What to do next?
-    - Read the [documentation](https://docs.formance.com/)
-    - Join our [Slack server](https://formance.com/slack)
+    - Read the [documentation](https://docs.numary.com/oss/ledger/get-started/installation)
+    - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
 
 nfpms:
   - id: packages
@@ -126,42 +134,3 @@ publishers:
       - packages
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/numary/
-
-
-dockers:
-  - image_templates: ["ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64"]
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - --platform=linux/amd64
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/formancehq/stack
-      - --label=org.opencontainers.image.source=https://github.com/formancehq/stack
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=MIT
-  - image_templates: [ "ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64" ]
-    goarch: arm64
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - --platform=linux/arm64/v8
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/formancehq/stack
-      - --label=org.opencontainers.image.source=https://github.com/formancehq/stack
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-      - --label=org.opencontainers.image.licenses=MIT
-docker_manifests:
-  - name_template: ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}
-    image_templates:
-      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64
-  - name_template: ghcr.io/formancehq/{{ .ProjectName }}:latest
-    image_templates:
-      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-amd64
-      - ghcr.io/formancehq/{{ .ProjectName }}:{{ .Version }}-arm64
