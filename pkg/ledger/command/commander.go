@@ -16,28 +16,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type executionContext struct {
-	context.Context
-	cache Cache
-	close chan struct{}
-}
-
-// TODO(gfyrag): Explicit retain is not required
-// A call to a GetAccountWithVolumes should automatically retain accounts until execution context completion
-func (ctx *executionContext) RetainAccount(accounts ...string) error {
-	release, err := ctx.cache.LockAccounts(ctx, accounts...)
-	if err != nil {
-		return errors.Wrap(err, "locking accounts into cache")
-	}
-
-	go func() {
-		<-ctx.close
-		release()
-	}()
-
-	return nil
-}
-
 type Parameters struct {
 	DryRun bool
 	Async  bool
@@ -118,18 +96,18 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 	}
 	var tx *core.Transaction
 
-	err := l.runCommand(ctx, parameters, func(ctx executionContext) (*core.Log, error) {
-		reserve, ts, err := l.state.Reserve(ctx, ReserveRequest{
-			Timestamp: script.Timestamp,
-			Reference: script.Reference,
-		})
-		if err != nil {
-			return nil, errorsutil.NewError(ErrState, err)
-		}
-		defer func() {
-			reserve.Clear(tx)
-		}()
+	reserve, ts, err := l.state.Reserve(ctx, ReserveRequest{
+		Timestamp: script.Timestamp,
+		Reference: script.Reference,
+	})
+	if err != nil {
+		return nil, errorsutil.NewError(ErrState, err)
+	}
+	defer func() {
+		reserve.Clear(tx)
+	}()
 
+	err = l.runCommand(ctx, parameters, func(ctx *executionContext) (*core.Log, error) {
 		script.Timestamp = *ts
 
 		program, err := l.compiler.Compile(ctx, script.Plain)
@@ -154,7 +132,7 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 			return nil, err
 		}
 
-		worldFilter := collectionutils.Not(collectionutils.Eq("world"))
+		worldFilter := collectionutils.FilterNot(collectionutils.FilterEq("world"))
 		lockAccounts := Accounts{
 			Read:  collectionutils.Filter(involvedAccounts, worldFilter),
 			Write: collectionutils.Filter(involvedSources, worldFilter),
@@ -195,9 +173,6 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 		}
 
 		log := logComputer(tx, result)
-		if script.Reference != "" {
-			log = log.WithReference(script.Reference)
-		}
 
 		return &log, nil
 	})
@@ -230,7 +205,7 @@ func (l *Commander) SaveMeta(ctx context.Context, targetType string, targetID in
 	return l.runCommand(ctx, Parameters{
 		DryRun: false,
 		Async:  async,
-	}, func(ctx executionContext) (*core.Log, error) {
+	}, func(ctx *executionContext) (*core.Log, error) {
 		at := core.Now()
 		var (
 			err error
@@ -238,7 +213,7 @@ func (l *Commander) SaveMeta(ctx context.Context, targetType string, targetID in
 		)
 		switch targetType {
 		case core.MetaTargetTypeTransaction:
-			_, err = l.store.GetTransaction(ctx, targetID.(uint64))
+			_, err := l.store.ReadLogForCreatedTransaction(ctx, targetID.(uint64))
 			if err != nil {
 				return nil, err
 			}
@@ -276,25 +251,26 @@ func (r *Commander) RevertTransaction(ctx context.Context, id uint64, async bool
 		return nil, ErrRevertOccurring
 	}
 	defer func() {
-		//TODO(gfyrag): Should not be deleted until log ingestion
 		r.inflightReverts.Delete(id)
 	}()
 
-	transactionToRevert, err := r.store.GetTransaction(ctx, id)
-	if err != nil {
+	_, err := r.store.ReadLogForRevertedTransaction(ctx, id)
+	if err == nil {
+		return nil, ErrAlreadyReverted
+	}
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
-	if err != nil && !storage.IsNotFoundError(err) {
-		return nil, errors.Wrap(err, "get transaction before revert")
-	}
 
+	transactionToRevertLog, err := r.store.ReadLogForCreatedTransaction(ctx, id)
 	if storage.IsNotFoundError(err) {
 		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
 	}
-
-	if transactionToRevert.IsReverted() {
-		return nil, errorsutil.NewError(ErrAlreadyReverted, errors.Errorf("transaction %d already reverted", id))
+	if err != nil {
+		return nil, err
 	}
+
+	transactionToRevert := transactionToRevertLog.Data.(core.NewTransactionLogPayload).Transaction
 
 	rt := transactionToRevert.Reverse()
 	rt.Metadata = core.MarkReverts(metadata.Metadata{}, transactionToRevert.ID)
@@ -313,34 +289,31 @@ func (r *Commander) RevertTransaction(ctx context.Context, id uint64, async bool
 		})
 }
 
-func (l *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx executionContext) (*core.Log, error)) error {
-	execContext := executionContext{
-		Context: ctx,
-		cache:   l.cache,
-		close:   make(chan struct{}),
-	}
+func (l *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) error {
+	execContext := newExecutionContext(ctx, l.cache)
+
 	log, err := exec(execContext)
 	if err != nil {
-		close(execContext.close)
+		close(execContext.ingested)
 		return err
 	}
 	if parameters.DryRun {
-		close(execContext.close)
+		close(execContext.ingested)
 		return nil
 	}
 	if err := l.store.AppendLog(ctx, log); err != nil {
-		close(execContext.close)
+		close(execContext.ingested)
 		return err
 	}
 	logHolder := core.NewLogHolder(log)
 	if err := l.logIngester.QueueLog(ctx, logHolder); err != nil {
-		close(execContext.close)
+		close(execContext.ingested)
 		return err
 	}
 	if parameters.Async {
 		go func() {
 			<-logHolder.Ingested
-			close(execContext.close)
+			close(execContext.ingested)
 		}()
 	} else {
 		select {
@@ -348,7 +321,7 @@ func (l *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 			return ctx.Err()
 		case <-logHolder.Ingested:
 		}
-		close(execContext.close)
+		close(execContext.ingested)
 	}
 
 	return nil

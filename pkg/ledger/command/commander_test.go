@@ -4,10 +4,12 @@ import (
 	"context"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -61,40 +63,56 @@ func newMockCache() *mockCache {
 }
 
 type mockStore struct {
-	logs         []*core.Log
-	transactions map[uint64]*core.ExpandedTransaction
+	logs []*core.Log
 }
 
-func (m *mockStore) Close(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockStore) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
-	tx, ok := m.transactions[id]
-	if ok {
-		return tx, nil
+func (m *mockStore) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error) {
+	first := collectionutils.First(m.logs, func(log *core.Log) bool {
+		if log.Type != core.NewTransactionLogType {
+			return false
+		}
+		return log.Data.(core.NewTransactionLogPayload).Transaction.Reference == reference
+	})
+	if first == nil {
+		return nil, storage.ErrNotFound
 	}
-	return nil, storage.ErrNotFound
+	return first, nil
+}
+
+func (m *mockStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+	first := collectionutils.First(m.logs, func(log *core.Log) bool {
+		if log.Type != core.NewTransactionLogType {
+			return false
+		}
+		return log.Data.(core.NewTransactionLogPayload).Transaction.ID == txID
+	})
+	if first == nil {
+		return nil, storage.ErrNotFound
+	}
+	return first, nil
+}
+
+func (m *mockStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+	first := collectionutils.First(m.logs, func(log *core.Log) bool {
+		if log.Type != core.RevertedTransactionLogType {
+			return false
+		}
+		return log.Data.(core.RevertedTransactionLogPayload).RevertedTransactionID == txID
+	})
+	if first == nil {
+		return nil, storage.ErrNotFound
+	}
+	return first, nil
 }
 
 func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.Log, error) {
-	for _, log := range m.logs {
-		for _, logType := range logType {
-			if log.Type == logType {
-				return log, nil
-			}
-		}
+	first := collectionutils.First(m.logs, func(log *core.Log) bool {
+		return collectionutils.Contains(logType, log.Type)
+	})
+	if first == nil {
+		return nil, storage.ErrNotFound
 	}
-	return nil, storage.ErrNotFound
-}
-
-func (m *mockStore) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
-	for _, log := range m.logs {
-		if log.Reference == reference {
-			return log, nil
-		}
-	}
-	return nil, storage.ErrNotFound
+	return first, nil
 }
 
 func (m *mockStore) AppendLog(ctx context.Context, log *core.Log) error {
@@ -106,8 +124,7 @@ var _ Store = (*mockStore)(nil)
 
 func newMockStore() *mockStore {
 	return &mockStore{
-		logs:         []*core.Log{},
-		transactions: map[uint64]*core.ExpandedTransaction{},
+		logs: []*core.Log{},
 	}
 }
 
@@ -165,7 +182,7 @@ var testCases = []testCase{
 			tx := core.NewTransaction().
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
-			log := core.NewTransactionLog(tx, nil).WithReference("tx_ref")
+			log := core.NewTransactionLog(tx, nil)
 			require.NoError(t, store.AppendLog(
 				context.Background(),
 				&log,
@@ -200,7 +217,7 @@ var testCases = []testCase{
 					).
 					WithReference("tx_ref"),
 				map[string]metadata.Metadata{},
-			).WithReference("tx_ref"),
+			),
 		},
 		expectedAccounts: map[string]core.AccountWithVolumes{
 			"mint": {
@@ -272,12 +289,13 @@ func TestCreateTransaction(t *testing.T) {
 func TestRevert(t *testing.T) {
 	txID := uint64(0)
 	store := newMockStore()
-	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(
-		core.NewTransaction().WithPostings(
-			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
-		),
+
+	tx := core.NewTransaction().WithPostings(
+		core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	)
-	store.transactions[txID] = &tx
+	log := core.NewTransactionLog(tx, map[string]metadata.Metadata{})
+	require.NoError(t, store.AppendLog(context.Background(), &log))
+
 	cache := newMockCache()
 	cache.accounts["bank"] = &core.AccountWithVolumes{
 		Account: core.Account{
@@ -301,10 +319,11 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 
 	store := newMockStore()
 	cache := newMockCache()
-	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(core.NewTransaction().WithMetadata(
-		core.RevertedMetadata(uint64(0)),
-	))
-	store.transactions[uint64(0)] = &tx
+	log := core.
+		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction()).
+		WithID(1)
+	require.NoError(t, store.AppendLog(context.Background(), &log))
+
 	cache.accounts["bank"] = &core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  "bank",
@@ -320,7 +339,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 
 	ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
 
-	_, err := ledger.RevertTransaction(context.Background(), tx.ID, false)
+	_, err := ledger.RevertTransaction(context.Background(), 0, false)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
 }
 
@@ -328,12 +347,15 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 
 	store := newMockStore()
 	cache := newMockCache()
-	tx := core.ExpandTransactionFromEmptyPreCommitVolumes(
+
+	l := core.NewTransactionLog(
 		core.NewTransaction().WithPostings(
 			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 		),
+		map[string]metadata.Metadata{},
 	)
-	store.transactions[uint64(0)] = &tx
+	require.NoError(t, store.AppendLog(context.Background(), &l))
+
 	cache.accounts["bank"] = &core.AccountWithVolumes{
 		Account: core.Account{
 			Address:  "bank",
@@ -360,11 +382,15 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 
 	}()
 
-	log := <-ingestedLog
-	defer func() {
-		log.SetIngested()
-	}()
+	select {
+	case log := <-ingestedLog:
+		defer func() {
+			log.SetIngested()
+		}()
+	case <-time.After(time.Second):
+		require.Fail(t, "timeout")
+	}
 
-	_, err := ledger.RevertTransaction(context.Background(), tx.ID, false)
+	_, err := ledger.RevertTransaction(context.Background(), 0, false)
 	require.True(t, errors.Is(err, ErrRevertOccurring))
 }

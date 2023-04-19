@@ -35,8 +35,10 @@ type LedgerStore interface {
 	UpdateNextLogID(ctx context.Context, id uint64) error
 	GetLogs(context.Context, LogsQuery) (*api.Cursor[core.Log], error)
 	GetLastLog(context.Context) (*core.Log, error)
-	ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error)
 	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
+	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error)
+	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
+	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
 
 	InsertTransactions(ctx context.Context, transaction ...core.ExpandedTransaction) error
 	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error

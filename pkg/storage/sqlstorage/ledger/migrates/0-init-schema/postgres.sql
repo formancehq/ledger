@@ -51,10 +51,9 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".logs_ingestion (
 CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".logs_v2 (
     id bigint,
     type smallint,
-    hash character varying(256),
+    hash bytea,
     date timestamp with time zone,
-    data bytea,
-    reference text,
+    data jsonb,
 
     unique(id)
 );
@@ -104,3 +103,6 @@ CREATE INDEX IF NOT EXISTS postings_src ON "VAR_LEDGER_NAME".postings USING gin 
 
 --statement
 CREATE INDEX IF NOT EXISTS postings_txid ON "VAR_LEDGER_NAME".postings USING btree (txid);
+
+--statement
+CREATE INDEX IF NOT EXISTS logsv2_data ON "VAR_LEDGER_NAME".logs_v2 USING gin (data);

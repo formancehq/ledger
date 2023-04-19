@@ -48,7 +48,7 @@ func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
 		if _, ok := s.inFlightsByReference[r.Reference]; ok {
 			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, in flight occurring"))
 		}
-		_, err := s.store.ReadLogWithReference(ctx, r.Reference)
+		_, err := s.store.ReadLogForCreatedTransactionWithReference(ctx, r.Reference)
 		if err == nil {
 			// Log found
 			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, log found in storage"))
