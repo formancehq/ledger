@@ -68,12 +68,11 @@ type hashable interface {
 
 // TODO(polo): create Log struct and extended Log struct
 type Log struct {
-	ID        uint64   `json:"id"`
-	Type      LogType  `json:"type"`
-	Data      hashable `json:"data"`
-	Hash      []byte   `json:"hash"`
-	Date      Time     `json:"date"`
-	Reference string   `json:"reference"`
+	ID   uint64   `json:"id"`
+	Type LogType  `json:"type"`
+	Data hashable `json:"data"`
+	Hash []byte   `json:"hash"`
+	Date Time     `json:"date"`
 }
 
 func (l *Log) UnmarshalJSON(data []byte) error {
@@ -107,7 +106,6 @@ func (l *Log) ComputeHash(previous *Log) {
 		buf.writeUInt64(l.ID)
 		buf.writeUInt16(uint16(l.Type))
 		buf.writeUInt64(uint64(l.Date.UnixNano()))
-		buf.writeString(l.Reference)
 		l.Data.hashString(buf)
 	}
 
@@ -130,8 +128,8 @@ func (l Log) WithDate(date Time) Log {
 	return l
 }
 
-func (l Log) WithReference(reference string) Log {
-	l.Reference = reference
+func (l Log) WithID(id uint64) Log {
+	l.ID = id
 	return l
 }
 
@@ -176,7 +174,7 @@ func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metada
 }
 
 func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metadata) Log {
-	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp).WithReference(tx.Reference)
+	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp)
 }
 
 type SetMetadataLogPayload struct {
@@ -240,8 +238,8 @@ func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
 }
 
 type RevertedTransactionLogPayload struct {
-	RevertedTransactionID uint64
-	RevertTransaction     Transaction
+	RevertedTransactionID uint64      `json:"revertedTransactionID"`
+	RevertTransaction     Transaction `json:"transaction"`
 }
 
 func (r RevertedTransactionLogPayload) hashString(buf *buffer) {

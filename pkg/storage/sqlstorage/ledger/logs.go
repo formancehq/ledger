@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -25,12 +26,11 @@ const (
 type LogsV2 struct {
 	bun.BaseModel `bun:"logs_v2,alias:logs_v2"`
 
-	ID        uint64    `bun:"id,unique,type:bigint"`
-	Type      int16     `bun:"type,type:smallint"`
-	Hash      []byte    `bun:"hash,type:varchar(256)"`
-	Date      core.Time `bun:"date,type:timestamptz"`
-	Data      []byte    `bun:"data,type:bytea"`
-	Reference string    `bun:"reference,type:text"`
+	ID   uint64    `bun:"id,unique,type:bigint"`
+	Type int16     `bun:"type,type:smallint"`
+	Hash []byte    `bun:"hash,type:bytea"`
+	Date core.Time `bun:"date,type:timestamptz"`
+	Data []byte    `bun:"data,type:jsonb"`
 }
 
 func (log LogsV2) toCore() core.Log {
@@ -40,12 +40,11 @@ func (log LogsV2) toCore() core.Log {
 	}
 
 	return core.Log{
-		ID:        log.ID,
-		Type:      core.LogType(log.Type),
-		Data:      payload,
-		Hash:      log.Hash,
-		Date:      log.Date.UTC(),
-		Reference: log.Reference,
+		ID:   log.ID,
+		Type: core.LogType(log.Type),
+		Data: payload,
+		Hash: log.Hash,
+		Date: log.Date.UTC(),
 	}
 }
 
@@ -90,7 +89,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 	stmt, err := txn.Prepare(pq.CopyInSchema(
 		s.schema.Name(),
 		"logs_v2",
-		"id", "type", "hash", "date", "data", "reference",
+		"id", "type", "hash", "date", "data",
 	))
 	if err != nil {
 		return storageerrors.PostgresError(err)
@@ -115,10 +114,9 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		ls[i].Hash = logs[i].Hash
 		ls[i].Date = l.Date
 		ls[i].Data = data
-		ls[i].Reference = l.Reference
 
 		s.previousLog = logs[i]
-		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].Reference)
+		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data))
 		if err != nil {
 			return storageerrors.PostgresError(err)
 		}
@@ -189,7 +187,7 @@ func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[c
 func (s *Store) buildLogsQuery(q storage.LogsQueryFilters, models *[]LogsV2) *bun.SelectQuery {
 	sb := s.schema.NewSelect(LogTableName).
 		Model(models).
-		Column("id", "type", "hash", "date", "data", "reference")
+		Column("id", "type", "hash", "date", "data")
 
 	if !q.StartTime.IsZero() {
 		sb.Where("date >= ?", q.StartTime.UTC())
@@ -275,28 +273,6 @@ func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 	return storageerrors.PostgresError(err)
 }
 
-func (s *Store) ReadLogWithReference(ctx context.Context, reference string) (*core.Log, error) {
-	if !s.isInitialized {
-		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
-	}
-	recordMetrics := s.instrumentalized(ctx, "read_log_with_reference")
-	defer recordMetrics()
-
-	raw := &LogsV2{}
-	err := s.schema.
-		NewSelect(LogTableName).
-		Where("reference = ?", reference).
-		Model(raw).
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		return nil, storageerrors.PostgresError(err)
-	}
-	ret := raw.toCore()
-
-	return &ret, nil
-}
-
 func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.Log, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
@@ -319,4 +295,70 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 	ret := raw.toCore()
 
 	return &ret, nil
+}
+
+func (s *Store) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
+	}
+	recordMetrics := s.instrumentalized(ctx, "read_log_for_created_transaction_with_reference")
+	defer recordMetrics()
+
+	raw := &LogsV2{}
+	err := s.schema.NewSelect(LogTableName).
+		Model(raw).
+		OrderExpr("id desc").
+		Limit(1).
+		Where("data->'transaction'->>'reference' = ?", reference).
+		Scan(ctx)
+	if err != nil {
+		return nil, storageerrors.PostgresError(err)
+	}
+
+	l := raw.toCore()
+	return &l, nil
+}
+
+func (s *Store) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
+	}
+	recordMetrics := s.instrumentalized(ctx, "read_log_for_created_transaction")
+	defer recordMetrics()
+
+	raw := &LogsV2{}
+	err := s.schema.NewSelect(LogTableName).
+		Model(raw).
+		OrderExpr("id desc").
+		Limit(1).
+		Where("data->'transaction'->>'txid' = ?", fmt.Sprint(txID)).
+		Scan(ctx)
+	if err != nil {
+		return nil, storageerrors.PostgresError(err)
+	}
+
+	l := raw.toCore()
+	return &l, nil
+}
+
+func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
+	}
+	recordMetrics := s.instrumentalized(ctx, "read_log_for_reverted_transaction")
+	defer recordMetrics()
+
+	raw := &LogsV2{}
+	err := s.schema.NewSelect(LogTableName).
+		Model(raw).
+		OrderExpr("id desc").
+		Limit(1).
+		Where("data->>'revertedTransactionID' = ?", fmt.Sprint(txID)).
+		Scan(ctx)
+	if err != nil {
+		return nil, storageerrors.PostgresError(err)
+	}
+
+	l := raw.toCore()
+	return &l, nil
 }
