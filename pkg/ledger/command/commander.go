@@ -61,6 +61,7 @@ func New(
 	locker Locker,
 	logIngester LogIngester,
 	state *State,
+	compiler *Compiler,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Commander {
 	return &Commander{
@@ -70,7 +71,7 @@ func New(
 		logIngester:     logIngester,
 		metricsRegistry: metricsRegistry,
 		state:           state,
-		compiler:        NewCompiler(),
+		compiler:        compiler,
 	}
 }
 
