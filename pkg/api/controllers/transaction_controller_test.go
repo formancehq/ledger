@@ -578,8 +578,7 @@ func TestCountTransactions(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 
 			if testCase.expectStatusCode == 0 {
-				// TODO(gfyrag): Change status code to 204
-				testCase.expectStatusCode = http.StatusOK
+				testCase.expectStatusCode = http.StatusNoContent
 			}
 
 			backend, mockLedger := newTestingBackend(t)

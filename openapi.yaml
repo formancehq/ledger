@@ -83,7 +83,7 @@ paths:
             properties: {}
           example: { admin: "true" }
       responses:
-        "200":
+        "204":
           description: OK
           headers:
             Count:
@@ -355,7 +355,7 @@ paths:
               type: string
           example: { admin: "true" }
       responses:
-        "200":
+        "204":
           description: OK
           headers:
             Count:

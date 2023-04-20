@@ -163,7 +163,7 @@ func TestGetAccounts(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 
 			if testCase.expectStatusCode == 0 {
-				testCase.expectStatusCode = http.StatusOK
+				testCase.expectStatusCode = http.StatusNoContent
 			}
 
 			expectedCursor := sharedapi.Cursor[core.Account]{
