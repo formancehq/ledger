@@ -15,7 +15,6 @@ import (
 
 type Ledger interface {
 	GetAccount(ctx context.Context, param string) (*core.AccountWithVolumes, error)
-	SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata, async bool) error
 	GetAccounts(ctx context.Context, query storage.AccountsQuery) (*api.Cursor[core.Account], error)
 	CountAccounts(ctx context.Context, query storage.AccountsQuery) (uint64, error)
 	GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error)
@@ -25,9 +24,11 @@ type Ledger interface {
 	GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.Log], error)
 	CountTransactions(ctx context.Context, query storage.TransactionsQuery) (uint64, error)
 	GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
-	CreateTransaction(ctx context.Context, parameters command.Parameters, data core.RunScript) (*core.Transaction, error)
 	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
-	RevertTransaction(ctx context.Context, id uint64, async bool) (*core.Transaction, error)
+
+	CreateTransaction(ctx context.Context, parameters command.Parameters, data core.RunScript) (*core.Transaction, error)
+	RevertTransaction(ctx context.Context, parameters command.Parameters, id uint64) (*core.Transaction, error)
+	SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error
 }
 
 type Backend interface {

@@ -35,7 +35,6 @@ func TestReverseTransaction(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-			Reference: "revert_foo",
 		}
 		require.Equal(t, expected, tx.Reverse())
 	})
@@ -78,7 +77,6 @@ func TestReverseTransaction(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-			Reference: "revert_foo",
 		}
 		require.Equal(t, expected, tx.Reverse())
 	})
@@ -133,7 +131,6 @@ func TestReverseTransaction(t *testing.T) {
 					Asset:       "COIN",
 				},
 			},
-			Reference: "revert_foo",
 		}
 		require.Equal(t, expected, tx.Reverse())
 	})
