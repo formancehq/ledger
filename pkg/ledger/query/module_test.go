@@ -49,13 +49,13 @@ func TestInitQuery(t *testing.T) {
 		Metadata:   appliedMetadataOnAccount,
 	})
 
-	logs := make([]core.PersistedLog, 0)
+	logs := make([]*core.PersistedLog, 0)
 	var previous *core.PersistedLog
-	for _, l := range []core.Log{
+	for _, l := range []*core.Log{
 		log0, log1, log2, log3, log4,
 	} {
 		next := l.ComputePersistentLog(previous)
-		logs = append(logs, *next)
+		logs = append(logs, next)
 		previous = next
 	}
 

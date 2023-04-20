@@ -73,6 +73,11 @@ type PersistedLog struct {
 	Hash []byte `json:"hash"`
 }
 
+func (l *PersistedLog) WithID(id uint64) *PersistedLog {
+	l.ID = id
+	return l
+}
+
 func (l *PersistedLog) UnmarshalJSON(data []byte) error {
 	type auxLog PersistedLog
 	type log struct {
@@ -122,11 +127,6 @@ func (l *PersistedLog) ComputeHash(previous *PersistedLog) {
 	l.Hash = h.Sum(nil)
 }
 
-func (l PersistedLog) WithID(id uint64) PersistedLog {
-	l.ID = id
-	return l
-}
-
 type Log struct {
 	Type           LogType  `json:"type"`
 	Data           hashable `json:"data"`
@@ -134,19 +134,19 @@ type Log struct {
 	IdempotencyKey string   `json:"idempotencyKey"`
 }
 
-func (l Log) WithDate(date Time) Log {
+func (l *Log) WithDate(date Time) *Log {
 	l.Date = date
 	return l
 }
 
-func (l Log) WithIdempotencyKey(key string) Log {
+func (l *Log) WithIdempotencyKey(key string) *Log {
 	l.IdempotencyKey = key
 	return l
 }
 
-func (l Log) ComputePersistentLog(previous *PersistedLog) *PersistedLog {
+func (l *Log) ComputePersistentLog(previous *PersistedLog) *PersistedLog {
 	ret := &PersistedLog{}
-	ret.Log = l
+	ret.Log = *l
 	ret.ComputeHash(previous)
 	if previous != nil {
 		ret.ID = previous.ID + 1
@@ -181,10 +181,10 @@ func (n NewTransactionLogPayload) hashString(buf *buffer) {
 	n.Transaction.hashString(buf)
 }
 
-func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metadata.Metadata, time Time) Log {
+func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metadata.Metadata, time Time) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
-	return Log{
+	return &Log{
 		Type: NewTransactionLogType,
 		Date: time,
 		Data: NewTransactionLogPayload{
@@ -194,7 +194,7 @@ func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metada
 	}
 }
 
-func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metadata) Log {
+func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metadata) *Log {
 	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp)
 }
 
@@ -248,10 +248,10 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) Log {
+func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
-	return Log{
+	return &Log{
 		Type: SetMetadataLogType,
 		Date: at,
 		Data: metadata,
@@ -268,8 +268,8 @@ func (r RevertedTransactionLogPayload) hashString(buf *buffer) {
 	r.RevertTransaction.hashString(buf)
 }
 
-func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) Log {
-	return Log{
+func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) *Log {
+	return &Log{
 		Type: RevertedTransactionLogType,
 		Date: at,
 		Data: RevertedTransactionLogPayload{

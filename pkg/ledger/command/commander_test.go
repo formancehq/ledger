@@ -155,7 +155,7 @@ type testCase struct {
 	reference        string
 	expectedError    error
 	expectedTx       core.Transaction
-	expectedLogs     []core.Log
+	expectedLogs     []*core.Log
 	expectedAccounts map[string]core.AccountWithVolumes
 	parameters       Parameters
 }
@@ -171,7 +171,7 @@ var testCases = []testCase{
 		expectedTx: core.NewTransaction().WithPostings(
 			core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 		),
-		expectedLogs: []core.Log{
+		expectedLogs: []*core.Log{
 			core.NewTransactionLog(
 				core.NewTransaction().WithPostings(
 					core.NewPosting("world", "mint", "GEM", big.NewInt(100))),
@@ -204,10 +204,7 @@ var testCases = []testCase{
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil)
-			_, err := store.AppendLog(
-				context.Background(),
-				&log,
-			)
+			_, err := store.AppendLog(context.Background(), log)
 			require.NoError(t, err)
 		},
 		script: `
@@ -231,7 +228,7 @@ var testCases = []testCase{
 				core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
 			).
 			WithReference("tx_ref"),
-		expectedLogs: []core.Log{
+		expectedLogs: []*core.Log{
 			core.NewTransactionLog(
 				core.NewTransaction().
 					WithPostings(
@@ -248,6 +245,44 @@ var testCases = []testCase{
 					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
 				},
 			},
+		},
+	},
+	{
+		name: "using idempotency",
+		script: `
+			send [GEM 100] (
+				source = @world
+				destination = @mint
+			)`,
+		reference: "tx_ref",
+		expectedTx: core.NewTransaction().
+			WithPostings(
+				core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
+			),
+		expectedLogs: []*core.Log{
+			core.NewTransactionLog(
+				core.NewTransaction().
+					WithPostings(
+						core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
+					),
+				map[string]metadata.Metadata{},
+			).WithIdempotencyKey("testing"),
+		},
+		expectedAccounts: map[string]core.AccountWithVolumes{},
+		setup: func(t *testing.T, r Store) {
+			log := core.NewTransactionLog(
+				core.NewTransaction().
+					WithPostings(
+						core.NewPosting("world", "mint", "GEM", big.NewInt(100)),
+					).
+					WithTimestamp(now),
+				map[string]metadata.Metadata{},
+			).WithIdempotencyKey("testing")
+			_, err := r.AppendLog(context.Background(), log)
+			require.NoError(t, err)
+		},
+		parameters: Parameters{
+			IdempotencyKey: "testing",
 		},
 	},
 }
@@ -314,7 +349,7 @@ func TestRevert(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), &log)
+	_, err := store.AppendLog(context.Background(), log)
 	require.NoError(t, err)
 
 	cache := newMockCache()
@@ -342,7 +377,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	cache := newMockCache()
 	log := core.
 		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction())
-	_, err := store.AppendLog(context.Background(), &log)
+	_, err := store.AppendLog(context.Background(), log)
 	require.NoError(t, err)
 
 	cache.accounts["bank"] = &core.AccountWithVolumes{
@@ -374,7 +409,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), &log)
+	_, err := store.AppendLog(context.Background(), log)
 	require.NoError(t, err)
 
 	cache.accounts["bank"] = &core.AccountWithVolumes{
