@@ -26,11 +26,12 @@ const (
 type LogsV2 struct {
 	bun.BaseModel `bun:"logs_v2,alias:logs_v2"`
 
-	ID   uint64    `bun:"id,unique,type:bigint"`
-	Type int16     `bun:"type,type:smallint"`
-	Hash []byte    `bun:"hash,type:bytea"`
-	Date core.Time `bun:"date,type:timestamptz"`
-	Data []byte    `bun:"data,type:jsonb"`
+	ID             uint64    `bun:"id,unique,type:bigint"`
+	Type           int16     `bun:"type,type:smallint"`
+	Hash           []byte    `bun:"hash,type:bytea"`
+	Date           core.Time `bun:"date,type:timestamptz"`
+	Data           []byte    `bun:"data,type:jsonb"`
+	IdempotencyKey string    `bun:"idempotency_key,type:varchar(256),unique"`
 }
 
 func (log LogsV2) toCore() core.Log {
@@ -40,11 +41,12 @@ func (log LogsV2) toCore() core.Log {
 	}
 
 	return core.Log{
-		ID:   log.ID,
-		Type: core.LogType(log.Type),
-		Data: payload,
-		Hash: log.Hash,
-		Date: log.Date.UTC(),
+		ID:             log.ID,
+		Type:           core.LogType(log.Type),
+		Data:           payload,
+		Hash:           log.Hash,
+		Date:           log.Date.UTC(),
+		IdempotencyKey: log.IdempotencyKey,
 	}
 }
 
@@ -89,7 +91,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 	stmt, err := txn.Prepare(pq.CopyInSchema(
 		s.schema.Name(),
 		"logs_v2",
-		"id", "type", "hash", "date", "data",
+		"id", "type", "hash", "date", "data", "idempotency_key",
 	))
 	if err != nil {
 		return storageerrors.PostgresError(err)
@@ -114,9 +116,10 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		ls[i].Hash = logs[i].Hash
 		ls[i].Date = l.Date
 		ls[i].Data = data
+		ls[i].IdempotencyKey = l.IdempotencyKey
 
 		s.previousLog = logs[i]
-		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data))
+		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].IdempotencyKey)
 		if err != nil {
 			return storageerrors.PostgresError(err)
 		}
@@ -187,7 +190,7 @@ func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[c
 func (s *Store) buildLogsQuery(q storage.LogsQueryFilters, models *[]LogsV2) *bun.SelectQuery {
 	sb := s.schema.NewSelect(LogTableName).
 		Model(models).
-		Column("id", "type", "hash", "date", "data")
+		Column("id", "type", "hash", "date", "data", "idempotency_key")
 
 	if !q.StartTime.IsZero() {
 		sb.Where("date >= ?", q.StartTime.UTC())
@@ -288,7 +291,6 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 		Model(raw).
 		Limit(1).
 		Scan(ctx)
-
 	if err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
@@ -354,6 +356,28 @@ func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) 
 		OrderExpr("id desc").
 		Limit(1).
 		Where("data->>'revertedTransactionID' = ?", fmt.Sprint(txID)).
+		Scan(ctx)
+	if err != nil {
+		return nil, storageerrors.PostgresError(err)
+	}
+
+	l := raw.toCore()
+	return &l, nil
+}
+
+func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error) {
+	if !s.isInitialized {
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
+	}
+	recordMetrics := s.instrumentalized(ctx, "read_log_with_idempotency_key")
+	defer recordMetrics()
+
+	raw := &LogsV2{}
+	err := s.schema.NewSelect(LogTableName).
+		Model(raw).
+		OrderExpr("id desc").
+		Limit(1).
+		Where("idempotency_key = ?", key).
 		Scan(ctx)
 	if err != nil {
 		return nil, storageerrors.PostgresError(err)

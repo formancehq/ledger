@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME".logs_v2 (
     hash bytea,
     date timestamp with time zone,
     data jsonb,
+    idempotency_key varchar(255),
 
     unique(id)
 );

@@ -18,6 +18,7 @@ import (
 type LogType int16
 
 const (
+	// TODO(gfyrag): Create dedicated log type for account and metadata
 	SetMetadataLogType         LogType = iota // "SET_METADATA"
 	NewTransactionLogType                     // "NEW_TRANSACTION"
 	RevertedTransactionLogType                // "REVERTED_TRANSACTION"
@@ -68,11 +69,12 @@ type hashable interface {
 
 // TODO(polo): create Log struct and extended Log struct
 type Log struct {
-	ID   uint64   `json:"id"`
-	Type LogType  `json:"type"`
-	Data hashable `json:"data"`
-	Hash []byte   `json:"hash"`
-	Date Time     `json:"date"`
+	ID             uint64   `json:"id"`
+	Type           LogType  `json:"type"`
+	Data           hashable `json:"data"`
+	Hash           []byte   `json:"hash"`
+	Date           Time     `json:"date"`
+	IdempotencyKey string   `json:"idempotencyKey"`
 }
 
 func (l *Log) UnmarshalJSON(data []byte) error {
@@ -106,6 +108,7 @@ func (l *Log) ComputeHash(previous *Log) {
 		buf.writeUInt64(l.ID)
 		buf.writeUInt16(uint16(l.Type))
 		buf.writeUInt64(uint64(l.Date.UnixNano()))
+		buf.writeString(l.IdempotencyKey)
 		l.Data.hashString(buf)
 	}
 
@@ -125,6 +128,11 @@ func (l *Log) ComputeHash(previous *Log) {
 
 func (l Log) WithDate(date Time) Log {
 	l.Date = date
+	return l
+}
+
+func (l Log) WithIdempotencyKey(key string) Log {
+	l.IdempotencyKey = key
 	return l
 }
 

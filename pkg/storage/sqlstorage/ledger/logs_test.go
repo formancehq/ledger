@@ -89,6 +89,26 @@ func TestReadLogForCreatedTransaction(t *testing.T) {
 	require.Equal(t, logTx, *lastLog)
 }
 
+func TestReadLogWithIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
+	logTx := core.NewTransactionLog(
+		core.NewTransaction().
+			WithPostings(
+				core.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			),
+		map[string]metadata.Metadata{},
+	)
+	log := logTx.WithIdempotencyKey("test")
+	require.NoError(t, store.AppendLog(context.Background(), &log))
+
+	lastLog, err := store.ReadLogWithIdempotencyKey(context.Background(), "test")
+	require.NoError(t, err)
+	require.NotNil(t, lastLog)
+	require.Equal(t, log, *lastLog)
+}
+
 func TestGetLogs(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)

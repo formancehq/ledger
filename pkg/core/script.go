@@ -9,8 +9,8 @@ import (
 type RunScript struct {
 	Script
 	Timestamp Time              `json:"timestamp"`
-	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata"`
+	Reference string            `json:"reference"`
 }
 
 type Script struct {
