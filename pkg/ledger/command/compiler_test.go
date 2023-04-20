@@ -14,7 +14,7 @@ func TestCompiler(t *testing.T) {
 	destination = @bank
 )`
 
-	compiler := NewCompiler()
+	compiler := NewCompiler(1024)
 	p1, err := compiler.Compile(context.Background(), script)
 	require.NoError(t, err)
 

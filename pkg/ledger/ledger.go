@@ -27,10 +27,11 @@ func New(
 	locker *command.DefaultLocker,
 	queryWorker *query.Worker,
 	state *command.State,
+	compiler *command.Compiler,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
 	return &Ledger{
-		Commander:   command.New(store, cache, locker, queryWorker, state, metricsRegistry),
+		Commander:   command.New(store, cache, locker, queryWorker, state, compiler, metricsRegistry),
 		store:       store,
 		queryWorker: queryWorker,
 		locker:      locker,

@@ -39,8 +39,10 @@ func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program
 	return program, nil
 }
 
-func NewCompiler() *Compiler {
+func NewCompiler(maxCacheCount int) *Compiler {
 	return &Compiler{
-		cache: gcache.New(1024).LFU().Build(), // TODO(gfyrag): Make configurable
+		cache: gcache.New(maxCacheCount).
+			LFU().
+			Build(),
 	}
 }

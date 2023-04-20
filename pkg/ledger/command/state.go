@@ -106,7 +106,7 @@ func (s *State) GetNextTXID() uint64 {
 	return uint64(s.lastTXID.Add(1))
 }
 
-func Load(store Store, allowPastTimestamps bool) *State {
+func LoadState(store Store, allowPastTimestamps bool) *State {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && !storage.IsNotFoundError(err) {
 		panic(err)
