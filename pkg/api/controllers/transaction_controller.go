@@ -152,8 +152,8 @@ type PostTransactionRequest struct {
 func PostTransaction(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	value := r.URL.Query().Get("preview")
-	preview := strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1"
+	value := r.URL.Query().Get("dryRun")
+	dryRun := strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1"
 
 	payload := PostTransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -182,7 +182,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 		}
 
 		res, err := l.CreateTransaction(r.Context(), command.Parameters{
-			DryRun: preview,
+			DryRun: dryRun,
 			Async:  false,
 		}, core.TxToScriptData(txData))
 		if err != nil {
@@ -202,7 +202,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := l.CreateTransaction(r.Context(), command.Parameters{
-		DryRun: preview,
+		DryRun: dryRun,
 		Async:  false,
 	}, script)
 	if err != nil {
