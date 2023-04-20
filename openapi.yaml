@@ -613,7 +613,7 @@ paths:
             minimum: 0
             example: 1234
       responses:
-        "200":
+        "201":
           description: OK
           content:
             application/json:
