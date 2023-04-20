@@ -136,7 +136,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 }
 
 func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
-	if !s.isInitialized {
+	if !s.isInitialized || s.logsBatchWorker == nil {
 		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "append_log")
