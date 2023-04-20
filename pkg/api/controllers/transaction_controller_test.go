@@ -626,8 +626,7 @@ func TestRevertTransaction(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	// TODO(gfyrag): Change to 201
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusCreated, rec.Code)
 	tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
 	require.True(t, ok)
 	require.Equal(t, expectedTx, tx)
