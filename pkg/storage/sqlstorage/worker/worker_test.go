@@ -32,7 +32,7 @@ func TestSimpleWorker(t *testing.T) {
 				core.NewTransaction(),
 				map[string]metadata.Metadata{},
 			)
-			_, errChan := w.WriteModel(ctx, &log)
+			_, errChan := w.WriteModel(ctx, log)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
