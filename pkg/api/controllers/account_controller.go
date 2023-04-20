@@ -31,6 +31,7 @@ func CountAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Count", fmt.Sprint(count))
+	sharedapi.NoContent(w)
 }
 
 func GetAccounts(w http.ResponseWriter, r *http.Request) {

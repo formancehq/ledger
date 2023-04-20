@@ -55,6 +55,7 @@ func CountTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Count", fmt.Sprint(count))
+	sharedapi.NoContent(w)
 }
 
 func GetTransactions(w http.ResponseWriter, r *http.Request) {
