@@ -47,9 +47,16 @@ func WithCacheEvictionPeriod(t time.Duration) option {
 	}
 }
 
+func WithCompiler(compiler *command.Compiler) option {
+	return func(r *Resolver) {
+		r.compiler = compiler
+	}
+}
+
 var defaultOptions = []option{
 	WithMetricsRegistry(metrics.NewNoOpMetricsRegistry()),
 	WithMonitor(monitor.NewNoOpMonitor()),
+	WithCompiler(command.NewCompiler(1024)),
 }
 
 type Resolver struct {
@@ -67,7 +74,6 @@ type Resolver struct {
 func NewResolver(storageDriver storage.Driver, options ...option) *Resolver {
 	r := &Resolver{
 		storageDriver: storageDriver,
-		compiler:      command.NewCompiler(),
 		ledgers:       map[string]*Ledger{},
 	}
 	for _, opt := range append(defaultOptions, options...) {
@@ -131,7 +137,8 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor, metricsRegistry)
 		runOrPanic(queryWorker.Run)
 
-		ledger = New(store, cache, locker, queryWorker, command.Load(store, r.allowPastTimestamps), metricsRegistry)
+		ledger = New(store, cache, locker, queryWorker,
+			command.LoadState(store, r.allowPastTimestamps), r.compiler, metricsRegistry)
 		r.ledgers[name] = ledger
 		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}

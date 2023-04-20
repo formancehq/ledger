@@ -40,9 +40,12 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(ledger.Configuration{
 			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",
-			Cache: ledger.CacheConfiguration{
+			AccountsCache: ledger.AccountsCacheConfiguration{
 				EvictionRetainDelay: v.GetDuration(cacheEvictionRetainDelay),
 				EvictionPeriod:      v.GetDuration(cacheEvictionPeriodFlag),
+			},
+			NumscriptCache: ledger.NumscriptCacheConfiguration{
+				MaxCount: v.GetInt(numscriptCacheMaxCount),
 			},
 			Query: ledger.QueryConfiguration{
 				LimitReadLogs: v.GetInt(queryLimitReadLogsFlag),

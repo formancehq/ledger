@@ -297,7 +297,8 @@ func TestCreateTransaction(t *testing.T) {
 			store := newMockStore()
 			cache := newMockCache()
 
-			ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
+			ledger := New(store, cache, NoOpLocker, NoOpIngester,
+				LoadState(store, false), NewCompiler(1024), nil)
 
 			if tc.setup != nil {
 				tc.setup(t, store)
@@ -366,7 +367,8 @@ func TestRevert(t *testing.T) {
 		},
 	}
 
-	ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
+	ledger := New(store, cache, NoOpLocker, NoOpIngester,
+		LoadState(store, false), NewCompiler(1024), nil)
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, txID)
 	require.NoError(t, err)
 }
@@ -393,7 +395,8 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 		},
 	}
 
-	ledger := New(store, cache, NoOpLocker, NoOpIngester, Load(store, false), nil)
+	ledger := New(store, cache, NoOpLocker, NoOpIngester,
+		LoadState(store, false), NewCompiler(1024), nil)
 
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
@@ -431,7 +434,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 		ingestedLog <- log
 		<-log.Ingested
 		return nil
-	}), Load(store, false), nil)
+	}), LoadState(store, false), NewCompiler(1024), nil)
 	go func() {
 		_, err := ledger.RevertTransaction(context.Background(), Parameters{}, uint64(0))
 		require.NoError(t, err)
