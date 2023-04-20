@@ -79,6 +79,12 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 }
 
 func (s *Store) Close(ctx context.Context) error {
+	if s.logsBatchWorker != nil {
+		if err := s.logsBatchWorker.Stop(ctx); err != nil {
+			return err
+		}
+	}
+
 	return s.onClose(ctx)
 }
 
@@ -98,9 +104,14 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 	newStore, err := NewStore(
 		ctx,
 		schema.NewSchema(tx.Tx, s.schema.Name()),
-		s.onClose,
-		s.onDelete,
+		func(ctx context.Context) error {
+			return nil
+		},
+		func(ctx context.Context) error {
+			return nil
+		},
 		s.storeConfig,
+		false,
 	)
 	if err != nil {
 		return errors.Wrap(err, "creating new store")
@@ -110,6 +121,7 @@ func (s *Store) RunInTransaction(ctx context.Context, f func(ctx context.Context
 
 	defer func() {
 		_ = tx.Rollback()
+		_ = newStore.Close(context.Background())
 	}()
 
 	err = f(ctx, newStore)
@@ -138,6 +150,7 @@ func NewStore(
 	schema schema.Schema,
 	onClose, onDelete func(ctx context.Context) error,
 	storeConfig StoreConfig,
+	createLogsWorker bool,
 ) (*Store, error) {
 	s := &Store{
 		schema:      schema,
@@ -146,19 +159,20 @@ func NewStore(
 		storeConfig: storeConfig,
 	}
 
-	logsBatchWorker := worker.NewWorker(s.batchLogs, storeConfig.StoreWorkerConfig)
-	s.logsBatchWorker = logsBatchWorker
-
 	metricsRegistry, err := metrics.RegisterSQLStorageMetrics(s.schema.Name())
 	if err != nil {
 		return nil, errors.Wrap(err, "registering metrics")
 	}
 	s.metricsRegistry = metricsRegistry
 
-	go logsBatchWorker.Run(logging.ContextWithLogger(
-		context.Background(),
-		logging.FromContext(ctx),
-	))
+	if createLogsWorker {
+		logsBatchWorker := worker.NewWorker(s.batchLogs, storeConfig.StoreWorkerConfig)
+		s.logsBatchWorker = logsBatchWorker
+		go logsBatchWorker.Run(logging.ContextWithLogger(
+			context.Background(),
+			logging.FromContext(ctx),
+		))
+	}
 
 	return s, nil
 }
