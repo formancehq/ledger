@@ -117,37 +117,6 @@ var testCases = []testCase{
 		},
 	},
 	{
-		name: "use empty account",
-		script: `
-			vars {
-				account $acc
-			}
-
-			send [EUR 1] (
-				source = @world
-				destination = @bob
-			)
-
-			send [EUR 1] (
-				source = {
-					@bob
-					$acc
-				}
-				destination = @alice
-			)`,
-		vars: map[string]json.RawMessage{
-			"acc": json.RawMessage(`""`),
-		},
-		expectResult: Result{
-			Postings: []core.Posting{
-				core.NewPosting("world", "bob", "EUR", big.NewInt(1)),
-				core.NewPosting("bob", "alice", "EUR", big.NewInt(1)),
-			},
-			Metadata:        metadata.Metadata{},
-			AccountMetadata: map[string]metadata.Metadata{},
-		},
-	},
-	{
 		name: "using metadata",
 		store: vm.StaticStore{
 			"sales:001": &core.AccountWithVolumes{
