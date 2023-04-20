@@ -9,13 +9,14 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
 type mockStore struct {
 	nextLogID    uint64
-	logs         []core.PersistedLog
+	logs         []*core.PersistedLog
 	accounts     map[string]*core.AccountWithVolumes
 	transactions []*core.ExpandedTransaction
 }
@@ -96,7 +97,9 @@ func (m *mockStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]c
 	}
 
 	if idMin < uint64(len(m.logs)) {
-		return m.logs[idMin:idMax], nil
+		return collectionutils.Map(m.logs[idMin:idMax], func(from *core.PersistedLog) core.PersistedLog {
+			return *from
+		}), nil
 	}
 
 	return []core.PersistedLog{}, nil

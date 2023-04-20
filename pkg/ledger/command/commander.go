@@ -79,7 +79,7 @@ func (c *Commander) GetLedgerStore() Store {
 }
 
 func (l *Commander) executeTransaction(ctx context.Context, parameters Parameters, script core.RunScript,
-	logComputer func(tx *core.Transaction, result *machine.Result) core.Log) (*core.PersistedLog, error) {
+	logComputer func(tx *core.Transaction, result *machine.Result) *core.Log) (*core.PersistedLog, error) {
 	if script.Plain == "" {
 		return nil, ErrNoScript
 	}
@@ -161,7 +161,7 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 
 		log := logComputer(newTx, result)
 
-		return &log, nil
+		return log, nil
 	})
 	if err != nil {
 		reserve.Clear(nil)
@@ -174,7 +174,7 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 }
 
 func (c *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script core.RunScript) (*core.Transaction, error) {
-	log, err := c.executeTransaction(ctx, parameters, script, func(tx *core.Transaction, result *machine.Result) core.Log {
+	log, err := c.executeTransaction(ctx, parameters, script, func(tx *core.Transaction, result *machine.Result) *core.Log {
 		return core.NewTransactionLog(*tx, result.AccountMetadata)
 	})
 	if err != nil {
@@ -201,7 +201,7 @@ func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetT
 		at := core.Now()
 		var (
 			err error
-			log core.Log
+			log *core.Log
 		)
 		switch targetType {
 		case core.MetaTargetTypeTransaction:
@@ -233,7 +233,7 @@ func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetT
 			return nil, err
 		}
 
-		return &log, nil
+		return log, nil
 	})
 	return err
 }
@@ -273,7 +273,7 @@ func (c *Commander) RevertTransaction(ctx context.Context, parameters Parameters
 			Postings: rt.Postings,
 			Metadata: rt.Metadata,
 		}),
-		func(tx *core.Transaction, result *machine.Result) core.Log {
+		func(tx *core.Transaction, result *machine.Result) *core.Log {
 			return core.NewRevertedTransactionLog(tx.Timestamp, transactionToRevert.ID, *tx)
 		})
 	if err != nil {
@@ -295,18 +295,18 @@ func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 		}
 	}
 	execContext := newExecutionContext(ctx, c.cache)
-	l, err := exec(execContext)
+	log, err := exec(execContext)
 	if err != nil {
 		close(execContext.ingested)
 		return nil, err
 	}
-	log := l.WithIdempotencyKey(parameters.IdempotencyKey)
+	log = log.WithIdempotencyKey(parameters.IdempotencyKey)
 	if parameters.DryRun {
 		execContext.SetIngested()
 		return log.ComputePersistentLog(nil), nil
 	}
 
-	persistedLog, err := c.store.AppendLog(ctx, &log)
+	persistedLog, err := c.store.AppendLog(ctx, log)
 	if err != nil {
 		execContext.SetIngested()
 		return nil, err

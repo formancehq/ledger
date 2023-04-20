@@ -21,7 +21,7 @@ func TestGetLastLog(t *testing.T) {
 	require.Nil(t, lastLog)
 
 	logTx := core.NewTransactionLog(tx1.Transaction, nil)
-	_, err = store.AppendLog(context.Background(), &logTx)
+	_, err = store.AppendLog(context.Background(), logTx)
 	require.NoError(t, err)
 
 	lastLog, err = store.GetLastLog(context.Background())
@@ -45,7 +45,7 @@ func TestReadLogForCreatedTransactionWithReference(t *testing.T) {
 			WithReference("ref"),
 		map[string]metadata.Metadata{},
 	)
-	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	persistedLog, err := store.AppendLog(context.Background(), logTx)
 	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForCreatedTransactionWithReference(context.Background(), "ref")
@@ -63,7 +63,7 @@ func TestReadLogForRevertedTransaction(t *testing.T) {
 		0,
 		core.NewTransaction(),
 	)
-	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	persistedLog, err := store.AppendLog(context.Background(), logTx)
 	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForRevertedTransaction(context.Background(), 0)
@@ -84,7 +84,7 @@ func TestReadLogForCreatedTransaction(t *testing.T) {
 			WithReference("ref"),
 		map[string]metadata.Metadata{},
 	)
-	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	persistedLog, err := store.AppendLog(context.Background(), logTx)
 	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForCreatedTransaction(context.Background(), 0)
@@ -106,7 +106,7 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 	)
 	log := logTx.WithIdempotencyKey("test")
 
-	persistedLog, err := store.AppendLog(context.Background(), &log)
+	persistedLog, err := store.AppendLog(context.Background(), log)
 	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogWithIdempotencyKey(context.Background(), "test")
@@ -121,7 +121,7 @@ func TestGetLogs(t *testing.T) {
 
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
 		logTx := core.NewTransactionLog(tx.Transaction, nil)
-		_, err := store.AppendLog(context.Background(), &logTx)
+		_, err := store.AppendLog(context.Background(), logTx)
 		require.NoError(t, err)
 	}
 
