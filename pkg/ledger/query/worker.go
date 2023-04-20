@@ -277,7 +277,13 @@ func buildData(
 
 			logsData.transactionsToInsert = append(logsData.transactionsToInsert, expandedTx)
 
-			for account := range txVolumeAggregator.PostCommitVolumes {
+		l:
+			for account, volumes := range txVolumeAggregator.PreCommitVolumes {
+				for _, volume := range volumes {
+					if volume.Output.Cmp(core.Zero) != 0 || volume.Input.Cmp(core.Zero) != 0 {
+						continue l
+					}
+				}
 				logsData.ensureAccountsExist = append(logsData.ensureAccountsExist, account)
 			}
 
