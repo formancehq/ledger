@@ -145,7 +145,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 			return
 		case w.releasedJob <- struct{}{}:
 		case modelsHolder := <-w.jobs:
-			logs := make([]core.Log, len(modelsHolder))
+			logs := make([]core.PersistedLog, len(modelsHolder))
 			for i, holder := range modelsHolder {
 				logs[i] = *holder.Log
 			}
@@ -187,7 +187,7 @@ func processLogs(
 	ledgerName string,
 	store Store,
 	m monitor.Monitor,
-	logs ...core.Log,
+	logs ...core.PersistedLog,
 ) error {
 	logsData, err := buildData(ctx, ledgerName, store, logs...)
 	if err != nil {
@@ -240,7 +240,7 @@ func buildData(
 	ctx context.Context,
 	ledgerName string,
 	store Store,
-	logs ...core.Log,
+	logs ...core.PersistedLog,
 ) (*logsData, error) {
 	logsData := &logsData{}
 

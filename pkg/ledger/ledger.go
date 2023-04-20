@@ -99,7 +99,7 @@ func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQu
 	return balances, errors.Wrap(err, "getting balances aggregated")
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.Log], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
 	return logs, errors.Wrap(err, "getting logs")
 }

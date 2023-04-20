@@ -2,67 +2,79 @@ package worker
 
 import (
 	"context"
+
+	"github.com/formancehq/ledger/pkg/core"
 )
 
-type Job[MODEL any] func(context.Context, []MODEL) error
+type Job func(context.Context, []*core.Log) ([]*core.PersistedLog, error)
 
-type modelsHolder[MODEL any] struct {
-	models  []MODEL
-	errChan chan error
+type pendingLog struct {
+	log       *core.Log
+	errChan   chan error
+	persisted chan *core.PersistedLog
 }
 
-type Worker[MODEL any] struct {
-	pending      []modelsHolder[MODEL]
-	writeChannel chan modelsHolder[MODEL]
-	jobs         chan []modelsHolder[MODEL]
+type Worker struct {
+	pending      []pendingLog
+	writeChannel chan pendingLog
+	jobs         chan []pendingLog
 	releasedJob  chan struct{}
-	workerJob    Job[MODEL]
+	workerJob    Job
 	stopChan     chan chan struct{}
 }
 
-type WorkerConfig struct {
+type Config struct {
 	MaxPendingSize   int
 	MaxWriteChanSize int
 }
 
 var (
-	DefaultConfig = WorkerConfig{
+	DefaultConfig = Config{
 		MaxPendingSize:   0,
 		MaxWriteChanSize: 1024,
 	}
 )
 
-func NewWorker[MODEL any](workerJob Job[MODEL], cfg WorkerConfig) *Worker[MODEL] {
-	return &Worker[MODEL]{
+func NewWorker(workerJob Job, cfg Config) *Worker {
+	return &Worker{
 		workerJob:    workerJob,
-		pending:      make([]modelsHolder[MODEL], cfg.MaxPendingSize),
-		jobs:         make(chan []modelsHolder[MODEL]),
-		writeChannel: make(chan modelsHolder[MODEL], cfg.MaxWriteChanSize),
+		pending:      make([]pendingLog, cfg.MaxPendingSize),
+		jobs:         make(chan []pendingLog),
+		writeChannel: make(chan pendingLog, cfg.MaxWriteChanSize),
 		releasedJob:  make(chan struct{}, 1),
 		stopChan:     make(chan chan struct{}, 1),
 	}
 }
 
-func (w *Worker[MODEL]) writeLoop(ctx context.Context) {
+func (w *Worker) writeLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case w.releasedJob <- struct{}{}:
 		case modelsHolders := <-w.jobs:
-			models := make([]MODEL, 0)
+			models := make([]*core.Log, 0)
 			for _, holder := range modelsHolders {
-				models = append(models, holder.models...)
+				models = append(models, holder.log)
 			}
-			err := w.workerJob(ctx, models)
+			persistedLogs, err := w.workerJob(ctx, models)
 			go func() {
-				for _, holder := range modelsHolders {
-					select {
-					case <-ctx.Done():
-						return
-					case holder.errChan <- err:
-						close(holder.errChan)
+				for i, holder := range modelsHolders {
+					if err != nil {
+						select {
+						case <-ctx.Done():
+							return
+						case holder.errChan <- err:
+						}
+					} else {
+						select {
+						case <-ctx.Done():
+							return
+						case holder.persisted <- persistedLogs[i]:
+						}
 					}
+					close(holder.errChan)
+					close(holder.persisted)
 				}
 			}()
 		}
@@ -70,7 +82,7 @@ func (w *Worker[MODEL]) writeLoop(ctx context.Context) {
 }
 
 // Run should be called in a goroutine
-func (w *Worker[MODEL]) Run(ctx context.Context) {
+func (w *Worker) Run(ctx context.Context) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -101,7 +113,7 @@ l:
 						return
 					case w.jobs <- w.pending:
 						// Models has been handled by the job, just clear pending models
-						w.pending = make([]modelsHolder[MODEL], 0)
+						w.pending = make([]pendingLog, 0)
 						continue l
 					}
 				}
@@ -122,14 +134,14 @@ l:
 				case ch := <-w.stopChan:
 					close(ch)
 					return
-				case w.jobs <- []modelsHolder[MODEL]{mh}:
+				case w.jobs <- []pendingLog{mh}:
 				}
 			}
 		}
 	}
 }
 
-func (w *Worker[MODEL]) Stop(ctx context.Context) error {
+func (w *Worker) Stop(ctx context.Context) error {
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -144,18 +156,20 @@ func (w *Worker[MODEL]) Stop(ctx context.Context) error {
 	}
 }
 
-func (w *Worker[MODEL]) WriteModels(ctx context.Context, models ...MODEL) <-chan error {
+func (w *Worker) WriteModel(ctx context.Context, model *core.Log) (<-chan *core.PersistedLog, <-chan error) {
 	errChan := make(chan error, 1)
+	ret := make(chan *core.PersistedLog, 1)
 
 	select {
 	case <-ctx.Done():
 		errChan <- ctx.Err()
 		close(errChan)
-	case w.writeChannel <- modelsHolder[MODEL]{
-		models:  models,
-		errChan: errChan,
+	case w.writeChannel <- pendingLog{
+		log:       model,
+		errChan:   errChan,
+		persisted: ret,
 	}:
 	}
 
-	return errChan
+	return ret, errChan
 }

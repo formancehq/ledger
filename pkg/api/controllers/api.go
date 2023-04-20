@@ -21,7 +21,7 @@ type Ledger interface {
 	GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error)
 	GetMigrationsInfo(ctx context.Context) ([]core.MigrationInfo, error)
 	Stats(ctx context.Context) (ledger.Stats, error)
-	GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.Log], error)
+	GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.PersistedLog], error)
 	CountTransactions(ctx context.Context, query storage.TransactionsQuery) (uint64, error)
 	GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
 	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)

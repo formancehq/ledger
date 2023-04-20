@@ -21,7 +21,8 @@ func TestGetLastLog(t *testing.T) {
 	require.Nil(t, lastLog)
 
 	logTx := core.NewTransactionLog(tx1.Transaction, nil)
-	require.NoError(t, store.AppendLog(context.Background(), &logTx))
+	_, err = store.AppendLog(context.Background(), &logTx)
+	require.NoError(t, err)
 
 	lastLog, err = store.GetLastLog(context.Background())
 	require.NoError(t, err)
@@ -44,12 +45,13 @@ func TestReadLogForCreatedTransactionWithReference(t *testing.T) {
 			WithReference("ref"),
 		map[string]metadata.Metadata{},
 	)
-	require.NoError(t, store.AppendLog(context.Background(), &logTx))
+	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForCreatedTransactionWithReference(context.Background(), "ref")
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
-	require.Equal(t, logTx, *lastLog)
+	require.Equal(t, *persistedLog, *lastLog)
 }
 
 func TestReadLogForRevertedTransaction(t *testing.T) {
@@ -61,12 +63,13 @@ func TestReadLogForRevertedTransaction(t *testing.T) {
 		0,
 		core.NewTransaction(),
 	)
-	require.NoError(t, store.AppendLog(context.Background(), &logTx))
+	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForRevertedTransaction(context.Background(), 0)
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
-	require.Equal(t, logTx, *lastLog)
+	require.Equal(t, *persistedLog, *lastLog)
 }
 
 func TestReadLogForCreatedTransaction(t *testing.T) {
@@ -81,12 +84,13 @@ func TestReadLogForCreatedTransaction(t *testing.T) {
 			WithReference("ref"),
 		map[string]metadata.Metadata{},
 	)
-	require.NoError(t, store.AppendLog(context.Background(), &logTx))
+	persistedLog, err := store.AppendLog(context.Background(), &logTx)
+	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogForCreatedTransaction(context.Background(), 0)
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
-	require.Equal(t, logTx, *lastLog)
+	require.Equal(t, *persistedLog, *lastLog)
 }
 
 func TestReadLogWithIdempotencyKey(t *testing.T) {
@@ -101,12 +105,14 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 		map[string]metadata.Metadata{},
 	)
 	log := logTx.WithIdempotencyKey("test")
-	require.NoError(t, store.AppendLog(context.Background(), &log))
+
+	persistedLog, err := store.AppendLog(context.Background(), &log)
+	require.NoError(t, err)
 
 	lastLog, err := store.ReadLogWithIdempotencyKey(context.Background(), "test")
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
-	require.Equal(t, log, *lastLog)
+	require.Equal(t, *persistedLog, *lastLog)
 }
 
 func TestGetLogs(t *testing.T) {
@@ -115,7 +121,8 @@ func TestGetLogs(t *testing.T) {
 
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
 		logTx := core.NewTransactionLog(tx.Transaction, nil)
-		require.NoError(t, store.AppendLog(context.Background(), &logTx))
+		_, err := store.AppendLog(context.Background(), &logTx)
+		require.NoError(t, err)
 	}
 
 	cursor, err := store.GetLogs(context.Background(), storage.NewLogsQuery())
