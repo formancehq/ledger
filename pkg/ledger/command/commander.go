@@ -78,13 +78,13 @@ func (c *Commander) GetLedgerStore() Store {
 	return c.store
 }
 
-func (c *Commander) executeTransaction(ctx context.Context, parameters Parameters, script core.RunScript,
-	logComputer func(tx *core.Transaction, result *machine.Result) core.Log) (*core.Log, error) {
+func (l *Commander) executeTransaction(ctx context.Context, parameters Parameters, script core.RunScript,
+	logComputer func(tx *core.Transaction, result *machine.Result) core.Log) (*core.PersistedLog, error) {
 	if script.Plain == "" {
 		return nil, ErrNoScript
 	}
 
-	reserve, ts, err := c.state.Reserve(ctx, ReserveRequest{
+	reserve, ts, err := l.state.Reserve(ctx, ReserveRequest{
 		Timestamp: script.Timestamp,
 		Reference: script.Reference,
 	})
@@ -94,10 +94,10 @@ func (c *Commander) executeTransaction(ctx context.Context, parameters Parameter
 
 	var newTx *core.Transaction
 
-	log, err := c.runCommand(ctx, parameters, func(ctx *executionContext) (*core.Log, error) {
+	log, err := l.runCommand(ctx, parameters, func(ctx *executionContext) (*core.Log, error) {
 		script.Timestamp = *ts
 
-		program, err := c.compiler.Compile(ctx, script.Plain)
+		program, err := l.compiler.Compile(ctx, script.Plain)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
 		}
@@ -109,7 +109,7 @@ func (c *Commander) executeTransaction(ctx context.Context, parameters Parameter
 				errors.Wrap(err, "could not set variables"))
 		}
 
-		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, c.cache)
+		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, l.cache)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve program resources"))
@@ -125,13 +125,13 @@ func (c *Commander) executeTransaction(ctx context.Context, parameters Parameter
 			Write: collectionutils.Filter(involvedSources, worldFilter),
 		}
 
-		unlock, err := c.locker.Lock(ctx, lockAccounts)
+		unlock, err := l.locker.Lock(ctx, lockAccounts)
 		if err != nil {
 			return nil, errors.Wrap(err, "locking accounts for tx processing")
 		}
 		defer unlock(ctx)
 
-		err = m.ResolveBalances(ctx, c.cache)
+		err = m.ResolveBalances(ctx, l.cache)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve balances"))
@@ -150,13 +150,13 @@ func (c *Commander) executeTransaction(ctx context.Context, parameters Parameter
 			WithPostings(result.Postings...).
 			WithMetadata(result.Metadata).
 			WithTimestamp(script.Timestamp).
-			WithID(c.state.GetNextTXID()).
+			WithID(l.state.GetNextTXID()).
 			WithReference(script.Reference)
 
 		newTx = &tx
 
 		if !parameters.DryRun {
-			c.cache.UpdateVolumeWithTX(newTx)
+			l.cache.UpdateVolumeWithTX(newTx)
 		}
 
 		log := logComputer(newTx, result)
@@ -284,7 +284,7 @@ func (c *Commander) RevertTransaction(ctx context.Context, parameters Parameters
 	return &tx, nil
 }
 
-func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) (*core.Log, error) {
+func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) (*core.PersistedLog, error) {
 	if parameters.IdempotencyKey != "" {
 		log, err := c.store.ReadLogWithIdempotencyKey(ctx, parameters.IdempotencyKey)
 		if err != nil && err != storage.ErrNotFound {
@@ -302,16 +302,18 @@ func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 	}
 	log := l.WithIdempotencyKey(parameters.IdempotencyKey)
 	if parameters.DryRun {
-		close(execContext.ingested)
-		return &log, nil
+		execContext.SetIngested()
+		return log.ComputePersistentLog(nil), nil
 	}
-	if err := c.store.AppendLog(ctx, &log); err != nil {
-		close(execContext.ingested)
+
+	persistedLog, err := c.store.AppendLog(ctx, &log)
+	if err != nil {
+		execContext.SetIngested()
 		return nil, err
 	}
-	logHolder := core.NewLogHolder(&log)
+	logHolder := core.NewLogHolder(persistedLog)
 	if err := c.logIngester.QueueLog(ctx, logHolder); err != nil {
-		close(execContext.ingested)
+		execContext.SetIngested()
 		return nil, err
 	}
 	if parameters.Async {
@@ -328,5 +330,5 @@ func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 		execContext.SetIngested()
 	}
 
-	return &log, nil
+	return persistedLog, nil
 }

@@ -11,7 +11,7 @@ type Store interface {
 	UpdateNextLogID(ctx context.Context, u uint64) error
 	IsInitialized() bool
 	GetNextLogID(ctx context.Context) (uint64, error)
-	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error)
+	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.PersistedLog, error)
 	RunInTransaction(ctx context.Context, f func(ctx context.Context, tx Store) error) error
 	GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error)
 	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)

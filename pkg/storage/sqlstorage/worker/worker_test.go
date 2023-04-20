@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/worker"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -25,12 +27,16 @@ func TestSimpleWorker(t *testing.T) {
 
 	eg := errgroup.Group{}
 	for i := 0; i < 100; i++ {
-		i := i
 		eg.Go(func() error {
+			log := core.NewTransactionLog(
+				core.NewTransaction(),
+				map[string]metadata.Metadata{},
+			)
+			_, errChan := w.WriteModel(ctx, &log)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case err := <-w.WriteModels(ctx, &Log{id: i}):
+			case err := <-errChan:
 				return err
 			}
 		})
@@ -40,59 +46,31 @@ func TestSimpleWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	require.Len(t, db.ids, 100)
-}
-
-func TestBatchWorker(t *testing.T) {
-	ctx := context.Background()
-	db := NewMockDB()
-
-	w := worker.NewWorker(db.Write, worker.DefaultConfig)
-	go w.Run(ctx)
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	eg := errgroup.Group{}
-	for i := 0; i < 1000; i += 100 {
-		logs := make([]*Log, 0, 100)
-		for j := i; j < i+100 && j < 1000; j++ {
-			logs = append(logs, &Log{id: j})
-		}
-		eg.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case err := <-w.WriteModels(ctx, logs...):
-				return err
-			}
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		t.Fatal(err)
-	}
-
-	require.Len(t, db.ids, 1000)
-}
-
-type Log struct {
-	id int
+	require.Len(t, db.logs, 100)
 }
 
 type MockDB struct {
-	ids map[int]struct{}
+	logs []*core.PersistedLog
 }
 
 func NewMockDB() *MockDB {
 	return &MockDB{
-		ids: make(map[int]struct{}),
+		logs: []*core.PersistedLog{},
 	}
 }
 
-func (m *MockDB) Write(ctx context.Context, logs []*Log) error {
-	for _, log := range logs {
-		m.ids[log.id] = struct{}{}
+func (m *MockDB) Write(ctx context.Context, logs []*core.Log) ([]*core.PersistedLog, error) {
+	ret := make([]*core.PersistedLog, 0)
+	var previous *core.PersistedLog
+	if len(m.logs) > 0 {
+		previous = m.logs[len(m.logs)-1]
 	}
-	return nil
+	for _, log := range logs {
+		newLog := log.ComputePersistentLog(previous)
+		ret = append(ret, newLog)
+		m.logs = append(m.logs, newLog)
+		previous = newLog
+	}
+
+	return ret, nil
 }

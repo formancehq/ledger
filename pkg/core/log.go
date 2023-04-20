@@ -67,18 +67,14 @@ type hashable interface {
 	hashString(buf *buffer)
 }
 
-// TODO(polo): create Log struct and extended Log struct
-type Log struct {
-	ID             uint64   `json:"id"`
-	Type           LogType  `json:"type"`
-	Data           hashable `json:"data"`
-	Hash           []byte   `json:"hash"`
-	Date           Time     `json:"date"`
-	IdempotencyKey string   `json:"idempotencyKey"`
+type PersistedLog struct {
+	Log
+	ID   uint64 `json:"id"`
+	Hash []byte `json:"hash"`
 }
 
-func (l *Log) UnmarshalJSON(data []byte) error {
-	type auxLog Log
+func (l *PersistedLog) UnmarshalJSON(data []byte) error {
+	type auxLog PersistedLog
 	type log struct {
 		auxLog
 		Data json.RawMessage `json:"data"`
@@ -93,18 +89,18 @@ func (l *Log) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*l = Log(rawLog.auxLog)
+	*l = PersistedLog(rawLog.auxLog)
 	return err
 }
 
-func (l *Log) ComputeHash(previous *Log) {
+func (l *PersistedLog) ComputeHash(previous *PersistedLog) {
 
 	buf := bufferPool.Get().(*buffer)
 	defer func() {
 		buf.reset()
 		bufferPool.Put(buf)
 	}()
-	hashLog := func(l *Log) {
+	hashLog := func(l *PersistedLog) {
 		buf.writeUInt64(l.ID)
 		buf.writeUInt16(uint16(l.Type))
 		buf.writeUInt64(uint64(l.Date.UnixNano()))
@@ -126,6 +122,18 @@ func (l *Log) ComputeHash(previous *Log) {
 	l.Hash = h.Sum(nil)
 }
 
+func (l PersistedLog) WithID(id uint64) PersistedLog {
+	l.ID = id
+	return l
+}
+
+type Log struct {
+	Type           LogType  `json:"type"`
+	Data           hashable `json:"data"`
+	Date           Time     `json:"date"`
+	IdempotencyKey string   `json:"idempotencyKey"`
+}
+
 func (l Log) WithDate(date Time) Log {
 	l.Date = date
 	return l
@@ -136,9 +144,14 @@ func (l Log) WithIdempotencyKey(key string) Log {
 	return l
 }
 
-func (l Log) WithID(id uint64) Log {
-	l.ID = id
-	return l
+func (l Log) ComputePersistentLog(previous *PersistedLog) *PersistedLog {
+	ret := &PersistedLog{}
+	ret.Log = l
+	ret.ComputeHash(previous)
+	if previous != nil {
+		ret.ID = previous.ID + 1
+	}
+	return ret
 }
 
 type AccountMetadata map[string]metadata.Metadata
@@ -289,7 +302,7 @@ func HydrateLog(_type LogType, data []byte) (hashable, error) {
 type Accounts map[string]Account
 
 type LogHolder struct {
-	Log      *Log
+	Log      *PersistedLog
 	Ingested chan struct{}
 }
 
@@ -297,7 +310,7 @@ func (h *LogHolder) SetIngested() {
 	close(h.Ingested)
 }
 
-func NewLogHolder(log *Log) *LogHolder {
+func NewLogHolder(log *PersistedLog) *LogHolder {
 	return &LogHolder{
 		Log:      log,
 		Ingested: make(chan struct{}),

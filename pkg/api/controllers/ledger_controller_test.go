@@ -163,9 +163,10 @@ func TestGetLogs(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[core.Log]{
-				Data: []core.Log{
-					core.NewTransactionLog(core.Transaction{}, map[string]metadata.Metadata{}),
+			expectedCursor := sharedapi.Cursor[core.PersistedLog]{
+				Data: []core.PersistedLog{
+					*core.NewTransactionLog(core.Transaction{}, map[string]metadata.Metadata{}).
+						ComputePersistentLog(nil),
 				},
 			}
 
@@ -186,7 +187,7 @@ func TestGetLogs(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := DecodeCursorResponse[core.Log](t, rec.Body)
+				cursor := DecodeCursorResponse[core.PersistedLog](t, rec.Body)
 
 				cursorData, err := json.Marshal(cursor)
 				require.NoError(t, err)

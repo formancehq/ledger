@@ -32,34 +32,31 @@ func TestInitQuery(t *testing.T) {
 	}
 
 	log0 := core.NewTransactionLog(tx0, nil)
-	log0.ID = 0
 	log1 := core.NewTransactionLog(tx1, nil)
-	log1.ID = 1
 	log2 := core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 		TargetType: core.MetaTargetTypeTransaction,
 		TargetID:   tx1.ID,
 		Metadata:   appliedMetadataOnTX1,
 	})
-	log2.ID = 2
 	log3 := core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 		TargetType: core.MetaTargetTypeAccount,
 		TargetID:   "bank",
 		Metadata:   appliedMetadataOnAccount,
 	})
-	log3.ID = 3
 	log4 := core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 		TargetType: core.MetaTargetTypeAccount,
 		TargetID:   "another:account",
 		Metadata:   appliedMetadataOnAccount,
 	})
-	log4.ID = 4
 
-	logs := []core.Log{
-		log0,
-		log1,
-		log2,
-		log3,
-		log4,
+	logs := make([]core.PersistedLog, 0)
+	var previous *core.PersistedLog
+	for _, l := range []core.Log{
+		log0, log1, log2, log3, log4,
+	} {
+		next := l.ComputePersistentLog(previous)
+		logs = append(logs, *next)
+		previous = next
 	}
 
 	ledgerStore := &mockStore{

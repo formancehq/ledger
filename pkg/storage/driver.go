@@ -29,17 +29,17 @@ type LedgerStore interface {
 
 	RunInTransaction(ctx context.Context, f func(ctx context.Context, store LedgerStore) error) error
 
-	AppendLog(context.Context, *core.Log) error
+	AppendLog(context.Context, *core.Log) (*core.PersistedLog, error)
 	GetNextLogID(ctx context.Context) (uint64, error)
-	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error)
+	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.PersistedLog, error)
 	UpdateNextLogID(ctx context.Context, id uint64) error
-	GetLogs(context.Context, LogsQuery) (*api.Cursor[core.Log], error)
-	GetLastLog(context.Context) (*core.Log, error)
-	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.Log, error)
-	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error)
-	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
-	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
-	ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error)
+	GetLogs(context.Context, LogsQuery) (*api.Cursor[core.PersistedLog], error)
+	GetLastLog(context.Context) (*core.PersistedLog, error)
+	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.PersistedLog, error)
+	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.PersistedLog, error)
+	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error)
+	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error)
+	ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.PersistedLog, error)
 
 	InsertTransactions(ctx context.Context, transaction ...core.ExpandedTransaction) error
 	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error
