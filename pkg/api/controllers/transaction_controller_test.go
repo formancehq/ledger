@@ -71,7 +71,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedDryRun: true,
 			queryParams: url.Values{
-				"preview": []string{"true"},
+				"dryRun": []string{"true"},
 			},
 		},
 		{
@@ -88,8 +88,7 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "using JSON postings and dry run",
 			queryParams: url.Values{
-				// TODO(gfyrag): Rename to dry run
-				"preview": []string{"true"},
+				"dryRun": []string{"true"},
 			},
 			payload: controllers.PostTransactionRequest{
 				Postings: []core.Posting{
