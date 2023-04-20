@@ -147,10 +147,10 @@ func (mr *MockLedgerMockRecorder) GetBalancesAggregated(ctx, q interface{}) *gom
 }
 
 // GetLogs mocks base method.
-func (m *MockLedger) GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.Log], error) {
+func (m *MockLedger) GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[core.Log])
+	ret0, _ := ret[0].(*api.Cursor[core.PersistedLog])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

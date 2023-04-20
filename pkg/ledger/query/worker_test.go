@@ -15,7 +15,7 @@ import (
 
 type mockStore struct {
 	nextLogID    uint64
-	logs         []core.Log
+	logs         []core.PersistedLog
 	accounts     map[string]*core.AccountWithVolumes
 	transactions []*core.ExpandedTransaction
 }
@@ -90,7 +90,7 @@ func (m *mockStore) GetNextLogID(ctx context.Context) (uint64, error) {
 	return m.nextLogID, nil
 }
 
-func (m *mockStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error) {
+func (m *mockStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.PersistedLog, error) {
 	if idMax > uint64(len(m.logs)) {
 		idMax = uint64(len(m.logs))
 	}
@@ -99,7 +99,7 @@ func (m *mockStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]c
 		return m.logs[idMin:idMax], nil
 	}
 
-	return []core.Log{}, nil
+	return []core.PersistedLog{}, nil
 }
 
 func (m *mockStore) RunInTransaction(ctx context.Context, f func(ctx context.Context, tx Store) error) error {
@@ -162,28 +162,28 @@ func TestWorker(t *testing.T) {
 		"category": "gold",
 	}
 
-	logs := []core.Log{
-		core.NewTransactionLog(tx0, nil),
-		core.NewTransactionLog(tx1, nil),
+	logs := []*core.PersistedLog{
+		core.NewTransactionLog(tx0, nil).ComputePersistentLog(nil),
+		core.NewTransactionLog(tx1, nil).ComputePersistentLog(nil),
 		core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeTransaction,
 			TargetID:   tx1.ID,
 			Metadata:   appliedMetadataOnTX1,
-		}),
+		}).ComputePersistentLog(nil),
 		core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeAccount,
 			TargetID:   "bank",
 			Metadata:   appliedMetadataOnAccount,
-		}),
+		}).ComputePersistentLog(nil),
 		core.NewSetMetadataLog(now, core.SetMetadataLogPayload{
 			TargetType: core.MetaTargetTypeAccount,
 			TargetID:   "another:account",
 			Metadata:   appliedMetadataOnAccount,
-		}),
+		}).ComputePersistentLog(nil),
 	}
 	for i, log := range logs {
 		log.ID = uint64(i)
-		logHolder := core.NewLogHolder(&log)
+		logHolder := core.NewLogHolder(log)
 		require.NoError(t, worker.QueueLog(context.Background(), logHolder))
 		<-logHolder.Ingested
 	}

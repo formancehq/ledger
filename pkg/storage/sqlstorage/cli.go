@@ -47,7 +47,7 @@ func CLIDriverModule(v *viper.Viper, output io.Writer) fx.Option {
 			ConnString: v.GetString(StoragePostgresConnectionStringFlag),
 		},
 		StoreConfig: ledgerstore.StoreConfig{
-			StoreWorkerConfig: worker.WorkerConfig{
+			StoreWorkerConfig: worker.Config{
 				MaxPendingSize:   v.GetInt(StoreWorkerMaxPendingSize),
 				MaxWriteChanSize: v.GetInt(StoreWorkerMaxWriteChanSize),
 			},

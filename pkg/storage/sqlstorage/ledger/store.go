@@ -30,15 +30,15 @@ type Store struct {
 	onClose         func(ctx context.Context) error
 	onDelete        func(ctx context.Context) error
 
-	logsBatchWorker *worker.Worker[*core.Log]
-	previousLog     *core.Log
+	logsBatchWorker *worker.Worker
+	previousLog     *core.PersistedLog
 	once            sync.Once
 
 	isInitialized bool
 }
 
 type StoreConfig struct {
-	StoreWorkerConfig worker.WorkerConfig
+	StoreWorkerConfig worker.Config
 }
 
 var (

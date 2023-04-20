@@ -34,19 +34,21 @@ type LogsV2 struct {
 	IdempotencyKey string    `bun:"idempotency_key,type:varchar(256),unique"`
 }
 
-func (log LogsV2) toCore() core.Log {
+func (log LogsV2) toCore() core.PersistedLog {
 	payload, err := core.HydrateLog(core.LogType(log.Type), log.Data)
 	if err != nil {
 		panic(errors.Wrap(err, "hydrating log data"))
 	}
 
-	return core.Log{
-		ID:             log.ID,
-		Type:           core.LogType(log.Type),
-		Data:           payload,
-		Hash:           log.Hash,
-		Date:           log.Date.UTC(),
-		IdempotencyKey: log.IdempotencyKey,
+	return core.PersistedLog{
+		Log: core.Log{
+			Type:           core.LogType(log.Type),
+			Data:           payload,
+			Date:           log.Date.UTC(),
+			IdempotencyKey: log.IdempotencyKey,
+		},
+		ID:   log.ID,
+		Hash: log.Hash,
 	}
 }
 
@@ -76,7 +78,7 @@ func (s *Store) initLastLog(ctx context.Context) {
 	})
 }
 
-func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
+func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) ([]*core.PersistedLog, error) {
 	recordMetrics := s.instrumentalized(ctx, "batch_logs")
 	defer recordMetrics()
 
@@ -84,7 +86,7 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 
 	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return storageerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
@@ -94,61 +96,67 @@ func (s *Store) batchLogs(ctx context.Context, logs []*core.Log) error {
 		"id", "type", "hash", "date", "data", "idempotency_key",
 	))
 	if err != nil {
-		return storageerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	ls := make([]LogsV2, len(logs))
+	ret := make([]*core.PersistedLog, len(logs))
 	for i, l := range logs {
 		data, err := json.Marshal(l.Data)
 		if err != nil {
-			return errors.Wrap(err, "marshaling log data")
+			return nil, errors.Wrap(err, "marshaling log data")
 		}
 
-		id := uint64(0)
-		if s.previousLog != nil {
-			id = s.previousLog.ID + 1
+		persistentLog := l.ComputePersistentLog(s.previousLog)
+		ls[i] = LogsV2{
+			ID:             persistentLog.ID,
+			Type:           int16(persistentLog.Type),
+			Hash:           persistentLog.Hash,
+			Date:           persistentLog.Date,
+			Data:           data,
+			IdempotencyKey: persistentLog.IdempotencyKey,
 		}
-		logs[i].ID = id
-		logs[i].ComputeHash(s.previousLog)
+		ret[i] = persistentLog
 
-		ls[i].ID = id
-		ls[i].Type = int16(l.Type)
-		ls[i].Hash = logs[i].Hash
-		ls[i].Date = l.Date
-		ls[i].Data = data
-		ls[i].IdempotencyKey = l.IdempotencyKey
-
-		s.previousLog = logs[i]
-		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), ls[i].IdempotencyKey)
+		s.previousLog = persistentLog
+		_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), persistentLog.IdempotencyKey)
 		if err != nil {
-			return storageerrors.PostgresError(err)
+			return nil, storageerrors.PostgresError(err)
 		}
 	}
 
 	_, err = stmt.Exec()
 	if err != nil {
-		return storageerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
 	err = stmt.Close()
 	if err != nil {
-		return storageerrors.PostgresError(err)
+		return nil, storageerrors.PostgresError(err)
 	}
 
-	return storageerrors.PostgresError(txn.Commit())
+	return ret, storageerrors.PostgresError(txn.Commit())
 }
 
-func (s *Store) AppendLog(ctx context.Context, log *core.Log) error {
+func (s *Store) AppendLog(ctx context.Context, log *core.Log) (*core.PersistedLog, error) {
 	if !s.isInitialized || s.logsBatchWorker == nil {
-		return storageerrors.StorageError(storage.ErrStoreNotInitialized)
+		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
 	recordMetrics := s.instrumentalized(ctx, "append_log")
 	defer recordMetrics()
 
-	return <-s.logsBatchWorker.WriteModels(ctx, log)
+	retChan, errChan := s.logsBatchWorker.WriteModel(ctx, log)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case ret := <-retChan:
+		return ret, nil
+	case err := <-errChan:
+		return nil, err
+	}
 }
 
-func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
+func (s *Store) GetLastLog(ctx context.Context) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -169,7 +177,7 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 	return &l, nil
 }
 
-func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.Log], error) {
+func (s *Store) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -229,7 +237,7 @@ func (s *Store) GetNextLogID(ctx context.Context) (uint64, error) {
 	return s.getNextLogID(ctx, &s.schema)
 }
 
-func (s *Store) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.Log, error) {
+func (s *Store) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -241,7 +249,7 @@ func (s *Store) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.
 
 func (s *Store) readLogsRange(ctx context.Context, exec interface {
 	NewSelect(tableName string) *bun.SelectQuery
-}, idMin, idMax uint64) ([]core.Log, error) {
+}, idMin, idMax uint64) ([]core.PersistedLog, error) {
 
 	rawLogs := make([]LogsV2, 0)
 	err := exec.
@@ -276,7 +284,7 @@ func (s *Store) UpdateNextLogID(ctx context.Context, id uint64) error {
 	return storageerrors.PostgresError(err)
 }
 
-func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.Log, error) {
+func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -299,7 +307,7 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 	return &ret, nil
 }
 
-func (s *Store) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error) {
+func (s *Store) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -321,7 +329,7 @@ func (s *Store) ReadLogForCreatedTransactionWithReference(ctx context.Context, r
 	return &l, nil
 }
 
-func (s *Store) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+func (s *Store) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -343,7 +351,7 @@ func (s *Store) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (
 	return &l, nil
 }
 
-func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
+func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
@@ -365,7 +373,7 @@ func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) 
 	return &l, nil
 }
 
-func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error) {
+func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.PersistedLog, error) {
 	if !s.isInitialized {
 		return nil, storageerrors.StorageError(storage.ErrStoreNotInitialized)
 	}
