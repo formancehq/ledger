@@ -207,32 +207,32 @@ func (mr *MockLedgerMockRecorder) GetTransactions(ctx, query interface{}) *gomoc
 }
 
 // RevertTransaction mocks base method.
-func (m *MockLedger) RevertTransaction(ctx context.Context, id uint64, async bool) (*core.Transaction, error) {
+func (m *MockLedger) RevertTransaction(ctx context.Context, parameters command.Parameters, id uint64) (*core.Transaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertTransaction", ctx, id, async)
+	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters, id)
 	ret0, _ := ret[0].(*core.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
-func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, id, async interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, parameters, id interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, id, async)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, parameters, id)
 }
 
 // SaveMeta mocks base method.
-func (m_2 *MockLedger) SaveMeta(ctx context.Context, targetType string, targetID any, m metadata.Metadata, async bool) error {
+func (m_2 *MockLedger) SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error {
 	m_2.ctrl.T.Helper()
-	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, targetType, targetID, m, async)
+	ret := m_2.ctrl.Call(m_2, "SaveMeta", ctx, parameters, targetType, targetID, m)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveMeta indicates an expected call of SaveMeta.
-func (mr *MockLedgerMockRecorder) SaveMeta(ctx, targetType, targetID, m, async interface{}) *gomock.Call {
+func (mr *MockLedgerMockRecorder) SaveMeta(ctx, parameters, targetType, targetID, m interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveMeta", reflect.TypeOf((*MockLedger)(nil).SaveMeta), ctx, targetType, targetID, m, async)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveMeta", reflect.TypeOf((*MockLedger)(nil).SaveMeta), ctx, parameters, targetType, targetID, m)
 }
 
 // Stats mocks base method.

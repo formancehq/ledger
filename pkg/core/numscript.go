@@ -115,8 +115,8 @@ func TxToScriptData(txData TransactionData) RunScript {
 			Vars:  vars,
 		},
 		Timestamp: txData.Timestamp,
-		Reference: txData.Reference,
 		Metadata:  txData.Metadata,
+		Reference: txData.Reference,
 	}
 }
 

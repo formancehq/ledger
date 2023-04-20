@@ -10,9 +10,9 @@ type Transactions struct {
 
 type TransactionData struct {
 	Postings  Postings          `json:"postings"`
-	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata"`
 	Timestamp Time              `json:"timestamp"`
+	Reference string            `json:"reference"`
 }
 
 func (d TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -31,14 +31,9 @@ func (t *TransactionData) Reverse() TransactionData {
 	copy(postings, t.Postings)
 	postings.Reverse()
 
-	ret := TransactionData{
+	return TransactionData{
 		Postings: postings,
 	}
-	//TODO(gfyra): Do we keep this for v2?
-	if t.Reference != "" {
-		ret.Reference = "revert_" + t.Reference
-	}
-	return ret
 }
 
 func (d TransactionData) hashString(buf *buffer) {
@@ -65,8 +60,8 @@ func (t Transaction) WithPostings(postings ...Posting) Transaction {
 	return t
 }
 
-func (t Transaction) WithReference(reference string) Transaction {
-	t.Reference = reference
+func (t Transaction) WithReference(ref string) Transaction {
+	t.Reference = ref
 	return t
 }
 

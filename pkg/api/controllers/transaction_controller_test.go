@@ -215,7 +215,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			backend, mock := newTestingBackend(t)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
-					SaveMeta(gomock.Any(), core.MetaTargetTypeTransaction, uint64(0), testCase.body, false).
+					SaveMeta(gomock.Any(), command.Parameters{}, core.MetaTargetTypeTransaction, uint64(0), testCase.body).
 					Return(nil)
 			}
 
@@ -616,7 +616,7 @@ func TestRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), uint64(0), false).
+		RevertTransaction(gomock.Any(), command.Parameters{}, uint64(0)).
 		Return(&expectedTx, nil)
 
 	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())

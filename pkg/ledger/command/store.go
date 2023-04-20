@@ -13,9 +13,14 @@ type Store interface {
 	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error)
 	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
 	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
+	ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error)
 }
 
 type alwaysEmptyStore struct{}
+
+func (e alwaysEmptyStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error) {
+	return nil, storage.ErrNotFound
+}
 
 func (e alwaysEmptyStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error) {
 	return nil, storage.ErrNotFound

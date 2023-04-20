@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -276,7 +277,7 @@ func TestPostAccountMetadata(t *testing.T) {
 			backend, mock := newTestingBackend(t)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
-					SaveMeta(gomock.Any(), core.MetaTargetTypeAccount, testCase.account, testCase.body, false).
+					SaveMeta(gomock.Any(), command.Parameters{}, core.MetaTargetTypeAccount, testCase.account, testCase.body).
 					Return(nil)
 			}
 

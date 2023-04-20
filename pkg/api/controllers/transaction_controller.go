@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
@@ -152,9 +151,6 @@ type PostTransactionRequest struct {
 func PostTransaction(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	value := r.URL.Query().Get("dryRun")
-	dryRun := strings.ToUpper(value) == "YES" || strings.ToUpper(value) == "TRUE" || value == "1"
-
 	payload := PostTransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		apierrors.ResponseError(w, r,
@@ -181,10 +177,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		res, err := l.CreateTransaction(r.Context(), command.Parameters{
-			DryRun: dryRun,
-			Async:  false,
-		}, core.TxToScriptData(txData))
+		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), core.TxToScriptData(txData))
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
 			return
@@ -201,10 +194,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 		Metadata:  payload.Metadata,
 	}
 
-	res, err := l.CreateTransaction(r.Context(), command.Parameters{
-		DryRun: dryRun,
-		Async:  false,
-	}, script)
+	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), script)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -242,7 +232,7 @@ func RevertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), txId, false)
+	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), txId)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
@@ -268,7 +258,7 @@ func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := l.SaveMeta(r.Context(), core.MetaTargetTypeTransaction, txId, m, false); err != nil {
+	if err := l.SaveMeta(r.Context(), getCommandParameters(r), core.MetaTargetTypeTransaction, txId, m); err != nil {
 		apierrors.ResponseError(w, r, err)
 		return
 	}

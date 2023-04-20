@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage"
@@ -62,4 +63,20 @@ func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.Balance
 	}
 
 	return balanceOperator, nil
+}
+
+func getCommandParameters(r *http.Request) command.Parameters {
+	dryRunAsString := r.URL.Query().Get("dryRun")
+	dryRun := strings.ToUpper(dryRunAsString) == "YES" || strings.ToUpper(dryRunAsString) == "TRUE" || dryRunAsString == "1"
+
+	asyncAsString := r.URL.Query().Get("async")
+	async := strings.ToUpper(asyncAsString) == "YES" || strings.ToUpper(asyncAsString) == "TRUE" || asyncAsString == "1"
+
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+
+	return command.Parameters{
+		DryRun:         dryRun,
+		Async:          async,
+		IdempotencyKey: idempotencyKey,
+	}
 }

@@ -6,6 +6,19 @@ import (
 
 type Unlock func(ctx context.Context)
 
+type Locker interface {
+	Lock(ctx context.Context, accounts Accounts) (Unlock, error)
+}
+type LockerFn func(ctx context.Context, accounts Accounts) (Unlock, error)
+
+func (fn LockerFn) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
+	return fn(ctx, accounts)
+}
+
+var NoOpLocker = LockerFn(func(ctx context.Context, accounts Accounts) (Unlock, error) {
+	return func(ctx context.Context) {}, nil
+})
+
 type Accounts struct {
 	Read  []string
 	Write []string

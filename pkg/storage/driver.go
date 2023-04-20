@@ -39,6 +39,7 @@ type LedgerStore interface {
 	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.Log, error)
 	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
 	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.Log, error)
+	ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.Log, error)
 
 	InsertTransactions(ctx context.Context, transaction ...core.ExpandedTransaction) error
 	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error
