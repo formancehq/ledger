@@ -248,7 +248,7 @@ func RevertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sharedapi.Ok(w, tx)
+	sharedapi.Created(w, tx)
 }
 
 func PostTransactionMetadata(w http.ResponseWriter, r *http.Request) {
