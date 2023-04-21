@@ -104,6 +104,7 @@ type Posting struct {
 	Asset         string       `bun:"asset,type:string"`
 	Source        account      `bun:"source,type:jsonb"`
 	Destination   account      `bun:"destination,type:jsonb"`
+	Index         uint8        `bun:"index,type:int8"`
 }
 
 func (p Posting) toCore() core.Posting {
@@ -258,13 +259,14 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 			ts[i].Reference = cp
 		}
 
-		for _, p := range tx.Postings {
+		for i, p := range tx.Postings {
 			ps = append(ps, Posting{
 				TransactionID: tx.ID,
 				Amount:        (*bunbig.Int)(p.Amount),
 				Asset:         p.Asset,
 				Source:        account(p.Source),
 				Destination:   account(p.Destination),
+				Index:         uint8(i),
 			})
 		}
 	}
@@ -279,12 +281,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 	_, err = s.schema.NewInsert(PostingsTableName).
 		Model(&ps).
-		// TODO(polo/gfyrag): Current postings table does not have
-		// unique indexes in txid and posting_index. It means that if we insert
-		// a posting with same txid and same posting index, it will be
-		// duplicated. We should fix this in the future.
-		// Why this index was removed ?
-		// On("CONFLICT (txid, posting_index) DO NOTHING").
+		On("CONFLICT (txid, index) DO NOTHING").
 		Exec(ctx)
 
 	return storageerrors.PostgresError(err)
