@@ -22,10 +22,10 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const migrationsTableName = "migrations"
+const migrationsTableName = "migrations_v2"
 
 type MigrationsTable struct {
-	bun.BaseModel `bun:"migrations,alias:migrations"`
+	bun.BaseModel `bun:"migrations_v2,alias:migrations_v2"`
 
 	Version string `bun:"version,type:varchar,unique"`
 	Date    string `bun:"date,type:varchar"`
@@ -77,9 +77,9 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 
 		logging.FromContext(ctx).Debugf("running migration %s", m.Version)
 
-		handlersForAnyEngine, ok := m.Handlers["any"]
+		handlersForCurrentEngine, ok := m.Handlers[s.Flavor()]
 		if ok {
-			for _, h := range handlersForAnyEngine {
+			for _, h := range handlersForCurrentEngine {
 				err := h(ctx, s, tx)
 				if err != nil {
 					return false, err
@@ -87,9 +87,9 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 			}
 		}
 
-		handlersForCurrentEngine, ok := m.Handlers[s.Flavor()]
+		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
-			for _, h := range handlersForCurrentEngine {
+			for _, h := range handlersForAnyEngine {
 				err := h(ctx, s, tx)
 				if err != nil {
 					return false, err
@@ -101,9 +101,9 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 			Version: m.Version,
 			Date:    core.Now().Format(time.RFC3339),
 		}
-		if _, err := s.NewInsert(migrationsTableName).
-			Model(&m).
-			Exec(ctx); err != nil {
+		sbInsert := s.NewInsert(migrationsTableName).Model(&m)
+
+		if _, err := tx.ExecContext(ctx, sbInsert.String()); err != nil {
 			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
 			return false, sqlerrors.PostgresError(err)
 		}
