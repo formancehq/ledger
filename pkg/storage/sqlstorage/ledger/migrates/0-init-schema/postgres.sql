@@ -83,7 +83,10 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".postings (
     amount bigint not null,
     asset varchar not null,
     source jsonb not null,
-    destination jsonb not null
+    destination jsonb not null,
+    index int8,
+
+    primary key (txid, index)
 );
 
 --statement
