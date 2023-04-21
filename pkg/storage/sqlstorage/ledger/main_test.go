@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
+	_ "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger/migrates/0-init-schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/utils"
 	"github.com/formancehq/stack/libs/go-libs/logging"

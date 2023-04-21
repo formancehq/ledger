@@ -31,6 +31,7 @@ func TestMain(t *testing.M) {
 }
 
 func TestCollectMigrations(t *testing.T) {
+	migrations.PurgeGoMigrations()
 
 	mfs := memfs.New()
 	require.NoError(t, mfs.MkdirAll("migrates/0-first-migration", 0666))
