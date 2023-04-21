@@ -37,6 +37,19 @@ func (l LogType) String() string {
 	return ""
 }
 
+func LogTypeFromString(logType string) (LogType, error) {
+	switch logType {
+	case "SET_METADATA":
+		return SetMetadataLogType, nil
+	case "NEW_TRANSACTION":
+		return NewTransactionLogType, nil
+	case "REVERTED_TRANSACTION":
+		return RevertedTransactionLogType, nil
+	}
+
+	return 0, errors.New("invalid log type")
+}
+
 // Needed in order to keep the compatibility with the openapi response for
 // ListLogs.
 func (lt LogType) MarshalJSON() ([]byte, error) {
