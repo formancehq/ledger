@@ -2,8 +2,8 @@ package sqlstoragetesting
 
 import (
 	"context"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
 	ledgerstore "github.com/formancehq/ledger/pkg/storage/sqlstorage/ledger"
@@ -16,7 +16,13 @@ import (
 func StorageDriver(t pgtesting.TestingT) *sqlstorage.Driver {
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
+	db, err := utils.OpenSQLDB(utils.ConnectionOptions{
+		DatabaseSourceName: pgServer.ConnString(),
+		Debug:              testing.Verbose(),
+		MaxIdleConns:       40,
+		MaxOpenConns:       40,
+		ConnMaxIdleTime:    time.Minute,
+	})
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
