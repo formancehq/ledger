@@ -86,7 +86,10 @@ func TestMigrationsOrders(t *testing.T) {
 
 func TestMigrates(t *testing.T) {
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	sqlDB, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
+	sqlDB, err := utils.OpenSQLDB(utils.ConnectionOptions{
+		DatabaseSourceName: pgServer.ConnString(),
+		Debug:              testing.Verbose(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
