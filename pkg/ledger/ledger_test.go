@@ -2,9 +2,11 @@ package ledger
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"os"
 	"testing"
 
-	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
@@ -22,21 +24,24 @@ func BenchmarkParallelWrites(b *testing.B) {
 	ledger, err := resolver.GetLedger(context.Background(), uuid.NewString())
 	require.NoError(b, err)
 
-	worker := pond.New(1000, 1000)
+	r := rand.New(rand.NewSource(0))
+
+	b.SetParallelism(1000)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		worker.Submit(func() {
-			_, err := ledger.CreateTransaction(context.Background(), command.Parameters{}, core.RunScript{
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := ledger.CreateTransaction(context.Background(), command.Parameters{
+				Async: os.Getenv("ASYNC") == "true",
+			}, core.RunScript{
 				Script: core.Script{
-					Plain: `send [USD/2 100] (
-					source = @world
-					destination = @bank
-				)`,
+					Plain: fmt.Sprintf(`send [USD/2 100] (
+						source = @world
+						destination = @accounts:%d
+					)`, r.Int()%100),
 				},
 			})
 			require.NoError(b, err)
-		})
-	}
-	worker.StopAndWait()
+		}
+	})
 	b.StopTimer()
 }
