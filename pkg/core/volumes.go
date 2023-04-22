@@ -14,13 +14,13 @@ type Volumes struct {
 func (v Volumes) CopyWithZerosIfNeeded() Volumes {
 	var input *big.Int
 	if v.Input == nil {
-		input = big.NewInt(0)
+		input = &big.Int{}
 	} else {
 		input = new(big.Int).Set(v.Input)
 	}
 	var output *big.Int
 	if v.Output == nil {
-		output = big.NewInt(0)
+		output = &big.Int{}
 	} else {
 		output = new(big.Int).Set(v.Output)
 	}
@@ -42,8 +42,8 @@ func (v Volumes) WithOutput(output *big.Int) Volumes {
 
 func NewEmptyVolumes() Volumes {
 	return Volumes{
-		Input:  big.NewInt(0),
-		Output: big.NewInt(0),
+		Input:  new(big.Int),
+		Output: new(big.Int),
 	}
 }
 
@@ -70,7 +70,7 @@ func (v Volumes) Balance() *big.Int {
 	if output == nil {
 		output = Zero
 	}
-	return big.NewInt(0).Sub(input, output)
+	return new(big.Int).Sub(input, output)
 }
 
 func (v Volumes) copy() Volumes {
@@ -107,14 +107,14 @@ type AccountsAssetsVolumes map[string]AssetsVolumes
 func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
 	if a == nil {
 		return Volumes{
-			Input:  big.NewInt(0),
-			Output: big.NewInt(0),
+			Input:  &big.Int{},
+			Output: &big.Int{},
 		}
 	}
 	if assetsVolumes, ok := a[account]; !ok {
 		return Volumes{
-			Input:  big.NewInt(0),
-			Output: big.NewInt(0),
+			Input:  &big.Int{},
+			Output: &big.Int{},
 		}
 	} else {
 		return Volumes{
@@ -145,7 +145,7 @@ func (a *AccountsAssetsVolumes) AddInput(account, asset string, input *big.Int) 
 		(*a)[account] = map[string]Volumes{
 			asset: {
 				Input:  input,
-				Output: big.NewInt(0),
+				Output: &big.Int{},
 			},
 		}
 	} else {
@@ -163,7 +163,7 @@ func (a *AccountsAssetsVolumes) AddOutput(account, asset string, output *big.Int
 		(*a)[account] = map[string]Volumes{
 			asset: {
 				Output: output,
-				Input:  big.NewInt(0),
+				Input:  &big.Int{},
 			},
 		}
 	} else {

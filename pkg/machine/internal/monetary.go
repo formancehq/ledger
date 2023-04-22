@@ -45,30 +45,30 @@ func (MonetaryInt) GetType() Type { return TypeNumber }
 
 func (a *MonetaryInt) Add(b *MonetaryInt) *MonetaryInt {
 	if a == nil {
-		a = NewMonetaryInt(0)
+		a = (*MonetaryInt)(&big.Int{})
 	}
 
 	if b == nil {
-		b = NewMonetaryInt(0)
+		b = (*MonetaryInt)(&big.Int{})
 	}
 
-	return (*MonetaryInt)(big.NewInt(0).Add((*big.Int)(a), (*big.Int)(b)))
+	return (*MonetaryInt)((&big.Int{}).Add((*big.Int)(a), (*big.Int)(b)))
 }
 
 func (a *MonetaryInt) Sub(b *MonetaryInt) *MonetaryInt {
 	if a == nil {
-		a = NewMonetaryInt(0)
+		a = (*MonetaryInt)(&big.Int{})
 	}
 
 	if b == nil {
-		b = NewMonetaryInt(0)
+		b = (*MonetaryInt)(&big.Int{})
 	}
 
-	return (*MonetaryInt)(big.NewInt(0).Sub((*big.Int)(a), (*big.Int)(b)))
+	return (*MonetaryInt)((&big.Int{}).Sub((*big.Int)(a), (*big.Int)(b)))
 }
 
 func (a *MonetaryInt) Neg() *MonetaryInt {
-	return (*MonetaryInt)(big.NewInt(0).Neg((*big.Int)(a)))
+	return (*MonetaryInt)((&big.Int{}).Neg((*big.Int)(a)))
 }
 
 func (a *MonetaryInt) OrZero() *MonetaryInt {
@@ -92,7 +92,7 @@ func (a *MonetaryInt) Lt(b *MonetaryInt) bool {
 }
 
 func (a *MonetaryInt) Ltz() bool {
-	return (*big.Int)(a).Cmp(big.NewInt(0)) < 0
+	return (*big.Int)(a).Cmp(new(big.Int)) < 0
 }
 
 func (a *MonetaryInt) Gt(b *MonetaryInt) bool {
@@ -151,7 +151,7 @@ func NewMonetaryIntFromBigInt(v *big.Int) *MonetaryInt {
 }
 
 func ParseMonetaryInt(s string) (*MonetaryInt, error) {
-	i, ok := big.NewInt(0).SetString(s, 10)
+	i, ok := (&big.Int{}).SetString(s, 10)
 	if !ok {
 		return nil, errors.New("invalid monetary int")
 	}
