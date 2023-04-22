@@ -151,10 +151,7 @@ func (s *Store) getAccountWithVolumes(ctx context.Context, exec interface {
 		}
 
 		if asset.Valid {
-			assetsVolumes[asset.String] = core.Volumes{
-				Input:  big.NewInt(0),
-				Output: big.NewInt(0),
-			}
+			assetsVolumes[asset.String] = core.NewEmptyVolumes()
 
 			if inputStr.Valid {
 				input, ok := new(big.Int).SetString(inputStr.String, 10)
