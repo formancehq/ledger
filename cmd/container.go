@@ -36,7 +36,7 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 		api.Module(api.Config{
 			Version: Version,
 		}),
-		sqlstorage.CLIDriverModule(v, output),
+		sqlstorage.CLIDriverModule(v, output, debug),
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(ledger.Configuration{
 			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",

@@ -2,7 +2,6 @@ package pagination_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/storage"
@@ -20,7 +19,10 @@ func ptr[T any](t T) *T {
 func TestColumnPagination(t *testing.T) {
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(pgServer.ConnString(), testing.Verbose(), os.Stdout)
+	db, err := utils.OpenSQLDB(utils.ConnectionOptions{
+		DatabaseSourceName: pgServer.ConnString(),
+		Debug:              testing.Verbose(),
+	})
 	require.NoError(t, err)
 
 	_, err = db.Exec(`
