@@ -2,6 +2,8 @@ package command
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 )
 
 type Unlock func(ctx context.Context)
@@ -24,144 +26,137 @@ type Accounts struct {
 	Write []string
 }
 
-type lockQuery struct {
-	accounts Accounts
-	ready    chan Unlock
+type linkedListItem[T any] struct {
+	next     *linkedListItem[T]
+	previous *linkedListItem[T]
+	value    T
+	list     *linkedList[T]
 }
 
-type unlockQuery struct {
+func (i *linkedListItem[T]) Remove() {
+	if i.previous == nil {
+		i.list.first = i.next
+		return
+	}
+	if i.next == nil {
+		i.list.last = i.previous
+		return
+	}
+	i.previous.next, i.next.previous = i.next, i.previous
+}
+
+type linkedList[T any] struct {
+	first *linkedListItem[T]
+	last  *linkedListItem[T]
+}
+
+func (l *linkedList[T]) PutTail(v T) *linkedListItem[T] {
+	item := &linkedListItem[T]{
+		previous: l.last,
+		value:    v,
+		list:     l,
+	}
+	l.last = item
+
+	return item
+}
+
+type lockIntent struct {
 	accounts Accounts
-	done     chan struct{}
+	acquired chan struct{}
+}
+
+func (intent *lockIntent) tryLock(chain *DefaultLocker) bool {
+
+	for _, account := range intent.accounts.Read {
+		_, ok := chain.writeLocks[account]
+		if ok {
+			return false
+		}
+	}
+
+	for _, account := range intent.accounts.Write {
+		_, ok := chain.readLocks[account]
+		if ok {
+			return false
+		}
+		_, ok = chain.writeLocks[account]
+		if ok {
+			return false
+		}
+	}
+
+	for _, account := range intent.accounts.Read {
+		atomicValue, ok := chain.readLocks[account]
+		if !ok {
+			atomicValue = &atomic.Int64{}
+			chain.readLocks[account] = atomicValue
+		}
+		atomicValue.Add(1)
+	}
+	for _, account := range intent.accounts.Write {
+		chain.writeLocks[account] = struct{}{}
+	}
+
+	return true
+}
+
+func (intent *lockIntent) unlock(chain *DefaultLocker) {
+	for _, account := range intent.accounts.Read {
+		atomicValue := chain.readLocks[account]
+		if atomicValue.Add(-1) == 0 {
+			delete(chain.readLocks, account)
+		}
+	}
+	for _, account := range intent.accounts.Write {
+		delete(chain.writeLocks, account)
+	}
 }
 
 type DefaultLocker struct {
-	readLocks     map[string]struct{}
-	writeLocks    map[string]struct{}
-	ledger        string
-	lockQueries   chan lockQuery
-	unlockQueries chan unlockQuery
-	pending       []*lockQuery
-	stopChan      chan chan struct{}
+	intents    *linkedList[*lockIntent]
+	mu         sync.Mutex
+	readLocks  map[string]*atomic.Int64
+	writeLocks map[string]struct{}
 }
 
-func (d *DefaultLocker) Run(ctx context.Context) error {
-	for {
+func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
+	defaultLocker.mu.Lock()
+	intent := &lockIntent{
+		accounts: accounts,
+		acquired: make(chan struct{}),
+	}
+	item := defaultLocker.intents.PutTail(intent)
+	acquired := intent.tryLock(defaultLocker)
+	defaultLocker.mu.Unlock()
+
+	if !acquired {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case query := <-d.unlockQueries:
-			d.unlock(ctx, query.accounts)
-			close(query.done)
-			d.tryNext(ctx)
-		case query := <-d.lockQueries:
-			if d.process(ctx, query) {
-				continue
-			}
-			d.pending = append(d.pending, &query)
-		case ch := <-d.stopChan:
-			close(ch)
-			return nil
+			return nil, ctx.Err()
+		case <-intent.acquired:
 		}
-	}
-}
-
-func (d *DefaultLocker) process(ctx context.Context, query lockQuery) bool {
-	unlock, acquired := d.tryLock(ctx, query.accounts)
-	if acquired {
-		query.ready <- unlock
-		return true
-	}
-	return false
-}
-
-func (d *DefaultLocker) tryNext(ctx context.Context) {
-	for _, query := range d.pending {
-		if d.process(ctx, *query) {
-			return
-		}
-	}
-}
-
-func (d *DefaultLocker) tryLock(ctx context.Context, accounts Accounts) (Unlock, bool) {
-
-	for _, account := range accounts.Read {
-		_, ok := d.writeLocks[account]
-		if ok {
-			return nil, false
-		}
-	}
-
-	for _, account := range accounts.Write {
-		_, ok := d.readLocks[account]
-		if ok {
-			return nil, false
-		}
-		_, ok = d.writeLocks[account]
-		if ok {
-			return nil, false
-		}
-	}
-
-	for _, account := range accounts.Read {
-		d.readLocks[account] = struct{}{}
-	}
-	for _, account := range accounts.Write {
-		d.writeLocks[account] = struct{}{}
 	}
 
 	return func(ctx context.Context) {
-		q := unlockQuery{
-			accounts: accounts,
-			done:     make(chan struct{}),
+		defaultLocker.mu.Lock()
+		defer defaultLocker.mu.Unlock()
+
+		intent.unlock(defaultLocker)
+		item.Remove()
+
+		for next := item.next; next != nil; {
+			if next.value.tryLock(defaultLocker) {
+				close(next.value.acquired)
+			}
 		}
-		d.unlockQueries <- q
-		select {
-		case <-ctx.Done():
-		case <-q.done:
-		}
-	}, true
+	}, nil
 }
 
-func (d *DefaultLocker) unlock(ctx context.Context, accounts Accounts) {
-	for _, account := range accounts.Read {
-		delete(d.readLocks, account)
-	}
-	for _, account := range accounts.Write {
-		delete(d.writeLocks, account)
-	}
-}
-
-func (d *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
-	q := lockQuery{
-		accounts: accounts,
-		ready:    make(chan Unlock, 1),
-	}
-	d.lockQueries <- q
-	return <-q.ready, nil
-}
-
-func (d *DefaultLocker) Stop(ctx context.Context) error {
-	ch := make(chan struct{})
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case d.stopChan <- ch:
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ch:
-			return nil
-		}
-	}
-}
-
-func NewDefaultLocker(ledger string) *DefaultLocker {
+func NewDefaultLocker() *DefaultLocker {
 	return &DefaultLocker{
-		readLocks:     map[string]struct{}{},
-		writeLocks:    map[string]struct{}{},
-		ledger:        ledger,
-		lockQueries:   make(chan lockQuery),
-		unlockQueries: make(chan unlockQuery),
-		stopChan:      make(chan chan struct{}),
+		intents:    &linkedList[*lockIntent]{},
+		readLocks:  map[string]*atomic.Int64{},
+		writeLocks: map[string]struct{}{},
 	}
 }
