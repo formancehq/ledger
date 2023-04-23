@@ -103,8 +103,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}()
 		}
 
-		locker := command.NewDefaultLocker(name)
-		runOrPanic(locker.Run)
+		locker := command.NewDefaultLocker()
 
 		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
 		if err != nil {

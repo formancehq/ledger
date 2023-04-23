@@ -69,7 +69,7 @@ tasks:
     internal: true
     cmds:
     - >
-      benchstat {{.BENCH_RESULTS_DIR}}/{{if .SOURCE}}{{.SOURCE}}{{else}}v2{{end}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
+      benchstat {{.BENCH_RESULTS_DIR}}/{{if .SOURCE}}{{.SOURCE}}{{else}}main{{end}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
       {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
 
   bench:diff:sync:
