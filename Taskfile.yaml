@@ -38,13 +38,14 @@ tasks:
         go test -run BenchmarkParallelWrites -bench=.
         -test.benchmem
         -timeout 1h
-        -memprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-memprofile-{{if eq .ASYNC "true"}}async{{else}}{{end}}.out
+        -memprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-memprofile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
         -cpuprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-profile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
         -benchtime={{if .DURATION}}{{.DURATION}}{{else}}15s{{end}}
         -count={{if .COUNT}}{{.COUNT}}{{else}}10{{end}} ./pkg/ledger | tee {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
     env:
       ASYNC: "{{.ASYNC}}"
       GOMEMLIMIT: 1GiB
+      GOMAXPROCS: 2
       GOGC: "1000" # https://dave.cheney.net/tag/gogc
 
   bench:async:
