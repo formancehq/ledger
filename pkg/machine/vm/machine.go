@@ -190,7 +190,7 @@ func (m *Machine) repay(funding core.Funding) {
 	}
 }
 
-func (m *Machine) tick() (bool, byte) {
+func (m *Machine) tick() (bool, byte, error) {
 	op := m.Program.Instructions[m.P]
 
 	if m.Debug {
@@ -205,7 +205,7 @@ func (m *Machine) tick() (bool, byte) {
 		bytes := m.Program.Instructions[m.P+1 : m.P+3]
 		v, ok := m.getResource(core.Address(binary.LittleEndian.Uint16(bytes)))
 		if !ok {
-			return true, EXIT_FAIL
+			return true, EXIT_FAIL, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.Stack = append(m.Stack, *v)
 		m.P += 2
@@ -220,7 +220,7 @@ func (m *Machine) tick() (bool, byte) {
 	case program.OP_DELETE:
 		n := m.popValue()
 		if n.GetType() == core.TypeFunding {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 
 	case program.OP_IADD:
@@ -238,7 +238,7 @@ func (m *Machine) tick() (bool, byte) {
 		m.printChan <- a
 
 	case program.OP_FAIL:
-		return true, EXIT_FAIL
+		return true, EXIT_FAIL, nil
 
 	case program.OP_ASSET:
 		v := m.popValue()
@@ -250,7 +250,7 @@ func (m *Machine) tick() (bool, byte) {
 		case core.Funding:
 			m.pushValue(v.Asset)
 		default:
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 
 	case program.OP_MONETARY_NEW:
@@ -265,11 +265,23 @@ func (m *Machine) tick() (bool, byte) {
 		b := pop[core.Monetary](m)
 		a := pop[core.Monetary](m)
 		if a.Asset != b.Asset {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf(
+				"tried to add two monetary with different assets: '%s' and '%s'", a.Asset, b.Asset)
 		}
 		m.pushValue(core.Monetary{
 			Asset:  a.Asset,
 			Amount: a.Amount.Add(b.Amount),
+		})
+
+	case program.OP_MONETARY_SUB:
+		b := pop[core.Monetary](m)
+		a := pop[core.Monetary](m)
+		if a.Asset != b.Asset {
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+		}
+		m.pushValue(core.Monetary{
+			Asset:  a.Asset,
+			Amount: a.Amount.Sub(b.Amount),
 		})
 
 	case program.OP_MAKE_ALLOTMENT:
@@ -281,7 +293,7 @@ func (m *Machine) tick() (bool, byte) {
 		}
 		allotment, err := core.NewAllotment(portions)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.pushValue(*allotment)
 
@@ -290,7 +302,7 @@ func (m *Machine) tick() (bool, byte) {
 		account := pop[core.AccountAddress](m)
 		funding, err := m.withdrawAll(account, overdraft.Asset, overdraft.Amount)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.pushValue(*funding)
 
@@ -299,7 +311,7 @@ func (m *Machine) tick() (bool, byte) {
 		account := pop[core.AccountAddress](m)
 		funding, err := m.withdrawAlways(account, mon)
 		if err != nil {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.pushValue(*funding)
 
@@ -307,31 +319,36 @@ func (m *Machine) tick() (bool, byte) {
 		mon := pop[core.Monetary](m)
 		funding := pop[core.Funding](m)
 		if funding.Asset != mon.Asset {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		result, remainder, err := funding.Take(mon.Amount)
 		if err != nil {
-			return true, EXIT_FAIL_INSUFFICIENT_FUNDS
+			return true, EXIT_FAIL_INSUFFICIENT_FUNDS, nil
 		}
 		m.pushValue(remainder)
 		m.pushValue(result)
 
 	case program.OP_TAKE_MAX:
 		mon := pop[core.Monetary](m)
+		if mon.Amount.Ltz() {
+			return true, EXIT_FAIL_INVALID, fmt.Errorf(
+				"cannot send a monetary with a negative amount: [%s %s]",
+				string(mon.Asset), mon.Amount)
+		}
 		funding := pop[core.Funding](m)
 		if funding.Asset != mon.Asset {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		missing := core.NewMonetaryInt(0)
 		total := funding.Total()
 		if mon.Amount.Gt(total) {
 			missing = mon.Amount.Sub(total)
 		}
-		result, remainder := funding.TakeMax(mon.Amount)
 		m.pushValue(core.Monetary{
 			Asset:  mon.Asset,
 			Amount: missing,
 		})
+		result, remainder := funding.TakeMax(mon.Amount)
 		m.pushValue(remainder)
 		m.pushValue(result)
 
@@ -339,7 +356,7 @@ func (m *Machine) tick() (bool, byte) {
 		num := pop[core.Number](m)
 		n := int(num.Uint64())
 		if n == 0 {
-			return true, EXIT_FAIL_INVALID
+			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		first := pop[core.Funding](m)
 		result := core.Funding{
@@ -350,14 +367,14 @@ func (m *Machine) tick() (bool, byte) {
 		for i := 1; i < n; i++ {
 			f := pop[core.Funding](m)
 			if f.Asset != result.Asset {
-				return true, EXIT_FAIL_INVALID
+				return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 			}
 			fundings_rev[i] = f
 		}
 		for i := 0; i < n; i++ {
 			res, err := result.Concat(fundings_rev[n-1-i])
 			if err != nil {
-				return true, EXIT_FAIL_INVALID
+				return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 			}
 			result = res
 		}
@@ -425,16 +442,16 @@ func (m *Machine) tick() (bool, byte) {
 		m.AccountsMeta[a][string(k)] = v
 
 	default:
-		return true, EXIT_FAIL_INVALID
+		return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
 	}
 
 	m.P += 1
 
 	if int(m.P) >= len(m.Program.Instructions) {
-		return true, EXIT_OK
+		return true, EXIT_OK, nil
 	}
 
-	return false, 0
+	return false, 0, nil
 }
 
 func (m *Machine) Execute() (byte, error) {
@@ -448,12 +465,12 @@ func (m *Machine) Execute() (byte, error) {
 	}
 
 	for {
-		finished, exitCode := m.tick()
+		finished, exitCode, err := m.tick()
 		if finished {
 			if exitCode == EXIT_OK && len(m.Stack) != 0 {
-				return EXIT_FAIL_INVALID, nil
+				return EXIT_FAIL_INVALID, err
 			} else {
-				return exitCode, nil
+				return exitCode, err
 			}
 		}
 	}

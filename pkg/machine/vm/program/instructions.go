@@ -4,13 +4,14 @@ const (
 	OP_APUSH            = byte(iota + 1)
 	OP_BUMP             // <value_to_bump: any> <any>*N <int N> => <any>*N <value_to_bump>
 	OP_DELETE           // <value: not funding>
-	OP_IADD             // <number> <number> => <number>
-	OP_ISUB             // <number> <number> => <number>
+	OP_IADD             // <number> + <number> => <number>
+	OP_ISUB             // <number> - <number> => <number>
 	OP_PRINT            // <any>
 	OP_FAIL             //
 	OP_ASSET            // <asset | monetary | funding> => <asset>
 	OP_MONETARY_NEW     // <asset> <number> => <monetary>
-	OP_MONETARY_ADD     // <monetary> <monetary> => <monetary>   // panics if not same asset
+	OP_MONETARY_ADD     // <monetary> + <monetary> => <monetary>   // panics if not same asset
+	OP_MONETARY_SUB     // <monetary> - <monetary> => <monetary>   // panics if not same asset
 	OP_MAKE_ALLOTMENT   // <portion>*N <int N> => <allotment(N)>
 	OP_TAKE_ALL         // <source: account> <overdraft: monetary> => <funding>
 	OP_TAKE_ALWAYS      // <source: account> <monetary> => <funding>   // takes amount from account unconditionally
@@ -48,6 +49,8 @@ func OpcodeName(op byte) string {
 		return "OP_MONETARY_NEW"
 	case OP_MONETARY_ADD:
 		return "OP_MONETARY_ADD"
+	case OP_MONETARY_SUB:
+		return "OP_MONETARY_SUB"
 	case OP_MAKE_ALLOTMENT:
 		return "OP_MAKE_ALLOTMENT"
 	case OP_TAKE_ALL:
