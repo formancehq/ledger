@@ -1,0 +1,8 @@
+type: 'application'
+language: 'go'
+dependsOn:
+    - 'go-libs'
+tasks:
+    build:
+        command: 'go build ./'
+        platform: 'system'
