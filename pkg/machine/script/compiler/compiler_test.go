@@ -1351,3 +1351,132 @@ func TestVariableAsset(t *testing.T) {
 		},
 	})
 }
+
+func TestPrint(t *testing.T) {
+	script := `print 1 + 2 + 3`
+	test(t, TestCase{
+		Case: script,
+		Expected: CaseResult{
+			Instructions: []byte{
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 01, 00,
+				program.OP_IADD,
+				program.OP_APUSH, 02, 00,
+				program.OP_IADD,
+				program.OP_PRINT,
+			},
+			Resources: []program.Resource{
+				program.Constant{Inner: core.NewMonetaryInt(1)},
+				program.Constant{Inner: core.NewMonetaryInt(2)},
+				program.Constant{Inner: core.NewMonetaryInt(3)},
+			},
+		},
+	})
+}
+
+func TestSendWithArithmetic(t *testing.T) {
+	t.Run("nominal", func(t *testing.T) {
+		script := `
+			vars {
+				asset $ass
+				monetary $mon
+			}
+			send [EUR 1] + $mon + [$ass 3] - [EUR 4] (
+				source = @a
+				destination = @b
+			)`
+
+		test(t, TestCase{
+			Case: script,
+			Expected: CaseResult{
+				Instructions: []byte{
+					program.OP_APUSH, 06, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 07, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_MONETARY_ADD,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_ADD,
+					program.OP_APUSH, 05, 00,
+					program.OP_MONETARY_SUB,
+					program.OP_TAKE,
+					program.OP_APUSH, 8, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 9, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+				},
+				Resources: []program.Resource{
+					program.Variable{
+						Typ:  core.TypeAsset,
+						Name: "ass",
+					},
+					program.Variable{
+						Typ:  core.TypeMonetary,
+						Name: "mon",
+					},
+					program.Constant{Inner: core.Asset("EUR")},
+					program.Monetary{
+						Asset:  2,
+						Amount: core.NewMonetaryInt(1),
+					},
+					program.Monetary{
+						Asset:  0,
+						Amount: core.NewMonetaryInt(3),
+					},
+					program.Monetary{
+						Asset:  2,
+						Amount: core.NewMonetaryInt(4),
+					},
+					program.Constant{Inner: core.AccountAddress("a")},
+					program.Constant{Inner: core.NewMonetaryInt(0)},
+					program.Constant{Inner: core.NewMonetaryInt(1)},
+					program.Constant{Inner: core.AccountAddress("b")},
+				},
+			},
+		})
+	})
+
+	t.Run("error incompatible types", func(t *testing.T) {
+		script := `send [EUR 1] + 2 (
+				source = @world
+				destination = @bob
+			)`
+
+		test(t, TestCase{
+			Case: script,
+			Expected: CaseResult{
+				Instructions: []byte{},
+				Resources:    []program.Resource{},
+				Error:        "tried to do an arithmetic operation with incompatible left and right-hand side operand types: monetary and number",
+			},
+		})
+	})
+
+	t.Run("error incompatible types var", func(t *testing.T) {
+		script := `
+			vars {
+				number $nb
+			}
+			send [EUR 1] - $nb (
+				source = @world
+				destination = @bob
+			)`
+
+		test(t, TestCase{
+			Case: script,
+			Expected: CaseResult{
+				Instructions: []byte{},
+				Resources:    []program.Resource{},
+				Error:        "tried to do an arithmetic operation with incompatible left and right-hand side operand types: monetary and number",
+			},
+		})
+	})
+}
