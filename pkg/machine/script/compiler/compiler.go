@@ -78,38 +78,58 @@ func (p *parseVisitor) VisitVariable(c parser.IVariableContext, push bool) (core
 func (p *parseVisitor) VisitExpr(c parser.IExpressionContext, push bool) (core.Type, *core.Address, *CompileError) {
 	switch c := c.(type) {
 	case *parser.ExprAddSubContext:
-		ty, _, err := p.VisitExpr(c.GetLhs(), push)
+		lhsType, lhsAddr, err := p.VisitExpr(c.GetLhs(), push)
 		if err != nil {
 			return 0, nil, err
 		}
-		if ty != core.TypeNumber {
-			return 0, nil, LogicError(c, errors.New("tried to do arithmetic with wrong type"))
-		}
-		ty, _, err = p.VisitExpr(c.GetRhs(), push)
-		if err != nil {
-			return 0, nil, err
-		}
-		if ty != core.TypeNumber {
-			return 0, nil, LogicError(c, errors.New("tried to do arithmetic with wrong type"))
-		}
-		if push {
-			switch c.GetOp().GetTokenType() {
-			case parser.NumScriptLexerOP_ADD:
-				p.AppendInstruction(program.OP_IADD)
-			case parser.NumScriptLexerOP_SUB:
-				p.AppendInstruction(program.OP_ISUB)
+		switch lhsType {
+		case core.TypeNumber:
+			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
+			if err != nil {
+				return 0, nil, err
 			}
+			if rhsType != core.TypeNumber {
+				return 0, nil, LogicError(c, fmt.Errorf(
+					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
+					lhsType, rhsType))
+			}
+			if push {
+				switch c.GetOp().GetTokenType() {
+				case parser.NumScriptLexerOP_ADD:
+					p.AppendInstruction(program.OP_IADD)
+				case parser.NumScriptLexerOP_SUB:
+					p.AppendInstruction(program.OP_ISUB)
+				}
+			}
+			return core.TypeNumber, nil, nil
+		case core.TypeMonetary:
+			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
+			if err != nil {
+				return 0, nil, err
+			}
+			if rhsType != core.TypeMonetary {
+				return 0, nil, LogicError(c, fmt.Errorf(
+					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
+					lhsType, rhsType))
+			}
+			if push {
+				switch c.GetOp().GetTokenType() {
+				case parser.NumScriptLexerOP_ADD:
+					p.AppendInstruction(program.OP_MONETARY_ADD)
+				case parser.NumScriptLexerOP_SUB:
+					p.AppendInstruction(program.OP_MONETARY_SUB)
+				}
+			}
+			return core.TypeMonetary, lhsAddr, nil
+		default:
+			return 0, nil, LogicError(c, fmt.Errorf(
+				"tried to do an arithmetic operation with unsupported left-hand side operand type: %s",
+				lhsType))
 		}
-		return core.TypeNumber, nil, nil
 	case *parser.ExprLiteralContext:
-		ty, addr, err := p.VisitLit(c.GetLit(), push)
-		if err != nil {
-			return 0, nil, err
-		}
-		return ty, addr, nil
+		return p.VisitLit(c.GetLit(), push)
 	case *parser.ExprVariableContext:
-		ty, addr, err := p.VisitVariable(c.GetVar_(), push)
-		return ty, addr, err
+		return p.VisitVariable(c.GetVar_(), push)
 	default:
 		return 0, nil, InternalError(c)
 	}
@@ -142,13 +162,14 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
-		if push {
-			err := p.PushInteger(number)
-			if err != nil {
-				return 0, nil, LogicError(c, err)
-			}
+		addr, err := p.AllocateResource(program.Constant{Inner: number})
+		if err != nil {
+			return 0, nil, LogicError(c, err)
 		}
-		return core.TypeNumber, nil, nil
+		if push {
+			p.PushAddress(*addr)
+		}
+		return core.TypeNumber, addr, nil
 	case *parser.LitStringContext:
 		addr, err := p.AllocateResource(program.Constant{
 			Inner: core.String(strings.Trim(c.GetText(), `"`)),
@@ -183,16 +204,35 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 				"the expression in monetary literal should be of type '%s' instead of '%s'",
 				core.TypeAsset, typ))
 		}
+
 		amt, err := core.ParseMonetaryInt(c.Monetary().GetAmt().GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
-		monAddr, err := p.AllocateResource(program.Monetary{
-			Asset:  *assetAddr,
-			Amount: amt,
-		})
-		if err != nil {
-			return 0, nil, LogicError(c, err)
+
+		var (
+			monAddr          *core.Address
+			alreadyAllocated bool
+		)
+		for i, r := range p.resources {
+			switch v := r.(type) {
+			case program.Monetary:
+				if v.Asset == *assetAddr && v.Amount.Equal(amt) {
+					alreadyAllocated = true
+					tmp := core.Address(uint16(i))
+					monAddr = &tmp
+					break
+				}
+			}
+		}
+		if !alreadyAllocated {
+			monAddr, err = p.AllocateResource(program.Monetary{
+				Asset:  *assetAddr,
+				Amount: amt,
+			})
+			if err != nil {
+				return 0, nil, LogicError(c, err)
+			}
 		}
 		if push {
 			p.PushAddress(*monAddr)
@@ -203,49 +243,98 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (core.Type,
 	}
 }
 
-func (p *parseVisitor) VisitSend(c *parser.SendContext) *CompileError {
-	var (
-		accounts map[core.Address]struct{}
-		addr     *core.Address
-		compErr  *CompileError
-		typ      core.Type
-	)
-
-	if monAll := c.GetMonAll(); monAll != nil {
-		typ, addr, compErr = p.VisitExpr(monAll.GetAsset(), false)
-		if compErr != nil {
-			return compErr
-		}
-		if typ != core.TypeAsset {
-			return LogicError(c, fmt.Errorf(
-				"send monetary all: the expression should be of type 'asset' instead of '%s'", typ))
-		}
-
-		accounts, compErr = p.VisitValueAwareSource(c.GetSrc(), func() {
-			p.PushAddress(*addr)
-		}, nil)
-		if compErr != nil {
-			return compErr
-		}
-	} else if mon := c.GetMon(); mon != nil {
-		typ, addr, compErr = p.VisitExpr(mon, false)
-		if compErr != nil {
-			return compErr
-		}
-		if typ != core.TypeMonetary {
-			return LogicError(c, fmt.Errorf(
-				"send monetary: the expression should be of type 'monetary' instead of '%s'", typ))
-		}
-
-		accounts, compErr = p.VisitValueAwareSource(c.GetSrc(), func() {
-			p.PushAddress(*addr)
-			p.AppendInstruction(program.OP_ASSET)
-		}, addr)
-		if compErr != nil {
-			return compErr
-		}
+func (p *parseVisitor) VisitMonetaryAll(c *parser.SendContext, monAll parser.IMonetaryAllContext) *CompileError {
+	assetType, assetAddr, compErr := p.VisitExpr(monAll.GetAsset(), false)
+	if compErr != nil {
+		return compErr
+	}
+	if assetType != core.TypeAsset {
+		return LogicError(c, fmt.Errorf(
+			"send monetary all: the expression should be of type 'asset' instead of '%s'", assetType))
 	}
 
+	switch c := c.GetSrc().(type) {
+	case *parser.SrcContext:
+		accounts, _, _, compErr := p.VisitSource(c.Source(), func() {
+			p.PushAddress(*assetAddr)
+		}, true)
+		if compErr != nil {
+			return compErr
+		}
+		p.setNeededBalances(accounts, assetAddr)
+
+	case *parser.SrcAllotmentContext:
+		return LogicError(c, errors.New("cannot take all balance of an allotment source"))
+	}
+	return nil
+}
+
+func (p *parseVisitor) VisitMonetary(c *parser.SendContext, mon parser.IExpressionContext) *CompileError {
+	monType, monAddr, compErr := p.VisitExpr(mon, false)
+	if compErr != nil {
+		return compErr
+	}
+	if monType != core.TypeMonetary {
+		return LogicError(c, fmt.Errorf(
+			"send monetary: the expression should be of type 'monetary' instead of '%s'", monType))
+	}
+
+	switch c := c.GetSrc().(type) {
+	case *parser.SrcContext:
+		accounts, _, fallback, compErr := p.VisitSource(c.Source(), func() {
+			p.PushAddress(*monAddr)
+			p.AppendInstruction(program.OP_ASSET)
+		}, false)
+		if compErr != nil {
+			return compErr
+		}
+		p.setNeededBalances(accounts, monAddr)
+
+		if _, _, err := p.VisitExpr(mon, true); err != nil {
+			return err
+		}
+
+		if err := p.TakeFromSource(fallback); err != nil {
+			return LogicError(c, err)
+		}
+	case *parser.SrcAllotmentContext:
+		if _, _, err := p.VisitExpr(mon, true); err != nil {
+			return err
+		}
+		p.VisitAllotment(c.SourceAllotment(), c.SourceAllotment().GetPortions())
+		p.AppendInstruction(program.OP_ALLOC)
+
+		sources := c.SourceAllotment().GetSources()
+		n := len(sources)
+		for i := 0; i < n; i++ {
+			accounts, _, fallback, compErr := p.VisitSource(sources[i], func() {
+				p.PushAddress(*monAddr)
+				p.AppendInstruction(program.OP_ASSET)
+			}, false)
+			if compErr != nil {
+				return compErr
+			}
+			p.setNeededBalances(accounts, monAddr)
+
+			if err := p.Bump(int64(i + 1)); err != nil {
+				return LogicError(c, err)
+			}
+
+			if err := p.TakeFromSource(fallback); err != nil {
+				return LogicError(c, err)
+			}
+		}
+
+		if err := p.PushInteger(core.NewNumber(int64(n))); err != nil {
+			return LogicError(c, err)
+		}
+
+		p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
+	}
+	return nil
+}
+
+func (p *parseVisitor) setNeededBalances(accounts map[core.Address]struct{}, addr *core.Address) {
 	for acc := range accounts {
 		if b, ok := p.neededBalances[acc]; ok {
 			b[*addr] = struct{}{}
@@ -253,6 +342,18 @@ func (p *parseVisitor) VisitSend(c *parser.SendContext) *CompileError {
 			p.neededBalances[acc] = map[core.Address]struct{}{
 				*addr: {},
 			}
+		}
+	}
+}
+
+func (p *parseVisitor) VisitSend(c *parser.SendContext) *CompileError {
+	if monAll := c.GetMonAll(); monAll != nil {
+		if err := p.VisitMonetaryAll(c, monAll); err != nil {
+			return err
+		}
+	} else if mon := c.GetMon(); mon != nil {
+		if err := p.VisitMonetary(c, mon); err != nil {
+			return err
 		}
 	}
 

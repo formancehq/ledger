@@ -13,7 +13,7 @@ const (
 	TypeNumber                     // 64bit unsigned integer
 	TypeString                     // string
 	TypeMonetary                   // [asset number]
-	TypePortion                    // rational number between 0 and 1 both exclusive
+	TypePortion                    // rational number between 0 and 1 both inclusive
 	TypeAllotment                  // list of portions
 	TypeAmount                     // either ALL or a SPECIFIC number
 	TypeFunding                    // (asset, []{amount, account})
