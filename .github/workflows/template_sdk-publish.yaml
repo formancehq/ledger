@@ -41,8 +41,8 @@ jobs:
         uses: arduino/setup-task@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Launch Generate
-        run: task sdk:generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
+      # - name: Launch Generate
+      #   run: task sdk:generate VERSION=${{ inputs.VERSION }} -- ${{ matrix.sdk }}
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: Upgrade Release to ${{ inputs.VERSION }}

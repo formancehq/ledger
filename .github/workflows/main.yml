@@ -20,6 +20,8 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   GoReleaserBuild:
+    needs:
+      - Control
     if: github.event_name != 'release'
     name: 'GoReleaser Build'
     uses: ./.github/workflows/template_goreleaser-build.yaml
@@ -28,6 +30,8 @@ jobs:
       SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
 
   GoReleaserRelease:
+    needs:
+      - Control
     if: github.event_name == 'release'
     name: 'GoReleaser Release'
     uses: ./.github/workflows/template_goreleaser-release.yaml
@@ -53,6 +57,8 @@ jobs:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
   DockerRelease:
+    needs:
+      - Control
     if: github.event_name == 'release'
     uses: ./.github/workflows/template_docker.yaml
     with:
@@ -64,6 +70,8 @@ jobs:
       SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
 
   DockerBranch:
+    needs:
+      - Control
     if: github.event_name != 'release'
     uses: ./.github/workflows/template_docker.yaml
     with:
