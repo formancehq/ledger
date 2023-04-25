@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 func BenchmarkParallelWrites(b *testing.B) {
@@ -40,6 +41,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
+	totalDuration := atomic.Int64{}
 	b.SetParallelism(1000)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -63,10 +65,13 @@ func BenchmarkParallelWrites(b *testing.B) {
 			}.Encode()
 			rsp := httptest.NewRecorder()
 
+			now := time.Now()
 			router.ServeHTTP(rsp, req)
+			totalDuration.Add(time.Since(now).Milliseconds())
 
 			require.Equal(b, http.StatusOK, rsp.Code)
 		}
 	})
 	b.StopTimer()
+	b.ReportMetric(float64(totalDuration.Load()/int64(b.N)), "ms/transaction")
 }
