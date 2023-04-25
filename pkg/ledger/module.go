@@ -34,7 +34,7 @@ type Configuration struct {
 func Module(configuration Configuration) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
-			storageDriver storage.Driver,
+			storageDriver *storage.Driver,
 			monitor monitor.Monitor,
 			metricsRegistry metrics.GlobalMetricsRegistry,
 		) *Resolver {

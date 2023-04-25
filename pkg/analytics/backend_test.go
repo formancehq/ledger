@@ -103,19 +103,18 @@ func (mr *MockBackendMockRecorder) AppID(ctx interface{}) *gomock.Call {
 }
 
 // GetLedgerStore mocks base method.
-func (m *MockBackend) GetLedgerStore(ctx context.Context, l string, b bool) (Ledger, bool, error) {
+func (m *MockBackend) GetLedgerStore(ctx context.Context, l string) (Ledger, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLedgerStore", ctx, l, b)
+	ret := m.ctrl.Call(m, "GetLedgerStore", ctx, l)
 	ret0, _ := ret[0].(Ledger)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetLedgerStore indicates an expected call of GetLedgerStore.
-func (mr *MockBackendMockRecorder) GetLedgerStore(ctx, l, b interface{}) *gomock.Call {
+func (mr *MockBackendMockRecorder) GetLedgerStore(ctx, l interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerStore", reflect.TypeOf((*MockBackend)(nil).GetLedgerStore), ctx, l, b)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerStore", reflect.TypeOf((*MockBackend)(nil).GetLedgerStore), ctx, l)
 }
 
 // ListLedgers mocks base method.

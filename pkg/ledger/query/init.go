@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
@@ -13,7 +14,7 @@ import (
 
 type InitLedger struct {
 	cfg             *InitLedgerConfig
-	driver          storage.Driver
+	driver          *storage.Driver
 	monitor         monitor.Monitor
 	metricsRegistry metrics.PerLedgerMetricsRegistry
 }
@@ -37,7 +38,7 @@ func NewDefaultInitLedgerConfig() *InitLedgerConfig {
 func initLedgers(
 	ctx context.Context,
 	cfg *InitLedgerConfig,
-	driver storage.Driver,
+	driver *storage.Driver,
 	monitor monitor.Monitor,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) error {
@@ -50,12 +51,12 @@ func initLedgers(
 	for _, ledger := range ledgers {
 		_ledger := ledger
 		eg.Go(func() error {
-			store, _, err := driver.GetLedgerStore(ctxGroup, _ledger, false)
-			if err != nil && !storage.IsNotFoundError(err) {
+			store, err := driver.GetLedgerStore(ctxGroup, _ledger)
+			if err != nil && !storageerrors.IsNotFoundError(err) {
 				return err
 			}
 
-			if storage.IsNotFoundError(err) {
+			if storageerrors.IsNotFoundError(err) {
 				return nil
 			}
 
@@ -94,7 +95,7 @@ func initLedger(
 	}
 
 	lastReadLogID, err := store.GetNextLogID(ctx)
-	if err != nil && !storage.IsNotFoundError(err) {
+	if err != nil && !storageerrors.IsNotFoundError(err) {
 		return 0, errorsutil.NewError(ErrStorage,
 			errors.Wrap(err, "reading last log"))
 	}
@@ -133,7 +134,7 @@ func initLedger(
 	}
 }
 
-func NewInitLedgers(cfg *InitLedgerConfig, driver storage.Driver, monitor monitor.Monitor) *InitLedger {
+func NewInitLedgers(cfg *InitLedgerConfig, driver *storage.Driver, monitor monitor.Monitor) *InitLedger {
 	return &InitLedger{
 		cfg:     cfg,
 		driver:  driver,

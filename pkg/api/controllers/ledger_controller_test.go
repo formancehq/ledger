@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
@@ -98,7 +98,7 @@ func TestGetLogs(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storage.LogsQuery
+		expectQuery       ledgerstore.LogsQuery
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -107,21 +107,21 @@ func TestGetLogs(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: storage.NewLogsQuery(),
+			expectQuery: ledgerstore.NewLogsQuery(),
 		},
 		{
 			name: "using start time",
 			queryParams: url.Values{
 				"startTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewLogsQuery().WithStartTimeFilter(now),
+			expectQuery: ledgerstore.NewLogsQuery().WithStartTimeFilter(now),
 		},
 		{
 			name: "using end time",
 			queryParams: url.Values{
 				"endTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewLogsQuery().WithEndTimeFilter(now),
+			expectQuery: ledgerstore.NewLogsQuery().WithEndTimeFilter(now),
 		},
 		{
 			name: "using invalid start time",
@@ -142,9 +142,9 @@ func TestGetLogs(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewLogsQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewLogsQuery())},
 			},
-			expectQuery: storage.NewLogsQuery(),
+			expectQuery: ledgerstore.NewLogsQuery(),
 		},
 		{
 			name: "using invalid cursor",

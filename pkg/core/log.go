@@ -314,17 +314,17 @@ func HydrateLog(_type LogType, data []byte) (hashable, error) {
 
 type Accounts map[string]Account
 
-type LogHolder struct {
-	Log      *PersistedLog
+type ActiveLog struct {
+	*Log
 	Ingested chan struct{}
 }
 
-func (h *LogHolder) SetIngested() {
+func (h *ActiveLog) SetIngested() {
 	close(h.Ingested)
 }
 
-func NewLogHolder(log *PersistedLog) *LogHolder {
-	return &LogHolder{
+func NewActiveLog(log *Log) *ActiveLog {
+	return &ActiveLog{
 		Log:      log,
 		Ingested: make(chan struct{}),
 	}
@@ -387,3 +387,33 @@ var (
 		},
 	}
 )
+
+type LogPersistenceTracker struct {
+	done         chan struct{}
+	persistedLog *PersistedLog
+}
+
+func (r *LogPersistenceTracker) Resolve(persistedLog *PersistedLog) {
+	r.persistedLog = persistedLog
+	close(r.done)
+}
+
+func (r *LogPersistenceTracker) Done() chan struct{} {
+	return r.done
+}
+
+func (r *LogPersistenceTracker) Result() *PersistedLog {
+	return r.persistedLog
+}
+
+func NewLogPersistenceTracker() *LogPersistenceTracker {
+	return &LogPersistenceTracker{
+		done: make(chan struct{}),
+	}
+}
+
+func NewResolvedLogPersistenceTracker(v *PersistedLog) *LogPersistenceTracker {
+	ret := NewLogPersistenceTracker()
+	ret.Resolve(v)
+	return ret
+}

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
@@ -54,7 +54,7 @@ func (s *State) checkConstraints(ctx context.Context, r ReserveRequest) error {
 			return errorsutil.NewError(ErrConflictError, errors.New("reference already used, log found in storage"))
 		}
 
-		if !storage.IsNotFoundError(err) {
+		if !storageerrors.IsNotFoundError(err) {
 			return errors.Wrap(err, "failed to read log with reference")
 		}
 	}
@@ -108,7 +108,7 @@ func (s *State) GetNextTXID() uint64 {
 
 func LoadState(store Store, allowPastTimestamps bool) *State {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
-	if err != nil && !storage.IsNotFoundError(err) {
+	if err != nil && !storageerrors.IsNotFoundError(err) {
 		panic(err)
 	}
 	var (

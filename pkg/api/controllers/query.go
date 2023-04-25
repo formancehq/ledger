@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
 
 const (
 	MaxPageSize     = 1000
-	DefaultPageSize = storage.QueryDefaultPageSize
+	DefaultPageSize = ledgerstore.QueryDefaultPageSize
 
 	QueryKeyCursor          = "cursor"
 	QueryKeyPageSize        = "pageSize"
@@ -52,12 +52,12 @@ func getPageSize(r *http.Request) (uint64, error) {
 	return pageSize, nil
 }
 
-func getBalanceOperator(w http.ResponseWriter, r *http.Request) (storage.BalanceOperator, error) {
-	balanceOperator := storage.DefaultBalanceOperator
+func getBalanceOperator(w http.ResponseWriter, r *http.Request) (ledgerstore.BalanceOperator, error) {
+	balanceOperator := ledgerstore.DefaultBalanceOperator
 	balanceOperatorStr := r.URL.Query().Get(QueryKeyBalanceOperator)
 	if balanceOperatorStr != "" {
 		var ok bool
-		if balanceOperator, ok = storage.NewBalanceOperator(balanceOperatorStr); !ok {
+		if balanceOperator, ok = ledgerstore.NewBalanceOperator(balanceOperatorStr); !ok {
 			return "", errorsutil.NewError(command.ErrValidation, ErrInvalidBalanceOperator)
 		}
 	}

@@ -134,9 +134,9 @@ func TestAnalytics(t *testing.T) {
 				Return(applicationId, nil)
 			backend.
 				EXPECT().
-				GetLedgerStore(gomock.Any(), "default", false).
+				GetLedgerStore(gomock.Any(), "default").
 				AnyTimes().
-				Return(mockLedger, false, nil)
+				Return(mockLedger, nil)
 			t.Cleanup(func() {
 				ctrl.Finish()
 			})

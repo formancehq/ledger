@@ -8,21 +8,21 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
 )
 
 type Ledger struct {
 	*command.Commander
-	store       storage.LedgerStore
+	store       *ledgerstore.Store
 	queryWorker *query.Worker
 	locker      *command.DefaultLocker
 	cache       *cache.Cache
 }
 
 func New(
-	store storage.LedgerStore,
+	store *ledgerstore.Store,
 	cache *cache.Cache,
 	locker *command.DefaultLocker,
 	queryWorker *query.Worker,
@@ -30,8 +30,13 @@ func New(
 	compiler *command.Compiler,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
+	store.OnLogWrote(func(logs []*ledgerstore.AppendedLog) {
+		if err := queryWorker.QueueLog(context.Background(), logs...); err != nil {
+			panic(err)
+		}
+	})
 	return &Ledger{
-		Commander:   command.New(store, cache, locker, queryWorker, state, compiler, metricsRegistry),
+		Commander:   command.New(store, cache, locker, state, compiler, metricsRegistry),
 		store:       store,
 		queryWorker: queryWorker,
 		locker:      locker,
@@ -40,6 +45,10 @@ func New(
 }
 
 func (l *Ledger) Close(ctx context.Context) error {
+
+	if err := l.store.Stop(ctx); err != nil {
+		return errors.Wrap(err, "stopping ledger store")
+	}
 
 	if err := l.queryWorker.Stop(ctx); err != nil {
 		return errors.Wrap(err, "stopping query worker")
@@ -53,19 +62,15 @@ func (l *Ledger) Close(ctx context.Context) error {
 		return errors.Wrap(err, "stopping cache")
 	}
 
-	if err := l.store.Close(ctx); err != nil {
-		return errors.Wrap(err, "closing store")
-	}
-
 	return nil
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q ledgerstore.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
 	txs, err := l.store.GetTransactions(ctx, q)
 	return txs, errors.Wrap(err, "getting transactions")
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, q storage.TransactionsQuery) (uint64, error) {
+func (l *Ledger) CountTransactions(ctx context.Context, q ledgerstore.TransactionsQuery) (uint64, error) {
 	count, err := l.store.CountTransactions(ctx, q)
 	return count, errors.Wrap(err, "counting transactions")
 }
@@ -75,12 +80,12 @@ func (l *Ledger) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedT
 	return tx, errors.Wrap(err, "getting transaction")
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, a storage.AccountsQuery) (uint64, error) {
+func (l *Ledger) CountAccounts(ctx context.Context, a ledgerstore.AccountsQuery) (uint64, error) {
 	count, err := l.store.CountAccounts(ctx, a)
 	return count, errors.Wrap(err, "counting accounts")
 }
 
-func (l *Ledger) GetAccounts(ctx context.Context, a storage.AccountsQuery) (*api.Cursor[core.Account], error) {
+func (l *Ledger) GetAccounts(ctx context.Context, a ledgerstore.AccountsQuery) (*api.Cursor[core.Account], error) {
 	accounts, err := l.store.GetAccounts(ctx, a)
 	return accounts, errors.Wrap(err, "getting accounts")
 }
@@ -90,17 +95,17 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountW
 	return accounts, errors.Wrap(err, "getting account")
 }
 
-func (l *Ledger) GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
+func (l *Ledger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
 	balances, err := l.store.GetBalances(ctx, q)
 	return balances, errors.Wrap(err, "getting balances")
 }
 
-func (l *Ledger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (l *Ledger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.AssetsBalances, error) {
 	balances, err := l.store.GetBalancesAggregated(ctx, q)
 	return balances, errors.Wrap(err, "getting balances aggregated")
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q storage.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
 	return logs, errors.Wrap(err, "getting logs")
 }

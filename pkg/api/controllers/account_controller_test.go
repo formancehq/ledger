@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
@@ -25,7 +25,7 @@ func TestGetAccounts(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storage.AccountsQuery
+		expectQuery       ledgerstore.AccountsQuery
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -33,7 +33,7 @@ func TestGetAccounts(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte"),
 		},
 		{
@@ -41,7 +41,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte").
 				WithMetadataFilter(map[string]string{
 					"roles": "admin",
@@ -52,7 +52,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"metadata[a.nested.key]": []string{"hello"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte").
 				WithMetadataFilter(map[string]string{
 					"a.nested.key": "hello",
@@ -63,7 +63,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"after": []string{"foo"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte").
 				WithAfterAddress("foo").
 				WithMetadataFilter(map[string]string{}),
@@ -73,7 +73,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"balance": []string{"50"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte").
 				WithBalanceFilter("50").
 				WithMetadataFilter(map[string]string{}),
@@ -84,7 +84,7 @@ func TestGetAccounts(t *testing.T) {
 				"balance":         []string{"50"},
 				"balanceOperator": []string{"gt"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gt").
 				WithBalanceFilter("50").
 				WithMetadataFilter(map[string]string{}),
@@ -111,7 +111,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithBalanceOperatorFilter("gte").
 				WithAddressFilter("foo").
 				WithMetadataFilter(map[string]string{}),
@@ -119,14 +119,14 @@ func TestGetAccounts(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewAccountsQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewAccountsQuery())},
 			},
-			expectQuery: storage.NewAccountsQuery(),
+			expectQuery: ledgerstore.NewAccountsQuery(),
 		},
 		{
 			name: "using cursor with other param",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewAccountsQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewAccountsQuery())},
 				"after":  []string{"foo"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
@@ -153,7 +153,7 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: storage.NewAccountsQuery().
+			expectQuery: ledgerstore.NewAccountsQuery().
 				WithPageSize(controllers.MaxPageSize).
 				WithMetadataFilter(map[string]string{}).
 				WithBalanceOperatorFilter("gte"),

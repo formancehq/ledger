@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pbnjay/memory"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -98,8 +99,8 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 	for _, l := range ledgers {
 		stats := map[string]any{}
 		if err := func() error {
-			store, _, err := m.backend.GetLedgerStore(ctx, l, false)
-			if err != nil {
+			store, err := m.backend.GetLedgerStore(ctx, l)
+			if err != nil && err != storageerrors.ErrStoreNotFound {
 				return err
 			}
 

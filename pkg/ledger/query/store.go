@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 )
 
 type Store interface {
@@ -23,19 +23,19 @@ type Store interface {
 }
 
 type defaultStore struct {
-	storage.LedgerStore
+	*ledgerstore.Store
 }
 
 func (d defaultStore) RunInTransaction(ctx context.Context, f func(ctx context.Context, tx Store) error) error {
-	return d.LedgerStore.RunInTransaction(ctx, func(ctx context.Context, store storage.LedgerStore) error {
-		return f(ctx, NewDefaultStore(d.LedgerStore))
+	return d.Store.RunInTransaction(ctx, func(ctx context.Context, store *ledgerstore.Store) error {
+		return f(ctx, NewDefaultStore(store))
 	})
 }
 
 var _ Store = (*defaultStore)(nil)
 
-func NewDefaultStore(underlying storage.LedgerStore) *defaultStore {
+func NewDefaultStore(underlying *ledgerstore.Store) *defaultStore {
 	return &defaultStore{
-		LedgerStore: underlying,
+		Store: underlying,
 	}
 }

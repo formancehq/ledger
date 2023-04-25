@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api"
 	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -25,7 +25,7 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 	v := viper.GetViper()
 	debug := v.GetBool(service.DebugFlag)
 	if debug {
-		sqlstorage.InstrumentalizeSQLDriver()
+		storage.InstrumentalizeSQLDriver()
 	}
 
 	options = append(options,
@@ -36,7 +36,7 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 		api.Module(api.Config{
 			Version: Version,
 		}),
-		sqlstorage.CLIDriverModule(v, output, debug),
+		storage.CLIDriverModule(v, output, debug),
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(ledger.Configuration{
 			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",

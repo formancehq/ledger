@@ -2,75 +2,184 @@ package storage
 
 import (
 	"context"
-	"errors"
+	"database/sql"
+	"database/sql/driver"
+	"fmt"
+	"sync"
 
-	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
+	"github.com/formancehq/ledger/pkg/storage/schema"
+	systemstore "github.com/formancehq/ledger/pkg/storage/systemstore"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/pkg/errors"
+	"go.nhat.io/otelsql"
 )
 
-var (
-	ErrLedgerStoreNotFound = errors.New("ledger store not found")
-)
+const SystemSchema = "_system"
 
-type SystemStore interface {
-	GetConfiguration(ctx context.Context, key string) (string, error)
-	InsertConfiguration(ctx context.Context, key, value string) error
-	ListLedgers(ctx context.Context) ([]string, error)
-	DeleteLedger(ctx context.Context, name string) error
+type pgxDriver struct {
+	driverName string
 }
 
-type LedgerStore interface {
-	Delete(ctx context.Context) error
-	Initialize(ctx context.Context) (bool, error)
-	Close(ctx context.Context) error
-	IsInitialized() bool
-	Name() string
+var pgxSqlDriver pgxDriver
 
-	RunInTransaction(ctx context.Context, f func(ctx context.Context, store LedgerStore) error) error
-
-	AppendLog(context.Context, *core.Log) (*core.PersistedLog, error)
-	GetNextLogID(ctx context.Context) (uint64, error)
-	ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.PersistedLog, error)
-	UpdateNextLogID(ctx context.Context, id uint64) error
-	GetLogs(context.Context, LogsQuery) (*api.Cursor[core.PersistedLog], error)
-	GetLastLog(context.Context) (*core.PersistedLog, error)
-	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.PersistedLog, error)
-	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.PersistedLog, error)
-	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error)
-	ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error)
-	ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.PersistedLog, error)
-
-	InsertTransactions(ctx context.Context, transaction ...core.ExpandedTransaction) error
-	UpdateTransactionMetadata(ctx context.Context, id uint64, metadata metadata.Metadata) error
-	UpdateTransactionsMetadata(ctx context.Context, txs ...core.TransactionWithMetadata) error
-	CountTransactions(context.Context, TransactionsQuery) (uint64, error)
-	GetTransactions(context.Context, TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
-	GetTransaction(ctx context.Context, txid uint64) (*core.ExpandedTransaction, error)
-
-	UpdateAccountMetadata(ctx context.Context, id string, metadata metadata.Metadata) error
-	UpdateAccountsMetadata(ctx context.Context, accounts []core.Account) error
-	EnsureAccountExists(ctx context.Context, account string) error
-	EnsureAccountsExist(ctx context.Context, accounts []string) error
-	CountAccounts(context.Context, AccountsQuery) (uint64, error)
-	GetAccounts(context.Context, AccountsQuery) (*api.Cursor[core.Account], error)
-	GetAccountWithVolumes(ctx context.Context, addr string) (*core.AccountWithVolumes, error)
-	GetAccount(ctx context.Context, accountAddress string) (*core.Account, error)
-
-	UpdateVolumes(ctx context.Context, volumes ...core.AccountsAssetsVolumes) error
-	GetAssetsVolumes(ctx context.Context, accountAddress string) (core.AssetsVolumes, error)
-
-	GetBalances(context.Context, BalancesQuery) (*api.Cursor[core.AccountsBalances], error)
-	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
-
-	GetMigrationsAvailable() ([]core.MigrationInfo, error)
-	GetMigrationsDone(context.Context) ([]core.MigrationInfo, error)
+type otelSQLDriverWithCheckNamedValueDisabled struct {
+	driver.Driver
 }
 
-type Driver interface {
-	GetSystemStore() SystemStore
-	GetLedgerStore(ctx context.Context, name string, create bool) (LedgerStore, bool, error)
-	Initialize(ctx context.Context) error
-	Close(ctx context.Context) error
-	Name() string
+func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedValue) error {
+	return nil
+}
+
+var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
+
+func init() {
+	// Default mapping for app driver/sql driver
+	pgxSqlDriver.driverName = "pgx"
+}
+
+func InstrumentalizeSQLDriver() {
+	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
+	// pgx implements this interface and just return nil
+	// so, we need to manually wrap the driver to implements this interface and return a nil error
+	db, err := sql.Open("pgx", "")
+	if err != nil {
+		panic(err)
+	}
+
+	dri := db.Driver()
+
+	if err = db.Close(); err != nil {
+		panic(err)
+	}
+
+	wrappedDriver := otelsql.Wrap(dri,
+		otelsql.AllowRoot(),
+		otelsql.TraceAll(),
+	)
+
+	pgxSqlDriver.driverName = fmt.Sprintf("otel-%s", pgxSqlDriver.driverName)
+	sql.Register(pgxSqlDriver.driverName, otelSQLDriverWithCheckNamedValueDisabled{
+		wrappedDriver,
+	})
+}
+
+type Driver struct {
+	name        string
+	db          schema.DB
+	systemStore *systemstore.Store
+	lock        sync.Mutex
+	storeConfig ledgerstore.StoreConfig
+}
+
+func (d *Driver) GetSystemStore() *systemstore.Store {
+	return d.systemStore
+}
+
+func (d *Driver) newStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+	schema, err := d.db.Schema(name)
+	if err != nil {
+		return nil, errors.Wrap(err, "opening schema")
+	}
+
+	if err = schema.Create(ctx); err != nil {
+		return nil, err
+	}
+
+	store, err := ledgerstore.NewStore(schema, func(ctx context.Context) error {
+		return d.GetSystemStore().DeleteLedger(ctx, name)
+	}, d.storeConfig)
+	if err != nil {
+		return nil, err
+	}
+	go store.Run(context.Background())
+
+	return store, nil
+}
+
+func (d *Driver) CreateLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+	if name == SystemSchema {
+		return nil, errors.New("reserved name")
+	}
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	exists, err := d.systemStore.Exists(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, storageerrors.ErrStoreAlreadyExists
+	}
+
+	_, err = d.systemStore.Register(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := d.newStore(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = store.Migrate(ctx)
+
+	return store, err
+}
+
+func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	exists, err := d.systemStore.Exists(ctx, name)
+	if err != nil {
+		return nil, errors.Wrap(err, "checking ledger existence")
+	}
+	if !exists {
+		return nil, storageerrors.ErrStoreNotFound
+	}
+
+	return d.newStore(ctx, name)
+}
+
+func (d *Driver) Name() string {
+	return d.name
+}
+
+func (d *Driver) Initialize(ctx context.Context) error {
+	logging.FromContext(ctx).Debugf("Initialize driver %s", d.name)
+
+	if err := d.db.Initialize(ctx); err != nil {
+		return err
+	}
+
+	systemSchema, err := d.db.Schema(SystemSchema)
+	if err != nil {
+		return err
+	}
+
+	if err := systemSchema.Create(ctx); err != nil {
+		return err
+	}
+
+	d.systemStore = systemstore.NewStore(systemSchema)
+
+	if err := d.systemStore.Initialize(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Driver) Close(ctx context.Context) error {
+	return d.db.Close(ctx)
+}
+
+func NewDriver(name string, db schema.DB, storeConfig ledgerstore.StoreConfig) *Driver {
+	return &Driver{
+		db:          db,
+		name:        name,
+		storeConfig: storeConfig,
+	}
 }
