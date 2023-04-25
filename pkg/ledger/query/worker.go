@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/aggregator"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -36,9 +37,9 @@ type logsData struct {
 type Worker struct {
 	WorkerConfig
 
-	pending             []*core.LogHolder
-	writeChannel        chan *core.LogHolder
-	jobs                chan []*core.LogHolder
+	pending             []*ledgerstore.AppendedLog
+	writeChannel        chan []*ledgerstore.AppendedLog
+	jobs                chan []*ledgerstore.AppendedLog
 	releasedJob         chan struct{}
 	stopChan            chan chan struct{}
 	stoppedChan         chan struct{}
@@ -83,8 +84,8 @@ l:
 			return nil
 
 		// At this level, the job is writting some models, just accumulate models in a buffer
-		case wl := <-w.writeChannel:
-			w.pending = append(w.pending, wl)
+		case logs := <-w.writeChannel:
+			w.pending = append(w.pending, logs...)
 			w.metricsRegistry.QueryPendingMessages().Add(ctx, int64(len(w.pending)))
 
 		case <-w.releasedJob:
@@ -101,7 +102,7 @@ l:
 						return nil
 
 					case w.jobs <- w.pending:
-						w.pending = make([]*core.LogHolder, 0, 1024)
+						w.pending = make([]*ledgerstore.AppendedLog, 0, 1024)
 						continue l
 					}
 				}
@@ -122,7 +123,7 @@ l:
 				case stopChan := <-w.stopChan:
 					stop(stopChan)
 					return nil
-				case w.jobs <- []*core.LogHolder{mh}:
+				case w.jobs <- mh:
 				}
 			}
 		}
@@ -130,9 +131,9 @@ l:
 }
 
 func (w *Worker) writeLoop(ctx context.Context) {
-	closeLogs := func(logs []*core.LogHolder) {
+	closeLogs := func(logs []*ledgerstore.AppendedLog) {
 		for _, log := range logs {
-			close(log.Ingested)
+			close(log.ActiveLog.Ingested)
 		}
 	}
 
@@ -144,10 +145,10 @@ func (w *Worker) writeLoop(ctx context.Context) {
 			close(w.writeLoopTerminated)
 			return
 		case w.releasedJob <- struct{}{}:
-		case modelsHolder := <-w.jobs:
-			logs := make([]core.PersistedLog, len(modelsHolder))
-			for i, holder := range modelsHolder {
-				logs[i] = *holder.Log
+		case activeLogs := <-w.jobs:
+			logs := make([]core.PersistedLog, len(activeLogs))
+			for i, holder := range activeLogs {
+				logs[i] = *holder.PersistedLog
 			}
 
 			if err := processLogs(ctx, w.ledgerName, w.store, w.monitor, logs...); err != nil {
@@ -161,7 +162,7 @@ func (w *Worker) writeLoop(ctx context.Context) {
 			}
 
 			logging.FromContext(ctx).Debugf("Ingested logs until: %d", logs[len(logs)-1].ID)
-			closeLogs(modelsHolder)
+			closeLogs(activeLogs)
 		}
 	}
 }
@@ -375,11 +376,11 @@ func buildData(
 	return logsData, nil
 }
 
-func (w *Worker) QueueLog(ctx context.Context, log *core.LogHolder) error {
+func (w *Worker) QueueLog(ctx context.Context, logs ...*ledgerstore.AppendedLog) error {
 	select {
 	case <-w.stoppedChan:
 		return errors.New("worker stopped")
-	case w.writeChannel <- log:
+	case w.writeChannel <- logs:
 		w.metricsRegistry.QueryInboundLogs().Add(ctx, 1)
 		return nil
 	}
@@ -393,10 +394,10 @@ func NewWorker(
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Worker {
 	return &Worker{
-		pending:             make([]*core.LogHolder, 0, 1024),
-		jobs:                make(chan []*core.LogHolder),
+		pending:             make([]*ledgerstore.AppendedLog, 0, 1024),
+		jobs:                make(chan []*ledgerstore.AppendedLog),
 		releasedJob:         make(chan struct{}, 1),
-		writeChannel:        make(chan *core.LogHolder, config.ChanSize),
+		writeChannel:        make(chan []*ledgerstore.AppendedLog, config.ChanSize),
 		stopChan:            make(chan chan struct{}),
 		readyChan:           make(chan struct{}),
 		stoppedChan:         make(chan struct{}),

@@ -4,11 +4,10 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
-	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
@@ -71,7 +70,7 @@ func (m *mockStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 		return log.IdempotencyKey == key
 	})
 	if first == nil {
-		return nil, storage.ErrNotFound
+		return nil, storageerrors.ErrNotFound
 	}
 	return first, nil
 }
@@ -84,7 +83,7 @@ func (m *mockStore) ReadLogForCreatedTransactionWithReference(ctx context.Contex
 		return log.Data.(core.NewTransactionLogPayload).Transaction.Reference == reference
 	})
 	if first == nil {
-		return nil, storage.ErrNotFound
+		return nil, storageerrors.ErrNotFound
 	}
 	return first, nil
 }
@@ -97,7 +96,7 @@ func (m *mockStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint6
 		return log.Data.(core.NewTransactionLogPayload).Transaction.ID == txID
 	})
 	if first == nil {
-		return nil, storage.ErrNotFound
+		return nil, storageerrors.ErrNotFound
 	}
 	return first, nil
 }
@@ -110,7 +109,7 @@ func (m *mockStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint
 		return log.Data.(core.RevertedTransactionLogPayload).RevertedTransactionID == txID
 	})
 	if first == nil {
-		return nil, storage.ErrNotFound
+		return nil, storageerrors.ErrNotFound
 	}
 	return first, nil
 }
@@ -120,20 +119,25 @@ func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...c
 		return collectionutils.Contains(logType, log.Type)
 	})
 	if first == nil {
-		return nil, storage.ErrNotFound
+		return nil, storageerrors.ErrNotFound
 	}
 	return first, nil
 }
 
-func (m *mockStore) AppendLog(ctx context.Context, log *core.Log) (*core.PersistedLog, error) {
+func (m *mockStore) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
 	var (
-		previous, ret *core.PersistedLog
+		previous, persistedLog *core.PersistedLog
 	)
 	if len(m.logs) > 0 {
 		previous = m.logs[len(m.logs)-1]
 	}
-	ret = log.ComputePersistentLog(previous)
-	m.logs = append(m.logs, ret)
+	persistedLog = log.ComputePersistentLog(previous)
+	m.logs = append(m.logs, persistedLog)
+
+	ret := core.NewLogPersistenceTracker()
+	ret.Resolve(persistedLog)
+	log.SetIngested()
+
 	return ret, nil
 }
 
@@ -204,7 +208,7 @@ var testCases = []testCase{
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil)
-			_, err := store.AppendLog(context.Background(), log)
+			_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 			require.NoError(t, err)
 		},
 		script: `
@@ -278,7 +282,7 @@ var testCases = []testCase{
 					WithTimestamp(now),
 				map[string]metadata.Metadata{},
 			).WithIdempotencyKey("testing")
-			_, err := r.AppendLog(context.Background(), log)
+			_, err := r.AppendLog(context.Background(), core.NewActiveLog(log))
 			require.NoError(t, err)
 		},
 		parameters: Parameters{
@@ -297,7 +301,7 @@ func TestCreateTransaction(t *testing.T) {
 			store := newMockStore()
 			cache := newMockCache()
 
-			ledger := New(store, cache, NoOpLocker, NoOpIngester,
+			ledger := New(store, cache, NoOpLocker,
 				LoadState(store, false), NewCompiler(1024), nil)
 
 			if tc.setup != nil {
@@ -350,7 +354,7 @@ func TestRevert(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), log)
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
 	cache := newMockCache()
@@ -367,7 +371,7 @@ func TestRevert(t *testing.T) {
 		},
 	}
 
-	ledger := New(store, cache, NoOpLocker, NoOpIngester,
+	ledger := New(store, cache, NoOpLocker,
 		LoadState(store, false), NewCompiler(1024), nil)
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, txID)
 	require.NoError(t, err)
@@ -379,7 +383,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	cache := newMockCache()
 	log := core.
 		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction())
-	_, err := store.AppendLog(context.Background(), log)
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
 	cache.accounts["bank"] = &core.AccountWithVolumes{
@@ -395,7 +399,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 		},
 	}
 
-	ledger := New(store, cache, NoOpLocker, NoOpIngester,
+	ledger := New(store, cache, NoOpLocker,
 		LoadState(store, false), NewCompiler(1024), nil)
 
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
@@ -412,7 +416,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), log)
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
 	cache.accounts["bank"] = &core.AccountWithVolumes{
@@ -428,27 +432,9 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 		},
 	}
 
-	ingestedLog := make(chan *core.LogHolder, 1)
-
-	ledger := New(store, cache, NoOpLocker, LogIngesterFn(func(ctx context.Context, log *core.LogHolder) error {
-		ingestedLog <- log
-		<-log.Ingested
-		return nil
-	}), LoadState(store, false), NewCompiler(1024), nil)
-	go func() {
-		_, err := ledger.RevertTransaction(context.Background(), Parameters{}, uint64(0))
-		require.NoError(t, err)
-
-	}()
-
-	select {
-	case log := <-ingestedLog:
-		defer func() {
-			log.SetIngested()
-		}()
-	case <-time.After(time.Second):
-		require.Fail(t, "timeout")
-	}
+	ledger := New(store, cache, NoOpLocker,
+		LoadState(store, false), NewCompiler(1024), nil)
+	ledger.inflightReverts.Store(uint64(0), struct{}{})
 
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrRevertOccurring))

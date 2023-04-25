@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
@@ -15,15 +16,15 @@ import (
 
 type Ledger interface {
 	GetAccount(ctx context.Context, param string) (*core.AccountWithVolumes, error)
-	GetAccounts(ctx context.Context, query storage.AccountsQuery) (*api.Cursor[core.Account], error)
-	CountAccounts(ctx context.Context, query storage.AccountsQuery) (uint64, error)
-	GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error)
-	GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error)
+	GetAccounts(ctx context.Context, query ledgerstore.AccountsQuery) (*api.Cursor[core.Account], error)
+	CountAccounts(ctx context.Context, query ledgerstore.AccountsQuery) (uint64, error)
+	GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.AssetsBalances, error)
+	GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.AccountsBalances], error)
 	GetMigrationsInfo(ctx context.Context) ([]core.MigrationInfo, error)
 	Stats(ctx context.Context) (ledger.Stats, error)
-	GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.PersistedLog], error)
-	CountTransactions(ctx context.Context, query storage.TransactionsQuery) (uint64, error)
-	GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
+	GetLogs(ctx context.Context, query ledgerstore.LogsQuery) (*api.Cursor[core.PersistedLog], error)
+	CountTransactions(ctx context.Context, query ledgerstore.TransactionsQuery) (uint64, error)
+	GetTransactions(ctx context.Context, query ledgerstore.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error)
 	GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error)
 
 	CreateTransaction(ctx context.Context, parameters command.Parameters, data core.RunScript) (*core.Transaction, error)
@@ -39,7 +40,7 @@ type Backend interface {
 }
 
 type DefaultBackend struct {
-	storageDriver storage.Driver
+	storageDriver *storage.Driver
 	resolver      *ledger.Resolver
 	version       string
 }
@@ -62,7 +63,7 @@ func (d DefaultBackend) GetVersion() string {
 
 var _ Backend = (*DefaultBackend)(nil)
 
-func NewDefaultBackend(driver storage.Driver, version string, resolver *ledger.Resolver) *DefaultBackend {
+func NewDefaultBackend(driver *storage.Driver, version string, resolver *ledger.Resolver) *DefaultBackend {
 	return &DefaultBackend{
 		storageDriver: driver,
 		resolver:      resolver,

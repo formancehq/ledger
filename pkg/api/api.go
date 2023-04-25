@@ -21,7 +21,7 @@ type Config struct {
 func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(routes.NewRouter),
-		fx.Provide(func(storageDriver storage.Driver, resolver *ledger.Resolver) controllers.Backend {
+		fx.Provide(func(storageDriver *storage.Driver, resolver *ledger.Resolver) controllers.Backend {
 			return controllers.NewDefaultBackend(storageDriver, cfg.Version, resolver)
 		}),
 		//TODO(gfyrag): Move in pkg/ledger package

@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
@@ -60,7 +61,7 @@ var defaultOptions = []option{
 }
 
 type Resolver struct {
-	storageDriver   storage.Driver
+	storageDriver   *storage.Driver
 	monitor         monitor.Monitor
 	lock            sync.RWMutex
 	metricsRegistry metrics.GlobalMetricsRegistry
@@ -71,7 +72,7 @@ type Resolver struct {
 	cacheEvictionPeriod, cacheEvictionRetainDelay time.Duration
 }
 
-func NewResolver(storageDriver storage.Driver, options ...option) *Resolver {
+func NewResolver(storageDriver *storage.Driver, options ...option) *Resolver {
 	r := &Resolver{
 		storageDriver: storageDriver,
 		ledgers:       map[string]*Ledger{},
@@ -91,12 +92,23 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 		r.lock.Lock()
 		defer r.lock.Unlock()
 
-		store, _, err := r.storageDriver.GetLedgerStore(ctx, name, true)
+		exists, err := r.storageDriver.GetSystemStore().Exists(ctx, name)
 		if err != nil {
-			return nil, errors.Wrap(err, "retrieving ledger store")
+			return nil, err
 		}
+
+		var store *ledgerstore.Store
+		if !exists {
+			store, err = r.storageDriver.CreateLedgerStore(ctx, name)
+		} else {
+			store, err = r.storageDriver.GetLedgerStore(ctx, name)
+		}
+		if err != nil {
+			return nil, err
+		}
+
 		if !store.IsInitialized() {
-			if _, err := store.Initialize(ctx); err != nil {
+			if _, err := store.Migrate(ctx); err != nil {
 				return nil, errors.Wrap(err, "initializing ledger store")
 			}
 		}
