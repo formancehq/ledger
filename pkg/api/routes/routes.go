@@ -42,7 +42,6 @@ func NewRouter(
 		middlewares.MetricsMiddleware(globalMetricsRegistry),
 		middleware.Recoverer,
 	)
-	router.Use(middlewares.Log())
 
 	router.Get("/_healthcheck", healthController.Check)
 

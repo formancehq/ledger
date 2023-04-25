@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
@@ -27,6 +28,14 @@ func NewServe() *cobra.Command {
 				cmd.OutOrStdout(),
 				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
+
+					if viper.GetBool(app.DebugFlag) {
+						wrappedRouter := chi.NewRouter()
+						wrappedRouter.Use(middlewares.Log())
+						wrappedRouter.Mount("/", h)
+						h = wrappedRouter
+					}
+
 					lc.Append(httpserver.NewHook(viper.GetString(bindFlag), h))
 				}),
 			)...).Run(cmd.Context())
