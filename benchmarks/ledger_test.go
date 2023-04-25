@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage/sqlstoragetesting"
+	"github.com/formancehq/ledger/pkg/storage/sqlstoragetesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"

@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/go-chi/chi/v5"
@@ -54,7 +54,7 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 func GetLogs(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	logsQuery := storage.NewLogsQuery()
+	logsQuery := ledgerstore.NewLogsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get(QueryKeyStartTime) != "" ||
@@ -65,7 +65,7 @@ func GetLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &logsQuery)
+		err := ledgerstore.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &logsQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))

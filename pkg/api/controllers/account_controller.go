@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -20,7 +20,7 @@ import (
 func CountAccounts(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	accountsQuery := storage.NewAccountsQuery().
+	accountsQuery := ledgerstore.NewAccountsQuery().
 		WithAddressFilter(r.URL.Query().Get("address")).
 		WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata"))
 
@@ -37,7 +37,7 @@ func CountAccounts(w http.ResponseWriter, r *http.Request) {
 func GetAccounts(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	accountsQuery := storage.NewAccountsQuery()
+	accountsQuery := ledgerstore.NewAccountsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||
@@ -51,7 +51,7 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &accountsQuery)
+		err := ledgerstore.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &accountsQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))

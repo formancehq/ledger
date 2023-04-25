@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/machine/vm"
-	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
@@ -66,7 +66,7 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 		errors.Is(err, command.ErrAlreadyReverted),
 		errors.Is(err, command.ErrRevertOccurring):
 		return http.StatusBadRequest, ErrValidation, ""
-	case storage.IsNotFoundError(err):
+	case storageerrors.IsNotFoundError(err):
 		return http.StatusNotFound, ErrNotFound, ""
 	case command.IsNoScriptError(err):
 		baseError := errors.Cause(err)
@@ -86,7 +86,7 @@ func coreErrorToErrorCode(err error) (int, string, string) {
 		return http.StatusBadRequest, ResourceResolutionError, EncodeLink(baseError.Error())
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled, ""
-	case storage.IsStorageError(err):
+	case storageerrors.IsStorageError(err):
 		return http.StatusServiceUnavailable, ErrStore, ""
 	default:
 		return http.StatusInternalServerError, ErrInternal, ""

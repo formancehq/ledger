@@ -2,18 +2,13 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage/schema"
-	"github.com/formancehq/ledger/pkg/storage/sqlstorage/system"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 )
 
@@ -31,27 +26,30 @@ func NewStorageInit() *cobra.Command {
 				cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := viper.GetString("name")
 								if name == "" {
 									return errors.New("name is empty")
 								}
-								s, created, err := storageDriver.GetLedgerStore(ctx, name, true)
+
+								exists, err := storageDriver.GetSystemStore().Exists(ctx, name)
 								if err != nil {
 									return err
 								}
 
-								if !created {
-									return nil
+								if exists {
+									return errors.New("ledger already exists")
 								}
 
-								_, err = s.Initialize(ctx)
+								store, err := storageDriver.CreateLedgerStore(ctx, name)
 								if err != nil {
 									return err
 								}
-								return nil
+
+								_, err = store.Migrate(ctx)
+								return err
 							},
 						})
 					}))...,
@@ -73,7 +71,7 @@ func NewStorageList() *cobra.Command {
 			app := service.New(cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
@@ -105,15 +103,15 @@ func NewStorageUpgrade() *cobra.Command {
 			app := service.New(cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := args[0]
-								store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
+								store, err := storageDriver.GetLedgerStore(ctx, name)
 								if err != nil {
 									return err
 								}
-								modified, err := store.Initialize(ctx)
+								modified, err := store.Migrate(ctx)
 								if err != nil {
 									return err
 								}
@@ -133,66 +131,6 @@ func NewStorageUpgrade() *cobra.Command {
 	return cmd
 }
 
-func NewStorageScan() *cobra.Command {
-	cmd := &cobra.Command{
-		Use: "scan",
-		RunE: func(cmd *cobra.Command, args []string) error {
-
-			opt := fx.Invoke(func(driver *sqlstorage.Driver, sqlDb *bun.DB, db schema.DB, lc fx.Lifecycle) {
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						rows, err := sqlDb.QueryContext(ctx, `
-								SELECT s.schema_name
-								FROM information_schema.schemata s
-								JOIN pg_catalog.pg_tables t ON t.schemaname = s.schema_name AND t.tablename = 'transactions'
-							`)
-						if err != nil {
-							return err
-						}
-						defer func(rows *sql.Rows) {
-							if err := rows.Close(); err != nil {
-								panic(err)
-							}
-						}(rows)
-						for rows.Next() {
-							var ledgerName string
-							err := rows.Scan(&ledgerName)
-							if err != nil {
-								return err
-							}
-
-							if ledgerName == sqlstorage.SystemSchema {
-								continue
-							}
-							// This command is dedicated to upgrade ledger version before 1.4
-							// It will be removed in a near future, so we can assert the system store type without risk
-							created, err := driver.GetSystemStore().(*system.Store).
-								Register(cmd.Context(), ledgerName)
-							if err != nil {
-								continue
-							}
-							if created {
-								logging.FromContext(ctx).Infof("Ledger '%s' registered", ledgerName)
-							} else {
-								logging.FromContext(ctx).Infof("Ledger '%s' already registered", ledgerName)
-							}
-						}
-
-						return nil
-					},
-				})
-			})
-
-			app := service.New(cmd.OutOrStdout(), resolveOptions(
-				cmd.OutOrStdout(),
-				opt,
-			)...)
-			return app.Start(cmd.Context())
-		},
-	}
-	return cmd
-}
-
 func NewStorageDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:  "delete",
@@ -202,11 +140,11 @@ func NewStorageDelete() *cobra.Command {
 				cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := args[0]
-								store, _, err := storageDriver.GetLedgerStore(ctx, name, false)
+								store, err := storageDriver.GetLedgerStore(ctx, name)
 								if err != nil {
 									return err
 								}

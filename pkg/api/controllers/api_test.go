@@ -12,7 +12,7 @@ import (
 	core "github.com/formancehq/ledger/pkg/core"
 	ledger "github.com/formancehq/ledger/pkg/ledger"
 	command "github.com/formancehq/ledger/pkg/ledger/command"
-	storage "github.com/formancehq/ledger/pkg/storage"
+	ledgerstore "github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	api "github.com/formancehq/stack/libs/go-libs/api"
 	metadata "github.com/formancehq/stack/libs/go-libs/metadata"
 	gomock "github.com/golang/mock/gomock"
@@ -42,7 +42,7 @@ func (m *MockLedger) EXPECT() *MockLedgerMockRecorder {
 }
 
 // CountAccounts mocks base method.
-func (m *MockLedger) CountAccounts(ctx context.Context, query storage.AccountsQuery) (uint64, error) {
+func (m *MockLedger) CountAccounts(ctx context.Context, query ledgerstore.AccountsQuery) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAccounts", ctx, query)
 	ret0, _ := ret[0].(uint64)
@@ -57,7 +57,7 @@ func (mr *MockLedgerMockRecorder) CountAccounts(ctx, query interface{}) *gomock.
 }
 
 // CountTransactions mocks base method.
-func (m *MockLedger) CountTransactions(ctx context.Context, query storage.TransactionsQuery) (uint64, error) {
+func (m *MockLedger) CountTransactions(ctx context.Context, query ledgerstore.TransactionsQuery) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountTransactions", ctx, query)
 	ret0, _ := ret[0].(uint64)
@@ -102,7 +102,7 @@ func (mr *MockLedgerMockRecorder) GetAccount(ctx, param interface{}) *gomock.Cal
 }
 
 // GetAccounts mocks base method.
-func (m *MockLedger) GetAccounts(ctx context.Context, query storage.AccountsQuery) (*api.Cursor[core.Account], error) {
+func (m *MockLedger) GetAccounts(ctx context.Context, query ledgerstore.AccountsQuery) (*api.Cursor[core.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccounts", ctx, query)
 	ret0, _ := ret[0].(*api.Cursor[core.Account])
@@ -117,7 +117,7 @@ func (mr *MockLedgerMockRecorder) GetAccounts(ctx, query interface{}) *gomock.Ca
 }
 
 // GetBalances mocks base method.
-func (m *MockLedger) GetBalances(ctx context.Context, q storage.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
+func (m *MockLedger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, q)
 	ret0, _ := ret[0].(*api.Cursor[core.AccountsBalances])
@@ -132,7 +132,7 @@ func (mr *MockLedgerMockRecorder) GetBalances(ctx, q interface{}) *gomock.Call {
 }
 
 // GetBalancesAggregated mocks base method.
-func (m *MockLedger) GetBalancesAggregated(ctx context.Context, q storage.BalancesQuery) (core.AssetsBalances, error) {
+func (m *MockLedger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.AssetsBalances, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalancesAggregated", ctx, q)
 	ret0, _ := ret[0].(core.AssetsBalances)
@@ -147,7 +147,7 @@ func (mr *MockLedgerMockRecorder) GetBalancesAggregated(ctx, q interface{}) *gom
 }
 
 // GetLogs mocks base method.
-func (m *MockLedger) GetLogs(ctx context.Context, query storage.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
+func (m *MockLedger) GetLogs(ctx context.Context, query ledgerstore.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", ctx, query)
 	ret0, _ := ret[0].(*api.Cursor[core.PersistedLog])
@@ -192,7 +192,7 @@ func (mr *MockLedgerMockRecorder) GetTransaction(ctx, id interface{}) *gomock.Ca
 }
 
 // GetTransactions mocks base method.
-func (m *MockLedger) GetTransactions(ctx context.Context, query storage.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
+func (m *MockLedger) GetTransactions(ctx context.Context, query ledgerstore.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactions", ctx, query)
 	ret0, _ := ret[0].(*api.Cursor[core.ExpandedTransaction])

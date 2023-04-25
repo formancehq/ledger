@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
@@ -59,10 +59,10 @@ func (c *Cache) loadEntry(ctx context.Context, address string, inUse bool) (*cac
 	entry, loaded := c.cache.LoadOrStore(address, ce)
 	if !loaded {
 		account, err := c.store.GetAccountWithVolumes(ctx, address)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		if err != nil && !errors.Is(err, storageerrors.ErrNotFound) {
 			panic(err)
 		}
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storageerrors.ErrNotFound) {
 			account = core.NewAccountWithVolumes(address)
 		}
 		ce.account = account

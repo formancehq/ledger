@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
@@ -184,11 +185,14 @@ func TestWorker(t *testing.T) {
 			Metadata:   appliedMetadataOnAccount,
 		}).ComputePersistentLog(nil),
 	}
-	for i, log := range logs {
-		log.ID = uint64(i)
-		logHolder := core.NewLogHolder(log)
-		require.NoError(t, worker.QueueLog(context.Background(), logHolder))
-		<-logHolder.Ingested
+	for i, persistedLog := range logs {
+		persistedLog.ID = uint64(i)
+		activeLog := core.NewActiveLog(&persistedLog.Log)
+		require.NoError(t, worker.QueueLog(context.Background(), &ledgerstore.AppendedLog{
+			ActiveLog:    activeLog,
+			PersistedLog: persistedLog,
+		}))
+		<-activeLog.Ingested
 	}
 	require.Eventually(t, func() bool {
 		nextLogID, err := ledgerStore.GetNextLogID(context.Background())

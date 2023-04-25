@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
@@ -14,7 +14,7 @@ import (
 func GetBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	balancesQuery := storage.NewBalancesQuery().WithAddressFilter(r.URL.Query().Get("address"))
+	balancesQuery := ledgerstore.NewBalancesQuery().WithAddressFilter(r.URL.Query().Get("address"))
 	balances, err := l.GetBalancesAggregated(r.Context(), balancesQuery)
 	if err != nil {
 		apierrors.ResponseError(w, r, err)
@@ -27,7 +27,7 @@ func GetBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 func GetBalances(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	balancesQuery := storage.NewBalancesQuery()
+	balancesQuery := ledgerstore.NewBalancesQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||
@@ -38,7 +38,7 @@ func GetBalances(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &balancesQuery)
+		err := ledgerstore.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &balancesQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))

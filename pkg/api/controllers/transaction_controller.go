@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -38,7 +38,7 @@ func CountTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	txQuery := storage.NewTransactionsQuery().
+	txQuery := ledgerstore.NewTransactionsQuery().
 		WithReferenceFilter(r.URL.Query().Get("reference")).
 		WithAccountFilter(r.URL.Query().Get("account")).
 		WithSourceFilter(r.URL.Query().Get("source")).
@@ -60,7 +60,7 @@ func CountTransactions(w http.ResponseWriter, r *http.Request) {
 func GetTransactions(w http.ResponseWriter, r *http.Request) {
 	l := LedgerFromContext(r.Context())
 
-	txQuery := storage.NewTransactionsQuery()
+	txQuery := ledgerstore.NewTransactionsQuery()
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		if r.URL.Query().Get("after") != "" ||
@@ -76,7 +76,7 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := storage.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &txQuery)
+		err := ledgerstore.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &txQuery)
 		if err != nil {
 			apierrors.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
 				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))

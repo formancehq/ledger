@@ -9,7 +9,7 @@ import (
 
 	"github.com/alitto/pond"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -27,7 +27,7 @@ func (c *mockAccountComputer) GetAccountWithVolumes(ctx context.Context, address
 			return accountWithVolumes, nil
 		}
 	}
-	return nil, storage.ErrNotFound
+	return nil, errors.ErrNotFound
 }
 
 func TestParallelRead(t *testing.T) {

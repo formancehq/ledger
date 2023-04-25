@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/storage"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
@@ -16,15 +18,15 @@ type Ledger interface {
 }
 
 type defaultLedger struct {
-	store storage.LedgerStore
+	store *ledgerstore.Store
 }
 
 func (d defaultLedger) CountTransactions(ctx context.Context) (uint64, error) {
-	return d.store.CountTransactions(ctx, storage.NewTransactionsQuery())
+	return d.store.CountTransactions(ctx, ledgerstore.NewTransactionsQuery())
 }
 
 func (d defaultLedger) CountAccounts(ctx context.Context) (uint64, error) {
-	return d.store.CountAccounts(ctx, storage.NewAccountsQuery())
+	return d.store.CountAccounts(ctx, ledgerstore.NewAccountsQuery())
 }
 
 var _ Ledger = (*defaultLedger)(nil)
@@ -32,11 +34,11 @@ var _ Ledger = (*defaultLedger)(nil)
 type Backend interface {
 	AppID(ctx context.Context) (string, error)
 	ListLedgers(ctx context.Context) ([]string, error)
-	GetLedgerStore(ctx context.Context, l string, b bool) (Ledger, bool, error)
+	GetLedgerStore(ctx context.Context, l string) (Ledger, error)
 }
 
 type defaultBackend struct {
-	driver storage.Driver
+	driver *storage.Driver
 	appID  string
 }
 
@@ -44,10 +46,10 @@ func (d defaultBackend) AppID(ctx context.Context) (string, error) {
 	var err error
 	if d.appID == "" {
 		d.appID, err = d.driver.GetSystemStore().GetConfiguration(ctx, "appId")
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		if err != nil && !errors.Is(err, storageerrors.ErrNotFound) {
 			return "", err
 		}
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storageerrors.ErrNotFound) {
 			d.appID = uuid.NewString()
 			if err := d.driver.GetSystemStore().InsertConfiguration(ctx, "appId", d.appID); err != nil {
 				return "", err
@@ -61,19 +63,19 @@ func (d defaultBackend) ListLedgers(ctx context.Context) ([]string, error) {
 	return d.driver.GetSystemStore().ListLedgers(ctx)
 }
 
-func (d defaultBackend) GetLedgerStore(ctx context.Context, name string, create bool) (Ledger, bool, error) {
-	ledgerStore, created, err := d.driver.GetLedgerStore(ctx, name, create)
+func (d defaultBackend) GetLedgerStore(ctx context.Context, name string) (Ledger, error) {
+	ledgerStore, err := d.driver.GetLedgerStore(ctx, name)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	return &defaultLedger{
 		store: ledgerStore,
-	}, created, nil
+	}, nil
 }
 
 var _ Backend = (*defaultBackend)(nil)
 
-func newDefaultBackend(driver storage.Driver, appID string) *defaultBackend {
+func newDefaultBackend(driver *storage.Driver, appID string) *defaultBackend {
 	return &defaultBackend{
 		driver: driver,
 		appID:  appID,

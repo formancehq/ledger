@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/pkg/api/routes"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -23,20 +23,20 @@ func TestGetBalancesAggregated(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery storage.BalancesQuery
+		expectQuery ledgerstore.BalancesQuery
 	}
 
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: storage.NewBalancesQuery(),
+			expectQuery: ledgerstore.NewBalancesQuery(),
 		},
 		{
 			name: "using address",
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: storage.NewBalancesQuery().WithAddressFilter("foo"),
+			expectQuery: ledgerstore.NewBalancesQuery().WithAddressFilter("foo"),
 		},
 	}
 	for _, testCase := range testCases {
@@ -73,7 +73,7 @@ func TestGetBalances(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storage.BalancesQuery
+		expectQuery       ledgerstore.BalancesQuery
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -81,12 +81,12 @@ func TestGetBalances(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: storage.NewBalancesQuery(),
+			expectQuery: ledgerstore.NewBalancesQuery(),
 		},
 		{
 			name: "empty cursor with other param",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewBalancesQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewBalancesQuery())},
 				"after":  []string{"bob"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
@@ -105,14 +105,14 @@ func TestGetBalances(t *testing.T) {
 			queryParams: url.Values{
 				"after": []string{"foo"},
 			},
-			expectQuery: storage.NewBalancesQuery().WithAfterAddress("foo"),
+			expectQuery: ledgerstore.NewBalancesQuery().WithAfterAddress("foo"),
 		},
 		{
 			name: "using address",
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: storage.NewBalancesQuery().WithAddressFilter("foo"),
+			expectQuery: ledgerstore.NewBalancesQuery().WithAddressFilter("foo"),
 		},
 	}
 	for _, testCase := range testCases {

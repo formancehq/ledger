@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/golang/mock/gomock"
@@ -270,7 +270,7 @@ func TestGetTransactions(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storage.TransactionsQuery
+		expectQuery       ledgerstore.TransactionsQuery
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -279,14 +279,14 @@ func TestGetTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: storage.NewTransactionsQuery(),
+			expectQuery: ledgerstore.NewTransactionsQuery(),
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithMetadataFilter(map[string]string{
 					"roles": "admin",
 				}),
@@ -296,7 +296,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"metadata[a.nested.key]": []string{"hello"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithMetadataFilter(map[string]string{
 					"a.nested.key": "hello",
 				}),
@@ -306,7 +306,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"after": []string{"10"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithAfterTxID(10),
 		},
 		{
@@ -314,7 +314,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"startTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithStartTimeFilter(now),
 		},
 		{
@@ -330,7 +330,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"endTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithEndTimeFilter(now),
 		},
 		{
@@ -346,7 +346,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithAccountFilter("xxx"),
 		},
 		{
@@ -354,7 +354,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithReferenceFilter("xxx"),
 		},
 		{
@@ -362,7 +362,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithDestinationFilter("xxx"),
 		},
 		{
@@ -370,20 +370,20 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithSourceFilter("xxx"),
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewTransactionsQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewTransactionsQuery())},
 			},
-			expectQuery: storage.NewTransactionsQuery(),
+			expectQuery: ledgerstore.NewTransactionsQuery(),
 		},
 		{
 			name: "using cursor with other param",
 			queryParams: url.Values{
-				"cursor": []string{storage.EncodeCursor(storage.NewTransactionsQuery())},
+				"cursor": []string{ledgerstore.EncodeCursor(ledgerstore.NewTransactionsQuery())},
 				"after":  []string{"foo"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
@@ -418,7 +418,7 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithPageSize(controllers.MaxPageSize).
 				WithMetadataFilter(map[string]string{}),
 		},
@@ -476,7 +476,7 @@ func TestCountTransactions(t *testing.T) {
 	type testCase struct {
 		name              string
 		queryParams       url.Values
-		expectQuery       storage.TransactionsQuery
+		expectQuery       ledgerstore.TransactionsQuery
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -485,14 +485,14 @@ func TestCountTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:        "nominal",
-			expectQuery: storage.NewTransactionsQuery(),
+			expectQuery: ledgerstore.NewTransactionsQuery(),
 		},
 		{
 			name: "using metadata",
 			queryParams: url.Values{
 				"metadata[roles]": []string{"admin"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithMetadataFilter(map[string]string{
 					"roles": "admin",
 				}),
@@ -502,7 +502,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"metadata[a.nested.key]": []string{"hello"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithMetadataFilter(map[string]string{
 					"a.nested.key": "hello",
 				}),
@@ -512,7 +512,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"startTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithStartTimeFilter(now),
 		},
 		{
@@ -528,7 +528,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"endTime": []string{now.Format(core.DateFormat)},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithEndTimeFilter(now),
 		},
 		{
@@ -544,7 +544,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"account": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithAccountFilter("xxx"),
 		},
 		{
@@ -552,7 +552,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"reference": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithReferenceFilter("xxx"),
 		},
 		{
@@ -560,7 +560,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"destination": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithDestinationFilter("xxx"),
 		},
 		{
@@ -568,7 +568,7 @@ func TestCountTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"source": []string{"xxx"},
 			},
-			expectQuery: storage.NewTransactionsQuery().
+			expectQuery: ledgerstore.NewTransactionsQuery().
 				WithSourceFilter("xxx"),
 		},
 	}

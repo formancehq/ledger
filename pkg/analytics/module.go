@@ -18,7 +18,7 @@ func NewHeartbeatModule(version, writeKey, appID string, interval time.Duration)
 		fx.Provide(func(client analytics.Client, backend Backend) *heartbeat {
 			return newHeartbeat(backend, client, version, interval)
 		}),
-		fx.Provide(func(driver storage.Driver) Backend {
+		fx.Provide(func(driver *storage.Driver) Backend {
 			return newDefaultBackend(driver, appID)
 		}),
 		fx.Invoke(func(m *heartbeat, lc fx.Lifecycle) {
