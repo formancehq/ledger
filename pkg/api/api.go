@@ -24,6 +24,7 @@ func Module(cfg Config) fx.Option {
 		fx.Provide(func(storageDriver storage.Driver, resolver *ledger.Resolver) controllers.Backend {
 			return controllers.NewDefaultBackend(storageDriver, cfg.Version, resolver)
 		}),
+		//TODO(gfyrag): Move in pkg/ledger package
 		fx.Invoke(func(lc fx.Lifecycle, backend controllers.Backend) {
 			lc.Append(fx.Hook{
 				OnStop: func(ctx context.Context) error {
