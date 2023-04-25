@@ -44,6 +44,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	totalDuration := atomic.Int64{}
 	b.SetParallelism(1000)
 	b.ResetTimer()
+	startOfBench := time.Now()
 	b.RunParallel(func(pb *testing.PB) {
 		buf := bytes.NewBufferString("")
 		for pb.Next() {
@@ -74,4 +75,5 @@ func BenchmarkParallelWrites(b *testing.B) {
 	})
 	b.StopTimer()
 	b.ReportMetric(float64(totalDuration.Load()/int64(b.N)), "ms/transaction")
+	b.ReportMetric((float64(time.Duration(b.N))/float64(time.Since(startOfBench)))*float64(time.Second), "t/s")
 }
