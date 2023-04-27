@@ -46,6 +46,8 @@ func New(
 
 func (l *Ledger) Close(ctx context.Context) error {
 
+	l.Commander.Wait()
+
 	if err := l.store.Stop(ctx); err != nil {
 		return errors.Wrap(err, "stopping ledger store")
 	}
