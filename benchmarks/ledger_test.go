@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -39,10 +40,11 @@ func BenchmarkParallelWrites(b *testing.B) {
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := rand.New(rand.NewSource(0))
 
 	totalDuration := atomic.Int64{}
 	b.SetParallelism(1000)
+	runtime.GC()
 	b.ResetTimer()
 	startOfBench := time.Now()
 	b.RunParallel(func(pb *testing.PB) {
@@ -74,6 +76,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 		}
 	})
 	b.StopTimer()
-	b.ReportMetric(float64(totalDuration.Load()/int64(b.N)), "ms/transaction")
 	b.ReportMetric((float64(time.Duration(b.N))/float64(time.Since(startOfBench)))*float64(time.Second), "t/s")
+	b.ReportMetric(float64(totalDuration.Load()/int64(b.N)), "ms/transaction")
+	runtime.GC()
 }

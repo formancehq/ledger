@@ -40,7 +40,6 @@ type Worker struct {
 	pending             []*ledgerstore.AppendedLog
 	writeChannel        chan []*ledgerstore.AppendedLog
 	jobs                chan []*ledgerstore.AppendedLog
-	releasedJob         chan struct{}
 	stopChan            chan chan struct{}
 	stoppedChan         chan struct{}
 	writeLoopTerminated chan struct{}
@@ -70,11 +69,25 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 		case <-w.writeLoopTerminated:
 		}
+		for _, log := range w.pending {
+			//TODO(gfyrag): forward an error
+			log.ActiveLog.SetIngested()
+		}
+		w.pending = nil
 		close(stopChan)
 	}
 
-l:
+	var effectiveSendChannel chan []*ledgerstore.AppendedLog
 	for {
+		batch := w.pending
+		if len(batch) > 0 {
+			effectiveSendChannel = w.jobs
+			if len(batch) > 1024 {
+				batch = batch[:1024]
+			}
+		} else {
+			effectiveSendChannel = nil
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -83,49 +96,14 @@ l:
 			stop(stopChan)
 			return nil
 
-		// At this level, the job is writting some models, just accumulate models in a buffer
+		// At this level, the job is writing several models, just accumulate them in a buffer
 		case logs := <-w.writeChannel:
 			w.pending = append(w.pending, logs...)
 			w.metricsRegistry.QueryPendingMessages().Add(ctx, int64(len(w.pending)))
 
-		case <-w.releasedJob:
-			// There, write model job is not running, and we have pending models
-			// So we can try to send pending to the job channel
-			if len(w.pending) > 0 {
-				for {
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-
-					case stopChan := <-w.stopChan:
-						stop(stopChan)
-						return nil
-
-					case w.jobs <- w.pending:
-						w.pending = make([]*ledgerstore.AppendedLog, 0, 1024)
-						continue l
-					}
-				}
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case stopChan := <-w.stopChan:
-				stop(stopChan)
-				return nil
-			// There, the job is waiting, and we don't have any pending models to write
-			// so, wait for new models to write and send them directly to the job channel
-			// We can not return to the main loop as w.releasedJob will be continuously notified by the job routine
-			case mh := <-w.writeChannel:
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case stopChan := <-w.stopChan:
-					stop(stopChan)
-					return nil
-				case w.jobs <- mh:
-				}
-			}
+		case effectiveSendChannel <- batch:
+			w.pending = w.pending[len(batch):]
+			w.metricsRegistry.QueryPendingMessages().Add(ctx, int64(-len(batch)))
 		}
 	}
 }
@@ -144,7 +122,6 @@ func (w *Worker) writeLoop(ctx context.Context) {
 		case <-w.stoppedChan:
 			close(w.writeLoopTerminated)
 			return
-		case w.releasedJob <- struct{}{}:
 		case activeLogs := <-w.jobs:
 			logs := make([]core.PersistedLog, len(activeLogs))
 			for i, holder := range activeLogs {
@@ -396,7 +373,6 @@ func NewWorker(
 	return &Worker{
 		pending:             make([]*ledgerstore.AppendedLog, 0, 1024),
 		jobs:                make(chan []*ledgerstore.AppendedLog),
-		releasedJob:         make(chan struct{}, 1),
 		writeChannel:        make(chan []*ledgerstore.AppendedLog, config.ChanSize),
 		stopChan:            make(chan chan struct{}),
 		readyChan:           make(chan struct{}),

@@ -38,6 +38,7 @@ type Commander struct {
 	metricsRegistry metrics.PerLedgerMetricsRegistry
 	state           *State
 	compiler        *Compiler
+	running         sync.WaitGroup
 }
 
 func New(
@@ -303,6 +304,8 @@ func (c *Commander) computeLog(execContext *executionContext, parameters Paramet
 
 func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) (*core.PersistedLog, error) {
 
+	c.running.Add(1)
+
 	execContext := newExecutionContext(ctx, c.cache)
 	activeLog, persistenceResult, err := c.computeLog(execContext, parameters, exec)
 	if err != nil {
@@ -314,10 +317,12 @@ func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 
 	if parameters.Async {
 		go func() {
+			defer c.running.Done()
 			<-activeLog.Ingested
 			execContext.complete()
 		}()
 	} else {
+		defer c.running.Done()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -327,4 +332,8 @@ func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec 
 	}
 
 	return persistenceResult.Result(), nil
+}
+
+func (c *Commander) Wait() {
+	c.running.Wait()
 }
