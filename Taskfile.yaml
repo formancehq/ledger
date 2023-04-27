@@ -46,8 +46,9 @@ tasks:
       ASYNC: "{{.ASYNC}}"
       GOMEMLIMIT: 1GiB
       GOMAXPROCS: 2
-      GOGC: "1000" # https://dave.cheney.net/tag/gogc
+#      GOGC: "1000" # https://dave.cheney.net/tag/gogc
       CGO_ENABLED: 0
+#      GODEBUG: gctrace=1 #,gcpacertrace=1
 
   bench:async:
     cmds:
@@ -85,6 +86,51 @@ tasks:
     cmds:
     - task: bench:diff:sync
     - task: bench:diff:async
+
+  bench:pprof:
+    internal: true
+    cmds:
+    - go tool pprof -http=":" {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{.KIND}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
+
+  bench:cpu:pprof:
+    internal: true
+    cmds:
+    - task: bench:pprof
+      vars:
+        KIND: profile
+        ASYNC: "{{.ASYNC}}"
+
+  bench:mem:pprof:
+    internal: true
+    cmds:
+    - task: bench:pprof
+      vars:
+        KIND: memprofile
+        ASYNC: "{{.ASYNC}}"
+
+  bench:cpu:pprof:async:
+    cmds:
+    - task: bench:cpu:pprof
+      vars:
+        ASYNC: "true"
+
+  bench:cpu:pprof:sync:
+    cmds:
+    - task: bench:cpu:pprof
+      vars:
+        ASYNC: "false"
+
+  bench:mem:pprof:async:
+    cmds:
+    - task: bench:mem:pprof
+      vars:
+        ASYNC: "true"
+
+  bench:mem:pprof:sync:
+    cmds:
+    - task: bench:mem:pprof
+      vars:
+        ASYNC: "false"
 
   sdk:template:
     desc: Extract templates
