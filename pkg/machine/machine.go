@@ -1,7 +1,6 @@
 package machine
 
 import (
-	"context"
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
@@ -10,11 +9,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
-
-type Store interface {
-	GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error)
-	LockAccounts(ctx context.Context, address ...string) (func(), error)
-}
 
 type Result struct {
 	Postings        core.Postings

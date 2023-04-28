@@ -21,7 +21,7 @@ func TestGetLastLog(t *testing.T) {
 	require.True(t, errors.IsNotFoundError(err))
 	require.Nil(t, lastLog)
 
-	logTx := core.NewTransactionLog(tx1.Transaction, nil)
+	logTx := core.NewTransactionLog(&tx1.Transaction, nil)
 	appendLog(t, store, logTx)
 
 	lastLog, err = store.GetLastLog(context.Background())
@@ -115,7 +115,7 @@ func TestGetLogs(t *testing.T) {
 	store := newLedgerStore(t)
 
 	for _, tx := range []core.ExpandedTransaction{tx1, tx2, tx3} {
-		appendLog(t, store, core.NewTransactionLog(tx.Transaction, nil))
+		appendLog(t, store, core.NewTransactionLog(&tx.Transaction, nil))
 	}
 
 	cursor, err := store.GetLogs(context.Background(), ledgerstore.NewLogsQuery())

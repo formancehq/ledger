@@ -2,13 +2,95 @@ package ledgerstore_test
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestGetBalanceFromLogs(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
+	const batchNumber = 100
+	const batchSize = 10
+	const input = 100
+	const output = 10
+
+	logs := make([]*core.ActiveLog, 0)
+	for i := 0; i < batchNumber; i++ {
+		for j := 0; j < batchSize; j++ {
+			activeLog := core.NewActiveLog(core.NewTransactionLog(
+				core.NewTransaction().WithPostings(
+					core.NewPosting("world", fmt.Sprintf("account:%d", j), "EUR/2", big.NewInt(input)),
+					core.NewPosting(fmt.Sprintf("account:%d", j), "starbucks", "EUR/2", big.NewInt(output)),
+				).WithID(uint64(i*batchSize+j)),
+				map[string]metadata.Metadata{},
+			))
+			logs = append(logs, activeLog)
+		}
+	}
+	_, err := store.InsertLogs(context.Background(), logs)
+	require.NoError(t, err)
+
+	balance, err := store.GetBalanceFromLogs(context.Background(), "account:1", "EUR/2")
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt((input-output)*batchNumber), balance)
+}
+
+func TestGetMetadataFromLogs(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
+	logs := make([]*core.ActiveLog, 0)
+	logs = append(logs, core.NewActiveLog(core.NewTransactionLog(
+		core.NewTransaction().WithPostings(
+			core.NewPosting("world", "bank", "EUR/2", big.NewInt(100)),
+			core.NewPosting("bank", "starbucks", "EUR/2", big.NewInt(10)),
+		),
+		map[string]metadata.Metadata{},
+	)))
+	logs = append(logs, core.NewActiveLog(core.NewSetMetadataLog(core.Now(), core.SetMetadataLogPayload{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "bank",
+		Metadata: metadata.Metadata{
+			"foo": "bar",
+		},
+	})))
+	logs = append(logs, core.NewActiveLog(core.NewTransactionLog(
+		core.NewTransaction().WithPostings(
+			core.NewPosting("world", "bank", "EUR/2", big.NewInt(100)),
+			core.NewPosting("bank", "starbucks", "EUR/2", big.NewInt(10)),
+		).WithID(1),
+		map[string]metadata.Metadata{},
+	)))
+	logs = append(logs, core.NewActiveLog(core.NewSetMetadataLog(core.Now(), core.SetMetadataLogPayload{
+		TargetType: core.MetaTargetTypeAccount,
+		TargetID:   "bank",
+		Metadata: metadata.Metadata{
+			"role": "admin",
+		},
+	})))
+	logs = append(logs, core.NewActiveLog(core.NewTransactionLog(
+		core.NewTransaction().WithPostings(
+			core.NewPosting("world", "bank", "EUR/2", big.NewInt(100)),
+			core.NewPosting("bank", "starbucks", "EUR/2", big.NewInt(10)),
+		).WithID(2),
+		map[string]metadata.Metadata{},
+	)))
+
+	_, err := store.InsertLogs(context.Background(), logs)
+	require.NoError(t, err)
+
+	metadata, err := store.GetMetadataFromLogs(context.Background(), "bank", "foo")
+	require.NoError(t, err)
+	require.Equal(t, "bar", metadata)
+}
 
 func TestAccounts(t *testing.T) {
 	t.Parallel()

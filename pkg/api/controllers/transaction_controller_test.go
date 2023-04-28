@@ -154,7 +154,7 @@ func TestPostTransactions(t *testing.T) {
 						DryRun: tc.expectedDryRun,
 						Async:  false,
 					}, testCase.expectedRunScript).
-					Return(&expectedTx, nil)
+					Return(expectedTx, nil)
 			}
 
 			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
@@ -169,7 +169,7 @@ func TestPostTransactions(t *testing.T) {
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
 				tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
 				require.True(t, ok)
-				require.Equal(t, expectedTx, tx)
+				require.Equal(t, *expectedTx, tx)
 			} else {
 				err := sharedapi.ErrorResponse{}
 				Decode(t, rec.Body, &err)
@@ -617,7 +617,7 @@ func TestRevertTransaction(t *testing.T) {
 	mockLedger.
 		EXPECT().
 		RevertTransaction(gomock.Any(), command.Parameters{}, uint64(0)).
-		Return(&expectedTx, nil)
+		Return(expectedTx, nil)
 
 	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
 
@@ -629,5 +629,5 @@ func TestRevertTransaction(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code)
 	tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
 	require.True(t, ok)
-	require.Equal(t, expectedTx, tx)
+	require.Equal(t, *expectedTx, tx)
 }

@@ -55,38 +55,38 @@ type TransactionWithMetadata struct {
 	Metadata metadata.Metadata
 }
 
-func (t Transaction) WithPostings(postings ...Posting) Transaction {
+func (t *Transaction) WithPostings(postings ...Posting) *Transaction {
 	t.TransactionData = t.TransactionData.WithPostings(postings...)
 	return t
 }
 
-func (t Transaction) WithReference(ref string) Transaction {
+func (t *Transaction) WithReference(ref string) *Transaction {
 	t.Reference = ref
 	return t
 }
 
-func (t Transaction) WithTimestamp(ts Time) Transaction {
+func (t *Transaction) WithTimestamp(ts Time) *Transaction {
 	t.Timestamp = ts
 	return t
 }
 
-func (t Transaction) WithID(id uint64) Transaction {
+func (t *Transaction) WithID(id uint64) *Transaction {
 	t.ID = id
 	return t
 }
 
-func (t Transaction) WithMetadata(m metadata.Metadata) Transaction {
+func (t *Transaction) WithMetadata(m metadata.Metadata) *Transaction {
 	t.Metadata = m
 	return t
 }
 
-func (t Transaction) hashString(buf *buffer) {
+func (t *Transaction) hashString(buf *buffer) {
 	buf.writeUInt64(t.ID)
 	t.TransactionData.hashString(buf)
 }
 
-func NewTransaction() Transaction {
-	return Transaction{
+func NewTransaction() *Transaction {
+	return &Transaction{
 		TransactionData: NewTransactionData(),
 	}
 }
@@ -105,7 +105,7 @@ func (t *ExpandedTransaction) IsReverted() bool {
 	return IsReverted(t.Metadata)
 }
 
-func ExpandTransaction(tx Transaction, preCommitVolumes AccountsAssetsVolumes) ExpandedTransaction {
+func ExpandTransaction(tx *Transaction, preCommitVolumes AccountsAssetsVolumes) ExpandedTransaction {
 	postCommitVolumes := preCommitVolumes.copy()
 	for _, posting := range tx.Postings {
 		preCommitVolumes.AddInput(posting.Destination, posting.Asset, Zero)
@@ -114,12 +114,12 @@ func ExpandTransaction(tx Transaction, preCommitVolumes AccountsAssetsVolumes) E
 		postCommitVolumes.AddInput(posting.Destination, posting.Asset, posting.Amount)
 	}
 	return ExpandedTransaction{
-		Transaction:       tx,
+		Transaction:       *tx,
 		PreCommitVolumes:  preCommitVolumes,
 		PostCommitVolumes: postCommitVolumes,
 	}
 }
 
-func ExpandTransactionFromEmptyPreCommitVolumes(tx Transaction) ExpandedTransaction {
+func ExpandTransactionFromEmptyPreCommitVolumes(tx *Transaction) ExpandedTransaction {
 	return ExpandTransaction(tx, AccountsAssetsVolumes{})
 }

@@ -6,11 +6,13 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -20,6 +22,14 @@ const (
 	LogTableName          = "logs_v2"
 	LogIngestionTableName = "logs_ingestion"
 )
+
+type AccountWithBalances struct {
+	bun.BaseModel `bun:"accounts,alias:accounts"`
+
+	Address  string              `bun:"address,type:varchar,unique,notnull"`
+	Metadata metadata.Metadata   `bun:"metadata,type:bytea,default:'{}'"`
+	Balances map[string]*big.Int `bun:"balances,type:bytea,default:'{}'"`
+}
 
 type LogsV2 struct {
 	bun.BaseModel `bun:"logs_v2,alias:logs_v2"`
@@ -76,7 +86,7 @@ func (s *Store) initLastLog(ctx context.Context) {
 	})
 }
 
-func (s *Store) insertLogs(ctx context.Context, activeLogs []*core.ActiveLog) ([]*AppendedLog, error) {
+func (s *Store) InsertLogs(ctx context.Context, activeLogs []*core.ActiveLog) ([]*AppendedLog, error) {
 	recordMetrics := s.instrumentalized(ctx, "batch_logs")
 	defer recordMetrics()
 

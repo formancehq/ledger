@@ -42,13 +42,24 @@ func main() {
 		panic(err)
 	}
 
-	initialVolumes := map[string]map[string]core.Volumes{
+	initialVolumes := map[string]map[string]*big.Int{
 		"alice": {
-			"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(10)),
+			"COIN": big.NewInt(10),
 		},
 		"bob": {
-			"COIN": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
+			"COIN": big.NewInt(100),
 		},
+	}
+
+	store := vm.StaticStore{}
+	for account, balances := range initialVolumes {
+		store[account] = &vm.AccountWithBalances{
+			Account: core.Account{
+				Address:  account,
+				Metadata: metadata.Metadata{},
+			},
+			Balances: balances,
+		}
 	}
 
 	_, _, err = m.ResolveResources(context.Background(), vm.EmptyStore)
@@ -56,15 +67,7 @@ func main() {
 		panic(err)
 	}
 
-	err = m.ResolveBalances(context.Background(), vm.StoreFn(func(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-		return &core.AccountWithVolumes{
-			Account: core.Account{
-				Address:  address,
-				Metadata: metadata.Metadata{},
-			},
-			Volumes: initialVolumes[address],
-		}, nil
-	}))
+	err = m.ResolveBalances(context.Background(), store)
 	if err != nil {
 		panic(err)
 	}
