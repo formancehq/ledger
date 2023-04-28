@@ -185,7 +185,7 @@ func (m AccountMetadata) hashString(buf *buffer) {
 }
 
 type NewTransactionLogPayload struct {
-	Transaction     Transaction     `json:"transaction"`
+	Transaction     *Transaction    `json:"transaction"`
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
@@ -194,7 +194,7 @@ func (n NewTransactionLogPayload) hashString(buf *buffer) {
 	n.Transaction.hashString(buf)
 }
 
-func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metadata.Metadata, time Time) *Log {
+func NewTransactionLogWithDate(tx *Transaction, accountMetadata map[string]metadata.Metadata, time Time) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return &Log{
@@ -207,7 +207,7 @@ func NewTransactionLogWithDate(tx Transaction, accountMetadata map[string]metada
 	}
 }
 
-func NewTransactionLog(tx Transaction, accountMetadata map[string]metadata.Metadata) *Log {
+func NewTransactionLog(tx *Transaction, accountMetadata map[string]metadata.Metadata) *Log {
 	return NewTransactionLogWithDate(tx, accountMetadata, tx.Timestamp)
 }
 
@@ -272,8 +272,8 @@ func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) *Log {
 }
 
 type RevertedTransactionLogPayload struct {
-	RevertedTransactionID uint64      `json:"revertedTransactionID"`
-	RevertTransaction     Transaction `json:"transaction"`
+	RevertedTransactionID uint64       `json:"revertedTransactionID"`
+	RevertTransaction     *Transaction `json:"transaction"`
 }
 
 func (r RevertedTransactionLogPayload) hashString(buf *buffer) {
@@ -281,7 +281,7 @@ func (r RevertedTransactionLogPayload) hashString(buf *buffer) {
 	r.RevertTransaction.hashString(buf)
 }
 
-func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx Transaction) *Log {
+func NewRevertedTransactionLog(at Time, revertedTxID uint64, tx *Transaction) *Log {
 	return &Log{
 		Type: RevertedTransactionLogType,
 		Date: at,
@@ -389,8 +389,13 @@ var (
 )
 
 type LogPersistenceTracker struct {
+	activeLog    *ActiveLog
 	done         chan struct{}
 	persistedLog *PersistedLog
+}
+
+func (r *LogPersistenceTracker) ActiveLog() *ActiveLog {
+	return r.activeLog
 }
 
 func (r *LogPersistenceTracker) Resolve(persistedLog *PersistedLog) {
@@ -406,14 +411,15 @@ func (r *LogPersistenceTracker) Result() *PersistedLog {
 	return r.persistedLog
 }
 
-func NewLogPersistenceTracker() *LogPersistenceTracker {
+func NewLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
 	return &LogPersistenceTracker{
-		done: make(chan struct{}),
+		activeLog: log,
+		done:      make(chan struct{}),
 	}
 }
 
-func NewResolvedLogPersistenceTracker(v *PersistedLog) *LogPersistenceTracker {
-	ret := NewLogPersistenceTracker()
+func NewResolvedLogPersistenceTracker(log *ActiveLog, v *PersistedLog) *LogPersistenceTracker {
+	ret := NewLogPersistenceTracker(log)
 	ret.Resolve(v)
 	return ret
 }

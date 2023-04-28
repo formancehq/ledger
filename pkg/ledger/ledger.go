@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
@@ -18,15 +17,12 @@ type Ledger struct {
 	store       *ledgerstore.Store
 	queryWorker *query.Worker
 	locker      *command.DefaultLocker
-	cache       *cache.Cache
 }
 
 func New(
 	store *ledgerstore.Store,
-	cache *cache.Cache,
 	locker *command.DefaultLocker,
 	queryWorker *query.Worker,
-	state *command.State,
 	compiler *command.Compiler,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Ledger {
@@ -36,11 +32,10 @@ func New(
 		}
 	})
 	return &Ledger{
-		Commander:   command.New(store, cache, locker, state, compiler, metricsRegistry),
+		Commander:   command.New(store, locker, compiler, command.NewReferencer(), metricsRegistry),
 		store:       store,
 		queryWorker: queryWorker,
 		locker:      locker,
-		cache:       cache,
 	}
 }
 
@@ -57,10 +52,6 @@ func (l *Ledger) Close(ctx context.Context) error {
 	}
 
 	if err := l.locker.Stop(ctx); err != nil {
-		return errors.Wrap(err, "stopping cache")
-	}
-
-	if err := l.cache.Stop(ctx); err != nil {
 		return errors.Wrap(err, "stopping cache")
 	}
 

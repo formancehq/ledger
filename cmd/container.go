@@ -39,11 +39,6 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 		storage.CLIDriverModule(v, output, debug),
 		internal.NewAnalyticsModule(v, Version),
 		ledger.Module(ledger.Configuration{
-			AllowPastTimestamp: v.GetString(commitPolicyFlag) == "allow-past-timestamps",
-			AccountsCache: ledger.AccountsCacheConfiguration{
-				EvictionRetainDelay: v.GetDuration(cacheEvictionRetainDelay),
-				EvictionPeriod:      v.GetDuration(cacheEvictionPeriodFlag),
-			},
 			NumscriptCache: ledger.NumscriptCacheConfiguration{
 				MaxCount: v.GetInt(numscriptCacheMaxCount),
 			},

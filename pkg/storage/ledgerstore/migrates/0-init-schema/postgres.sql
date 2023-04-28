@@ -106,7 +106,16 @@ CREATE INDEX IF NOT EXISTS postings_dest ON "VAR_LEDGER_NAME_v2_0_0".postings US
 CREATE INDEX IF NOT EXISTS postings_src ON "VAR_LEDGER_NAME_v2_0_0".postings USING gin (source);
 
 --statement
+CREATE INDEX IF NOT EXISTS logsv2_type ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 (type);
+
+--statement
 CREATE INDEX IF NOT EXISTS logsv2_data ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING gin (data);
 
 --statement
 CREATE INDEX IF NOT EXISTS postings_txid ON "VAR_LEDGER_NAME_v2_0_0".postings USING btree (txid);
+
+--statement
+CREATE INDEX IF NOT EXISTS logsv2_new_transaction_postings ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING gin ((data->'transaction'->'postings') jsonb_path_ops);
+
+--statement
+CREATE INDEX IF NOT EXISTS logsv2_set_metadata ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING btree (type, (data->>'targetId'), (data->>'targetType'));

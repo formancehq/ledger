@@ -2,10 +2,11 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
@@ -22,67 +23,87 @@ type Parameters struct {
 	IdempotencyKey string
 }
 
-type Cache interface {
-	GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error)
-	LockAccounts(ctx context.Context, accounts ...string) (cache.Release, error)
-	UpdateVolumeWithTX(tx *core.Transaction)
-	UpdateAccountMetadata(s string, m metadata.Metadata) error
-}
-
 type Commander struct {
-	//TODO(gfyrag): Move to state
-	inflightReverts sync.Map
 	store           Store
 	locker          Locker
-	cache           Cache
 	metricsRegistry metrics.PerLedgerMetricsRegistry
-	state           *State
 	compiler        *Compiler
 	running         sync.WaitGroup
+	lastTXID        *atomic.Int64
+	referencer      *Referencer
 }
 
 func New(
 	store Store,
-	cache Cache,
 	locker Locker,
-	state *State,
 	compiler *Compiler,
+	referencer *Referencer,
 	metricsRegistry metrics.PerLedgerMetricsRegistry,
 ) *Commander {
+	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
+	if err != nil && !storageerrors.IsNotFoundError(err) {
+		panic(err)
+	}
+	var lastTxID *uint64
+	if err == nil {
+		switch payload := log.Data.(type) {
+		case core.NewTransactionLogPayload:
+			lastTxID = &payload.Transaction.ID
+		case core.RevertedTransactionLogPayload:
+			lastTxID = &payload.RevertTransaction.ID
+		default:
+			panic(fmt.Sprintf("unhandled payload type: %T", payload))
+		}
+	}
+	lastTXID := &atomic.Int64{}
+	if lastTxID != nil {
+		lastTXID.Add(int64(*lastTxID))
+	} else {
+		lastTXID.Add(-1)
+	}
 	return &Commander{
 		store:           store,
 		locker:          locker,
-		cache:           cache,
 		metricsRegistry: metricsRegistry,
-		state:           state,
 		compiler:        compiler,
+		referencer:      referencer,
+		lastTXID:        lastTXID,
 	}
 }
 
-func (c *Commander) GetLedgerStore() Store {
-	return c.store
+func (commander *Commander) GetLedgerStore() Store {
+	return commander.store
 }
 
-func (l *Commander) executeTransaction(ctx context.Context, parameters Parameters, script core.RunScript,
-	logComputer func(tx *core.Transaction, result *machine.Result) *core.Log) (*core.PersistedLog, error) {
-	if script.Plain == "" {
+func (commander *Commander) exec(ctx context.Context, parameters Parameters, script core.RunScript,
+	logComputer func(tx *core.Transaction, accountMetadata map[string]metadata.Metadata) *core.Log) (*core.PersistedLog, error) {
+
+	if script.Script.Plain == "" {
 		return nil, ErrNoScript
 	}
 
-	reserve, ts, err := l.state.Reserve(ctx, ReserveRequest{
-		Timestamp: script.Timestamp,
-		Reference: script.Reference,
-	})
-	if err != nil {
-		return nil, errorsutil.NewError(ErrState, err)
+	if script.Timestamp.IsZero() {
+		script.Timestamp = core.Now()
 	}
 
-	var newTx *core.Transaction
+	execContext := newExecutionContext(commander, parameters)
+	tracker, err := execContext.run(ctx, func(executionContext *executionContext) (*core.LogPersistenceTracker, error) {
+		if script.Reference != "" {
+			if err := commander.referencer.take(referenceTxReference, script.Reference); err != nil {
+				return nil, ErrConflictError
+			}
+			defer commander.referencer.release(referenceTxReference, script.Reference)
 
-	log, err := l.runCommand(ctx, parameters, func(execContext *executionContext) (*core.Log, error) {
-		script.Timestamp = *ts
+			_, err := commander.store.ReadLogForCreatedTransactionWithReference(ctx, script.Reference)
+			if err == nil {
+				return nil, ErrConflictError
+			}
+			if err != storageerrors.ErrNotFound && err != nil {
+				return nil, err
+			}
+		}
 
-		program, err := l.compiler.Compile(execContext, script.Plain)
+		program, err := commander.compiler.Compile(ctx, script.Plain)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
 		}
@@ -94,14 +115,10 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 				errors.Wrap(err, "could not set variables"))
 		}
 
-		involvedAccounts, involvedSources, err := m.ResolveResources(execContext, l.cache)
+		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve program resources"))
-		}
-
-		if err := execContext.retainAccount(involvedAccounts...); err != nil {
-			return nil, err
 		}
 
 		worldFilter := collectionutils.FilterNot(collectionutils.FilterEq("world"))
@@ -110,15 +127,13 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 			Write: collectionutils.Filter(involvedSources, worldFilter),
 		}
 
-		unlock, err := l.locker.Lock(execContext, lockAccounts)
+		unlock, err := commander.locker.Lock(ctx, lockAccounts)
 		if err != nil {
 			return nil, errors.Wrap(err, "locking accounts for tx processing")
 		}
-		execContext.onCommit(func() {
-			unlock(ctx)
-		})
+		unlock(ctx)
 
-		err = m.ResolveBalances(execContext, l.cache)
+		err = m.ResolveBalances(ctx, commander.store)
 		if err != nil {
 			return nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve balances"))
@@ -137,41 +152,31 @@ func (l *Commander) executeTransaction(ctx context.Context, parameters Parameter
 			WithPostings(result.Postings...).
 			WithMetadata(result.Metadata).
 			WithTimestamp(script.Timestamp).
-			WithID(l.state.GetNextTXID()).
+			WithID(uint64(commander.lastTXID.Add(1))).
 			WithReference(script.Reference)
 
-		newTx = &tx
-
-		if !parameters.DryRun {
-			l.cache.UpdateVolumeWithTX(newTx)
+		log := logComputer(tx, result.AccountMetadata)
+		if parameters.IdempotencyKey != "" {
+			log = log.WithIdempotencyKey(parameters.IdempotencyKey)
 		}
 
-		log := logComputer(newTx, result)
-
-		return log, nil
-	})
-	if err != nil {
-		reserve.Clear(nil)
-		return nil, err
-	}
-
-	reserve.Clear(newTx)
-
-	return log, nil
-}
-
-func (c *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script core.RunScript) (*core.Transaction, error) {
-	log, err := c.executeTransaction(ctx, parameters, script, func(tx *core.Transaction, result *machine.Result) *core.Log {
-		return core.NewTransactionLog(*tx, result.AccountMetadata)
+		return executionContext.AppendLog(ctx, core.NewActiveLog(log))
 	})
 	if err != nil {
 		return nil, err
 	}
-	tx := log.Data.(core.NewTransactionLogPayload).Transaction
-	return &tx, nil
+	return tracker.Result(), nil
 }
 
-func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetType string, targetID interface{}, m metadata.Metadata) error {
+func (commander *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script core.RunScript) (*core.Transaction, error) {
+	log, err := commander.exec(ctx, parameters, script, core.NewTransactionLog)
+	if err != nil {
+		return nil, err
+	}
+	return log.Data.(core.NewTransactionLogPayload).Transaction, nil
+}
+
+func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetType string, targetID interface{}, m metadata.Metadata) error {
 	if m == nil {
 		return nil
 	}
@@ -179,20 +184,19 @@ func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetT
 	if targetType == "" {
 		return errorsutil.NewError(ErrValidation, errors.New("empty target type"))
 	}
-
 	if targetID == "" {
 		return errorsutil.NewError(ErrValidation, errors.New("empty target id"))
 	}
 
-	_, err := c.runCommand(ctx, parameters, func(ctx *executionContext) (*core.Log, error) {
-		at := core.Now()
+	execContext := newExecutionContext(commander, parameters)
+	_, err := execContext.run(ctx, func(executionContext *executionContext) (*core.LogPersistenceTracker, error) {
 		var (
-			err error
 			log *core.Log
+			at  = core.Now()
 		)
 		switch targetType {
 		case core.MetaTargetTypeTransaction:
-			_, err := c.store.ReadLogForCreatedTransaction(ctx, targetID.(uint64))
+			_, err := commander.store.ReadLogForCreatedTransaction(ctx, targetID.(uint64))
 			if err != nil {
 				return nil, err
 			}
@@ -202,12 +206,6 @@ func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetT
 				Metadata:   m,
 			})
 		case core.MetaTargetTypeAccount:
-			if err := ctx.retainAccount(targetID.(string)); err != nil {
-				return nil, err
-			}
-			if err = c.cache.UpdateAccountMetadata(targetID.(string), m); err != nil {
-				return nil, errors.Wrap(err, "update account metadata")
-			}
 			log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 				TargetType: core.MetaTargetTypeAccount,
 				TargetID:   targetID.(string),
@@ -216,25 +214,20 @@ func (c *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetT
 		default:
 			return nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
 		}
-		if err != nil {
-			return nil, err
-		}
 
-		return log, nil
+		return executionContext.AppendLog(ctx, core.NewActiveLog(log))
 	})
 	return err
 }
 
-func (c *Commander) RevertTransaction(ctx context.Context, parameters Parameters, id uint64) (*core.Transaction, error) {
-	_, loaded := c.inflightReverts.LoadOrStore(id, struct{}{})
-	if loaded {
+func (commander *Commander) RevertTransaction(ctx context.Context, parameters Parameters, id uint64) (*core.Transaction, error) {
+
+	if err := commander.referencer.take(referenceReverts, id); err != nil {
 		return nil, ErrRevertOccurring
 	}
-	defer func() {
-		c.inflightReverts.Delete(id)
-	}()
+	defer commander.referencer.release(referenceReverts, id)
 
-	_, err := c.store.ReadLogForRevertedTransaction(ctx, id)
+	_, err := commander.store.ReadLogForRevertedTransaction(ctx, id)
 	if err == nil {
 		return nil, ErrAlreadyReverted
 	}
@@ -242,7 +235,7 @@ func (c *Commander) RevertTransaction(ctx context.Context, parameters Parameters
 		return nil, err
 	}
 
-	transactionToRevertLog, err := c.store.ReadLogForCreatedTransaction(ctx, id)
+	transactionToRevertLog, err := commander.store.ReadLogForCreatedTransaction(ctx, id)
 	if storageerrors.IsNotFoundError(err) {
 		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
 	}
@@ -255,85 +248,21 @@ func (c *Commander) RevertTransaction(ctx context.Context, parameters Parameters
 	rt := transactionToRevert.Reverse()
 	rt.Metadata = core.MarkReverts(metadata.Metadata{}, transactionToRevert.ID)
 
-	log, err := c.executeTransaction(ctx, parameters,
+	log, err := commander.exec(ctx, parameters,
 		core.TxToScriptData(core.TransactionData{
 			Postings: rt.Postings,
 			Metadata: rt.Metadata,
 		}),
-		func(tx *core.Transaction, result *machine.Result) *core.Log {
-			return core.NewRevertedTransactionLog(tx.Timestamp, transactionToRevert.ID, *tx)
+		func(tx *core.Transaction, accountMetadata map[string]metadata.Metadata) *core.Log {
+			return core.NewRevertedTransactionLog(tx.Timestamp, transactionToRevert.ID, tx)
 		})
 	if err != nil {
 		return nil, err
 	}
-	tx := log.Data.(core.RevertedTransactionLogPayload).RevertTransaction
 
-	return &tx, nil
+	return log.Data.(core.RevertedTransactionLogPayload).RevertTransaction, nil
 }
 
-func (c *Commander) computeLog(execContext *executionContext, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) (*core.ActiveLog, *core.LogPersistenceTracker, error) {
-	defer execContext.commit()
-	if parameters.IdempotencyKey != "" {
-		persistedLog, err := c.store.ReadLogWithIdempotencyKey(execContext, parameters.IdempotencyKey)
-		if err != nil && err != storageerrors.ErrNotFound {
-			return nil, nil, err
-		}
-		if err == nil {
-			activeLog := core.NewActiveLog(&persistedLog.Log)
-			activeLog.SetIngested()
-			return activeLog, core.NewResolvedLogPersistenceTracker(persistedLog), nil
-		}
-	}
-	log, err := exec(execContext)
-	if err != nil {
-		return nil, nil, err
-	}
-	log = log.WithIdempotencyKey(parameters.IdempotencyKey)
-	activeLog := core.NewActiveLog(log)
-	if parameters.DryRun {
-		return activeLog, core.NewResolvedLogPersistenceTracker(log.ComputePersistentLog(nil)), nil
-	}
-
-	persistenceResult, err := c.store.AppendLog(execContext, activeLog)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return activeLog, persistenceResult, nil
-}
-
-func (c *Commander) runCommand(ctx context.Context, parameters Parameters, exec func(ctx *executionContext) (*core.Log, error)) (*core.PersistedLog, error) {
-
-	c.running.Add(1)
-
-	execContext := newExecutionContext(ctx, c.cache)
-	activeLog, persistenceResult, err := c.computeLog(execContext, parameters, exec)
-	if err != nil {
-		execContext.complete()
-		return nil, err
-	}
-
-	<-persistenceResult.Done()
-
-	if parameters.Async {
-		go func() {
-			defer c.running.Done()
-			<-activeLog.Ingested
-			execContext.complete()
-		}()
-	} else {
-		defer c.running.Done()
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-activeLog.Ingested:
-		}
-		execContext.complete()
-	}
-
-	return persistenceResult.Result(), nil
-}
-
-func (c *Commander) Wait() {
-	c.running.Wait()
+func (commander *Commander) Wait() {
+	commander.running.Wait()
 }

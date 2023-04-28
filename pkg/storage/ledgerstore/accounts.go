@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/extra/bunbig"
 )
 
 const (
@@ -296,6 +297,65 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Acco
 		Exec(ctx)
 
 	return storageerrors.PostgresError(err)
+}
+
+func (s *Store) GetBalanceFromLogs(ctx context.Context, address, asset string) (*big.Int, error) {
+	selectLogsForExistingAccount := s.schema.
+		NewSelect(LogTableName).
+		Model(&LogsV2{}).
+		Where(fmt.Sprintf(`data->'transaction'->'postings' @> '[{"destination": "%s", "asset": "%s"}]' OR data->'transaction'->'postings' @> '[{"source": "%s", "asset": "%s"}]'`, address, asset, address, asset))
+
+	selectPostings := s.schema.IDB.NewSelect().
+		TableExpr(`(` + selectLogsForExistingAccount.String() + `) as logs`).
+		ColumnExpr("jsonb_array_elements(logs.data->'transaction'->'postings') as postings")
+
+	selectBalances := s.schema.IDB.NewSelect().
+		TableExpr(`(` + selectPostings.String() + `) as postings`).
+		ColumnExpr(fmt.Sprintf("SUM(CASE WHEN (postings.postings::jsonb)->>'source' = '%s' THEN -((((postings.postings::jsonb)->'amount')::numeric)) ELSE ((postings.postings::jsonb)->'amount')::numeric END)", address))
+
+	row := s.schema.IDB.QueryRowContext(ctx, selectBalances.String())
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+
+	var balance *bunbig.Int
+	if err := row.Scan(&balance); err != nil {
+		return nil, err
+	}
+	return (*big.Int)(balance), nil
+}
+
+func (s *Store) GetMetadataFromLogs(ctx context.Context, address, key string) (string, error) {
+	l := LogsV2{}
+	if err := s.schema.NewSelect(LogTableName).
+		Model(&l).
+		Order("id DESC").
+		WhereOr(
+			"type = ? AND data->>'targetId' = ? AND data->>'targetType' = ? AND "+fmt.Sprintf("data->'metadata' ? '%s'", key),
+			core.SetMetadataLogType, address, core.MetaTargetTypeAccount,
+		).
+		WhereOr(
+			"type = ? AND "+fmt.Sprintf("data->'accountMetadata'->'%s' ? '%s'", address, key),
+			core.NewTransactionLogType,
+		).
+		Limit(1).
+		Scan(ctx); err != nil {
+		return "", storageerrors.PostgresError(err)
+	}
+
+	payload, err := core.HydrateLog(core.LogType(l.Type), l.Data)
+	if err != nil {
+		panic(errors.Wrap(err, "hydrating log data"))
+	}
+
+	switch payload := payload.(type) {
+	case core.NewTransactionLogPayload:
+		return payload.AccountMetadata[address][key], nil
+	case core.SetMetadataLogPayload:
+		return payload.Metadata[key], nil
+	default:
+		panic("should not happen")
+	}
 }
 
 type AccountsQuery OffsetPaginatedQuery[AccountsQueryFilters]

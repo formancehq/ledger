@@ -212,7 +212,7 @@ func TestWorker(t *testing.T) {
 	tx1FromDatabase := ledgerStore.transactions[1]
 	tx1.Metadata = appliedMetadataOnTX1
 	require.Equal(t, core.ExpandedTransaction{
-		Transaction: tx1,
+		Transaction: *tx1,
 		PreCommitVolumes: map[string]core.AssetsVolumes{
 			"bank": {
 				"USD/2": {

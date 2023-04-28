@@ -119,7 +119,7 @@ var testCases = []testCase{
 	{
 		name: "using metadata",
 		store: vm.StaticStore{
-			"sales:001": &core.AccountWithVolumes{
+			"sales:001": &vm.AccountWithBalances{
 				Account: core.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
@@ -129,14 +129,11 @@ var testCases = []testCase{
 						}`,
 					},
 				},
-				Volumes: map[string]core.Volumes{
-					"COIN": {
-						Input:  big.NewInt(100),
-						Output: big.NewInt(0),
-					},
+				Balances: map[string]*big.Int{
+					"COIN": big.NewInt(100),
 				},
 			},
-			"users:001": &core.AccountWithVolumes{
+			"users:001": &vm.AccountWithBalances{
 				Account: core.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
@@ -146,7 +143,7 @@ var testCases = []testCase{
 						}`,
 					},
 				},
-				Volumes: map[string]core.Volumes{},
+				Balances: map[string]*big.Int{},
 			},
 		},
 		script: `
@@ -264,11 +261,8 @@ var testCases = []testCase{
 					Address:  "users:001",
 					Metadata: metadata.Metadata{},
 				},
-				Volumes: map[string]core.Volumes{
-					"COIN": {
-						Input:  big.NewInt(100),
-						Output: big.NewInt(0),
-					},
+				Balances: map[string]*big.Int{
+					"COIN": big.NewInt(100),
 				},
 			},
 		},
@@ -311,7 +305,7 @@ var testCases = []testCase{
 					Address:  "alice",
 					Metadata: metadata.Metadata{},
 				},
-				Volumes: map[string]core.Volumes{},
+				Balances: map[string]*big.Int{},
 			},
 		},
 		script: `
@@ -335,7 +329,7 @@ var testCases = []testCase{
 					Address:  "alice",
 					Metadata: metadata.Metadata{},
 				},
-				Volumes: map[string]core.Volumes{},
+				Balances: map[string]*big.Int{},
 			},
 		},
 		script: `
@@ -359,7 +353,7 @@ var testCases = []testCase{
 					Address:  "alice",
 					Metadata: metadata.Metadata{},
 				},
-				Volumes: map[string]core.Volumes{},
+				Balances: map[string]*big.Int{},
 			},
 		},
 		script: `

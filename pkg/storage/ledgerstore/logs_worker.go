@@ -24,7 +24,7 @@ func (s *Store) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPe
 	recordMetrics := s.instrumentalized(ctx, "append_log")
 	defer recordMetrics()
 
-	ret := core.NewLogPersistenceTracker()
+	ret := core.NewLogPersistenceTracker(log)
 
 	select {
 	case <-ctx.Done():
@@ -42,7 +42,7 @@ func (s *Store) processPendingLogs(ctx context.Context, pendingLogs []pendingLog
 	for _, holder := range pendingLogs {
 		models = append(models, holder.log)
 	}
-	appendedLogs, err := s.insertLogs(ctx, models)
+	appendedLogs, err := s.InsertLogs(ctx, models)
 	if err != nil {
 		panic(err)
 	}

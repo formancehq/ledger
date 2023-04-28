@@ -17,8 +17,6 @@ import (
 
 const (
 	bindFlag = "bind"
-
-	commitPolicyFlag = "commit-policy"
 )
 
 var (
@@ -58,7 +56,6 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool(service.DebugFlag, false, "Debug mode")
 	root.PersistentFlags().Bool(service.JsonFormattingLoggerFlag, true, "Json formatting mode for logger")
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
-	root.PersistentFlags().String(commitPolicyFlag, "", "Transaction commit policy (default or allow-past-timestamps)")
 
 	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())

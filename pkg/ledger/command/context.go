@@ -3,52 +3,51 @@ package command
 import (
 	"context"
 
-	"github.com/pkg/errors"
+	"github.com/formancehq/ledger/pkg/core"
+	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 )
 
 type executionContext struct {
-	context.Context
-	cache               Cache
-	onCompleteCallbacks []func()
-	onCommitCallbacks   []func()
+	commander  *Commander
+	parameters Parameters
 }
 
-// TODO(gfyrag): Explicit retain is not required
-// A call to a GetAccountWithVolumes should automatically retain accounts until execution context completion
-func (ctx *executionContext) retainAccount(accounts ...string) error {
-	release, err := ctx.cache.LockAccounts(ctx, accounts...)
+func (e *executionContext) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
+	if e.parameters.DryRun {
+		return core.NewResolvedLogPersistenceTracker(log, log.ComputePersistentLog(nil)), nil
+	}
+	return e.commander.store.AppendLog(ctx, log)
+}
+
+func (e *executionContext) run(ctx context.Context, executor func(e *executionContext) (*core.LogPersistenceTracker, error)) (*core.LogPersistenceTracker, error) {
+	if ik := e.parameters.IdempotencyKey; ik != "" {
+		if err := e.commander.referencer.take(referenceIks, ik); err != nil {
+			return nil, err
+		}
+		defer e.commander.referencer.release(referenceIks, ik)
+
+		persistedLog, err := e.commander.store.ReadLogWithIdempotencyKey(ctx, ik)
+		if err == nil {
+			return core.NewResolvedLogPersistenceTracker(nil, persistedLog), nil
+		}
+		if err != storageerrors.ErrNotFound && err != nil {
+			return nil, err
+		}
+	}
+	tracker, err := executor(e)
 	if err != nil {
-		return errors.Wrap(err, "locking accounts into cache")
+		return nil, err
 	}
-
-	ctx.onComplete(release)
-
-	return nil
-}
-
-func (ctx *executionContext) onComplete(fn func()) {
-	ctx.onCompleteCallbacks = append(ctx.onCompleteCallbacks, fn)
-}
-
-func (ctx *executionContext) complete() {
-	for _, callback := range ctx.onCompleteCallbacks {
-		callback()
+	<-tracker.Done()
+	if !e.parameters.Async {
+		<-tracker.ActiveLog().Ingested
 	}
+	return tracker, nil
 }
 
-func (ctx *executionContext) onCommit(fn func()) {
-	ctx.onCompleteCallbacks = append(ctx.onCompleteCallbacks, fn)
-}
-
-func (ctx *executionContext) commit() {
-	for _, callback := range ctx.onCommitCallbacks {
-		callback()
-	}
-}
-
-func newExecutionContext(ctx context.Context, cache Cache) *executionContext {
+func newExecutionContext(commander *Commander, parameters Parameters) *executionContext {
 	return &executionContext{
-		Context: ctx,
-		cache:   cache,
+		commander:  commander,
+		parameters: parameters,
 	}
 }

@@ -15,6 +15,7 @@ var (
 	ErrRevertOccurring   = errors.New("revert already occurring")
 	ErrPastTransaction   = errors.New("cannot pass a timestamp prior to the last transaction")
 	ErrConflictError     = errors.New("conflict error")
+	ErrIKOccurring       = errors.New("a request with the same IK is already occurring")
 )
 
 func IsNoScriptError(err error) bool {

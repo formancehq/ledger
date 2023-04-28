@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -14,55 +13,54 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type mockCache struct {
-	accounts map[string]*core.AccountWithVolumes
-}
-
-func (m *mockCache) UpdateAccountMetadata(s string, m2 metadata.Metadata) error {
-	panic("not implemented")
-}
-
-func (m *mockCache) Stop(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockCache) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
-	account, ok := m.accounts[address]
-	if !ok {
-		account = core.NewAccountWithVolumes(address)
-		m.accounts[address] = account
-		return account, nil
-	}
-	return account, nil
-}
-
-func (m *mockCache) LockAccounts(ctx context.Context, accounts ...string) (cache.Release, error) {
-	return func() {}, nil
-}
-
-func (m *mockCache) UpdateVolumeWithTX(transaction *core.Transaction) {
-	for _, posting := range transaction.Postings {
-		sourceAccount, _ := m.GetAccountWithVolumes(context.Background(), posting.Source)
-		sourceAccountAsset := sourceAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
-		sourceAccountAsset.Output = sourceAccountAsset.Output.Add(sourceAccountAsset.Output, posting.Amount)
-		sourceAccount.Volumes[posting.Asset] = sourceAccountAsset
-		destAccount, _ := m.GetAccountWithVolumes(context.Background(), posting.Destination)
-		destAccountAsset := destAccount.Volumes[posting.Asset].CopyWithZerosIfNeeded()
-		destAccountAsset.Input = destAccountAsset.Input.Add(destAccountAsset.Input, posting.Amount)
-		destAccount.Volumes[posting.Asset] = destAccountAsset
-	}
-}
-
-var _ Cache = (*mockCache)(nil)
-
-func newMockCache() *mockCache {
-	return &mockCache{
-		accounts: map[string]*core.AccountWithVolumes{},
-	}
-}
-
 type mockStore struct {
 	logs []*core.PersistedLog
+}
+
+func (m *mockStore) GetBalanceFromLogs(ctx context.Context, address, asset string) (*big.Int, error) {
+	balance := new(big.Int)
+	for _, log := range m.logs {
+		switch payload := log.Data.(type) {
+		case core.NewTransactionLogPayload:
+			postings := payload.Transaction.Postings
+			for _, posting := range postings {
+				if posting.Asset != asset {
+					continue
+				}
+				if posting.Source == address {
+					balance = balance.Sub(balance, posting.Amount)
+				}
+				if posting.Destination == address {
+					balance = balance.Add(balance, posting.Amount)
+				}
+			}
+		}
+	}
+	return balance, nil
+}
+
+func (m *mockStore) GetMetadataFromLogs(ctx context.Context, address, key string) (string, error) {
+	for i := len(m.logs) - 1; i >= 0; i-- {
+		switch payload := m.logs[i].Data.(type) {
+		case core.NewTransactionLogPayload:
+			forAccount, ok := payload.AccountMetadata[address]
+			if ok {
+				value, ok := forAccount[key]
+				if ok {
+					return value, nil
+				}
+			}
+		case core.SetMetadataLogPayload:
+			if payload.TargetID != address {
+				continue
+			}
+			value, ok := payload.Metadata[key]
+			if ok {
+				return value, nil
+			}
+		}
+	}
+	return "", errors.New("not found")
 }
 
 func (m *mockStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.PersistedLog, error) {
@@ -134,7 +132,7 @@ func (m *mockStore) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.L
 	persistedLog = log.ComputePersistentLog(previous)
 	m.logs = append(m.logs, persistedLog)
 
-	ret := core.NewLogPersistenceTracker()
+	ret := core.NewLogPersistenceTracker(log)
 	ret.Resolve(persistedLog)
 	log.SetIngested()
 
@@ -153,15 +151,14 @@ func newMockStore() *mockStore {
 }
 
 type testCase struct {
-	name             string
-	setup            func(t *testing.T, r Store)
-	script           string
-	reference        string
-	expectedError    error
-	expectedTx       core.Transaction
-	expectedLogs     []*core.Log
-	expectedAccounts map[string]core.AccountWithVolumes
-	parameters       Parameters
+	name          string
+	setup         func(t *testing.T, r Store)
+	script        string
+	reference     string
+	expectedError error
+	expectedTx    *core.Transaction
+	expectedLogs  []*core.Log
+	parameters    Parameters
 }
 
 var testCases = []testCase{
@@ -181,14 +178,6 @@ var testCases = []testCase{
 					core.NewPosting("world", "mint", "GEM", big.NewInt(100))),
 				map[string]metadata.Metadata{},
 			),
-		},
-		expectedAccounts: map[string]core.AccountWithVolumes{
-			"mint": {
-				Account: core.NewAccount("mint"),
-				Volumes: core.AssetsVolumes{
-					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
-				},
-			},
 		},
 	},
 	{
@@ -242,14 +231,6 @@ var testCases = []testCase{
 				map[string]metadata.Metadata{},
 			),
 		},
-		expectedAccounts: map[string]core.AccountWithVolumes{
-			"mint": {
-				Account: core.NewAccount("mint"),
-				Volumes: core.AssetsVolumes{
-					"GEM": core.NewEmptyVolumes().WithInput(big.NewInt(100)),
-				},
-			},
-		},
 	},
 	{
 		name: "using idempotency",
@@ -272,7 +253,6 @@ var testCases = []testCase{
 				map[string]metadata.Metadata{},
 			).WithIdempotencyKey("testing"),
 		},
-		expectedAccounts: map[string]core.AccountWithVolumes{},
 		setup: func(t *testing.T, r Store) {
 			log := core.NewTransactionLog(
 				core.NewTransaction().
@@ -299,10 +279,8 @@ func TestCreateTransaction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newMockStore()
-			cache := newMockCache()
 
-			ledger := New(store, cache, NoOpLocker,
-				LoadState(store, false), NewCompiler(1024), nil)
+			ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
 
 			if tc.setup != nil {
 				tc.setup(t, store)
@@ -321,7 +299,7 @@ func TestCreateTransaction(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, ret)
 				tc.expectedTx.Timestamp = now
-				require.Equal(t, tc.expectedTx, *ret)
+				require.Equal(t, tc.expectedTx, ret)
 
 				require.Len(t, store.logs, len(tc.expectedLogs))
 				for ind := range tc.expectedLogs {
@@ -332,13 +310,6 @@ func TestCreateTransaction(t *testing.T) {
 						expectedLog.Data = v
 					}
 					expectedLog.Date = now
-				}
-
-				for address, account := range tc.expectedAccounts {
-					accountFromCache, err := ledger.cache.GetAccountWithVolumes(context.Background(), address)
-					require.NoError(t, err)
-					require.NotNil(t, accountFromCache)
-					require.Equal(t, account, *accountFromCache)
 				}
 			}
 		})
@@ -357,22 +328,7 @@ func TestRevert(t *testing.T) {
 	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
-	cache := newMockCache()
-	cache.accounts["bank"] = &core.AccountWithVolumes{
-		Account: core.Account{
-			Address:  "bank",
-			Metadata: metadata.Metadata{},
-		},
-		Volumes: map[string]core.Volumes{
-			"USD": {
-				Input:  big.NewInt(100),
-				Output: big.NewInt(0),
-			},
-		},
-	}
-
-	ledger := New(store, cache, NoOpLocker,
-		LoadState(store, false), NewCompiler(1024), nil)
+	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, txID)
 	require.NoError(t, err)
 }
@@ -380,27 +336,12 @@ func TestRevert(t *testing.T) {
 func TestRevertWithAlreadyReverted(t *testing.T) {
 
 	store := newMockStore()
-	cache := newMockCache()
 	log := core.
 		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction())
 	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
-	cache.accounts["bank"] = &core.AccountWithVolumes{
-		Account: core.Account{
-			Address:  "bank",
-			Metadata: metadata.Metadata{},
-		},
-		Volumes: map[string]core.Volumes{
-			"USD": {
-				Input:  big.NewInt(100),
-				Output: big.NewInt(0),
-			},
-		},
-	}
-
-	ledger := New(store, cache, NoOpLocker,
-		LoadState(store, false), NewCompiler(1024), nil)
+	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
 
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
@@ -409,7 +350,6 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 func TestRevertWithRevertOccurring(t *testing.T) {
 
 	store := newMockStore()
-	cache := newMockCache()
 	log := core.NewTransactionLog(
 		core.NewTransaction().WithPostings(
 			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
@@ -419,22 +359,9 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
 
-	cache.accounts["bank"] = &core.AccountWithVolumes{
-		Account: core.Account{
-			Address:  "bank",
-			Metadata: metadata.Metadata{},
-		},
-		Volumes: map[string]core.Volumes{
-			"USD": {
-				Input:  big.NewInt(100),
-				Output: big.NewInt(0),
-			},
-		},
-	}
-
-	ledger := New(store, cache, NoOpLocker,
-		LoadState(store, false), NewCompiler(1024), nil)
-	ledger.inflightReverts.Store(uint64(0), struct{}{})
+	referencer := NewReferencer()
+	ledger := New(store, NoOpLocker, NewCompiler(1024), referencer, nil)
+	referencer.take(referenceReverts, uint64(0))
 
 	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrRevertOccurring))

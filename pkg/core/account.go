@@ -12,8 +12,8 @@ const (
 )
 
 type Account struct {
-	Address  string            `json:"address" example:"users:001"`
-	Metadata metadata.Metadata `json:"metadata" swaggertype:"object"`
+	Address  string            `json:"address"`
+	Metadata metadata.Metadata `json:"metadata"`
 }
 
 func (a Account) copy() Account {
