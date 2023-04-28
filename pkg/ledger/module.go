@@ -1,8 +1,6 @@
 package ledger
 
 import (
-	"time"
-
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/ledger/query"
@@ -10,11 +8,6 @@ import (
 	"github.com/formancehq/ledger/pkg/storage"
 	"go.uber.org/fx"
 )
-
-type AccountsCacheConfiguration struct {
-	EvictionRetainDelay time.Duration
-	EvictionPeriod      time.Duration
-}
 
 type NumscriptCacheConfiguration struct {
 	MaxCount int
@@ -25,10 +18,8 @@ type QueryConfiguration struct {
 }
 
 type Configuration struct {
-	AllowPastTimestamp bool
-	AccountsCache      AccountsCacheConfiguration
-	NumscriptCache     NumscriptCacheConfiguration
-	Query              QueryConfiguration
+	NumscriptCache NumscriptCacheConfiguration
+	Query          QueryConfiguration
 }
 
 func Module(configuration Configuration) fx.Option {
@@ -41,11 +32,6 @@ func Module(configuration Configuration) fx.Option {
 			options := []option{
 				WithMonitor(monitor),
 				WithMetricsRegistry(metricsRegistry),
-				WithCacheEvictionPeriod(configuration.AccountsCache.EvictionPeriod),
-				WithCacheEvictionRetainDelay(configuration.AccountsCache.EvictionRetainDelay),
-			}
-			if configuration.AllowPastTimestamp {
-				options = append(options, WithAllowPastTimestamps())
 			}
 			if configuration.NumscriptCache.MaxCount != 0 {
 				options = append(options, WithCompiler(command.NewCompiler(configuration.NumscriptCache.MaxCount)))

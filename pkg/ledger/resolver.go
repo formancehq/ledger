@@ -3,9 +3,7 @@ package ledger
 import (
 	"context"
 	"sync"
-	"time"
 
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/ledger/query"
@@ -24,27 +22,9 @@ func WithMonitor(monitor monitor.Monitor) option {
 	}
 }
 
-func WithAllowPastTimestamps() option {
-	return func(r *Resolver) {
-		r.allowPastTimestamps = true
-	}
-}
-
 func WithMetricsRegistry(registry metrics.GlobalMetricsRegistry) option {
 	return func(r *Resolver) {
 		r.metricsRegistry = registry
-	}
-}
-
-func WithCacheEvictionRetainDelay(t time.Duration) option {
-	return func(r *Resolver) {
-		r.cacheEvictionRetainDelay = t
-	}
-}
-
-func WithCacheEvictionPeriod(t time.Duration) option {
-	return func(r *Resolver) {
-		r.cacheEvictionPeriod = t
 	}
 }
 
@@ -66,10 +46,8 @@ type Resolver struct {
 	lock            sync.RWMutex
 	metricsRegistry metrics.GlobalMetricsRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
-	ledgers                                       map[string]*Ledger
-	compiler                                      *command.Compiler
-	allowPastTimestamps                           bool
-	cacheEvictionPeriod, cacheEvictionRetainDelay time.Duration
+	ledgers  map[string]*Ledger
+	compiler *command.Compiler
 }
 
 func NewResolver(storageDriver *storage.Driver, options ...option) *Resolver {
@@ -133,24 +111,10 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return nil, errors.Wrap(err, "registering metrics")
 		}
 
-		cacheOptions := []cache.Option{
-			cache.WithMetricsRegistry(metricsRegistry),
-		}
-		if r.cacheEvictionPeriod != 0 {
-			cacheOptions = append(cacheOptions, cache.WithEvictionPeriod(r.cacheEvictionPeriod))
-		}
-		if r.cacheEvictionRetainDelay != 0 {
-			cacheOptions = append(cacheOptions, cache.WithRetainDelay(r.cacheEvictionRetainDelay))
-		}
-
-		cache := cache.New(store, cacheOptions...)
-		runOrPanic(cache.Run)
-
 		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor, metricsRegistry)
 		runOrPanic(queryWorker.Run)
 
-		ledger = New(store, cache, locker, queryWorker,
-			command.LoadState(store, r.allowPastTimestamps), r.compiler, metricsRegistry)
+		ledger = New(store, locker, queryWorker, r.compiler, metricsRegistry)
 		r.ledgers[name] = ledger
 		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}

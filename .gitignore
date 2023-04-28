@@ -15,5 +15,4 @@ ledger.test
 antlr-*-complete.jar
 go.work
 go.work.sum
-ledger
 benchs

@@ -511,18 +511,17 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	m.Balances = make(map[internal.AccountAddress]map[internal.Asset]*internal.MonetaryInt)
 
 	for address, resourceIndex := range m.UnresolvedResourceBalances {
-		account, err := store.GetAccountWithVolumes(ctx, address)
+		monetary := m.Resources[resourceIndex].(internal.Monetary)
+		balance, err := store.GetBalanceFromLogs(ctx, address, string(monetary.Asset))
 		if err != nil {
 			return err
 		}
-		monetary := m.Resources[resourceIndex].(internal.Monetary)
-		balance := account.Volumes[string(monetary.Asset)].Balance()
 		if balance.Cmp(core.Zero) < 0 {
 			return errorsutil.NewError(ErrNegativeMonetaryAmount, fmt.Errorf(
 				"tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
 				address, monetary.Asset, balance))
 		}
-		monetary.Amount = internal.NewMonetaryIntFromBigInt(account.Volumes[string(monetary.Asset)].Balance())
+		monetary.Amount = internal.NewMonetaryIntFromBigInt(balance)
 		m.Resources[resourceIndex] = monetary
 	}
 
@@ -547,13 +546,12 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 				continue
 			}
 
-			account, err := store.GetAccountWithVolumes(ctx, string(accountAddress))
+			balance, err := store.GetBalanceFromLogs(ctx, string(accountAddress), string(asset))
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("could not get account %q", account))
+				return errors.Wrap(err, fmt.Sprintf("could not get balance for account %q", addr))
 			}
-			amt := account.Volumes[string(asset)].Balance()
 
-			m.Balances[accountAddress][asset] = internal.NewMonetaryIntFromBigInt(amt)
+			m.Balances[accountAddress][asset] = internal.NewMonetaryIntFromBigInt(balance)
 		}
 	}
 	return nil
@@ -589,18 +587,14 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 		case program.VariableAccountMetadata:
 			acc, _ := m.getResource(res.Account)
 			addr := string((*acc).(internal.AccountAddress))
-			account, err := store.GetAccountWithVolumes(ctx, addr)
-			if err != nil {
-				return nil, nil, errors.Wrap(err, fmt.Sprintf("could not get account %s", addr))
-			}
 
-			entry, ok := account.Metadata[res.Key]
-			if !ok {
+			metadata, err := store.GetMetadataFromLogs(ctx, addr, res.Key)
+			if err != nil {
 				return nil, nil, errorsutil.NewError(ErrResourceResolutionMissingMetadata, errors.New(
 					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, addr)))
 			}
 
-			val, err = internal.NewValueFromTypedJSON(entry)
+			val, err = internal.NewValueFromTypedJSON(metadata)
 			if err != nil {
 				return nil, nil, errorsutil.NewError(ErrResourceResolutionInvalidTypeFromExtSources, errors.New(
 					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, addr)))

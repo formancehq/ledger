@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/formancehq/ledger/pkg/api/middlewares"
-	"github.com/formancehq/ledger/pkg/ledger/cache"
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
 	app "github.com/formancehq/stack/libs/go-libs/service"
@@ -13,11 +12,9 @@ import (
 )
 
 const (
-	cacheEvictionPeriodFlag  = "cache-eviction-period"
-	cacheEvictionRetainDelay = "cache-eviction-retain-delay"
-	queryLimitReadLogsFlag   = "query-limit-read-logs"
-	ballastSizeInBytesFlag   = "ballast-size"
-	numscriptCacheMaxCount   = "numscript-cache-max-count"
+	queryLimitReadLogsFlag = "query-limit-read-logs"
+	ballastSizeInBytesFlag = "ballast-size"
+	numscriptCacheMaxCount = "numscript-cache-max-count"
 )
 
 func NewServe() *cobra.Command {
@@ -41,8 +38,6 @@ func NewServe() *cobra.Command {
 			)...).Run(cmd.Context())
 		},
 	}
-	cmd.Flags().Duration(cacheEvictionPeriodFlag, cache.DefaultEvictionPeriod, "Cache eviction period")
-	cmd.Flags().Duration(cacheEvictionRetainDelay, cache.DefaultRetainDelay, "Cache retain delay")
 	cmd.Flags().Int(queryLimitReadLogsFlag, 10000, "Query limit read logs")
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
 	cmd.Flags().Int(numscriptCacheMaxCount, 1024, "Numscript cache max count")

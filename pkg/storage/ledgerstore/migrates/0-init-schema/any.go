@@ -349,7 +349,7 @@ func buildData(
 			}
 
 			expandedTx := core.ExpandedTransaction{
-				Transaction:       payload.Transaction,
+				Transaction:       *payload.Transaction,
 				PreCommitVolumes:  txVolumeAggregator.PreCommitVolumes,
 				PostCommitVolumes: txVolumeAggregator.PostCommitVolumes,
 			}
@@ -404,7 +404,7 @@ func buildData(
 			}
 
 			expandedTx := core.ExpandedTransaction{
-				Transaction:       payload.RevertTransaction,
+				Transaction:       *payload.RevertTransaction,
 				PreCommitVolumes:  txVolumeAggregator.PreCommitVolumes,
 				PostCommitVolumes: txVolumeAggregator.PostCommitVolumes,
 			}

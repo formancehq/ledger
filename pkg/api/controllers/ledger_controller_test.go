@@ -165,7 +165,7 @@ func TestGetLogs(t *testing.T) {
 
 			expectedCursor := sharedapi.Cursor[core.PersistedLog]{
 				Data: []core.PersistedLog{
-					*core.NewTransactionLog(core.Transaction{}, map[string]metadata.Metadata{}).
+					*core.NewTransactionLog(core.NewTransaction(), map[string]metadata.Metadata{}).
 						ComputePersistentLog(nil),
 				},
 			}
