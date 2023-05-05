@@ -1,4 +1,7 @@
 project_name: numary
+includes:
+  - from_file:
+      path: ./.goreleaser.default.yaml
 env:
   - GO111MODULE=on
   - GOPROXY=https://proxy.golang.org
@@ -76,44 +79,6 @@ archives:
       darwin: macOS
       linux: Linux
       windows: Windows
-
-
-checksum:
-  name_template: 'checksums.txt'
-
-snapshot:
-  name_template: "{{ .Tag }}"
-
-changelog:
-  sort: asc
-  use: github
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^spec:'
-      - Merge pull request
-      - Merge remote-tracking branch
-      - Merge branch
-      - go mod tidy
-  groups:
-    - title: 'New Features'
-      regexp: "^.*feat[(\\w)]*:+.*$"
-      order: 0
-    - title: 'Bug fixes'
-      regexp: "^.*fix[(\\w)]*:+.*$"
-      order: 10
-    - title: Other work
-      order: 999
-
-release:
-  prerelease: auto
-  footer: |
-    ## Want to try this version ?
-    [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/numary/ledger/tree/{{ .Tag }}&version={{ .Tag }})
-    ## What to do next?
-    - Read the [documentation](https://docs.numary.com/oss/ledger/get-started/installation)
-    - Join our [Discord server](https://discord.gg/xyHvcbzk4w)
 
 nfpms:
   - id: packages
