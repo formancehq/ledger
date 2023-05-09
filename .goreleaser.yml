@@ -2,12 +2,10 @@ project_name: numary
 includes:
   - from_file:
       path: ./.goreleaser.default.yaml
-env:
-  - GO111MODULE=on
-  - GOPROXY=https://proxy.golang.org
-before:
-  hooks:
-    - go mod download
+
+monorepo:
+  tag_prefix: components/ledger/
+  dir: ./components/ledger/
 
 builds:
   - binary: numary
