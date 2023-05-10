@@ -12,7 +12,7 @@ import (
 type FallbackAccount internal.Address
 
 // VisitValueAwareSource returns the resource addresses of all the accounts
-func (p *parseVisitor) VisitValueAwareSource(c parser.IValueAwareSourceContext, pushAsset func(), monAddr *core.Address) (map[core.Address]struct{}, *CompileError) {
+func (p *parseVisitor) VisitValueAwareSource(c parser.IValueAwareSourceContext, pushAsset func(), monAddr *internal.Address) (map[internal.Address]struct{}, *CompileError) {
 	neededAccounts := map[internal.Address]struct{}{}
 	isAll := monAddr == nil
 	switch c := c.(type) {

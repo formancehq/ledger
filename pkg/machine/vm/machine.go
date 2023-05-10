@@ -279,7 +279,7 @@ func (m *Machine) tick() (bool, error) {
 		b := pop[internal.Monetary](m)
 		a := pop[internal.Monetary](m)
 		if a.Asset != b.Asset {
-			return true, EXIT_FAIL_INVALID, fmt.Errorf("%s", program.OpcodeName(op))
+			return true, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.pushValue(internal.Monetary{
 			Asset:  a.Asset,
