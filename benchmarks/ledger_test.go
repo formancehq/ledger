@@ -52,10 +52,18 @@ func BenchmarkParallelWrites(b *testing.B) {
 
 			err := json.NewEncoder(buf).Encode(controllers.PostTransactionRequest{
 				Script: core.Script{
-					Plain: fmt.Sprintf(`send [USD/2 100] (
+					Plain: `
+					vars {
+						account $account
+					}
+
+					send [USD/2 100] (
 						source = @world
-						destination = @accounts:%d
-					)`, counter.Add(1)),
+						destination = $account
+					)`,
+					Vars: map[string]json.RawMessage{
+						"account": json.RawMessage(fmt.Sprintf(`"accounts:%d"`, counter.Add(1))),
+					},
 				},
 			})
 			require.NoError(b, err)
