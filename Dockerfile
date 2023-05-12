@@ -23,7 +23,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     -X github.com/ledger/ledger/cmd.Commit=${APP_SHA} \
     -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
 
-FROM ubuntu:jammy as app
+FROM ubuntu:22.04 as app
 RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /src/components/ledger/ledger /usr/local/bin/ledger
 EXPOSE 3068
