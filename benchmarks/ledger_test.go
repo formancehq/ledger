@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -40,13 +39,12 @@ func BenchmarkParallelWrites(b *testing.B) {
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
-	r := rand.New(rand.NewSource(0))
-
 	totalDuration := atomic.Int64{}
 	b.SetParallelism(1000)
 	runtime.GC()
 	b.ResetTimer()
 	startOfBench := time.Now()
+	counter := atomic.NewInt64(0)
 	b.RunParallel(func(pb *testing.PB) {
 		buf := bytes.NewBufferString("")
 		for pb.Next() {
@@ -57,7 +55,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 					Plain: fmt.Sprintf(`send [USD/2 100] (
 						source = @world
 						destination = @accounts:%d
-					)`, r.Int()%100),
+					)`, counter.Add(1)),
 				},
 			})
 			require.NoError(b, err)
