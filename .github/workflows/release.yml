@@ -1,118 +1,118 @@
-name: Ledger - Release
-on:
-  push:
-    tags:
-      - 'v*.*.*'
+# name: Ledger - Release
+# on:
+#   push:
+#     tags:
+#       - 'v*.*.*'
 
-jobs:
-  Control:
-    name: 'Build Control'
-    runs-on: ubuntu-latest
-    steps:
-      - run: curl -OL https://github.com/numary/control/releases/download/1.2.0/numary-control-1.2.0.tar.gz
-      - run: tar -zxvf numary-control-1.2.0.tar.gz
-      - run: rm -rf numary-control-1.2.0.tar.gz
-      - uses: actions/upload-artifact@v2
-        with:
-          name: control-dist
-          path: ./**
+# jobs:
+#   Control:
+#     name: 'Build Control'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - run: curl -OL https://github.com/numary/control/releases/download/1.2.0/numary-control-1.2.0.tar.gz
+#       - run: tar -zxvf numary-control-1.2.0.tar.gz
+#       - run: rm -rf numary-control-1.2.0.tar.gz
+#       - uses: actions/upload-artifact@v2
+#         with:
+#           name: control-dist
+#           path: ./**
 
-  Lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Install Task
-        uses: arduino/setup-task@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-          cache: true
-      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
-      - run: task lint
+#   Lint:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v3
+#         with:
+#           fetch-depth: 0
+#       - name: Install Task
+#         uses: arduino/setup-task@v1
+#         with:
+#           repo-token: ${{ secrets.GITHUB_TOKEN }}
+#       - uses: actions/setup-go@v3
+#         with:
+#           go-version-file: go.mod
+#           cache-dependency-path: go.sum
+#           cache: true
+#       - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
+#       - run: task lint
 
-  Tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Install Task
-        uses: arduino/setup-task@v1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-          cache: true
-      - run: task tests
-      - name: Upload coverage report to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          name: 'Ledger'
-          fail_ci_if_error: false # optional (default = false)
-          verbose: true # optional (default = false)
+#   Tests:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v3
+#         with:
+#           fetch-depth: 0
+#       - name: Set up QEMU
+#         uses: docker/setup-qemu-action@v2
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v2
+#       - name: Install Task
+#         uses: arduino/setup-task@v1
+#         with:
+#           repo-token: ${{ secrets.GITHUB_TOKEN }}
+#       - uses: actions/setup-go@v3
+#         with:
+#           go-version-file: go.mod
+#           cache-dependency-path: go.sum
+#           cache: true
+#       - run: task tests
+#       - name: Upload coverage report to Codecov
+#         uses: codecov/codecov-action@v3
+#         with:
+#           name: 'Ledger'
+#           fail_ci_if_error: false # optional (default = false)
+#           verbose: true # optional (default = false)
 
-  GoReleaser:
-    name: GoReleaser
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, macos-latest ]
-    runs-on: ${{ matrix.os }}
-    env:
-      DOCKER_CLI_EXPERIMENTAL: "enabled"
-    needs:
-      - Tests
-      - Lint
-      - Control
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-      - name: fetch numary control
-        uses: actions/download-artifact@v2
-        with:
-          name: control-dist
-          path: cmd/control/
-      - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-      - name: Run GoReleaser for Linux
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-        uses: goreleaser/goreleaser-action@v4
-        with:
-          version: latest
-          args: release --rm-dist
-      - name: Run GoReleaser for MacOS
-        if: ${{ matrix.os == 'macos-latest' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
-        uses: goreleaser/goreleaser-action@v4
-        with:
-          version: latest
-          args: release -f .goreleaser-darwin.yml --rm-dist
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ./dist/*.deb
-            ./dist/*.rpm
-            ./dist/*.apk
-          key: ${{ runner.os }}-go-${{ hashFiles('**/*.go') }}-${{ hashFiles('**/go.sum') }}
+#   GoReleaser:
+#     name: GoReleaser
+#     strategy:
+#       matrix:
+#         os: [ ubuntu-latest, macos-latest ]
+#     runs-on: ${{ matrix.os }}
+#     env:
+#       DOCKER_CLI_EXPERIMENTAL: "enabled"
+#     needs:
+#       - Tests
+#       - Lint
+#       - Control
+#     steps:
+#       - uses: actions/checkout@v3
+#         with:
+#           fetch-depth: 0
+#       - uses: actions/setup-go@v3
+#         with:
+#           go-version-file: 'go.mod'
+#           cache: true
+#       - name: fetch numary control
+#         uses: actions/download-artifact@v2
+#         with:
+#           name: control-dist
+#           path: cmd/control/
+#       - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
+#         if: ${{ matrix.os == 'ubuntu-latest' }}
+#       - name: Run GoReleaser for Linux
+#         if: ${{ matrix.os == 'ubuntu-latest' }}
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+#           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+#           SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+#         uses: goreleaser/goreleaser-action@v4
+#         with:
+#           version: latest
+#           args: release --rm-dist
+#       - name: Run GoReleaser for MacOS
+#         if: ${{ matrix.os == 'macos-latest' }}
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+#           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+#           SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
+#         uses: goreleaser/goreleaser-action@v4
+#         with:
+#           version: latest
+#           args: release -f .goreleaser-darwin.yml --rm-dist
+#       - uses: actions/cache@v2
+#         with:
+#           path: |
+#             ./dist/*.deb
+#             ./dist/*.rpm
+#             ./dist/*.apk
+#           key: ${{ runner.os }}-go-${{ hashFiles('**/*.go') }}-${{ hashFiles('**/go.sum') }}
