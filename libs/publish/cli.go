@@ -66,7 +66,7 @@ func CLIPublisherModule(v *viper.Viper, serviceName string) fx.Option {
 		// Currently don't expose http listener, so pass addr == ""
 		options = append(options, httpModule(""))
 	case v.GetBool(PublisherNatsEnabledFlag):
-		options = append(options, natsModule(
+		options = append(options, NatsModule(
 			v.GetString(PublisherNatsClientIDFlag), v.GetString(PublisherNatsURLFlag), serviceName))
 	case v.GetBool(PublisherKafkaEnabledFlag):
 		options = append(options,

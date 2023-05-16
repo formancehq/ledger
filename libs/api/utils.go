@@ -55,6 +55,13 @@ func Ok(w io.Writer, v any) {
 	}
 }
 
+func WriteResponse(w http.ResponseWriter, status int, body []byte) {
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		panic(err)
+	}
+}
+
 func RenderCursor[T any](w io.Writer, v Cursor[T]) {
 	if err := json.NewEncoder(w).Encode(BaseResponse[T]{
 		Cursor: &v,

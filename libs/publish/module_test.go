@@ -137,7 +137,7 @@ func TestModule(t *testing.T) {
 				t.Cleanup(server.Shutdown)
 
 				return fx.Options(
-					natsModule("example", "nats://127.0.0.1:4322", "testing"),
+					NatsModule("example", "nats://127.0.0.1:4322", "testing"),
 				)
 			},
 			topicMapping: map[string]string{},
