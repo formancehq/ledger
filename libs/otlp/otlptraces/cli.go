@@ -20,6 +20,8 @@ const (
 )
 
 func InitOTLPTracesFlags(flags *flag.FlagSet) {
+	otlp.InitOTLPFlags(flags)
+
 	flags.Bool(OtelTracesFlag, false, "Enable OpenTelemetry traces support")
 	flags.Bool(OtelTracesBatchFlag, false, "Use OpenTelemetry batching")
 	flags.String(OtelTracesExporterFlag, "stdout", "OpenTelemetry traces exporter")

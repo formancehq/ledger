@@ -30,6 +30,11 @@ tasks:
       - echo "xdg-open coverage.html on linux"
     silent: true
 
+  libs/sync:
+    cmds:
+      - rm -rf ./libs/*
+      - cp -R ./../../libs/go-libs/* ./libs/
+
   bench:
     internal: true
     cmds:

@@ -2,18 +2,26 @@ package pgtesting
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	_ "github.com/lib/pq"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 )
+
+type TestingT interface {
+	require.TestingT
+	Cleanup(func())
+}
 
 type pgDatabase struct {
 	url string
@@ -26,7 +34,7 @@ func (s *pgDatabase) ConnString() string {
 type pgServer struct {
 	destroy func() error
 	lock    sync.Mutex
-	conn    *pgx.Conn
+	db      *bun.DB
 	port    string
 	config  config
 }
@@ -60,19 +68,19 @@ func (s *pgServer) GetDatabaseDSN(databaseName string) string {
 		s.config.initialUserPassword, s.port, databaseName)
 }
 
-func (s *pgServer) NewDatabase(t *testing.T) *pgDatabase {
+func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	databaseName := uuid.NewString()
-	_, err := s.conn.Exec(context.Background(), fmt.Sprintf(`CREATE DATABASE "%s"`, databaseName))
+	_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`CREATE DATABASE "%s"`, databaseName))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		s.lock.Lock()
 		defer s.lock.Unlock()
 
-		_, _ = s.conn.Exec(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
+		_, _ = s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
 	})
 
 	return &pgDatabase{
@@ -81,10 +89,10 @@ func (s *pgServer) NewDatabase(t *testing.T) *pgDatabase {
 }
 
 func (s *pgServer) Close() error {
-	if s.conn == nil {
+	if s.db == nil {
 		return nil
 	}
-	if err := s.conn.Close(context.Background()); err != nil {
+	if err := s.db.Close(); err != nil {
 		return err
 	}
 	if err := s.destroy(); err != nil {
@@ -99,7 +107,7 @@ func Server() *pgServer {
 	return srv
 }
 
-func NewPostgresDatabase(t *testing.T) *pgDatabase {
+func NewPostgresDatabase(t TestingT) *pgDatabase {
 	return srv.NewDatabase(t)
 }
 
@@ -114,6 +122,7 @@ type config struct {
 	statusCheckInterval time.Duration
 	maximumWaitingTime  time.Duration
 	context             context.Context
+	hostConfigOptions   []func(hostConfig *docker.HostConfig)
 }
 
 func (c config) validate() error {
@@ -165,6 +174,12 @@ func WithContext(ctx context.Context) option {
 	}
 }
 
+func WithDockerHostConfigOption(opt func(hostConfig *docker.HostConfig)) option {
+	return func(opts *config) {
+		opts.hostConfigOptions = append(opts.hostConfigOptions, opt)
+	}
+}
+
 var defaultOptions = []option{
 	WithStatusCheckInterval(200 * time.Millisecond),
 	WithInitialUser("root", "root"),
@@ -174,7 +189,6 @@ var defaultOptions = []option{
 }
 
 func CreatePostgresServer(opts ...option) error {
-
 	cfg := config{}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(&cfg)
@@ -199,7 +213,7 @@ func CreatePostgresServer(opts ...option) error {
 		},
 		Entrypoint: nil,
 		Cmd:        []string{"-c", "superuser-reserved-connections=0"},
-	})
+	}, cfg.hostConfigOptions...)
 	if err != nil {
 		return errors.Wrap(err, "unable to start postgres server container")
 	}
@@ -213,8 +227,13 @@ func CreatePostgresServer(opts ...option) error {
 	}
 
 	try := time.Duration(0)
+	sqldb, err := sql.Open("postgres", srv.GetDatabaseDSN(cfg.initialDatabaseName))
+	if err != nil {
+		return err
+	}
+	srv.db = bun.NewDB(sqldb, pgdialect.New())
 	for try*cfg.statusCheckInterval < cfg.maximumWaitingTime {
-		srv.conn, err = pgx.Connect(context.Background(), srv.GetDatabaseDSN(cfg.initialDatabaseName))
+		err := srv.db.Ping()
 		if err != nil {
 			try++
 			select {
@@ -224,6 +243,7 @@ func CreatePostgresServer(opts ...option) error {
 			}
 			continue
 		}
+
 		return nil
 	}
 
