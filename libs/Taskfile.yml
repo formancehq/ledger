@@ -14,7 +14,7 @@ tasks:
 
   lint:
     cmds:
-      - golangci-lint run -v --fix {{.PKG}}
+      - golangci-lint run --fix --allow-parallel-runners --config ./../../.golangci.yml
 
   tests:
     cmds:
@@ -37,3 +37,8 @@ tasks:
       - echo "open coverage.html on mac"
       - echo "xdg-open coverage.html on linux"
     silent: true
+
+  sync:ledger:
+    cmds:
+      - rm -rf ./../../components/ledger/libs/*
+      - cp -R * ./../../components/ledger/libs/

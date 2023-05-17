@@ -10,6 +10,7 @@ import (
 )
 
 const DebugFlag = "debug"
+const JsonFormattingLoggerFlag = "json-formatting-logger"
 
 type App struct {
 	options []fx.Option
@@ -24,10 +25,12 @@ func (a *App) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return app.Stop(context.Background())
 	case <-app.Done():
-		return app.Err()
+		// <-app.Done() is a signals channel, it means we have to call the
+		// app.Stop in order to gracefully shutdown the app
 	}
+
+	return app.Stop(context.Background())
 }
 
 func (a *App) Start(ctx context.Context) error {
@@ -35,7 +38,7 @@ func (a *App) Start(ctx context.Context) error {
 }
 
 func (a *App) newFxApp(ctx context.Context) *fx.App {
-	ctx = defaultLoggingContext(ctx, a.output, viper.GetBool(DebugFlag))
+	ctx = defaultLoggingContext(ctx, a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
 	options := append(a.options,
 		fx.NopLogger,
 		fx.Provide(func() logging.Logger {

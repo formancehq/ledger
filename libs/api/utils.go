@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,49 +9,69 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/logging"
 )
 
-const defaultLimit = 15
+const (
+	defaultLimit = 15
+
+	ErrorCodeNotFound = "NOT_FOUND"
+)
+
+func writeJSON(w http.ResponseWriter, statusCode int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if v != nil {
+		if err := json.NewEncoder(w).Encode(v); err != nil {
+			panic(err)
+		}
+	}
+}
 
 func NotFound(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusNotFound)
+	writeJSON(w, http.StatusNotFound, ErrorResponse{
+		ErrorCode:    ErrorCodeNotFound,
+		ErrorMessage: "resource not found",
+	})
 }
 
 func NoContent(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusNoContent, nil)
 }
 
 func BadRequest(w http.ResponseWriter, code string, err error) {
-	w.WriteHeader(http.StatusBadRequest)
-	if err := json.NewEncoder(w).Encode(ErrorResponse{
+	writeJSON(w, http.StatusBadRequest, ErrorResponse{
 		ErrorCode:    code,
 		ErrorMessage: err.Error(),
-	}); err != nil {
-		panic(err)
-	}
+	})
 }
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	logging.FromContext(r.Context()).Error(err)
 
-	w.WriteHeader(http.StatusInternalServerError)
-	if err := json.NewEncoder(w).Encode(ErrorResponse{
+	writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 		ErrorCode:    "INTERNAL_ERROR",
 		ErrorMessage: err.Error(),
-	}); err != nil {
-		panic(err)
-	}
+	})
 }
 
 func Created(w http.ResponseWriter, v any) {
-	w.WriteHeader(http.StatusCreated)
-	Ok(w, v)
+	writeJSON(w, http.StatusCreated, BaseResponse[any]{
+		Data: &v,
+	})
 }
 
-func Ok(w io.Writer, v any) {
-	if err := json.NewEncoder(w).Encode(BaseResponse[any]{
+func RawOk(w http.ResponseWriter, v any) {
+	writeJSON(w, http.StatusOK, v)
+}
+
+func Ok(w http.ResponseWriter, v any) {
+	writeJSON(w, http.StatusOK, BaseResponse[any]{
 		Data: &v,
-	}); err != nil {
-		panic(err)
-	}
+	})
+}
+
+func RenderCursor[T any](w http.ResponseWriter, v Cursor[T]) {
+	writeJSON(w, http.StatusOK, BaseResponse[T]{
+		Cursor: &v,
+	})
 }
 
 func WriteResponse(w http.ResponseWriter, status int, body []byte) {
@@ -62,15 +81,7 @@ func WriteResponse(w http.ResponseWriter, status int, body []byte) {
 	}
 }
 
-func RenderCursor[T any](w io.Writer, v Cursor[T]) {
-	if err := json.NewEncoder(w).Encode(BaseResponse[T]{
-		Cursor: &v,
-	}); err != nil {
-		panic(err)
-	}
-}
-
-func CursorFromListResponse[T any, V any](w io.Writer, query ListQuery[V], response *ListResponse[T]) {
+func CursorFromListResponse[T any, V any](w http.ResponseWriter, query ListQuery[V], response *ListResponse[T]) {
 	RenderCursor(w, Cursor[T]{
 		PageSize: query.Limit,
 		HasMore:  response.HasMore,
@@ -81,7 +92,7 @@ func CursorFromListResponse[T any, V any](w io.Writer, query ListQuery[V], respo
 }
 
 func ParsePaginationToken(r *http.Request) string {
-	return r.URL.Query().Get("RenderCursor")
+	return r.URL.Query().Get("paginationToken")
 }
 
 func ParsePageSize(r *http.Request) int {
@@ -111,8 +122,8 @@ func ReadPaginatedRequest[T any](r *http.Request, f func(r *http.Request) T) Lis
 	}
 }
 
-func GetQueryMap(m map[string][]string, key string) map[string]any {
-	dicts := make(map[string]any)
+func GetQueryMap(m map[string][]string, key string) map[string]string {
+	dicts := make(map[string]string)
 	for k, v := range m {
 		if i := strings.IndexByte(k, '['); i >= 1 && k[0:i] == key {
 			if j := strings.IndexByte(k[i+1:], ']'); j >= 1 {
