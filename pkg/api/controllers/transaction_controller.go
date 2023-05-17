@@ -64,7 +64,8 @@ func (ctl *TransactionController) CountTransactions(c *gin.Context) {
 		WithSourceFilter(c.Query("source")).
 		WithDestinationFilter(c.Query("destination")).
 		WithStartTimeFilter(startTimeParsed).
-		WithEndTimeFilter(endTimeParsed)
+		WithEndTimeFilter(endTimeParsed).
+		WithMetadataFilter(c.QueryMap("metadata"))
 
 	count, err := l.(*ledger.Ledger).CountTransactions(c.Request.Context(), *txQuery)
 	if err != nil {
