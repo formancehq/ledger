@@ -1199,7 +1199,12 @@ func TestTransactions(t *testing.T) {
 
 						require.Len(t, cursor.Data, 1)
 						require.Equal(t, cursor.Data[0].ID, tx3.ID)
+	rsp = internal.CountTransactions(api, url.Values{
+						"metadata[priority]": []string{"high"},
 					})
+					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+					require.Equal(t, "1", rsp.Header().Get("Count"))
+				})
 
 					t.Run("after", func(t *testing.T) {
 						rsp := internal.GetTransactions(api, url.Values{
