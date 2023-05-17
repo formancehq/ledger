@@ -27,6 +27,13 @@ func GoChannelModule() fx.Option {
 		fx.Provide(func(ch *gochannel.GoChannel) message.Publisher {
 			return ch
 		}),
+		fx.Invoke(func(lc fx.Lifecycle, channel *gochannel.GoChannel) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					return channel.Close()
+				},
+			})
+		}),
 	)
 }
 

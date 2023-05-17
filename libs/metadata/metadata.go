@@ -8,15 +8,7 @@ import (
 	"github.com/imdario/mergo"
 )
 
-const (
-	namespace = "com.numary.spec/"
-)
-
-func SpecMetadata(name string) string {
-	return namespace + name
-}
-
-type Metadata map[string]any
+type Metadata map[string]string
 
 // IsEquivalentTo allow to compare to metadata object.
 func (m1 Metadata) IsEquivalentTo(m2 Metadata) bool {
@@ -59,8 +51,33 @@ func (m1 Metadata) ConvertValue(v interface{}) (driver.Value, error) {
 	return json.Marshal(v)
 }
 
-func ComputeMetadata(key string, value interface{}) Metadata {
+func (m1 Metadata) Copy() Metadata {
+	ret := Metadata{}
+	for k, v := range m1 {
+		ret[k] = v
+	}
+	return ret
+}
+
+func ComputeMetadata(key, value string) Metadata {
 	return Metadata{
 		key: value,
 	}
+}
+
+func MarshalValue(v any) string {
+	vv, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return string(vv)
+}
+
+func UnmarshalValue[TO any](value string) TO {
+	var ret TO
+	if err := json.Unmarshal([]byte(value), &ret); err != nil {
+		panic(err)
+	}
+	return ret
 }
