@@ -2352,3 +2352,85 @@ func TestPostTransactionsScriptConflict(t *testing.T) {
 		})
 	}))
 }
+
+func TestPaginationReverse(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+
+				store, _, err := driver.GetLedgerStore(context.Background(), internal.TestingLedger, true)
+				require.NoError(t, err)
+
+				_, err = store.Initialize(ctx)
+				require.NoError(t, err)
+
+				now := time.Now().UTC().Round(time.Second)
+
+				for i := 0; i < 1000; i++ {
+					require.NoError(t, store.Commit(context.Background(), core.ExpandedTransaction{
+						Transaction: core.Transaction{
+							TransactionData: core.TransactionData{
+								Postings: []core.Posting{
+									{
+										Source:      "world",
+										Destination: fmt.Sprintf("bank:%d", i%10),
+										Amount:      core.NewMonetaryInt(100),
+										Asset:       "USD",
+									},
+								},
+								Metadata: map[string]any{
+									"transactionToSearch": "true",
+								},
+								Timestamp: now.Add(time.Duration(i) * time.Hour),
+							},
+							ID: uint64(i),
+						},
+					}))
+				}
+
+				// Get first page
+				rec := internal.GetTransactions(api, url.Values{
+					"metadata[transactionToSearch]": []string{"true"},
+					"pageSize":                      []string{"10"},
+					"startTime":                     []string{now.Add(100 * time.Hour).Format(time.RFC3339)},
+					"endTime":                       []string{now.Add(900 * time.Hour).Format(time.RFC3339)},
+					"account":                       []string{"bank:.*"},
+				})
+				require.Equal(t, http.StatusOK, rec.Code)
+
+				cursor := internal.DecodeCursorResponse[core.Transaction](t, rec.Body)
+				require.NotEmpty(t, cursor.Next)
+
+				pageCount := 1
+				next := cursor.Next
+				for next != "" {
+					pageCount++
+					rec := internal.GetTransactions(api, url.Values{
+						"cursor": []string{next},
+					})
+					require.Equal(t, http.StatusOK, rec.Code)
+
+					cursor = internal.DecodeCursorResponse[core.Transaction](t, rec.Body)
+					next = cursor.Next
+				}
+
+				pageCount--
+				previous := cursor.Previous
+				for previous != "" {
+					pageCount--
+					rec := internal.GetTransactions(api, url.Values{
+						"cursor": []string{previous},
+					})
+					require.Equal(t, http.StatusOK, rec.Code)
+
+					cursor = internal.DecodeCursorResponse[core.Transaction](t, rec.Body)
+					previous = cursor.Previous
+					require.Len(t, cursor.Data, 10)
+				}
+				require.Equal(t, 0, pageCount)
+
+				return nil
+			},
+		})
+	}))
+}

@@ -3,7 +3,6 @@ package sqlstorage
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -22,9 +21,8 @@ import (
 // which allows segmented address pattern matching, e.g; "foo:bar:*"
 var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
 
-func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
+func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) *sqlbuilder.SelectBuilder {
 	sb := sqlbuilder.NewSelectBuilder()
-	t := TxsPaginationToken{}
 
 	var (
 		destination = p.Filters.Destination
@@ -66,7 +64,6 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
-		t.SourceFilter = source
 	}
 	if destination != "" {
 		if !addressQueryRegexp.MatchString(destination) || flavor == SQLite {
@@ -86,7 +83,6 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		}
-		t.DestinationFilter = destination
 	}
 	if account != "" {
 		if !addressQueryRegexp.MatchString(account) || flavor == SQLite {
@@ -106,19 +102,15 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath)", i, arg, i, arg))
 			}
 		}
-		t.AccountFilter = account
 	}
 	if reference != "" {
 		sb.Where(sb.E("reference", reference))
-		t.ReferenceFilter = reference
 	}
 	if !startTime.IsZero() {
 		sb.Where(sb.GE("timestamp", startTime.UTC()))
-		t.StartTime = startTime
 	}
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
-		t.EndTime = endTime
 	}
 
 	for key, value := range metadata {
@@ -128,44 +120,26 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 				SQLCustomFuncMetaCompare, arg, strings.ReplaceAll(key, ".", "', '")),
 		))
 	}
-	t.MetadataFilter = metadata
+	if p.Filters.AfterTxID != 0 {
+		sb = sb.Where(sb.L("id", p.Filters.AfterTxID))
+	}
 
-	return sb, t
+	return sb
 }
 
 func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery) (api.Cursor[core.ExpandedTransaction], error) {
-	txs := make([]core.ExpandedTransaction, 0)
-
-	if q.PageSize == 0 {
-		return api.Cursor[core.ExpandedTransaction]{Data: txs}, nil
-	}
-
-	sb, t := s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
-	sb.OrderBy("id").Desc()
-	if q.AfterTxID > 0 {
-		sb.Where(sb.LE("id", q.AfterTxID))
-	}
-
-	// We fetch additional transactions to know if there are more before and/or after.
-	sb.Limit(int(q.PageSize + 2))
-	t.PageSize = q.PageSize
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
 		return api.Cursor[core.ExpandedTransaction]{}, err
 	}
 
-	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	rows, err := executor.QueryContext(ctx, sqlq, args...)
-	if err != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
+	cursor, err := UsingColumn[ledger.TransactionsQueryFilters, core.ExpandedTransaction](ctx, executor, func(filters ledger.TransactionsQueryFilters, models *[]core.ExpandedTransaction) *sqlbuilder.SelectBuilder {
+		return s.buildTransactionsQuery(Flavor(s.schema.Flavor()), q)
+	}, (ledger.ColumnPaginatedQuery[ledger.TransactionsQueryFilters])(q), func(scanner Scanner) (core.ExpandedTransaction, uint64, error) {
 		var ref sql.NullString
 		tx := core.ExpandedTransaction{}
-		if err := rows.Scan(
+		if err := scanner.Scan(
 			&tx.ID,
 			&tx.Timestamp,
 			&ref,
@@ -174,53 +148,20 @@ func (s *Store) GetTransactions(ctx context.Context, q ledger.TransactionsQuery)
 			&tx.PreCommitVolumes,
 			&tx.PostCommitVolumes,
 		); err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, err
+			return core.ExpandedTransaction{}, 0, err
 		}
 		tx.Reference = ref.String
 		if tx.Metadata == nil {
 			tx.Metadata = core.Metadata{}
 		}
 		tx.Timestamp = tx.Timestamp.UTC()
-		txs = append(txs, tx)
-	}
-	if rows.Err() != nil {
-		return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
-	}
 
-	var previous, next string
-
-	// Page with transactions before
-	if q.AfterTxID > 0 && len(txs) > 1 && txs[0].ID == q.AfterTxID {
-		t.AfterTxID = txs[0].ID + uint64(q.PageSize)
-		txs = txs[1:]
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
-		}
-		previous = base64.RawURLEncoding.EncodeToString(raw)
+		return tx, tx.ID, nil
+	}, Flavor(s.schema.Flavor()))
+	if err != nil {
+		return api.Cursor[core.ExpandedTransaction]{}, err
 	}
-
-	// Page with transactions after
-	if len(txs) > int(q.PageSize) {
-		txs = txs[:q.PageSize]
-		t.AfterTxID = txs[len(txs)-1].ID
-		raw, err := json.Marshal(t)
-		if err != nil {
-			return api.Cursor[core.ExpandedTransaction]{}, s.error(err)
-		}
-		next = base64.RawURLEncoding.EncodeToString(raw)
-	}
-
-	hasMore := next != ""
-	return api.Cursor[core.ExpandedTransaction]{
-		PageSize:           int(q.PageSize),
-		HasMore:            hasMore,
-		Previous:           previous,
-		Next:               next,
-		Data:               txs,
-		PageSizeDeprecated: int(q.PageSize),
-		HasMoreDeprecated:  &hasMore,
-	}, nil
+	return *cursor, nil
 }
 
 func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.ExpandedTransaction, error) {

@@ -21,7 +21,6 @@ import (
 	"github.com/numary/ledger/pkg/storage"
 	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 )
@@ -552,118 +551,99 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
-		cursor, err := store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			PageSize: 1,
-		})
+		query := ledger.NewTransactionsQuery().WithPageSize(1)
+		cursor, err := store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		// Should get only the first transaction.
 		require.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			AfterTxID: cursor.Data[0].ID,
-			PageSize:  1,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithPageSize(1).
+			WithAfterTxID(cursor.Data[0].ID)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		// Should get only the second transaction.
 		require.Equal(t, 1, cursor.PageSize)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Account:   "world",
-				Reference: "tx1",
-			},
-			PageSize: 1,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithPageSize(1).
+			WithAccountFilter("world").
+			WithReferenceFilter("tx1")
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 1, cursor.PageSize)
 		// Should get only the first transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Account: "users:.*",
-			},
-			PageSize: 10,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithAccountFilter("users:.*").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Source: "central_bank",
-			},
-			PageSize: 10,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithSourceFilter("central_bank").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Destination: "users:1",
-			},
-			PageSize: 10,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithDestinationFilter("users:1").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Destination: "users:.*", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		query = ledger.NewTransactionsQuery().
+			WithDestinationFilter("users:.*").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
+		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Destination: ".*:1", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		query = ledger.NewTransactionsQuery().
+			WithDestinationFilter(".*:1").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
+		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Source: ".*bank", // Use regex
-			},
-			PageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, 10, cursor.PageSize)
+		query = ledger.NewTransactionsQuery().
+			WithSourceFilter(".*bank").
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
+		require.NoError(t, err)
+		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
-		assert.Len(t, cursor.Data, 1)
+		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now.Add(-1 * time.Hour),
-			},
-			PageSize: 10,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithStartTimeFilter(now.Add(-2 * time.Hour)).
+			WithEndTimeFilter(now.Add(-1 * time.Hour)).
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
 		// Should get only tx2, as StartTime is inclusive and EndTime exclusive.
 		require.Len(t, cursor.Data, 1)
 
-		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
-			Filters: ledger.TransactionsQueryFilters{
-				Metadata: map[string]string{
-					"priority": "high",
-				},
-			},
-			PageSize: 10,
-		})
+		query = ledger.NewTransactionsQuery().
+			WithMetadataFilter(map[string]string{
+				"priority": "high",
+			}).
+			WithPageSize(10)
+		cursor, err = store.GetTransactions(context.Background(), *query)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
 		// Should get only the third transaction.
@@ -684,22 +664,22 @@ func testMapping(t *testing.T, store *sqlstorage.Store) {
 		},
 	}
 	err := store.SaveMapping(context.Background(), m)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mapping, err := store.LoadMapping(context.Background())
-	assert.NoError(t, err)
-	assert.Len(t, mapping.Contracts, 1)
-	assert.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
+	require.NoError(t, err)
+	require.Len(t, mapping.Contracts, 1)
+	require.EqualValues(t, m.Contracts[0], mapping.Contracts[0])
 
 	m2 := core.Mapping{
 		Contracts: []core.Contract{},
 	}
 	err = store.SaveMapping(context.Background(), m2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mapping, err = store.LoadMapping(context.Background())
-	assert.NoError(t, err)
-	assert.Len(t, mapping.Contracts, 0)
+	require.NoError(t, err)
+	require.Len(t, mapping.Contracts, 0)
 }
 
 func testGetTransaction(t *testing.T, store *sqlstorage.Store) {
