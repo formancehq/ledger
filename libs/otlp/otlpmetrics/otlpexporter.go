@@ -17,7 +17,7 @@ func LoadOTLPMetricsGRPCExporter(options ...otlpmetricgrpc.Option) (sdkmetric.Ex
 func ProvideOTLPMetricsGRPCExporter() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadOTLPMetricsGRPCExporter, fx.As(new(sdkmetric.Exporter))),
+			fx.Annotate(LoadOTLPMetricsGRPCExporter, fx.ParamTags(OTLPMetricsGRPCOptionsKey), fx.As(new(sdkmetric.Exporter))),
 		),
 	)
 }
@@ -30,7 +30,7 @@ func LoadOTLPMetricsHTTPExporter(options ...otlpmetrichttp.Option) (sdkmetric.Ex
 func ProvideOTLPMetricsHTTPExporter() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			fx.Annotate(LoadOTLPMetricsHTTPExporter, fx.As(new(sdkmetric.Exporter))),
+			fx.Annotate(LoadOTLPMetricsHTTPExporter, fx.ParamTags(OTLPMetricsHTTPOptionsKey), fx.As(new(sdkmetric.Exporter))),
 		),
 	)
 }
