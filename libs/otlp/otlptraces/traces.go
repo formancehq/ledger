@@ -2,18 +2,14 @@ package otlptraces
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/formancehq/stack/libs/go-libs/otlp"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -53,27 +49,11 @@ func ProvideTracerProviderOption(v any, annotations ...fx.Annotation) fx.Option 
 	return fx.Provide(fx.Annotate(v, annotations...))
 }
 
-func loadResource(cfg ModuleConfig) (*resource.Resource, error) {
-	defaultResource := resource.Default()
-	attributes := make([]attribute.KeyValue, 0)
-	if cfg.ServiceName != "" {
-		attributes = append(attributes, attribute.String("service.name", cfg.ServiceName))
-	}
-	for _, ra := range cfg.ResourceAttributes {
-		parts := strings.SplitN(ra, "=", 2)
-		if len(parts) < 2 {
-			return nil, fmt.Errorf("malformed otlp attribute: %s", ra)
-		}
-		attributes = append(attributes, attribute.String(parts[0], parts[1]))
-	}
-	return resource.Merge(defaultResource, resource.NewSchemaless(attributes...))
-}
-
 func TracesModule(cfg ModuleConfig) fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options,
 		fx.Supply(cfg),
-		fx.Provide(loadResource),
+		otlp.LoadResource(cfg.ServiceName, cfg.ResourceAttributes),
 		fx.Provide(func(tp *tracesdk.TracerProvider) trace.TracerProvider { return tp }),
 		fx.Provide(fx.Annotate(func(options ...tracesdk.TracerProviderOption) *tracesdk.TracerProvider {
 			return tracesdk.NewTracerProvider(options...)

@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"flag"
 	"io"
 	"os"
 	"testing"
@@ -63,6 +64,7 @@ func NewLogrus(logger *logrus.Logger) *logrusLogger {
 func Testing() *logrusLogger {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
+	flag.Parse()
 	if testing.Verbose() {
 		logger.SetOutput(os.Stdout)
 		logger.SetLevel(logrus.DebugLevel)
