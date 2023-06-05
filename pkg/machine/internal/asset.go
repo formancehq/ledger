@@ -19,7 +19,7 @@ type HasAsset interface {
 
 func (a Asset) GetAsset() Asset { return a }
 
-func ParseAsset(ass Asset) error {
+func ValidateAsset(ass Asset) error {
 	if !core.AssetRegexp.MatchString(string(ass)) {
 		return fmt.Errorf("asset should respect pattern '%s'", core.AssetPattern)
 	}

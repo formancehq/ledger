@@ -2,7 +2,6 @@ package program
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 
 	"github.com/formancehq/ledger/pkg/machine/internal"
@@ -48,12 +47,12 @@ func (p *Program) ParseVariables(vars map[string]internal.Value) (map[string]int
 				variables[variable.Name] = val
 				switch val.GetType() {
 				case internal.TypeAccount:
-					if err := internal.ParseAccountAddress(val.(internal.AccountAddress)); err != nil {
+					if err := internal.ValidateAccountAddress(val.(internal.AccountAddress)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
 							variable.Name, string(val.(internal.AccountAddress)))
 					}
 				case internal.TypeAsset:
-					if err := internal.ParseAsset(val.(internal.Asset)); err != nil {
+					if err := internal.ValidateAsset(val.(internal.Asset)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
 							variable.Name, string(val.(internal.Asset)))
 					}
@@ -88,7 +87,7 @@ func (p *Program) ParseVariables(vars map[string]internal.Value) (map[string]int
 	return variables, nil
 }
 
-func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[string]internal.Value, error) {
+func (p *Program) ParseVariablesJSON(vars map[string]string) (map[string]internal.Value, error) {
 	variables := make(map[string]internal.Value)
 	for _, res := range p.Resources {
 		if param, ok := res.(Variable); ok {
@@ -96,7 +95,7 @@ func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[strin
 			if !ok {
 				return nil, fmt.Errorf("missing variable $%s", param.Name)
 			}
-			val, err := internal.NewValueFromJSON(param.Typ, data)
+			val, err := internal.NewValueFromString(param.Typ, data)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"invalid JSON value for variable $%s of type %v: %w",

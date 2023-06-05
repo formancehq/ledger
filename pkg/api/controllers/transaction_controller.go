@@ -140,9 +140,29 @@ func GetTransactions(w http.ResponseWriter, r *http.Request) {
 	sharedapi.RenderCursor(w, *cursor)
 }
 
+type Script struct {
+	core.Script
+	Vars map[string]any `json:"vars"`
+}
+
+func (s Script) ToCore() core.Script {
+	s.Script.Vars = map[string]string{}
+	for k, v := range s.Vars {
+		switch v := v.(type) {
+		case string:
+			s.Script.Vars[k] = v
+		case map[string]any:
+			s.Script.Vars[k] = fmt.Sprintf("%s %v", v["asset"], v["amount"])
+		default:
+			s.Script.Vars[k] = fmt.Sprint(v)
+		}
+	}
+	return s.Script
+}
+
 type PostTransactionRequest struct {
 	Postings  core.Postings     `json:"postings"`
-	Script    core.Script       `json:"script"`
+	Script    Script            `json:"script"`
 	Timestamp core.Time         `json:"timestamp"`
 	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
@@ -188,7 +208,7 @@ func PostTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	script := core.RunScript{
-		Script:    payload.Script,
+		Script:    payload.Script.ToCore(),
 		Timestamp: payload.Timestamp,
 		Reference: payload.Reference,
 		Metadata:  payload.Metadata,

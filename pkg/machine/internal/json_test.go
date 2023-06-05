@@ -10,11 +10,8 @@ import (
 )
 
 func TestAccountTypedJSON(t *testing.T) {
-	j := `{
-		"type": "account",
-		"value": "users:001"
-	}`
-	value, err := NewValueFromTypedJSON(j)
+	j := "users:001"
+	value, err := NewValueFromString(TypeAccount, j)
 	require.NoError(t, err)
 
 	if !ValueEquals(value, AccountAddress("users:001")) {
@@ -23,11 +20,8 @@ func TestAccountTypedJSON(t *testing.T) {
 }
 
 func TestAssetTypedJSON(t *testing.T) {
-	j := `{
-		"type": "asset",
-		"value": "EUR/2"
-	}`
-	value, err := NewValueFromTypedJSON(j)
+	j := "EUR/2"
+	value, err := NewValueFromString(TypeAsset, j)
 	require.NoError(t, err)
 
 	if !ValueEquals(value, Asset("EUR/2")) {
@@ -36,11 +30,8 @@ func TestAssetTypedJSON(t *testing.T) {
 }
 
 func TestNumberTypedJSON(t *testing.T) {
-	j := `{
-		"type": "number",
-		"value": 89849865111111111111111111111111111555555555555555555555555555555555555555555555555999999999999999999999
-	}`
-	value, err := NewValueFromTypedJSON(j)
+	j := "89849865111111111111111111111111111555555555555555555555555555555555555555555555555999999999999999999999"
+	value, err := NewValueFromString(TypeNumber, j)
 	require.NoError(t, err)
 
 	num, err := ParseNumber("89849865111111111111111111111111111555555555555555555555555555555555555555555555555999999999999999999999")
@@ -52,14 +43,8 @@ func TestNumberTypedJSON(t *testing.T) {
 }
 
 func TestMonetaryTypedJSON(t *testing.T) {
-	j := `{
-		"type": "monetary",
-		"value": {
-			"asset": "EUR/2",
-			"amount": 123456
-		}
-	}`
-	value, err := NewValueFromTypedJSON(j)
+	j := "EUR/2 123456"
+	value, err := NewValueFromString(TypeMonetary, j)
 	require.NoError(t, err)
 
 	if !ValueEquals(value, Monetary{
@@ -71,11 +56,8 @@ func TestMonetaryTypedJSON(t *testing.T) {
 }
 
 func TestPortionTypedJSON(t *testing.T) {
-	j := `{
-		"type": "portion",
-		"value": "90%"
-	}`
-	value, err := NewValueFromTypedJSON(j)
+	j := "90%"
+	value, err := NewValueFromString(TypePortion, j)
 	require.NoError(t, err)
 
 	portion, err := NewPortionSpecific(*big.NewRat(90, 100))
@@ -84,17 +66,6 @@ func TestPortionTypedJSON(t *testing.T) {
 	if !ValueEquals(value, *portion) {
 		t.Fatalf("unexpected value: %v", value)
 	}
-}
-
-func TestInvalidTypedJSON(t *testing.T) {
-	j := `{
-		"value": {
-			"asset": "EUR/2",
-			"amount": 123456
-		}
-	}`
-	_, err := NewValueFromTypedJSON(j)
-	require.Error(t, err)
 }
 
 func TestMarshalJSON(t *testing.T) {
