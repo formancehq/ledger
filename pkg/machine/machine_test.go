@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
@@ -17,7 +16,7 @@ import (
 type testCase struct {
 	name            string
 	script          string
-	vars            map[string]json.RawMessage
+	vars            map[string]string
 	expectErrorCode error
 	expectResult    Result
 	store           vm.Store
@@ -105,8 +104,8 @@ var testCases = []testCase{
 				source = @world
 				destination = $dest
 			)`,
-		vars: map[string]json.RawMessage{
-			"dest": json.RawMessage(`"user:001"`),
+		vars: map[string]string{
+			"dest": "user:001",
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
@@ -123,10 +122,7 @@ var testCases = []testCase{
 				Account: core.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
-						"seller": `{
-							"type":  "account",
-							"value": "users:001"
-						}`,
+						"seller": "users:001",
 					},
 				},
 				Balances: map[string]*big.Int{
@@ -137,10 +133,7 @@ var testCases = []testCase{
 				Account: core.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
-						"commission": `{
-							"type":  "portion",
-							"value": "15.5%"
-						}`,
+						"commission": "15.5%",
 					},
 				},
 				Balances: map[string]*big.Int{},
@@ -161,8 +154,8 @@ var testCases = []testCase{
 				}
 			)
 		`,
-		vars: map[string]json.RawMessage{
-			"sale": json.RawMessage(`"sales:001"`),
+		vars: map[string]string{
+			"sale": "sales:001",
 		},
 		expectResult: Result{
 			Postings: []core.Posting{
@@ -206,7 +199,7 @@ var testCases = []testCase{
 				core.NewPosting("world", "users:001", "USD/2", big.NewInt(99)),
 			},
 			Metadata: metadata.Metadata{
-				"priority": `{"type":"string","value":"low"}`,
+				"priority": "low",
 			},
 			AccountMetadata: map[string]metadata.Metadata{},
 		},
@@ -244,11 +237,11 @@ var testCases = []testCase{
 			Metadata: metadata.Metadata{},
 			AccountMetadata: map[string]metadata.Metadata{
 				"alice": {
-					"aaa": `{"type":"string","value":"string meta"}`,
-					"bbb": `{"type":"number","value":42}`,
-					"ccc": `{"type":"asset","value":"COIN"}`,
-					"ddd": `{"type":"monetary","value":{"asset":"COIN","amount":30}}`,
-					"eee": `{"type":"account","value":"bob"}`,
+					"aaa": "string meta",
+					"bbb": "42",
+					"ccc": "COIN",
+					"ddd": "COIN 30",
+					"eee": "bob",
 				},
 			},
 		},

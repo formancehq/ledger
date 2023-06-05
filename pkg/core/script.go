@@ -1,8 +1,6 @@
 package core
 
 import (
-	"encoding/json"
-
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
@@ -14,6 +12,6 @@ type RunScript struct {
 }
 
 type Script struct {
-	Plain string                     `json:"plain"`
-	Vars  map[string]json.RawMessage `json:"vars" swaggertype:"object"`
+	Plain string            `json:"plain"`
+	Vars  map[string]string `json:"vars" swaggertype:"object"`
 }

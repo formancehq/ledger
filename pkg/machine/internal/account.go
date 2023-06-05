@@ -13,7 +13,7 @@ func (a AccountAddress) String() string {
 	return fmt.Sprintf("@%v", string(a))
 }
 
-func ParseAccountAddress(acc AccountAddress) error {
+func ValidateAccountAddress(acc AccountAddress) error {
 	if !core.AccountRegexp.MatchString(string(acc)) {
 		return fmt.Errorf("accounts should respect pattern %s", core.AccountPattern)
 	}

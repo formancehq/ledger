@@ -11,7 +11,6 @@ package vm
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -79,18 +78,11 @@ func StdOutPrinter(c chan internal.Value) {
 func (m *Machine) GetTxMetaJSON() metadata.Metadata {
 	meta := metadata.Metadata{}
 	for k, v := range m.TxMeta {
-		valJSON, err := json.Marshal(v)
+		var err error
+		meta[k], err = internal.NewStringFromValue(v)
 		if err != nil {
 			panic(err)
 		}
-		v, err := json.Marshal(internal.ValueJSON{
-			Type:  v.GetType().String(),
-			Value: valJSON,
-		})
-		if err != nil {
-			panic(err)
-		}
-		meta[k] = string(v)
 	}
 	return meta
 }
@@ -102,18 +94,12 @@ func (m *Machine) GetAccountsMetaJSON() map[string]metadata.Metadata {
 			if _, ok := res[string(account)]; !ok {
 				res[string(account)] = metadata.Metadata{}
 			}
-			valJSON, err := json.Marshal(v)
+
+			var err error
+			res[string(account)][k], err = internal.NewStringFromValue(v)
 			if err != nil {
 				panic(err)
 			}
-			v, err := json.Marshal(internal.ValueJSON{
-				Type:  v.GetType().String(),
-				Value: valJSON,
-			})
-			if err != nil {
-				panic(err)
-			}
-			res[string(account)][k] = string(v)
 		}
 	}
 
@@ -594,10 +580,9 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 					fmt.Sprintf("missing key %v in metadata for account %s", res.Key, addr)))
 			}
 
-			val, err = internal.NewValueFromTypedJSON(metadata)
+			val, err = internal.NewValueFromString(res.Typ, metadata)
 			if err != nil {
-				return nil, nil, errorsutil.NewError(ErrResourceResolutionInvalidTypeFromExtSources, errors.New(
-					fmt.Sprintf("invalid format for metadata at key %v for account %s", res.Key, addr)))
+				return nil, nil, err
 			}
 		case program.VariableAccountBalance:
 			acc, _ := m.getResource(res.Account)
@@ -644,17 +629,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 	return involvedAccounts, involvedSources, nil
 }
 
-// TODO(gfyrag): Maybe rename to ResolveVars. Lifecycle seems to be ResolveVars -> ResolveResources -> ResolveBalances
-func (m *Machine) SetVars(vars map[string]internal.Value) error {
-	v, err := m.Program.ParseVariables(vars)
-	if err != nil {
-		return errorsutil.NewError(ErrInvalidVars, err)
-	}
-	m.Vars = v
-	return nil
-}
-
-func (m *Machine) SetVarsFromJSON(vars map[string]json.RawMessage) error {
+func (m *Machine) SetVarsFromJSON(vars map[string]string) error {
 	v, err := m.Program.ParseVariablesJSON(vars)
 	if err != nil {
 		return errorsutil.NewError(ErrInvalidVars, err)

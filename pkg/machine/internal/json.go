@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -12,96 +13,50 @@ type ValueJSON struct {
 	Value json.RawMessage `json:"value"`
 }
 
-func TypeFromName(name string) (Type, bool) {
-	switch name {
-	case "account":
-		return TypeAccount, true
-	case "asset":
-		return TypeAsset, true
-	case "number":
-		return TypeNumber, true
-	case "portion":
-		return TypePortion, true
-	case "monetary":
-		return TypeMonetary, true
-	default:
-		return 0, false
-	}
-}
-
-func NewValueFromTypedJSON(rawInput string) (Value, error) {
-	var input ValueJSON
-	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
-		return nil, err
-	}
-
-	typ, ok := TypeFromName(input.Type)
-	if !ok {
-		return nil, fmt.Errorf("unknown type: %v", input.Type)
-	}
-
-	return NewValueFromJSON(typ, input.Value)
-}
-
-func NewValueFromJSON(typ Type, data json.RawMessage) (Value, error) {
+func NewValueFromString(typ Type, data string) (Value, error) {
 	var value Value
 	switch typ {
 	case TypeAccount:
-		var account AccountAddress
-		if err := json.Unmarshal(data, &account); err != nil {
-			return nil, err
+		if err := ValidateAccountAddress(AccountAddress(data)); err != nil {
+			return nil, errors.Wrapf(err, "value %s", data)
 		}
-		if err := ParseAccountAddress(account); err != nil {
-			return nil, errors.Wrapf(err, "value %s", string(account))
-		}
-		value = account
+		value = AccountAddress(data)
 	case TypeAsset:
-		var asset Asset
-		if err := json.Unmarshal(data, &asset); err != nil {
-			return nil, err
+		if err := ValidateAsset(Asset(data)); err != nil {
+			return nil, errors.Wrapf(err, "value %s", data)
 		}
-		if err := ParseAsset(asset); err != nil {
-			return nil, errors.Wrapf(err, "value %s", asset.String())
-		}
-		value = asset
+		value = Asset(data)
 	case TypeNumber:
 		var number Number
-		if err := json.Unmarshal(data, &number); err != nil {
+		if err := json.Unmarshal([]byte(data), &number); err != nil {
 			return nil, err
 		}
 		value = number
 	case TypeMonetary:
-		var monTmp struct {
-			Asset  string       `json:"asset"`
-			Amount *MonetaryInt `json:"amount"`
+		parts := strings.SplitN(data, " ", 2)
+		if len(parts) != 2 {
+			return nil, errors.New("monetary must have two parts")
 		}
-		if err := json.Unmarshal(data, &monTmp); err != nil {
+		mi, err := ParseMonetaryInt(parts[1])
+		if err != nil {
 			return nil, err
 		}
 		mon := Monetary{
-			Asset:  Asset(monTmp.Asset),
-			Amount: monTmp.Amount,
+			Asset:  Asset(parts[0]),
+			Amount: mi,
 		}
 		if err := ParseMonetary(mon); err != nil {
 			return nil, errors.Wrapf(err, "value %s", mon.String())
 		}
 		value = mon
 	case TypePortion:
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return nil, err
-		}
-		res, err := ParsePortionSpecific(s)
+		res, err := ParsePortionSpecific(data)
 		if err != nil {
 			return nil, err
 		}
 		value = *res
 	case TypeString:
-		var s String
-		if err := json.Unmarshal(data, &s); err != nil {
-			return nil, err
-		}
-		value = s
+		value = String(data)
 	default:
 		return nil, fmt.Errorf("invalid type '%v'", typ)
 	}
@@ -109,7 +64,7 @@ func NewValueFromJSON(typ Type, data json.RawMessage) (Value, error) {
 	return value, nil
 }
 
-func NewJSONFromValue(value Value) (any, error) {
+func NewStringFromValue(value Value) (string, error) {
 	switch value.GetType() {
 	case TypeAccount:
 		return string(value.(AccountAddress)), nil
@@ -120,10 +75,11 @@ func NewJSONFromValue(value Value) (any, error) {
 	case TypeNumber:
 		return value.(*MonetaryInt).String(), nil
 	case TypeMonetary:
-		return value, nil
+		m := value.(Monetary)
+		return fmt.Sprintf("%s %s", m.Asset, m.Amount), nil
 	case TypePortion:
 		return value.(Portion).String(), nil
 	default:
-		return nil, fmt.Errorf("invalid type '%v'", value.GetType())
+		return "", fmt.Errorf("invalid type '%v'", value.GetType())
 	}
 }
