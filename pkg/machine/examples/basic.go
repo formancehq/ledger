@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/machine/internal"
 	"github.com/formancehq/ledger/pkg/machine/script/compiler"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -36,8 +35,8 @@ func main() {
 	m := vm.NewMachine(*program)
 	m.Debug = true
 
-	if err = m.SetVars(map[string]internal.Value{
-		"dest": internal.AccountAddress("charlie"),
+	if err = m.SetVarsFromJSON(map[string]string{
+		"dest": "charlie",
 	}); err != nil {
 		panic(err)
 	}

@@ -32,16 +32,16 @@ type CaseResult struct {
 
 type TestCase struct {
 	program  *program.Program
-	vars     map[string]internal.Value
-	meta     map[string]map[string]internal.Value
+	vars     map[string]string
+	meta     map[string]metadata.Metadata
 	balances map[string]map[string]*internal.MonetaryInt
 	expected CaseResult
 }
 
 func NewTestCase() TestCase {
 	return TestCase{
-		vars:     make(map[string]internal.Value),
-		meta:     make(map[string]map[string]internal.Value),
+		vars:     make(map[string]string),
+		meta:     make(map[string]metadata.Metadata),
 		balances: make(map[string]map[string]*internal.MonetaryInt),
 		expected: CaseResult{
 			Printed:  []internal.Value{},
@@ -62,12 +62,10 @@ func (c *TestCase) compile(t *testing.T, code string) {
 }
 
 func (c *TestCase) setVarsFromJSON(t *testing.T, str string) {
-	var jsonVars map[string]json.RawMessage
+	var jsonVars map[string]string
 	err := json.Unmarshal([]byte(str), &jsonVars)
 	require.NoError(t, err)
-	v, err := c.program.ParseVariablesJSON(jsonVars)
-	require.NoError(t, err)
-	c.vars = v
+	c.vars = jsonVars
 }
 
 func (c *TestCase) setBalance(account, asset string, amount int64) {
@@ -79,23 +77,16 @@ func (c *TestCase) setBalance(account, asset string, amount int64) {
 
 func test(t *testing.T, testCase TestCase) {
 	testImpl(t, testCase.program, testCase.expected, func(m *Machine) error {
-		if err := m.SetVars(testCase.vars); err != nil {
+		if err := m.SetVarsFromJSON(testCase.vars); err != nil {
 			return err
 		}
 
 		store := StaticStore{}
 		for account, balances := range testCase.balances {
-			m := metadata.Metadata{}
-			for s, value := range testCase.meta[account] {
-				json, err := internal.NewJSONFromValue(value)
-				require.NoError(t, err)
-
-				m[s] = fmt.Sprintf(`{"type": "%s", "value": "%s"}`, value.GetType().String(), json)
-			}
 			store[account] = &AccountWithBalances{
 				Account: core.Account{
 					Address:  account,
-					Metadata: m,
+					Metadata: testCase.meta[account],
 				},
 				Balances: func() map[string]*big.Int {
 					ret := make(map[string]*big.Int)
@@ -226,12 +217,12 @@ func TestVariables(t *testing.T) {
 	)
  	set_tx_meta("description", $description)
  	set_tx_meta("ride", $nb)`)
-	tc.vars = map[string]internal.Value{
-		"rider":       internal.AccountAddress("users:001"),
-		"driver":      internal.AccountAddress("users:002"),
-		"description": internal.String("midnight ride"),
-		"nb":          internal.NewMonetaryInt(1),
-		"ass":         internal.Asset("EUR/2"),
+	tc.vars = map[string]string{
+		"rider":       "users:001",
+		"driver":      "users:002",
+		"description": "midnight ride",
+		"nb":          "1",
+		"ass":         "EUR/2",
 	}
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
@@ -271,7 +262,7 @@ func TestVariablesJSON(t *testing.T) {
 		"rider": "users:001",
 		"driver": "users:002",
 		"description": "midnight ride",
-		"nb": 1,
+		"nb": "1",
  		"ass": "EUR/2"
 	}`)
 	tc.setBalance("users:001", "EUR/2", 1000)
@@ -617,7 +608,7 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	commission, _ := internal.NewPortionSpecific(*big.NewRat(125, 1000))
+	//commission, _ := internal.NewPortionSpecific(*big.NewRat(125, 1000))
 	tc := NewTestCase()
 	tc.compile(t, `vars {
 		account $sale
@@ -634,12 +625,12 @@ func TestMetadata(t *testing.T) {
 	tc.setVarsFromJSON(t, `{
 		"sale": "sales:042"
 	}`)
-	tc.meta = map[string]map[string]internal.Value{
+	tc.meta = map[string]metadata.Metadata{
 		"sales:042": {
-			"seller": internal.AccountAddress("users:053"),
+			"seller": "users:053",
 		},
 		"users:053": {
-			"commission": *commission,
+			"commission": "12.5%",
 		},
 	}
 	tc.setBalance("sales:042", "EUR/2", 2500)
@@ -846,10 +837,7 @@ func TestSourceComplex(t *testing.T) {
 		destination = @platform
 	)`)
 	tc.setVarsFromJSON(t, `{
-		"max": {
-			"asset": "COIN",
-			"amount": 120
-		}
+		"max": "COIN 120"
 	}`)
 	tc.setBalance("a", "COIN", 1000)
 	tc.setBalance("b", "COIN", 40)
@@ -947,8 +935,8 @@ func TestNeededBalances(t *testing.T) {
 
 	m := NewMachine(*p)
 
-	err = m.SetVars(map[string]internal.Value{
-		"a": internal.AccountAddress("a"),
+	err = m.SetVarsFromJSON(map[string]string{
+		"a": "a",
 	})
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
@@ -981,13 +969,13 @@ func TestSetTxMeta(t *testing.T) {
 	err = m.Execute()
 	require.NoError(t, err)
 
-	expectedMeta := map[string]json.RawMessage{
-		"aaa": json.RawMessage(`{"type":"account","value":"platform"}`),
-		"bbb": json.RawMessage(`{"type":"asset","value":"GEM"}`),
-		"ccc": json.RawMessage(`{"type":"number","value":45}`),
-		"ddd": json.RawMessage(`{"type":"string","value":"hello"}`),
-		"eee": json.RawMessage(`{"type":"monetary","value":{"asset":"COIN","amount":30}}`),
-		"fff": json.RawMessage(`{"type":"portion","value":{"remaining":false,"specific":"3/20"}}`),
+	expectedMeta := map[string]string{
+		"aaa": "platform",
+		"bbb": "GEM",
+		"ccc": "45",
+		"ddd": "hello",
+		"eee": "COIN 30",
+		"fff": "3/20",
 	}
 
 	resMeta := m.GetTxMetaJSON()
@@ -1021,12 +1009,12 @@ func TestSetAccountMeta(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedMeta := metadata.Metadata{
-			"aaa": `{"type":"account","value":"platform"}`,
-			"bbb": `{"type":"asset","value":"GEM"}`,
-			"ccc": `{"type":"number","value":45}`,
-			"ddd": `{"type":"string","value":"hello"}`,
-			"eee": `{"type":"monetary","value":{"asset":"COIN","amount":30}}`,
-			"fff": `{"type":"portion","value":{"remaining":false,"specific":"3/20"}}`,
+			"aaa": "platform",
+			"bbb": "GEM",
+			"ccc": "45",
+			"ddd": "hello",
+			"eee": "COIN 30",
+			"fff": "3/20",
 		}
 
 		resMeta := m.GetAccountsMetaJSON()
@@ -1036,7 +1024,7 @@ func TestSetAccountMeta(t *testing.T) {
 			assert.Equal(t, "platform", acc)
 			assert.Equal(t, 6, len(meta))
 			for key, val := range meta {
-				assert.Equal(t, string(expectedMeta[key]), string(val))
+				assert.Equal(t, expectedMeta[key], val)
 			}
 		}
 	})
@@ -1056,8 +1044,8 @@ func TestSetAccountMeta(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"acc": internal.AccountAddress("test"),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "test",
 		}))
 
 		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
@@ -1070,7 +1058,7 @@ func TestSetAccountMeta(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedMeta := map[string]json.RawMessage{
-			"fees": json.RawMessage(`{"type":"portion","value":{"remaining":false,"specific":"1/100"}}`),
+			"fees": json.RawMessage("1/100"),
 		}
 
 		resMeta := m.GetAccountsMetaJSON()
@@ -1080,7 +1068,7 @@ func TestSetAccountMeta(t *testing.T) {
 			assert.Equal(t, "test", acc)
 			assert.Equal(t, 1, len(meta))
 			for key, val := range meta {
-				assert.Equal(t, string(expectedMeta[key]), string(val))
+				assert.Equal(t, string(expectedMeta[key]), val)
 			}
 		}
 	})
@@ -1299,20 +1287,20 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"acc": internal.AccountAddress("valid:acc"),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "valid:acc",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"acc": internal.AccountAddress("invalid-acc"),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "invalid-acc",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"acc": json.RawMessage(`"valid:acc"`),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "valid:acc",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"acc": json.RawMessage(`"invalid-acc"`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "invalid-acc",
 		}))
 	})
 
@@ -1327,20 +1315,20 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"ass": internal.Asset("USD/2"),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"ass": "USD/2",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"ass": internal.Asset("USD-2"),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"ass": "USD-2",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"ass": json.RawMessage(`"USD/2"`),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"ass": "USD/2",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"ass": json.RawMessage(`"USD-2"`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"ass": "USD-2",
 		}))
 	})
 
@@ -1355,37 +1343,28 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"mon": internal.Monetary{
-				Asset:  "EUR/2",
-				Amount: internal.NewMonetaryInt(100),
-			},
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "EUR/2 100",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"mon": internal.Monetary{
-				Asset:  "invalid-asset",
-				Amount: internal.NewMonetaryInt(100),
-			},
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "invalid-asset 100",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"mon": internal.Monetary{
-				Asset:  "EUR/2",
-				Amount: nil,
-			},
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "EUR/2",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"mon": json.RawMessage(`{"asset":"EUR/2","amount":100}`),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "EUR/2 100",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"mon": json.RawMessage(`{"asset":"invalid-asset","amount":100}`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "invalid-asset 100",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"mon": json.RawMessage(`{"asset":"EUR/2","amount":null}`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"mon": "EUR/2 null",
 		}))
 	})
 
@@ -1400,45 +1379,32 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"por": internal.Portion{
-				Remaining: false,
-				Specific:  big.NewRat(1, 2),
-			},
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"por": "1/2",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"por": internal.Portion{
-				Remaining: false,
-				Specific:  nil,
-			},
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"por": "",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"por": internal.Portion{
-				Remaining: true,
-				Specific:  big.NewRat(1, 2),
-			},
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"por": "1/2",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"por": json.RawMessage(`"1/2"`),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"por": "50%",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"por": json.RawMessage(`"50%"`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"por": "3/2",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"por": json.RawMessage(`"3/2"`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"por": "200%",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"por": json.RawMessage(`"200%"`),
-		}))
-
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"por": json.RawMessage(`""`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"por": "",
 		}))
 	})
 
@@ -1452,21 +1418,8 @@ func TestVariablesParsing(t *testing.T) {
 		require.NoError(t, err)
 
 		m := NewMachine(*p)
-
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"str": internal.String("valid string"),
-		}))
-
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"str": json.RawMessage(`"valid string"`),
-		}))
-
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"str": internal.NewMonetaryInt(1),
-		}))
-
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"str": json.RawMessage(`100`),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"str": "valid string",
 		}))
 	})
 
@@ -1481,24 +1434,16 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.NoError(t, m.SetVars(map[string]internal.Value{
-			"nbr": internal.NewMonetaryInt(100),
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"nbr": "100",
 		}))
 
-		require.NoError(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"nbr": json.RawMessage(`100`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"nbr": "string",
 		}))
 
-		require.Error(t, m.SetVars(map[string]internal.Value{
-			"nbr": internal.String("invalid"),
-		}))
-
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"nbr": json.RawMessage(`"string"`),
-		}))
-
-		require.Error(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"nbr": json.RawMessage(`nil`),
+		require.Error(t, m.SetVarsFromJSON(map[string]string{
+			"nbr": `nil`,
 		}))
 	})
 
@@ -1514,8 +1459,8 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.ErrorContains(t, m.SetVars(map[string]internal.Value{
-			"nbr": internal.NewMonetaryInt(100),
+		require.ErrorContains(t, m.SetVarsFromJSON(map[string]string{
+			"nbr": "100",
 		}), "missing variable $str")
 	})
 
@@ -1530,9 +1475,9 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.ErrorContains(t, m.SetVars(map[string]internal.Value{
-			"nbr":  internal.NewMonetaryInt(100),
-			"nbr2": internal.NewMonetaryInt(100),
+		require.ErrorContains(t, m.SetVarsFromJSON(map[string]string{
+			"nbr":  "100",
+			"nbr2": "100",
 		}), "extraneous variable $nbr2")
 	})
 
@@ -1547,9 +1492,9 @@ func TestVariablesParsing(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		require.ErrorContains(t, m.SetVarsFromJSON(map[string]json.RawMessage{
-			"nbr":  json.RawMessage(`100`),
-			"nbr2": json.RawMessage(`100`),
+		require.ErrorContains(t, m.SetVarsFromJSON(map[string]string{
+			"nbr":  `100`,
+			"nbr2": `100`,
 		}), "extraneous variable $nbr2")
 	})
 }
@@ -1564,11 +1509,8 @@ func TestVariablesErrors(t *testing.T) {
 		destination = @bob
 	)`)
 	tc.setBalance("alice", "COIN", 10)
-	tc.vars = map[string]internal.Value{
-		"mon": internal.Monetary{
-			Asset:  "COIN",
-			Amount: internal.NewMonetaryInt(-1),
-		},
+	tc.vars = map[string]string{
+		"mon": "COIN -1",
 	}
 	tc.expected = CaseResult{
 		Printed:       []internal.Value{},
@@ -1585,7 +1527,7 @@ func TestSetVarsFromJSON(t *testing.T) {
 		name          string
 		script        string
 		expectedError error
-		vars          map[string]json.RawMessage
+		vars          map[string]string
 	}
 	for _, tc := range []testCase{
 		{
@@ -1608,8 +1550,8 @@ func TestSetVarsFromJSON(t *testing.T) {
 				source = @world
 				destination = $dest
 			)`,
-			vars: map[string]json.RawMessage{
-				"dest": json.RawMessage(`"invalid-acc"`),
+			vars: map[string]string{
+				"dest": "invalid-acc",
 			},
 			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
 		},
@@ -1639,7 +1581,7 @@ func TestResolveResources(t *testing.T) {
 		name          string
 		script        string
 		expectedError error
-		vars          map[string]json.RawMessage
+		vars          map[string]string
 	}
 	for _, tc := range []testCase{
 		{
@@ -1652,8 +1594,8 @@ func TestResolveResources(t *testing.T) {
 				source = $sale
 				destination = $seller
 			)`,
-			vars: map[string]json.RawMessage{
-				"sale": json.RawMessage(`"sales:042"`),
+			vars: map[string]string{
+				"sale": "sales:042",
 			},
 			expectedError: ErrResourceResolutionMissingMetadata,
 		},
@@ -1683,7 +1625,7 @@ func TestResolveBalances(t *testing.T) {
 		name          string
 		script        string
 		expectedError error
-		vars          map[string]json.RawMessage
+		vars          map[string]string
 		store         Store
 	}
 	for _, tc := range []testCase{
@@ -1753,8 +1695,8 @@ func TestMachine(t *testing.T) {
 		m := NewMachine(*p)
 		m.Debug = true
 
-		err = m.SetVars(map[string]internal.Value{
-			"dest": internal.AccountAddress("charlie"),
+		err = m.SetVarsFromJSON(map[string]string{
+			"dest": "charlie",
 		})
 		require.NoError(t, err)
 
@@ -1777,8 +1719,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err balances not initialized", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]internal.Value{
-			"dest": internal.AccountAddress("charlie"),
+		err = m.SetVarsFromJSON(map[string]string{
+			"dest": "charlie",
 		})
 		require.NoError(t, err)
 
@@ -1792,8 +1734,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err resolve resources twice", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]internal.Value{
-			"dest": internal.AccountAddress("charlie"),
+		err = m.SetVarsFromJSON(map[string]string{
+			"dest": "charlie",
 		})
 		require.NoError(t, err)
 
@@ -1814,8 +1756,8 @@ func TestMachine(t *testing.T) {
 	t.Run("err resolve balances twice", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		err = m.SetVars(map[string]internal.Value{
-			"dest": internal.AccountAddress("charlie"),
+		err = m.SetVarsFromJSON(map[string]string{
+			"dest": "charlie",
 		})
 		require.NoError(t, err)
 
@@ -1862,8 +1804,8 @@ func TestVariableAsset(t *testing.T) {
 
 	tc := NewTestCase()
 	tc.compile(t, script)
-	tc.vars = map[string]internal.Value{
-		"ass": internal.Asset("USD"),
+	tc.vars = map[string]string{
+		"ass": "USD",
 	}
 	tc.setBalance("alice", "USD", 10)
 	tc.setBalance("bob", "USD", 10)
@@ -2022,8 +1964,8 @@ func TestSaveFromAccount(t *testing.T) {
  			)`
 		tc := NewTestCase()
 		tc.compile(t, script)
-		tc.vars = map[string]internal.Value{
-			"ass": internal.Asset("USD"),
+		tc.vars = map[string]string{
+			"ass": "USD",
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
@@ -2064,11 +2006,8 @@ func TestSaveFromAccount(t *testing.T) {
  			)`
 		tc := NewTestCase()
 		tc.compile(t, script)
-		tc.vars = map[string]internal.Value{
-			"mon": internal.Monetary{
-				Asset:  "USD",
-				Amount: internal.NewMonetaryInt(10),
-			},
+		tc.vars = map[string]string{
+			"mon": "USD 10",
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{

@@ -27,7 +27,7 @@ func (m Monetary) GetAsset() Asset { return m.Asset }
 var Zero = NewMonetaryInt(0)
 
 func ParseMonetary(mon Monetary) error {
-	if err := ParseAsset(mon.Asset); err != nil {
+	if err := ValidateAsset(mon.Asset); err != nil {
 		return errors.Wrapf(err, "asset '%s'", mon.Asset)
 	}
 	if mon.Amount == nil {

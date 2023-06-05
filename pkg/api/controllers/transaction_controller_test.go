@@ -35,30 +35,102 @@ func TestPostTransactions(t *testing.T) {
 		{
 			name: "using plain numscript",
 			payload: controllers.PostTransactionRequest{
-				Script: core.Script{
-					Plain: `send (
-						source = @world
-						destination = @bank
-					)`,
+				Script: controllers.Script{
+					Script: core.Script{
+						Plain: `XXX`,
+					},
 				},
 			},
 			expectedRunScript: core.RunScript{
 				Script: core.Script{
-					Plain: `send (
+					Plain: `XXX`,
+					Vars:  map[string]string{},
+				},
+			},
+		},
+		{
+			name: "using plain numscript with variables",
+			payload: controllers.PostTransactionRequest{
+				Script: controllers.Script{
+					Script: core.Script{
+						Plain: `vars {
+						monetary $val
+					}
+
+					send $val (
 						source = @world
 						destination = @bank
 					)`,
+					},
+					Vars: map[string]any{
+						"val": "USD/2 100",
+					},
+				},
+			},
+			expectedRunScript: core.RunScript{
+				Script: core.Script{
+					Plain: `vars {
+						monetary $val
+					}
+
+					send $val (
+						source = @world
+						destination = @bank
+					)`,
+					Vars: map[string]string{
+						"val": "USD/2 100",
+					},
+				},
+			},
+		},
+		{
+			name: "using plain numscript with variables (legacy format)",
+			payload: controllers.PostTransactionRequest{
+				Script: controllers.Script{
+					Script: core.Script{
+						Plain: `vars {
+						monetary $val
+					}
+
+					send $val (
+						source = @world
+						destination = @bank
+					)`,
+					},
+					Vars: map[string]any{
+						"val": map[string]any{
+							"asset":  "USD/2",
+							"amount": 100,
+						},
+					},
+				},
+			},
+			expectedRunScript: core.RunScript{
+				Script: core.Script{
+					Plain: `vars {
+						monetary $val
+					}
+
+					send $val (
+						source = @world
+						destination = @bank
+					)`,
+					Vars: map[string]string{
+						"val": "USD/2 100",
+					},
 				},
 			},
 		},
 		{
 			name: "using plain numscript and dry run",
 			payload: controllers.PostTransactionRequest{
-				Script: core.Script{
-					Plain: `send (
+				Script: controllers.Script{
+					Script: core.Script{
+						Plain: `send (
 						source = @world
 						destination = @bank
 					)`,
+					},
 				},
 			},
 			expectedRunScript: core.RunScript{
@@ -67,6 +139,7 @@ func TestPostTransactions(t *testing.T) {
 						source = @world
 						destination = @bank
 					)`,
+					Vars: map[string]string{},
 				},
 			},
 			expectedDryRun: true,
@@ -117,12 +190,14 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: core.Script{
-					Plain: `
-					send [COIN 100] (
-					  source = @world
-					  destination = @bob
-					)`,
+				Script: controllers.Script{
+					Script: core.Script{
+						Plain: `
+						send [COIN 100] (
+						  source = @world
+						  destination = @bob
+						)`,
+					},
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,

@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,8 +9,8 @@ import (
 )
 
 type variable struct {
-	name    string
-	jsonVal json.RawMessage
+	name  string
+	value string
 }
 
 func TxToScriptData(txData TransactionData) RunScript {
@@ -24,8 +23,8 @@ func TxToScriptData(txData TransactionData) RunScript {
 		if _, ok := accountsToVars[p.Source]; !ok {
 			if p.Source != WORLD {
 				accountsToVars[p.Source] = variable{
-					name:    fmt.Sprintf("va%d", i),
-					jsonVal: json.RawMessage(`"` + p.Source + `"`),
+					name:  fmt.Sprintf("va%d", i),
+					value: p.Source,
 				}
 				i++
 			}
@@ -33,8 +32,8 @@ func TxToScriptData(txData TransactionData) RunScript {
 		if _, ok := accountsToVars[p.Destination]; !ok {
 			if p.Destination != WORLD {
 				accountsToVars[p.Destination] = variable{
-					name:    fmt.Sprintf("va%d", i),
-					jsonVal: json.RawMessage(`"` + p.Destination + `"`),
+					name:  fmt.Sprintf("va%d", i),
+					value: p.Destination,
 				}
 				i++
 			}
@@ -42,9 +41,8 @@ func TxToScriptData(txData TransactionData) RunScript {
 		mon := fmt.Sprintf("[%s %s]", p.Amount.String(), p.Asset)
 		if _, ok := monetaryToVars[mon]; !ok {
 			monetaryToVars[mon] = variable{
-				name: fmt.Sprintf("vm%d", j),
-				jsonVal: json.RawMessage(
-					`{"asset":"` + p.Asset + `","amount":` + p.Amount.String() + `}`),
+				name:  fmt.Sprintf("vm%d", j),
+				value: fmt.Sprintf("%s %s", p.Asset, p.Amount.String()),
 			}
 			j++
 		}
@@ -97,12 +95,12 @@ func TxToScriptData(txData TransactionData) RunScript {
 		sb.WriteString(")\n")
 	}
 
-	vars := map[string]json.RawMessage{}
+	vars := map[string]string{}
 	for _, v := range accountsToVars {
-		vars[v.name] = v.jsonVal
+		vars[v.name] = v.value
 	}
 	for _, v := range monetaryToVars {
-		vars[v.name] = v.jsonVal
+		vars[v.name] = v.value
 	}
 
 	if txData.Metadata == nil {
@@ -118,13 +116,4 @@ func TxToScriptData(txData TransactionData) RunScript {
 		Metadata:  txData.Metadata,
 		Reference: txData.Reference,
 	}
-}
-
-func TxsToScriptsData(txsData ...TransactionData) []RunScript {
-	res := make([]RunScript, 0, len(txsData))
-	for _, txData := range txsData {
-		res = append(res, TxToScriptData(txData))
-	}
-
-	return res
 }
