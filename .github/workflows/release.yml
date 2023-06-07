@@ -34,10 +34,7 @@ jobs:
 
   GoReleaser:
     name: GoReleaser
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, macos-latest ]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     needs:
@@ -54,6 +51,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: "NumaryBot"
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run GoReleaser
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
