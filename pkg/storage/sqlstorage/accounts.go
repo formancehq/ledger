@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,11 @@ import (
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
+
+// This regexp is used to validate the account name
+// If the account name is not valid, it means that the user putted a regex in
+// the address filter, and we have to change the postgres operator used.
+var accountNameRegex = regexp.MustCompile(`^[a-zA-Z_0-9]+$`)
 
 func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBuilder, AccPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
@@ -30,11 +36,26 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 	)
 
 	if address != "" {
-		arg := sb.Args.Add("^" + address + "$")
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
-			sb.Where("address ~* " + arg)
+			src := strings.Split(address, ":")
+			sb.Where(fmt.Sprintf("jsonb_array_length(address_json) = %d", len(src)))
+
+			for i, segment := range src {
+				if segment == ".*" || segment == "*" || segment == "" {
+					continue
+				}
+
+				operator := "=="
+				if !accountNameRegex.MatchString(segment) {
+					operator = "like_regex"
+				}
+
+				arg := sb.Args.Add(segment)
+				sb.Where(fmt.Sprintf("address_json @@ ('$[%d] %s \"' || %s::text || '\"')::jsonpath", i, operator, arg))
+			}
 		case sqlbuilder.SQLite:
+			arg := sb.Args.Add("^" + address + "$")
 			sb.Where("address REGEXP " + arg)
 		}
 		t.AddressRegexpFilter = address
@@ -206,14 +227,33 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 }
 
 func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
+	var accountBy string
+	switch s.schema.Flavor() {
+	case sqlbuilder.PostgreSQL:
+		a, err := json.Marshal(strings.Split(account, ":"))
+		if err != nil {
+			return err
+		}
+		accountBy = string(a)
+	case sqlbuilder.SQLite:
+		accountBy = account
+	}
 
 	sb := sqlbuilder.NewInsertBuilder()
-	sqlq, args := sb.
-		InsertInto(s.schema.Table("accounts")).
-		Cols("address", "metadata").
-		Values(account, "{}").
-		SQL("ON CONFLICT DO NOTHING").
-		BuildWithFlavor(s.schema.Flavor())
+	sb = sb.InsertInto(s.schema.Table("accounts"))
+
+	switch s.schema.Flavor() {
+	case sqlbuilder.PostgreSQL:
+		sb = sb.Cols("address", "metadata", "address_json").
+			Values(account, "{}", accountBy).
+			SQL("ON CONFLICT DO NOTHING")
+	case sqlbuilder.SQLite:
+		sb = sb.Cols("address", "metadata").
+			Values(account, "{}").
+			SQL("ON CONFLICT DO NOTHING")
+	}
+
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
 
 	executor, err := s.executorProvider(ctx)
 	if err != nil {
@@ -231,17 +271,23 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	if err != nil {
 		return err
 	}
-	placeholder := ib.Var(metadataData)
-	ib.
-		InsertInto(s.schema.Table("accounts")).
-		Cols("address", "metadata").
-		Values(address, metadataData)
 
-	switch Flavor(s.schema.Flavor()) {
-	case PostgreSQL:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
-	case SQLite:
-		ib.SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
+	placeholder := ib.Var(metadataData)
+	ib = ib.InsertInto(s.schema.Table("accounts"))
+
+	switch s.schema.Flavor() {
+	case sqlbuilder.PostgreSQL:
+		addressBy, err := json.Marshal(strings.Split(address, ":"))
+		if err != nil {
+			return err
+		}
+		ib = ib.Cols("address", "metadata", "address_json").
+			Values(address, metadataData, addressBy).
+			SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = accounts.metadata || %s", placeholder))
+	case sqlbuilder.SQLite:
+		ib = ib.Cols("address", "metadata").
+			Values(address, metadataData).
+			SQL(fmt.Sprintf("ON CONFLICT (address) DO UPDATE SET metadata = json_patch(metadata,  %s)", placeholder))
 	}
 
 	executor, err := s.executorProvider(ctx)

@@ -471,7 +471,7 @@ func TestCursor(t *testing.T) {
 				t.Run("GetAccounts", func(t *testing.T) {
 					httpResponse := internal.GetAccounts(api, url.Values{
 						"after":                             []string{"accounts:15"},
-						"address":                           []string{"acc.*"},
+						"address":                           []string{"accounts:.*"},
 						"metadata[foo]":                     []string{"bar"},
 						"balance":                           []string{"1"},
 						controllers.QueryKeyBalanceOperator: []string{"gte"},
@@ -483,7 +483,7 @@ func TestCursor(t *testing.T) {
 					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"accounts:.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
 						string(res))
 
 					httpResponse = internal.GetAccounts(api, url.Values{
@@ -495,12 +495,12 @@ func TestCursor(t *testing.T) {
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"accounts:.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
 						string(res))
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"acc.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
+						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"accounts:.*","metadata":{"foo":"bar"},"balance":"1","balanceOperator":"gte"}`,
 						string(res))
 				})
 
@@ -545,7 +545,7 @@ func TestCursor(t *testing.T) {
 				t.Run("GetBalances", func(t *testing.T) {
 					httpResponse := internal.GetBalances(api, url.Values{
 						"after":                      []string{"accounts:15"},
-						"address":                    []string{"acc.*"},
+						"address":                    []string{"accounts:.*"},
 						controllers.QueryKeyPageSize: []string{"3"},
 					})
 					assert.Equal(t, http.StatusOK, httpResponse.Result().StatusCode, httpResponse.Body.String())
@@ -554,7 +554,7 @@ func TestCursor(t *testing.T) {
 					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"acc.*"}`,
+						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"accounts:.*"}`,
 						string(res))
 
 					httpResponse = internal.GetBalances(api, url.Values{
@@ -566,12 +566,12 @@ func TestCursor(t *testing.T) {
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"acc.*"}`,
+						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"accounts:.*"}`,
 						string(res))
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"acc.*"}`,
+						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"accounts:.*"}`,
 						string(res))
 				})
 

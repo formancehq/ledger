@@ -450,7 +450,7 @@ func testGetAccounts(t *testing.T, store *sqlstorage.Store) {
 	accounts, err = store.GetAccounts(context.Background(), ledger.AccountsQuery{
 		PageSize: 10,
 		Filters: ledger.AccountsQueryFilters{
-			Address: ".*der.*",
+			Address: `^.*der:.*$`,
 		},
 	})
 	require.NoError(t, err)
