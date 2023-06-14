@@ -23,7 +23,7 @@ services:
       - postgres:/data/postgres
 
   ledger:
-    image: "ghcr.io/formancehq/ledger:latest"
+    image: "ghcr.io/formancehq/ledger:v1.9.2"
     healthcheck:
       test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
       interval: 10s
@@ -32,25 +32,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "3068:3068"
     environment:
       STORAGE_DRIVER: "postgres"
       STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
-
-  proxy:
-    image: caddy:2
-    depends_on:
-    - ledger
-    command: caddy reverse-proxy --from :3068 --to ledger:3068
-    ports:
-    - "3068:3068"
-
-  control:
-    image: "ghcr.io/formancehq/ledger:latest"
-    command: ui
-    depends_on:
-      ledger:
-        condition: service_healthy
-    ports:
-      - "3078:3078"
-    environment:
-      UI_HTTP_BIND_ADDRESS: "0.0.0.0:3078"
