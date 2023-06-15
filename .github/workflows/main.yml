@@ -13,6 +13,30 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: formancehq/gh-workflows/.github/workflows/pr-style.yml@main
 
+  Test_postgres:
+    name: 'Test with PostgreSQL'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install task
+        uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Run tests
+        run: task tests
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          fail_ci_if_error: false # optional (default = false)
+          verbose: true # optional (default = false)
+
+  Test_sqlite:
+    uses: formancehq/gh-workflows/.github/workflows/golang-test.yml@main
+
   Control:
     name: 'Control'
     uses: ./.github/workflows/template_build-control.yaml
@@ -22,6 +46,8 @@ jobs:
   GoReleaserBuild:
     needs:
       - Control
+      - Test_sqlite
+      - Test_postgres
     if: github.event_name != 'release'
     name: 'GoReleaser Build'
     uses: ./.github/workflows/template_goreleaser-build.yaml
@@ -32,6 +58,8 @@ jobs:
   GoReleaserRelease:
     needs:
       - Control
+      - Test_sqlite
+      - Test_postgres
     if: github.event_name == 'release'
     name: 'GoReleaser Release'
     uses: ./.github/workflows/template_goreleaser-release.yaml
@@ -59,6 +87,8 @@ jobs:
   DockerRelease:
     needs:
       - Control
+      - Test_sqlite
+      - Test_postgres
     if: github.event_name == 'release'
     uses: ./.github/workflows/template_docker.yaml
     with:
@@ -72,6 +102,8 @@ jobs:
   DockerBranch:
     needs:
       - Control
+      - Test_sqlite
+      - Test_postgres
     if: github.event_name != 'release'
     uses: ./.github/workflows/template_docker.yaml
     with:
