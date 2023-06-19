@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,18 +22,35 @@ const (
 	accountsTableName = "accounts"
 )
 
+// This regexp is used to validate the account name
+// If the account name is not valid, it means that the user putted a regex in
+// the address filter, and we have to change the postgres operator used.
+var accountNameRegex = regexp.MustCompile(`^[a-zA-Z_0-9]+$`)
+
 type Accounts struct {
 	bun.BaseModel `bun:"accounts,alias:accounts"`
 
-	Address  string            `bun:"address,type:varchar,unique,notnull"`
-	Metadata map[string]string `bun:"metadata,type:jsonb,default:'{}'"`
+	Address     string            `bun:"address,type:varchar,unique,notnull"`
+	Metadata    map[string]string `bun:"metadata,type:jsonb,default:'{}'"`
+	AddressJson []string          `bun:"address_json,type:jsonb"`
 }
 
 func (s *Store) buildAccountsQuery(p AccountsQuery) *bun.SelectQuery {
-	sb := s.schema.NewSelect(accountsTableName).Model((*Accounts)(nil))
+	sb := s.schema.NewSelect(accountsTableName).
+		Model((*Accounts)(nil)).
+		Column("address", "metadata")
 
 	if p.Filters.Address != "" {
-		sb.Where("address ~* ?", "^"+p.Filters.Address+"$")
+		src := strings.Split(p.Filters.Address, ":")
+		sb.Where(fmt.Sprintf("jsonb_array_length(address_json) = %d", len(src)))
+
+		for i, segment := range src {
+			if segment == ".*" || segment == "*" || segment == "" {
+				continue
+			}
+
+			sb.Where(fmt.Sprintf("address_json @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
+		}
 	}
 
 	for key, value := range p.Filters.Metadata {
@@ -102,6 +120,7 @@ func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, err
 
 	query := s.schema.NewSelect(accountsTableName).
 		Model((*Accounts)(nil)).
+		Column("address", "metadata").
 		Where("address = ?", addr).
 		String()
 
@@ -216,8 +235,9 @@ func (s *Store) EnsureAccountExists(ctx context.Context, account string) error {
 	defer recordMetrics()
 
 	a := &Accounts{
-		Address:  account,
-		Metadata: metadata.Metadata{},
+		Address:     account,
+		Metadata:    metadata.Metadata{},
+		AddressJson: strings.Split(account, ":"),
 	}
 
 	_, err := s.schema.NewInsert(accountsTableName).
@@ -238,8 +258,9 @@ func (s *Store) EnsureAccountsExist(ctx context.Context, accounts []string) erro
 	accs := make([]*Accounts, len(accounts))
 	for i, a := range accounts {
 		accs[i] = &Accounts{
-			Address:  a,
-			Metadata: metadata.Metadata{},
+			Address:     a,
+			Metadata:    metadata.Metadata{},
+			AddressJson: strings.Split(a, ":"),
 		}
 	}
 
@@ -259,8 +280,9 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	defer recordMetrics()
 
 	a := &Accounts{
-		Address:  address,
-		Metadata: metadata,
+		Address:     address,
+		Metadata:    metadata,
+		AddressJson: strings.Split(address, ":"),
 	}
 
 	_, err := s.schema.NewInsert(accountsTableName).
@@ -282,8 +304,9 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, accounts []core.Acco
 	accs := make([]*Accounts, len(accounts))
 	for i, a := range accounts {
 		accs[i] = &Accounts{
-			Address:  a.Address,
-			Metadata: a.Metadata,
+			Address:     a.Address,
+			Metadata:    a.Metadata,
+			AddressJson: strings.Split(a.Address, ":"),
 		}
 	}
 

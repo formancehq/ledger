@@ -2,6 +2,7 @@ package ledgerstore
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -26,7 +27,16 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (cor
 		Group("asset")
 
 	if q.Filters.AddressRegexp != "" {
-		sb.Where("account ~* ?", "^"+q.Filters.AddressRegexp+"$")
+		src := strings.Split(q.Filters.AddressRegexp, ":")
+		sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+
+		for i, segment := range src {
+			if segment == ".*" || segment == "*" || segment == "" {
+				continue
+			}
+
+			sb.Where(fmt.Sprintf("account_json @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
+		}
 	}
 
 	rows, err := s.schema.QueryContext(ctx, sb.String())
@@ -72,7 +82,7 @@ func (s *Store) GetBalances(ctx context.Context, q BalancesQuery) (*api.Cursor[c
 		Model((*Volumes)(nil)).
 		ColumnExpr("account").
 		ColumnExpr("array_agg((asset, input - output)) as arr").
-		Group("account").
+		Group("account", "account_json").
 		Order("account DESC")
 
 	if q.Filters.AfterAddress != "" {
@@ -80,7 +90,16 @@ func (s *Store) GetBalances(ctx context.Context, q BalancesQuery) (*api.Cursor[c
 	}
 
 	if q.Filters.AddressRegexp != "" {
-		sb.Where("account ~* ?", "^"+q.Filters.AddressRegexp+"$")
+		src := strings.Split(q.Filters.AddressRegexp, ":")
+		sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+
+		for i, segment := range src {
+			if segment == ".*" || segment == "*" || segment == "" {
+				continue
+			}
+
+			sb.Where(fmt.Sprintf("account_json @@ ('$[%d] == \"' || ?::text || '\"')::jsonpath", i), segment)
+		}
 	}
 
 	return UsingOffset(ctx, sb, OffsetPaginatedQuery[BalancesQueryFilters](q),

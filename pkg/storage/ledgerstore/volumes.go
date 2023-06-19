@@ -3,6 +3,7 @@ package ledgerstore
 import (
 	"context"
 	"math/big"
+	"strings"
 
 	"github.com/formancehq/ledger/pkg/core"
 	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
@@ -16,10 +17,11 @@ const (
 type Volumes struct {
 	bun.BaseModel `bun:"volumes,alias:volumes"`
 
-	Account string `bun:"account,type:varchar,unique:account_asset"`
-	Asset   string `bun:"asset,type:varchar,unique:account_asset"`
-	Input   uint64 `bun:"input,type:numeric"`
-	Output  uint64 `bun:"output,type:numeric"`
+	Account     string   `bun:"account,type:varchar,unique:account_asset"`
+	AccountJson []string `bun:"account_json,type:jsonb"`
+	Asset       string   `bun:"asset,type:varchar,unique:account_asset"`
+	Input       uint64   `bun:"input,type:numeric"`
+	Output      uint64   `bun:"output,type:numeric"`
 }
 
 func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAssetsVolumes) error {
@@ -33,12 +35,14 @@ func (s *Store) UpdateVolumes(ctx context.Context, volumes ...core.AccountsAsset
 	for _, vs := range volumes {
 		for account, accountVolumes := range vs {
 			for asset, volumes := range accountVolumes {
+
 				// De-duplicate same volumes to only have the last version
 				volumesMap[account+asset] = &Volumes{
-					Account: account,
-					Asset:   asset,
-					Input:   volumes.Input.Uint64(),
-					Output:  volumes.Output.Uint64(),
+					Account:     account,
+					AccountJson: strings.Split(account, ":"),
+					Asset:       asset,
+					Input:       volumes.Input.Uint64(),
+					Output:      volumes.Output.Uint64(),
 				}
 			}
 		}

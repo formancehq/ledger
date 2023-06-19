@@ -279,7 +279,7 @@ func TestGetAccounts(t *testing.T) {
 	accounts, err = store.GetAccounts(context.Background(),
 		ledgerstore.NewAccountsQuery().
 			WithPageSize(10).
-			WithAddressFilter(".*der.*"),
+			WithAddressFilter("order:.*"),
 	)
 	require.NoError(t, err)
 	require.Len(t, accounts.Data, 2)
