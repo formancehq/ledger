@@ -99,7 +99,7 @@ func TestGetBalances(t *testing.T) {
 			ledgerstore.NewBalancesQuery().
 				WithPageSize(10).
 				WithAfterAddress("world").
-				WithAddressFilter("users.+"),
+				WithAddressFilter("users:1"),
 		)
 		require.NoError(t, err)
 		require.Equal(t, 10, cursor.PageSize)
