@@ -39,7 +39,11 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			src := strings.Split(address, ":")
-			sb.Where(fmt.Sprintf("jsonb_array_length(address_json) = %d", len(src)))
+			if address[len(address)-2:] != ".*" {
+				sb.Where(fmt.Sprintf("jsonb_array_length(address_json) = %d", len(src)))
+			} else {
+				src[len(src)-1] = src[len(src)-1][:len(src[len(src)-1])-2]
+			}
 
 			for i, segment := range src {
 				if segment == ".*" || segment == "*" || segment == "" {
@@ -49,6 +53,7 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 				operator := "=="
 				if !accountNameRegex.MatchString(segment) {
 					operator = "like_regex"
+					segment = strings.ReplaceAll(segment, "\\", "\\\\")
 				}
 
 				arg := sb.Args.Add(segment)

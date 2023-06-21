@@ -25,7 +25,11 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			src := strings.Split(q.Filters.AddressRegexp, ":")
-			sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+			if q.Filters.AddressRegexp[len(q.Filters.AddressRegexp)-2:] != ".*" {
+				sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+			} else {
+				src[len(src)-1] = src[len(src)-1][:len(src[len(src)-1])-2]
+			}
 
 			for i, segment := range src {
 				if segment == ".*" || segment == "*" || segment == "" {
@@ -35,6 +39,7 @@ func (s *Store) GetBalancesAggregated(ctx context.Context, q ledger.BalancesQuer
 				operator := "=="
 				if !accountNameRegex.MatchString(segment) {
 					operator = "like_regex"
+					segment = strings.ReplaceAll(segment, "\\", "\\\\")
 				}
 
 				arg := sb.Args.Add(segment)
@@ -115,14 +120,18 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 		switch s.Schema().Flavor() {
 		case sqlbuilder.PostgreSQL:
 			src := strings.Split(q.Filters.AddressRegexp, ":")
-			sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+			if q.Filters.AddressRegexp[len(q.Filters.AddressRegexp)-2:] != ".*" {
+				sb.Where(fmt.Sprintf("jsonb_array_length(account_json) = %d", len(src)))
+			} else {
+				src[len(src)-1] = src[len(src)-1][:len(src[len(src)-1])-2]
+			}
 
 			for i, segment := range src {
 				if segment == ".*" || segment == "*" || segment == "" {
 					continue
 				}
 
-				arg := sb.Args.Add(segment)
+				arg := sb.Args.Add(strings.ReplaceAll(segment, "\\", "\\\\"))
 				sb.Where(fmt.Sprintf("account_json @@ ('$[%d] like_regex \"' || %s::text || '\"')::jsonpath", i, arg))
 			}
 		case sqlbuilder.SQLite:
