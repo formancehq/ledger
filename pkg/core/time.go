@@ -75,6 +75,10 @@ func (t Time) Round(precision time.Duration) Time {
 	}
 }
 
+func (t Time) Equal(t2 Time) bool {
+	return t.Time.Equal(t2.Time)
+}
+
 func (t Time) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, t.Format(DateFormat))), nil
 }

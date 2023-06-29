@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 )
 
 type executionContext struct {
@@ -12,11 +13,17 @@ type executionContext struct {
 	parameters Parameters
 }
 
-func (e *executionContext) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
+func (e *executionContext) AppendLog(ctx context.Context, log *core.Log) (*core.LogPersistenceTracker, error) {
 	if e.parameters.DryRun {
-		return core.NewResolvedLogPersistenceTracker(log, log.ComputePersistentLog(nil)), nil
+		chainedLog := log.ChainLog(nil)
+		return core.NewResolvedLogPersistenceTracker(core.NewActiveLog(chainedLog)), nil
 	}
-	return e.commander.store.AppendLog(ctx, log)
+
+	activeLog := core.NewActiveLog(e.commander.chainLog(log))
+	logging.FromContext(ctx).WithFields(map[string]any{
+		"id": activeLog.ChainedLog.ID,
+	}).Debugf("Appending log")
+	return e.commander.store.AppendLog(ctx, activeLog)
 }
 
 func (e *executionContext) run(ctx context.Context, executor func(e *executionContext) (*core.LogPersistenceTracker, error)) (*core.LogPersistenceTracker, error) {
@@ -26,9 +33,9 @@ func (e *executionContext) run(ctx context.Context, executor func(e *executionCo
 		}
 		defer e.commander.referencer.release(referenceIks, ik)
 
-		persistedLog, err := e.commander.store.ReadLogWithIdempotencyKey(ctx, ik)
+		chainedLog, err := e.commander.store.ReadLogWithIdempotencyKey(ctx, ik)
 		if err == nil {
-			return core.NewResolvedLogPersistenceTracker(nil, persistedLog), nil
+			return core.NewResolvedLogPersistenceTracker(core.NewActiveLog(chainedLog)), nil
 		}
 		if err != storageerrors.ErrNotFound && err != nil {
 			return nil, err
@@ -39,8 +46,13 @@ func (e *executionContext) run(ctx context.Context, executor func(e *executionCo
 		return nil, err
 	}
 	<-tracker.Done()
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"id": tracker.ActiveLog().ChainedLog.ID,
+	})
+	logger.Debugf("Log inserted in database")
 	if !e.parameters.Async {
-		<-tracker.ActiveLog().Ingested
+		<-tracker.ActiveLog().Projected
+		logger.Debugf("Log fully ingested")
 	}
 	return tracker, nil
 }

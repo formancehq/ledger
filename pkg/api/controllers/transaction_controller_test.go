@@ -232,9 +232,9 @@ func TestPostTransactions(t *testing.T) {
 					Return(expectedTx, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", Buffer(t, testCase.payload))
+			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", sharedapi.Buffer(t, testCase.payload))
 			rec := httptest.NewRecorder()
 			req.URL.RawQuery = testCase.queryParams.Encode()
 
@@ -242,12 +242,12 @@ func TestPostTransactions(t *testing.T) {
 
 			require.Equal(t, testCase.expectedStatusCode, rec.Code)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
-				tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
+				tx, ok := sharedapi.DecodeSingleResponse[core.Transaction](t, rec.Body)
 				require.True(t, ok)
 				require.Equal(t, *expectedTx, tx)
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})
@@ -294,9 +294,9 @@ func TestPostTransactionMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/metadata", Buffer(t, testCase.body))
+			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()
 			req.URL.RawQuery = testCase.queryParams.Encode()
 
@@ -305,7 +305,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode >= 300 || testCase.expectStatusCode < 200 {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})
@@ -327,7 +327,7 @@ func TestGetTransaction(t *testing.T) {
 		GetTransaction(gomock.Any(), uint64(0)).
 		Return(&tx, nil)
 
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0", nil)
 	rec := httptest.NewRecorder()
@@ -335,7 +335,7 @@ func TestGetTransaction(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	response, _ := DecodeSingleResponse[core.ExpandedTransaction](t, rec.Body)
+	response, _ := sharedapi.DecodeSingleResponse[core.ExpandedTransaction](t, rec.Body)
 	require.Equal(t, tx, response)
 }
 
@@ -524,7 +524,7 @@ func TestGetTransactions(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/transactions", nil)
 			rec := httptest.NewRecorder()
@@ -534,11 +534,11 @@ func TestGetTransactions(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := DecodeCursorResponse[core.ExpandedTransaction](t, rec.Body)
+				cursor := sharedapi.DecodeCursorResponse[core.ExpandedTransaction](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})
@@ -662,7 +662,7 @@ func TestCountTransactions(t *testing.T) {
 					Return(uint64(10), nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions", nil)
 			rec := httptest.NewRecorder()
@@ -675,7 +675,7 @@ func TestCountTransactions(t *testing.T) {
 				require.Equal(t, "10", rec.Header().Get("Count"))
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})
@@ -694,7 +694,7 @@ func TestRevertTransaction(t *testing.T) {
 		RevertTransaction(gomock.Any(), command.Parameters{}, uint64(0)).
 		Return(expectedTx, nil)
 
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
 	rec := httptest.NewRecorder()
@@ -702,7 +702,7 @@ func TestRevertTransaction(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusCreated, rec.Code)
-	tx, ok := DecodeSingleResponse[core.Transaction](t, rec.Body)
+	tx, ok := sharedapi.DecodeSingleResponse[core.Transaction](t, rec.Body)
 	require.True(t, ok)
 	require.Equal(t, *expectedTx, tx)
 }

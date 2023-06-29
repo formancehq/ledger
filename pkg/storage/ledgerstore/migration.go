@@ -5,7 +5,7 @@ import (
 	"embed"
 
 	"github.com/formancehq/ledger/pkg/core"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	sqlerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/migrations"
 	"github.com/pkg/errors"
 )

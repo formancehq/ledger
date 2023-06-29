@@ -25,8 +25,8 @@ func TestMonitor(t *testing.T) {
 	p := publish.NewTopicMapperPublisherDecorator(pubSub, map[string]string{
 		"*": "testing",
 	})
-	m := newLedgerMonitor(p)
-	go m.CommittedTransactions(context.Background(), uuid.New())
+	m := NewLedgerMonitor(p, uuid.New())
+	go m.CommittedTransactions(context.Background())
 
 	select {
 	case m := <-messages:

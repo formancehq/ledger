@@ -43,7 +43,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 
-			expectedBalances := core.AssetsBalances{
+			expectedBalances := core.BalancesByAssets{
 				"world": big.NewInt(-100),
 			}
 			backend, mock := newTestingBackend(t)
@@ -51,7 +51,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 				GetBalancesAggregated(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", nil)
 			rec := httptest.NewRecorder()
@@ -60,7 +60,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 			router.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			balances, ok := DecodeSingleResponse[core.AssetsBalances](t, rec.Body)
+			balances, ok := sharedapi.DecodeSingleResponse[core.BalancesByAssets](t, rec.Body)
 			require.True(t, ok)
 			require.Equal(t, expectedBalances, balances)
 		})
@@ -123,10 +123,10 @@ func TestGetBalances(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[core.AccountsBalances]{
-				Data: []core.AccountsBalances{
+			expectedCursor := sharedapi.Cursor[core.BalancesByAssetsByAccounts]{
+				Data: []core.BalancesByAssetsByAccounts{
 					{
-						"world": core.AssetsBalances{
+						"world": core.BalancesByAssets{
 							"USD": big.NewInt(100),
 						},
 					},
@@ -140,7 +140,7 @@ func TestGetBalances(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/balances", nil)
 			rec := httptest.NewRecorder()
@@ -150,11 +150,11 @@ func TestGetBalances(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := DecodeCursorResponse[core.AccountsBalances](t, rec.Body)
+				cursor := sharedapi.DecodeCursorResponse[core.BalancesByAssetsByAccounts](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})

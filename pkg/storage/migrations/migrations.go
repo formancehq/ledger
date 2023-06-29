@@ -15,8 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/opentelemetry/tracer"
-	sqlerrors "github.com/formancehq/ledger/pkg/storage/errors"
-	"github.com/formancehq/ledger/pkg/storage/schema"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -24,42 +23,42 @@ import (
 
 const migrationsTableName = "migrations_v2"
 
-type MigrationsTable struct {
+type table struct {
 	bun.BaseModel `bun:"migrations_v2,alias:migrations_v2"`
 
 	Version string `bun:"version,type:varchar,unique"`
 	Date    string `bun:"date,type:varchar"`
 }
 
-func createMigrationsTable(ctx context.Context, schema schema.Schema) error {
+func createMigrationsTable(ctx context.Context, schema storage.Schema) error {
 	_, err := schema.NewCreateTable(migrationsTableName).
-		Model((*MigrationsTable)(nil)).
+		Model((*table)(nil)).
 		IfNotExists().
 		Exec(ctx)
 
 	return err
 }
 
-func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (bool, error) {
+func Migrate(ctx context.Context, s storage.Schema, migrations ...Migration) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Migrate")
 	defer span.End()
 
 	if err := createMigrationsTable(ctx, s); err != nil {
-		return false, sqlerrors.PostgresError(err)
+		return false, storage.PostgresError(err)
 	}
 
 	tx, err := s.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return false, sqlerrors.PostgresError(err)
+		return false, storage.PostgresError(err)
 	}
-	defer func(tx *schema.Tx) {
+	defer func(tx *storage.Tx) {
 		_ = tx.Rollback()
 	}(tx)
 
 	modified := false
 	for _, m := range migrations {
 		sb := s.NewSelect(migrationsTableName).
-			Model((*MigrationsTable)(nil)).
+			Model((*table)(nil)).
 			Column("version").
 			Where("version = ?", m.Version)
 
@@ -77,7 +76,7 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 
 		logging.FromContext(ctx).Debugf("running migration %s", m.Version)
 
-		handlersForCurrentEngine, ok := m.Handlers[s.Flavor()]
+		handlersForCurrentEngine, ok := m.Handlers["postgres"]
 		if ok {
 			for _, h := range handlersForCurrentEngine {
 				err := h(ctx, s, tx)
@@ -89,15 +88,15 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 
 		handlersForAnyEngine, ok := m.Handlers["any"]
 		if ok {
-			for _, h := range handlersForAnyEngine {
-				err := h(ctx, s, tx)
+			for num, h := range handlersForAnyEngine {
+				err := h(logging.ContextWithField(ctx, "migrations", num), s, tx)
 				if err != nil {
 					return false, err
 				}
 			}
 		}
 
-		m := MigrationsTable{
+		m := table{
 			Version: m.Version,
 			Date:    core.Now().Format(time.RFC3339),
 		}
@@ -105,17 +104,17 @@ func Migrate(ctx context.Context, s schema.Schema, migrations ...Migration) (boo
 
 		if _, err := tx.ExecContext(ctx, sbInsert.String()); err != nil {
 			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
-			return false, sqlerrors.PostgresError(err)
+			return false, storage.PostgresError(err)
 		}
 
 	}
 
-	return modified, sqlerrors.PostgresError(tx.Commit())
+	return modified, storage.PostgresError(tx.Commit())
 }
 
-func GetMigrations(ctx context.Context, schema schema.Schema) ([]core.MigrationInfo, error) {
+func GetMigrations(ctx context.Context, schema storage.Schema) ([]core.MigrationInfo, error) {
 	sb := schema.NewSelect(migrationsTableName).
-		Model((*MigrationsTable)(nil)).
+		Model((*table)(nil)).
 		Column("version", "date")
 
 	rows, err := schema.QueryContext(ctx, sb.String())
@@ -244,7 +243,7 @@ func CollectMigrationFiles(migrationsFS fs.FS) ([]Migration, error) {
 }
 
 func SQLMigrationFunc(content string) MigrationFunc {
-	return func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
+	return func(ctx context.Context, schema storage.Schema, tx *storage.Tx) error {
 		plain := strings.ReplaceAll(content, "VAR_LEDGER_NAME", schema.Name())
 		r := regexp.MustCompile(`[\n\t\s]+`)
 		plain = r.ReplaceAllString(plain, " ")
@@ -256,7 +255,7 @@ func SQLMigrationFunc(content string) MigrationFunc {
 
 var RegisteredGoMigrations []Migration
 
-type MigrationFunc func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error
+type MigrationFunc func(ctx context.Context, schema storage.Schema, tx *storage.Tx) error
 
 type HandlersByEngine map[string][]MigrationFunc
 

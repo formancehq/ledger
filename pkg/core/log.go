@@ -80,19 +80,20 @@ type hashable interface {
 	hashString(buf *buffer)
 }
 
-type PersistedLog struct {
+type ChainedLog struct {
 	Log
-	ID   uint64 `json:"id"`
-	Hash []byte `json:"hash"`
+	ID        uint64 `json:"id"`
+	Projected bool   `json:"-"`
+	Hash      []byte `json:"hash"`
 }
 
-func (l *PersistedLog) WithID(id uint64) *PersistedLog {
+func (l *ChainedLog) WithID(id uint64) *ChainedLog {
 	l.ID = id
 	return l
 }
 
-func (l *PersistedLog) UnmarshalJSON(data []byte) error {
-	type auxLog PersistedLog
+func (l *ChainedLog) UnmarshalJSON(data []byte) error {
+	type auxLog ChainedLog
 	type log struct {
 		auxLog
 		Data json.RawMessage `json:"data"`
@@ -107,18 +108,18 @@ func (l *PersistedLog) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*l = PersistedLog(rawLog.auxLog)
+	*l = ChainedLog(rawLog.auxLog)
 	return err
 }
 
-func (l *PersistedLog) ComputeHash(previous *PersistedLog) {
+func (l *ChainedLog) ComputeHash(previous *ChainedLog) {
 
 	buf := bufferPool.Get().(*buffer)
 	defer func() {
 		buf.reset()
 		bufferPool.Put(buf)
 	}()
-	hashLog := func(l *PersistedLog) {
+	hashLog := func(l *ChainedLog) {
 		buf.writeUInt64(l.ID)
 		buf.writeUInt16(uint16(l.Type))
 		buf.writeUInt64(uint64(l.Date.UnixNano()))
@@ -157,8 +158,8 @@ func (l *Log) WithIdempotencyKey(key string) *Log {
 	return l
 }
 
-func (l *Log) ComputePersistentLog(previous *PersistedLog) *PersistedLog {
-	ret := &PersistedLog{}
+func (l *Log) ChainLog(previous *ChainedLog) *ChainedLog {
+	ret := &ChainedLog{}
 	ret.Log = *l
 	ret.ComputeHash(previous)
 	if previous != nil {
@@ -315,18 +316,19 @@ func HydrateLog(_type LogType, data []byte) (hashable, error) {
 type Accounts map[string]Account
 
 type ActiveLog struct {
-	*Log
-	Ingested chan struct{}
+	*ChainedLog
+	Projected chan struct{} `json:"-"`
 }
 
-func (h *ActiveLog) SetIngested() {
-	close(h.Ingested)
+func (h *ActiveLog) SetProjected() {
+	h.ChainedLog.Projected = true
+	close(h.Projected)
 }
 
-func NewActiveLog(log *Log) *ActiveLog {
+func NewActiveLog(log *ChainedLog) *ActiveLog {
 	return &ActiveLog{
-		Log:      log,
-		Ingested: make(chan struct{}),
+		ChainedLog: log,
+		Projected:  make(chan struct{}),
 	}
 }
 
@@ -389,26 +391,20 @@ var (
 )
 
 type LogPersistenceTracker struct {
-	activeLog    *ActiveLog
-	done         chan struct{}
-	persistedLog *PersistedLog
+	activeLog *ActiveLog
+	done      chan struct{}
 }
 
 func (r *LogPersistenceTracker) ActiveLog() *ActiveLog {
 	return r.activeLog
 }
 
-func (r *LogPersistenceTracker) Resolve(persistedLog *PersistedLog) {
-	r.persistedLog = persistedLog
+func (r *LogPersistenceTracker) Resolve() {
 	close(r.done)
 }
 
 func (r *LogPersistenceTracker) Done() chan struct{} {
 	return r.done
-}
-
-func (r *LogPersistenceTracker) Result() *PersistedLog {
-	return r.persistedLog
 }
 
 func NewLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
@@ -418,8 +414,8 @@ func NewLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
 	}
 }
 
-func NewResolvedLogPersistenceTracker(log *ActiveLog, v *PersistedLog) *LogPersistenceTracker {
+func NewResolvedLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
 	ret := NewLogPersistenceTracker(log)
-	ret.Resolve(v)
+	ret.Resolve()
 	return ret
 }

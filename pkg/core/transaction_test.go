@@ -137,12 +137,12 @@ func TestReverseTransaction(t *testing.T) {
 }
 
 func BenchmarkHash(b *testing.B) {
-	logs := make([]PersistedLog, b.N)
-	var previous *PersistedLog
+	logs := make([]ChainedLog, b.N)
+	var previous *ChainedLog
 	for i := 0; i < b.N; i++ {
 		newLog := NewTransactionLog(NewTransaction().WithPostings(
 			NewPosting("world", "bank", "USD", big.NewInt(100)),
-		), map[string]metadata.Metadata{}).ComputePersistentLog(previous)
+		), map[string]metadata.Metadata{}).ChainLog(previous)
 		previous = newLog
 		logs = append(logs, *newLog)
 	}

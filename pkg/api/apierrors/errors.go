@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/machine/vm"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"

@@ -5,12 +5,14 @@ go 1.19
 require (
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/ThreeDotsLabs/watermill v1.2.0
+	github.com/alitto/pond v1.8.3
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
 	github.com/formancehq/stack/libs/go-libs v0.0.0-20230517212829-71aaaacfd130
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/cors v1.2.1
 	github.com/golang/mock v1.4.4
+	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx/v5 v5.3.0
 	github.com/lib/pq v1.10.7
@@ -30,13 +32,13 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
 	github.com/uptrace/bun/extra/bunbig v1.1.12
 	github.com/uptrace/bun/extra/bundebug v1.1.12
+	github.com/uptrace/bun/extra/bunotel v1.1.12
 	go.nhat.io/otelsql v0.9.0
 	go.opentelemetry.io/otel v1.14.0
 	go.opentelemetry.io/otel/metric v0.37.0
 	go.opentelemetry.io/otel/trace v1.14.0
 	go.uber.org/atomic v1.10.0
 	go.uber.org/fx v1.19.2
-	golang.org/x/sync v0.1.0
 	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 )
 
@@ -116,6 +118,7 @@ require (
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.21 // indirect
+	github.com/uptrace/opentelemetry-go-extra/otelsql v0.1.21 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.1.21 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect

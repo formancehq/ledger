@@ -1,4 +1,4 @@
-package errors
+package storage
 
 import (
 	"database/sql"
@@ -33,22 +33,12 @@ func PostgresError(err error) error {
 	return nil
 }
 
-func StorageError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	return errorsutil.NewError(ErrStorage, err)
-}
-
-var ErrNotFound = errors.New("not found")
-
 var (
-	ErrConstraintFailed    = errors.New("23505: constraint failed")
-	ErrTooManyClients      = errors.New("53300: too many clients")
-	ErrStoreNotInitialized = errors.New("store not initialized")
-	ErrStoreAlreadyExists  = errors.New("store already exists")
-	ErrStoreNotFound       = errors.New("store not found")
+	ErrNotFound           = errors.New("not found")
+	ErrConstraintFailed   = errors.New("23505: constraint failed")
+	ErrTooManyClients     = errors.New("53300: too many clients")
+	ErrStoreAlreadyExists = errors.New("store already exists")
+	ErrStoreNotFound      = errors.New("store not found")
 
 	ErrStorage = errors.New("storage error")
 )

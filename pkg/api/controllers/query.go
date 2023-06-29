@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MaxPageSize     = 1000
+	MaxPageSize     = 100
 	DefaultPageSize = ledgerstore.QueryDefaultPageSize
 
 	QueryKeyCursor          = "cursor"
@@ -50,19 +50,6 @@ func getPageSize(r *http.Request) (uint64, error) {
 	}
 
 	return pageSize, nil
-}
-
-func getBalanceOperator(w http.ResponseWriter, r *http.Request) (ledgerstore.BalanceOperator, error) {
-	balanceOperator := ledgerstore.DefaultBalanceOperator
-	balanceOperatorStr := r.URL.Query().Get(QueryKeyBalanceOperator)
-	if balanceOperatorStr != "" {
-		var ok bool
-		if balanceOperator, ok = ledgerstore.NewBalanceOperator(balanceOperatorStr); !ok {
-			return "", errorsutil.NewError(command.ErrValidation, ErrInvalidBalanceOperator)
-		}
-	}
-
-	return balanceOperator, nil
 }
 
 func getCommandParameters(r *http.Request) command.Parameters {

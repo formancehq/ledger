@@ -32,9 +32,8 @@ func TestGetAccounts(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name: "nominal",
-			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte"),
+			name:        "nominal",
+			expectQuery: ledgerstore.NewAccountsQuery(),
 		},
 		{
 			name: "using metadata",
@@ -42,7 +41,6 @@ func TestGetAccounts(t *testing.T) {
 				"metadata[roles]": []string{"admin"},
 			},
 			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte").
 				WithMetadataFilter(map[string]string{
 					"roles": "admin",
 				}),
@@ -53,7 +51,6 @@ func TestGetAccounts(t *testing.T) {
 				"metadata[a.nested.key]": []string{"hello"},
 			},
 			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte").
 				WithMetadataFilter(map[string]string{
 					"a.nested.key": "hello",
 				}),
@@ -64,47 +61,8 @@ func TestGetAccounts(t *testing.T) {
 				"after": []string{"foo"},
 			},
 			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte").
 				WithAfterAddress("foo").
 				WithMetadataFilter(map[string]string{}),
-		},
-		{
-			name: "using balance with default operator",
-			queryParams: url.Values{
-				"balance": []string{"50"},
-			},
-			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte").
-				WithBalanceFilter("50").
-				WithMetadataFilter(map[string]string{}),
-		},
-		{
-			name: "using balance with specified operator",
-			queryParams: url.Values{
-				"balance":         []string{"50"},
-				"balanceOperator": []string{"gt"},
-			},
-			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gt").
-				WithBalanceFilter("50").
-				WithMetadataFilter(map[string]string{}),
-		},
-		{
-			name: "using invalid balance",
-			queryParams: url.Values{
-				"balance": []string{"xxx"},
-			},
-			expectedErrorCode: apierrors.ErrValidation,
-			expectStatusCode:  http.StatusBadRequest,
-		},
-		{
-			name: "using balance with invalid operator",
-			queryParams: url.Values{
-				"balance":         []string{"50"},
-				"balanceOperator": []string{"xxx"},
-			},
-			expectedErrorCode: apierrors.ErrValidation,
-			expectStatusCode:  http.StatusBadRequest,
 		},
 		{
 			name: "using address",
@@ -112,7 +70,6 @@ func TestGetAccounts(t *testing.T) {
 				"address": []string{"foo"},
 			},
 			expectQuery: ledgerstore.NewAccountsQuery().
-				WithBalanceOperatorFilter("gte").
 				WithAddressFilter("foo").
 				WithMetadataFilter(map[string]string{}),
 		},
@@ -155,8 +112,7 @@ func TestGetAccounts(t *testing.T) {
 			},
 			expectQuery: ledgerstore.NewAccountsQuery().
 				WithPageSize(controllers.MaxPageSize).
-				WithMetadataFilter(map[string]string{}).
-				WithBalanceOperatorFilter("gte"),
+				WithMetadataFilter(map[string]string{}),
 		},
 	}
 	for _, testCase := range testCases {
@@ -183,7 +139,7 @@ func TestGetAccounts(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
@@ -193,11 +149,11 @@ func TestGetAccounts(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := DecodeCursorResponse[core.Account](t, rec.Body)
+				cursor := sharedapi.DecodeCursorResponse[core.Account](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})
@@ -212,7 +168,7 @@ func TestGetAccount(t *testing.T) {
 			Address:  "foo",
 			Metadata: metadata.Metadata{},
 		},
-		Volumes: map[string]core.Volumes{},
+		Volumes: core.VolumesByAssets{},
 	}
 
 	backend, mock := newTestingBackend(t)
@@ -220,7 +176,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccount(gomock.Any(), "foo").
 		Return(&account, nil)
 
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo", nil)
 	rec := httptest.NewRecorder()
@@ -228,7 +184,7 @@ func TestGetAccount(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	response, _ := DecodeSingleResponse[core.AccountWithVolumes](t, rec.Body)
+	response, _ := sharedapi.DecodeSingleResponse[core.AccountWithVolumes](t, rec.Body)
 	require.Equal(t, account, response)
 }
 
@@ -281,9 +237,9 @@ func TestPostAccountMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", Buffer(t, testCase.body))
+			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()
 			req.URL.RawQuery = testCase.queryParams.Encode()
 
@@ -292,7 +248,7 @@ func TestPostAccountMetadata(t *testing.T) {
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode >= 300 || testCase.expectStatusCode < 200 {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})

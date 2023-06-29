@@ -1,12 +1,12 @@
-package storage_test
+package driver_test
 
 import (
 	"context"
 	"os"
 	"testing"
 
-	"github.com/formancehq/ledger/pkg/storage/errors"
-	"github.com/formancehq/ledger/pkg/storage/sqlstoragetesting"
+	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/storagetesting"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
@@ -25,7 +25,7 @@ func TestMain(t *testing.M) {
 }
 
 func TestConfiguration(t *testing.T) {
-	d := sqlstoragetesting.StorageDriver(t)
+	d := storagetesting.StorageDriver(t)
 
 	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))
 	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
@@ -34,9 +34,9 @@ func TestConfiguration(t *testing.T) {
 }
 
 func TestConfigurationError(t *testing.T) {
-	d := sqlstoragetesting.StorageDriver(t)
+	d := storagetesting.StorageDriver(t)
 
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
-	require.True(t, errors.IsNotFoundError(err))
+	require.True(t, storage.IsNotFoundError(err))
 }

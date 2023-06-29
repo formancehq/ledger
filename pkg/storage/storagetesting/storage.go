@@ -1,4 +1,4 @@
-package sqlstoragetesting
+package storagetesting
 
 import (
 	"context"
@@ -6,17 +6,16 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/driver"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
-	"github.com/formancehq/ledger/pkg/storage/schema"
-	"github.com/formancehq/ledger/pkg/storage/utils"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 
-func StorageDriver(t pgtesting.TestingT) *storage.Driver {
+func StorageDriver(t pgtesting.TestingT) *driver.Driver {
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
-	db, err := utils.OpenSQLDB(utils.ConnectionOptions{
+	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 		MaxIdleConns:       40,
@@ -29,7 +28,7 @@ func StorageDriver(t pgtesting.TestingT) *storage.Driver {
 		db.Close()
 	})
 
-	d := storage.NewDriver("postgres", schema.NewPostgresDB(db), ledgerstore.DefaultStoreConfig)
+	d := driver.New("postgres", storage.NewDatabase(db), ledgerstore.DefaultStoreConfig)
 
 	require.NoError(t, d.Initialize(context.Background()))
 

@@ -9,47 +9,49 @@ import (
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
 
 type Ledger struct {
 	*command.Commander
-	store       *ledgerstore.Store
-	queryWorker *query.Worker
-	locker      *command.DefaultLocker
+	store     *ledgerstore.Store
+	projector *query.Projector
+	locker    *command.DefaultLocker
 }
 
 func New(
 	store *ledgerstore.Store,
 	locker *command.DefaultLocker,
-	queryWorker *query.Worker,
+	queryWorker *query.Projector,
 	compiler *command.Compiler,
-	metricsRegistry metrics.PerLedgerMetricsRegistry,
+	metricsRegistry metrics.PerLedgerRegistry,
 ) *Ledger {
-	store.OnLogWrote(func(logs []*ledgerstore.AppendedLog) {
-		if err := queryWorker.QueueLog(context.Background(), logs...); err != nil {
+	store.OnLogWrote(func(logs []*core.ActiveLog) {
+		if err := queryWorker.QueueLog(logs...); err != nil {
 			panic(err)
 		}
 	})
 	return &Ledger{
-		Commander:   command.New(store, locker, compiler, command.NewReferencer(), metricsRegistry),
-		store:       store,
-		queryWorker: queryWorker,
-		locker:      locker,
+		Commander: command.New(store, locker, compiler, command.NewReferencer(), metricsRegistry),
+		store:     store,
+		projector: queryWorker,
+		locker:    locker,
 	}
 }
 
 func (l *Ledger) Close(ctx context.Context) error {
 
+	logging.FromContext(ctx).Debugf("Close commander")
 	l.Commander.Wait()
 
-	if err := l.queryWorker.Stop(ctx); err != nil {
-		return errors.Wrap(err, "stopping query worker")
-	}
-
-	if err := l.store.Stop(ctx); err != nil {
+	logging.FromContext(ctx).Debugf("Close storage worker")
+	if err := l.store.Stop(logging.ContextWithField(ctx, "component", "store")); err != nil {
 		return errors.Wrap(err, "stopping ledger store")
 	}
+
+	logging.FromContext(ctx).Debugf("Close projector")
+	l.projector.Stop(logging.ContextWithField(ctx, "component", "projector"))
 
 	return nil
 }
@@ -84,17 +86,17 @@ func (l *Ledger) GetAccount(ctx context.Context, address string) (*core.AccountW
 	return accounts, errors.Wrap(err, "getting account")
 }
 
-func (l *Ledger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
+func (l *Ledger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.BalancesByAssetsByAccounts], error) {
 	balances, err := l.store.GetBalances(ctx, q)
 	return balances, errors.Wrap(err, "getting balances")
 }
 
-func (l *Ledger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.AssetsBalances, error) {
+func (l *Ledger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.BalancesByAssets, error) {
 	balances, err := l.store.GetBalancesAggregated(ctx, q)
 	return balances, errors.Wrap(err, "getting balances aggregated")
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.LogsQuery) (*api.Cursor[core.ChainedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
 	return logs, errors.Wrap(err, "getting logs")
 }

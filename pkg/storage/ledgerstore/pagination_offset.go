@@ -3,37 +3,18 @@ package ledgerstore
 import (
 	"context"
 
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
 )
 
-type scanner[T any] func(t *T, scanner interface {
-	Scan(args ...any) error
-}) error
-
-func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q], fn scanner[T]) (*api.Cursor[T], error) {
+func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q]) (*api.Cursor[T], error) {
 	ret := make([]T, 0)
 
 	sb = sb.Offset(int(query.Offset))
 	sb = sb.Limit(int(query.PageSize) + 1)
 
-	rows, err := sb.Rows(ctx)
-	if err != nil {
-		return nil, storageerrors.PostgresError(err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var t T
-		if err := fn(&t, rows); err != nil {
-			return nil, err
-		}
-		ret = append(ret, t)
-	}
-
-	if rows.Err() != nil {
-		return nil, storageerrors.PostgresError(err)
+	if err := sb.Scan(ctx, &ret); err != nil {
+		return nil, err
 	}
 
 	var previous, next *OffsetPaginatedQuery[Q]

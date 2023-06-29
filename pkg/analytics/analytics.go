@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pbnjay/memory"
 	"gopkg.in/segmentio/analytics-go.v3"

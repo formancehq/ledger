@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"strings"
 
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"github.com/uptrace/bun"
 )
 
@@ -90,13 +91,13 @@ func UsingColumn[FILTERS any, ENTITY any](ctx context.Context,
 
 		if hasMore {
 			cp := query
-			cp.PaginationID = ptr(paginationIDs[len(paginationIDs)-2])
+			cp.PaginationID = pointer.For(paginationIDs[len(paginationIDs)-2])
 			previous = &cp
 		}
 	} else {
 		if hasMore {
 			cp := query
-			cp.PaginationID = ptr(paginationIDs[len(paginationIDs)-1])
+			cp.PaginationID = pointer.For(paginationIDs[len(paginationIDs)-1])
 			next = &cp
 		}
 		if query.PaginationID != nil {

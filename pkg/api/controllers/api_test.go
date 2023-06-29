@@ -117,10 +117,10 @@ func (mr *MockLedgerMockRecorder) GetAccounts(ctx, query interface{}) *gomock.Ca
 }
 
 // GetBalances mocks base method.
-func (m *MockLedger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.AccountsBalances], error) {
+func (m *MockLedger) GetBalances(ctx context.Context, q ledgerstore.BalancesQuery) (*api.Cursor[core.BalancesByAssetsByAccounts], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalances", ctx, q)
-	ret0, _ := ret[0].(*api.Cursor[core.AccountsBalances])
+	ret0, _ := ret[0].(*api.Cursor[core.BalancesByAssetsByAccounts])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -132,10 +132,10 @@ func (mr *MockLedgerMockRecorder) GetBalances(ctx, q interface{}) *gomock.Call {
 }
 
 // GetBalancesAggregated mocks base method.
-func (m *MockLedger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.AssetsBalances, error) {
+func (m *MockLedger) GetBalancesAggregated(ctx context.Context, q ledgerstore.BalancesQuery) (core.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalancesAggregated", ctx, q)
-	ret0, _ := ret[0].(core.AssetsBalances)
+	ret0, _ := ret[0].(core.BalancesByAssets)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -147,10 +147,10 @@ func (mr *MockLedgerMockRecorder) GetBalancesAggregated(ctx, q interface{}) *gom
 }
 
 // GetLogs mocks base method.
-func (m *MockLedger) GetLogs(ctx context.Context, query ledgerstore.LogsQuery) (*api.Cursor[core.PersistedLog], error) {
+func (m *MockLedger) GetLogs(ctx context.Context, query ledgerstore.LogsQuery) (*api.Cursor[core.ChainedLog], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[core.PersistedLog])
+	ret0, _ := ret[0].(*api.Cursor[core.ChainedLog])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

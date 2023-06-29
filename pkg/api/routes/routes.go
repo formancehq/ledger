@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/health"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -16,9 +15,8 @@ import (
 
 func NewRouter(
 	backend controllers.Backend,
-	logger logging.Logger,
 	healthController *health.HealthController,
-	globalMetricsRegistry metrics.GlobalMetricsRegistry,
+	globalMetricsRegistry metrics.GlobalRegistry,
 ) chi.Router {
 	router := chi.NewMux()
 
@@ -29,16 +27,6 @@ func NewRouter(
 			},
 			AllowCredentials: true,
 		}).Handler,
-		func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if logger != nil {
-					r = r.WithContext(
-						logging.ContextWithLogger(r.Context(), logger),
-					)
-				}
-				handler.ServeHTTP(w, r)
-			})
-		},
 		middlewares.MetricsMiddleware(globalMetricsRegistry),
 		middleware.Recoverer,
 	)

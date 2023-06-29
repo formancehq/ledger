@@ -25,7 +25,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	migrationInfo := []core.MigrationInfo{
 		{
@@ -53,7 +53,7 @@ func TestGetLedgerInfo(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	info, ok := DecodeSingleResponse[controllers.Info](t, rec.Body)
+	info, ok := sharedapi.DecodeSingleResponse[controllers.Info](t, rec.Body)
 	require.True(t, ok)
 
 	require.EqualValues(t, controllers.Info{
@@ -68,7 +68,7 @@ func TestGetStats(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	expectedStats := ledger.Stats{
 		Transactions: 10,
@@ -86,7 +86,7 @@ func TestGetStats(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	stats, ok := DecodeSingleResponse[ledger.Stats](t, rec.Body)
+	stats, ok := sharedapi.DecodeSingleResponse[ledger.Stats](t, rec.Body)
 	require.True(t, ok)
 
 	require.EqualValues(t, expectedStats, stats)
@@ -163,10 +163,10 @@ func TestGetLogs(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[core.PersistedLog]{
-				Data: []core.PersistedLog{
+			expectedCursor := sharedapi.Cursor[core.ChainedLog]{
+				Data: []core.ChainedLog{
 					*core.NewTransactionLog(core.NewTransaction(), map[string]metadata.Metadata{}).
-						ComputePersistentLog(nil),
+						ChainLog(nil),
 				},
 			}
 
@@ -177,7 +177,7 @@ func TestGetLogs(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+			router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/logs", nil)
 			rec := httptest.NewRecorder()
@@ -187,7 +187,7 @@ func TestGetLogs(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := DecodeCursorResponse[core.PersistedLog](t, rec.Body)
+				cursor := sharedapi.DecodeCursorResponse[core.ChainedLog](t, rec.Body)
 
 				cursorData, err := json.Marshal(cursor)
 				require.NoError(t, err)
@@ -204,7 +204,7 @@ func TestGetLogs(t *testing.T) {
 				require.Equal(t, expectedCursorAsMap, cursorAsMap)
 			} else {
 				err := sharedapi.ErrorResponse{}
-				Decode(t, rec.Body, &err)
+				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})

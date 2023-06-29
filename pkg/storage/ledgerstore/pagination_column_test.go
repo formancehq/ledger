@@ -4,23 +4,22 @@ import (
 	"context"
 	"testing"
 
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
-	"github.com/formancehq/ledger/pkg/storage/utils"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
 
-func ptr[T any](t T) *T {
-	return &t
-}
-
 func TestColumnPagination(t *testing.T) {
+	t.Parallel()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(utils.ConnectionOptions{
+	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
+		Trace:              testing.Verbose(),
 	})
 	require.NoError(t, err)
 
@@ -65,9 +64,9 @@ func TestColumnPagination(t *testing.T) {
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(10)),
+				PaginationID: pointer.For(uint64(10)),
 				Order:        ledgerstore.OrderAsc,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedNumberOfItems: 10,
 		},
@@ -76,24 +75,24 @@ func TestColumnPagination(t *testing.T) {
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(10)),
+				PaginationID: pointer.For(uint64(10)),
 				Order:        ledgerstore.OrderAsc,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
 				Order:        ledgerstore.OrderAsc,
-				Bottom:       ptr(uint64(0)),
-				PaginationID: ptr(uint64(10)),
+				Bottom:       pointer.For(uint64(0)),
+				PaginationID: pointer.For(uint64(10)),
 				Reverse:      true,
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(20)),
+				PaginationID: pointer.For(uint64(20)),
 				Order:        ledgerstore.OrderAsc,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedNumberOfItems: 10,
 		},
@@ -102,16 +101,16 @@ func TestColumnPagination(t *testing.T) {
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(90)),
+				PaginationID: pointer.For(uint64(90)),
 				Order:        ledgerstore.OrderAsc,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
 				Order:        ledgerstore.OrderAsc,
-				PaginationID: ptr(uint64(90)),
-				Bottom:       ptr(uint64(0)),
+				PaginationID: pointer.For(uint64(90)),
+				Bottom:       pointer.For(uint64(0)),
 				Reverse:      true,
 			},
 			expectedNumberOfItems: 10,
@@ -125,9 +124,9 @@ func TestColumnPagination(t *testing.T) {
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(89)),
+				PaginationID: pointer.For(uint64(89)),
 				Order:        ledgerstore.OrderDesc,
 			},
 			expectedNumberOfItems: 10,
@@ -136,24 +135,24 @@ func TestColumnPagination(t *testing.T) {
 			name: "desc second page using next cursor",
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(89)),
+				PaginationID: pointer.For(uint64(89)),
 				Order:        ledgerstore.OrderDesc,
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(89)),
+				PaginationID: pointer.For(uint64(89)),
 				Order:        ledgerstore.OrderDesc,
 				Reverse:      true,
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(79)),
+				PaginationID: pointer.For(uint64(79)),
 				Order:        ledgerstore.OrderDesc,
 			},
 			expectedNumberOfItems: 10,
@@ -162,16 +161,16 @@ func TestColumnPagination(t *testing.T) {
 			name: "desc last page using next cursor",
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(9)),
+				PaginationID: pointer.For(uint64(9)),
 				Order:        ledgerstore.OrderDesc,
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(9)),
+				PaginationID: pointer.For(uint64(9)),
 				Order:        ledgerstore.OrderDesc,
 				Reverse:      true,
 			},
@@ -181,17 +180,17 @@ func TestColumnPagination(t *testing.T) {
 			name: "asc first page using previous cursor",
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 				Column:       "id",
-				PaginationID: ptr(uint64(10)),
+				PaginationID: pointer.For(uint64(10)),
 				Order:        ledgerstore.OrderAsc,
 				Reverse:      true,
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 				Column:       "id",
-				PaginationID: ptr(uint64(10)),
+				PaginationID: pointer.For(uint64(10)),
 				Order:        ledgerstore.OrderAsc,
 			},
 			expectedNumberOfItems: 10,
@@ -200,17 +199,17 @@ func TestColumnPagination(t *testing.T) {
 			name: "desc first page using previous cursor",
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(89)),
+				PaginationID: pointer.For(uint64(89)),
 				Order:        ledgerstore.OrderDesc,
 				Reverse:      true,
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
-				Bottom:       ptr(uint64(99)),
+				Bottom:       pointer.For(uint64(99)),
 				Column:       "id",
-				PaginationID: ptr(uint64(89)),
+				PaginationID: pointer.For(uint64(89)),
 				Order:        ledgerstore.OrderDesc,
 			},
 			expectedNumberOfItems: 10,
@@ -226,10 +225,10 @@ func TestColumnPagination(t *testing.T) {
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(20)),
+				PaginationID: pointer.For(uint64(20)),
 				Order:        ledgerstore.OrderAsc,
 				Filters:      true,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedNumberOfItems: 10,
 		},
@@ -238,26 +237,26 @@ func TestColumnPagination(t *testing.T) {
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(20)),
+				PaginationID: pointer.For(uint64(20)),
 				Order:        ledgerstore.OrderAsc,
 				Filters:      true,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(40)),
+				PaginationID: pointer.For(uint64(40)),
 				Order:        ledgerstore.OrderAsc,
 				Filters:      true,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(20)),
+				PaginationID: pointer.For(uint64(20)),
 				Order:        ledgerstore.OrderAsc,
 				Filters:      true,
-				Bottom:       ptr(uint64(0)),
+				Bottom:       pointer.For(uint64(0)),
 				Reverse:      true,
 			},
 			expectedNumberOfItems: 10,
@@ -273,10 +272,10 @@ func TestColumnPagination(t *testing.T) {
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(78)),
+				PaginationID: pointer.For(uint64(78)),
 				Order:        ledgerstore.OrderDesc,
 				Filters:      true,
-				Bottom:       ptr(uint64(98)),
+				Bottom:       pointer.For(uint64(98)),
 			},
 			expectedNumberOfItems: 10,
 		},
@@ -285,26 +284,26 @@ func TestColumnPagination(t *testing.T) {
 			query: ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(78)),
+				PaginationID: pointer.For(uint64(78)),
 				Order:        ledgerstore.OrderDesc,
 				Filters:      true,
-				Bottom:       ptr(uint64(98)),
+				Bottom:       pointer.For(uint64(98)),
 			},
 			expectedNext: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(58)),
+				PaginationID: pointer.For(uint64(58)),
 				Order:        ledgerstore.OrderDesc,
 				Filters:      true,
-				Bottom:       ptr(uint64(98)),
+				Bottom:       pointer.For(uint64(98)),
 			},
 			expectedPrevious: &ledgerstore.ColumnPaginatedQuery[bool]{
 				PageSize:     10,
 				Column:       "id",
-				PaginationID: ptr(uint64(78)),
+				PaginationID: pointer.For(uint64(78)),
 				Order:        ledgerstore.OrderDesc,
 				Filters:      true,
-				Bottom:       ptr(uint64(98)),
+				Bottom:       pointer.For(uint64(98)),
 				Reverse:      true,
 			},
 			expectedNumberOfItems: 10,

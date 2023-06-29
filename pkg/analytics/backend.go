@@ -3,8 +3,8 @@ package analytics
 import (
 	"context"
 
-	"github.com/formancehq/ledger/pkg/storage"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/driver"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -38,7 +38,7 @@ type Backend interface {
 }
 
 type defaultBackend struct {
-	driver *storage.Driver
+	driver *driver.Driver
 	appID  string
 }
 
@@ -75,7 +75,7 @@ func (d defaultBackend) GetLedgerStore(ctx context.Context, name string) (Ledger
 
 var _ Backend = (*defaultBackend)(nil)
 
-func newDefaultBackend(driver *storage.Driver, appID string) *defaultBackend {
+func newDefaultBackend(driver *driver.Driver, appID string) *defaultBackend {
 	return &defaultBackend{
 		driver: driver,
 		appID:  appID,

@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/ledger/pkg/storage/migrations"
-	"github.com/formancehq/ledger/pkg/storage/schema"
-	"github.com/formancehq/ledger/pkg/storage/utils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/psanford/memfs"
@@ -46,7 +45,7 @@ func TestCollectMigrations(t *testing.T) {
 		NO SQL;
 	`), 0666))
 
-	migrations.RegisterGoMigrationFromFilename("migrates/0-first-migration/sqlite.go", func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
+	migrations.RegisterGoMigrationFromFilename("migrates/0-first-migration/sqlite.go", func(ctx context.Context, schema storage.Schema, tx *storage.Tx) error {
 		return nil
 	})
 
@@ -86,14 +85,15 @@ func TestMigrationsOrders(t *testing.T) {
 
 func TestMigrates(t *testing.T) {
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	sqlDB, err := utils.OpenSQLDB(utils.ConnectionOptions{
+	sqlDB, err := storage.OpenSQLDB(storage.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
+		Trace:              testing.Verbose(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := schema.NewPostgresDB(sqlDB)
+	db := storage.NewDatabase(sqlDB)
 
 	s, err := db.Schema("testing")
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestMigrates(t *testing.T) {
 			},
 			Handlers: migrations.HandlersByEngine{
 				"any": {
-					func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
+					func(ctx context.Context, schema storage.Schema, tx *storage.Tx) error {
 						sb := s.NewUpdate(ledgerstore.TransactionsTableName).
 							Model((*ledgerstore.Transaction)(nil)).
 							Set("timestamp = ?", core.Now()).
@@ -162,7 +162,7 @@ func TestMigrates(t *testing.T) {
 }
 
 func TestRegister(t *testing.T) {
-	fn := func(ctx context.Context, schema schema.Schema, tx *schema.Tx) error {
+	fn := func(ctx context.Context, schema storage.Schema, tx *storage.Tx) error {
 		return nil
 	}
 

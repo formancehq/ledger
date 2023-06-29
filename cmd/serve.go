@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"net/http"
+
 	"github.com/formancehq/ledger/pkg/api/middlewares"
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	app "github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
@@ -12,7 +15,6 @@ import (
 )
 
 const (
-	queryLimitReadLogsFlag = "query-limit-read-logs"
 	ballastSizeInBytesFlag = "ballast-size"
 	numscriptCacheMaxCount = "numscript-cache-max-count"
 )
@@ -24,10 +26,16 @@ func NewServe() *cobra.Command {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
 				cmd.OutOrStdout(),
 				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
-				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
+				fx.Invoke(func(lc fx.Lifecycle, h chi.Router, logger logging.Logger) {
 
 					if viper.GetBool(app.DebugFlag) {
 						wrappedRouter := chi.NewRouter()
+						wrappedRouter.Use(func(handler http.Handler) http.Handler {
+							return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+								r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
+								handler.ServeHTTP(w, r)
+							})
+						})
 						wrappedRouter.Use(middlewares.Log())
 						wrappedRouter.Mount("/", h)
 						h = wrappedRouter
@@ -38,7 +46,6 @@ func NewServe() *cobra.Command {
 			)...).Run(cmd.Context())
 		},
 	}
-	cmd.Flags().Int(queryLimitReadLogsFlag, 10000, "Query limit read logs")
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
 	cmd.Flags().Int(numscriptCacheMaxCount, 1024, "Numscript cache max count")
 	return cmd

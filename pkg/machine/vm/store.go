@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 )
 
 type Store interface {

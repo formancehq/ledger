@@ -3,22 +3,21 @@ package systemstore
 import (
 	"context"
 
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
-	"github.com/formancehq/ledger/pkg/storage/schema"
+	"github.com/formancehq/ledger/pkg/storage"
 )
 
 type Store struct {
-	schema schema.Schema
+	schema storage.Schema
 }
 
-func NewStore(schema schema.Schema) *Store {
+func NewStore(schema storage.Schema) *Store {
 	return &Store{schema: schema}
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
 	if err := s.CreateLedgersTable(ctx); err != nil {
-		return storageerrors.PostgresError(err)
+		return storage.PostgresError(err)
 	}
 
-	return storageerrors.PostgresError(s.CreateConfigurationTable(ctx))
+	return storage.PostgresError(s.CreateConfigurationTable(ctx))
 }

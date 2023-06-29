@@ -1,66 +1,45 @@
 --statement
-CREATE SCHEMA IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0";
+create schema "VAR_LEDGER_NAME_v2_0_0";
 
 --statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value boolean, VARIADIC path text[]) RETURNS boolean
-    LANGUAGE plpgsql IMMUTABLE
-    AS $$ BEGIN return jsonb_extract_path(metadata, variadic path)::bool = value::bool; EXCEPTION WHEN others THEN RAISE INFO 'Error Name: %', SQLERRM; RAISE INFO 'Error State: %', SQLSTATE; RETURN false; END $$;
+create function "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value boolean, variadic path text[]) returns boolean
+    language plpgsql immutable
+    as $$ begin return jsonb_extract_path(metadata, variadic path)::bool = value::bool; exception when others then raise info 'Error Name: %', SQLERRM; raise info 'Error State: %', SQLSTATE; return false; END $$;
 
 --statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value numeric, VARIADIC path text[]) RETURNS boolean
-    LANGUAGE plpgsql IMMUTABLE
-    AS $$ BEGIN return jsonb_extract_path(metadata, variadic path)::numeric = value::numeric; EXCEPTION WHEN others THEN RAISE INFO 'Error Name: %', SQLERRM; RAISE INFO 'Error State: %', SQLSTATE; RETURN false; END $$;
+create function "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value numeric, variadic path text[]) returns boolean
+    language plpgsql immutable
+    as $$ begin return jsonb_extract_path(metadata, variadic path)::numeric = value::numeric; exception when others then raise info 'Error Name: %', SQLERRM; raise info 'Error State: %', SQLSTATE; return false; END $$;
 
 --statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value character varying, VARIADIC path text[]) RETURNS boolean
-    LANGUAGE plpgsql IMMUTABLE
-    AS $$ BEGIN return jsonb_extract_path_text(metadata, variadic path)::varchar = value::varchar; EXCEPTION WHEN others THEN RAISE INFO 'Error Name: %', SQLERRM; RAISE INFO 'Error State: %', SQLSTATE; RETURN false; END $$;
+create function "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value character varying, variadic path text[]) returns boolean
+    language plpgsql immutable
+    as $$ begin return jsonb_extract_path_text(metadata, variadic path)::varchar = value::varchar; exception when others then raise info 'Error Name: %', SQLERRM; raise info 'Error State: %', SQLSTATE; return false; END $$;
 
 --statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".use_account_as_destination(postings jsonb, account character varying) RETURNS boolean
-    LANGUAGE sql
-    AS $_$ select bool_or(v.value::bool) from ( select jsonb_extract_path_text(jsonb_array_elements(postings), 'destination') ~ ('^' || account || '$') as value) as v; $_$;
-
---statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".use_account_as_source(postings jsonb, account character varying) RETURNS boolean
-    LANGUAGE sql
-    AS $_$ select bool_or(v.value::bool) from ( select jsonb_extract_path_text(jsonb_array_elements(postings), 'source') ~ ('^' || account || '$') as value) as v; $_$;
-
---statement
-CREATE FUNCTION "VAR_LEDGER_NAME_v2_0_0".use_account(postings jsonb, account character varying) RETURNS boolean
-    LANGUAGE sql
-    AS $$ SELECT bool_or(v.value) from ( SELECT "VAR_LEDGER_NAME_v2_0_0".use_account_as_source(postings, account) AS value UNION SELECT "VAR_LEDGER_NAME_v2_0_0".use_account_as_destination(postings, account) AS value ) v $$;
-
---statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".accounts (
-    address character varying NOT NULL,
-    metadata jsonb DEFAULT '{}'::jsonb,
+create table "VAR_LEDGER_NAME_v2_0_0".accounts (
+    address character varying not null,
+    address_json jsonb not null,
+    metadata jsonb default '{}'::jsonb,
 
     unique(address)
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".logs_ingestion (
-    onerow_id boolean DEFAULT true NOT NULL,
-    log_id bigint,
-
-    primary key (onerow_id)
-);
-
---statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".logs_v2 (
+create table "VAR_LEDGER_NAME_v2_0_0".logs_v2 (
     id bigint,
     type smallint,
     hash bytea,
     date timestamp with time zone,
     data jsonb,
     idempotency_key varchar(255),
+    projected boolean default false,
 
     unique(id)
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".migrations_v2 (
+create table "VAR_LEDGER_NAME_v2_0_0".migrations_v2 (
     version character varying,
     date character varying,
 
@@ -68,54 +47,87 @@ CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".migrations_v2 (
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".transactions (
-    id bigint unique,
+create table "VAR_LEDGER_NAME_v2_0_0".transactions (
+    id bigint unique primary key ,
     "timestamp" timestamp with time zone not null,
     reference character varying unique,
-    metadata jsonb DEFAULT '{}'::jsonb,
-    pre_commit_volumes bytea,
-    post_commit_volumes bytea
+    metadata jsonb default '{}'::jsonb
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".postings (
-    txid bigint references "VAR_LEDGER_NAME_v2_0_0".transactions(id),
-    amount bigint not null,
-    asset varchar not null,
-    source jsonb not null,
-    destination jsonb not null,
-    index int8,
+create table "VAR_LEDGER_NAME_v2_0_0".moves (
+    posting_index int8,
+    transaction_id bigint,
+    account varchar,
+    account_array jsonb not null,
+    asset varchar,
+    post_commit_input_value numeric,
+    post_commit_output_value numeric,
+    timestamp timestamp with time zone,
+    amount numeric not null,
+    is_source boolean,
 
-    primary key (txid, index)
+    primary key (transaction_id, posting_index, is_source)
 );
 
 --statement
-CREATE TABLE IF NOT EXISTS "VAR_LEDGER_NAME_v2_0_0".volumes (
-    account character varying not null,
-    asset character varying not null,
-    input numeric not null,
-    output numeric not null,
+create index logsv2_type on "VAR_LEDGER_NAME_v2_0_0".logs_v2 (type);
 
-    unique(account, asset)
+--statement
+create index logsv2_projected on "VAR_LEDGER_NAME_v2_0_0".logs_v2 (projected);
+
+--statement
+create index logsv2_data on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using gin (data);
+
+--statement
+create index logsv2_new_transaction_postings on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using gin ((data->'transaction'->'postings') jsonb_path_ops);
+
+--statement
+create index logsv2_set_metadata on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using btree (type, (data->>'targetId'), (data->>'targetType'));
+
+--statement
+create index transactions_id_timestamp on "VAR_LEDGER_NAME_v2_0_0".transactions(id, timestamp);
+
+--statement
+create index transactions_timestamp on "VAR_LEDGER_NAME_v2_0_0".transactions(timestamp);
+
+--statement
+create index transactions_reference on "VAR_LEDGER_NAME_v2_0_0".transactions(reference);
+
+--statement
+create index transactions_metadata on "VAR_LEDGER_NAME_v2_0_0".transactions using gin(metadata);
+
+--statement
+create index moves_transaction_id on "VAR_LEDGER_NAME_v2_0_0".moves(transaction_id, posting_index);
+
+--statement
+create index moves_account_array on "VAR_LEDGER_NAME_v2_0_0".moves using gin(account_array);
+
+--statement
+create index moves_account on "VAR_LEDGER_NAME_v2_0_0".moves(account, asset, timestamp);
+
+--statement
+create index moves_is_source on "VAR_LEDGER_NAME_v2_0_0".moves(account, is_source);
+
+--statement
+create index accounts_address_json on "VAR_LEDGER_NAME_v2_0_0".accounts using GIN(address_json);
+
+--statement
+create function "VAR_LEDGER_NAME_v2_0_0".first_agg (anyelement, anyelement)
+  returns anyelement
+  language sql immutable strict parallel safe as
+'select $1';
+
+--statement
+create aggregate "VAR_LEDGER_NAME_v2_0_0".first (anyelement) (
+  sfunc    = "VAR_LEDGER_NAME_v2_0_0".first_agg
+, stype    = anyelement
+, parallel = safe
 );
 
 --statement
-CREATE INDEX IF NOT EXISTS postings_dest ON "VAR_LEDGER_NAME_v2_0_0".postings USING gin (destination);
-
---statement
-CREATE INDEX IF NOT EXISTS postings_src ON "VAR_LEDGER_NAME_v2_0_0".postings USING gin (source);
-
---statement
-CREATE INDEX IF NOT EXISTS logsv2_type ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 (type);
-
---statement
-CREATE INDEX IF NOT EXISTS logsv2_data ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING gin (data);
-
---statement
-CREATE INDEX IF NOT EXISTS postings_txid ON "VAR_LEDGER_NAME_v2_0_0".postings USING btree (txid);
-
---statement
-CREATE INDEX IF NOT EXISTS logsv2_new_transaction_postings ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING gin ((data->'transaction'->'postings') jsonb_path_ops);
-
---statement
-CREATE INDEX IF NOT EXISTS logsv2_set_metadata ON "VAR_LEDGER_NAME_v2_0_0".logs_v2 USING btree (type, (data->>'targetId'), (data->>'targetType'));
+create aggregate "VAR_LEDGER_NAME_v2_0_0".aggregate_objects(jsonb) (
+  sfunc = jsonb_concat,
+  stype = jsonb,
+  initcond = '{}'
+);

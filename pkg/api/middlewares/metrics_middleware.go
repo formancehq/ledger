@@ -24,7 +24,7 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
-func MetricsMiddleware(globalMetricsRegistry metrics.GlobalMetricsRegistry) func(h http.Handler) http.Handler {
+func MetricsMiddleware(globalMetricsRegistry metrics.GlobalRegistry) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			attrs := []attribute.KeyValue{}

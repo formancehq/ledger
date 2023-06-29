@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
@@ -14,7 +14,14 @@ import (
 )
 
 type mockStore struct {
-	logs []*core.PersistedLog
+	logs []*core.ChainedLog
+}
+
+func (m *mockStore) GetLastLog(ctx context.Context) (*core.ChainedLog, error) {
+	if len(m.logs) == 0 {
+		return nil, nil
+	}
+	return m.logs[len(m.logs)-1], nil
 }
 
 func (m *mockStore) GetBalanceFromLogs(ctx context.Context, address, asset string) (*big.Int, error) {
@@ -63,8 +70,8 @@ func (m *mockStore) GetMetadataFromLogs(ctx context.Context, address, key string
 	return "", errors.New("not found")
 }
 
-func (m *mockStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.PersistedLog, error) {
-	first := collectionutils.First(m.logs, func(log *core.PersistedLog) bool {
+func (m *mockStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*core.ChainedLog, error) {
+	first := collectionutils.First(m.logs, func(log *core.ChainedLog) bool {
 		return log.IdempotencyKey == key
 	})
 	if first == nil {
@@ -73,8 +80,8 @@ func (m *mockStore) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 	return first, nil
 }
 
-func (m *mockStore) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.PersistedLog, error) {
-	first := collectionutils.First(m.logs, func(log *core.PersistedLog) bool {
+func (m *mockStore) ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.ChainedLog, error) {
+	first := collectionutils.First(m.logs, func(log *core.ChainedLog) bool {
 		if log.Type != core.NewTransactionLogType {
 			return false
 		}
@@ -86,8 +93,8 @@ func (m *mockStore) ReadLogForCreatedTransactionWithReference(ctx context.Contex
 	return first, nil
 }
 
-func (m *mockStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error) {
-	first := collectionutils.First(m.logs, func(log *core.PersistedLog) bool {
+func (m *mockStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.ChainedLog, error) {
+	first := collectionutils.First(m.logs, func(log *core.ChainedLog) bool {
 		if log.Type != core.NewTransactionLogType {
 			return false
 		}
@@ -99,8 +106,8 @@ func (m *mockStore) ReadLogForCreatedTransaction(ctx context.Context, txID uint6
 	return first, nil
 }
 
-func (m *mockStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.PersistedLog, error) {
-	first := collectionutils.First(m.logs, func(log *core.PersistedLog) bool {
+func (m *mockStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) (*core.ChainedLog, error) {
+	first := collectionutils.First(m.logs, func(log *core.ChainedLog) bool {
 		if log.Type != core.RevertedTransactionLogType {
 			return false
 		}
@@ -112,8 +119,8 @@ func (m *mockStore) ReadLogForRevertedTransaction(ctx context.Context, txID uint
 	return first, nil
 }
 
-func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.PersistedLog, error) {
-	first := collectionutils.First(m.logs, func(log *core.PersistedLog) bool {
+func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...core.LogType) (*core.ChainedLog, error) {
+	first := collectionutils.First(m.logs, func(log *core.ChainedLog) bool {
 		return collectionutils.Contains(logType, log.Type)
 	})
 	if first == nil {
@@ -124,17 +131,17 @@ func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...c
 
 func (m *mockStore) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
 	var (
-		previous, persistedLog *core.PersistedLog
+		previous, persistedLog *core.ChainedLog
 	)
 	if len(m.logs) > 0 {
 		previous = m.logs[len(m.logs)-1]
 	}
-	persistedLog = log.ComputePersistentLog(previous)
+	persistedLog = log.ChainLog(previous)
 	m.logs = append(m.logs, persistedLog)
 
 	ret := core.NewLogPersistenceTracker(log)
-	ret.Resolve(persistedLog)
-	log.SetIngested()
+	ret.Resolve()
+	log.SetProjected()
 
 	return ret, nil
 }
@@ -146,7 +153,7 @@ var (
 
 func newMockStore() *mockStore {
 	return &mockStore{
-		logs: []*core.PersistedLog{},
+		logs: []*core.ChainedLog{},
 	}
 }
 
@@ -197,7 +204,7 @@ var testCases = []testCase{
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil)
-			_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
+			_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 			require.NoError(t, err)
 		},
 		script: `
@@ -262,7 +269,7 @@ var testCases = []testCase{
 					WithTimestamp(now),
 				map[string]metadata.Metadata{},
 			).WithIdempotencyKey("testing")
-			_, err := r.AppendLog(context.Background(), core.NewActiveLog(log))
+			_, err := r.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 			require.NoError(t, err)
 		},
 		parameters: Parameters{
@@ -325,7 +332,7 @@ func TestRevert(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
 	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
@@ -338,7 +345,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	store := newMockStore()
 	log := core.
 		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction())
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
 	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
@@ -356,7 +363,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
+	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
 	referencer := NewReferencer()

@@ -1,4 +1,4 @@
-package storage
+package driver
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"sync"
 
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
-	"github.com/formancehq/ledger/pkg/storage/schema"
 	systemstore "github.com/formancehq/ledger/pkg/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
@@ -67,7 +66,7 @@ func InstrumentalizeSQLDriver() {
 
 type Driver struct {
 	name        string
-	db          schema.DB
+	db          *storage.Database
 	systemStore *systemstore.Store
 	lock        sync.Mutex
 	storeConfig ledgerstore.StoreConfig
@@ -87,13 +86,13 @@ func (d *Driver) newStore(ctx context.Context, name string) (*ledgerstore.Store,
 		return nil, err
 	}
 
-	store, err := ledgerstore.NewStore(schema, func(ctx context.Context) error {
+	store, err := ledgerstore.New(schema, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
 	}, d.storeConfig)
 	if err != nil {
 		return nil, err
 	}
-	go store.Run(context.Background())
+	go store.Run(logging.ContextWithLogger(context.Background(), logging.FromContext(ctx).WithField("component", "store")))
 
 	return store, nil
 }
@@ -110,7 +109,7 @@ func (d *Driver) CreateLedgerStore(ctx context.Context, name string) (*ledgersto
 		return nil, err
 	}
 	if exists {
-		return nil, storageerrors.ErrStoreAlreadyExists
+		return nil, storage.ErrStoreAlreadyExists
 	}
 
 	_, err = d.systemStore.Register(ctx, name)
@@ -137,7 +136,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.
 		return nil, errors.Wrap(err, "checking ledger existence")
 	}
 	if !exists {
-		return nil, storageerrors.ErrStoreNotFound
+		return nil, storage.ErrStoreNotFound
 	}
 
 	return d.newStore(ctx, name)
@@ -176,7 +175,7 @@ func (d *Driver) Close(ctx context.Context) error {
 	return d.db.Close(ctx)
 }
 
-func NewDriver(name string, db schema.DB, storeConfig ledgerstore.StoreConfig) *Driver {
+func New(name string, db *storage.Database, storeConfig ledgerstore.StoreConfig) *Driver {
 	return &Driver{
 		db:          db,
 		name:        name,
