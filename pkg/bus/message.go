@@ -23,12 +23,8 @@ type EventMessage struct {
 }
 
 type CommittedTransactions struct {
-	Ledger       string                     `json:"ledger"`
-	Transactions []core.ExpandedTransaction `json:"transactions"`
-	// Deprecated (use postCommitVolumes)
-	Volumes           core.AccountsAssetsVolumes `json:"volumes"`
-	PostCommitVolumes core.AccountsAssetsVolumes `json:"postCommitVolumes"`
-	PreCommitVolumes  core.AccountsAssetsVolumes `json:"preCommitVolumes"`
+	Ledger       string             `json:"ledger"`
+	Transactions []core.Transaction `json:"transactions"`
 }
 
 func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
@@ -59,9 +55,9 @@ func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
 }
 
 type RevertedTransaction struct {
-	Ledger              string                   `json:"ledger"`
-	RevertedTransaction core.ExpandedTransaction `json:"revertedTransaction"`
-	RevertTransaction   core.ExpandedTransaction `json:"revertTransaction"`
+	Ledger              string           `json:"ledger"`
+	RevertedTransaction core.Transaction `json:"revertedTransaction"`
+	RevertTransaction   core.Transaction `json:"revertTransaction"`
 }
 
 func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {

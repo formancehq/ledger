@@ -40,17 +40,19 @@ tasks:
     cmds:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
-        go test -run BenchmarkParallelWrites -bench=.
+        go test -run BenchmarkParallelWrites -bench=. {{if eq .VERBOSE "true"}}-v{{end}}
         -test.benchmem
         -timeout 1h
         -memprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-memprofile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
         -cpuprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-profile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
         -benchtime={{if .DURATION}}{{.DURATION}}{{else}}15s{{end}}
+        {{if eq .RACE "true"}}-race{{end}}
         -count={{if .COUNT}}{{.COUNT}}{{else}}10{{end}} ./benchmarks | tee {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
     env:
       ASYNC: "{{.ASYNC}}"
       GOMEMLIMIT: 1GiB
       GOMAXPROCS: 2
+      VERBOSE: false
 #      GOGC: "1000" # https://dave.cheney.net/tag/gogc
       CGO_ENABLED: 0
 #      GODEBUG: gctrace=1 #,gcpacertrace=1

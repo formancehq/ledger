@@ -1,12 +1,11 @@
-package storage
+package driver
 
 import (
 	"io"
 	"time"
 
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
-	"github.com/formancehq/ledger/pkg/storage/schema"
-	"github.com/formancehq/ledger/pkg/storage/utils"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -40,16 +39,16 @@ type PostgresConfig struct {
 }
 
 type ModuleConfig struct {
-	PostgresConnectionOptions utils.ConnectionOptions
+	PostgresConnectionOptions storage.ConnectionOptions
 	StoreConfig               ledgerstore.StoreConfig
 	Debug                     bool
 }
 
-func CLIDriverModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
+func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func() (*bun.DB, error) {
-		return utils.OpenSQLDB(utils.ConnectionOptions{
+		return storage.OpenSQLDB(storage.ConnectionOptions{
 			DatabaseSourceName: v.GetString(StoragePostgresConnectionStringFlag),
 			Debug:              debug,
 			Writer:             output,
@@ -58,11 +57,11 @@ func CLIDriverModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 			MaxOpenConns:       v.GetInt(StoragePostgresMaxOpenConns),
 		})
 	}))
-	options = append(options, fx.Provide(func(db *bun.DB) schema.DB {
-		return schema.NewPostgresDB(db)
+	options = append(options, fx.Provide(func(db *bun.DB) *storage.Database {
+		return storage.NewDatabase(db)
 	}))
-	options = append(options, fx.Provide(func(db schema.DB) (*Driver, error) {
-		return NewDriver("postgres", db, ledgerstore.StoreConfig{
+	options = append(options, fx.Provide(func(db *storage.Database) (*Driver, error) {
+		return New("postgres", db, ledgerstore.StoreConfig{
 			StoreWorkerConfig: ledgerstore.Config{
 				MaxPendingSize:   v.GetInt(StoreWorkerMaxPendingSize),
 				MaxWriteChanSize: v.GetInt(StoreWorkerMaxWriteChanSize),

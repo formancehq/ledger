@@ -11,6 +11,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+
 	if err := pgtesting.CreatePostgresServer(pgtesting.WithDockerHostConfigOption(func(hostConfig *docker.HostConfig) {
 		hostConfig.CPUCount = 2
 	})); err != nil {

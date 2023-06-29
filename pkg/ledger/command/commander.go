@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -26,11 +26,14 @@ type Parameters struct {
 type Commander struct {
 	store           Store
 	locker          Locker
-	metricsRegistry metrics.PerLedgerMetricsRegistry
+	metricsRegistry metrics.PerLedgerRegistry
 	compiler        *Compiler
 	running         sync.WaitGroup
 	lastTXID        *atomic.Int64
 	referencer      *Referencer
+	mu              sync.Mutex
+
+	lastLog *core.ChainedLog
 }
 
 func New(
@@ -38,12 +41,13 @@ func New(
 	locker Locker,
 	compiler *Compiler,
 	referencer *Referencer,
-	metricsRegistry metrics.PerLedgerMetricsRegistry,
+	metricsRegistry metrics.PerLedgerRegistry,
 ) *Commander {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && !storageerrors.IsNotFoundError(err) {
 		panic(err)
 	}
+
 	var lastTxID *uint64
 	if err == nil {
 		switch payload := log.Data.(type) {
@@ -61,6 +65,12 @@ func New(
 	} else {
 		lastTXID.Add(-1)
 	}
+
+	lastLog, err := store.GetLastLog(context.Background())
+	if err != nil && !storageerrors.IsNotFoundError(err) {
+		panic(err)
+	}
+
 	return &Commander{
 		store:           store,
 		locker:          locker,
@@ -68,6 +78,7 @@ func New(
 		compiler:        compiler,
 		referencer:      referencer,
 		lastTXID:        lastTXID,
+		lastLog:         lastLog,
 	}
 }
 
@@ -76,7 +87,7 @@ func (commander *Commander) GetLedgerStore() Store {
 }
 
 func (commander *Commander) exec(ctx context.Context, parameters Parameters, script core.RunScript,
-	logComputer func(tx *core.Transaction, accountMetadata map[string]metadata.Metadata) *core.Log) (*core.PersistedLog, error) {
+	logComputer func(tx *core.Transaction, accountMetadata map[string]metadata.Metadata) *core.Log) (*core.ChainedLog, error) {
 
 	if script.Script.Plain == "" {
 		return nil, ErrNoScript
@@ -160,12 +171,12 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			log = log.WithIdempotencyKey(parameters.IdempotencyKey)
 		}
 
-		return executionContext.AppendLog(ctx, core.NewActiveLog(log))
+		return executionContext.AppendLog(ctx, log)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return tracker.Result(), nil
+	return tracker.ActiveLog().ChainedLog, nil
 }
 
 func (commander *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script core.RunScript) (*core.Transaction, error) {
@@ -215,7 +226,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 			return nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
 		}
 
-		return executionContext.AppendLog(ctx, core.NewActiveLog(log))
+		return executionContext.AppendLog(ctx, log)
 	})
 	return err
 }
@@ -265,4 +276,12 @@ func (commander *Commander) RevertTransaction(ctx context.Context, parameters Pa
 
 func (commander *Commander) Wait() {
 	commander.running.Wait()
+}
+
+func (commander *Commander) chainLog(log *core.Log) *core.ChainedLog {
+	commander.mu.Lock()
+	defer commander.mu.Unlock()
+
+	commander.lastLog = log.ChainLog(commander.lastLog)
+	return commander.lastLog
 }

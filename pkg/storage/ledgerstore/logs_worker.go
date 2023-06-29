@@ -4,13 +4,9 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 )
-
-type AppendedLog struct {
-	ActiveLog    *core.ActiveLog
-	PersistedLog *core.PersistedLog
-}
 
 type pendingLog struct {
 	*core.LogPersistenceTracker
@@ -18,12 +14,6 @@ type pendingLog struct {
 }
 
 func (s *Store) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
-	if !s.isInitialized {
-		return nil, storageerrors.StorageError(storageerrors.ErrStoreNotInitialized)
-	}
-	recordMetrics := s.instrumentalized(ctx, "append_log")
-	defer recordMetrics()
-
 	ret := core.NewLogPersistenceTracker(log)
 
 	select {
@@ -42,26 +32,29 @@ func (s *Store) processPendingLogs(ctx context.Context, pendingLogs []pendingLog
 	for _, holder := range pendingLogs {
 		models = append(models, holder.log)
 	}
-	appendedLogs, err := s.InsertLogs(ctx, models)
+	err := s.InsertLogs(ctx, models)
 	if err != nil {
 		panic(err)
 	}
-	for i, holder := range pendingLogs {
-		holder.Resolve(appendedLogs[i].PersistedLog)
+	for _, holder := range pendingLogs {
+		holder.Resolve()
 	}
 	for _, f := range s.onLogsWrote {
-		f(appendedLogs)
+		f(collectionutils.Map(pendingLogs, func(from pendingLog) *core.ActiveLog {
+			return from.log
+		}))
 	}
 }
 
 func (s *Store) Run(ctx context.Context) {
 	writeLoopStopped := make(chan struct{})
 	effectiveSendChannel := make(chan []pendingLog)
+	stopped := make(chan struct{})
 	go func() {
 		defer close(writeLoopStopped)
 		for {
 			select {
-			case <-s.stopped:
+			case <-stopped:
 				return
 			case pendingLogs := <-effectiveSendChannel:
 				s.processPendingLogs(ctx, pendingLogs)
@@ -72,15 +65,18 @@ func (s *Store) Run(ctx context.Context) {
 	var (
 		sendChannel         chan []pendingLog
 		bufferedPendingLogs = make([]pendingLog, 0)
+		logger              = logging.FromContext(ctx)
 	)
 	for {
 		select {
 		case ch := <-s.stopChan:
-			close(s.stopped)
+			logger.Debugf("Terminating store worker, waiting end of write loop")
+			close(stopped)
 			<-writeLoopStopped
-			if len(bufferedPendingLogs) > 0 {
-				s.processPendingLogs(ctx, bufferedPendingLogs)
-			}
+			logger.Debugf("Write loop terminated, store properly closed")
+			//if len(bufferedPendingLogs) > 0 {
+			//	s.processPendingLogs(ctx, bufferedPendingLogs)
+			//}
 			close(ch)
 
 			return
@@ -95,15 +91,20 @@ func (s *Store) Run(ctx context.Context) {
 }
 
 func (s *Store) Stop(ctx context.Context) error {
+	logging.FromContext(ctx).Info("Close store")
 	ch := make(chan struct{})
 	select {
 	case <-ctx.Done():
+		logging.FromContext(ctx).Errorf("Unable to close store: %s", ctx.Err())
 		return ctx.Err()
 	case s.stopChan <- ch:
+		logging.FromContext(ctx).Debugf("Signal sent, waiting response")
 		select {
 		case <-ch:
+			logging.FromContext(ctx).Info("Store closed")
 			return nil
 		case <-ctx.Done():
+			logging.FromContext(ctx).Errorf("Unable to close store: %s", ctx.Err())
 			return ctx.Err()
 		}
 	}

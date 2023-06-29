@@ -1,16 +1,32 @@
 package middlewares
 
 import (
+	"math/rand"
 	"net/http"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/api/apierrors"
 	"github.com/formancehq/ledger/pkg/api/controllers"
 	"github.com/formancehq/ledger/pkg/opentelemetry/tracer"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/trace"
 )
+
+var r *rand.Rand
+
+func init() {
+	r = rand.New(rand.NewSource(time.Now().UnixNano()))
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+func randomTraceID(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[r.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
 
 func LedgerMiddleware(
 	resolver controllers.Backend,
@@ -27,7 +43,16 @@ func LedgerMiddleware(
 			defer span.End()
 
 			r = r.WithContext(ctx)
-			r = wrapRequest(r)
+
+			loggerFields := map[string]any{
+				"ledger": name,
+			}
+			if span.SpanContext().TraceID().IsValid() {
+				loggerFields["trace-id"] = span.SpanContext().TraceID().String()
+			} else {
+				loggerFields["trace-id"] = randomTraceID(10)
+			}
+			r = r.WithContext(logging.ContextWithFields(r.Context(), loggerFields))
 
 			l, err := resolver.GetLedger(r.Context(), name)
 			if err != nil {
@@ -44,15 +69,4 @@ func LedgerMiddleware(
 			handler.ServeHTTP(w, r)
 		})
 	}
-}
-
-func wrapRequest(r *http.Request) *http.Request {
-	span := trace.SpanFromContext(r.Context())
-	contextKeyID := uuid.NewString()
-	if span.SpanContext().SpanID().IsValid() {
-		contextKeyID = span.SpanContext().SpanID().String()
-	}
-	return r.WithContext(logging.ContextWithLogger(r.Context(), logging.FromContext(r.Context()).WithFields(map[string]any{
-		"contextID": contextKeyID,
-	})))
 }

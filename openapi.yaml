@@ -141,21 +141,6 @@ paths:
             additionalProperties:
               type: string
           example: { admin: "true" }
-        - name: balance
-          in: query
-          description: Filter accounts by their balance (default operator is gte)
-          schema:
-            type: integer
-            format: bigint
-            example: 2400
-        - name: balanceOperator
-          in: query
-          description: |
-            Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
-          schema:
-            type: string
-            enum: [gte, lte, gt, lt, e, ne]
-            example: gte
         - name: cursor
           in: query
           description: |
@@ -1070,14 +1055,14 @@ components:
             type: object
             additionalProperties:
               type: integer
-              format: bigint
+              format: int64
               minimum: 0
           example: { COIN: { input: 100, output: 0 } }
         balances:
           type: object
           additionalProperties:
             type: integer
-            format: bigint
+            format: int64
           example:
             COIN: 100
 
@@ -1097,7 +1082,7 @@ components:
       type: object
       additionalProperties:
         type: integer
-        format: bigint
+        format: int64
       example:
         USD: 100
         EUR: 12
@@ -1107,7 +1092,7 @@ components:
       properties:
         amount:
           type: integer
-          format: bigint
+          format: int64
           minimum: 0
           example: 100
         asset:
@@ -1298,13 +1283,13 @@ components:
       properties:
         input:
           type: integer
-          format: bigint
+          format: int64
         output:
           type: integer
-          format: bigint
+          format: int64
         balance:
           type: integer
-          format: bigint
+          format: int64
       required:
         - input
         - output

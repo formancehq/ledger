@@ -11,7 +11,7 @@ type Volumes struct {
 	Output *big.Int `json:"output"`
 }
 
-func (v Volumes) CopyWithZerosIfNeeded() Volumes {
+func (v Volumes) CopyWithZerosIfNeeded() *Volumes {
 	var input *big.Int
 	if v.Input == nil {
 		input = &big.Int{}
@@ -24,26 +24,43 @@ func (v Volumes) CopyWithZerosIfNeeded() Volumes {
 	} else {
 		output = new(big.Int).Set(v.Output)
 	}
-	return Volumes{
+	return &Volumes{
 		Input:  input,
 		Output: output,
 	}
 }
 
-func (v Volumes) WithInput(input *big.Int) Volumes {
+func (v Volumes) WithInput(input *big.Int) *Volumes {
 	v.Input = input
-	return v
+	return &v
 }
 
-func (v Volumes) WithOutput(output *big.Int) Volumes {
+func (v Volumes) WithInputInt64(value int64) *Volumes {
+	v.Input = big.NewInt(value)
+	return &v
+}
+
+func (v Volumes) WithOutput(output *big.Int) *Volumes {
 	v.Output = output
-	return v
+	return &v
 }
 
-func NewEmptyVolumes() Volumes {
-	return Volumes{
+func (v Volumes) WithOutputInt64(value int64) *Volumes {
+	v.Output = big.NewInt(value)
+	return &v
+}
+
+func NewEmptyVolumes() *Volumes {
+	return &Volumes{
 		Input:  new(big.Int),
 		Output: new(big.Int),
+	}
+}
+
+func NewVolumesInt64(input, output int64) *Volumes {
+	return &Volumes{
+		Input:  big.NewInt(input),
+		Output: big.NewInt(output),
 	}
 }
 
@@ -73,63 +90,63 @@ func (v Volumes) Balance() *big.Int {
 	return new(big.Int).Sub(input, output)
 }
 
-func (v Volumes) copy() Volumes {
-	return Volumes{
+func (v Volumes) copy() *Volumes {
+	return &Volumes{
 		Input:  new(big.Int).Set(v.Input),
 		Output: new(big.Int).Set(v.Output),
 	}
 }
 
-type AssetsBalances map[string]*big.Int
+type BalancesByAssets map[string]*big.Int
 
-type AssetsVolumes map[string]Volumes
+type VolumesByAssets map[string]*Volumes
 
-type AccountsBalances map[string]AssetsBalances
+type BalancesByAssetsByAccounts map[string]BalancesByAssets
 
-func (v AssetsVolumes) Balances() AssetsBalances {
-	balances := AssetsBalances{}
+func (v VolumesByAssets) Balances() BalancesByAssets {
+	balances := BalancesByAssets{}
 	for asset, vv := range v {
 		balances[asset] = new(big.Int).Sub(vv.Input, vv.Output)
 	}
 	return balances
 }
 
-func (v AssetsVolumes) copy() AssetsVolumes {
-	ret := AssetsVolumes{}
+func (v VolumesByAssets) copy() VolumesByAssets {
+	ret := VolumesByAssets{}
 	for key, volumes := range v {
 		ret[key] = volumes.copy()
 	}
 	return ret
 }
 
-type AccountsAssetsVolumes map[string]AssetsVolumes
+type AccountsAssetsVolumes map[string]VolumesByAssets
 
-func (a AccountsAssetsVolumes) GetVolumes(account, asset string) Volumes {
+func (a AccountsAssetsVolumes) GetVolumes(account, asset string) *Volumes {
 	if a == nil {
-		return Volumes{
+		return &Volumes{
 			Input:  &big.Int{},
 			Output: &big.Int{},
 		}
 	}
 	if assetsVolumes, ok := a[account]; !ok {
-		return Volumes{
+		return &Volumes{
 			Input:  &big.Int{},
 			Output: &big.Int{},
 		}
 	} else {
-		return Volumes{
+		return &Volumes{
 			Input:  assetsVolumes[asset].Input,
 			Output: assetsVolumes[asset].Output,
 		}
 	}
 }
 
-func (a *AccountsAssetsVolumes) SetVolumes(account, asset string, volumes Volumes) {
+func (a *AccountsAssetsVolumes) SetVolumes(account, asset string, volumes *Volumes) {
 	if *a == nil {
 		*a = AccountsAssetsVolumes{}
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
-		(*a)[account] = map[string]Volumes{
+		(*a)[account] = map[string]*Volumes{
 			asset: volumes.CopyWithZerosIfNeeded(),
 		}
 	} else {
@@ -142,7 +159,7 @@ func (a *AccountsAssetsVolumes) AddInput(account, asset string, input *big.Int) 
 		*a = AccountsAssetsVolumes{}
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
-		(*a)[account] = map[string]Volumes{
+		(*a)[account] = map[string]*Volumes{
 			asset: {
 				Input:  input,
 				Output: &big.Int{},
@@ -160,7 +177,7 @@ func (a *AccountsAssetsVolumes) AddOutput(account, asset string, output *big.Int
 		*a = AccountsAssetsVolumes{}
 	}
 	if assetsVolumes, ok := (*a)[account]; !ok {
-		(*a)[account] = map[string]Volumes{
+		(*a)[account] = map[string]*Volumes{
 			asset: {
 				Output: output,
 				Input:  &big.Int{},

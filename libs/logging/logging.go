@@ -10,6 +10,7 @@ type Logger interface {
 	Info(args ...any)
 	Error(args ...any)
 	WithFields(map[string]any) Logger
+	WithField(key string, value any) Logger
 	WithContext(ctx context.Context) Logger
 }
 

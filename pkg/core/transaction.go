@@ -80,6 +80,29 @@ func (t *Transaction) WithMetadata(m metadata.Metadata) *Transaction {
 	return t
 }
 
+func (t Transaction) GetMoves() []*Move {
+	ret := make([]*Move, 0)
+	for ind, posting := range t.Postings {
+		ret = append(ret, &Move{
+			TransactionID: t.ID,
+			Amount:        posting.Amount,
+			Asset:         posting.Asset,
+			Account:       posting.Source,
+			PostingIndex:  uint8(ind),
+			IsSource:      true,
+			Timestamp:     t.Timestamp,
+		}, &Move{
+			TransactionID: t.ID,
+			Amount:        posting.Amount,
+			Asset:         posting.Asset,
+			Account:       posting.Destination,
+			PostingIndex:  uint8(ind),
+			Timestamp:     t.Timestamp,
+		})
+	}
+	return ret
+}
+
 func (t *Transaction) hashString(buf *buffer) {
 	buf.writeUInt64(t.ID)
 	t.TransactionData.hashString(buf)

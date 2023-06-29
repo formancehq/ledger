@@ -22,6 +22,14 @@ func Filter[TYPE any](input []TYPE, filter func(TYPE) bool) []TYPE {
 	return ret
 }
 
+func Flatten[TYPE any](input [][]TYPE) []TYPE {
+	ret := make([]TYPE, 0)
+	for _, types := range input {
+		ret = append(ret, types...)
+	}
+	return ret
+}
+
 func First[TYPE any](input []TYPE, filter func(TYPE) bool) TYPE {
 	var zero TYPE
 	ret := Filter(input, filter)

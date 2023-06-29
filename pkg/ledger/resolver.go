@@ -4,25 +4,27 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/ledger/monitor"
 	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/driver"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 type option func(r *Resolver)
 
-func WithMonitor(monitor monitor.Monitor) option {
+func WithMessagePublisher(publisher message.Publisher) option {
 	return func(r *Resolver) {
-		r.monitor = monitor
+		r.publisher = publisher
 	}
 }
 
-func WithMetricsRegistry(registry metrics.GlobalMetricsRegistry) option {
+func WithMetricsRegistry(registry metrics.GlobalRegistry) option {
 	return func(r *Resolver) {
 		r.metricsRegistry = registry
 	}
@@ -34,23 +36,30 @@ func WithCompiler(compiler *command.Compiler) option {
 	}
 }
 
+func WithLogger(logger logging.Logger) option {
+	return func(r *Resolver) {
+		r.logger = logger
+	}
+}
+
 var defaultOptions = []option{
-	WithMetricsRegistry(metrics.NewNoOpMetricsRegistry()),
-	WithMonitor(monitor.NewNoOpMonitor()),
+	WithMetricsRegistry(metrics.NewNoOpRegistry()),
 	WithCompiler(command.NewCompiler(1024)),
+	WithLogger(logging.NewLogrus(logrus.New())),
 }
 
 type Resolver struct {
-	storageDriver   *storage.Driver
-	monitor         monitor.Monitor
+	storageDriver   *driver.Driver
 	lock            sync.RWMutex
-	metricsRegistry metrics.GlobalMetricsRegistry
+	metricsRegistry metrics.GlobalRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
-	ledgers  map[string]*Ledger
-	compiler *command.Compiler
+	ledgers   map[string]*Ledger
+	compiler  *command.Compiler
+	logger    logging.Logger
+	publisher message.Publisher
 }
 
-func NewResolver(storageDriver *storage.Driver, options ...option) *Resolver {
+func NewResolver(storageDriver *driver.Driver, options ...option) *Resolver {
 	r := &Resolver{
 		storageDriver: storageDriver,
 		ledgers:       map[string]*Ledger{},
@@ -69,6 +78,13 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	if !ok {
 		r.lock.Lock()
 		defer r.lock.Unlock()
+
+		logging.FromContext(ctx).Infof("Initialize new ledger")
+
+		ledger, ok = r.ledgers[name]
+		if ok {
+			return ledger, nil
+		}
 
 		exists, err := r.storageDriver.GetSystemStore().Exists(ctx, name)
 		if err != nil {
@@ -91,18 +107,6 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}
 
-		backgroundContext := logging.ContextWithLogger(
-			context.Background(),
-			logging.FromContext(ctx),
-		)
-		runOrPanic := func(task func(context.Context) error) {
-			go func() {
-				if err := task(backgroundContext); err != nil {
-					panic(err)
-				}
-			}()
-		}
-
 		locker := command.NewDefaultLocker()
 
 		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
@@ -110,10 +114,15 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return nil, errors.Wrap(err, "registering metrics")
 		}
 
-		queryWorker := query.NewWorker(query.DefaultWorkerConfig, query.NewDefaultStore(store), name, r.monitor, metricsRegistry)
-		runOrPanic(queryWorker.Run)
+		var monitor query.Monitor = query.NewNoOpMonitor()
+		if r.publisher != nil {
+			monitor = bus.NewLedgerMonitor(r.publisher, name)
+		}
 
-		ledger = New(store, locker, queryWorker, r.compiler, metricsRegistry)
+		projector := query.NewProjector(store, monitor, metricsRegistry)
+		projector.Start(logging.ContextWithLogger(context.Background(), r.logger))
+
+		ledger = New(store, locker, projector, r.compiler, metricsRegistry)
 		r.ledgers[name] = ledger
 		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}
@@ -122,8 +131,13 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 }
 
 func (r *Resolver) CloseLedgers(ctx context.Context) error {
+	r.logger.Info("Close all ledgers")
+	defer func() {
+		r.logger.Info("All ledgers closed")
+	}()
 	for name, ledger := range r.ledgers {
-		if err := ledger.Close(ctx); err != nil {
+		r.logger.Infof("Close ledger %s", name)
+		if err := ledger.Close(logging.ContextWithLogger(ctx, r.logger.WithField("ledger", name))); err != nil {
 			return err
 		}
 		delete(r.ledgers, name)

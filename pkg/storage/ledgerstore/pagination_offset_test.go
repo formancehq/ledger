@@ -4,18 +4,20 @@ import (
 	"context"
 	"testing"
 
+	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
-	"github.com/formancehq/ledger/pkg/storage/utils"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOffsetPagination(t *testing.T) {
+	t.Parallel()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := utils.OpenSQLDB(utils.ConnectionOptions{
+	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
+		Trace:              testing.Verbose(),
 	})
 	require.NoError(t, err)
 
@@ -139,13 +141,10 @@ func TestOffsetPagination(t *testing.T) {
 			if tc.query.Filters {
 				query = query.Where("pair = ?", true)
 			}
-			cursor, err := ledgerstore.UsingOffset(
+			cursor, err := ledgerstore.UsingOffset[bool, model](
 				context.Background(),
 				query,
-				tc.query,
-				func(t *model, scanner interface{ Scan(args ...any) error }) error {
-					return scanner.Scan(&t.ID)
-				})
+				tc.query)
 			require.NoError(t, err)
 
 			if tc.expectedNext == nil {

@@ -4,6 +4,10 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+
+	"github.com/formancehq/stack/libs/go-libs/collectionutils"
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/pkg/errors"
 )
 
 type Unlock func(ctx context.Context)
@@ -26,47 +30,12 @@ type Accounts struct {
 	Write []string
 }
 
-type linkedListItem[T any] struct {
-	next     *linkedListItem[T]
-	previous *linkedListItem[T]
-	value    T
-	list     *linkedList[T]
-}
-
-func (i *linkedListItem[T]) Remove() {
-	if i.previous == nil {
-		i.list.first = i.next
-		return
-	}
-	if i.next == nil {
-		i.list.last = i.previous
-		return
-	}
-	i.previous.next, i.next.previous = i.next, i.previous
-}
-
-type linkedList[T any] struct {
-	first *linkedListItem[T]
-	last  *linkedListItem[T]
-}
-
-func (l *linkedList[T]) PutTail(v T) *linkedListItem[T] {
-	item := &linkedListItem[T]{
-		previous: l.last,
-		value:    v,
-		list:     l,
-	}
-	l.last = item
-
-	return item
-}
-
 type lockIntent struct {
 	accounts Accounts
 	acquired chan struct{}
 }
 
-func (intent *lockIntent) tryLock(chain *DefaultLocker) bool {
+func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) bool {
 
 	for _, account := range intent.accounts.Read {
 		_, ok := chain.writeLocks[account]
@@ -86,6 +55,8 @@ func (intent *lockIntent) tryLock(chain *DefaultLocker) bool {
 		}
 	}
 
+	logging.FromContext(ctx).Debugf("Lock acquired, read: %s, write: %s", intent.accounts.Read, intent.accounts.Write)
+
 	for _, account := range intent.accounts.Read {
 		atomicValue, ok := chain.readLocks[account]
 		if !ok {
@@ -101,7 +72,8 @@ func (intent *lockIntent) tryLock(chain *DefaultLocker) bool {
 	return true
 }
 
-func (intent *lockIntent) unlock(chain *DefaultLocker) {
+func (intent *lockIntent) unlock(ctx context.Context, chain *DefaultLocker) {
+	logging.FromContext(ctx).Debugf("Unlock accounts, read: %s, write: %s", intent.accounts.Read, intent.accounts.Write)
 	for _, account := range intent.accounts.Read {
 		atomicValue := chain.readLocks[account]
 		if atomicValue.Add(-1) == 0 {
@@ -114,7 +86,7 @@ func (intent *lockIntent) unlock(chain *DefaultLocker) {
 }
 
 type DefaultLocker struct {
-	intents    *linkedList[*lockIntent]
+	intents    *collectionutils.LinkedList[*lockIntent]
 	mu         sync.Mutex
 	readLocks  map[string]*atomic.Int64
 	writeLocks map[string]struct{}
@@ -122,40 +94,73 @@ type DefaultLocker struct {
 
 func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	defaultLocker.mu.Lock()
+	defer defaultLocker.mu.Unlock()
+
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"read":  accounts.Read,
+		"write": accounts.Write,
+	})
+
+	logger.Debugf("Intent lock")
 	intent := &lockIntent{
 		accounts: accounts,
 		acquired: make(chan struct{}),
 	}
-	item := defaultLocker.intents.PutTail(intent)
-	acquired := intent.tryLock(defaultLocker)
-	defaultLocker.mu.Unlock()
+	if acquired := intent.tryLock(logging.ContextWithLogger(ctx, logger), defaultLocker); !acquired {
+		logger.Debugf("Lock not acquired, some accounts are already used")
 
-	if !acquired {
+		defaultLocker.intents.Append(intent)
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, errors.Wrapf(ctx.Err(), "locking accounts: %s as read, and %s as write", accounts.Read, accounts.Write)
 		case <-intent.acquired:
+			return func(ctx context.Context) {
+				defaultLocker.mu.Lock()
+				defer defaultLocker.mu.Unlock()
+
+				intent.unlock(ctx, defaultLocker)
+				node := defaultLocker.intents.RemoveValue(intent)
+
+				if node == nil {
+					panic("node should not be nil")
+				}
+
+				for {
+					node = node.Next()
+					if node == nil {
+						break
+					}
+					if node.Value().tryLock(ctx, defaultLocker) {
+						close(node.Value().acquired)
+					}
+				}
+			}, nil
 		}
-	}
+	} else {
+		logger.Debugf("Lock directly acquired")
+		return func(ctx context.Context) {
+			defaultLocker.mu.Lock()
+			defer defaultLocker.mu.Unlock()
 
-	return func(ctx context.Context) {
-		defaultLocker.mu.Lock()
-		defer defaultLocker.mu.Unlock()
+			intent.unlock(ctx, defaultLocker)
 
-		intent.unlock(defaultLocker)
-		item.Remove()
-
-		for next := item.next; next != nil; {
-			if next.value.tryLock(defaultLocker) {
-				close(next.value.acquired)
+			node := defaultLocker.intents.FirstNode()
+			for {
+				if node == nil {
+					break
+				}
+				if node.Value().tryLock(ctx, defaultLocker) {
+					close(node.Value().acquired)
+				}
+				node = node.Next()
 			}
-		}
-	}, nil
+		}, nil
+	}
 }
 
 func NewDefaultLocker() *DefaultLocker {
 	return &DefaultLocker{
-		intents:    &linkedList[*lockIntent]{},
+		intents:    collectionutils.NewLinkedList[*lockIntent](),
 		readLocks:  map[string]*atomic.Int64{},
 		writeLocks: map[string]struct{}{},
 	}

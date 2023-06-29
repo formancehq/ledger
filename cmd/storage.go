@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/formancehq/ledger/pkg/storage"
+	"github.com/formancehq/ledger/pkg/storage/driver"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
@@ -26,7 +26,7 @@ func NewStorageInit() *cobra.Command {
 				cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *driver.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := viper.GetString("name")
@@ -71,7 +71,7 @@ func NewStorageList() *cobra.Command {
 			app := service.New(cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *driver.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								ledgers, err := storageDriver.GetSystemStore().ListLedgers(ctx)
@@ -103,7 +103,7 @@ func NewStorageUpgrade() *cobra.Command {
 			app := service.New(cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *driver.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := args[0]
@@ -140,7 +140,7 @@ func NewStorageDelete() *cobra.Command {
 				cmd.OutOrStdout(),
 				resolveOptions(
 					cmd.OutOrStdout(),
-					fx.Invoke(func(storageDriver *storage.Driver, lc fx.Lifecycle) {
+					fx.Invoke(func(storageDriver *driver.Driver, lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
 							OnStart: func(ctx context.Context) error {
 								name := args[0]

@@ -6,20 +6,20 @@ import (
 	"go.opentelemetry.io/otel/metric/instrument"
 )
 
-type GlobalMetricsRegistry interface {
+type GlobalRegistry interface {
 	APILatencies() instrument.Int64Histogram
 	StatusCodes() instrument.Int64Counter
 	ActiveLedgers() instrument.Int64UpDownCounter
 }
 
-type globalMetricsRegistry struct {
+type globalRegistry struct {
 	// API Latencies
-	aPILatencies  instrument.Int64Histogram
+	apiLatencies  instrument.Int64Histogram
 	statusCodes   instrument.Int64Counter
 	activeLedgers instrument.Int64UpDownCounter
 }
 
-func RegisterGlobalMetricsRegistry(meterProvider metric.MeterProvider) (GlobalMetricsRegistry, error) {
+func RegisterGlobalRegistry(meterProvider metric.MeterProvider) (GlobalRegistry, error) {
 	meter := meterProvider.Meter("global")
 
 	apiLatencies, err := meter.Int64Histogram(
@@ -49,26 +49,26 @@ func RegisterGlobalMetricsRegistry(meterProvider metric.MeterProvider) (GlobalMe
 		return nil, err
 	}
 
-	return &globalMetricsRegistry{
-		aPILatencies:  apiLatencies,
+	return &globalRegistry{
+		apiLatencies:  apiLatencies,
 		statusCodes:   statusCodes,
 		activeLedgers: activeLedgers,
 	}, nil
 }
 
-func (gm *globalMetricsRegistry) APILatencies() instrument.Int64Histogram {
-	return gm.aPILatencies
+func (gm *globalRegistry) APILatencies() instrument.Int64Histogram {
+	return gm.apiLatencies
 }
 
-func (gm *globalMetricsRegistry) StatusCodes() instrument.Int64Counter {
+func (gm *globalRegistry) StatusCodes() instrument.Int64Counter {
 	return gm.statusCodes
 }
 
-func (gm *globalMetricsRegistry) ActiveLedgers() instrument.Int64UpDownCounter {
+func (gm *globalRegistry) ActiveLedgers() instrument.Int64UpDownCounter {
 	return gm.activeLedgers
 }
 
-type PerLedgerMetricsRegistry interface {
+type PerLedgerRegistry interface {
 	CacheMisses() instrument.Int64Counter
 	CacheNumberEntries() instrument.Int64UpDownCounter
 
@@ -78,7 +78,7 @@ type PerLedgerMetricsRegistry interface {
 	QueryProcessedLogs() instrument.Int64Counter
 }
 
-type perLedgerMetricsRegistry struct {
+type perLedgerRegistry struct {
 	cacheMisses        instrument.Int64Counter
 	cacheNumberEntries instrument.Int64UpDownCounter
 
@@ -88,7 +88,7 @@ type perLedgerMetricsRegistry struct {
 	queryProcessedLogs   instrument.Int64Counter
 }
 
-func RegisterPerLedgerMetricsRegistry(ledger string) (PerLedgerMetricsRegistry, error) {
+func RegisterPerLedgerMetricsRegistry(ledger string) (PerLedgerRegistry, error) {
 	// we can now use the global meter provider to create a meter
 	// since it was created by the fx
 	meter := global.MeterProvider().Meter(ledger)
@@ -147,7 +147,7 @@ func RegisterPerLedgerMetricsRegistry(ledger string) (PerLedgerMetricsRegistry, 
 		return nil, err
 	}
 
-	return &perLedgerMetricsRegistry{
+	return &perLedgerRegistry{
 		cacheMisses:          cacheMisses,
 		cacheNumberEntries:   cacheNumberEntries,
 		queryLatencies:       queryLatencies,
@@ -157,77 +157,77 @@ func RegisterPerLedgerMetricsRegistry(ledger string) (PerLedgerMetricsRegistry, 
 	}, nil
 }
 
-func (pm *perLedgerMetricsRegistry) CacheMisses() instrument.Int64Counter {
+func (pm *perLedgerRegistry) CacheMisses() instrument.Int64Counter {
 	return pm.cacheMisses
 }
 
-func (pm *perLedgerMetricsRegistry) CacheNumberEntries() instrument.Int64UpDownCounter {
+func (pm *perLedgerRegistry) CacheNumberEntries() instrument.Int64UpDownCounter {
 	return pm.cacheNumberEntries
 }
 
-func (pm *perLedgerMetricsRegistry) QueryLatencies() instrument.Int64Histogram {
+func (pm *perLedgerRegistry) QueryLatencies() instrument.Int64Histogram {
 	return pm.queryLatencies
 }
 
-func (pm *perLedgerMetricsRegistry) QueryInboundLogs() instrument.Int64Counter {
+func (pm *perLedgerRegistry) QueryInboundLogs() instrument.Int64Counter {
 	return pm.queryInboundLogs
 }
 
-func (pm *perLedgerMetricsRegistry) QueryPendingMessages() instrument.Int64Counter {
+func (pm *perLedgerRegistry) QueryPendingMessages() instrument.Int64Counter {
 	return pm.queryPendingMessages
 }
 
-func (pm *perLedgerMetricsRegistry) QueryProcessedLogs() instrument.Int64Counter {
+func (pm *perLedgerRegistry) QueryProcessedLogs() instrument.Int64Counter {
 	return pm.queryProcessedLogs
 }
 
-type NoOpMetricsRegistry struct{}
+type noOpRegistry struct{}
 
-func NewNoOpMetricsRegistry() *NoOpMetricsRegistry {
-	return &NoOpMetricsRegistry{}
+func NewNoOpRegistry() *noOpRegistry {
+	return &noOpRegistry{}
 }
 
-func (nm *NoOpMetricsRegistry) CacheMisses() instrument.Int64Counter {
+func (nm *noOpRegistry) CacheMisses() instrument.Int64Counter {
 	counter, _ := metric.NewNoopMeter().Int64Counter("cache_misses")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) CacheNumberEntries() instrument.Int64UpDownCounter {
+func (nm *noOpRegistry) CacheNumberEntries() instrument.Int64UpDownCounter {
 	counter, _ := metric.NewNoopMeter().Int64UpDownCounter("cache_number_entries")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) QueryLatencies() instrument.Int64Histogram {
+func (nm *noOpRegistry) QueryLatencies() instrument.Int64Histogram {
 	histogram, _ := metric.NewNoopMeter().Int64Histogram("query_latencies")
 	return histogram
 }
 
-func (nm *NoOpMetricsRegistry) QueryInboundLogs() instrument.Int64Counter {
+func (nm *noOpRegistry) QueryInboundLogs() instrument.Int64Counter {
 	counter, _ := metric.NewNoopMeter().Int64Counter("query_inbound_logs")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) QueryPendingMessages() instrument.Int64Counter {
+func (nm *noOpRegistry) QueryPendingMessages() instrument.Int64Counter {
 	counter, _ := metric.NewNoopMeter().Int64Counter("query_pending_messages")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) QueryProcessedLogs() instrument.Int64Counter {
+func (nm *noOpRegistry) QueryProcessedLogs() instrument.Int64Counter {
 	counter, _ := metric.NewNoopMeter().Int64Counter("query_processed_logs")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) APILatencies() instrument.Int64Histogram {
+func (nm *noOpRegistry) APILatencies() instrument.Int64Histogram {
 	histogram, _ := metric.NewNoopMeter().Int64Histogram("api_latencies")
 	return histogram
 }
 
-func (nm *NoOpMetricsRegistry) StatusCodes() instrument.Int64Counter {
+func (nm *noOpRegistry) StatusCodes() instrument.Int64Counter {
 	counter, _ := metric.NewNoopMeter().Int64Counter("status_codes")
 	return counter
 }
 
-func (nm *NoOpMetricsRegistry) ActiveLedgers() instrument.Int64UpDownCounter {
+func (nm *noOpRegistry) ActiveLedgers() instrument.Int64UpDownCounter {
 	counter, _ := metric.NewNoopMeter().Int64UpDownCounter("active_ledgers")
 	return counter
 }

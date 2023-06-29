@@ -17,7 +17,7 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, _ := newTestingBackend(t)
-	router := routes.NewRouter(backend, nil, nil, metrics.NewNoOpMetricsRegistry())
+	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	backend.
 		EXPECT().

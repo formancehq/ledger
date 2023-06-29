@@ -67,12 +67,6 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		balanceOperator, err := getBalanceOperator(w, r)
-		if err != nil {
-			apierrors.ResponseError(w, r, err)
-			return
-		}
-
 		pageSize, err := getPageSize(r)
 		if err != nil {
 			apierrors.ResponseError(w, r, err)
@@ -82,8 +76,6 @@ func GetAccounts(w http.ResponseWriter, r *http.Request) {
 		accountsQuery = accountsQuery.
 			WithAfterAddress(r.URL.Query().Get("after")).
 			WithAddressFilter(r.URL.Query().Get("address")).
-			WithBalanceFilter(balance).
-			WithBalanceOperatorFilter(balanceOperator).
 			WithMetadataFilter(sharedapi.GetQueryMap(r.URL.Query(), "metadata")).
 			WithPageSize(pageSize)
 	}

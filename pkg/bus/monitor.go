@@ -5,7 +5,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/monitor"
+	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -13,43 +13,41 @@ import (
 
 type ledgerMonitor struct {
 	publisher message.Publisher
+	ledgerName string
 }
 
-var _ monitor.Monitor = &ledgerMonitor{}
+var _ query.Monitor = &ledgerMonitor{}
 
-func newLedgerMonitor(publisher message.Publisher) *ledgerMonitor {
+func NewLedgerMonitor(publisher message.Publisher, ledgerName string) *ledgerMonitor {
 	m := &ledgerMonitor{
 		publisher: publisher,
+		ledgerName: ledgerName,
 	}
 	return m
 }
 
-func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, ledger string, txs ...core.ExpandedTransaction) {
-	postCommitVolumes := aggregatePostCommitVolumes(txs...)
+func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, txs ...core.Transaction) {
 	l.publish(ctx, EventTypeCommittedTransactions,
 		newEventCommittedTransactions(CommittedTransactions{
-			Ledger:            ledger,
-			Transactions:      txs,
-			Volumes:           postCommitVolumes,
-			PostCommitVolumes: postCommitVolumes,
-			PreCommitVolumes:  core.AggregatePreCommitVolumes(txs...),
+			Ledger:       l.ledgerName,
+			Transactions: txs,
 		}))
 }
 
-func (l *ledgerMonitor) SavedMetadata(ctx context.Context, ledger, targetType, targetID string, metadata metadata.Metadata) {
+func (l *ledgerMonitor) SavedMetadata(ctx context.Context, targetType, targetID string, metadata metadata.Metadata) {
 	l.publish(ctx, EventTypeSavedMetadata,
 		newEventSavedMetadata(SavedMetadata{
-			Ledger:     ledger,
+			Ledger:     l.ledgerName,
 			TargetType: targetType,
 			TargetID:   targetID,
 			Metadata:   metadata,
 		}))
 }
 
-func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, ledger string, reverted, revert *core.ExpandedTransaction) {
+func (l *ledgerMonitor) RevertedTransaction(ctx context.Context, reverted, revert *core.Transaction) {
 	l.publish(ctx, EventTypeRevertedTransaction,
 		newEventRevertedTransaction(RevertedTransaction{
-			Ledger:              ledger,
+			Ledger:              l.ledgerName,
 			RevertedTransaction: *reverted,
 			RevertTransaction:   *revert,
 		}))

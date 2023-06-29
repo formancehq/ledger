@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/pkg/core"
-	storageerrors "github.com/formancehq/ledger/pkg/storage/errors"
+	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )

@@ -30,7 +30,7 @@ func NewAccount(address string) Account {
 
 type AccountWithVolumes struct {
 	Account
-	Volumes AssetsVolumes `json:"volumes"`
+	Volumes VolumesByAssets `json:"volumes"`
 }
 
 func NewAccountWithVolumes(address string) *AccountWithVolumes {
@@ -39,7 +39,7 @@ func NewAccountWithVolumes(address string) *AccountWithVolumes {
 			Address:  address,
 			Metadata: metadata.Metadata{},
 		},
-		Volumes: map[string]Volumes{},
+		Volumes: map[string]*Volumes{},
 	}
 }
 
@@ -47,7 +47,7 @@ func (v AccountWithVolumes) MarshalJSON() ([]byte, error) {
 	type aux AccountWithVolumes
 	return json.Marshal(struct {
 		aux
-		Balances AssetsBalances `json:"balances"`
+		Balances BalancesByAssets `json:"balances"`
 	}{
 		aux:      aux(v),
 		Balances: v.Volumes.Balances(),
