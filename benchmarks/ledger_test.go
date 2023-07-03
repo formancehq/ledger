@@ -62,9 +62,9 @@ func BenchmarkParallelWrites(b *testing.B) {
 							source = @world
 							destination = $account
 						)`,
-						Vars: map[string]string{
-							"account": fmt.Sprintf(`"accounts:%d"`, counter.Add(1)),
-						},
+					},
+					Vars: map[string]any{
+						"account": fmt.Sprintf("accounts:%d", counter.Add(1)),
 					},
 				},
 			})
