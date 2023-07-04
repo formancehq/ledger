@@ -36,8 +36,12 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 		metadata    = p.Filters.Metadata
 	)
 
-	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
-		Distinct()
+	if flavor == SQLite {
+		sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes").
+			Distinct()
+	} else {
+		sb.Select("distinct on (id) id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
+	}
 	sb.From(s.schema.Table("transactions"))
 	if (source != "" || destination != "" || account != "") && flavor == PostgreSQL {
 		// new wildcard handling
