@@ -77,7 +77,7 @@ paths:
             example: users:.+
         - name: metadata
           in: query
-          description: Filter accounts by metadata key value pairs. The filter can be used like this metadata[key]=value1&metadata[a.nested.key]=value2
+          description: Filter accounts by metadata key value pairs. The filter can be used like this -> metadata[key]=value1&metadata[a.nested.key]=value2
           style: deepObject
           explode: true
           schema:
@@ -133,7 +133,7 @@ paths:
             example: users:.+
         - name: metadata
           in: query
-          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: Filter accounts by metadata key value pairs. Nested objects can be used like this -> metadata[key]=value1&metadata[a.nested.key]=value2
           style: deepObject
           schema:
             type: object
@@ -370,7 +370,7 @@ paths:
             format: date-time
         - name: metadata
           in: query
-          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
+          description: Filter transactions by metadata key value pairs. Nested objects can be used like this -> metadata[key]=value1&metadata[a.nested.key]=value2
           style: deepObject
           schema:
             type: object
@@ -472,7 +472,7 @@ paths:
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         - name: metadata
           in: query
-          description: Filter transactions by metadata key value pairs.
+          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
           style: deepObject
           schema:
             type: object
