@@ -18,32 +18,26 @@ create function "VAR_LEDGER_NAME_v2_0_0".meta_compare(metadata jsonb, value char
 
 --statement
 create table "VAR_LEDGER_NAME_v2_0_0".accounts (
-    address character varying not null,
+    address character varying not null primary key,
     address_json jsonb not null,
-    metadata jsonb default '{}'::jsonb,
-
-    unique(address)
+    metadata jsonb default '{}'::jsonb
 );
 
 --statement
 create table "VAR_LEDGER_NAME_v2_0_0".logs_v2 (
-    id bigint,
+    id numeric primary key ,
     type smallint,
     hash bytea,
     date timestamp with time zone,
     data jsonb,
     idempotency_key varchar(255),
-    projected boolean default false,
-
-    unique(id)
+    projected boolean default false
 );
 
 --statement
 create table "VAR_LEDGER_NAME_v2_0_0".migrations_v2 (
-    version character varying,
-    date character varying,
-
-    unique(version)
+    version character varying primary key,
+    date character varying
 );
 
 --statement
