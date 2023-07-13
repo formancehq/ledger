@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -40,7 +39,6 @@ type PostgresConfig struct {
 
 type ModuleConfig struct {
 	PostgresConnectionOptions storage.ConnectionOptions
-	StoreConfig               ledgerstore.StoreConfig
 	Debug                     bool
 }
 
@@ -61,12 +59,7 @@ func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 		return storage.NewDatabase(db)
 	}))
 	options = append(options, fx.Provide(func(db *storage.Database) (*Driver, error) {
-		return New("postgres", db, ledgerstore.StoreConfig{
-			StoreWorkerConfig: ledgerstore.Config{
-				MaxPendingSize:   v.GetInt(StoreWorkerMaxPendingSize),
-				MaxWriteChanSize: v.GetInt(StoreWorkerMaxWriteChanSize),
-			},
-		}), nil
+		return New("postgres", db), nil
 	}))
 	options = append(options, health.ProvideHealthCheck(func(db *bun.DB) health.NamedCheck {
 		return health.NewNamedCheck("postgres", health.CheckFn(db.PingContext))

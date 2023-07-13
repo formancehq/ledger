@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/formancehq/ledger/pkg/core"
+	"github.com/formancehq/ledger/pkg/ledger/utils/batching"
 	"github.com/formancehq/ledger/pkg/machine"
 	"github.com/formancehq/ledger/pkg/machine/vm"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
@@ -24,6 +25,7 @@ type Parameters struct {
 }
 
 type Commander struct {
+	*batching.Batcher[*core.ActiveLog]
 	store           Store
 	locker          Locker
 	metricsRegistry metrics.PerLedgerRegistry
@@ -42,6 +44,7 @@ func New(
 	compiler *Compiler,
 	referencer *Referencer,
 	metricsRegistry metrics.PerLedgerRegistry,
+	onBatchProcessed batching.OnBatchProcessed[*core.ActiveLog],
 ) *Commander {
 	log, err := store.ReadLastLogWithType(context.Background(), core.NewTransactionLogType, core.RevertedTransactionLogType)
 	if err != nil && !storageerrors.IsNotFoundError(err) {
@@ -79,6 +82,7 @@ func New(
 		referencer:      referencer,
 		lastTXID:        lastTXID,
 		lastLog:         lastLog,
+		Batcher:         batching.NewBatcher(store.InsertLogs, onBatchProcessed, 1, 4096),
 	}
 }
 
@@ -98,37 +102,37 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 	}
 
 	execContext := newExecutionContext(commander, parameters)
-	tracker, err := execContext.run(ctx, func(executionContext *executionContext) (*core.LogPersistenceTracker, error) {
+	return execContext.run(ctx, func(executionContext *executionContext) (*core.ActiveLog, chan struct{}, error) {
 		if script.Reference != "" {
 			if err := commander.referencer.take(referenceTxReference, script.Reference); err != nil {
-				return nil, ErrConflictError
+				return nil, nil, ErrConflictError
 			}
 			defer commander.referencer.release(referenceTxReference, script.Reference)
 
 			_, err := commander.store.ReadLogForCreatedTransactionWithReference(ctx, script.Reference)
 			if err == nil {
-				return nil, ErrConflictError
+				return nil, nil, ErrConflictError
 			}
 			if err != storageerrors.ErrNotFound && err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
 		program, err := commander.compiler.Compile(ctx, script.Plain)
 		if err != nil {
-			return nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
+			return nil, nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
 		}
 
 		m := vm.NewMachine(*program)
 
 		if err := m.SetVarsFromJSON(script.Vars); err != nil {
-			return nil, errorsutil.NewError(ErrCompilationFailed,
+			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not set variables"))
 		}
 
 		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
 		if err != nil {
-			return nil, errorsutil.NewError(ErrCompilationFailed,
+			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve program resources"))
 		}
 
@@ -140,23 +144,23 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 
 		unlock, err := commander.locker.Lock(ctx, lockAccounts)
 		if err != nil {
-			return nil, errors.Wrap(err, "locking accounts for tx processing")
+			return nil, nil, errors.Wrap(err, "locking accounts for tx processing")
 		}
 		unlock(ctx)
 
 		err = m.ResolveBalances(ctx, commander.store)
 		if err != nil {
-			return nil, errorsutil.NewError(ErrCompilationFailed,
+			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
 				errors.Wrap(err, "could not resolve balances"))
 		}
 
 		result, err := machine.Run(m, script)
 		if err != nil {
-			return nil, errors.Wrap(err, "running numscript")
+			return nil, nil, errors.Wrap(err, "running numscript")
 		}
 
 		if len(result.Postings) == 0 {
-			return nil, ErrNoPostings
+			return nil, nil, ErrNoPostings
 		}
 
 		tx := core.NewTransaction().
@@ -173,10 +177,6 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 
 		return executionContext.AppendLog(ctx, log)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return tracker.ActiveLog().ChainedLog, nil
 }
 
 func (commander *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script core.RunScript) (*core.Transaction, error) {
@@ -200,7 +200,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 	}
 
 	execContext := newExecutionContext(commander, parameters)
-	_, err := execContext.run(ctx, func(executionContext *executionContext) (*core.LogPersistenceTracker, error) {
+	_, err := execContext.run(ctx, func(executionContext *executionContext) (*core.ActiveLog, chan struct{}, error) {
 		var (
 			log *core.Log
 			at  = core.Now()
@@ -209,7 +209,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 		case core.MetaTargetTypeTransaction:
 			_, err := commander.store.ReadLogForCreatedTransaction(ctx, targetID.(uint64))
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			log = core.NewSetMetadataLog(at, core.SetMetadataLogPayload{
 				TargetType: core.MetaTargetTypeTransaction,
@@ -223,7 +223,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 				Metadata:   m,
 			})
 		default:
-			return nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
+			return nil, nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
 		}
 
 		return executionContext.AppendLog(ctx, log)
@@ -274,7 +274,8 @@ func (commander *Commander) RevertTransaction(ctx context.Context, parameters Pa
 	return log.Data.(core.RevertedTransactionLogPayload).RevertTransaction, nil
 }
 
-func (commander *Commander) Wait() {
+func (commander *Commander) Close() {
+	commander.Batcher.Close()
 	commander.running.Wait()
 }
 

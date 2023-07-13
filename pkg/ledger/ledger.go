@@ -3,6 +3,8 @@ package ledger
 import (
 	"context"
 
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/ledger/pkg/ledger/command"
 	"github.com/formancehq/ledger/pkg/ledger/query"
@@ -10,50 +12,68 @@ import (
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 
 type Ledger struct {
-	*command.Commander
+	commander *command.Commander
 	store     *ledgerstore.Store
 	projector *query.Projector
-	locker    *command.DefaultLocker
+}
+
+func (l *Ledger) CreateTransaction(ctx context.Context, parameters command.Parameters, data core.RunScript) (*core.Transaction, error) {
+	return l.commander.CreateTransaction(ctx, parameters, data)
+}
+
+func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id uint64) (*core.Transaction, error) {
+	return l.commander.RevertTransaction(ctx, parameters, id)
+}
+
+func (l *Ledger) SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error {
+	return l.commander.SaveMeta(ctx, parameters, targetType, targetID, m)
 }
 
 func New(
+	name string,
 	store *ledgerstore.Store,
-	locker *command.DefaultLocker,
-	queryWorker *query.Projector,
+	publisher message.Publisher,
 	compiler *command.Compiler,
-	metricsRegistry metrics.PerLedgerRegistry,
 ) *Ledger {
-	store.OnLogWrote(func(logs []*core.ActiveLog) {
-		if err := queryWorker.QueueLog(logs...); err != nil {
-			panic(err)
-		}
-	})
+	var monitor query.Monitor = query.NewNoOpMonitor()
+	if publisher != nil {
+		monitor = bus.NewLedgerMonitor(publisher, name)
+	}
+	metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
+	if err != nil {
+		panic(err)
+	}
+	projector := query.NewProjector(store, monitor, metricsRegistry)
 	return &Ledger{
-		Commander: command.New(store, locker, compiler, command.NewReferencer(), metricsRegistry),
+		commander: command.New(
+			store,
+			command.NewDefaultLocker(),
+			compiler,
+			command.NewReferencer(),
+			metricsRegistry,
+			projector.QueueLog,
+		),
 		store:     store,
-		projector: queryWorker,
-		locker:    locker,
+		projector: projector,
 	}
 }
 
-func (l *Ledger) Close(ctx context.Context) error {
+func (l *Ledger) Start(ctx context.Context) {
+	go l.commander.Run(logging.ContextWithField(ctx, "component", "commander"))
+	l.projector.Start(logging.ContextWithField(ctx, "component", "projector"))
+}
 
+func (l *Ledger) Close(ctx context.Context) {
 	logging.FromContext(ctx).Debugf("Close commander")
-	l.Commander.Wait()
-
-	logging.FromContext(ctx).Debugf("Close storage worker")
-	if err := l.store.Stop(logging.ContextWithField(ctx, "component", "store")); err != nil {
-		return errors.Wrap(err, "stopping ledger store")
-	}
+	l.commander.Close()
 
 	logging.FromContext(ctx).Debugf("Close projector")
 	l.projector.Stop(logging.ContextWithField(ctx, "component", "projector"))
-
-	return nil
 }
 
 func (l *Ledger) GetTransactions(ctx context.Context, q ledgerstore.TransactionsQuery) (*api.Cursor[core.ExpandedTransaction], error) {

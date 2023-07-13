@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/driver"
-	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func StorageDriver(t pgtesting.TestingT) *driver.Driver {
 		db.Close()
 	})
 
-	d := driver.New("postgres", storage.NewDatabase(db), ledgerstore.DefaultStoreConfig)
+	d := driver.New("postgres", storage.NewDatabase(db))
 
 	require.NoError(t, d.Initialize(context.Background()))
 

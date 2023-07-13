@@ -359,7 +359,7 @@ func TestGetBalanceFromLogs(t *testing.T) {
 			previousLog = activeLog.ChainedLog
 		}
 	}
-	err := store.InsertLogs(context.Background(), logs)
+	err := store.InsertLogs(context.Background(), logs...)
 	require.NoError(t, err)
 
 	balance, err := store.GetBalanceFromLogs(context.Background(), "account:1", "EUR/2")
@@ -408,7 +408,7 @@ func TestGetMetadataFromLogs(t *testing.T) {
 		map[string]metadata.Metadata{},
 	).ChainLog(logs[3].ChainedLog)))
 
-	err := store.InsertLogs(context.Background(), logs)
+	err := store.InsertLogs(context.Background(), logs...)
 	require.NoError(t, err)
 
 	metadata, err := store.GetMetadataFromLogs(context.Background(), "bank", "foo")

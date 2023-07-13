@@ -12,7 +12,7 @@ import (
 )
 
 type ledgerMonitor struct {
-	publisher message.Publisher
+	publisher  message.Publisher
 	ledgerName string
 }
 
@@ -20,7 +20,7 @@ var _ query.Monitor = &ledgerMonitor{}
 
 func NewLedgerMonitor(publisher message.Publisher, ledgerName string) *ledgerMonitor {
 	m := &ledgerMonitor{
-		publisher: publisher,
+		publisher:  publisher,
 		ledgerName: ledgerName,
 	}
 	return m

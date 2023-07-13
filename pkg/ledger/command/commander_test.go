@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/core"
 	storageerrors "github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -129,21 +130,18 @@ func (m *mockStore) ReadLastLogWithType(background context.Context, logType ...c
 	return first, nil
 }
 
-func (m *mockStore) AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error) {
-	var (
-		previous, persistedLog *core.ChainedLog
-	)
-	if len(m.logs) > 0 {
-		previous = m.logs[len(m.logs)-1]
+func (m *mockStore) InsertLogs(ctx context.Context, logs ...*core.ActiveLog) error {
+
+	for _, log := range logs {
+		var previousLog *core.ChainedLog
+		if len(m.logs) > 0 {
+			previousLog = m.logs[len(m.logs)-1]
+		}
+		chainedLog := log.ChainLog(previousLog)
+		m.logs = append(m.logs, chainedLog)
 	}
-	persistedLog = log.ChainLog(previous)
-	m.logs = append(m.logs, persistedLog)
 
-	ret := core.NewLogPersistenceTracker(log)
-	ret.Resolve()
-	log.SetProjected()
-
-	return ret, nil
+	return nil
 }
 
 var (
@@ -204,7 +202,7 @@ var testCases = []testCase{
 				WithPostings(core.NewPosting("world", "mint", "GEM", big.NewInt(100))).
 				WithReference("tx_ref")
 			log := core.NewTransactionLog(tx, nil)
-			_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
+			err := store.InsertLogs(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 			require.NoError(t, err)
 		},
 		script: `
@@ -269,7 +267,7 @@ var testCases = []testCase{
 					WithTimestamp(now),
 				map[string]metadata.Metadata{},
 			).WithIdempotencyKey("testing")
-			_, err := r.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
+			err := r.InsertLogs(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 			require.NoError(t, err)
 		},
 		parameters: Parameters{
@@ -286,13 +284,21 @@ func TestCreateTransaction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newMockStore()
+			ctx := logging.TestingContext()
 
-			ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
+			commander := New(store, NoOpLocker, NewCompiler(1024),
+				NewReferencer(), nil, func(activeLogs ...*core.ActiveLog) {
+					for _, activeLog := range activeLogs {
+						activeLog.SetProjected()
+					}
+				})
+			go commander.Run(ctx)
+			defer commander.Close()
 
 			if tc.setup != nil {
 				tc.setup(t, store)
 			}
-			ret, err := ledger.CreateTransaction(context.Background(), tc.parameters, core.RunScript{
+			ret, err := commander.CreateTransaction(ctx, tc.parameters, core.RunScript{
 				Script: core.Script{
 					Plain: tc.script,
 				},
@@ -326,50 +332,77 @@ func TestCreateTransaction(t *testing.T) {
 func TestRevert(t *testing.T) {
 	txID := uint64(0)
 	store := newMockStore()
+	ctx := logging.TestingContext()
+
 	log := core.NewTransactionLog(
 		core.NewTransaction().WithPostings(
 			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
+	err := store.InsertLogs(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
-	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
-	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, txID)
+	commander := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil, func(activeLogs ...*core.ActiveLog) {
+		for _, activeLog := range activeLogs {
+			activeLog.SetProjected()
+		}
+	})
+	go commander.Run(ctx)
+	defer commander.Close()
+
+	_, err = commander.RevertTransaction(ctx, Parameters{}, txID)
 	require.NoError(t, err)
 }
 
 func TestRevertWithAlreadyReverted(t *testing.T) {
 
 	store := newMockStore()
+	ctx := logging.TestingContext()
+
 	log := core.
 		NewRevertedTransactionLog(core.Now(), 0, core.NewTransaction())
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
+	err := store.InsertLogs(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
-	ledger := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil)
+	commander := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), nil, func(activeLogs ...*core.ActiveLog) {
+		for _, activeLog := range activeLogs {
+			activeLog.SetProjected()
+		}
+	})
+	go commander.Run(ctx)
+	defer commander.Close()
 
-	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
+	_, err = commander.RevertTransaction(context.Background(), Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
 }
 
 func TestRevertWithRevertOccurring(t *testing.T) {
 
 	store := newMockStore()
+	ctx := logging.TestingContext()
+
 	log := core.NewTransactionLog(
 		core.NewTransaction().WithPostings(
 			core.NewPosting("world", "bank", "USD", big.NewInt(100)),
 		),
 		map[string]metadata.Metadata{},
 	)
-	_, err := store.AppendLog(context.Background(), core.NewActiveLog(log.ChainLog(nil)))
+	err := store.InsertLogs(ctx, core.NewActiveLog(log.ChainLog(nil)))
 	require.NoError(t, err)
 
 	referencer := NewReferencer()
-	ledger := New(store, NoOpLocker, NewCompiler(1024), referencer, nil)
+	commander := New(store, NoOpLocker, NewCompiler(1024),
+		referencer, nil, func(activeLogs ...*core.ActiveLog) {
+			for _, activeLog := range activeLogs {
+				activeLog.SetProjected()
+			}
+		})
+	go commander.Run(ctx)
+	defer commander.Close()
+
 	referencer.take(referenceReverts, uint64(0))
 
-	_, err = ledger.RevertTransaction(context.Background(), Parameters{}, 0)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, 0)
 	require.True(t, errors.Is(err, ErrRevertOccurring))
 }

@@ -49,7 +49,7 @@ func newLedgerStore(t *testing.T) *ledgerstore.Store {
 		require.NoError(t, db.Close())
 	})
 
-	driver := driver.New("postgres", storage.NewDatabase(db), ledgerstore.DefaultStoreConfig)
+	driver := driver.New("postgres", storage.NewDatabase(db))
 	require.NoError(t, driver.Initialize(context.Background()))
 	ledgerStore, err := driver.CreateLedgerStore(context.Background(), uuid.NewString())
 	require.NoError(t, err)
@@ -61,10 +61,9 @@ func newLedgerStore(t *testing.T) *ledgerstore.Store {
 }
 
 func appendLog(t *testing.T, store *ledgerstore.Store, log *core.ChainedLog) *core.ChainedLog {
-	ret, err := store.AppendLog(context.Background(), core.NewActiveLog(log))
-	<-ret.Done()
+	err := store.InsertLogs(context.Background(), core.NewActiveLog(log))
 	require.NoError(t, err)
-	return ret.ActiveLog().ChainedLog
+	return log
 }
 
 type explainHook struct{}

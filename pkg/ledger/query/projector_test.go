@@ -65,7 +65,7 @@ func TestProjector(t *testing.T) {
 	for i, chainedLog := range logs {
 		chainedLog.ID = uint64(i)
 		activeLog := core.NewActiveLog(chainedLog)
-		require.NoError(t, projector.QueueLog(activeLog))
+		projector.QueueLog(activeLog)
 		<-activeLog.Projected
 	}
 
@@ -166,7 +166,7 @@ func TestProjectorUnderHeavyParallelLoad(t *testing.T) {
 		), nil).ChainLog(previousLog)
 		activeLog := core.NewActiveLog(log)
 		pool.Submit(func() {
-			require.NoError(t, projector.QueueLog(activeLog))
+			projector.QueueLog(activeLog)
 		})
 		previousLog = log
 		allLogs = append(allLogs, activeLog)

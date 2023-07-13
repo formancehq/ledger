@@ -5,9 +5,7 @@ import (
 	"sync"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/formancehq/ledger/pkg/bus"
 	"github.com/formancehq/ledger/pkg/ledger/command"
-	"github.com/formancehq/ledger/pkg/ledger/query"
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage/driver"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
@@ -107,22 +105,8 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			}
 		}
 
-		locker := command.NewDefaultLocker()
-
-		metricsRegistry, err := metrics.RegisterPerLedgerMetricsRegistry(name)
-		if err != nil {
-			return nil, errors.Wrap(err, "registering metrics")
-		}
-
-		var monitor query.Monitor = query.NewNoOpMonitor()
-		if r.publisher != nil {
-			monitor = bus.NewLedgerMonitor(r.publisher, name)
-		}
-
-		projector := query.NewProjector(store, monitor, metricsRegistry)
-		projector.Start(logging.ContextWithLogger(context.Background(), r.logger))
-
-		ledger = New(store, locker, projector, r.compiler, metricsRegistry)
+		ledger = New(name, store, r.publisher, r.compiler)
+		ledger.Start(logging.ContextWithLogger(context.Background(), r.logger))
 		r.ledgers[name] = ledger
 		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 	}
@@ -137,9 +121,7 @@ func (r *Resolver) CloseLedgers(ctx context.Context) error {
 	}()
 	for name, ledger := range r.ledgers {
 		r.logger.Infof("Close ledger %s", name)
-		if err := ledger.Close(logging.ContextWithLogger(ctx, r.logger.WithField("ledger", name))); err != nil {
-			return err
-		}
+		ledger.Close(logging.ContextWithLogger(ctx, r.logger.WithField("ledger", name)))
 		delete(r.ledgers, name)
 	}
 
