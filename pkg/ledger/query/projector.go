@@ -61,10 +61,8 @@ type Projector struct {
 	limitReadLogs int
 }
 
-func (p *Projector) QueueLog(logs ...*core.ActiveLog) error {
+func (p *Projector) QueueLog(logs ...*core.ActiveLog) {
 	p.queue <- logs
-
-	return nil
 }
 
 func (p *Projector) Stop(ctx context.Context) {
@@ -245,16 +243,31 @@ func NewProjector(
 	metricsRegistry metrics.PerLedgerRegistry,
 ) *Projector {
 	return &Projector{
-		store:                 store,
-		monitor:               monitor,
-		metricsRegistry:       metricsRegistry,
-		txWorker:              batching.NewBatcher(store.InsertTransactions, 2, 512),
-		accountMetadataWorker: batching.NewBatcher(store.UpdateAccountsMetadata, 1, 512),
-		txMetadataWorker:      batching.NewBatcher(store.UpdateTransactionsMetadata, 1, 512),
-		moveBuffer:            newMoveBuffer(store.InsertMoves, 5, 100),
-		activeLogs:            collectionutils.NewLinkedList[*core.ActiveLog](),
-		queue:                 make(chan []*core.ActiveLog, 1024),
-		stopChan:              make(chan chan struct{}),
-		limitReadLogs:         10000,
+		store:           store,
+		monitor:         monitor,
+		metricsRegistry: metricsRegistry,
+		txWorker: batching.NewBatcher(
+			store.InsertTransactions,
+			batching.NoOpOnBatchProcessed[core.Transaction](),
+			2,
+			512,
+		),
+		accountMetadataWorker: batching.NewBatcher(
+			store.UpdateAccountsMetadata,
+			batching.NoOpOnBatchProcessed[core.Account](),
+			1,
+			512,
+		),
+		txMetadataWorker: batching.NewBatcher(
+			store.UpdateTransactionsMetadata,
+			batching.NoOpOnBatchProcessed[core.TransactionWithMetadata](),
+			1,
+			512,
+		),
+		moveBuffer:    newMoveBuffer(store.InsertMoves, 5, 100),
+		activeLogs:    collectionutils.NewLinkedList[*core.ActiveLog](),
+		queue:         make(chan []*core.ActiveLog, 1024),
+		stopChan:      make(chan chan struct{}),
+		limitReadLogs: 10000,
 	}
 }

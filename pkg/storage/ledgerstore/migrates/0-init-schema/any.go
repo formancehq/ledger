@@ -263,7 +263,6 @@ func UpgradeLogs(
 		func(ctx context.Context) error {
 			return nil
 		},
-		ledgerstore.DefaultStoreConfig,
 	)
 	if err != nil {
 		return errors.Wrap(err, "creating store")

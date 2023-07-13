@@ -116,7 +116,7 @@ func (j RawMessage) Value() (driver.Value, error) {
 	return string(j), nil
 }
 
-func (s *Store) InsertLogs(ctx context.Context, activeLogs []*core.ActiveLog) error {
+func (s *Store) InsertLogs(ctx context.Context, activeLogs ...*core.ActiveLog) error {
 
 	txn, err := s.schema.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {

@@ -389,33 +389,3 @@ var (
 		},
 	}
 )
-
-type LogPersistenceTracker struct {
-	activeLog *ActiveLog
-	done      chan struct{}
-}
-
-func (r *LogPersistenceTracker) ActiveLog() *ActiveLog {
-	return r.activeLog
-}
-
-func (r *LogPersistenceTracker) Resolve() {
-	close(r.done)
-}
-
-func (r *LogPersistenceTracker) Done() chan struct{} {
-	return r.done
-}
-
-func NewLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
-	return &LogPersistenceTracker{
-		activeLog: log,
-		done:      make(chan struct{}),
-	}
-}
-
-func NewResolvedLogPersistenceTracker(log *ActiveLog) *LogPersistenceTracker {
-	ret := NewLogPersistenceTracker(log)
-	ret.Resolve()
-	return ret
-}

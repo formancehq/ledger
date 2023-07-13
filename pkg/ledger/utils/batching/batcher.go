@@ -9,28 +9,43 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 )
 
+type OnBatchProcessed[T any] func(...T)
+
+func NoOpOnBatchProcessed[T any]() func(...T) {
+	return func(t ...T) {}
+}
+
 type pending[T any] struct {
 	object   T
 	callback func()
 }
 
-type batcherJob[T any] []*pending[T]
+type batcherJob[T any] struct {
+	items            []*pending[T]
+	onBatchProcessed OnBatchProcessed[T]
+}
 
 func (b batcherJob[T]) String() string {
-	return fmt.Sprintf("processing %d items", len(b))
+	return fmt.Sprintf("processing %d items", len(b.items))
 }
 
 func (b batcherJob[T]) Terminated() {
-	for _, v := range b {
+	for _, v := range b.items {
 		v.callback()
+	}
+	if b.onBatchProcessed != nil {
+		b.onBatchProcessed(collectionutils.Map(b.items, func(from *pending[T]) T {
+			return from.object
+		})...)
 	}
 }
 
 type Batcher[T any] struct {
 	*job.Runner[batcherJob[T]]
-	pending      []*pending[T]
-	mu           sync.Mutex
-	maxBatchSize int
+	pending          []*pending[T]
+	mu               sync.Mutex
+	maxBatchSize     int
+	onBatchProcessed OnBatchProcessed[T]
 }
 
 func (s *Batcher[T]) Append(object T, callback func()) {
@@ -53,21 +68,26 @@ func (s *Batcher[T]) nextBatch() *batcherJob[T] {
 	if len(s.pending) > s.maxBatchSize {
 		batch := s.pending[:s.maxBatchSize]
 		s.pending = s.pending[s.maxBatchSize:]
-		ret := batcherJob[T](batch)
-		return &ret
+		return &batcherJob[T]{
+			onBatchProcessed: s.onBatchProcessed,
+			items:            batch,
+		}
 	}
 	batch := s.pending
 	s.pending = make([]*pending[T], 0)
-	ret := batcherJob[T](batch)
-	return &ret
+	return &batcherJob[T]{
+		items:            batch,
+		onBatchProcessed: s.onBatchProcessed,
+	}
 }
 
-func NewBatcher[T any](runner func(context.Context, ...T) error, nbWorkers, maxBatchSize int) *Batcher[T] {
+func NewBatcher[T any](runner func(context.Context, ...T) error, onBatchProcessed OnBatchProcessed[T], nbWorkers, maxBatchSize int) *Batcher[T] {
 	ret := &Batcher[T]{
-		maxBatchSize: maxBatchSize,
+		maxBatchSize:     maxBatchSize,
+		onBatchProcessed: onBatchProcessed,
 	}
 	ret.Runner = job.NewJobRunner[batcherJob[T]](func(ctx context.Context, job *batcherJob[T]) error {
-		return runner(ctx, collectionutils.Map(*job, func(from *pending[T]) T {
+		return runner(ctx, collectionutils.Map(job.items, func(from *pending[T]) T {
 			return from.object
 		})...)
 	}, ret.nextBatch, nbWorkers)

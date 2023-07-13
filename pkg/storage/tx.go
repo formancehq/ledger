@@ -20,4 +20,3 @@ func (s *Tx) NewInsert(tableName string) *bun.InsertQuery {
 func (s *Tx) NewUpdate(tableName string) *bun.UpdateQuery {
 	return s.Tx.NewUpdate().ModelTableExpr("?0.?1 as ?1", bun.Ident(s.schema.Name()), bun.Ident(tableName))
 }
-

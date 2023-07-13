@@ -23,7 +23,6 @@ const (
 	MovesTableName        = "moves"
 )
 
-
 type TransactionsQuery ColumnPaginatedQuery[TransactionsQueryFilters]
 
 func NewTransactionsQuery() TransactionsQuery {

@@ -69,7 +69,6 @@ type Driver struct {
 	db          *storage.Database
 	systemStore *systemstore.Store
 	lock        sync.Mutex
-	storeConfig ledgerstore.StoreConfig
 }
 
 func (d *Driver) GetSystemStore() *systemstore.Store {
@@ -88,11 +87,10 @@ func (d *Driver) newStore(ctx context.Context, name string) (*ledgerstore.Store,
 
 	store, err := ledgerstore.New(schema, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
-	}, d.storeConfig)
+	})
 	if err != nil {
 		return nil, err
 	}
-	go store.Run(logging.ContextWithLogger(context.Background(), logging.FromContext(ctx).WithField("component", "store")))
 
 	return store, nil
 }
@@ -175,10 +173,9 @@ func (d *Driver) Close(ctx context.Context) error {
 	return d.db.Close(ctx)
 }
 
-func New(name string, db *storage.Database, storeConfig ledgerstore.StoreConfig) *Driver {
+func New(name string, db *storage.Database) *Driver {
 	return &Driver{
-		db:          db,
-		name:        name,
-		storeConfig: storeConfig,
+		db:   db,
+		name: name,
 	}
 }

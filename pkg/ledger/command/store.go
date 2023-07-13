@@ -9,7 +9,8 @@ import (
 
 type Store interface {
 	vm.Store
-	AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error)
+	//AppendLog(ctx context.Context, log *core.ActiveLog) (*core.LogPersistenceTracker, error)
+	InsertLogs(ctx context.Context, logs ...*core.ActiveLog) error
 	ReadLastLogWithType(ctx context.Context, logType ...core.LogType) (*core.ChainedLog, error)
 	ReadLogForCreatedTransactionWithReference(ctx context.Context, reference string) (*core.ChainedLog, error)
 	ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (*core.ChainedLog, error)
