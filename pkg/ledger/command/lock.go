@@ -55,7 +55,7 @@ func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) boo
 		}
 	}
 
-	logging.FromContext(ctx).Debugf("Lock acquired, read: %s, write: %s", intent.accounts.Read, intent.accounts.Write)
+	logging.FromContext(ctx).Debugf("Lock acquired")
 
 	for _, account := range intent.accounts.Read {
 		atomicValue, ok := chain.readLocks[account]
@@ -73,7 +73,7 @@ func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) boo
 }
 
 func (intent *lockIntent) unlock(ctx context.Context, chain *DefaultLocker) {
-	logging.FromContext(ctx).Debugf("Unlock accounts, read: %s, write: %s", intent.accounts.Read, intent.accounts.Write)
+	logging.FromContext(ctx).Debugf("Unlock accounts")
 	for _, account := range intent.accounts.Read {
 		atomicValue := chain.readLocks[account]
 		if atomicValue.Add(-1) == 0 {
@@ -94,67 +94,60 @@ type DefaultLocker struct {
 
 func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	defaultLocker.mu.Lock()
-	defer defaultLocker.mu.Unlock()
 
 	logger := logging.FromContext(ctx).WithFields(map[string]any{
 		"read":  accounts.Read,
 		"write": accounts.Write,
 	})
+	ctx = logging.ContextWithLogger(ctx, logger)
 
 	logger.Debugf("Intent lock")
 	intent := &lockIntent{
 		accounts: accounts,
 		acquired: make(chan struct{}),
 	}
-	if acquired := intent.tryLock(logging.ContextWithLogger(ctx, logger), defaultLocker); !acquired {
-		logger.Debugf("Lock not acquired, some accounts are already used")
 
-		defaultLocker.intents.Append(intent)
-		select {
-		case <-ctx.Done():
-			return nil, errors.Wrapf(ctx.Err(), "locking accounts: %s as read, and %s as write", accounts.Read, accounts.Write)
-		case <-intent.acquired:
-			return func(ctx context.Context) {
-				defaultLocker.mu.Lock()
-				defer defaultLocker.mu.Unlock()
-
-				intent.unlock(ctx, defaultLocker)
-				node := defaultLocker.intents.RemoveValue(intent)
-
-				if node == nil {
-					panic("node should not be nil")
-				}
-
-				for {
-					node = node.Next()
-					if node == nil {
-						break
-					}
-					if node.Value().tryLock(ctx, defaultLocker) {
-						close(node.Value().acquired)
-					}
-				}
-			}, nil
-		}
-	} else {
-		logger.Debugf("Lock directly acquired")
-		return func(ctx context.Context) {
-			defaultLocker.mu.Lock()
-			defer defaultLocker.mu.Unlock()
-
-			intent.unlock(ctx, defaultLocker)
-
-			node := defaultLocker.intents.FirstNode()
-			for {
-				if node == nil {
-					break
-				}
-				if node.Value().tryLock(ctx, defaultLocker) {
-					close(node.Value().acquired)
-				}
-				node = node.Next()
+	recheck := func() {
+		node := defaultLocker.intents.FirstNode()
+		for {
+			if node == nil {
+				break
 			}
-		}, nil
+			if node.Value().tryLock(ctx, defaultLocker) {
+				node.Remove()
+				close(node.Value().acquired)
+			}
+			node = node.Next()
+		}
+	}
+
+	releaseIntent := func(ctx context.Context) {
+		defaultLocker.mu.Lock()
+		defer defaultLocker.mu.Unlock()
+
+		intent.unlock(logging.ContextWithLogger(ctx, logger), defaultLocker)
+
+		recheck()
+	}
+
+	acquired := intent.tryLock(ctx, defaultLocker)
+	if acquired {
+		defaultLocker.mu.Unlock()
+		logger.Debugf("Lock directly acquired")
+
+		return releaseIntent, nil
+	}
+
+	logger.Debugf("Lock not acquired, some accounts are already used, putting in queue")
+	defaultLocker.intents.Append(intent)
+	defaultLocker.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		defaultLocker.intents.RemoveValue(intent)
+		return nil, errors.Wrapf(ctx.Err(), "locking accounts: %s as read, and %s as write", accounts.Read, accounts.Write)
+	case <-intent.acquired:
+		return releaseIntent, nil
 	}
 }
 
