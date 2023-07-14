@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sync"
 
 	"github.com/formancehq/ledger/pkg/core"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
@@ -9,12 +10,17 @@ import (
 )
 
 type InMemoryStore struct {
+	mu sync.Mutex
+
 	Logs         []*core.ChainedLog
 	Accounts     map[string]*core.AccountWithVolumes
 	Transactions []*core.ExpandedTransaction
 }
 
 func (m *InMemoryStore) MarkedLogsAsProjected(ctx context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, log := range m.Logs {
 		if log.ID == id {
 			log.Projected = true
@@ -25,11 +31,15 @@ func (m *InMemoryStore) MarkedLogsAsProjected(ctx context.Context, id uint64) er
 }
 
 func (m *InMemoryStore) InsertMoves(ctx context.Context, insert ...*core.Move) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	// TODO(gfyrag): to reflect the behavior of the real storage, we should compute accounts volumes there
 	return nil
 }
 
 func (m *InMemoryStore) UpdateAccountsMetadata(ctx context.Context, update ...core.Account) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, account := range update {
 		persistedAccount, ok := m.Accounts[account.Address]
 		if !ok {
@@ -45,6 +55,8 @@ func (m *InMemoryStore) UpdateAccountsMetadata(ctx context.Context, update ...co
 }
 
 func (m *InMemoryStore) InsertTransactions(ctx context.Context, insert ...core.Transaction) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, transaction := range insert {
 		expandedTransaction := &core.ExpandedTransaction{
 			Transaction:       transaction,
@@ -114,6 +126,8 @@ func (m *InMemoryStore) InsertTransactions(ctx context.Context, insert ...core.T
 }
 
 func (m *InMemoryStore) UpdateTransactionsMetadata(ctx context.Context, update ...core.TransactionWithMetadata) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, tx := range update {
 		m.Transactions[tx.ID].Metadata = m.Transactions[tx.ID].Metadata.Merge(tx.Metadata)
 	}
@@ -121,6 +135,8 @@ func (m *InMemoryStore) UpdateTransactionsMetadata(ctx context.Context, update .
 }
 
 func (m *InMemoryStore) EnsureAccountsExist(ctx context.Context, accounts []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, address := range accounts {
 		_, ok := m.Accounts[address]
 		if ok {
@@ -142,6 +158,8 @@ func (m *InMemoryStore) IsInitialized() bool {
 }
 
 func (m *InMemoryStore) GetNextLogID(ctx context.Context) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, log := range m.Logs {
 		if !log.Projected {
 			return log.ID, nil
@@ -151,6 +169,9 @@ func (m *InMemoryStore) GetNextLogID(ctx context.Context) (uint64, error) {
 }
 
 func (m *InMemoryStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.ChainedLog, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if idMax > uint64(len(m.Logs)) {
 		idMax = uint64(len(m.Logs))
 	}
@@ -165,6 +186,9 @@ func (m *InMemoryStore) ReadLogsRange(ctx context.Context, idMin, idMax uint64) 
 }
 
 func (m *InMemoryStore) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	account, ok := m.Accounts[address]
 	if !ok {
 		return &core.AccountWithVolumes{
@@ -179,6 +203,9 @@ func (m *InMemoryStore) GetAccountWithVolumes(ctx context.Context, address strin
 }
 
 func (m *InMemoryStore) GetTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.Transactions[id], nil
 }
 
