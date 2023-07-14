@@ -65,7 +65,6 @@ func InstrumentalizeSQLDriver() {
 }
 
 type Driver struct {
-	name        string
 	db          *storage.Database
 	systemStore *systemstore.Store
 	lock        sync.Mutex
@@ -140,12 +139,8 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.
 	return d.newStore(ctx, name)
 }
 
-func (d *Driver) Name() string {
-	return d.name
-}
-
 func (d *Driver) Initialize(ctx context.Context) error {
-	logging.FromContext(ctx).Debugf("Initialize driver %s", d.name)
+	logging.FromContext(ctx).Debugf("Initialize driver")
 
 	if err := d.db.Initialize(ctx); err != nil {
 		return err
@@ -169,13 +164,8 @@ func (d *Driver) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (d *Driver) Close(ctx context.Context) error {
-	return d.db.Close(ctx)
-}
-
-func New(name string, db *storage.Database) *Driver {
+func New(db *storage.Database) *Driver {
 	return &Driver{
-		db:   db,
-		name: name,
+		db: db,
 	}
 }

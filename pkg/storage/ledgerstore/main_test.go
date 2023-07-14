@@ -49,7 +49,7 @@ func newLedgerStore(t *testing.T) *ledgerstore.Store {
 		require.NoError(t, db.Close())
 	})
 
-	driver := driver.New("postgres", storage.NewDatabase(db))
+	driver := driver.New(storage.NewDatabase(db))
 	require.NoError(t, driver.Initialize(context.Background()))
 	ledgerStore, err := driver.CreateLedgerStore(context.Background(), uuid.NewString())
 	require.NoError(t, err)

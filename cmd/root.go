@@ -44,6 +44,7 @@ func NewRootCommand() *cobra.Command {
 	store.AddCommand(NewStorageInit())
 	store.AddCommand(NewStorageList())
 	store.AddCommand(NewStorageUpgrade())
+	store.AddCommand(NewStorageUpgradeAll())
 	store.AddCommand(NewStorageDelete())
 
 	root.AddCommand(serve)

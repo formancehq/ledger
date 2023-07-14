@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	LogTableName = "logs_v2"
+	LogTableName = "logs"
 )
 
 type LogsQueryFilters struct {
@@ -77,7 +77,7 @@ type AccountWithBalances struct {
 }
 
 type LogsV2 struct {
-	bun.BaseModel `bun:"logs_v2,alias:logs_v2"`
+	bun.BaseModel `bun:"logs,alias:logs"`
 
 	ID             uint64    `bun:"id,unique,type:bigint"`
 	Type           int16     `bun:"type,type:smallint"`
@@ -88,7 +88,7 @@ type LogsV2 struct {
 	Projected      bool      `bun:"projected,type:boolean"`
 }
 
-func (log LogsV2) toCore() core.ChainedLog {
+func (log LogsV2) ToCore() core.ChainedLog {
 	payload, err := core.HydrateLog(core.LogType(log.Type), log.Data)
 	if err != nil {
 		panic(errors.Wrap(err, "hydrating log data"))
@@ -126,7 +126,7 @@ func (s *Store) InsertLogs(ctx context.Context, activeLogs ...*core.ActiveLog) e
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
 	stmt, err := txn.Prepare(pq.CopyInSchema(
 		s.schema.Name(),
-		"logs_v2",
+		LogTableName,
 		"id", "type", "hash", "date", "data", "idempotency_key",
 	))
 	if err != nil {
@@ -179,7 +179,7 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.ChainedLog, error) {
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	l := raw.toCore()
+	l := raw.ToCore()
 	return &l, nil
 }
 
@@ -192,7 +192,7 @@ func (s *Store) GetLogs(ctx context.Context, q LogsQuery) (*api.Cursor[core.Chai
 		return nil, err
 	}
 
-	return api.MapCursor(cursor, LogsV2.toCore), nil
+	return api.MapCursor(cursor, LogsV2.ToCore), nil
 }
 
 func (s *Store) buildLogsQuery(q LogsQueryFilters, models *[]LogsV2) *bun.SelectQuery {
@@ -236,7 +236,7 @@ func (s *Store) ReadLogsRange(ctx context.Context, idMin, idMax uint64) ([]core.
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	return collectionutils.Map(rawLogs, LogsV2.toCore), nil
+	return collectionutils.Map(rawLogs, LogsV2.ToCore), nil
 }
 
 func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogType) (*core.ChainedLog, error) {
@@ -251,7 +251,7 @@ func (s *Store) ReadLastLogWithType(ctx context.Context, logTypes ...core.LogTyp
 	if err != nil {
 		return nil, storageerrors.PostgresError(err)
 	}
-	ret := raw.toCore()
+	ret := raw.ToCore()
 
 	return &ret, nil
 }
@@ -268,7 +268,7 @@ func (s *Store) ReadLogForCreatedTransactionWithReference(ctx context.Context, r
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	l := raw.toCore()
+	l := raw.ToCore()
 	return &l, nil
 }
 
@@ -284,7 +284,7 @@ func (s *Store) ReadLogForCreatedTransaction(ctx context.Context, txID uint64) (
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	l := raw.toCore()
+	l := raw.ToCore()
 	return &l, nil
 }
 
@@ -300,7 +300,7 @@ func (s *Store) ReadLogForRevertedTransaction(ctx context.Context, txID uint64) 
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	l := raw.toCore()
+	l := raw.ToCore()
 	return &l, nil
 }
 
@@ -316,7 +316,7 @@ func (s *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*cor
 		return nil, storageerrors.PostgresError(err)
 	}
 
-	l := raw.toCore()
+	l := raw.ToCore()
 	return &l, nil
 }
 

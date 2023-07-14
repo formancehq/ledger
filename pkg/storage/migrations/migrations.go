@@ -21,10 +21,10 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const migrationsTableName = "migrations_v2"
+const migrationsTableName = "migrations"
 
 type table struct {
-	bun.BaseModel `bun:"migrations_v2,alias:migrations_v2"`
+	bun.BaseModel `bun:"migrations,alias:migrations"`
 
 	Version string `bun:"version,type:varchar,unique"`
 	Date    string `bun:"date,type:varchar"`
@@ -55,8 +55,10 @@ func Migrate(ctx context.Context, s storage.Schema, migrations ...Migration) (bo
 		_ = tx.Rollback()
 	}(tx)
 
+	logging.FromContext(ctx).Debugf("Checking migrations...")
 	modified := false
 	for _, m := range migrations {
+		logging.FromContext(ctx).Debugf("Checking if version %s is applied", m.Version)
 		sb := s.NewSelect(migrationsTableName).
 			Model((*table)(nil)).
 			Column("version").
@@ -66,15 +68,15 @@ func Migrate(ctx context.Context, s storage.Schema, migrations ...Migration) (bo
 		row := s.QueryRowContext(ctx, sb.String())
 		var v string
 		if err = row.Scan(&v); err != nil {
-			logging.FromContext(ctx).Debugf("migration %s: %s", m.Version, err)
+			logging.FromContext(ctx).Debugf("Migration %s: %s", m.Version, err)
 		}
 		if v != "" {
-			logging.FromContext(ctx).Debugf("migration %s: already up to date", m.Version)
+			logging.FromContext(ctx).Debugf("Migration %s: already up to date", m.Version)
 			continue
 		}
 		modified = true
 
-		logging.FromContext(ctx).Debugf("running migration %s", m.Version)
+		logging.FromContext(ctx).Debugf("Running migration %s", m.Version)
 
 		handlersForCurrentEngine, ok := m.Handlers["postgres"]
 		if ok {
@@ -103,7 +105,7 @@ func Migrate(ctx context.Context, s storage.Schema, migrations ...Migration) (bo
 		sbInsert := s.NewInsert(migrationsTableName).Model(&m)
 
 		if _, err := tx.ExecContext(ctx, sbInsert.String()); err != nil {
-			logging.FromContext(ctx).Errorf("failed to insert migration version %s: %s", m.Version, err)
+			logging.FromContext(ctx).Errorf("Failed to insert migration version %s: %s", m.Version, err)
 			return false, storage.PostgresError(err)
 		}
 

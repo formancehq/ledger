@@ -453,9 +453,6 @@ func (s *Store) InsertMoves(ctx context.Context, objects ...*core.Move) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
 
 	err = tx.NewInsert(MovesTableName).
 		With("cte1", s.schema.NewValues(&moves)).
