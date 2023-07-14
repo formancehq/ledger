@@ -15,7 +15,7 @@ func TestMoveBuffer(t *testing.T) {
 	t.Parallel()
 
 	locked := sync.Map{}
-	buf := newMoveBuffer(func(ctx context.Context, moves ...*core.Move) error {
+	buf := newMoveUpdater(func(ctx context.Context, moves ...*core.Move) error {
 		accounts := make(map[string]struct{})
 		for _, move := range moves {
 			accounts[move.Account] = struct{}{}

@@ -53,11 +53,11 @@ type Projector struct {
 	stopChan   chan chan struct{}
 	activeLogs *collectionutils.LinkedList[*core.ActiveLog]
 
-	txWorker              *batching.Batcher[core.Transaction]
-	txMetadataWorker      *batching.Batcher[core.TransactionWithMetadata]
-	accountMetadataWorker *batching.Batcher[core.Account]
+	txUpdater              *batching.Batcher[core.Transaction]
+	txMetadataUpdater      *metadataUpdater
+	accountMetadataUpdater *metadataUpdater
 
-	moveBuffer    *moveBuffer
+	moveUpdater   *moveBuffer
 	limitReadLogs int
 }
 
@@ -79,10 +79,10 @@ func (p *Projector) Start(ctx context.Context) {
 
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	go p.moveBuffer.Run(logging.ContextWithField(ctx, "component", "moves buffer"))
-	go p.txWorker.Run(logging.ContextWithField(ctx, "component", "transactions buffer"))
-	go p.accountMetadataWorker.Run(logging.ContextWithField(ctx, "component", "accounts metadata buffer"))
-	go p.txMetadataWorker.Run(logging.ContextWithField(ctx, "component", "transactions metadata buffer"))
+	go p.moveUpdater.Run(logging.ContextWithField(ctx, "component", "moves buffer"))
+	go p.txUpdater.Run(logging.ContextWithField(ctx, "component", "transactions buffer"))
+	go p.accountMetadataUpdater.Run(logging.ContextWithField(ctx, "component", "accounts metadata buffer"))
+	go p.txMetadataUpdater.Run(logging.ContextWithField(ctx, "component", "transactions metadata buffer"))
 
 	p.syncLogs(ctx)
 
@@ -92,16 +92,16 @@ func (p *Projector) Start(ctx context.Context) {
 			select {
 			case ch := <-p.stopChan:
 				logger.Debugf("Close move buffer")
-				p.moveBuffer.Close()
+				p.moveUpdater.Close()
 
 				logger.Debugf("Stop transaction worker")
-				p.txWorker.Close()
+				p.txUpdater.Close()
 
 				logger.Debugf("Stop account metadata worker")
-				p.accountMetadataWorker.Close()
+				p.accountMetadataUpdater.Close()
 
 				logger.Debugf("Stop transaction metadata worker")
-				p.txMetadataWorker.Close()
+				p.txMetadataUpdater.Close()
 
 				close(ch)
 				return
@@ -171,14 +171,14 @@ func (p *Projector) processLogs(ctx context.Context, logs []*core.ActiveLog) {
 				l.Store(moveKey(move))
 			}
 
-			p.txWorker.Append(tx, func() {
+			p.txUpdater.Append(tx, func() {
 				logger.Debugf("Transaction projected")
 				l.Delete("tx")
 			})
 
 			for _, move := range moves {
 				move := move
-				p.moveBuffer.AppendMove(move, func() {
+				p.moveUpdater.AppendMove(move, func() {
 					logger.WithFields(map[string]any{
 						"asset":     move.Asset,
 						"is_source": move.IsSource,
@@ -199,18 +199,12 @@ func (p *Projector) processLogs(ctx context.Context, logs []*core.ActiveLog) {
 		case core.SetMetadataLogPayload:
 			switch payload.TargetType {
 			case core.MetaTargetTypeAccount:
-				p.accountMetadataWorker.Append(core.Account{
-					Address:  payload.TargetID.(string),
-					Metadata: payload.Metadata,
-				}, func() {
+				p.accountMetadataUpdater.Append(payload.TargetID, payload.Metadata, func() {
 					markLogAsProjected()
 					p.monitor.SavedMetadata(ctx, payload.TargetType, fmt.Sprint(payload.TargetID), payload.Metadata)
 				})
 			case core.MetaTargetTypeTransaction:
-				p.txMetadataWorker.Append(core.TransactionWithMetadata{
-					ID:       payload.TargetID.(uint64),
-					Metadata: payload.Metadata,
-				}, func() {
+				p.txMetadataUpdater.Append(payload.TargetID, payload.Metadata, func() {
 					markLogAsProjected()
 					p.monitor.SavedMetadata(ctx, payload.TargetType, fmt.Sprint(payload.TargetID), payload.Metadata)
 				})
@@ -228,66 +222,41 @@ func (p *Projector) processLogs(ctx context.Context, logs []*core.ActiveLog) {
 			})
 			l.Store("metadata")
 			dispatchTransaction(l, log, *payload.RevertTransaction)
-			p.txMetadataWorker.Append(core.TransactionWithMetadata{
-				ID:       payload.RevertedTransactionID,
-				Metadata: core.RevertedMetadata(payload.RevertTransaction.ID),
-			}, func() {
+			p.txMetadataUpdater.Append(payload.RevertedTransactionID, core.RevertedMetadata(payload.RevertTransaction.ID), func() {
 				l.Delete("metadata")
 			})
 		}
 	}
 }
 
-func NewProjector(
-	store Store,
-	monitor Monitor,
-	metricsRegistry metrics.PerLedgerRegistry,
-) *Projector {
+func NewProjector(store Store, monitor Monitor, metricsRegistry metrics.PerLedgerRegistry) *Projector {
 	return &Projector{
 		store:           store,
 		monitor:         monitor,
 		metricsRegistry: metricsRegistry,
-		txWorker: batching.NewBatcher(
+		txUpdater: batching.NewBatcher(
 			store.InsertTransactions,
 			batching.NoOpOnBatchProcessed[core.Transaction](),
 			2,
 			512,
 		),
-		accountMetadataWorker: batching.NewBatcher(
-			// TODO: UpdateAccountsMetadata insert metadata by batch
-			// but a batch can contains twice the same accounts
-			// we should create a dedicated component (as for moves)
-			// to aggregate metadata update by account
-			func(ctx context.Context, accounts ...core.Account) error {
-				ret := make(map[string]core.Account)
-				for _, account := range accounts {
-					_, ok := ret[account.Address]
-					if !ok {
-						ret[account.Address] = account
-					}
-
-					updatedAccount := ret[account.Address]
-					updatedAccount.Metadata = updatedAccount.Metadata.Merge(account.Metadata)
+		accountMetadataUpdater: newMetadataUpdater(func(ctx context.Context, update ...*MetadataUpdate) error {
+			return store.UpdateAccountsMetadata(ctx, collectionutils.Map(update, func(from *MetadataUpdate) core.Account {
+				return core.Account{
+					Address:  from.ID.(string),
+					Metadata: from.Metadata,
 				}
-
-				effectiveAccounts := make([]core.Account, 0)
-				for _, account := range ret {
-					effectiveAccounts = append(effectiveAccounts, account)
+			})...)
+		}, 1, 512),
+		txMetadataUpdater: newMetadataUpdater(func(ctx context.Context, update ...*MetadataUpdate) error {
+			return store.UpdateTransactionsMetadata(ctx, collectionutils.Map(update, func(from *MetadataUpdate) core.TransactionWithMetadata {
+				return core.TransactionWithMetadata{
+					ID:       from.ID.(uint64),
+					Metadata: from.Metadata,
 				}
-
-				return store.UpdateAccountsMetadata(ctx, effectiveAccounts...)
-			},
-			batching.NoOpOnBatchProcessed[core.Account](),
-			1,
-			512,
-		),
-		txMetadataWorker: batching.NewBatcher(
-			store.UpdateTransactionsMetadata,
-			batching.NoOpOnBatchProcessed[core.TransactionWithMetadata](),
-			1,
-			512,
-		),
-		moveBuffer:    newMoveBuffer(store.InsertMoves, 5, 100),
+			})...)
+		}, 1, 512),
+		moveUpdater:   newMoveUpdater(store.InsertMoves, 5, 100),
 		activeLogs:    collectionutils.NewLinkedList[*core.ActiveLog](),
 		queue:         make(chan []*core.ActiveLog, 1024),
 		stopChan:      make(chan chan struct{}),

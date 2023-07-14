@@ -109,7 +109,7 @@ func (r *moveBuffer) nextJob() *insertMovesJob {
 	}
 }
 
-func newMoveBuffer(runner func(context.Context, ...*core.Move) error, nbWorkers, maxBufferSize int) *moveBuffer {
+func newMoveUpdater(runner func(context.Context, ...*core.Move) error, nbWorkers, maxBufferSize int) *moveBuffer {
 	ret := &moveBuffer{
 		accountsQueue: collectionutils.NewLinkedList[*moveBufferAccount](),
 		accounts:      map[string]*moveBufferAccount{},
