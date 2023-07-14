@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/alitto/pond"
@@ -52,6 +53,14 @@ func (r *Runner[JOB]) Run(ctx context.Context) {
 
 	logger := logging.FromContext(ctx)
 	logger.Infof("Start worker")
+
+	defer func() {
+		if e := recover(); e != nil {
+			logger.Error(e)
+			debug.PrintStack()
+			panic(e)
+		}
+	}()
 
 	terminatedJobs := make(chan *JOB, r.nbWorkers)
 	jobsErrors := make(chan error, r.nbWorkers)

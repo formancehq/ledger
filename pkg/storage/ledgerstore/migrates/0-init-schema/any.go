@@ -7,8 +7,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger/query"
-	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/formancehq/ledger/pkg/storage"
 	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
 	"github.com/formancehq/ledger/pkg/storage/migrations"
@@ -78,44 +76,35 @@ func isLogTableExisting(
 
 func readLogsRange(
 	ctx context.Context,
-	schema storage.Schema,
 	sqlTx *storage.Tx,
 	idMin, idMax uint64,
 ) ([]Log, error) {
 	rawLogs := make([]Log, 0)
-	sb := schema.
+	if err := sqlTx.
 		NewSelect(LogTableName).
 		Where("id >= ?", idMin).
 		Where("id < ?", idMax).
-		Model((*Log)(nil))
-
-	rows, err := sqlTx.QueryContext(ctx, sb.String())
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return rawLogs, nil
-		}
-
-		return nil, errors.Wrap(err, "selecting logs")
-	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			if err == sql.ErrNoRows {
-				return
-			}
-			panic(err)
-		}
-	}()
-
-	for rows.Next() {
-		var log Log
-		if err := rows.Scan(&log); err != nil {
-			return nil, errors.Wrap(err, "scanning log")
-		}
-
-		rawLogs = append(rawLogs, log)
+		Model(&rawLogs).
+		Scan(ctx); err != nil {
+		return nil, err
 	}
 
 	return rawLogs, nil
+}
+
+func convertMetadata(data []byte) any {
+	ret := make(map[string]any)
+	if err := json.Unmarshal(data, &ret); err != nil {
+		panic(err)
+	}
+	oldMetadata := ret["metadata"].(map[string]any)
+	newMetadata := make(map[string]string)
+	for k, v := range oldMetadata {
+		newMetadata[k] = fmt.Sprint(v)
+	}
+	ret["metadata"] = newMetadata
+
+	return ret
 }
 
 func (l *Log) ToLogsV2() (ledgerstore.LogsV2, error) {
@@ -124,12 +113,32 @@ func (l *Log) ToLogsV2() (ledgerstore.LogsV2, error) {
 		return ledgerstore.LogsV2{}, errors.Wrap(err, "converting log type")
 	}
 
+	var data any
+	switch logType {
+	case core.NewTransactionLogType:
+		data = map[string]any{
+			"transaction":     convertMetadata(l.Data),
+			"accountMetadata": map[string]any{},
+		}
+	case core.SetMetadataLogType:
+		data = convertMetadata(l.Data)
+	case core.RevertedTransactionLogType:
+		data = l.Data
+	default:
+		panic("unknown type " + logType.String())
+	}
+
+	asJson, err := json.Marshal(data)
+	if err != nil {
+		panic(err)
+	}
+
 	return ledgerstore.LogsV2{
 		ID:   l.ID,
 		Type: int16(logType),
 		Hash: []byte(l.Hash),
 		Date: l.Date,
-		Data: l.Data,
+		Data: asJson,
 	}, nil
 }
 
@@ -147,7 +156,7 @@ func batchLogs(
 	// Beware: COPY query is not supported by bun if the pgx driver is used.
 	stmt, err := txn.Prepare(pq.CopyInSchema(
 		schema.Name(),
-		"logs_v2",
+		ledgerstore.LogTableName,
 		"id", "type", "hash", "date", "data",
 	))
 	if err != nil {
@@ -196,6 +205,7 @@ func migrateLogs(
 	ctx context.Context,
 	schemaV1 storage.Schema,
 	schemaV2 storage.Schema,
+	store *ledgerstore.Store,
 	sqlTx *storage.Tx,
 ) error {
 	exists, err := isLogTableExisting(ctx, schemaV1, sqlTx)
@@ -210,7 +220,7 @@ func migrateLogs(
 	var idMin uint64
 	var idMax = idMin + batchSize
 	for {
-		logs, err := readLogsRange(ctx, schemaV1, sqlTx, idMin, idMax)
+		logs, err := readLogsRange(ctx, sqlTx, idMin, idMax)
 		if err != nil {
 			return err
 		}
@@ -232,6 +242,46 @@ func migrateLogs(
 		err = batchLogs(ctx, schemaV2, sqlTx, logsV2)
 		if err != nil {
 			return err
+		}
+
+		for _, log := range logsV2 {
+			coreLog := log.ToCore()
+			switch payload := coreLog.Data.(type) {
+			case core.NewTransactionLogPayload:
+				if err := store.InsertTransactions(ctx, *payload.Transaction); err != nil {
+					return err
+				}
+			case core.SetMetadataLogPayload:
+				switch payload.TargetType {
+				case core.MetaTargetTypeTransaction:
+					if err := store.UpdateTransactionsMetadata(ctx, core.TransactionWithMetadata{
+						ID:       payload.TargetID.(uint64),
+						Metadata: payload.Metadata,
+					}); err != nil {
+						return err
+					}
+				case core.MetaTargetTypeAccount:
+					if err := store.UpdateAccountsMetadata(ctx, core.Account{
+						Address:  payload.TargetID.(string),
+						Metadata: payload.Metadata,
+					}); err != nil {
+						return err
+					}
+				}
+			case core.RevertedTransactionLogPayload:
+				if err := store.InsertTransactions(ctx, *payload.RevertTransaction); err != nil {
+					return err
+				}
+				if err := store.UpdateTransactionsMetadata(ctx, core.TransactionWithMetadata{
+					ID:       payload.RevertedTransactionID,
+					Metadata: core.RevertedMetadata(payload.RevertTransaction.ID),
+				}); err != nil {
+					return err
+				}
+			}
+			if err := store.MarkedLogsAsProjected(ctx, log.ID); err != nil {
+				return err
+			}
 		}
 
 		idMin = idMax
@@ -268,13 +318,9 @@ func UpgradeLogs(
 		return errors.Wrap(err, "creating store")
 	}
 
-	if err := migrateLogs(ctx, schemaV1, schemaV2, sqlTx); err != nil {
+	if err := migrateLogs(ctx, schemaV1, schemaV2, store, sqlTx); err != nil {
 		return errors.Wrap(err, "migrating logs")
 	}
-
-	projector := query.NewProjector(store, query.NewNoOpMonitor(), metrics.NewNoOpRegistry())
-	projector.Start(ctx) // Start block until logs are synced
-	projector.Stop(ctx)
 
 	return cleanSchema(ctx, schemaV1, schemaV2, sqlTx)
 }

@@ -29,10 +29,6 @@ func (p *Database) Schema(name string) (Schema, error) {
 	}, nil
 }
 
-func (p *Database) Close(ctx context.Context) error {
-	return p.db.Close()
-}
-
 func NewDatabase(db *bun.DB) *Database {
 	return &Database{
 		db: db,

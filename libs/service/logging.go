@@ -11,7 +11,7 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 )
 
-func defaultLoggingContext(parent context.Context, w io.Writer, debug, jsonFormattingLog bool) context.Context {
+func GetDefaultLogger(w io.Writer, debug, jsonFormattingLog bool) logging.Logger {
 	l := logrus.New()
 	l.SetOutput(w)
 	if debug {
@@ -40,5 +40,9 @@ func defaultLoggingContext(parent context.Context, w io.Writer, debug, jsonForma
 			logrus.WarnLevel,
 		)))
 	}
-	return logging.ContextWithLogger(parent, logging.NewLogrus(l))
+	return logging.NewLogrus(l)
+}
+
+func defaultLoggingContext(parent context.Context, w io.Writer, debug, jsonFormattingLog bool) context.Context {
+	return logging.ContextWithLogger(parent, GetDefaultLogger(w, debug, jsonFormattingLog))
 }

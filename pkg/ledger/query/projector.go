@@ -194,6 +194,7 @@ func (p *Projector) processLogs(ctx context.Context, logs []*core.ActiveLog) {
 				markLogAsProjected()
 				p.monitor.CommittedTransactions(ctx, *payload.Transaction)
 			})
+
 			dispatchTransaction(l, log, *payload.Transaction)
 		case core.SetMetadataLogPayload:
 			switch payload.TargetType {
@@ -253,7 +254,29 @@ func NewProjector(
 			512,
 		),
 		accountMetadataWorker: batching.NewBatcher(
-			store.UpdateAccountsMetadata,
+			// TODO: UpdateAccountsMetadata insert metadata by batch
+			// but a batch can contains twice the same accounts
+			// we should create a dedicated component (as for moves)
+			// to aggregate metadata update by account
+			func(ctx context.Context, accounts ...core.Account) error {
+				ret := make(map[string]core.Account)
+				for _, account := range accounts {
+					_, ok := ret[account.Address]
+					if !ok {
+						ret[account.Address] = account
+					}
+
+					updatedAccount := ret[account.Address]
+					updatedAccount.Metadata = updatedAccount.Metadata.Merge(account.Metadata)
+				}
+
+				effectiveAccounts := make([]core.Account, 0)
+				for _, account := range ret {
+					effectiveAccounts = append(effectiveAccounts, account)
+				}
+
+				return store.UpdateAccountsMetadata(ctx, effectiveAccounts...)
+			},
 			batching.NoOpOnBatchProcessed[core.Account](),
 			1,
 			512,

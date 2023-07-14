@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -12,25 +13,16 @@ import (
 	"go.uber.org/fx"
 )
 
-const (
-	StoreWorkerMaxPendingSize           = "store-worker-max-pending-size"
-	StoreWorkerMaxWriteChanSize         = "store-worker-max-write-chan-size"
-	StoragePostgresConnectionStringFlag = "storage-postgres-conn-string"
-	StoragePostgresMaxIdleConnsFlag     = "storage-postgres-max-idle-conns"
-	StoragePostgresConnMaxIdleTimeFlag  = "storage-postgres-conn-max-idle-time"
-	StoragePostgresMaxOpenConns         = "storage-postgres-max-open-conns"
-)
-
 // TODO(gfyrag): maybe move flag handling inside cmd/internal (as telemetry flags)
 // Or make the inverse (move analytics flags to pkg/analytics)
 // IMO, flags are more easily discoverable if located inside cmd/
 func InitCLIFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().Int(StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
-	cmd.PersistentFlags().Int(StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
-	cmd.PersistentFlags().String(StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
-	cmd.PersistentFlags().Int(StoragePostgresMaxIdleConnsFlag, 20, "Max idle connections to database")
-	cmd.PersistentFlags().Duration(StoragePostgresConnMaxIdleTimeFlag, time.Minute, "Max idle time of idle connections")
-	cmd.PersistentFlags().Int(StoragePostgresMaxOpenConns, 20, "Max open connections")
+	cmd.PersistentFlags().Int(storage.StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
+	cmd.PersistentFlags().Int(storage.StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
+	cmd.PersistentFlags().String(storage.StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
+	cmd.PersistentFlags().Int(storage.StoragePostgresMaxIdleConnsFlag, 20, "Max idle connections to database")
+	cmd.PersistentFlags().Duration(storage.StoragePostgresConnMaxIdleTimeFlag, time.Minute, "Max idle time of idle connections")
+	cmd.PersistentFlags().Int(storage.StoragePostgresMaxOpenConns, 20, "Max open connections")
 }
 
 type PostgresConfig struct {
@@ -46,29 +38,26 @@ func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func() (*bun.DB, error) {
-		return storage.OpenSQLDB(storage.ConnectionOptions{
-			DatabaseSourceName: v.GetString(StoragePostgresConnectionStringFlag),
-			Debug:              debug,
-			Writer:             output,
-			MaxIdleConns:       v.GetInt(StoragePostgresMaxIdleConnsFlag),
-			ConnMaxIdleTime:    v.GetDuration(StoragePostgresConnMaxIdleTimeFlag),
-			MaxOpenConns:       v.GetInt(StoragePostgresMaxOpenConns),
-		})
+		return storage.OpenSQLDB(storage.ConnectionOptionsFromFlags(v, output, debug))
 	}))
 	options = append(options, fx.Provide(func(db *bun.DB) *storage.Database {
 		return storage.NewDatabase(db)
 	}))
 	options = append(options, fx.Provide(func(db *storage.Database) (*Driver, error) {
-		return New("postgres", db), nil
+		return New(db), nil
 	}))
 	options = append(options, health.ProvideHealthCheck(func(db *bun.DB) health.NamedCheck {
 		return health.NewNamedCheck("postgres", health.CheckFn(db.PingContext))
 	}))
 
-	options = append(options, fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle) error {
+	options = append(options, fx.Invoke(func(db *bun.DB, driver *Driver, lifecycle fx.Lifecycle) error {
 		lifecycle.Append(fx.Hook{
 			OnStart: driver.Initialize,
-			OnStop:  driver.Close,
+		})
+		lifecycle.Append(fx.Hook{
+			OnStop: func(ctx context.Context) error {
+				return db.Close()
+			},
 		})
 		return nil
 	}))

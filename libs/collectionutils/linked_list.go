@@ -33,14 +33,6 @@ func (n *LinkedListNode[T]) Remove() {
 	}
 }
 
-func (n *LinkedListNode[T]) ForEach(f func(t T)) {
-	f(n.object)
-	if n.nextNode == nil {
-		return
-	}
-	n.nextNode.ForEach(f)
-}
-
 type LinkedList[T any] struct {
 	mu                  sync.Mutex
 	firstNode, lastNode *LinkedListNode[T]
@@ -124,11 +116,11 @@ func (r *LinkedList[T]) ForEach(f func(t T)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.firstNode == nil {
-		return
+	node := r.firstNode
+	for node != nil {
+		f(node.object)
+		node = node.nextNode
 	}
-
-	r.firstNode.ForEach(f)
 }
 
 func (r *LinkedList[T]) Slice() []T {

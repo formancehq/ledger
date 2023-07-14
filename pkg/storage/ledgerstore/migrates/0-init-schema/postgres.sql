@@ -24,7 +24,7 @@ create table "VAR_LEDGER_NAME_v2_0_0".accounts (
 );
 
 --statement
-create table "VAR_LEDGER_NAME_v2_0_0".logs_v2 (
+create table "VAR_LEDGER_NAME_v2_0_0".logs (
     id numeric primary key ,
     type smallint,
     hash bytea,
@@ -35,7 +35,7 @@ create table "VAR_LEDGER_NAME_v2_0_0".logs_v2 (
 );
 
 --statement
-create table "VAR_LEDGER_NAME_v2_0_0".migrations_v2 (
+create table "VAR_LEDGER_NAME_v2_0_0".migrations (
     version character varying primary key,
     date character varying
 );
@@ -65,19 +65,19 @@ create table "VAR_LEDGER_NAME_v2_0_0".moves (
 );
 
 --statement
-create index logsv2_type on "VAR_LEDGER_NAME_v2_0_0".logs_v2 (type);
+create index logsv2_type on "VAR_LEDGER_NAME_v2_0_0".logs (type);
 
 --statement
-create index logsv2_projected on "VAR_LEDGER_NAME_v2_0_0".logs_v2 (projected);
+create index logsv2_projected on "VAR_LEDGER_NAME_v2_0_0".logs (projected);
 
 --statement
-create index logsv2_data on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using gin (data);
+create index logsv2_data on "VAR_LEDGER_NAME_v2_0_0".logs using gin (data);
 
 --statement
-create index logsv2_new_transaction_postings on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using gin ((data->'transaction'->'postings') jsonb_path_ops);
+create index logsv2_new_transaction_postings on "VAR_LEDGER_NAME_v2_0_0".logs using gin ((data->'transaction'->'postings') jsonb_path_ops);
 
 --statement
-create index logsv2_set_metadata on "VAR_LEDGER_NAME_v2_0_0".logs_v2 using btree (type, (data->>'targetId'), (data->>'targetType'));
+create index logsv2_set_metadata on "VAR_LEDGER_NAME_v2_0_0".logs using btree (type, (data->>'targetId'), (data->>'targetType'));
 
 --statement
 create index transactions_id_timestamp on "VAR_LEDGER_NAME_v2_0_0".transactions(id, timestamp);
