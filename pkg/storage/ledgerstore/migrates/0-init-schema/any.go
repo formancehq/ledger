@@ -251,6 +251,9 @@ func migrateLogs(
 				if err := store.InsertTransactions(ctx, *payload.Transaction); err != nil {
 					return err
 				}
+				if err := store.InsertMoves(ctx, payload.Transaction.GetMoves()...); err != nil {
+					return err
+				}
 			case core.SetMetadataLogPayload:
 				switch payload.TargetType {
 				case core.MetaTargetTypeTransaction:
@@ -270,6 +273,9 @@ func migrateLogs(
 				}
 			case core.RevertedTransactionLogPayload:
 				if err := store.InsertTransactions(ctx, *payload.RevertTransaction); err != nil {
+					return err
+				}
+				if err := store.InsertMoves(ctx, payload.RevertTransaction.GetMoves()...); err != nil {
 					return err
 				}
 				if err := store.UpdateTransactionsMetadata(ctx, core.TransactionWithMetadata{
