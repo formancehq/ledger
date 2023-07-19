@@ -6,17 +6,27 @@ services:
     extends:
       file: ../../docker-compose.yml
       service: postgres
-  otlp-exporter:
-    image: otel/opentelemetry-collector
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+    - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+    ports:
+    - "9090:9090"
+  otel:
+    image: "otel/opentelemetry-collector-contrib:0.81.0"
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+    - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
   ledger:
     extends:
       file: ../../docker-compose.yml
       service: ledger
     depends_on:
       - postgres
-      - otlp-exporter
+      - otel
     image: golang:1.19-alpine
-    entrypoint: go run main.go server start
+    entrypoint: go run main.go serve
     volumes:
       - ../..:/src
     working_dir: /src
@@ -25,9 +35,12 @@ services:
       DEBUG: "true"
       OTEL_TRACES: "true"
       OTEL_TRACES_EXPORTER: otlp
-      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
+      OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: otel:4317
       OTEL_TRACES_EXPORTER_OTLP_INSECURE: "true"
       OTEL_METRICS: "true"
       OTEL_METRICS_EXPORTER: otlp
-      OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otlp-exporter:4317
+      OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: otel:4317
       OTEL_METRICS_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: ledger
+      OTEL_RESOURCE_ATTRIBUTES: version=develop
+      OTEL_METRICS_RUNTIME: "true"

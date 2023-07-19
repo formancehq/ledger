@@ -36,4 +36,4 @@ services:
       - "3068:3068"
     environment:
       STORAGE_DRIVER: "postgres"
-      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"
