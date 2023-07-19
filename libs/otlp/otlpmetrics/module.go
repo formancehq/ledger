@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp"
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -83,7 +84,13 @@ func MetricsModule(cfg ModuleConfig) fx.Option {
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					return metricProvider.Shutdown(ctx)
+					if err := metricProvider.ForceFlush(ctx); err != nil {
+						logging.FromContext(ctx).Errorf("unable to flush metrics: %s", err)
+					}
+					if err := metricProvider.Shutdown(ctx); err != nil {
+						logging.FromContext(ctx).Errorf("unable to shutdown metrics provider: %s", err)
+					}
+					return nil
 				},
 			})
 		}),
