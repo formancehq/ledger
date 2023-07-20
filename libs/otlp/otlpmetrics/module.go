@@ -84,12 +84,15 @@ func MetricsModule(cfg ModuleConfig) fx.Option {
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
+					logging.FromContext(ctx).Infof("Flush metrics")
 					if err := metricProvider.ForceFlush(ctx); err != nil {
 						logging.FromContext(ctx).Errorf("unable to flush metrics: %s", err)
 					}
+					logging.FromContext(ctx).Infof("Shutting down metrics provider")
 					if err := metricProvider.Shutdown(ctx); err != nil {
 						logging.FromContext(ctx).Errorf("unable to shutdown metrics provider: %s", err)
 					}
+					logging.FromContext(ctx).Infof("Metrics provider stopped")
 					return nil
 				},
 			})
