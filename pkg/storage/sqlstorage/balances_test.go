@@ -45,6 +45,33 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 		}, cursor.Data)
 	})
 
+	t.Run("on 2 accounts", func(t *testing.T) {
+		cursor, err := store.GetBalances(context.Background(),
+			ledger.BalancesQuery{
+				Filters: ledger.BalancesQueryFilters{
+					AddressRegexp: []string{"central_bank", "users:1"},
+				},
+				PageSize: 10,
+			})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, false, cursor.HasMore)
+		assert.Equal(t, "", cursor.Previous)
+		assert.Equal(t, "", cursor.Next)
+		assert.Equal(t, []core.AccountsBalances{
+			{
+				"users:1": core.AssetsBalances{
+					"USD": core.NewMonetaryInt(1),
+				},
+			},
+			{
+				"central_bank": core.AssetsBalances{
+					"USD": core.NewMonetaryInt(199),
+				},
+			},
+		}, cursor.Data)
+	})
+
 	t.Run("limit", func(t *testing.T) {
 		cursor, err := store.GetBalances(context.Background(),
 			ledger.BalancesQuery{
@@ -114,7 +141,7 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 			ledger.BalancesQuery{
 				PageSize:     10,
 				AfterAddress: "world",
-				Filters:      ledger.BalancesQueryFilters{AddressRegexp: "users:.+"},
+				Filters:      ledger.BalancesQueryFilters{AddressRegexp: []string{"users:.+"}},
 			})
 		assert.NoError(t, err)
 		assert.Equal(t, 10, cursor.PageSize)
@@ -135,7 +162,7 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	assert.NoError(t, err)
 
-	q := ledger.BalancesQuery{
+	q := ledger.AggregatedBalancesQuery{
 		PageSize: 10,
 	}
 	cursor, err := store.GetBalancesAggregated(context.Background(), q)

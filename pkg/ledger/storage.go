@@ -19,7 +19,7 @@ type Store interface {
 	CountAccounts(context.Context, AccountsQuery) (uint64, error)
 	GetAccounts(context.Context, AccountsQuery) (api.Cursor[core.Account], error)
 	GetBalances(context.Context, BalancesQuery) (api.Cursor[core.AccountsBalances], error)
-	GetBalancesAggregated(context.Context, BalancesQuery) (core.AssetsBalances, error)
+	GetBalancesAggregated(context.Context, AggregatedBalancesQuery) (core.AssetsBalances, error)
 	GetLastLog(context.Context) (*core.Log, error)
 	GetLogs(context.Context, *LogsQuery) (api.Cursor[core.Log], error)
 	LoadMapping(context.Context) (*core.Mapping, error)
@@ -228,7 +228,7 @@ type BalancesQuery struct {
 }
 
 type BalancesQueryFilters struct {
-	AddressRegexp string
+	AddressRegexp []string
 }
 
 func NewBalancesQuery() *BalancesQuery {
@@ -249,13 +249,53 @@ func (b *BalancesQuery) WithOffset(offset uint) *BalancesQuery {
 	return b
 }
 
-func (b *BalancesQuery) WithAddressFilter(address string) *BalancesQuery {
+func (b *BalancesQuery) WithAddressFilter(address ...string) *BalancesQuery {
 	b.Filters.AddressRegexp = address
 
 	return b
 }
 
 func (b *BalancesQuery) WithPageSize(pageSize uint) *BalancesQuery {
+	b.PageSize = pageSize
+	return b
+}
+
+type AggregatedBalancesQuery struct {
+	PageSize     uint
+	Offset       uint
+	AfterAddress string
+	Filters      AggregatedBalancesQueryFilters
+}
+
+type AggregatedBalancesQueryFilters struct {
+	AddressRegexp string
+}
+
+func NewAggregatedBalancesQuery() *AggregatedBalancesQuery {
+	return &AggregatedBalancesQuery{
+		PageSize: QueryDefaultPageSize,
+	}
+}
+
+func (b *AggregatedBalancesQuery) WithAfterAddress(after string) *AggregatedBalancesQuery {
+	b.AfterAddress = after
+
+	return b
+}
+
+func (b *AggregatedBalancesQuery) WithOffset(offset uint) *AggregatedBalancesQuery {
+	b.Offset = offset
+
+	return b
+}
+
+func (b *AggregatedBalancesQuery) WithAddressFilter(address string) *AggregatedBalancesQuery {
+	b.Filters.AddressRegexp = address
+
+	return b
+}
+
+func (b *AggregatedBalancesQuery) WithPageSize(pageSize uint) *AggregatedBalancesQuery {
 	b.PageSize = pageSize
 	return b
 }
