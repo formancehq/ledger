@@ -1055,14 +1055,14 @@ components:
             type: object
             additionalProperties:
               type: integer
-              format: int64
+              format: bigint
               minimum: 0
           example: { COIN: { input: 100, output: 0 } }
         balances:
           type: object
           additionalProperties:
             type: integer
-            format: int64
+            format: bigint
           example:
             COIN: 100
 
@@ -1082,7 +1082,7 @@ components:
       type: object
       additionalProperties:
         type: integer
-        format: int64
+        format: bigint
       example:
         USD: 100
         EUR: 12
@@ -1092,7 +1092,7 @@ components:
       properties:
         amount:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
           example: 100
         asset:
@@ -1283,13 +1283,13 @@ components:
       properties:
         input:
           type: integer
-          format: int64
+          format: bigint
         output:
           type: integer
-          format: int64
+          format: bigint
         balance:
           type: integer
-          format: int64
+          format: bigint
       required:
         - input
         - output
