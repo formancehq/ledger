@@ -521,7 +521,7 @@ func TestCursor(t *testing.T) {
 					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"after":12,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						"{\"pageSize\":3,\"bottom\":14,\"column\":\"id\",\"paginationID\":11,\"order\":1,\"filters\":{\"afterTxID\":15,\"destination\":\"acc.*\",\"source\":\"world\",\"account\":\"acc.*\",\"endTime\":\"2023-01-01T00:00:25Z\",\"startTime\":\"2023-01-01T00:00:05Z\",\"metadata\":{\"ref\":\"abc\"}},\"reverse\":false}",
 						string(res))
 
 					httpResponse = internal.GetTransactions(api, url.Values{
@@ -533,12 +533,12 @@ func TestCursor(t *testing.T) {
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"after":15,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						"{\"pageSize\":3,\"bottom\":14,\"column\":\"id\",\"paginationID\":11,\"order\":1,\"filters\":{\"afterTxID\":15,\"destination\":\"acc.*\",\"source\":\"world\",\"account\":\"acc.*\",\"endTime\":\"2023-01-01T00:00:25Z\",\"startTime\":\"2023-01-01T00:00:05Z\",\"metadata\":{\"ref\":\"abc\"}},\"reverse\":true}",
 						string(res))
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"after":9,"account":"acc.*","source":"world","destination":"acc.*","startTime":"2023-01-01T00:00:05Z","endTime":"2023-01-01T00:00:25Z","metadata":{"ref":"abc"},"pageSize":3}`,
+						"{\"pageSize\":3,\"bottom\":14,\"column\":\"id\",\"paginationID\":8,\"order\":1,\"filters\":{\"afterTxID\":15,\"destination\":\"acc.*\",\"source\":\"world\",\"account\":\"acc.*\",\"endTime\":\"2023-01-01T00:00:25Z\",\"startTime\":\"2023-01-01T00:00:05Z\",\"metadata\":{\"ref\":\"abc\"}},\"reverse\":false}",
 						string(res))
 				})
 

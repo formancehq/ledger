@@ -2,6 +2,8 @@ package ledger
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"time"
 
 	"github.com/formancehq/go-libs/api"
@@ -37,41 +39,104 @@ type Store interface {
 }
 
 const (
+	OrderAsc = iota
+	OrderDesc
+
 	QueryDefaultPageSize = 15
 )
 
-type TransactionsQuery struct {
-	PageSize  uint
-	AfterTxID uint64
-	Filters   TransactionsQueryFilters
+type Order int
+
+func (o Order) String() string {
+	switch o {
+	case OrderAsc:
+		return "ASC"
+	case OrderDesc:
+		return "DESC"
+	}
+	panic("should not happen")
 }
 
+func (o Order) Reverse() Order {
+	return (o + 1) % 2
+}
+
+type ColumnPaginatedQuery[FILTERS any] struct {
+	PageSize     uint64  `json:"pageSize"`
+	Bottom       *uint64 `json:"bottom"`
+	Column       string  `json:"column"`
+	PaginationID *uint64 `json:"paginationID"`
+	Order        Order   `json:"order"`
+	Filters      FILTERS `json:"filters"`
+	Reverse      bool    `json:"reverse"`
+}
+
+func (q *ColumnPaginatedQuery[PAYLOAD]) EncodeAsCursor() string {
+	return encodeCursor(q)
+}
+
+func encodeCursor[T any](v *T) string {
+	if v == nil {
+		return ""
+	}
+	return EncodeCursor(*v)
+}
+
+func EncodeCursor[T any](v T) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func UnmarshalCursor(v string, to any) error {
+	res, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(res, &to); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type TransactionsQuery ColumnPaginatedQuery[TransactionsQueryFilters]
+
 type TransactionsQueryFilters struct {
-	Reference   string
-	Destination string
-	Source      string
-	Account     string
-	EndTime     time.Time
-	StartTime   time.Time
-	Metadata    map[string]string
+	AfterTxID   uint64            `json:"afterTxID,omitempty"`
+	Reference   string            `json:"reference,omitempty"`
+	Destination string            `json:"destination,omitempty"`
+	Source      string            `json:"source,omitempty"`
+	Account     string            `json:"account,omitempty"`
+	EndTime     time.Time         `json:"endTime,omitempty"`
+	StartTime   time.Time         `json:"startTime,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 func NewTransactionsQuery() *TransactionsQuery {
 	return &TransactionsQuery{
 		PageSize: QueryDefaultPageSize,
+		Column:   "id",
+		Order:    OrderDesc,
+		Filters: TransactionsQueryFilters{
+			Metadata: map[string]string{},
+		},
 	}
 }
 
 func (a *TransactionsQuery) WithPageSize(pageSize uint) *TransactionsQuery {
 	if pageSize != 0 {
-		a.PageSize = pageSize
+		a.PageSize = uint64(pageSize)
 	}
 
 	return a
 }
 
 func (a *TransactionsQuery) WithAfterTxID(after uint64) *TransactionsQuery {
-	a.AfterTxID = after
+	a.Filters.AfterTxID = after
 
 	return a
 }

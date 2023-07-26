@@ -27,7 +27,7 @@ jobs:
         with:
           name: control-dist
           path: cmd/control/
-      - run: sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
+      - run: sudo apt update && sudo apt install gcc-aarch64-linux-gnu gcc-mingw-w64 -y
         if: ${{ matrix.os == 'ubuntu-latest' }}
       - name: Run GoReleaser for Linux
         if: ${{ matrix.os == 'ubuntu-latest' }}

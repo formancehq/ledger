@@ -248,7 +248,7 @@ func getTxQueries(b *testing.B, store *sqlstorage.Store, pageSize, maxNumTxs int
 		Filters: ledger.TransactionsQueryFilters{
 			Source: ".*:key1:.*:key2:.*",
 		},
-		PageSize: uint(pageSize),
+		PageSize: uint64(pageSize),
 	}
 	firstQ = txQuery
 	cursor := api.Cursor[core.ExpandedTransaction]{

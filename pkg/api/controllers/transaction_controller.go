@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,7 +11,6 @@ import (
 	"github.com/numary/ledger/pkg/api/apierrors"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/pkg/errors"
 )
 
@@ -98,30 +95,12 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursor))
+		err := ledger.UnmarshalCursor(c.Request.URL.Query().Get(QueryKeyCursor), &txQuery)
 		if err != nil {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
 			return
 		}
-
-		token := sqlstorage.TxsPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursor)))
-			return
-		}
-
-		txQuery = txQuery.
-			WithAfterTxID(token.AfterTxID).
-			WithReferenceFilter(token.ReferenceFilter).
-			WithAccountFilter(token.AccountFilter).
-			WithSourceFilter(token.SourceFilter).
-			WithDestinationFilter(token.DestinationFilter).
-			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime).
-			WithMetadataFilter(token.MetadataFilter).
-			WithPageSize(token.PageSize)
 
 	} else if c.Query(QueryKeyCursorDeprecated) != "" {
 		if c.Query("after") != "" ||
@@ -140,30 +119,12 @@ func (ctl *TransactionController) GetTransactions(c *gin.Context) {
 			return
 		}
 
-		res, err := base64.RawURLEncoding.DecodeString(c.Query(QueryKeyCursorDeprecated))
+		err := ledger.UnmarshalCursor(c.Request.URL.Query().Get(QueryKeyCursorDeprecated), &txQuery)
 		if err != nil {
 			apierrors.ResponseError(c, ledger.NewValidationError(
 				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
 			return
 		}
-
-		token := sqlstorage.TxsPaginationToken{}
-		if err = json.Unmarshal(res, &token); err != nil {
-			apierrors.ResponseError(c, ledger.NewValidationError(
-				fmt.Sprintf("invalid '%s' query param", QueryKeyCursorDeprecated)))
-			return
-		}
-
-		txQuery = txQuery.
-			WithAfterTxID(token.AfterTxID).
-			WithReferenceFilter(token.ReferenceFilter).
-			WithAccountFilter(token.AccountFilter).
-			WithSourceFilter(token.SourceFilter).
-			WithDestinationFilter(token.DestinationFilter).
-			WithStartTimeFilter(token.StartTime).
-			WithEndTimeFilter(token.EndTime).
-			WithMetadataFilter(token.MetadataFilter).
-			WithPageSize(token.PageSize)
 
 	} else {
 		var err error
