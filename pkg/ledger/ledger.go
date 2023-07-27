@@ -157,7 +157,7 @@ func (l *Ledger) GetBalances(ctx context.Context, q BalancesQuery) (api.Cursor[c
 	return l.store.GetBalances(ctx, q)
 }
 
-func (l *Ledger) GetBalancesAggregated(ctx context.Context, q BalancesQuery) (core.AssetsBalances, error) {
+func (l *Ledger) GetBalancesAggregated(ctx context.Context, q AggregatedBalancesQuery) (core.AssetsBalances, error) {
 	return l.store.GetBalancesAggregated(ctx, q)
 }
 

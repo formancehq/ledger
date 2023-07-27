@@ -32,7 +32,7 @@ type BalancesPaginationToken struct {
 	PageSize            uint   `json:"pageSize"`
 	Offset              uint   `json:"offset"`
 	AfterAddress        string `json:"after,omitempty"`
-	AddressRegexpFilter string `json:"address,omitempty"`
+	AddressRegexpFilter[] string `json:"address,omitempty"`
 }
 
 type LogsPaginationToken struct {

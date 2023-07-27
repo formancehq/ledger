@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/numary/ledger/pkg/api/apierrors"
@@ -22,7 +23,7 @@ func NewBalanceController() BalanceController {
 func (ctl *BalanceController) GetBalancesAggregated(c *gin.Context) {
 	l, _ := c.Get("ledger")
 
-	balancesQuery := ledger.NewBalancesQuery().
+	balancesQuery := ledger.NewAggregatedBalancesQuery().
 		WithAddressFilter(c.Query("address"))
 	balances, err := l.(*ledger.Ledger).GetBalancesAggregated(
 		c.Request.Context(), *balancesQuery)
@@ -66,7 +67,7 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 		balancesQuery = balancesQuery.
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter).
+			WithAddressFilter(token.AddressRegexpFilter...).
 			WithPageSize(token.PageSize)
 
 	} else if c.Query(QueryKeyCursorDeprecated) != "" {
@@ -96,7 +97,7 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 		balancesQuery = balancesQuery.
 			WithOffset(token.Offset).
 			WithAfterAddress(token.AfterAddress).
-			WithAddressFilter(token.AddressRegexpFilter).
+			WithAddressFilter(token.AddressRegexpFilter...).
 			WithPageSize(token.PageSize)
 
 	} else {
@@ -106,9 +107,15 @@ func (ctl *BalanceController) GetBalances(c *gin.Context) {
 			return
 		}
 
+		addresses := c.QueryArray("address")
+		allAddresses := make([]string, 0)
+		for _, address := range addresses {
+			allAddresses = append(allAddresses, strings.Split(address, ",")...)
+		}
+
 		balancesQuery = balancesQuery.
 			WithAfterAddress(c.Query("after")).
-			WithAddressFilter(c.Query("address")).
+			WithAddressFilter(allAddresses...).
 			WithPageSize(pageSize)
 	}
 

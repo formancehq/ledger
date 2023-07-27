@@ -554,7 +554,7 @@ func TestCursor(t *testing.T) {
 					res, err := base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":3,"after":"accounts:15","address":"accounts:.*"}`,
+						`{"pageSize":3,"offset":3,"after":"accounts:15","address":["accounts:.*"]}`,
 						string(res))
 
 					httpResponse = internal.GetBalances(api, url.Values{
@@ -566,12 +566,12 @@ func TestCursor(t *testing.T) {
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Previous)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":0,"after":"accounts:15","address":"accounts:.*"}`,
+						`{"pageSize":3,"offset":0,"after":"accounts:15","address":["accounts:.*"]}`,
 						string(res))
 					res, err = base64.RawURLEncoding.DecodeString(cursor.Next)
 					require.NoError(t, err)
 					require.Equal(t,
-						`{"pageSize":3,"offset":6,"after":"accounts:15","address":"accounts:.*"}`,
+						`{"pageSize":3,"offset":6,"after":"accounts:15","address":["accounts:.*"]}`,
 						string(res))
 				})
 
