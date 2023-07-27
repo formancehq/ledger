@@ -105,7 +105,7 @@ func (m *Migrator) Up(ctx context.Context, db *bun.DB) error {
 			return err
 		}
 
-		if err := m.insertVersion(ctx, tx, ind+1); err != nil {
+		if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
 			return err
 		}
 	}
