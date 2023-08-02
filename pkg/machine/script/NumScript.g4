@@ -44,7 +44,7 @@ BALANCE: 'balance';
 NUMBER: [0-9]+;
 PERCENT: '%';
 VARIABLE_NAME: '$' [a-z_]+ [a-z0-9_]*;
-ACCOUNT: '@' [a-zA-Z_]+ [a-zA-Z0-9_:]*;
+ACCOUNT: '@' [a-zA-Z_0-9]+ [a-zA-Z0-9_:]*;
 ASSET: [A-Z/0-9]+;
 
 monetary: LBRACK asset=expression amt=NUMBER RBRACK;

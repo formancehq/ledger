@@ -20,7 +20,7 @@ type AccountWithVolumes struct {
 	Balances AssetsBalances `json:"balances" example:"COIN:100"`
 }
 
-const accountPattern = "^[a-zA-Z_]+[a-zA-Z0-9_:]*$"
+const accountPattern = "^[a-zA-Z_0-9]+[a-zA-Z0-9_:]*$"
 
 var accountRegexp = regexp.MustCompile(accountPattern)
 

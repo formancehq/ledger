@@ -403,33 +403,6 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "script failure with invalid account variable",
-			payload: []controllers.PostTransaction{{
-				Script: core.Script{
-					Plain: `
-					vars {
-						account $acc
-					}
-					send [USD/2 99] (
-						source = @world
-						destination = $acc
-					)
-					`,
-					Vars: map[string]json.RawMessage{
-						"acc": json.RawMessage(`"invalid-acc"`),
-					},
-				},
-			}},
-			expectedStatusCode: http.StatusBadRequest,
-			expectedErr: sharedapi.ErrorResponse{
-				ErrorCode:              apierrors.ErrScriptCompilationFailed,
-				ErrorMessage:           "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
-				Details:                apierrors.EncodeLink("could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
-				ErrorCodeDeprecated:    apierrors.ErrScriptCompilationFailed,
-				ErrorMessageDeprecated: "[COMPILATION_FAILED] could not set variables: invalid JSON value for variable $acc of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$",
-			},
-		},
-		{
 			name: "script failure with invalid monetary variable",
 			payload: []controllers.PostTransaction{{
 				Script: core.Script{
@@ -1199,12 +1172,12 @@ func TestTransactions(t *testing.T) {
 
 						require.Len(t, cursor.Data, 1)
 						require.Equal(t, cursor.Data[0].ID, tx3.ID)
-	rsp = internal.CountTransactions(api, url.Values{
-						"metadata[priority]": []string{"high"},
+						rsp = internal.CountTransactions(api, url.Values{
+							"metadata[priority]": []string{"high"},
+						})
+						require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+						require.Equal(t, "1", rsp.Header().Get("Count"))
 					})
-					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
-					require.Equal(t, "1", rsp.Header().Get("Count"))
-				})
 
 					t.Run("after", func(t *testing.T) {
 						rsp := internal.GetTransactions(api, url.Values{
@@ -2526,6 +2499,68 @@ func TestPostTransactionsScriptConflict(t *testing.T) {
 					assert.Equal(t, apierrors.ErrConflict, actualErr.ErrorCodeDeprecated)
 					assert.Equal(t, "conflict error on reference", actualErr.ErrorMessageDeprecated)
 				})
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionsDigitPrefixingAccountAddress(t *testing.T) {
+	script := `
+ 	send [COIN 100] (
+ 	  source = @world
+ 	  destination = @1234:centralbank
+ 	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+					Script: core.Script{
+						Plain: script,
+					},
+					Reference: "1234",
+				}, false)
+
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				txs, ok := internal.DecodeSingleResponse[[]transaction](t, rsp.Body)
+				require.True(t, ok)
+				require.Len(t, txs, 1)
+
+				return nil
+			},
+		})
+	}))
+}
+
+func TestPostTransactionsDigitPrefixingAccountAddressInVariable(t *testing.T) {
+	script := `
+	vars {
+		account $dst
+	}
+ 	send [COIN 100] (
+ 	  source = @world
+ 	  destination = $dst
+ 	)`
+
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+					Script: core.Script{
+						Plain: script,
+						Vars: map[string]json.RawMessage{
+							"dst": json.RawMessage(`"1234:centralbank"`),
+						},
+					},
+					Reference: "1234",
+				}, false)
+
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				txs, ok := internal.DecodeSingleResponse[[]transaction](t, rsp.Body)
+				require.True(t, ok)
+				require.Len(t, txs, 1)
 
 				return nil
 			},
