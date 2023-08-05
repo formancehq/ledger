@@ -1,83 +1,139 @@
 package program
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/pkg/errors"
 )
 
-type Program struct {
-	Instructions   []byte
-	Resources      []Resource
-	NeededBalances map[core.Address]map[core.Address]struct{}
+type Instruction interface {
+	isInstruction()
 }
 
-func (p Program) String() string {
-	out := "Program:\nINSTRUCTIONS\n"
-	for i := 0; i < len(p.Instructions); i++ {
-		out += fmt.Sprintf("%02d----- ", i)
-		switch p.Instructions[i] {
-		case OP_APUSH:
-			out += "OP_APUSH "
-			address := binary.LittleEndian.Uint16(p.Instructions[i+1 : i+3])
-			out += fmt.Sprintf("#%d\n", address)
-			i += 2
-		default:
-			out += OpcodeName(p.Instructions[i]) + "\n"
-		}
-	}
+type InstructionFail struct{}
 
-	out += fmt.Sprintln("RESOURCES")
-	i := 0
-	for i = 0; i < len(p.Resources); i++ {
-		out += fmt.Sprintf("%02d ", i)
-		out += fmt.Sprintf("%v\n", p.Resources[i])
-	}
-	return out
+func (s InstructionFail) isInstruction() {}
+
+type InstructionPrint struct{ Expr Expr }
+
+func (s InstructionPrint) isInstruction() {}
+
+type InstructionSave struct {
+	Amount  Expr
+	Account Expr
+}
+
+func (s InstructionSave) isInstruction() {}
+
+type InstructionSaveAll struct {
+	Asset   Expr
+	Account Expr
+}
+
+func (s InstructionSaveAll) isInstruction() {}
+
+type InstructionAllocate struct {
+	Funding     Expr
+	Destination Destination
+}
+
+func (s InstructionAllocate) isInstruction() {}
+
+type InstructionSetTxMeta struct {
+	Key   string
+	Value Expr
+}
+
+func (s InstructionSetTxMeta) isInstruction() {}
+
+type InstructionSetAccountMeta struct {
+	Account Expr
+	Key     string
+	Value   Expr
+}
+
+func (s InstructionSetAccountMeta) isInstruction() {}
+
+type VarOrigin interface {
+	isVarOrigin()
+}
+
+type VarOriginMeta struct {
+	Account Expr
+	Key     string
+}
+
+func (v VarOriginMeta) isVarOrigin() {}
+
+type VarOriginBalance struct {
+	Account Expr
+	Asset   Expr
+}
+
+func (v VarOriginBalance) isVarOrigin() {}
+
+type VarDecl struct {
+	Typ    core.Type
+	Name   string
+	Origin VarOrigin
+}
+
+type Program struct {
+	VarsDecl    []VarDecl
+	Instruction []Instruction
+}
+
+func (p *Program) String() string {
+	cfg := spew.NewDefaultConfig()
+	cfg.Indent = "    "
+	cfg.DisablePointerAddresses = true
+	cfg.DisableMethods = true
+	cfg.DisableCapacities = true
+	return cfg.Sdump(p)
 }
 
 func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Value, error) {
 	variables := make(map[string]core.Value)
-	for _, res := range p.Resources {
-		if variable, ok := res.(Variable); ok {
-			if val, ok := vars[variable.Name]; ok && val.GetType() == variable.Typ {
-				variables[variable.Name] = val
+	for _, varDecl := range p.VarsDecl {
+		if varDecl.Origin == nil {
+			if val, ok := vars[varDecl.Name]; ok && val.GetType() == varDecl.Typ {
+				variables[varDecl.Name] = val
 				switch val.GetType() {
 				case core.TypeAccount:
 					if err := core.ParseAccountAddress(val.(core.AccountAddress)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(core.AccountAddress)))
+							varDecl.Name, string(val.(core.AccountAddress)))
 					}
 				case core.TypeAsset:
 					if err := core.ParseAsset(val.(core.Asset)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, string(val.(core.Asset)))
+							varDecl.Name, string(val.(core.Asset)))
 					}
 				case core.TypeMonetary:
 					if err := core.ParseMonetary(val.(core.Monetary)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(core.Monetary).String())
+							varDecl.Name, val.(core.Monetary).String())
 					}
 				case core.TypePortion:
 					if err := core.ValidatePortionSpecific(val.(core.Portion)); err != nil {
 						return nil, errors.Wrapf(err, "invalid variable $%s value '%s'",
-							variable.Name, val.(core.Portion).String())
+							varDecl.Name, val.(core.Portion).String())
 					}
 				case core.TypeString:
 				case core.TypeNumber:
 				default:
 					return nil, fmt.Errorf("unsupported type for variable $%s: %s",
-						variable.Name, val.GetType())
+						varDecl.Name, val.GetType())
 				}
-				delete(vars, variable.Name)
-			} else if val, ok := vars[variable.Name]; ok && val.GetType() != variable.Typ {
+				delete(vars, varDecl.Name)
+			} else if val, ok := vars[varDecl.Name]; ok && val.GetType() != varDecl.Typ {
 				return nil, fmt.Errorf("wrong type for variable $%s: %s instead of %s",
-					variable.Name, variable.Typ, val.GetType())
+					varDecl.Name, varDecl.Typ, val.GetType())
 			} else {
-				return nil, fmt.Errorf("missing variable $%s", variable.Name)
+				return nil, fmt.Errorf("missing variable $%s", varDecl.Name)
 			}
 		}
 	}
@@ -89,20 +145,20 @@ func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Va
 
 func (p *Program) ParseVariablesJSON(vars map[string]json.RawMessage) (map[string]core.Value, error) {
 	variables := make(map[string]core.Value)
-	for _, res := range p.Resources {
-		if param, ok := res.(Variable); ok {
-			data, ok := vars[param.Name]
+	for _, varDecl := range p.VarsDecl {
+		if varDecl.Origin == nil {
+			data, ok := vars[varDecl.Name]
 			if !ok {
-				return nil, fmt.Errorf("missing variable $%s", param.Name)
+				return nil, fmt.Errorf("missing variable $%s", varDecl.Name)
 			}
-			val, err := core.NewValueFromJSON(param.Typ, data)
+			val, err := core.NewValueFromJSON(varDecl.Typ, data)
 			if err != nil {
 				return nil, fmt.Errorf(
 					"invalid JSON value for variable $%s of type %v: %w",
-					param.Name, param.Typ, err)
+					varDecl.Name, varDecl.Typ, err)
 			}
-			variables[param.Name] = *val
-			delete(vars, param.Name)
+			variables[varDecl.Name] = *val
+			delete(vars, varDecl.Name)
 		}
 	}
 	for name := range vars {

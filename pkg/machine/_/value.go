@@ -1,4 +1,4 @@
-package core
+package internal
 
 import (
 	"fmt"
@@ -54,6 +54,13 @@ type String string
 func (String) GetType() Type { return TypeString }
 func (s String) String() string {
 	return fmt.Sprintf("\"%v\"", string(s))
+}
+
+type Bool bool
+
+func (Bool) GetType() Type { return TypeBool }
+func (b Bool) String() string {
+	return fmt.Sprintf("%v", bool(b))
 }
 
 func ValueEquals(lhs, rhs Value) bool {

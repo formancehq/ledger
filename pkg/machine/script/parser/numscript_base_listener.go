@@ -63,12 +63,6 @@ func (s *BaseNumScriptListener) EnterLitPortion(ctx *LitPortionContext) {}
 // ExitLitPortion is called when production LitPortion is exited.
 func (s *BaseNumScriptListener) ExitLitPortion(ctx *LitPortionContext) {}
 
-// EnterLitMonetary is called when production LitMonetary is entered.
-func (s *BaseNumScriptListener) EnterLitMonetary(ctx *LitMonetaryContext) {}
-
-// ExitLitMonetary is called when production LitMonetary is exited.
-func (s *BaseNumScriptListener) ExitLitMonetary(ctx *LitMonetaryContext) {}
-
 // EnterVariable is called when production variable is entered.
 func (s *BaseNumScriptListener) EnterVariable(ctx *VariableContext) {}
 
@@ -81,17 +75,59 @@ func (s *BaseNumScriptListener) EnterExprAddSub(ctx *ExprAddSubContext) {}
 // ExitExprAddSub is called when production ExprAddSub is exited.
 func (s *BaseNumScriptListener) ExitExprAddSub(ctx *ExprAddSubContext) {}
 
+// EnterExprTernary is called when production ExprTernary is entered.
+func (s *BaseNumScriptListener) EnterExprTernary(ctx *ExprTernaryContext) {}
+
+// ExitExprTernary is called when production ExprTernary is exited.
+func (s *BaseNumScriptListener) ExitExprTernary(ctx *ExprTernaryContext) {}
+
+// EnterExprLogicalNot is called when production ExprLogicalNot is entered.
+func (s *BaseNumScriptListener) EnterExprLogicalNot(ctx *ExprLogicalNotContext) {}
+
+// ExitExprLogicalNot is called when production ExprLogicalNot is exited.
+func (s *BaseNumScriptListener) ExitExprLogicalNot(ctx *ExprLogicalNotContext) {}
+
+// EnterExprArithmeticCondition is called when production ExprArithmeticCondition is entered.
+func (s *BaseNumScriptListener) EnterExprArithmeticCondition(ctx *ExprArithmeticConditionContext) {}
+
+// ExitExprArithmeticCondition is called when production ExprArithmeticCondition is exited.
+func (s *BaseNumScriptListener) ExitExprArithmeticCondition(ctx *ExprArithmeticConditionContext) {}
+
 // EnterExprLiteral is called when production ExprLiteral is entered.
 func (s *BaseNumScriptListener) EnterExprLiteral(ctx *ExprLiteralContext) {}
 
 // ExitExprLiteral is called when production ExprLiteral is exited.
 func (s *BaseNumScriptListener) ExitExprLiteral(ctx *ExprLiteralContext) {}
 
+// EnterExprLogicalOr is called when production ExprLogicalOr is entered.
+func (s *BaseNumScriptListener) EnterExprLogicalOr(ctx *ExprLogicalOrContext) {}
+
+// ExitExprLogicalOr is called when production ExprLogicalOr is exited.
+func (s *BaseNumScriptListener) ExitExprLogicalOr(ctx *ExprLogicalOrContext) {}
+
 // EnterExprVariable is called when production ExprVariable is entered.
 func (s *BaseNumScriptListener) EnterExprVariable(ctx *ExprVariableContext) {}
 
 // ExitExprVariable is called when production ExprVariable is exited.
 func (s *BaseNumScriptListener) ExitExprVariable(ctx *ExprVariableContext) {}
+
+// EnterExprMonetaryNew is called when production ExprMonetaryNew is entered.
+func (s *BaseNumScriptListener) EnterExprMonetaryNew(ctx *ExprMonetaryNewContext) {}
+
+// ExitExprMonetaryNew is called when production ExprMonetaryNew is exited.
+func (s *BaseNumScriptListener) ExitExprMonetaryNew(ctx *ExprMonetaryNewContext) {}
+
+// EnterExprEnclosed is called when production ExprEnclosed is entered.
+func (s *BaseNumScriptListener) EnterExprEnclosed(ctx *ExprEnclosedContext) {}
+
+// ExitExprEnclosed is called when production ExprEnclosed is exited.
+func (s *BaseNumScriptListener) ExitExprEnclosed(ctx *ExprEnclosedContext) {}
+
+// EnterExprLogicalAnd is called when production ExprLogicalAnd is entered.
+func (s *BaseNumScriptListener) EnterExprLogicalAnd(ctx *ExprLogicalAndContext) {}
+
+// ExitExprLogicalAnd is called when production ExprLogicalAnd is exited.
+func (s *BaseNumScriptListener) ExitExprLogicalAnd(ctx *ExprLogicalAndContext) {}
 
 // EnterAllotmentPortionConst is called when production AllotmentPortionConst is entered.
 func (s *BaseNumScriptListener) EnterAllotmentPortionConst(ctx *AllotmentPortionConstContext) {}
@@ -231,6 +267,12 @@ func (s *BaseNumScriptListener) EnterPrint(ctx *PrintContext) {}
 // ExitPrint is called when production Print is exited.
 func (s *BaseNumScriptListener) ExitPrint(ctx *PrintContext) {}
 
+// EnterSaveFromAccount is called when production SaveFromAccount is entered.
+func (s *BaseNumScriptListener) EnterSaveFromAccount(ctx *SaveFromAccountContext) {}
+
+// ExitSaveFromAccount is called when production SaveFromAccount is exited.
+func (s *BaseNumScriptListener) ExitSaveFromAccount(ctx *SaveFromAccountContext) {}
+
 // EnterSetTxMeta is called when production SetTxMeta is entered.
 func (s *BaseNumScriptListener) EnterSetTxMeta(ctx *SetTxMetaContext) {}
 
@@ -254,6 +296,12 @@ func (s *BaseNumScriptListener) EnterSend(ctx *SendContext) {}
 
 // ExitSend is called when production Send is exited.
 func (s *BaseNumScriptListener) ExitSend(ctx *SendContext) {}
+
+// EnterSendAll is called when production SendAll is entered.
+func (s *BaseNumScriptListener) EnterSendAll(ctx *SendAllContext) {}
+
+// ExitSendAll is called when production SendAll is exited.
+func (s *BaseNumScriptListener) ExitSendAll(ctx *SendAllContext) {}
 
 // EnterType_ is called when production type_ is entered.
 func (s *BaseNumScriptListener) EnterType_(ctx *Type_Context) {}

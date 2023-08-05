@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/numary/ledger/pkg/core"
@@ -27,10 +28,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Print(program)
+
+	fmt.Printf("%v\n", program)
+
+	// spew.Dump("%#v", program)
 
 	m := vm.NewMachine(*program)
-	m.Debug = true
 
 	if err = m.SetVars(map[string]core.Value{
 		"dest": core.AccountAddress("charlie"),
@@ -44,37 +47,25 @@ func main() {
 	}
 
 	{
-		ch, err := m.ResolveResources()
+		err := m.ResolveResources(func(acc core.AccountAddress, key string) (*core.Value, error) { return nil, errors.New("a") }, func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
+			return initialBalances[string(acc)][string(asset)], nil
+		})
 		if err != nil {
 			panic(err)
 		}
-		for req := range ch {
-			if req.Error != nil {
-				panic(req.Error)
-			}
-		}
 	}
 
-	{
-		ch, err := m.ResolveBalances()
-		if err != nil {
-			panic(err)
-		}
-		for req := range ch {
-			val := initialBalances[req.Account][req.Asset]
-			if req.Error != nil {
-				panic(req.Error)
-			}
-			req.Response <- val
-		}
-	}
-
-	exitCode, err := m.Execute()
+	err = m.Execute()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Exit code:", exitCode)
-	fmt.Println(m.Postings)
-	fmt.Println(m.TxMeta)
+	fmt.Println("Postings:")
+	for _, posting := range m.Postings {
+		fmt.Printf("[%v %v] %v -> %v\n", posting.Asset, posting.Amount, posting.Source, posting.Destination)
+	}
+	fmt.Println("Tx Meta:")
+	for key, value := range m.TxMeta {
+		fmt.Printf("%v: %v", key, value)
+	}
 }
