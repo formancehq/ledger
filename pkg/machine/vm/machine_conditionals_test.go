@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/numary/ledger/pkg/machine/internal"
+	"github.com/numary/ledger/pkg/core"
 )
 
 func TestConditionals(t *testing.T) {
@@ -25,12 +25,12 @@ func TestConditionals(t *testing.T) {
 		"foo": "true"
 	}`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []core.Value{},
 		Postings: []Posting{
 			{
 				Source:      "world",
 				Destination: "istrue",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      core.NewMonetaryInt(1),
 				Asset:       "COIN",
 			},
 		},
@@ -40,12 +40,12 @@ func TestConditionals(t *testing.T) {
 		"foo": "false"
 	}`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []core.Value{},
 		Postings: []Posting{
 			{
 				Source:      "world",
 				Destination: "isfalse",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      core.NewMonetaryInt(1),
 				Asset:       "COIN",
 			},
 		},
@@ -70,8 +70,8 @@ func TestInequality(t *testing.T) {
 		"bar": "30"
 	}`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{
-			internal.AccountAddress("istrue"),
+		Printed: []core.Value{
+			core.AccountAddress("istrue"),
 		},
 		Postings: []Posting{},
 	}

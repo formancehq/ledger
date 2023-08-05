@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"github.com/numary/ledger/pkg/machine/internal"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/machine/script/parser"
 	"github.com/numary/ledger/pkg/machine/vm/program"
 	"github.com/pkg/errors"
@@ -13,19 +13,19 @@ import (
 
 type parseVisitor struct {
 	errListener *ErrorListener
-	vars        map[string]internal.Type
+	vars        map[string]core.Type
 }
 
 func (p *parseVisitor) isWorld(expr parser.IExpressionContext) bool {
 	if lit, ok := expr.(*parser.ExprLiteralContext); ok {
 		_, value, _ := p.CompileLit(lit.GetLit())
-		return internal.ValueEquals(value, internal.AccountAddress("world"))
+		return core.ValueEquals(value, core.AccountAddress("world"))
 	} else {
 		return false
 	}
 }
 
-func (p *parseVisitor) CompileExprTy(c parser.IExpressionContext, ty internal.Type) (program.Expr, *CompileError) {
+func (p *parseVisitor) CompileExprTy(c parser.IExpressionContext, ty core.Type) (program.Expr, *CompileError) {
 	exprTy, expr, err := p.CompileExpr(c)
 	if err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func (p *parseVisitor) CompileExprTy(c parser.IExpressionContext, ty internal.Ty
 	return expr, err
 }
 
-func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, program.Expr, *CompileError) {
+func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (core.Type, program.Expr, *CompileError) {
 	switch c := c.(type) {
 	case *parser.ExprAddSubContext:
 		lhsType, lhs, err := p.CompileExpr(c.GetLhs())
@@ -44,8 +44,8 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			return 0, nil, err
 		}
 		switch lhsType {
-		case internal.TypeNumber:
-			rhs, err := p.CompileExprTy(c.GetRhs(), internal.TypeNumber)
+		case core.TypeNumber:
+			rhs, err := p.CompileExprTy(c.GetRhs(), core.TypeNumber)
 			if err != nil {
 				return 0, nil, err
 			}
@@ -59,9 +59,9 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			case parser.NumScriptLexerOP_SUB:
 				expr.Op = program.OP_SUB
 			}
-			return internal.TypeNumber, expr, nil
-		case internal.TypeMonetary:
-			rhs, err := p.CompileExprTy(c.GetRhs(), internal.TypeMonetary)
+			return core.TypeNumber, expr, nil
+		case core.TypeMonetary:
+			rhs, err := p.CompileExprTy(c.GetRhs(), core.TypeMonetary)
 			if err != nil {
 				return 0, nil, err
 			}
@@ -75,7 +75,7 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			case parser.NumScriptLexerOP_SUB:
 				expr.Op = program.OP_SUB
 			}
-			return internal.TypeMonetary, expr, nil
+			return core.TypeMonetary, expr, nil
 		default:
 			return 0, nil, LogicError(c, errors.New("tried to do arithmetic with wrong type"))
 		}
@@ -85,8 +85,8 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			return 0, nil, err
 		}
 		switch lhsType {
-		case internal.TypeNumber:
-			rhs, err := p.CompileExprTy(c.GetRhs(), internal.TypeNumber)
+		case core.TypeNumber:
+			rhs, err := p.CompileExprTy(c.GetRhs(), core.TypeNumber)
 			if err != nil {
 				return 0, nil, err
 			}
@@ -110,28 +110,28 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			default:
 				return 0, nil, InternalError(c)
 			}
-			return internal.TypeBool, expr, nil
-		// case internal.TypeMonetary: TODO
+			return core.TypeBool, expr, nil
+		// case core.TypeMonetary: TODO
 		default:
 			return 0, nil, LogicError(c, errors.New("tried to do arithmetic with wrong type"))
 		}
 
 	case *parser.ExprLogicalNotContext:
-		operand, err := p.CompileExprTy(c.GetLhs(), internal.TypeBool)
+		operand, err := p.CompileExprTy(c.GetLhs(), core.TypeBool)
 		if err != nil {
 			return 0, nil, err
 		}
 		expr := program.ExprLogicalNot{
 			Operand: operand,
 		}
-		return internal.TypeBool, expr, nil
+		return core.TypeBool, expr, nil
 
 	case *parser.ExprLogicalAndContext:
-		lhs, err := p.CompileExprTy(c.GetLhs(), internal.TypeBool)
+		lhs, err := p.CompileExprTy(c.GetLhs(), core.TypeBool)
 		if err != nil {
 			return 0, nil, err
 		}
-		rhs, err := p.CompileExprTy(c.GetRhs(), internal.TypeBool)
+		rhs, err := p.CompileExprTy(c.GetRhs(), core.TypeBool)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -139,14 +139,14 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			Lhs: lhs,
 			Rhs: rhs,
 		}
-		return internal.TypeBool, expr, nil
+		return core.TypeBool, expr, nil
 
 	case *parser.ExprLogicalOrContext:
-		lhs, err := p.CompileExprTy(c.GetLhs(), internal.TypeBool)
+		lhs, err := p.CompileExprTy(c.GetLhs(), core.TypeBool)
 		if err != nil {
 			return 0, nil, err
 		}
-		rhs, err := p.CompileExprTy(c.GetRhs(), internal.TypeBool)
+		rhs, err := p.CompileExprTy(c.GetRhs(), core.TypeBool)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -154,7 +154,7 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			Lhs: lhs,
 			Rhs: rhs,
 		}
-		return internal.TypeBool, expr, nil
+		return core.TypeBool, expr, nil
 
 	case *parser.ExprLiteralContext:
 		ty, value, err := p.CompileLit(c.GetLit())
@@ -170,20 +170,20 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 			return 0, nil, LogicError(c, errors.New("variable not declared"))
 		}
 	case *parser.ExprMonetaryNewContext:
-		asset, compErr := p.CompileExprTy(c.Monetary().GetAsset(), internal.TypeAsset)
+		asset, compErr := p.CompileExprTy(c.Monetary().GetAsset(), core.TypeAsset)
 		if compErr != nil {
 			return 0, nil, compErr
 		}
-		amt, compErr := p.CompileExprTy(c.Monetary().GetAmt(), internal.TypeNumber)
+		amt, compErr := p.CompileExprTy(c.Monetary().GetAmt(), core.TypeNumber)
 		if compErr != nil {
 			return 0, nil, compErr
 		}
-		return internal.TypeMonetary, program.ExprMonetaryNew{
+		return core.TypeMonetary, program.ExprMonetaryNew{
 			Asset:  asset,
 			Amount: amt,
 		}, nil
 	case *parser.ExprTernaryContext:
-		cond, compErr := p.CompileExprTy(c.GetCond(), internal.TypeBool)
+		cond, compErr := p.CompileExprTy(c.GetCond(), core.TypeBool)
 		if compErr != nil {
 			return 0, nil, compErr
 		}
@@ -212,36 +212,36 @@ func (p *parseVisitor) CompileExpr(c parser.IExpressionContext) (internal.Type, 
 	}
 }
 
-func (p *parseVisitor) CompileLit(c parser.ILiteralContext) (internal.Type, internal.Value, *CompileError) {
+func (p *parseVisitor) CompileLit(c parser.ILiteralContext) (core.Type, core.Value, *CompileError) {
 	switch c := c.(type) {
 	case *parser.LitAccountContext:
-		account := internal.AccountAddress(c.GetText()[1:])
-		return internal.TypeAccount, account, nil
+		account := core.AccountAddress(c.GetText()[1:])
+		return core.TypeAccount, account, nil
 	case *parser.LitAssetContext:
-		asset := internal.Asset(c.GetText())
-		return internal.TypeAsset, asset, nil
+		asset := core.Asset(c.GetText())
+		return core.TypeAsset, asset, nil
 	case *parser.LitNumberContext:
-		number, err := internal.ParseNumber(c.GetText())
+		number, err := core.ParseNumber(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
-		return internal.TypeNumber, number, nil
+		return core.TypeNumber, number, nil
 	case *parser.LitStringContext:
-		str := internal.String(strings.Trim(c.GetText(), `"`))
-		return internal.TypeString, str, nil
+		str := core.String(strings.Trim(c.GetText(), `"`))
+		return core.TypeString, str, nil
 	case *parser.LitPortionContext:
-		portion, err := internal.ParsePortionSpecific(c.GetText())
+		portion, err := core.ParsePortionSpecific(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
-		return internal.TypePortion, *portion, nil
+		return core.TypePortion, *portion, nil
 	default:
 		return 0, nil, InternalError(c)
 	}
 }
 
 func (p *parseVisitor) CompileSend(c *parser.SendContext) (program.Instruction, *CompileError) {
-	mon, err := p.CompileExprTy(c.GetMon(), internal.TypeMonetary)
+	mon, err := p.CompileExprTy(c.GetMon(), core.TypeMonetary)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (p *parseVisitor) CompileSendAll(c *parser.SendAllContext) (program.Instruc
 	if err != nil {
 		return nil, err
 	}
-	asset, err := p.CompileExprTy(c.GetMonAll().GetAsset(), internal.TypeAsset)
+	asset, err := p.CompileExprTy(c.GetMonAll().GetAsset(), core.TypeAsset)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (p *parseVisitor) CompileSetTxMeta(ctx *parser.SetTxMetaContext) (program.I
 }
 
 func (p *parseVisitor) CompileSetAccountMeta(ctx *parser.SetAccountMetaContext) (program.Instruction, *CompileError) {
-	account, err := p.CompileExprTy(ctx.GetAcc(), internal.TypeAccount)
+	account, err := p.CompileExprTy(ctx.GetAcc(), core.TypeAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -319,11 +319,11 @@ func (p *parseVisitor) CompileSetAccountMeta(ctx *parser.SetAccountMetaContext) 
 
 func (p *parseVisitor) CompileSave(ctx *parser.SaveFromAccountContext) (program.Instruction, *CompileError) {
 	if monAll := ctx.GetMonAll(); monAll != nil {
-		asset, err := p.CompileExprTy(ctx.MonetaryAll().GetAsset(), internal.TypeAsset)
+		asset, err := p.CompileExprTy(ctx.MonetaryAll().GetAsset(), core.TypeAsset)
 		if err != nil {
 			return nil, err
 		}
-		account, err := p.CompileExprTy(ctx.GetAcc(), internal.TypeAccount)
+		account, err := p.CompileExprTy(ctx.GetAcc(), core.TypeAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -332,11 +332,11 @@ func (p *parseVisitor) CompileSave(ctx *parser.SaveFromAccountContext) (program.
 			Account: account,
 		}, nil
 	} else if mon := ctx.GetMon(); mon != nil {
-		mon, err := p.CompileExprTy(ctx.GetMon(), internal.TypeMonetary)
+		mon, err := p.CompileExprTy(ctx.GetMon(), core.TypeMonetary)
 		if err != nil {
 			return nil, err
 		}
-		account, err := p.CompileExprTy(ctx.GetAcc(), internal.TypeAccount)
+		account, err := p.CompileExprTy(ctx.GetAcc(), core.TypeAccount)
 		if err != nil {
 			return nil, err
 		}
@@ -365,22 +365,22 @@ func (p *parseVisitor) CompileVars(c *parser.VarListDeclContext) ([]program.VarD
 		if _, ok := p.vars[name]; ok {
 			return nil, LogicError(c, fmt.Errorf("duplicate variable $%s", name))
 		}
-		var ty internal.Type
+		var ty core.Type
 		switch v.GetTy().GetText() {
 		case "account":
-			ty = internal.TypeAccount
+			ty = core.TypeAccount
 		case "asset":
-			ty = internal.TypeAsset
+			ty = core.TypeAsset
 		case "number":
-			ty = internal.TypeNumber
+			ty = core.TypeNumber
 		case "string":
-			ty = internal.TypeString
+			ty = core.TypeString
 		case "monetary":
-			ty = internal.TypeMonetary
+			ty = core.TypeMonetary
 		case "portion":
-			ty = internal.TypePortion
+			ty = core.TypePortion
 		case "bool":
-			ty = internal.TypeBool
+			ty = core.TypeBool
 		default:
 			return nil, InternalError(c)
 		}
@@ -395,7 +395,7 @@ func (p *parseVisitor) CompileVars(c *parser.VarListDeclContext) ([]program.VarD
 
 		switch c := v.GetOrig().(type) {
 		case *parser.OriginAccountMetaContext:
-			account, compErr := p.CompileExprTy(c.GetAccount(), internal.TypeAccount)
+			account, compErr := p.CompileExprTy(c.GetAccount(), core.TypeAccount)
 			if compErr != nil {
 				return nil, compErr
 			}
@@ -405,15 +405,15 @@ func (p *parseVisitor) CompileVars(c *parser.VarListDeclContext) ([]program.VarD
 				Key:     key,
 			}
 		case *parser.OriginAccountBalanceContext:
-			if ty != internal.TypeMonetary {
+			if ty != core.TypeMonetary {
 				return nil, LogicError(c, fmt.Errorf(
 					"variable $%s: type should be 'monetary' to pull account balance", name))
 			}
-			account, compErr := p.CompileExprTy(c.GetAccount(), internal.TypeAccount)
+			account, compErr := p.CompileExprTy(c.GetAccount(), core.TypeAccount)
 			if compErr != nil {
 				return nil, compErr
 			}
-			asset, compErr := p.CompileExprTy(c.GetAsset(), internal.TypeAsset)
+			asset, compErr := p.CompileExprTy(c.GetAsset(), core.TypeAsset)
 			if compErr != nil {
 				return nil, compErr
 			}
@@ -520,7 +520,7 @@ func CompileFull(input string) CompileArtifacts {
 
 	visitor := parseVisitor{
 		errListener: errListener,
-		vars:        make(map[string]internal.Type),
+		vars:        make(map[string]core.Type),
 	}
 
 	program, err := visitor.CompileScript(tree)

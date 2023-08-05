@@ -17,6 +17,7 @@ const (
 	TypeAllotment                  // list of portions
 	TypeAmount                     // either ALL or a SPECIFIC number
 	TypeFunding                    // (asset, []{amount, account})
+	TypeBool
 )
 
 func (t Type) String() string {
@@ -37,6 +38,8 @@ func (t Type) String() string {
 		return "allotment"
 	case TypeAmount:
 		return "amount"
+	case TypeBool:
+		return "bool"
 	default:
 		return "invalid type"
 	}

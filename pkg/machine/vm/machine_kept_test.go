@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	"github.com/numary/ledger/pkg/machine/internal"
+	"github.com/numary/ledger/pkg/core"
 )
 
 func TestKeptDestinationAllotment(t *testing.T) {
@@ -21,23 +21,23 @@ func TestKeptDestinationAllotment(t *testing.T) {
 	)`)
 	tc.setBalance("a", "GEM", 1)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []core.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      core.NewMonetaryInt(1),
 				Source:      "a",
 				Destination: "x",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(24),
+				Amount:      core.NewMonetaryInt(24),
 				Source:      "world",
 				Destination: "x",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(25),
+				Amount:      core.NewMonetaryInt(25),
 				Source:      "world",
 				Destination: "y",
 			},
@@ -60,17 +60,17 @@ func TestKeptDestinationInOrder(t *testing.T) {
 	)`)
 	tc.setBalance("a", "GEM", 1)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []core.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      core.NewMonetaryInt(1),
 				Source:      "a",
 				Destination: "x",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(7),
+				Amount:      core.NewMonetaryInt(7),
 				Source:      "world",
 				Destination: "x",
 			},
@@ -105,41 +105,41 @@ func TestKeptComplex(t *testing.T) {
 	tc.setBalance("bar", "GEM", 40)
 	tc.setBalance("baz", "GEM", 40)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []core.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(2),
+				Amount:      core.NewMonetaryInt(2),
 				Source:      "foo",
 				Destination: "arst",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(18),
+				Amount:      core.NewMonetaryInt(18),
 				Source:      "foo",
 				Destination: "thing",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(24),
+				Amount:      core.NewMonetaryInt(24),
 				Source:      "bar",
 				Destination: "thing",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(16),
+				Amount:      core.NewMonetaryInt(16),
 				Source:      "bar",
 				Destination: "qux",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(4),
+				Amount:      core.NewMonetaryInt(4),
 				Source:      "baz",
 				Destination: "qux",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(25),
+				Amount:      core.NewMonetaryInt(25),
 				Source:      "baz",
 				Destination: "quz",
 			},

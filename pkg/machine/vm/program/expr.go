@@ -1,6 +1,6 @@
 package program
 
-import "github.com/numary/ledger/pkg/machine/internal"
+import "github.com/numary/ledger/pkg/core"
 
 const (
 	OP_ADD = byte(iota + 1)
@@ -21,7 +21,7 @@ type Expr interface {
 }
 
 type ExprLiteral struct {
-	Value internal.Value
+	Value core.Value
 }
 
 func (e ExprLiteral) isExpr() {}

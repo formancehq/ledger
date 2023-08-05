@@ -123,6 +123,14 @@ func (f Funding) TakeMax(amount *MonetaryInt) (Funding, Funding) {
 	return result, remainder
 }
 
+func (f Funding) TakeFromBottom(amount *MonetaryInt) (Funding, Funding, error) {
+	taken, remainder, err := f.Reverse().Take(amount)
+	if err != nil {
+		return Funding{}, Funding{}, err
+	}
+	return taken.Reverse(), remainder.Reverse(), nil
+}
+
 func (f Funding) Concat(other Funding) (Funding, error) {
 	if f.Asset != other.Asset {
 		return Funding{}, errors.New("tried to concat different assets")

@@ -3,12 +3,12 @@ package compiler
 import (
 	"errors"
 
-	"github.com/numary/ledger/pkg/machine/internal"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/machine/script/parser"
 	"github.com/numary/ledger/pkg/machine/vm/program"
 )
 
-type FallbackAccount internal.Address
+type FallbackAccount core.Address
 
 // CompileValueAwareSource returns the resource addresses of all the accounts
 func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext) (program.ValueAwareSource, *CompileError) {
@@ -48,7 +48,7 @@ func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, b
 	fallback := false
 	switch c := c.(type) {
 	case *parser.SrcAccountContext:
-		account, compErr := p.CompileExprTy(c.SourceAccount().GetAccount(), internal.TypeAccount)
+		account, compErr := p.CompileExprTy(c.SourceAccount().GetAccount(), core.TypeAccount)
 		if compErr != nil {
 			return nil, false, compErr
 		}
@@ -62,7 +62,7 @@ func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, b
 			}
 			switch c := c.SourceAccount().GetOverdraft().(type) {
 			case *parser.SrcAccountOverdraftSpecificContext:
-				mon, err := p.CompileExprTy(c.GetSpecific(), internal.TypeMonetary)
+				mon, err := p.CompileExprTy(c.GetSpecific(), core.TypeMonetary)
 				if err != nil {
 					return nil, false, err
 				}
@@ -86,7 +86,7 @@ func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, b
 		if err != nil {
 			return nil, false, err
 		}
-		max, err := p.CompileExprTy(c.SourceMaxed().GetMax(), internal.TypeMonetary)
+		max, err := p.CompileExprTy(c.SourceMaxed().GetMax(), core.TypeMonetary)
 		if err != nil {
 			return nil, false, err
 		}
