@@ -180,14 +180,14 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 		}
 	}
 
-	if len(m.Postings) == 0 {
+	if len(m.PostingsOuput) == 0 {
 		return core.ExpandedTransaction{},
 			NewValidationError("transaction has no postings")
 	}
 
 	txVolumeAggr := vAggr.NextTx()
-	postings := make([]core.Posting, len(m.Postings))
-	for j, posting := range m.Postings {
+	postings := make([]core.Posting, len(m.PostingsOuput))
+	for j, posting := range m.PostingsOuput {
 		amt := core.MonetaryInt(*posting.Amount)
 		if err := txVolumeAggr.Transfer(ctx,
 			posting.Source, posting.Destination, posting.Asset, &amt, accs); err != nil {

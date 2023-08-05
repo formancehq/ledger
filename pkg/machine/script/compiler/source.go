@@ -2,177 +2,117 @@ package compiler
 
 import (
 	"errors"
-	"fmt"
 
-	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/machine/internal"
 	"github.com/numary/ledger/pkg/machine/script/parser"
 	"github.com/numary/ledger/pkg/machine/vm/program"
 )
 
-type FallbackAccount core.Address
+type FallbackAccount internal.Address
 
-func (p *parseVisitor) TakeFromSource(fallback *FallbackAccount) error {
-	if fallback == nil {
-		p.AppendInstruction(program.OP_TAKE)
-		err := p.Bump(1)
-		if err != nil {
-			return err
-		}
-		p.AppendInstruction(program.OP_REPAY)
-		return nil
-	}
-
-	p.AppendInstruction(program.OP_TAKE_MAX)
-	err := p.Bump(1)
-	if err != nil {
-		return err
-	}
-	p.AppendInstruction(program.OP_REPAY)
-	p.PushAddress(core.Address(*fallback))
-	err = p.Bump(2)
-	if err != nil {
-		return err
-	}
-	p.AppendInstruction(program.OP_TAKE_ALWAYS)
-	err = p.PushInteger(core.NewNumber(2))
-	if err != nil {
-		return err
-	}
-	p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
-	return nil
-}
-
-// VisitSource returns the resource addresses of all the accounts,
-// the addresses of accounts already emptied,
-// and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
-func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), isAll bool) (map[core.Address]struct{}, map[core.Address]struct{}, *FallbackAccount, *CompileError) {
-	neededAccounts := map[core.Address]struct{}{}
-	emptiedAccounts := map[core.Address]struct{}{}
-	var fallback *FallbackAccount
+// CompileValueAwareSource returns the resource addresses of all the accounts
+func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext) (program.ValueAwareSource, *CompileError) {
 	switch c := c.(type) {
-	case *parser.SrcAccountContext:
-		ty, accAddr, compErr := p.VisitExpr(c.SourceAccount().GetAccount(), true)
-		if compErr != nil {
-			return nil, nil, nil, compErr
-		}
-		if ty != core.TypeAccount {
-			return nil, nil, nil, LogicError(c, errors.New("wrong type: expected account or allocation as destination"))
-		}
-		if p.isWorld(*accAddr) {
-			f := FallbackAccount(*accAddr)
-			fallback = &f
-		}
-
-		overdraft := c.SourceAccount().GetOverdraft()
-		if overdraft == nil {
-			// no overdraft: use zero monetary
-			pushAsset()
-			err := p.PushInteger(core.NewNumber(0))
-			if err != nil {
-				return nil, nil, nil, LogicError(c, err)
-			}
-			p.AppendInstruction(program.OP_MONETARY_NEW)
-			p.AppendInstruction(program.OP_TAKE_ALL)
-		} else {
-			if p.isWorld(*accAddr) {
-				return nil, nil, nil, LogicError(c, errors.New("@world is already set to an unbounded overdraft"))
-			}
-			switch c := overdraft.(type) {
-			case *parser.SrcAccountOverdraftSpecificContext:
-				ty, _, compErr := p.VisitExpr(c.GetSpecific(), true)
-				if compErr != nil {
-					return nil, nil, nil, compErr
-				}
-				if ty != core.TypeMonetary {
-					return nil, nil, nil, LogicError(c, errors.New("wrong type: expected monetary"))
-				}
-				p.AppendInstruction(program.OP_TAKE_ALL)
-			case *parser.SrcAccountOverdraftUnboundedContext:
-				pushAsset()
-				err := p.PushInteger(core.NewNumber(0))
-				if err != nil {
-					return nil, nil, nil, LogicError(c, err)
-				}
-				p.AppendInstruction(program.OP_MONETARY_NEW)
-				p.AppendInstruction(program.OP_TAKE_ALL)
-				f := FallbackAccount(*accAddr)
-				fallback = &f
-			}
-		}
-		neededAccounts[*accAddr] = struct{}{}
-		emptiedAccounts[*accAddr] = struct{}{}
-
-		if fallback != nil && isAll {
-			return nil, nil, nil, LogicError(c, errors.New("cannot take all balance of an unbounded source"))
-		}
-
-	case *parser.SrcMaxedContext:
-		accounts, _, subsourceFallback, compErr := p.VisitSource(c.SourceMaxed().GetSrc(), pushAsset, false)
-		if compErr != nil {
-			return nil, nil, nil, compErr
-		}
-		ty, _, compErr := p.VisitExpr(c.SourceMaxed().GetMax(), true)
-		if compErr != nil {
-			return nil, nil, nil, compErr
-		}
-		if ty != core.TypeMonetary {
-			return nil, nil, nil, LogicError(c, errors.New("wrong type: expected monetary as max"))
-		}
-		for k, v := range accounts {
-			neededAccounts[k] = v
-		}
-		p.AppendInstruction(program.OP_TAKE_MAX)
-		err := p.Bump(1)
+	case *parser.SrcContext:
+		src, _, err := p.CompileSource(c.Source())
+		return program.ValueAwareSourceSource{
+			Source: src,
+		}, err
+	case *parser.SrcAllotmentContext:
+		parts := program.ValueAwareSourceAllotment{}
+		portions, err := p.CompileAllotment(c.SourceAllotment(), c.SourceAllotment().GetPortions())
 		if err != nil {
-			return nil, nil, nil, LogicError(c, err)
+			return nil, err
 		}
-		p.AppendInstruction(program.OP_REPAY)
-		if subsourceFallback != nil {
-			p.PushAddress(core.Address(*subsourceFallback))
-			err := p.Bump(2)
-			if err != nil {
-				return nil, nil, nil, LogicError(c, err)
-			}
-			p.AppendInstruction(program.OP_TAKE_ALL)
-			err = p.PushInteger(core.NewNumber(2))
-			if err != nil {
-				return nil, nil, nil, LogicError(c, err)
-			}
-			p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
-		} else {
-			err := p.Bump(1)
-			if err != nil {
-				return nil, nil, nil, LogicError(c, err)
-			}
-			p.AppendInstruction(program.OP_DELETE)
-		}
-	case *parser.SrcInOrderContext:
-		sources := c.SourceInOrder().GetSources()
+		sources := c.SourceAllotment().GetSources()
 		n := len(sources)
 		for i := 0; i < n; i++ {
-			accounts, emptied, subsourceFallback, compErr := p.VisitSource(sources[i], pushAsset, isAll)
+			src, _, compErr := p.CompileSource(sources[i])
 			if compErr != nil {
-				return nil, nil, nil, compErr
+				return nil, compErr
 			}
-			fallback = subsourceFallback
-			if subsourceFallback != nil && i != n-1 {
-				return nil, nil, nil, LogicError(c, errors.New("an unbounded subsource can only be in last position"))
-			}
-			for k, v := range accounts {
-				neededAccounts[k] = v
-			}
-			for k, v := range emptied {
-				if _, ok := emptiedAccounts[k]; ok {
-					return nil, nil, nil, LogicError(sources[i], fmt.Errorf("%v is already empty at this stage", p.resources[k]))
-				}
-				emptiedAccounts[k] = v
-			}
+			parts = append(parts, program.ValueAwareSourcePart{
+				Portion: portions[i],
+				Source:  src,
+			})
 		}
-		err := p.PushInteger(core.NewNumber(int64(n)))
-		if err != nil {
-			return nil, nil, nil, LogicError(c, err)
-		}
-		p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
+		return parts, nil
 	}
-	return neededAccounts, emptiedAccounts, fallback, nil
+	return nil, nil
+}
+
+// CompileSource returns the resource addresses of all the accounts,
+// the addresses of accounts already emptied,
+// and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
+func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, bool, *CompileError) {
+	fallback := false
+	switch c := c.(type) {
+	case *parser.SrcAccountContext:
+		account, compErr := p.CompileExprTy(c.SourceAccount().GetAccount(), internal.TypeAccount)
+		if compErr != nil {
+			return nil, false, compErr
+		}
+		if p.isWorld(c.SourceAccount().GetAccount()) {
+			fallback = true
+		}
+		var overdraft *program.Overdraft
+		if c.SourceAccount().GetOverdraft() != nil {
+			if fallback {
+				return nil, false, LogicError(c, errors.New("this account already has an unlimited overdraft"))
+			}
+			switch c := c.SourceAccount().GetOverdraft().(type) {
+			case *parser.SrcAccountOverdraftSpecificContext:
+				mon, err := p.CompileExprTy(c.GetSpecific(), internal.TypeMonetary)
+				if err != nil {
+					return nil, false, err
+				}
+				overdraft = &program.Overdraft{
+					Unbounded: false,
+					UpTo:      &mon,
+				}
+			case *parser.SrcAccountOverdraftUnboundedContext:
+				overdraft = &program.Overdraft{
+					Unbounded: true,
+					UpTo:      nil,
+				}
+			}
+		}
+		return program.SourceAccount{
+			Account:   account,
+			Overdraft: overdraft,
+		}, fallback, nil
+	case *parser.SrcMaxedContext:
+		src, _, err := p.CompileSource(c.SourceMaxed().GetSrc())
+		if err != nil {
+			return nil, false, err
+		}
+		max, err := p.CompileExprTy(c.SourceMaxed().GetMax(), internal.TypeMonetary)
+		if err != nil {
+			return nil, false, err
+		}
+		return program.SourceMaxed{
+			Source: src,
+			Max:    max,
+		}, false, nil
+	case *parser.SrcInOrderContext:
+		sources := c.SourceInOrder().GetSources()
+
+		resSources := []program.Source{}
+		fallback := false
+
+		n := len(sources)
+		for i := 0; i < n; i++ {
+			if fallback {
+				return nil, false, LogicError(c, errors.New("source is already unlimited at this point"))
+			}
+			subsource, subsourceFallback, err := p.CompileSource(sources[i])
+			if err != nil {
+				return nil, false, err
+			}
+			resSources = append(resSources, subsource)
+			fallback = fallback || subsourceFallback
+		}
+		return program.SourceInOrder(resSources), fallback, nil
+	}
+	return nil, false, InternalError(c)
 }

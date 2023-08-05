@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/machine/internal"
 )
 
 func TestOverdraftNotEnough(t *testing.T) {
@@ -14,9 +14,9 @@ func TestOverdraftNotEnough(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "GEM", 89)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    "insufficient funds",
 	}
 	test(t, tc)
 }
@@ -29,16 +29,15 @@ func TestOverdraftEnough(t *testing.T) {
 		)`)
 	tc.setBalance("foo", "GEM", 90)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "foo",
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -51,16 +50,15 @@ func TestOverdraftUnbounded(t *testing.T) {
 		)`)
 	tc.setBalance("foo", "GEM", 90)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(1000),
+				Amount:      internal.NewMonetaryInt(1000),
 				Source:      "foo",
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -81,28 +79,27 @@ func TestOverdraftSourceAllotmentSuccess(t *testing.T) {
 	tc.setBalance("bar", "GEM", 20)
 	tc.setBalance("baz", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(50),
+				Amount:      internal.NewMonetaryInt(50),
 				Source:      "foo",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(40),
+				Amount:      internal.NewMonetaryInt(40),
 				Source:      "bar",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      internal.NewMonetaryInt(10),
 				Source:      "baz",
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -125,34 +122,33 @@ func TestOverdraftSourceInOrderSuccess(t *testing.T) {
 	tc.setBalance("baz", "GEM", 0)
 	tc.setBalance("qux", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(10),
+				Amount:      internal.NewMonetaryInt(10),
 				Source:      "foo",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(20),
+				Amount:      internal.NewMonetaryInt(20),
 				Source:      "bar",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(20),
+				Amount:      internal.NewMonetaryInt(20),
 				Source:      "baz",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(50),
+				Amount:      internal.NewMonetaryInt(50),
 				Source:      "qux",
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -174,28 +170,27 @@ func TestOverdraftBalanceTracking(t *testing.T) {
 	`)
 	tc.setBalance("foo", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "foo",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(200),
+				Amount:      internal.NewMonetaryInt(200),
 				Source:      "foo",
 				Destination: "world",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(300),
+				Amount:      internal.NewMonetaryInt(300),
 				Source:      "foo",
 				Destination: "world",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -212,22 +207,21 @@ func TestWorldIsUnbounded(t *testing.T) {
 	)
 	`)
 	tc.expected = CaseResult{
-		Printed: []core.Value{},
+		Printed: []internal.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(100),
+				Amount:      internal.NewMonetaryInt(100),
 				Source:      "world",
 				Destination: "foo",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      core.NewMonetaryInt(200),
+				Amount:      internal.NewMonetaryInt(200),
 				Source:      "world",
 				Destination: "foo",
 			},
 		},
-		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
 }
@@ -248,9 +242,9 @@ func TestOverdraftComplexFailure(t *testing.T) {
 	tc.setBalance("bar", "GEM", 20)
 	tc.setBalance("baz", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    "insufficient funds",
 	}
 	test(t, tc)
 }
@@ -263,9 +257,9 @@ func TestNegativeBalance(t *testing.T) {
 		)`)
 	tc.setBalance("foo", "GEM", -50)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
+		Printed:  []internal.Value{},
 		Postings: []Posting{},
-		ExitCode: EXIT_FAIL_INSUFFICIENT_FUNDS,
+		Error:    "insufficient funds",
 	}
 	test(t, tc)
 }

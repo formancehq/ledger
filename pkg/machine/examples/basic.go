@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/machine/script/compiler"
@@ -27,54 +28,47 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Print(program)
 
-	m := vm.NewMachine(*program)
-	m.Debug = true
+	fmt.Printf("%v\n", program)
 
-	if err = m.SetVars(map[string]core.Value{
-		"dest": core.AccountAddress("charlie"),
-	}); err != nil {
-		panic(err)
-	}
+	// spew.Dump("%#v", program)
 
-	initialBalances := map[string]map[string]*core.MonetaryInt{
-		"alice": {"COIN": core.NewMonetaryInt(10)},
-		"bob":   {"COIN": core.NewMonetaryInt(100)},
-	}
+	store := vm.StaticStore(map[string]*vm.AccountWithBalances{
+		"alice": {
+			Account: core.Account{
+				Address:  "alice",
+				Metadata: map[string]any{},
+			},
+			Balances: map[string]*big.Int{
+				"COIN": big.NewInt(10),
+			},
+		},
+		"bob": {
+			Account: core.Account{
+				Address:  "bob",
+				Metadata: map[string]any{},
+			},
+			Balances: map[string]*big.Int{
+				"COIN": big.NewInt(100),
+			},
+		},
+	})
 
-	{
-		ch, err := m.ResolveResources()
-		if err != nil {
-			panic(err)
-		}
-		for req := range ch {
-			if req.Error != nil {
-				panic(req.Error)
-			}
-		}
-	}
+	m := vm.NewMachine(store)
 
-	{
-		ch, err := m.ResolveBalances()
-		if err != nil {
-			panic(err)
-		}
-		for req := range ch {
-			val := initialBalances[req.Account][req.Asset]
-			if req.Error != nil {
-				panic(req.Error)
-			}
-			req.Response <- val
-		}
-	}
-
-	exitCode, err := m.Execute()
+	err = m.Execute(*program, map[string]string{
+		"dest": "charlie",
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("Exit code:", exitCode)
-	fmt.Println(m.Postings)
-	fmt.Println(m.TxMeta)
+	fmt.Println("Postings:")
+	for _, posting := range m.PostingsOuput {
+		fmt.Printf("[%v %v] %v -> %v\n", posting.Asset, posting.Amount, posting.Source, posting.Destination)
+	}
+	fmt.Println("Tx Meta:")
+	for key, value := range m.TxMetaOutput {
+		fmt.Printf("%v: %v", key, value)
+	}
 }
