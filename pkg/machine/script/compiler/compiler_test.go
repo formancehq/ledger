@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/machine/vm/program"
 	"github.com/stretchr/testify/require"
@@ -42,7 +41,6 @@ func test(t *testing.T, c TestCase) {
 			*p, p.Instructions, c.Expected.Instructions))
 		return
 	} else if len(p.Resources) != len(c.Expected.Resources) {
-		spew.Dump(p.Resources)
 		t.Error(fmt.Errorf(
 			"unexpected resources\n%v\nhas: \n%+v\nwant:\n%+v",
 			*p, p.Resources, c.Expected.Resources))
@@ -50,7 +48,6 @@ func test(t *testing.T, c TestCase) {
 	}
 
 	for i, expected := range c.Expected.Resources {
-		spew.Dump(p.Resources)
 		if !checkResourcesEqual(p.Resources[i], c.Expected.Resources[i]) {
 			t.Error(fmt.Errorf("%v: %v is not %v: %v",
 				p.Resources[i], reflect.TypeOf(p.Resources[i]).Name(),
