@@ -71,40 +71,45 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 	if err != nil {
 		return s.error(err)
 	}
+
+	s.LastLog = &log[len(log)-1]
 	return nil
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.From(s.schema.Table("log"))
-	sb.Select("id", "type", "hash", "date", "data")
-	sb.OrderBy("id desc")
-	sb.Limit(1)
+	if s.LastLog == nil {
+		sb := sqlbuilder.NewSelectBuilder()
+		sb.From(s.schema.Table("log"))
+		sb.Select("id", "type", "hash", "date", "data")
+		sb.OrderBy("id desc")
+		sb.Limit(1)
 
-	executor, err := s.executorProvider(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	l := core.Log{}
-	data := sql.NullString{}
-	sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
-	row := executor.QueryRowContext(ctx, sqlq)
-	if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
+		executor, err := s.executorProvider(ctx)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
-	l.Date = l.Date.UTC()
 
-	l.Data, err = core.HydrateLog(l.Type, data.String)
-	if err != nil {
-		return nil, err
-	}
-	l.Date = l.Date.UTC()
+		l := core.Log{}
+		data := sql.NullString{}
+		sqlq, _ := sb.BuildWithFlavor(s.schema.Flavor())
+		row := executor.QueryRowContext(ctx, sqlq)
+		if err := row.Scan(&l.ID, &l.Type, &l.Hash, &l.Date, &data); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
+		l.Date = l.Date.UTC()
 
-	return &l, nil
+		l.Data, err = core.HydrateLog(l.Type, data.String)
+		if err != nil {
+			return nil, err
+		}
+		l.Date = l.Date.UTC()
+
+		s.LastLog = &l
+	}
+	return s.LastLog, nil
 }
 
 func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[core.Log], error) {

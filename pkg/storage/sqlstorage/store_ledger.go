@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
 	"github.com/pkg/errors"
 )
@@ -17,7 +18,8 @@ type Store struct {
 	executorProvider func(ctx context.Context) (executor, error)
 	schema           Schema
 	onClose          func(ctx context.Context) error
-	onDelete         func(ctx context.Context) error
+	onDelete func(ctx context.Context) error
+	LastLog  *core.Log
 }
 
 func (s *Store) error(err error) error {

@@ -30,6 +30,7 @@ func (s *Store) commit(ctx context.Context, txs ...core.ExpandedTransaction) ([]
 	if err != nil {
 		return nil, err
 	}
+
 	for _, tx := range txs {
 		newLog := core.NewTransactionLog(lastLog, tx.Transaction)
 		lastLog = &newLog

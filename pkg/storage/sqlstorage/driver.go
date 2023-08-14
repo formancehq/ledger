@@ -102,7 +102,7 @@ type Driver struct {
 	name              string
 	db                DB
 	systemSchema      Schema
-	registeredLedgers map[string]struct{}
+	registeredLedgers map[string]*Store
 	lock              sync.Mutex
 }
 
@@ -125,9 +125,10 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 	var (
 		created bool
 		schema  Schema
-		err     error
+		ret     *Store
+		exists  bool
 	)
-	if _, exists := d.registeredLedgers[name]; !exists {
+	if ret, exists = d.registeredLedgers[name]; !exists {
 		systemStore := &SystemStore{
 			systemSchema: d.systemSchema,
 		}
@@ -152,19 +153,22 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 		if err = schema.Initialize(ctx); err != nil {
 			return nil, false, err
 		}
-		d.registeredLedgers[name] = struct{}{}
-	} else {
-		schema, err = d.db.Schema(ctx, name)
-		if err != nil {
-			return nil, false, errors.Wrap(err, "opening schema")
-		}
+
+		ret = NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
+			d.lock.Lock()
+			defer d.lock.Unlock()
+
+			delete(d.registeredLedgers, name)
+			return schema.Close(context.Background())
+		}, func(ctx context.Context) error {
+			return d.GetSystemStore().DeleteLedger(ctx, name)
+		})
+
+		d.registeredLedgers[name] = ret
+		created = true
 	}
 
-	return NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
-		return schema.Close(context.Background())
-	}, func(ctx context.Context) error {
-		return d.GetSystemStore().DeleteLedger(ctx, name)
-	}), created, nil
+	return ret, created, nil
 }
 
 func (d *Driver) Name() string {
@@ -223,7 +227,7 @@ func NewDriver(name string, db DB) *Driver {
 	return &Driver{
 		db:                db,
 		name:              name,
-		registeredLedgers: map[string]struct{}{},
+		registeredLedgers: map[string]*Store{},
 	}
 }
 
