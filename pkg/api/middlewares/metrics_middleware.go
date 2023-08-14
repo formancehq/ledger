@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type statusRecorder struct {
@@ -44,10 +45,10 @@ func MetricsMiddleware(globalMetricsRegistry metrics.GlobalRegistry) func(h http
 			attrs = append(attrs,
 				attribute.String("route", chi.RouteContext(r.Context()).RoutePattern()))
 
-			globalMetricsRegistry.APILatencies().Record(ctx, latency.Milliseconds(), attrs...)
+			globalMetricsRegistry.APILatencies().Record(ctx, latency.Milliseconds(), metric.WithAttributes(attrs...))
 
 			attrs = append(attrs, attribute.Int("status", recorder.Status))
-			globalMetricsRegistry.StatusCodes().Add(ctx, 1, attrs...)
+			globalMetricsRegistry.StatusCodes().Add(ctx, 1, metric.WithAttributes(attrs...))
 		})
 	}
 }
