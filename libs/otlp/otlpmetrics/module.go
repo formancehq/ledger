@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -72,7 +71,7 @@ func MetricsModule(cfg ModuleConfig) fx.Option {
 				b3.New(), propagation.TraceContext{})) // B3 format is common and used by zipkin. Always enabled right now.
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					global.SetMeterProvider(metricProvider)
+					otel.SetMeterProvider(metricProvider)
 					if cfg.RuntimeMetrics {
 						if err := runtime.Start(options...); err != nil {
 							return err
