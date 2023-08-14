@@ -1929,3 +1929,37 @@ func TestSendWithArithmetic(t *testing.T) {
 		test(t, tc)
 	})
 }
+
+func TestUseDifferentAssetsWithSameSourceAccount(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+	account $a_account
+}
+send [A 100] (
+	source = $a_account allowing unbounded overdraft
+	destination = @account1
+)
+send [B 100] (
+	source = @world
+	destination = @account2
+)`)
+	tc.setBalance("account1", "A", 100)
+	tc.setBalance("account2", "B", 100)
+	tc.setVarsFromJSON(t, `{"a_account": "world"}`)
+	tc.expected = CaseResult{
+		Printed: []core.Value{},
+		Postings: []Posting{{
+			Source:      "world",
+			Destination: "account1",
+			Amount:      core.NewMonetaryInt(100),
+			Asset:       "A",
+		}, {
+			Source:      "world",
+			Destination: "account2",
+			Amount:      core.NewMonetaryInt(100),
+			Asset:       "B",
+		}},
+		ExitCode: EXIT_OK,
+	}
+	test(t, tc)
+}
