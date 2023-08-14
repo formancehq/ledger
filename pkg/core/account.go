@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 )
@@ -18,6 +19,18 @@ type AccountWithVolumes struct {
 	Account
 	Volumes  AssetsVolumes  `json:"volumes"`
 	Balances AssetsBalances `json:"balances" example:"COIN:100"`
+}
+
+func (v AccountWithVolumes) Copy() *AccountWithVolumes {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	ret := &AccountWithVolumes{}
+	if err := json.Unmarshal(data, ret); err != nil {
+		panic(err)
+	}
+	return ret
 }
 
 const accountPattern = "^[a-zA-Z_]+[a-zA-Z0-9_:]*$"

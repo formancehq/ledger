@@ -8,24 +8,29 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/patrickmn/go-cache"
 )
 
-func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*core.AccountWithVolumes, error) {
+func (s *Store) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
+	account, ok := s.cache.Get(address)
+	if ok {
+		return account.(*core.AccountWithVolumes).Copy(), nil
+	}
 
 	acc := core.Account{
-		Address:  core.AccountAddress(account),
+		Address:  core.AccountAddress(address),
 		Metadata: core.Metadata{},
 	}
 	assetsVolumes := core.AssetsVolumes{}
 
-	if s.bloom.Test([]byte(account)) {
+	if s.bloom.Test([]byte(address)) {
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("accounts.metadata", "volumes.asset", "volumes.input", "volumes.output")
 		sb.From(s.schema.Table("accounts"))
 		sb.JoinWithOption(sqlbuilder.LeftOuterJoin,
 			s.schema.Table("volumes"),
 			"accounts.address = volumes.account")
-		sb.Where(sb.E("accounts.address", account))
+		sb.Where(sb.E("accounts.address", address))
 
 		executor, err := s.executorProvider(ctx)
 		if err != nil {
@@ -84,6 +89,8 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, account string) (*cor
 		Volumes: assetsVolumes,
 	}
 	res.Balances = res.Volumes.Balances()
+
+	s.cache.Set(address, res.Copy(), cache.NoExpiration)
 
 	return res, nil
 }

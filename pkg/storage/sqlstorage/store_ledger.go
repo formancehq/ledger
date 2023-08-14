@@ -2,12 +2,14 @@ package sqlstorage
 
 import (
 	"context"
+	"time"
 
 	"github.com/bits-and-blooms/bloom"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
+	"github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 )
 
@@ -23,6 +25,7 @@ type Store struct {
 	lastLog          *core.Log
 	lastTx           *core.ExpandedTransaction
 	bloom            *bloom.BloomFilter
+	cache            *cache.Cache
 }
 
 func (s *Store) error(err error) error {
@@ -64,12 +67,14 @@ func (s *Store) Close(ctx context.Context) error {
 
 func NewStore(schema Schema, executorProvider func(ctx context.Context) (executor, error),
 	onClose, onDelete func(ctx context.Context) error) *Store {
+
 	return &Store{
 		executorProvider: executorProvider,
 		schema:           schema,
 		onClose:          onClose,
 		onDelete:         onDelete,
 		bloom:            bloom.NewWithEstimates(1000000, 0.01), // TODO: Configure
+		cache:            cache.New(5*time.Minute, 10*time.Minute),
 	}
 }
 
