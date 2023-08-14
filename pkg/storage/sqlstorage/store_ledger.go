@@ -3,6 +3,7 @@ package sqlstorage
 import (
 	"context"
 
+	"github.com/bits-and-blooms/bloom"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/numary/ledger/pkg/core"
@@ -18,9 +19,10 @@ type Store struct {
 	executorProvider func(ctx context.Context) (executor, error)
 	schema           Schema
 	onClose          func(ctx context.Context) error
-	onDelete func(ctx context.Context) error
-	lastLog  *core.Log
-	lastTx *core.ExpandedTransaction
+	onDelete         func(ctx context.Context) error
+	lastLog          *core.Log
+	lastTx           *core.ExpandedTransaction
+	bloom            *bloom.BloomFilter
 }
 
 func (s *Store) error(err error) error {
@@ -67,6 +69,7 @@ func NewStore(schema Schema, executorProvider func(ctx context.Context) (executo
 		schema:           schema,
 		onClose:          onClose,
 		onDelete:         onDelete,
+		bloom:            bloom.NewWithEstimates(1000000, 0.01), // TODO: Configure
 	}
 }
 

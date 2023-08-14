@@ -265,6 +265,8 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 		return err
 	}
 
+	s.bloom.Add([]byte(account))
+
 	_, err = executor.ExecContext(ctx, sqlq, args...)
 	return s.error(err)
 }
@@ -310,6 +312,8 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
 	}
+
+	s.bloom.Add([]byte(address))
 
 	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
 		TargetType: core.MetaTargetTypeAccount,

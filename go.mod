@@ -51,6 +51,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-kafka/v2 v2.2.2 // indirect
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.0.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
+	github.com/bits-and-blooms/bloom v2.0.3+incompatible // indirect
 	github.com/bytedance/sonic v1.8.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -122,6 +123,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/segmentio/backo-go v1.0.1 // indirect
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb // indirect
+	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -131,6 +133,7 @@ require (
 	github.com/ugorji/go/codec v1.2.10 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.1.21 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.1.21 // indirect
+	github.com/willf/bitset v1.1.11 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
