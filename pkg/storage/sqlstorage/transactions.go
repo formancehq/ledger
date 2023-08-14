@@ -278,53 +278,57 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 }
 
 func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
-	sb := sqlbuilder.NewSelectBuilder()
-	sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
-	sb.From(s.schema.Table("transactions"))
-	sb.OrderBy("id desc")
-	sb.Limit(1)
+	if s.lastTx == nil {
+		sb := sqlbuilder.NewSelectBuilder()
+		sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
+		sb.From(s.schema.Table("transactions"))
+		sb.OrderBy("id desc")
+		sb.Limit(1)
 
-	executor, err := s.executorProvider(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
-	row := executor.QueryRowContext(ctx, sqlq, args...)
-	if row.Err() != nil {
-		return nil, s.error(row.Err())
-	}
-
-	tx := core.ExpandedTransaction{
-		Transaction: core.Transaction{
-			TransactionData: core.TransactionData{
-				Postings: core.Postings{},
-				Metadata: core.Metadata{},
-			},
-		},
-		PreCommitVolumes:  core.AccountsAssetsVolumes{},
-		PostCommitVolumes: core.AccountsAssetsVolumes{},
-	}
-
-	var ref sql.NullString
-	if err := row.Scan(
-		&tx.ID,
-		&tx.Timestamp,
-		&ref,
-		&tx.Metadata,
-		&tx.Postings,
-		&tx.PreCommitVolumes,
-		&tx.PostCommitVolumes,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
+		executor, err := s.executorProvider(ctx)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
-	tx.Timestamp = tx.Timestamp.UTC()
-	tx.Reference = ref.String
 
-	return &tx, nil
+		sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+		row := executor.QueryRowContext(ctx, sqlq, args...)
+		if row.Err() != nil {
+			return nil, s.error(row.Err())
+		}
+
+		tx := core.ExpandedTransaction{
+			Transaction: core.Transaction{
+				TransactionData: core.TransactionData{
+					Postings: core.Postings{},
+					Metadata: core.Metadata{},
+				},
+			},
+			PreCommitVolumes:  core.AccountsAssetsVolumes{},
+			PostCommitVolumes: core.AccountsAssetsVolumes{},
+		}
+
+		var ref sql.NullString
+		if err := row.Scan(
+			&tx.ID,
+			&tx.Timestamp,
+			&ref,
+			&tx.Metadata,
+			&tx.Postings,
+			&tx.PreCommitVolumes,
+			&tx.PostCommitVolumes,
+		); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
+		tx.Timestamp = tx.Timestamp.UTC()
+		tx.Reference = ref.String
+
+		s.lastTx = &tx
+	}
+
+	return s.lastTx, nil
 }
 
 func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTransaction) error {
@@ -487,6 +491,8 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		return s.error(err)
 	}
 
+	s.lastTx = &txs[len(txs)-1]
+
 	return nil
 }
 
@@ -523,6 +529,14 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 	lastLog, err := s.GetLastLog(ctx)
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
+	}
+
+	if s.lastTx.ID == id {
+		if s.lastTx.Metadata == nil {
+			s.lastTx.Metadata = metadata
+		} else {
+			s.lastTx.Metadata = s.lastTx.Metadata.Merge(metadata)
+		}
 	}
 
 	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{

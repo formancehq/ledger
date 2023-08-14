@@ -72,12 +72,12 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		return s.error(err)
 	}
 
-	s.LastLog = &log[len(log)-1]
+	s.lastLog = &log[len(log)-1]
 	return nil
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
-	if s.LastLog == nil {
+	if s.lastLog == nil {
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.From(s.schema.Table("log"))
 		sb.Select("id", "type", "hash", "date", "data")
@@ -107,9 +107,9 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		}
 		l.Date = l.Date.UTC()
 
-		s.LastLog = &l
+		s.lastLog = &l
 	}
-	return s.LastLog, nil
+	return s.lastLog, nil
 }
 
 func (s *Store) GetLogs(ctx context.Context, q *ledger.LogsQuery) (api.Cursor[core.Log], error) {

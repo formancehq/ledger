@@ -19,7 +19,8 @@ type Store struct {
 	schema           Schema
 	onClose          func(ctx context.Context) error
 	onDelete func(ctx context.Context) error
-	LastLog  *core.Log
+	lastLog  *core.Log
+	lastTx *core.ExpandedTransaction
 }
 
 func (s *Store) error(err error) error {
