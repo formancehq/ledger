@@ -504,8 +504,13 @@ func (m *Machine) ResolveBalances() (chan BalanceRequest, error) {
 				}
 				return
 			}
+
 			if account, ok := (*account).(core.AccountAddress); ok {
-				m.Balances[account] = make(map[core.Asset]*core.MonetaryInt)
+
+				if _, ok := m.Balances[account]; !ok {
+					m.Balances[account] = make(map[core.Asset]*core.MonetaryInt)
+				}
+
 				// for every asset, send request
 				for addr := range neededAssets {
 					mon, ok := m.getResource(addr)
