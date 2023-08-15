@@ -540,6 +540,93 @@ func TestSend(t *testing.T) {
 	})
 }
 
+func TestSendWithDigitsPrefixingAccount(t *testing.T) {
+	script := `
+		send [EUR/2 99] (
+			source = @1234:alice
+			destination = @bob
+		)`
+	alice := core.AccountAddress("1234:alice")
+	bob := core.AccountAddress("bob")
+	test(t, TestCase{
+		Case: script,
+		Expected: CaseResult{
+			Instructions: []byte{
+				program.OP_APUSH, 02, 00, // @1234:alice
+				program.OP_APUSH, 01, 00, // @alice, [EUR/2 99]
+				program.OP_ASSET,         // @alice, EUR/2
+				program.OP_APUSH, 03, 00, // @alice, EUR/2, 0
+				program.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
+				program.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
+				program.OP_APUSH, 01, 00, // [EUR/2 @alice <?>], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2 @alice <?>], [EUR/2 @alice 99]
+				program.OP_APUSH, 04, 00, // [EUR/2 @alice <?>], [EUR/2 @alice 99], 1
+				program.OP_BUMP,          // [EUR/2 @alice 99], [EUR/2 @alice <?>]
+				program.OP_REPAY,         // [EUR/2 @alice 99]
+				program.OP_FUNDING_SUM,   // [EUR/2 @alice 99], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2], [EUR/2 @alice 99]
+				program.OP_APUSH, 05, 00, // [EUR/2], [EUR/2 @alice 99], @bob
+				program.OP_SEND,  // [EUR/2]
+				program.OP_REPAY, //
+			}, Resources: []program.Resource{
+				program.Constant{Inner: core.Asset("EUR/2")},
+				program.Monetary{
+					Asset:  0,
+					Amount: core.NewMonetaryInt(99),
+				},
+				program.Constant{Inner: alice},
+				program.Constant{Inner: core.NewMonetaryInt(0)},
+				program.Constant{Inner: core.NewMonetaryInt(1)},
+				program.Constant{Inner: bob}},
+		},
+	})
+}
+
+func TestSendWithDigitsPrefixingAccountUsingVariable(t *testing.T) {
+	script := `
+		vars {
+			account $src
+		}
+		send [EUR/2 99] (
+			source = $src
+			destination = @bob
+		)`
+	bob := core.AccountAddress("bob")
+	test(t, TestCase{
+		Case: script,
+		Expected: CaseResult{
+			Variables: []string{},
+			Instructions: []byte{
+				program.OP_APUSH, 00, 00, // @alice
+				program.OP_APUSH, 02, 00, // @alice, [EUR/2 99]
+				program.OP_ASSET,         // @alice, EUR/2
+				program.OP_APUSH, 03, 00, // @alice, EUR/2, 0
+				program.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
+				program.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
+				program.OP_APUSH, 02, 00, // [EUR/2 @alice <?>], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2 @alice <?>], [EUR/2 @alice 99]
+				program.OP_APUSH, 04, 00, // [EUR/2 @alice <?>], [EUR/2 @alice 99], 1
+				program.OP_BUMP,          // [EUR/2 @alice 99], [EUR/2 @alice <?>]
+				program.OP_REPAY,         // [EUR/2 @alice 99]
+				program.OP_FUNDING_SUM,   // [EUR/2 @alice 99], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2], [EUR/2 @alice 99]
+				program.OP_APUSH, 05, 00, // [EUR/2], [EUR/2 @alice 99], @bob
+				program.OP_SEND,  // [EUR/2]
+				program.OP_REPAY, //
+			}, Resources: []program.Resource{
+				program.Variable{Typ: core.TypeAccount, Name: "src"},
+				program.Constant{Inner: core.Asset("EUR/2")},
+				program.Monetary{
+					Asset:  1,
+					Amount: core.NewMonetaryInt(99),
+				},
+				program.Constant{Inner: core.NewMonetaryInt(0)},
+				program.Constant{Inner: core.NewMonetaryInt(1)},
+				program.Constant{Inner: bob}},
+		},
+	})
+}
+
 func TestSendAll(t *testing.T) {
 	test(t, TestCase{
 		Case: `send [EUR/2 *] (
