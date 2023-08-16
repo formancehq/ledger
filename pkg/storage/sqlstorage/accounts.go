@@ -200,6 +200,12 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 }
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
+
+	entry, ok := s.cache.Get(addr)
+	if ok {
+		return entry.(*core.AccountWithVolumes).Account.Copy(), nil
+	}
+
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).

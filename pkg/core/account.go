@@ -15,6 +15,18 @@ type Account struct {
 	Metadata Metadata       `json:"metadata" swaggertype:"object"`
 }
 
+func (v Account) Copy() *Account {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	ret := &Account{}
+	if err := json.Unmarshal(data, ret); err != nil {
+		panic(err)
+	}
+	return ret
+}
+
 type AccountWithVolumes struct {
 	Account
 	Volumes  AssetsVolumes  `json:"volumes"`
