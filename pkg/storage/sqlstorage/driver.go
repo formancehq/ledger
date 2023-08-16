@@ -216,6 +216,11 @@ func (d *Driver) Initialize(ctx context.Context) (err error) {
 }
 
 func (d *Driver) Close(ctx context.Context) error {
+	for _, store := range d.registeredLedgers {
+		if err := store.Close(ctx); err != nil {
+			return err
+		}
+	}
 	err := d.systemSchema.Close(ctx)
 	if err != nil {
 		return err

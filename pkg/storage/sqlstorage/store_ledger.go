@@ -2,6 +2,9 @@ package sqlstorage
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/bits-and-blooms/bloom"
@@ -68,12 +71,35 @@ func (s *Store) Close(ctx context.Context) error {
 func NewStore(schema Schema, executorProvider func(ctx context.Context) (executor, error),
 	onClose, onDelete func(ctx context.Context) error) *Store {
 
+	const (
+		bloomFilterSizeEnvVar      = "NUMARY_BLOOM_FILTER_SIZE"
+		bloomFilterErrorRateEnvVar = "NUMARY_BLOOM_FILTER_ERROR_RATE"
+	)
+
+	var (
+		bloomSize      uint64 = 100000
+		bloomErrorRate        = 0.01
+		err            error
+	)
+	if bloomSizeFromEnv := os.Getenv(bloomFilterSizeEnvVar); bloomSizeFromEnv != "" {
+		bloomSize, err = strconv.ParseUint(bloomSizeFromEnv, 10, 64)
+		if err != nil {
+			panic(errors.Wrap(err, fmt.Sprint("Parsing", bloomFilterSizeEnvVar, "env var")))
+		}
+	}
+	if bloomErrorRateFromEnv := os.Getenv(bloomFilterErrorRateEnvVar); bloomErrorRateFromEnv != "" {
+		bloomErrorRate, err = strconv.ParseFloat(bloomErrorRateFromEnv, 64)
+		if err != nil {
+			panic(errors.Wrap(err, fmt.Sprint("Parsing", bloomFilterErrorRateEnvVar, "env var")))
+		}
+	}
+
 	return &Store{
 		executorProvider: executorProvider,
 		schema:           schema,
 		onClose:          onClose,
 		onDelete:         onDelete,
-		bloom:            bloom.NewWithEstimates(1000000, 0.01), // TODO: Configure
+		bloom:            bloom.NewWithEstimates(uint(bloomSize), bloomErrorRate),
 		cache:            cache.New(5*time.Minute, 10*time.Minute),
 	}
 }

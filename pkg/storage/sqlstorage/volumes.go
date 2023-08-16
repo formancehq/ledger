@@ -7,19 +7,25 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
-	for address, accountVolumes := range volumes {
 
-		entry, ok := s.cache.Get(address)
-		if ok {
-			account := entry.(*core.AccountWithVolumes)
-			for asset, volumes := range accountVolumes {
-				account.Volumes[asset] = volumes
-				account.Balances[asset] = volumes.Balance()
+	storage.OnTransactionCommitted(ctx, func() {
+		for address, accountVolumes := range volumes {
+			entry, ok := s.cache.Get(address)
+			if ok {
+				account := entry.(*core.AccountWithVolumes)
+				for asset, volumes := range accountVolumes {
+					account.Volumes[asset] = volumes
+					account.Balances[asset] = volumes.Balance()
+				}
 			}
 		}
+	})
+
+	for address, accountVolumes := range volumes {
 
 		accountBy, err := json.Marshal(strings.Split(address, ":"))
 		if err != nil {
