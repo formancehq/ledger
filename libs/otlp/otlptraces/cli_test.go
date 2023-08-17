@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/otlp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -45,6 +47,9 @@ func TestOTLPTracesModule(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			cmd := &cobra.Command{
 				PreRunE: func(cmd *cobra.Command, args []string) error {
+					// Since we are doing multiple tests with the same otlp
+					// package, we have to reset the once variables.
+					otlp.OnceLoadResources = sync.Once{}
 					return viper.BindPFlags(cmd.Flags())
 				},
 				RunE: func(cmd *cobra.Command, args []string) error {
