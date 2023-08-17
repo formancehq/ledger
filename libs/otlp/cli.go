@@ -13,7 +13,7 @@ import (
 
 var (
 	onceInitOTLPFlags sync.Once
-	onceLoadResources sync.Once
+	OnceLoadResources sync.Once
 )
 
 const (
@@ -30,7 +30,7 @@ func InitOTLPFlags(flags *flag.FlagSet) {
 
 func LoadResource(serviceName string, resourceAttributes []string) fx.Option {
 	options := make([]fx.Option, 0)
-	onceLoadResources.Do(func() {
+	OnceLoadResources.Do(func() {
 		options = append(options,
 			fx.Provide(func() (*resource.Resource, error) {
 				defaultResource := resource.Default()
