@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 	"github.com/pkg/errors"
 )
 
@@ -30,6 +31,7 @@ func (s *Store) commit(ctx context.Context, txs ...core.ExpandedTransaction) ([]
 	if err != nil {
 		return nil, err
 	}
+
 	for _, tx := range txs {
 		newLog := core.NewTransactionLog(lastLog, tx.Transaction)
 		lastLog = &newLog
@@ -43,7 +45,21 @@ func (s *Store) commit(ctx context.Context, txs ...core.ExpandedTransaction) ([]
 	return logs, nil
 }
 
-func (s *Store) Commit(ctx context.Context, txs ...core.ExpandedTransaction) error {
-	_, err := s.commit(ctx, txs...)
+func (s *Store) Commit(ctx context.Context, txs ...core.ExpandedTransaction) (err error) {
+	if !storage.IsTransactional(ctx) {
+		ctx = storage.TransactionalContext(ctx)
+		defer func() {
+			if err == nil {
+				if commitErr := storage.CommitTransaction(ctx); commitErr != nil {
+					panic(commitErr)
+				}
+			} else {
+				if rollbackErr := storage.RollbackTransaction(ctx); rollbackErr != nil {
+					panic(rollbackErr)
+				}
+			}
+		}()
+	}
+	_, err = s.commit(ctx, txs...)
 	return err
 }

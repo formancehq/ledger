@@ -200,6 +200,12 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 }
 
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
+
+	entry, ok := s.cache.Get(addr)
+	if ok {
+		return entry.(*core.AccountWithVolumes).Account.Copy(), nil
+	}
+
 	sb := sqlbuilder.NewSelectBuilder()
 	sb.Select("address", "metadata").
 		From(s.schema.Table("accounts")).
@@ -265,11 +271,20 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 		return err
 	}
 
+	s.bloom.Add([]byte(account))
+
 	_, err = executor.ExecContext(ctx, sqlq, args...)
 	return s.error(err)
 }
 
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
+
+	entry, ok := s.cache.Get(address)
+	if ok {
+		account := entry.(*core.AccountWithVolumes)
+		account.Metadata = account.Metadata.Merge(metadata)
+	}
+
 	ib := sqlbuilder.NewInsertBuilder()
 
 	metadataData, err := json.Marshal(metadata)
@@ -310,6 +325,8 @@ func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metad
 	if err != nil {
 		return errors.Wrap(err, "reading last log")
 	}
+
+	s.bloom.Add([]byte(address))
 
 	return s.appendLog(ctx, core.NewSetMetadataLog(lastLog, at, core.SetMetadata{
 		TargetType: core.MetaTargetTypeAccount,

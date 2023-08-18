@@ -7,11 +7,27 @@ import (
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/numary/ledger/pkg/core"
+	"github.com/numary/ledger/pkg/storage"
 )
 
 func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
-	for account, accountVolumes := range volumes {
-		accountBy, err := json.Marshal(strings.Split(account, ":"))
+
+	storage.OnTransactionCommitted(ctx, func() {
+		for address, accountVolumes := range volumes {
+			entry, ok := s.cache.Get(address)
+			if ok {
+				account := entry.(*core.AccountWithVolumes)
+				for asset, volumes := range accountVolumes {
+					account.Volumes[asset] = volumes
+					account.Balances[asset] = volumes.Balance()
+				}
+			}
+		}
+	})
+
+	for address, accountVolumes := range volumes {
+
+		accountBy, err := json.Marshal(strings.Split(address, ":"))
 		if err != nil {
 			panic(err)
 		}
@@ -25,11 +41,11 @@ func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVo
 			switch s.schema.Flavor() {
 			case sqlbuilder.PostgreSQL:
 				ib = ib.Cols("account", "asset", "input", "output", "account_json").
-					Values(account, asset, volumes.Input.String(), volumes.Output.String(), accountBy).
+					Values(address, asset, volumes.Input.String(), volumes.Output.String(), accountBy).
 					SQL("ON CONFLICT (account, asset) DO UPDATE SET input = " + inputArg + ", output = " + outputArg)
 			case sqlbuilder.SQLite:
 				ib = ib.Cols("account", "asset", "input", "output").
-					Values(account, asset, volumes.Input.String(), volumes.Output.String()).
+					Values(address, asset, volumes.Input.String(), volumes.Output.String()).
 					SQL("ON CONFLICT (account, asset) DO UPDATE SET input = " + inputArg + ", output = " + outputArg)
 			}
 

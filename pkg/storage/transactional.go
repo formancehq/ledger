@@ -10,6 +10,7 @@ type contextHolder struct {
 	transaction   any
 	commit        func(ctx context.Context) error
 	rollback      func(ctx context.Context) error
+	onCommit      []func()
 }
 
 type contextHolderKeyStruct struct{}
@@ -77,7 +78,15 @@ func CommitTransaction(ctx context.Context) error {
 	if holder.transaction == nil {
 		return errors.New("transaction not initialized")
 	}
-	return holder.commit(ctx)
+	err := holder.commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, onCommit := range holder.onCommit {
+		onCommit()
+	}
+	return nil
 }
 
 func RollbackTransaction(ctx context.Context) error {
@@ -89,4 +98,12 @@ func RollbackTransaction(ctx context.Context) error {
 		return errors.New("transaction not initialized")
 	}
 	return holder.rollback(ctx)
+}
+
+func OnTransactionCommitted(ctx context.Context, callback func()) {
+	holder := getContextHolder(ctx)
+	if holder == nil {
+		panic("context holder is nil")
+	}
+	holder.onCommit = append(holder.onCommit, callback)
 }

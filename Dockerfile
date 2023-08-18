@@ -12,7 +12,9 @@ ARG SEGMENT_WRITE_KEY
 WORKDIR /go/src/github.com/numary/ledger
 # get deps first so it's cached
 COPY . .
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
+RUN --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
+    --mount=type=cache,id=gomodcache,target=/go/pkg/mod \
+    CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
     CC=$TARGETARCH-linux-gnu-gcc \
     go build -o numary -tags json1,netgo \
     -ldflags="-X github.com/numary/ledger/cmd.Version=${VERSION} \

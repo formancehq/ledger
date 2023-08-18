@@ -640,7 +640,7 @@ func TestRevertTransaction(t *testing.T) {
 
 		newBal := world.Balances["COIN"]
 		expectedBal := originalBal.Add(revertAmt)
-		require.Equalf(t, expectedBal, newBal,
+		require.Equalf(t, expectedBal.Uint64(), newBal.Uint64(),
 			"COIN world balances expected %d, got %d", expectedBal, newBal)
 	})
 }
