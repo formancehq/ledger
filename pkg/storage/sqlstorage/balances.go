@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/formancehq/stack/libs/go-libs/api"
@@ -189,11 +188,11 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 			split := strings.Split(agg, ",")
 			asset := split[0]
 			balancesString := split[1]
-			balances, err := strconv.ParseInt(balancesString, 10, 64)
+			balances, err := core.ParseMonetaryInt(balancesString)
 			if err != nil {
 				return api.Cursor[core.AccountsBalances]{}, s.error(err)
 			}
-			accountsBalances[currentAccount][asset] = core.NewMonetaryInt(balances)
+			accountsBalances[currentAccount][asset] = balances
 		}
 
 		accounts = append(accounts, accountsBalances)
