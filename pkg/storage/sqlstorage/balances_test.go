@@ -3,6 +3,7 @@ package sqlstorage_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -12,7 +13,6 @@ import (
 )
 
 func testGetBalances(t *testing.T, store *sqlstorage.Store) {
-
 	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	require.NoError(t, err)
 
@@ -170,4 +170,80 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	assert.Equal(t, core.AssetsBalances{
 		"USD": core.NewMonetaryInt(0),
 	}, cursor)
+}
+
+func testGetBalancesBigInts(t *testing.T, store *sqlstorage.Store) {
+	amount, _ := core.ParseMonetaryInt("5522360000000000000000")
+	var txBigInts = core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: []core.Posting{
+					{
+						Source:      "world",
+						Destination: "central_bank",
+						Amount:      amount,
+						Asset:       "USD",
+					},
+				},
+				Reference: "tx1BigInts",
+				Timestamp: now.Add(-3 * time.Hour),
+			},
+		},
+		PostCommitVolumes: core.AccountsAssetsVolumes{
+			"world": {
+				"USD": {
+					Input:  core.NewMonetaryInt(0),
+					Output: amount,
+				},
+			},
+			"central_bank": {
+				"USD": {
+					Input:  amount,
+					Output: core.NewMonetaryInt(0),
+				},
+			},
+		},
+		PreCommitVolumes: core.AccountsAssetsVolumes{
+			"world": {
+				"USD": {
+					Input:  core.NewMonetaryInt(0),
+					Output: core.NewMonetaryInt(0),
+				},
+			},
+			"central_bank": {
+				"USD": {
+					Input:  core.NewMonetaryInt(0),
+					Output: core.NewMonetaryInt(0),
+				},
+			},
+		},
+	}
+
+	err := store.Commit(context.Background(), txBigInts)
+	require.NoError(t, err)
+
+	negativeAmount, _ := core.ParseMonetaryInt("-5522360000000000000000")
+	t.Run("all accounts", func(t *testing.T) {
+		cursor, err := store.GetBalances(context.Background(),
+			ledger.BalancesQuery{
+				PageSize: 10,
+			})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, false, cursor.HasMore)
+		assert.Equal(t, "", cursor.Previous)
+		assert.Equal(t, "", cursor.Next)
+		assert.Equal(t, []core.AccountsBalances{
+			{
+				"world": core.AssetsBalances{
+					"USD": negativeAmount,
+				},
+			},
+			{
+				"central_bank": core.AssetsBalances{
+					"USD": amount,
+				},
+			},
+		}, cursor.Data)
+	})
 }

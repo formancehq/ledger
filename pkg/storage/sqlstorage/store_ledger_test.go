@@ -43,6 +43,7 @@ func TestStore(t *testing.T) {
 		{name: "Mapping", fn: testMapping},
 		{name: "TooManyClient", fn: testTooManyClient},
 		{name: "GetBalances", fn: testGetBalances},
+		{name: "GetBalancesBigInts", fn: testGetBalancesBigInts},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
 		{name: "CreateIK", fn: testIKS},
 	} {
