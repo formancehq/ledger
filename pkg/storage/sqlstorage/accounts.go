@@ -115,6 +115,83 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 	return sb, t
 }
 
+func (s *Store) GetAccountAddresses(ctx context.Context, q ledger.AccountsQuery) (api.Cursor[core.AccountAddress], error) {
+	sb, t := s.buildAccountsQuery(q)
+	sb.Select("address")
+	sb.OrderBy("address desc")
+
+	if q.AfterAddress != "" {
+		sb.Where(sb.L("address", q.AfterAddress))
+		t.AfterAddress = q.AfterAddress
+	}
+
+	// We fetch an additional account to know if there is more
+	sb.Limit(int(q.PageSize + 1))
+	t.PageSize = q.PageSize
+	sb.Offset(int(q.Offset))
+
+	executor, err := s.executorProvider(ctx)
+	if err != nil {
+		return api.Cursor[core.AccountAddress]{}, err
+	}
+
+	sqlq, args := sb.BuildWithFlavor(s.schema.Flavor())
+	rows, err := executor.QueryContext(ctx, sqlq, args...)
+	if err != nil {
+		return api.Cursor[core.AccountAddress]{}, s.error(err)
+	}
+	defer rows.Close()
+
+	addresses := make([]core.AccountAddress, 0)
+	for rows.Next() {
+		var accountAddress core.AccountAddress
+		if err := rows.Scan(&accountAddress); err != nil {
+			return api.Cursor[core.AccountAddress]{}, err
+		}
+
+		addresses = append(addresses, accountAddress)
+	}
+	if rows.Err() != nil {
+		return api.Cursor[core.AccountAddress]{}, rows.Err()
+	}
+
+	var previous, next string
+	if q.Offset > 0 {
+		offset := int(q.Offset) - int(q.PageSize)
+		if offset < 0 {
+			t.Offset = 0
+		} else {
+			t.Offset = uint(offset)
+		}
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return api.Cursor[core.AccountAddress]{}, s.error(err)
+		}
+		previous = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	if len(addresses) == int(q.PageSize+1) {
+		addresses = addresses[:len(addresses)-1]
+		t.Offset = q.Offset + q.PageSize
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return api.Cursor[core.AccountAddress]{}, s.error(err)
+		}
+		next = base64.RawURLEncoding.EncodeToString(raw)
+	}
+
+	hasMore := next != ""
+	return api.Cursor[core.AccountAddress]{
+		PageSize:           int(q.PageSize),
+		HasMore:            hasMore,
+		Previous:           previous,
+		Next:               next,
+		Data:               addresses,
+		PageSizeDeprecated: int(q.PageSize),
+		HasMoreDeprecated:  &hasMore,
+	}, nil
+}
+
 func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cursor[core.Account], error) {
 	accounts := make([]core.Account, 0)
 

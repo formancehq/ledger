@@ -2,6 +2,8 @@ package sqlstorage
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -61,7 +63,49 @@ func (s *Store) Initialize(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	return Migrate(ctx, s.schema, migrations...)
+	modified, err := Migrate(ctx, s.schema, migrations...)
+	if err != nil {
+		return modified, err
+	}
+
+	hasMore := true
+	q := ledger.NewAccountsQuery()
+	for hasMore {
+		addresses, err := s.GetAccountAddresses(ctx, *q)
+		if err != nil {
+			return modified, err
+		}
+
+		for _, address := range addresses.Data {
+			fmt.Println("ADDING ADDRESS", string(address))
+			s.bloom.AddString(string(address))
+		}
+
+		hasMore = addresses.HasMore
+
+		if hasMore {
+			res, err := base64.RawURLEncoding.DecodeString(addresses.Next)
+			if err != nil {
+				return modified, err
+			}
+
+			token := AccPaginationToken{}
+			if err := json.Unmarshal(res, &token); err != nil {
+				return modified, err
+			}
+
+			q = q.
+				WithOffset(token.Offset).
+				WithAfterAddress(token.AfterAddress).
+				WithAddressFilter(token.AddressRegexpFilter).
+				WithBalanceFilter(token.BalanceFilter).
+				WithBalanceOperatorFilter(token.BalanceOperatorFilter).
+				WithMetadataFilter(token.MetadataFilter).
+				WithPageSize(token.PageSize)
+		}
+	}
+
+	return modified, err
 }
 
 func (s *Store) Close(ctx context.Context) error {
