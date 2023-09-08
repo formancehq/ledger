@@ -35,7 +35,10 @@ func test(t *testing.T, c TestCase) {
 	require.NoError(t, err)
 	require.NotNil(t, p)
 
-	if !assert.Equal(t, c.Expected.Program, *p) {
+	if !assert.Equal(t, c.Expected.Program.VarsDecl, p.VarsDecl) {
+		t.FailNow()
+	}
+	if !assert.Equal(t, c.Expected.Program.Instruction, p.Instruction) {
 		t.FailNow()
 	}
 }

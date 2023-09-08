@@ -11,10 +11,10 @@ import (
 type FallbackAccount core.Address
 
 // CompileValueAwareSource returns the resource addresses of all the accounts
-func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext) (program.ValueAwareSource, *CompileError) {
+func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext, assetOrAmount program.Expr) (program.ValueAwareSource, *CompileError) {
 	switch c := c.(type) {
 	case *parser.SrcContext:
-		src, _, err := p.CompileSource(c.Source())
+		src, _, err := p.CompileSource(c.Source(), assetOrAmount)
 		return program.ValueAwareSourceSource{
 			Source: src,
 		}, err
@@ -27,7 +27,7 @@ func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext
 		sources := c.SourceAllotment().GetSources()
 		n := len(sources)
 		for i := 0; i < n; i++ {
-			src, _, compErr := p.CompileSource(sources[i])
+			src, _, compErr := p.CompileSource(sources[i], assetOrAmount)
 			if compErr != nil {
 				return nil, compErr
 			}
@@ -44,7 +44,7 @@ func (p *parseVisitor) CompileValueAwareSource(c parser.IValueAwareSourceContext
 // CompileSource returns the resource addresses of all the accounts,
 // the addresses of accounts already emptied,
 // and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
-func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, bool, *CompileError) {
+func (p *parseVisitor) CompileSource(c parser.ISourceContext, assetOrAmount program.Expr) (program.Source, bool, *CompileError) {
 	fallback := false
 	switch c := c.(type) {
 	case *parser.SrcAccountContext:
@@ -77,12 +77,16 @@ func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, b
 				}
 			}
 		}
+		p.neededBalances[program.NeededBalance{
+			Account:       account,
+			AssetOrAmount: assetOrAmount,
+		}] = struct{}{}
 		return program.SourceAccount{
 			Account:   account,
 			Overdraft: overdraft,
 		}, fallback, nil
 	case *parser.SrcMaxedContext:
-		src, _, err := p.CompileSource(c.SourceMaxed().GetSrc())
+		src, _, err := p.CompileSource(c.SourceMaxed().GetSrc(), assetOrAmount)
 		if err != nil {
 			return nil, false, err
 		}
@@ -105,7 +109,7 @@ func (p *parseVisitor) CompileSource(c parser.ISourceContext) (program.Source, b
 			if fallback {
 				return nil, false, LogicError(c, errors.New("source is already unlimited at this point"))
 			}
-			subsource, subsourceFallback, err := p.CompileSource(sources[i])
+			subsource, subsourceFallback, err := p.CompileSource(sources[i], assetOrAmount)
 			if err != nil {
 				return nil, false, err
 			}

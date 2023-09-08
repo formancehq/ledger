@@ -81,9 +81,15 @@ type VarDecl struct {
 	Origin VarOrigin
 }
 
+type NeededBalance struct {
+	Account       Expr
+	AssetOrAmount Expr
+}
+
 type Program struct {
-	VarsDecl    []VarDecl
-	Instruction []Instruction
+	VarsDecl       []VarDecl
+	Instruction    []Instruction
+	NeededBalances map[NeededBalance]struct{}
 }
 
 func (p *Program) String() string {

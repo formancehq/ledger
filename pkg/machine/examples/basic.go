@@ -48,6 +48,7 @@ func main() {
 
 	{
 		err := m.ResolveResources(func(acc core.AccountAddress, key string) (*core.Value, error) { return nil, errors.New("a") }, func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
+			fmt.Printf("requested %v %v\n", acc, asset)
 			return initialBalances[string(acc)][string(asset)], nil
 		})
 		if err != nil {

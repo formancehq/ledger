@@ -2,6 +2,7 @@ package vm
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -39,7 +40,7 @@ type CaseResult struct {
 
 type TestCase struct {
 	program  program.Program
-	vars     map[string]string
+	vars     map[string]core.Value
 	meta     map[string]map[string]core.Value
 	balances map[string]map[string]*core.MonetaryInt
 	expected CaseResult
@@ -47,7 +48,7 @@ type TestCase struct {
 
 func NewTestCase() TestCase {
 	return TestCase{
-		vars:     make(map[string]string),
+		vars:     make(map[string]core.Value),
 		meta:     make(map[string]map[string]core.Value),
 		balances: make(map[string]map[string]*core.MonetaryInt),
 		expected: CaseResult{
@@ -69,10 +70,12 @@ func (c *TestCase) compile(t *testing.T, code string) {
 }
 
 func (c *TestCase) setVarsFromJSON(t *testing.T, str string) {
-	var jsonVars map[string]string
+	var jsonVars map[string]json.RawMessage
 	err := json.Unmarshal([]byte(str), &jsonVars)
 	require.NoError(t, err)
-	c.vars = jsonVars
+	v, err := c.program.ParseVariablesJSON(jsonVars)
+	require.NoError(t, err)
+	c.vars = v
 }
 
 func (c *TestCase) setBalance(account, asset string, amount int64) {
@@ -91,7 +94,22 @@ func (c *TestCase) setMeta(account, key string, value core.Value) {
 
 func test(t *testing.T, tc TestCase) {
 	m := NewMachine(tc.program)
-	err := m.Execute()
+
+	err := m.SetVars(tc.vars)
+
+	if err != nil {
+		panic(err)
+	}
+
+	m.ResolveResources(func(acc core.AccountAddress, key string) (*core.Value, error) {
+		meta := tc.meta[string(acc)][key]
+		return &meta, nil
+	}, func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
+		fmt.Printf("requested %v %v\n", acc, asset)
+		return tc.balances[string(acc)][string(asset)], nil
+	})
+
+	err = m.Execute()
 	if tc.expected.Error != "" {
 		require.ErrorContains(t, err, tc.expected.Error)
 		return
@@ -168,12 +186,12 @@ func TestVariables(t *testing.T) {
 	)
  	set_tx_meta("description", $description)
  	set_tx_meta("ride", $nb)`)
-	tc.vars = map[string]string{
-		"rider":       "users:001",
-		"driver":      "users:002",
-		"description": "midnight ride",
-		"nb":          "1",
-		"ass":         "EUR/2",
+	tc.vars = map[string]core.Value{
+		"rider":       core.AccountAddress("users:001"),
+		"driver":      core.AccountAddress("users:002"),
+		"description": core.String("midnight ride"),
+		"nb":          core.NewMonetaryInt(1),
+		"ass":         core.Asset("EUR/2"),
 	}
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
@@ -1459,8 +1477,11 @@ func TestVariablesErrors(t *testing.T) {
 		destination = @bob
 	)`)
 	tc.setBalance("alice", "COIN", 10)
-	tc.vars = map[string]string{
-		"mon": "COIN -1",
+	tc.vars = map[string]core.Value{
+		"mon": core.Monetary{
+			Asset:  "COIN",
+			Amount: core.NewMonetaryInt(-1),
+		},
 	}
 	tc.expected = CaseResult{
 		Printed:  []core.Value{},
@@ -1616,8 +1637,8 @@ func TestVariableAsset(t *testing.T) {
 
 	tc := NewTestCase()
 	tc.compile(t, script)
-	tc.vars = map[string]string{
-		"ass": "USD",
+	tc.vars = map[string]core.Value{
+		"ass": core.Asset("USD"),
 	}
 	tc.setBalance("alice", "USD", 10)
 	tc.setBalance("bob", "USD", 10)
@@ -1768,8 +1789,8 @@ func TestSaveFromAccount(t *testing.T) {
  			)`
 		tc := NewTestCase()
 		tc.compile(t, script)
-		tc.vars = map[string]string{
-			"ass": "USD",
+		tc.vars = map[string]core.Value{
+			"ass": core.Asset("USD"),
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
@@ -1807,8 +1828,11 @@ func TestSaveFromAccount(t *testing.T) {
  			)`
 		tc := NewTestCase()
 		tc.compile(t, script)
-		tc.vars = map[string]string{
-			"mon": "USD 10",
+		tc.vars = map[string]core.Value{
+			"mon": core.Monetary{
+				Asset:  core.Asset("USD"),
+				Amount: core.NewNumber(10),
+			},
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{

@@ -69,6 +69,7 @@ func (m *Machine) SetVarsFromJSON(vars map[string]json.RawMessage) error {
 }
 
 func (m *Machine) ResolveResources(getMetadata func(core.AccountAddress, string) (*core.Value, error), getBalance func(core.AccountAddress, core.Asset) (*core.MonetaryInt, error)) error {
+	// Resolving Variables
 	for _, varDecl := range m.program.VarsDecl {
 		switch o := varDecl.Origin.(type) {
 		case program.VarOriginMeta:
@@ -125,8 +126,17 @@ func (m *Machine) ResolveResources(getMetadata func(core.AccountAddress, string)
 			return errors.New(coreError)
 		}
 	}
+	// return nil
+
+	// Resolving balances
+	m.resolveBalances(getBalance)
+
 	return nil
 }
+
+// func addNeededBalances() {
+
+// }
 
 func (m *Machine) Execute() error {
 	for _, stmt := range m.program.Instruction {
@@ -450,7 +460,7 @@ func (m *Machine) TakeFromSource(source program.Source, asset core.Asset) (*core
 				}
 				withdrawn, err := m.WithdrawAlways(*fallback, missing)
 				if err != nil {
-					return nil, nil, fmt.Errorf("failed to withdraw %s", err)
+					return nil, nil, fmt.Errorf("failed to withdraw: %s", err)
 				}
 				maxed, err = maxed.Concat(*withdrawn)
 				if err != nil {
@@ -536,7 +546,7 @@ func (m *Machine) WithdrawAlways(account core.AccountAddress, mon core.Monetary)
 }
 
 func (m *Machine) BalanceOf(account core.AccountAddress, asset core.Asset) (core.Number, error) {
-	if accBalances, ok := m.balances[account]; !ok {
+	if accBalances, ok := m.balances[account]; ok {
 		if balance, ok := accBalances[asset]; ok {
 			return balance, nil
 		}

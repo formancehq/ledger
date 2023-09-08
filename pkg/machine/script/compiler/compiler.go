@@ -12,8 +12,9 @@ import (
 )
 
 type parseVisitor struct {
-	errListener *ErrorListener
-	vars        map[string]core.Type
+	errListener    *ErrorListener
+	vars           map[string]core.Type
+	neededBalances map[program.NeededBalance]struct{}
 }
 
 func (p *parseVisitor) isWorld(expr parser.IExpressionContext) bool {
@@ -245,7 +246,7 @@ func (p *parseVisitor) CompileSend(c *parser.SendContext) (program.Instruction, 
 	if err != nil {
 		return nil, err
 	}
-	valueAwareSource, err := p.CompileValueAwareSource(c.GetSrc())
+	valueAwareSource, err := p.CompileValueAwareSource(c.GetSrc(), mon)
 	if err != nil {
 		return nil, err
 	}
@@ -263,11 +264,11 @@ func (p *parseVisitor) CompileSend(c *parser.SendContext) (program.Instruction, 
 }
 
 func (p *parseVisitor) CompileSendAll(c *parser.SendAllContext) (program.Instruction, *CompileError) {
-	source, hasFallback, err := p.CompileSource(c.GetSrc())
+	asset, err := p.CompileExprTy(c.GetMonAll().GetAsset(), core.TypeAsset)
 	if err != nil {
 		return nil, err
 	}
-	asset, err := p.CompileExprTy(c.GetMonAll().GetAsset(), core.TypeAsset)
+	source, hasFallback, err := p.CompileSource(c.GetSrc(), asset)
 	if err != nil {
 		return nil, err
 	}
@@ -478,8 +479,9 @@ func (p *parseVisitor) CompileScript(c parser.IScriptContext) (*program.Program,
 	}
 
 	return &program.Program{
-		VarsDecl:    varsDecl,
-		Instruction: instructions,
+		VarsDecl:       varsDecl,
+		Instruction:    instructions,
+		NeededBalances: p.neededBalances,
 	}, nil
 }
 
@@ -519,8 +521,9 @@ func CompileFull(input string) CompileArtifacts {
 	}
 
 	visitor := parseVisitor{
-		errListener: errListener,
-		vars:        make(map[string]core.Type),
+		errListener:    errListener,
+		vars:           make(map[string]core.Type),
+		neededBalances: make(map[program.NeededBalance]struct{}),
 	}
 
 	program, err := visitor.CompileScript(tree)
