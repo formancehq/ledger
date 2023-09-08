@@ -100,13 +100,15 @@ func (m *Migrator) Up(ctx context.Context, db *bun.DB) error {
 		return err
 	}
 
-	for ind, migration := range m.migrations[lastMigration:] {
-		if err := migration.Up(tx); err != nil {
-			return err
-		}
+	if len(m.migrations) > int(lastMigration)-1 {
+		for ind, migration := range m.migrations[lastMigration:] {
+			if err := migration.Up(tx); err != nil {
+				return err
+			}
 
-		if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
-			return err
+			if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
+				return err
+			}
 		}
 	}
 
