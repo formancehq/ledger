@@ -1119,6 +1119,7 @@ components:
         vars:
           type: object
           properties: {}
+          additionalProperties: true
           example: {
               "user": "users:042"
             }
@@ -1190,6 +1191,7 @@ components:
             vars:
               type: object
               properties: {}
+              additionalProperties: true
               example: {
                   "user": "users:042"
                 }
@@ -1233,6 +1235,7 @@ components:
         data:
           type: object
           properties: {}
+          additionalProperties: true
         hash:
           type: string
           example: "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e"
