@@ -22,7 +22,7 @@ func TestConditionals(t *testing.T) {
 	tc.compile(t, script)
 	// check true
 	tc.setVarsFromJSON(t, `{
-		"foo": "true"
+		"foo": true
 	}`)
 	tc.expected = CaseResult{
 		Printed: []core.Value{},
@@ -37,7 +37,7 @@ func TestConditionals(t *testing.T) {
 	}
 	// check false
 	tc.setVarsFromJSON(t, `{
-		"foo": "false"
+		"foo": false
 	}`)
 	tc.expected = CaseResult{
 		Printed: []core.Value{},
@@ -66,8 +66,8 @@ func TestInequality(t *testing.T) {
 	b, _ := json.MarshalIndent(tc.program, "", "\t")
 	fmt.Printf("%v\n", string(b))
 	tc.setVarsFromJSON(t, `{
-		"foo": "42",
-		"bar": "30"
+		"foo": 42,
+		"bar": 30
 	}`)
 	tc.expected = CaseResult{
 		Printed: []core.Value{

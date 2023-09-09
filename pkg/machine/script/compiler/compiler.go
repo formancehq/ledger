@@ -328,6 +328,10 @@ func (p *parseVisitor) CompileSave(ctx *parser.SaveFromAccountContext) (program.
 		if err != nil {
 			return nil, err
 		}
+		p.neededBalances[program.NeededBalance{
+			Account:       account,
+			AssetOrAmount: asset,
+		}] = struct{}{}
 		return program.InstructionSaveAll{
 			Asset:   asset,
 			Account: account,
@@ -341,6 +345,10 @@ func (p *parseVisitor) CompileSave(ctx *parser.SaveFromAccountContext) (program.
 		if err != nil {
 			return nil, err
 		}
+		p.neededBalances[program.NeededBalance{
+			Account:       account,
+			AssetOrAmount: mon,
+		}] = struct{}{}
 		return program.InstructionSave{
 			Amount:  mon,
 			Account: account,

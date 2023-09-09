@@ -83,7 +83,7 @@ type VarDecl struct {
 
 type NeededBalance struct {
 	Account       Expr
-	AssetOrAmount Expr
+	AssetOrAmount Expr // Todo: Create an expression for getting the amount of a monetary, so we can put an Expr for the asset directly
 }
 
 type Program struct {
@@ -130,6 +130,7 @@ func (p *Program) ParseVariables(vars map[string]core.Value) (map[string]core.Va
 					}
 				case core.TypeString:
 				case core.TypeNumber:
+				case core.TypeBool:
 				default:
 					return nil, fmt.Errorf("unsupported type for variable $%s: %s",
 						varDecl.Name, val.GetType())

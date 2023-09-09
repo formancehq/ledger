@@ -95,26 +95,37 @@ func (c *TestCase) setMeta(account, key string, value core.Value) {
 func test(t *testing.T, tc TestCase) {
 	m := NewMachine(tc.program)
 
-	err := m.SetVars(tc.vars)
+	exec := func() error {
+		err := m.SetVars(tc.vars)
+		if err != nil {
+			return err
+		}
 
-	if err != nil {
-		panic(err)
+		err = m.ResolveResources(func(acc core.AccountAddress, key string) (*core.Value, error) {
+			meta := tc.meta[string(acc)][key]
+			return &meta, nil
+		}, func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
+			if bal, ok := tc.balances[string(acc)][string(asset)]; ok {
+				return bal, nil
+			}
+			t.Fatalf("test case missing %v balance for %v", asset, acc)
+			return nil, fmt.Errorf("missing %v balance for %v", asset, acc)
+		})
+		if err != nil {
+			return err
+		}
+
+		return m.Execute()
 	}
 
-	m.ResolveResources(func(acc core.AccountAddress, key string) (*core.Value, error) {
-		meta := tc.meta[string(acc)][key]
-		return &meta, nil
-	}, func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
-		fmt.Printf("requested %v %v\n", acc, asset)
-		return tc.balances[string(acc)][string(asset)], nil
-	})
+	err := exec()
 
-	err = m.Execute()
 	if tc.expected.Error != "" {
 		require.ErrorContains(t, err, tc.expected.Error)
 		return
+	} else {
+		require.NoError(t, err)
 	}
-	require.NoError(t, err)
 
 	if tc.expected.Postings == nil {
 		tc.expected.Postings = make([]Posting, 0)
@@ -230,7 +241,7 @@ func TestVariablesJSON(t *testing.T) {
 		"rider": "users:001",
 		"driver": "users:002",
 		"description": "midnight ride",
-		"nb": "1",
+		"nb": 1,
  		"ass": "EUR/2"
 	}`)
 	tc.setBalance("users:001", "EUR/2", 1000)
@@ -578,7 +589,7 @@ func TestMetadata(t *testing.T) {
 	}`)
 	commission, _ := core.NewPortionSpecific(*big.NewRat(125, 1000))
 	tc.setMeta("sales:042", "seller", core.AccountAddress("users:053"))
-	tc.setMeta("users:053", "commission", commission)
+	tc.setMeta("users:053", "commission", *commission)
 	tc.setBalance("sales:042", "EUR/2", 2500)
 	tc.setBalance("users:053", "EUR/2", 500)
 	tc.expected = CaseResult{
@@ -778,7 +789,10 @@ func TestSourceComplex(t *testing.T) {
 		destination = @platform
 	)`)
 	tc.setVarsFromJSON(t, `{
-		"max": "COIN 120"
+		"max": {
+			"asset": "COIN",
+			"amount": 120
+		}
 	}`)
 	tc.setBalance("a", "COIN", 1000)
 	tc.setBalance("b", "COIN", 40)
@@ -871,20 +885,20 @@ func TestSetTxMeta(t *testing.T) {
 	err = m.Execute()
 	require.NoError(t, err)
 
-	expectedMeta := map[string]string{
-		"aaa": "platform",
-		"bbb": "GEM",
-		"ccc": "45",
-		"ddd": "hello",
-		"eee": "COIN 30",
-		"fff": "3/20",
+	expectedMeta := map[string]json.RawMessage{
+		"aaa": json.RawMessage(`{"type":"account","value":"platform"}`),
+		"bbb": json.RawMessage(`{"type":"asset","value":"GEM"}`),
+		"ccc": json.RawMessage(`{"type":"number","value":45}`),
+		"ddd": json.RawMessage(`{"type":"string","value":"hello"}`),
+		"eee": json.RawMessage(`{"type":"monetary","value":{"asset":"COIN","amount":30}}`),
+		"fff": json.RawMessage(`{"type":"portion","value":{"remaining":false,"specific":"3/20"}}`),
 	}
 
 	resMeta := m.GetTxMetaJSON()
 	assert.Equal(t, 6, len(resMeta))
 
 	for key, val := range resMeta {
-		assert.Equal(t, string(expectedMeta[key]), val)
+		assert.Equal(t, string(expectedMeta[key]), string(val.([]byte)))
 	}
 }
 
@@ -958,11 +972,23 @@ func TestSetAccountMeta(t *testing.T) {
 		`)
 		require.NoError(t, err)
 
+		fmt.Printf("ARIENSAIRENSIAERNSA: %v\n", p)
+
 		m := NewMachine(*p)
 
 		require.NoError(t, m.SetVars(map[string]core.Value{
 			"acc": core.AccountAddress("test"),
 		}))
+
+		err = m.ResolveResources(
+			func(acc core.AccountAddress, key string) (*core.Value, error) {
+				return nil, fmt.Errorf("no metadata request expected")
+			},
+			func(acc core.AccountAddress, asset core.Asset) (*core.MonetaryInt, error) {
+				return nil, fmt.Errorf("no balance request expected")
+			},
+		)
+		require.NoError(t, err)
 
 		err = m.Execute()
 		require.NoError(t, err)
@@ -1642,6 +1668,7 @@ func TestVariableAsset(t *testing.T) {
 	}
 	tc.setBalance("alice", "USD", 10)
 	tc.setBalance("bob", "USD", 10)
+	tc.setBalance("swap", "USD", 0)
 	tc.expected = CaseResult{
 		Printed: []core.Value{},
 		Postings: []Posting{

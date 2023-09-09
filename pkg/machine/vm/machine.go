@@ -21,7 +21,7 @@ const coreError = "core interpreter error, please report to the issue tracker"
 type Machine struct {
 	program     program.Program
 	vars        map[string]core.Value
-	balances    map[core.AccountAddress]map[core.Asset]core.Number
+	balances    map[core.AccountAddress]map[core.Asset]*core.MonetaryInt
 	Postings    []Posting
 	TxMeta      map[string]core.Value
 	AccountMeta map[core.AccountAddress]map[string]core.Value
@@ -32,7 +32,7 @@ func NewMachine(program program.Program) Machine {
 	return Machine{
 		program:     program,
 		vars:        make(map[string]core.Value),
-		balances:    make(map[core.AccountAddress]map[core.Asset]core.Number),
+		balances:    make(map[core.AccountAddress]map[core.Asset]*core.MonetaryInt),
 		Postings:    make([]Posting, 0),
 		TxMeta:      make(map[string]core.Value),
 		AccountMeta: make(map[core.AccountAddress]map[string]core.Value),
@@ -126,10 +126,12 @@ func (m *Machine) ResolveResources(getMetadata func(core.AccountAddress, string)
 			return errors.New(coreError)
 		}
 	}
-	// return nil
 
 	// Resolving balances
-	m.resolveBalances(getBalance)
+	err := m.resolveBalances(getBalance)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -149,7 +151,6 @@ func (m *Machine) Execute() error {
 				return err
 			}
 			m.Printed = append(m.Printed, v)
-			fmt.Printf("%v\n", s.Expr)
 
 		case program.InstructionSave:
 			account, err := EvalAs[core.AccountAddress](m, s.Account)
@@ -227,11 +228,10 @@ func (m *Machine) Send(funding core.Funding, account core.AccountAddress) error 
 			Asset:       string(funding.Asset),
 			Amount:      part.Amount,
 		})
-		bal, err := m.BalanceOf(account, funding.Asset)
-		if err != nil {
-			return err
+
+		if bal, ok := m.balances[account][funding.Asset]; ok {
+			m.balances[account][funding.Asset] = bal.Add(part.Amount)
 		}
-		*bal = *bal.Add(part.Amount)
 	}
 	return nil
 }
@@ -249,7 +249,10 @@ func (m *Machine) Allocate(funding core.Funding, destination program.Destination
 		if err != nil {
 			return nil, err
 		}
-		m.Send(funding, *account)
+		err = m.Send(funding, *account)
+		if err != nil {
+			return nil, err
+		}
 
 	case program.DestinationInOrder:
 		for _, part := range d.Parts {
@@ -308,14 +311,17 @@ func (m *Machine) Allocate(funding core.Funding, destination program.Destination
 			return nil, fmt.Errorf("failed to create allotment: %v", err)
 		}
 		for i, part := range allotment.Allocate(funding.Total()) {
+			fmt.Printf("allocating %v\n", part)
 			taken, remainder, err := funding.Take(part)
 			if err != nil {
 				return nil, fmt.Errorf("failed to allocate to destination: %v", err)
 			}
+			fmt.Printf("took and got %v (remainder is %v)\n", taken, remainder)
 			kept, err := m.AllocateOrKeep(&taken, subDests[i])
 			if err != nil {
 				return nil, err
 			}
+			fmt.Printf("allocated or kept, kept %v\n", kept)
 			funding, err = kept.Concat(remainder)
 			if err != nil {
 				return nil, err
@@ -509,7 +515,7 @@ func (m *Machine) Repay(funding core.Funding) error {
 func (m *Machine) WithdrawAll(account core.AccountAddress, asset core.Asset, overdraft core.Number) (*core.Funding, error) {
 	balance, err := m.BalanceOf(account, asset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to withdraw %s", err)
+		return nil, fmt.Errorf("failed to withdraw: %s", err)
 	}
 	amountTaken := core.NewMonetaryInt(0)
 	balanceWithOverdraft := balance.Add(overdraft)
