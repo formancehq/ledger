@@ -20,7 +20,7 @@ import (
 // this regexp is used to distinguish between deprecated regex queries for
 // source, destination and account params and the new wildcard query
 // which allows segmented address pattern matching, e.g; "foo:bar:*"
-var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*))*$`)
+var addressQueryRegexp = regexp.MustCompile(`^(\w+|\*|\.\*)(:(\w+|\*|\.\*)?)*$`)
 
 func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery) (*sqlbuilder.SelectBuilder, TxsPaginationToken) {
 	sb := sqlbuilder.NewSelectBuilder()
