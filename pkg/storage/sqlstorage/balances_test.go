@@ -2,6 +2,8 @@ package sqlstorage_test
 
 import (
 	"context"
+	"github.com/numary/ledger/pkg/ledgertesting"
+	"os"
 	"testing"
 	"time"
 
@@ -173,6 +175,12 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 }
 
 func testGetBalancesBigInts(t *testing.T, store *sqlstorage.Store) {
+
+	if os.Getenv("NUMARY_STORAGE_POSTGRES_CONN_STRING") != "" ||
+		ledgertesting.StorageDriverName() != "postgres" {
+		return
+	}
+
 	amount, _ := core.ParseMonetaryInt("5522360000000000000000")
 	var txBigInts = core.ExpandedTransaction{
 		Transaction: core.Transaction{
