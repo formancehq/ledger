@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
+func (l *Ledger) ExecuteTxsData(ctx context.Context, preview, checkBalances bool, txsData ...core.TransactionData) ([]core.ExpandedTransaction, error) {
 	ctx, span := opentelemetry.Start(ctx, "ExecuteTxsData")
 	defer span.End()
 
@@ -98,38 +98,40 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview bool, txsData ...co
 			}
 		}
 
-		for account, volumes := range txVolumeAggr.PostCommitVolumes {
-			if _, ok := accs[account]; !ok {
-				accs[account], err = l.GetAccount(ctx, account)
-				if err != nil {
-					return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
-						errors.Wrap(err, fmt.Sprintf("get account '%s'", account)))
+		if checkBalances {
+			for account, volumes := range txVolumeAggr.PostCommitVolumes {
+				if _, ok := accs[account]; !ok {
+					accs[account], err = l.GetAccount(ctx, account)
+					if err != nil {
+						return []core.ExpandedTransaction{}, NewTransactionCommitError(i,
+							errors.Wrap(err, fmt.Sprintf("get account '%s'", account)))
+					}
 				}
-			}
-			for asset, vol := range volumes {
-				accs[account].Volumes[asset] = vol
-			}
-			accs[account].Balances = accs[account].Volumes.Balances()
-			for asset, volume := range volumes {
-				if account == core.WORLD {
-					continue
+				for asset, vol := range volumes {
+					accs[account].Volumes[asset] = vol
 				}
-				if volume.Balance().Gte(txVolumeAggr.PreCommitVolumes[account][asset].Balance()) {
-					continue
-				}
+				accs[account].Balances = accs[account].Volumes.Balances()
+				for asset, volume := range volumes {
+					if account == core.WORLD {
+						continue
+					}
+					if volume.Balance().Gte(txVolumeAggr.PreCommitVolumes[account][asset].Balance()) {
+						continue
+					}
 
-				for _, contract := range contracts {
-					if contract.Match(account) {
-						if ok := contract.Expr.Eval(core.EvalContext{
-							Variables: map[string]interface{}{
-								"balance": volume.Balance(),
-							},
-							Metadata: accs[account].Metadata,
-							Asset:    asset,
-						}); !ok {
-							return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
+					for _, contract := range contracts {
+						if contract.Match(account) {
+							if ok := contract.Expr.Eval(core.EvalContext{
+								Variables: map[string]interface{}{
+									"balance": volume.Balance(),
+								},
+								Metadata: accs[account].Metadata,
+								Asset:    asset,
+							}); !ok {
+								return []core.ExpandedTransaction{}, NewInsufficientFundError(asset)
+							}
+							break
 						}
-						break
 					}
 				}
 			}

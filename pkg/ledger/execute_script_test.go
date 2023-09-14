@@ -56,7 +56,7 @@ func TestMappingIgnoreDestinations(t *testing.T) {
 		_, err := l.ExecuteScript(context.Background(), false, script)
 		require.NoError(t, err)
 
-		_, err = l.ExecuteTxsData(context.Background(), false, core.TransactionData{
+		_, err = l.ExecuteTxsData(context.Background(), false, true, core.TransactionData{
 			Postings: []core.Posting{{
 				Source:      "B",
 				Destination: "A",
@@ -66,7 +66,7 @@ func TestMappingIgnoreDestinations(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = l.ExecuteTxsData(context.Background(), false, core.TransactionData{
+		_, err = l.ExecuteTxsData(context.Background(), false, true, core.TransactionData{
 			Postings: []core.Posting{{
 				Source:      "B",
 				Destination: "A",
@@ -278,7 +278,7 @@ func TestEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -309,7 +309,7 @@ func TestNotEnoughFunds(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 		require.NoError(t, err)
 
 		script := core.ScriptData{
@@ -366,7 +366,7 @@ func TestMetadata(t *testing.T) {
 			},
 		}
 
-		_, err := l.ExecuteTxsData(context.Background(), false, tx)
+		_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 		require.NoError(t, err)
 
 		err = l.SaveMeta(context.Background(), core.MetaTargetTypeAccount,
@@ -624,7 +624,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -665,7 +665,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -706,7 +706,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{
@@ -742,7 +742,7 @@ func TestMonetaryVariableBalance(t *testing.T) {
 					},
 				},
 			}
-			_, err := l.ExecuteTxsData(context.Background(), false, tx)
+			_, err := l.ExecuteTxsData(context.Background(), false, true, tx)
 			require.NoError(t, err)
 
 			script := core.ScriptData{

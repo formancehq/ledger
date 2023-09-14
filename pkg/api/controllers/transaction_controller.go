@@ -274,7 +274,7 @@ func (ctl *TransactionController) PostTransaction(c *gin.Context) {
 			Reference: payload.Reference,
 			Metadata:  payload.Metadata,
 		}
-		res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), preview, txData)
+		res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), preview, true, txData)
 		if err != nil {
 			apierrors.ResponseError(c, err)
 			return
@@ -326,7 +326,9 @@ func (ctl *TransactionController) RevertTransaction(c *gin.Context) {
 		return
 	}
 
-	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), txId)
+	disableChecks := c.Query("disableChecks") == "1" || c.Query("disableChecks") == "true"
+
+	tx, err := l.(*ledger.Ledger).RevertTransaction(c.Request.Context(), txId, !disableChecks)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return
@@ -392,7 +394,7 @@ func (ctl *TransactionController) PostTransactionsBatch(c *gin.Context) {
 		}
 	}
 
-	res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), false, txs.Transactions...)
+	res, err := l.(*ledger.Ledger).ExecuteTxsData(c.Request.Context(), false, true, txs.Transactions...)
 	if err != nil {
 		apierrors.ResponseError(c, err)
 		return

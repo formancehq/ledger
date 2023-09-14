@@ -877,6 +877,47 @@ func TestPostTransactionsOverdraft(t *testing.T) {
 	}))
 }
 
+func TestRevertWithDisableChecks(t *testing.T) {
+	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API, driver storage.Driver[ledger.Store]) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+
+				rsp := internal.PostTransaction(t, api, controllers.PostTransaction{
+					Script: core.Script{
+						Plain: `
+							send [USD/2 100] (
+							  source = @world
+							  destination = @users:43
+							)
+							`,
+					},
+				}, false)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+				txs, ok := internal.DecodeSingleResponse[[]core.ExpandedTransaction](t, rsp.Body)
+				require.True(t, ok)
+				require.Len(t, txs, 1)
+
+				rsp = internal.PostTransaction(t, api, controllers.PostTransaction{
+					Script: core.Script{
+						Plain: `
+							send [USD/2 100] (
+							  source = @users:43
+							  destination = @blackhole
+							)
+							`,
+					},
+				}, false)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				rsp = internal.RevertTransaction(api, txs[0].ID, true)
+				require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
+
+				return nil
+			},
+		})
+	}))
+}
+
 func TestPostTransactionInvalidBody(t *testing.T) {
 	internal.RunTest(t, fx.Invoke(func(lc fx.Lifecycle, api *api.API) {
 		lc.Append(fx.Hook{
@@ -2064,7 +2105,7 @@ func TestRevertTransaction(t *testing.T) {
 				revertedTxID := cursor.Data[0].ID
 
 				t.Run("first revert should succeed", func(t *testing.T) {
-					rsp := internal.RevertTransaction(api, revertedTxID)
+					rsp := internal.RevertTransaction(api, revertedTxID, false)
 					require.Equal(t, http.StatusOK, rsp.Result().StatusCode)
 					res, _ := internal.DecodeSingleResponse[core.ExpandedTransaction](t, rsp.Body)
 					require.Equal(t, revertedTxID+1, res.ID)
@@ -2090,7 +2131,7 @@ func TestRevertTransaction(t *testing.T) {
 				})
 
 				t.Run("transaction not found", func(t *testing.T) {
-					rsp := internal.RevertTransaction(api, uint64(42))
+					rsp := internal.RevertTransaction(api, uint64(42), false)
 					require.Equal(t, http.StatusNotFound, rsp.Result().StatusCode, rsp.Body.String())
 					err := sharedapi.ErrorResponse{}
 					internal.Decode(t, rsp.Body, &err)
@@ -2103,7 +2144,7 @@ func TestRevertTransaction(t *testing.T) {
 				})
 
 				t.Run("second revert should fail", func(t *testing.T) {
-					rsp := internal.RevertTransaction(api, revertedTxID)
+					rsp := internal.RevertTransaction(api, revertedTxID, false)
 					require.Equal(t, http.StatusBadRequest, rsp.Result().StatusCode, rsp.Body.String())
 
 					err := sharedapi.ErrorResponse{}

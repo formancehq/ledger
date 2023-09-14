@@ -68,7 +68,7 @@ func BenchmarkLedger_PostTransactions_Postings_Single_FixedAccounts(b *testing.B
 		for n := 0; n < b.N; n++ {
 			_, err := txData.Postings.Validate()
 			require.NoError(b, err)
-			res, err = l.ExecuteTxsData(context.Background(), true, txData)
+			res, err = l.ExecuteTxsData(context.Background(), true, true, txData)
 			require.NoError(b, err)
 			require.Len(b, res, 1)
 			require.Len(b, res[0].Postings, nbPostings)
@@ -96,7 +96,7 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_FixedAccounts(b *testing.B)
 				_, err := txData.Postings.Validate()
 				require.NoError(b, err)
 			}
-			res, err = l.ExecuteTxsData(context.Background(), true, txsData...)
+			res, err = l.ExecuteTxsData(context.Background(), true, true, txsData...)
 			require.NoError(b, err)
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)
@@ -137,7 +137,7 @@ func BenchmarkLedger_PostTransactions_Postings_Batch_VaryingAccounts(b *testing.
 				_, err := txData.Postings.Validate()
 				require.NoError(b, err)
 			}
-			res, err = l.ExecuteTxsData(context.Background(), true, txsData...)
+			res, err = l.ExecuteTxsData(context.Background(), true, true, txsData...)
 			require.NoError(b, err)
 			require.Len(b, res, 7)
 			require.Len(b, res[0].Postings, 1)

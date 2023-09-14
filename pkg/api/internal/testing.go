@@ -119,8 +119,13 @@ func GetTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder 
 	return rec
 }
 
-func RevertTransaction(handler http.Handler, id uint64) *httptest.ResponseRecorder {
+func RevertTransaction(handler http.Handler, id uint64, disableChecks bool) *httptest.ResponseRecorder {
 	req, rec := NewRequest(http.MethodPost, fmt.Sprintf("/"+testingLedger+"/transactions/%d/revert", id), nil)
+	if disableChecks {
+		query := req.URL.Query()
+		query.Set("disableChecks", "1")
+		req.URL.RawQuery = query.Encode()
+	}
 	handler.ServeHTTP(rec, req)
 	return rec
 }
