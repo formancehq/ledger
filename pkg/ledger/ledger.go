@@ -97,7 +97,7 @@ func (l *Ledger) LoadMapping(ctx context.Context) (*core.Mapping, error) {
 	return l.store.LoadMapping(ctx)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.ExpandedTransaction, error) {
+func (l *Ledger) RevertTransaction(ctx context.Context, id uint64, checkBalances bool) (*core.ExpandedTransaction, error) {
 	revertedTx, err := l.store.GetTransaction(ctx, id)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("getting transaction %d", id))
@@ -119,7 +119,7 @@ func (l *Ledger) RevertTransaction(ctx context.Context, id uint64) (*core.Expand
 		Reference: rt.Reference,
 		Metadata:  rt.Metadata,
 	}
-	res, err := l.ExecuteTxsData(ctx, false, txData)
+	res, err := l.ExecuteTxsData(ctx, false, checkBalances, txData)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf(
 			"executing revert script for transaction %d", id))

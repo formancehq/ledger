@@ -829,6 +829,12 @@ paths:
             format: int64
             minimum: 0
             example: 1234
+        - name: disableChecks
+          in: query
+          description: Allow to disable balances checks
+          required: false
+          schema:
+            type: boolean
       responses:
         "200":
           description: OK

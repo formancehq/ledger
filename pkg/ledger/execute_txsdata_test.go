@@ -135,7 +135,7 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 					},
 				}
 
-				res, err := l.ExecuteTxsData(context.Background(), true, txsData...)
+				res, err := l.ExecuteTxsData(context.Background(), true, true, txsData...)
 				assert.NoError(t, err)
 
 				assert.Equal(t, len(txsData), len(res))
@@ -185,7 +185,7 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 					},
 				}
 
-				res, err := l.ExecuteTxsData(context.Background(), true, txsData...)
+				res, err := l.ExecuteTxsData(context.Background(), true, true, txsData...)
 				require.NoError(t, err)
 				require.Equal(t, len(txsData), len(res))
 
@@ -307,19 +307,19 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 		})
 
 		t.Run("no transaction data", func(t *testing.T) {
-			_, err := l.ExecuteTxsData(context.Background(), true)
+			_, err := l.ExecuteTxsData(context.Background(), true, true)
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, "no transaction data to execute")
 		})
 
 		t.Run("no postings", func(t *testing.T) {
-			_, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{})
+			_, err := l.ExecuteTxsData(context.Background(), true, true, core.TransactionData{})
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, "executing transaction data 0: no postings")
 		})
 
 		t.Run("amount zero", func(t *testing.T) {
-			res, err := l.ExecuteTxsData(context.Background(), true, core.TransactionData{
+			res, err := l.ExecuteTxsData(context.Background(), true, true, core.TransactionData{
 				Postings: core.Postings{
 					{
 						Source:      "world",
@@ -347,7 +347,7 @@ func TestLedger_ExecuteTxsData(t *testing.T) {
 				},
 			}))
 
-			_, err := l.ExecuteTxsData(context.Background(), true,
+			_, err := l.ExecuteTxsData(context.Background(), true, true,
 				core.TransactionData{
 					Postings: []core.Posting{{
 						Source:      "world",
