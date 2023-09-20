@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"io"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -41,8 +40,4 @@ func GetDefaultLogger(w io.Writer, debug, jsonFormattingLog bool) logging.Logger
 		)))
 	}
 	return logging.NewLogrus(l)
-}
-
-func defaultLoggingContext(parent context.Context, w io.Writer, debug, jsonFormattingLog bool) context.Context {
-	return logging.ContextWithLogger(parent, GetDefaultLogger(w, debug, jsonFormattingLog))
 }

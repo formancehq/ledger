@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/formancehq/ledger/pkg/analytics"
+	"github.com/formancehq/ledger/internal/analytics"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

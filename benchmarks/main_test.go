@@ -4,7 +4,6 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/formancehq/ledger/pkg/storage/ledgerstore/migrates/0-init-schema"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/ory/dockertest/v3/docker"

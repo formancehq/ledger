@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/pkg/api/controllers"
-	"github.com/formancehq/ledger/pkg/api/routes"
-	"github.com/formancehq/ledger/pkg/core"
-	"github.com/formancehq/ledger/pkg/ledger"
-	"github.com/formancehq/ledger/pkg/opentelemetry/metrics"
-	"github.com/formancehq/ledger/pkg/storage/storagetesting"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/api/backend"
+	v2 "github.com/formancehq/ledger/internal/api/v2"
+	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	"github.com/formancehq/ledger/internal/storage/storagetesting"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/google/uuid"
@@ -31,15 +32,15 @@ func BenchmarkParallelWrites(b *testing.B) {
 	ctx := logging.TestingContext()
 
 	driver := storagetesting.StorageDriver(b)
-	resolver := ledger.NewResolver(driver, ledger.WithLogger(logging.FromContext(ctx)))
+	resolver := engine.NewResolver(driver, engine.WithLogger(logging.FromContext(ctx)))
 	b.Cleanup(func() {
 		require.NoError(b, resolver.CloseLedgers(ctx))
 	})
 
 	ledgerName := uuid.NewString()
 
-	backend := controllers.NewDefaultBackend(driver, "latest", resolver)
-	router := routes.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	backend := backend.NewDefaultBackend(driver, "latest", resolver)
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := logging.ContextWithLogger(r.Context(), logging.FromContext(ctx))
 		router.ServeHTTP(w, r.WithContext(ctx))
@@ -52,7 +53,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	startOfBench := time.Now()
 	counter := atomic.NewInt64(0)
 	longestTxLock := sync.Mutex{}
-	longestTransactionID := uint64(0)
+	longestTransactionID := big.NewInt(0)
 	longestTransactionDuration := time.Duration(0)
 	b.RunParallel(func(pb *testing.PB) {
 		buf := bytes.NewBufferString("")
@@ -77,8 +78,8 @@ func BenchmarkParallelWrites(b *testing.B) {
 			//	},
 			//}
 
-			script := controllers.Script{
-				Script: core.Script{
+			script := v2.Script{
+				Script: ledger.Script{
 					Plain: `vars {
 	account $account
 }
@@ -111,7 +112,7 @@ send [USD/2 100] (
 			//				},
 			//			}
 
-			err := json.NewEncoder(buf).Encode(controllers.PostTransactionRequest{
+			err := json.NewEncoder(buf).Encode(v2.PostTransactionRequest{
 				Script: script,
 			})
 			require.NoError(b, err)
@@ -131,7 +132,7 @@ send [USD/2 100] (
 			totalDuration.Add(latency)
 
 			require.Equal(b, http.StatusOK, rsp.Code)
-			tx, _ := api.DecodeSingleResponse[core.Transaction](b, rsp.Body)
+			tx, _ := api.DecodeSingleResponse[ledger.Transaction](b, rsp.Body)
 
 			longestTxLock.Lock()
 			if time.Millisecond*time.Duration(latency) > longestTransactionDuration {

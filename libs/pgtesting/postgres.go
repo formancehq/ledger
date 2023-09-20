@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -76,12 +77,14 @@ func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 	_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`CREATE DATABASE "%s"`, databaseName))
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		s.lock.Lock()
-		defer s.lock.Unlock()
+	if os.Getenv("NO_CLEANUP") != "true" {
+		t.Cleanup(func() {
+			s.lock.Lock()
+			defer s.lock.Unlock()
 
-		_, _ = s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
-	})
+			_, _ = s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
+		})
+	}
 
 	return &pgDatabase{
 		url: s.GetDatabaseDSN(databaseName),
@@ -90,6 +93,9 @@ func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 
 func (s *pgServer) Close() error {
 	if s.db == nil {
+		return nil
+	}
+	if os.Getenv("NO_CLEANUP") == "true" {
 		return nil
 	}
 	if err := s.db.Close(); err != nil {

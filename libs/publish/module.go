@@ -9,12 +9,12 @@ import (
 	"go.uber.org/fx"
 )
 
-func newGoChannel(logger watermill.LoggerAdapter) *gochannel.GoChannel {
+func newGoChannel() *gochannel.GoChannel {
 	return gochannel.NewGoChannel(
 		gochannel.Config{
 			BlockPublishUntilSubscriberAck: true,
 		},
-		logger,
+		watermill.NopLogger{},
 	)
 }
 

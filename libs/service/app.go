@@ -18,8 +18,9 @@ type App struct {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	app := a.newFxApp(ctx)
-	if err := app.Start(ctx); err != nil {
+	logger := GetDefaultLogger(a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
+	app := a.newFxApp(logger)
+	if err := app.Start(logging.ContextWithLogger(ctx, logger)); err != nil {
 		return err
 	}
 
@@ -30,22 +31,19 @@ func (a *App) Run(ctx context.Context) error {
 		// app.Stop in order to gracefully shutdown the app
 	}
 
-	return app.Stop(context.Background())
+	return app.Stop(logging.ContextWithLogger(context.Background(), logger))
 }
 
 func (a *App) Start(ctx context.Context) error {
-	return a.newFxApp(ctx).Start(ctx)
+	logger := GetDefaultLogger(a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
+	return a.newFxApp(logger).Start(ctx)
 }
 
-func (a *App) newFxApp(ctx context.Context) *fx.App {
-	ctx = defaultLoggingContext(ctx, a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
-	options := append(a.options,
+func (a *App) newFxApp(logger logging.Logger) *fx.App {
+	return fx.New(append(a.options,
 		fx.NopLogger,
-		fx.Provide(func() logging.Logger {
-			return logging.FromContext(ctx)
-		}),
-	)
-	return fx.New(options...)
+		fx.Supply(fx.Annotate(logger, fx.As(new(logging.Logger)))),
+	)...)
 }
 
 func New(output io.Writer, options ...fx.Option) *App {

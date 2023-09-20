@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/formancehq/ledger/pkg/storage"
-	"github.com/formancehq/ledger/pkg/storage/driver"
-	"github.com/formancehq/ledger/pkg/storage/ledgerstore"
+	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
@@ -124,7 +124,7 @@ func NewStorageUpgrade() *cobra.Command {
 			}
 			defer sqlDB.Close()
 
-			driver := driver.New(storage.NewDatabase(sqlDB))
+			driver := driver.New(sqlDB)
 			if err := driver.Initialize(cmd.Context()); err != nil {
 				return err
 			}
@@ -149,18 +149,19 @@ func NewStorageUpgradeAll() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
+			logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag), false)
+			ctx := logging.ContextWithLogger(cmd.Context(), logger)
+
 			sqlDB, err := storage.OpenSQLDB(storage.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag)))
 			if err != nil {
 				return err
 			}
 			defer sqlDB.Close()
 
-			driver := driver.New(storage.NewDatabase(sqlDB))
-			if err := driver.Initialize(cmd.Context()); err != nil {
+			driver := driver.New(sqlDB)
+			if err := driver.Initialize(ctx); err != nil {
 				return err
 			}
-			logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag), false)
-			ctx := logging.ContextWithLogger(cmd.Context(), logger)
 
 			systemStore := driver.GetSystemStore()
 			ledgers, err := systemStore.ListLedgers(ctx)
@@ -169,7 +170,7 @@ func NewStorageUpgradeAll() *cobra.Command {
 			}
 
 			for _, ledger := range ledgers {
-				store, err := driver.GetLedgerStore(cmd.Context(), ledger)
+				store, err := driver.GetLedgerStore(ctx, ledger)
 				if err != nil {
 					return err
 				}
