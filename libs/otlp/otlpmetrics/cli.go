@@ -24,7 +24,7 @@ func InitOTLPMetricsFlags(flags *flag.FlagSet) {
 	otlp.InitOTLPFlags(flags)
 
 	flags.Bool(OtelMetricsFlag, false, "Enable OpenTelemetry traces support")
-	flags.Duration(OtelMetricsExporterPushIntervalFlag, 100*time.Millisecond, "OpenTelemetry metrics exporter push interval")
+	flags.Duration(OtelMetricsExporterPushIntervalFlag, 10*time.Second, "OpenTelemetry metrics exporter push interval")
 	flags.Bool(OtelMetricsRuntimeFlag, false, "Enable OpenTelemetry runtime metrics")
 	flags.Duration(OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag, 15*time.Second, "OpenTelemetry runtime metrics minimum read mem stats interval")
 	flags.String(OtelMetricsExporterFlag, "stdout", "OpenTelemetry metrics exporter")

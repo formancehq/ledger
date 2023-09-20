@@ -5,8 +5,7 @@ import (
 	"os"
 
 	"github.com/formancehq/ledger/cmd/internal"
-	"github.com/formancehq/ledger/pkg/storage/driver"
-	initschema "github.com/formancehq/ledger/pkg/storage/ledgerstore/migrates/0-init-schema"
+	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -63,7 +62,6 @@ func NewRootCommand() *cobra.Command {
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 	driver.InitCLIFlags(root)
-	initschema.InitMigrationConfigCLIFlags(root.PersistentFlags())
 
 	if err := viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)

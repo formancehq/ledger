@@ -1,31 +1,25 @@
-FROM --platform=$BUILDPLATFORM golang:1.20 AS builder
-RUN apt-get update && \
-    apt-get install -y gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu && \
-    ln -s /usr/bin/aarch64-linux-gnu-gcc /usr/bin/arm64-linux-gnu-gcc  && \
-    ln -s /usr/bin/x86_64-linux-gnu-gcc /usr/bin/amd64-linux-gnu-gcc
-# 1. Precompile the entire go standard library into the first Docker cache layer: useful for other projects too!
-RUN CGO_ENABLED=1 GOOS=linux go install -v -installsuffix cgo -a std
-ARG TARGETARCH
-ARG APP_SHA
-ARG VERSION
+FROM golang:1.20-alpine3.16 AS builder
 ARG SEGMENT_WRITE_KEY
+ARG VERSION
+ARG APP_SHA
+
 WORKDIR /src
-COPY . .
-WORKDIR /src/components/ledger
+COPY libs libs
+COPY components/ledger components/ledger
+WORKDIR components/ledger
 RUN --mount=type=cache,mode=0755,target=/go/pkg/mod go mod download
 RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
-    CC=$TARGETARCH-linux-gnu-gcc \
-    go build -o ledger -tags json1,netgo \
-    -ldflags="-X github.com/ledger/ledger/cmd.Version=${VERSION} \
-    -X github.com/ledger/ledger/cmd.BuildDate=$(date +%s) \
-    -X github.com/ledger/ledger/cmd.Commit=${APP_SHA} \
-    -X github.com/ledger/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
+    go build -o ledger \
+    -ldflags="-X github.com/formancehq/ledger/cmd.Version=${VERSION} \
+    -X github.com/formancehq/ledger/cmd.BuildDate=$(date +%s) \
+    -X github.com/formancehq/ledger/cmd.Commit=${APP_SHA} \
+    -X github.com/formancehq/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
 
-FROM ubuntu:22.04 as app
-RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
+FROM alpine:3.16 as app
+RUN apk update && apk add ca-certificates
 COPY --from=builder /src/components/ledger/ledger /usr/local/bin/ledger
+RUN chmod +x /usr/local/bin/ledger
 EXPOSE 3068
 ENTRYPOINT ["ledger"]
 ENV OTEL_SERVICE_NAME ledger

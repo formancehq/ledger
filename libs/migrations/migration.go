@@ -1,9 +1,13 @@
 package migrations
 
 import (
+	"context"
+
 	"github.com/uptrace/bun"
 )
 
 type Migration struct {
-	Up func(tx bun.Tx) error
+	Name          string
+	Up            func(tx bun.Tx) error
+	UpWithContext func(ctx context.Context, tx bun.Tx) error
 }
