@@ -12,16 +12,27 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
+      - windows
+      - darwin
     goarch:
       - amd64
       - arm64
 
 archives:
-  - id: "{{.ProjectName}}"
+  - id: "numary"
     builds:
-      - gateway
+      - numary_darwin
     format: tar.gz
-    name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 nfpms:
   - id: packages
@@ -41,6 +52,19 @@ publishers:
       - packages
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
+
+brews:
+  - repository:
+      owner: formancehq
+      name: homebrew-tap
+    name: numary
+    folder: Formula
+    homepage: https://formance.com
+    skip_upload: auto
+    test: |
+      system "#{bin}/numary version"
+    install: |
+      bin.install "numary"
 
 nightly:
   name_template: '{{ .FullCommit }}'
