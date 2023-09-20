@@ -19,9 +19,9 @@ builds:
       - arm64
 
 archives:
-  - id: "numary"
+  - id: "ledger"
     builds:
-      - numary_darwin
+      - ledger
     format: tar.gz
     format_overrides:
       - goos: windows
@@ -57,14 +57,14 @@ brews:
   - repository:
       owner: formancehq
       name: homebrew-tap
-    name: numary
+    name: ledger
     folder: Formula
     homepage: https://formance.com
     skip_upload: auto
     test: |
-      system "#{bin}/numary version"
+      system "#{bin}/ledger version"
     install: |
-      bin.install "numary"
+      bin.install "ledger"
 
 nightly:
   name_template: '{{ .FullCommit }}'
