@@ -19,6 +19,7 @@ type logrusLogger struct {
 		Errorf(format string, args ...any)
 		Error(args ...any)
 		WithFields(fields logrus.Fields) *logrus.Entry
+		WithField(key string, value any) *logrus.Entry
 		WithContext(ctx context.Context) *logrus.Entry
 	}
 }
@@ -53,6 +54,12 @@ func (l *logrusLogger) WithFields(fields map[string]any) Logger {
 	}
 }
 
+func (l *logrusLogger) WithField(key string, value any) Logger {
+	return l.WithFields(map[string]any{
+		key: value,
+	})
+}
+
 var _ Logger = &logrusLogger{}
 
 func NewLogrus(logger *logrus.Logger) *logrusLogger {
@@ -69,5 +76,11 @@ func Testing() *logrusLogger {
 		logger.SetOutput(os.Stdout)
 		logger.SetLevel(logrus.DebugLevel)
 	}
+
+	textFormatter := new(logrus.TextFormatter)
+	textFormatter.TimestampFormat = "15-01-2018 15:04:05.000000"
+	textFormatter.FullTimestamp = true
+	logger.SetFormatter(textFormatter)
+
 	return NewLogrus(logger)
 }

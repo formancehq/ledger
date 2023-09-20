@@ -2,8 +2,10 @@ package otlpmetrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/otlp"
 	"go.opentelemetry.io/contrib/instrumentation/host"
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -12,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -63,15 +64,17 @@ func MetricsModule(cfg ModuleConfig) fx.Option {
 		otlp.LoadResource(cfg.ServiceName, cfg.ResourceAttributes),
 		fx.Decorate(fx.Annotate(func(mp *sdkmetric.MeterProvider) metric.MeterProvider { return mp }, fx.As(new(metric.MeterProvider)))),
 		fx.Provide(fx.Annotate(func(options ...sdkmetric.Option) *sdkmetric.MeterProvider {
+			fmt.Println("run meter provider with options", options)
 			return sdkmetric.NewMeterProvider(options...)
 		}, fx.ParamTags(metricsProviderOptionKey))),
 		fx.Invoke(func(lc fx.Lifecycle, metricProvider *sdkmetric.MeterProvider, options ...runtime.Option) {
+			fmt.Println("start meter provider")
 			// set global propagator to tracecontext (the default is no-op).
 			otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 				b3.New(), propagation.TraceContext{})) // B3 format is common and used by zipkin. Always enabled right now.
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					global.SetMeterProvider(metricProvider)
+					otel.SetMeterProvider(metricProvider)
 					if cfg.RuntimeMetrics {
 						if err := runtime.Start(options...); err != nil {
 							return err
@@ -83,14 +86,23 @@ func MetricsModule(cfg ModuleConfig) fx.Option {
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
-					return metricProvider.Shutdown(ctx)
+					logging.FromContext(ctx).Infof("Flush metrics")
+					if err := metricProvider.ForceFlush(ctx); err != nil {
+						logging.FromContext(ctx).Errorf("unable to flush metrics: %s", err)
+					}
+					logging.FromContext(ctx).Infof("Shutting down metrics provider")
+					if err := metricProvider.Shutdown(ctx); err != nil {
+						logging.FromContext(ctx).Errorf("unable to shutdown metrics provider: %s", err)
+					}
+					logging.FromContext(ctx).Infof("Metrics provider stopped")
+					return nil
 				},
 			})
 		}),
 		ProvideMetricsProviderOption(sdkmetric.WithResource),
 		ProvideMetricsProviderOption(sdkmetric.WithReader),
 		fx.Provide(
-			fx.Annotate(sdkmetric.NewPeriodicReader, fx.As(new(sdkmetric.Reader))),
+			fx.Annotate(sdkmetric.NewPeriodicReader, fx.ParamTags(``, OTLPMetricsPeriodicReaderOptionsKey), fx.As(new(sdkmetric.Reader))),
 		),
 		ProvideOTLPMetricsPeriodicReaderOption(func() sdkmetric.PeriodicReaderOption {
 			return sdkmetric.WithInterval(cfg.PushInterval)

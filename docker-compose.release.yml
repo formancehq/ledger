@@ -1,0 +1,39 @@
+version: '3.8'
+volumes:
+  postgres:
+services:
+  postgres:
+    image: "postgres:13-alpine"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    command:
+    - -c
+    - max_connections=200
+    environment:
+      POSTGRES_USER: "ledger"
+      POSTGRES_PASSWORD: "ledger"
+      POSTGRES_DB: "ledger"
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+
+  ledger:
+    image: "ghcr.io/formancehq/ledger:v1.10.4"
+    healthcheck:
+      test: ["CMD", "wget", "http://127.0.0.1:3068/_info", "-O", "-", "-q"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3068:3068"
+    environment:
+      STORAGE_DRIVER: "postgres"
+      STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@postgres/ledger?sslmode=disable"

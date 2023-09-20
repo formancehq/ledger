@@ -1,0 +1,56 @@
+# https://uptrace.dev/opentelemetry/prometheus-metrics.html#prometheus-exporter
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+#    namespace: test-space
+#    const_labels:
+#      label1: value1
+#      'another label': spaced value
+    send_timestamps: true
+#    enable_open_metrics: true
+#    add_metric_suffixes: false
+#    metric_expiration: 180m
+    resource_to_telemetry_conversion:
+      enabled: true
+  logging:
+
+processors:
+  batch:
+
+extensions:
+  health_check:
+  pprof:
+    endpoint: :1888
+  zpages:
+    endpoint: :55679
+
+connectors:
+  spanmetrics:
+    namespace: span.metrics
+    histogram:
+      explicit:
+        buckets: [ 100us, 1ms, 2ms, 6ms, 10ms, 100ms, 250ms ]
+    dimensions:
+      - name: http.status_code
+      - name: http.method
+
+service:
+  telemetry:
+    logs:
+      level: "debug"
+  extensions: [pprof, zpages, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+#      processors: [batch]
+      exporters: [spanmetrics]
+    metrics:
+      receivers: [otlp, spanmetrics]
+#      processors: [batch]
+      exporters: [prometheus]

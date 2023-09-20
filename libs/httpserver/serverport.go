@@ -18,7 +18,7 @@ type serverInfoContextKey string
 
 var serverInfoKey serverInfoContextKey = "_serverInfo"
 
-func getActualServerInfo(ctx context.Context) *serverInfo {
+func GetActualServerInfo(ctx context.Context) *serverInfo {
 	siAsAny := ctx.Value(serverInfoKey)
 	if siAsAny == nil {
 		return nil
@@ -33,7 +33,7 @@ func ContextWithServerInfo(ctx context.Context) context.Context {
 }
 
 func Started(ctx context.Context) chan struct{} {
-	si := getActualServerInfo(ctx)
+	si := GetActualServerInfo(ctx)
 	if si == nil {
 		return nil
 	}
@@ -41,7 +41,7 @@ func Started(ctx context.Context) chan struct{} {
 }
 
 func Port(ctx context.Context) int {
-	si := getActualServerInfo(ctx)
+	si := GetActualServerInfo(ctx)
 	if si == nil {
 		return 0
 	}
@@ -49,7 +49,7 @@ func Port(ctx context.Context) int {
 }
 
 func StartedServer(ctx context.Context, listener net.Listener) {
-	si := getActualServerInfo(ctx)
+	si := GetActualServerInfo(ctx)
 	if si == nil {
 		return
 	}

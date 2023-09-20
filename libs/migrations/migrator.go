@@ -15,8 +15,28 @@ const (
 	migrationTable = "goose_db_version"
 )
 
+type Info struct {
+	bun.BaseModel `bun:"goose_db_version"`
+
+	Version string    `json:"version" bun:"version_id"`
+	Name    string    `json:"name" bun:"-"`
+	State   string    `json:"state,omitempty" bun:"-"`
+	Date    time.Time `json:"date,omitempty" bun:"tstamp"`
+}
+
 type Migrator struct {
-	migrations []Migration
+	migrations   []Migration
+	schema       string
+	createSchema bool
+}
+
+type option func(m *Migrator)
+
+func WithSchema(schema string, create bool) option {
+	return func(m *Migrator) {
+		m.schema = schema
+		m.createSchema = create
+	}
 }
 
 func (m *Migrator) RegisterMigrations(migrations ...Migration) *Migrator {
@@ -82,14 +102,27 @@ func (m *Migrator) GetDBVersion(ctx context.Context, db *bun.DB) (int64, error) 
 	return m.getLastVersion(ctx, db)
 }
 
-func (m *Migrator) Up(ctx context.Context, db *bun.DB) error {
-	tx, err := db.Begin()
+func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
+
+	if m.schema != "" {
+		if m.createSchema {
+			_, err := tx.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, m.schema))
+			if err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, fmt.Sprintf(`set search_path = "%s"`, m.schema))
+		if err != nil {
+			return err
+		}
+	}
 
 	if err := m.createVersionTable(ctx, tx); err != nil {
 		return err
@@ -100,19 +133,65 @@ func (m *Migrator) Up(ctx context.Context, db *bun.DB) error {
 		return err
 	}
 
-	for ind, migration := range m.migrations[lastMigration:] {
-		if err := migration.Up(tx); err != nil {
-			return err
+	if len(m.migrations) > int(lastMigration)-1 {
+		for ind, migration := range m.migrations[lastMigration:] {
+			if migration.UpWithContext != nil {
+			if err := migration.UpWithContext(ctx, tx); err != nil {
+				return err
+			}
+		} else if migration.Up != nil {
+			if err := migration.Up(tx); err != nil {
+				return err
+			}
+		} else {
+			return errors.New("no code defined for migration")
 		}
 
-		if err := m.insertVersion(ctx, tx, ind+1); err != nil {
-			return err
+			if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
+				return err
+			}
 		}
 	}
 
 	return tx.Commit()
 }
 
-func NewMigrator() *Migrator {
-	return &Migrator{}
+func (m *Migrator) GetMigrations(ctx context.Context, db bun.IDB) ([]Info, error) {
+	migrationTableName := migrationTable
+	if m.schema != "" {
+		migrationTableName = fmt.Sprintf(`"%s".%s`, m.schema, migrationTableName)
+	}
+
+	ret := make([]Info, 0)
+	if err := db.NewSelect().
+		TableExpr(migrationTableName).
+		Order("version_id").
+		Where("version_id >= 1").
+		Column("version_id", "tstamp").
+		Scan(ctx, &ret); err != nil {
+		return nil, err
+	}
+
+	for i := 0; i < len(ret); i++ {
+		ret[i].Name = m.migrations[i].Name
+		ret[i].State = "DONE"
+	}
+
+	for i := len(ret); i < len(m.migrations); i++ {
+		ret = append(ret, Info{
+			Version: fmt.Sprint(i),
+			Name:    m.migrations[i].Name,
+			State:   "TO DO",
+		})
+	}
+
+	return ret, nil
+}
+
+func NewMigrator(opts ...option) *Migrator {
+	ret := &Migrator{}
+	for _, opt := range opts {
+		opt(ret)
+	}
+	return ret
 }

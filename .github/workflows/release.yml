@@ -5,6 +5,18 @@ on:
       - 'v*.*.*'
 
 jobs:
+  Control:
+    name: 'Build Control'
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -OL https://github.com/numary/control/releases/download/1.2.0/numary-control-1.2.0.tar.gz
+      - run: tar -zxvf numary-control-1.2.0.tar.gz
+      - run: rm -rf numary-control-1.2.0.tar.gz
+      - uses: actions/upload-artifact@v2
+        with:
+          name: control-dist
+          path: ./**
+
   Tests:
     runs-on: ubuntu-latest
     steps:
@@ -34,11 +46,15 @@ jobs:
 
   GoReleaser:
     name: GoReleaser
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     needs:
       - Tests
+      - Control
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -51,21 +67,15 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: "NumaryBot"
-          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
         uses: goreleaser/goreleaser-action@v4
         with:
           distribution: goreleaser-pro
           version: latest
           install-only: true
       - run: goreleaser release --clean -f .goreleaser.ledger.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}

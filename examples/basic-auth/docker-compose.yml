@@ -13,7 +13,7 @@ services:
     depends_on:
       - postgres
     image: golang:1.19-alpine
-    entrypoint: go run main.go server start
+    entrypoint: go run main.go serve
     volumes:
       - ../..:/src
     ports:
