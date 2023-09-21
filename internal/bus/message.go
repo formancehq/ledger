@@ -16,7 +16,7 @@ type EventMessage struct {
 
 type CommittedTransactions struct {
 	Ledger          string                       `json:"ledger"`
-	Transaction     ledger.Transaction           `json:"transaction"`
+	Transactions    []ledger.Transaction         `json:"transactions"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 

@@ -55,7 +55,7 @@ func (l *ledgerMonitor) CommittedTransactions(ctx context.Context, txs ledger.Tr
 	l.publish(ctx, events.EventTypeCommittedTransactions,
 		newEventCommittedTransactions(CommittedTransactions{
 			Ledger:          l.ledgerName,
-			Transaction:     txs,
+			Transactions:    []ledger.Transaction{txs},
 			AccountMetadata: accountMetadata,
 		}))
 }
