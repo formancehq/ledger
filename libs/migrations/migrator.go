@@ -136,16 +136,16 @@ func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
 	if len(m.migrations) > int(lastMigration)-1 {
 		for ind, migration := range m.migrations[lastMigration:] {
 			if migration.UpWithContext != nil {
-			if err := migration.UpWithContext(ctx, tx); err != nil {
-				return err
+				if err := migration.UpWithContext(ctx, tx); err != nil {
+					return err
+				}
+			} else if migration.Up != nil {
+				if err := migration.Up(tx); err != nil {
+					return err
+				}
+			} else {
+				return errors.New("no code defined for migration")
 			}
-		} else if migration.Up != nil {
-			if err := migration.Up(tx); err != nil {
-				return err
-			}
-		} else {
-			return errors.New("no code defined for migration")
-		}
 
 			if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
 				return err
