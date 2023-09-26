@@ -309,7 +309,7 @@ func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Param
 			}
 			log = ledger.NewDeleteMetadataLog(at, ledger.DeleteMetadataLogPayload{
 				TargetType: ledger.MetaTargetTypeTransaction,
-				TargetID:   targetID.(uint64),
+				TargetID:   targetID.(*big.Int),
 				Key:        key,
 			})
 		case ledger.MetaTargetTypeAccount:

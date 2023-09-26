@@ -271,6 +271,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v2/{ledger}/accounts/{address}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: deleteAccountMetadata
+      tags:
+        - Ledger
+        - Transactions
+      summary: Delete metadata by key
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: path
+          description: Account address
+          required: true
+          schema:
+            type: string
+        - name: key
+          in: path
+          description: The key to remove.
+          required: true
+          schema:
+            type: string
+            example: foo
+      responses:
+        2XX:
+          description: Key deleted
+          content: {}
+
   /v2/{ledger}/stats:
     get:
       tags:
@@ -562,6 +596,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /v2/{ledger}/transactions/{id}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: deleteTransactionMetadata
+      summary: Delete metadata by key
+      tags:
+        - Ledger
+        - Transactions
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            example: 1234
+        - name: key
+          in: path
+          required: true
+          description: The key to remove.
+          schema:
+            type: string
+            example: foo
+      responses:
+        2XX:
+          description: Key deleted
+          content: { }
 
   /v2/{ledger}/transactions/{id}/revert:
     post:
@@ -1145,9 +1216,7 @@ components:
         - data
 
     ConfigInfoResponse:
-      properties:
-        data:
-          $ref: '#/components/schemas/ConfigInfo'
+      $ref: '#/components/schemas/ConfigInfo'
 
     Volume:
       type: object

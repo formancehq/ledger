@@ -66,7 +66,7 @@ func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
 type DeletedMetadata struct {
 	Ledger     string `json:"ledger"`
 	TargetType string `json:"targetType"`
-	TargetID   any    `json:"targetID"`
+	TargetID   any    `json:"targetId"`
 	Key        string `json:"key"`
 }
 
