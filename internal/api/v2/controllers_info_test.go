@@ -35,13 +35,13 @@ func TestGetLedgerInfo(t *testing.T) {
 			Version: "1",
 			Name:    "init",
 			State:   "ready",
-			Date:    time.Now().Add(-2 * time.Minute).Round(time.Second),
+			Date:    time.Now().Add(-2 * time.Minute).Round(time.Second).UTC(),
 		},
 		{
 			Version: "2",
 			Name:    "fix",
 			State:   "ready",
-			Date:    time.Now().Add(-time.Minute).Round(time.Second),
+			Date:    time.Now().Add(-time.Minute).Round(time.Second).UTC(),
 		},
 	}
 
