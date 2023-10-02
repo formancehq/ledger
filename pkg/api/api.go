@@ -29,9 +29,10 @@ func NewAPI(routes *routes.Routes) *API {
 }
 
 type Config struct {
-	StorageDriver string
-	Version       string
-	UseScopes     bool
+	StorageDriver     string
+	Version           string
+	UseScopes         bool
+	RedisLockStrategy bool
 }
 
 func Module(cfg Config) fx.Option {

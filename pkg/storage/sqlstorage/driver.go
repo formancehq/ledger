@@ -104,6 +104,7 @@ type Driver struct {
 	systemSchema      Schema
 	registeredLedgers map[string]*Store
 	lock              sync.Mutex
+	redisLockStrategy bool
 }
 
 func (d *Driver) GetSystemStore() storage.SystemStore {
@@ -154,7 +155,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string, create bool) (
 			return nil, false, err
 		}
 
-		ret = NewStore(schema, defaultExecutorProvider(schema), func(ctx context.Context) error {
+		ret = NewStore(schema, d.redisLockStrategy, defaultExecutorProvider(schema), func(ctx context.Context) error {
 			d.lock.Lock()
 			defer d.lock.Unlock()
 
@@ -228,11 +229,12 @@ func (d *Driver) Close(ctx context.Context) error {
 	return d.db.Close(ctx)
 }
 
-func NewDriver(name string, db DB) *Driver {
+func NewDriver(name string, db DB, redisLockStrategy bool) *Driver {
 	return &Driver{
 		db:                db,
 		name:              name,
 		registeredLedgers: map[string]*Store{},
+		redisLockStrategy: redisLockStrategy,
 	}
 }
 

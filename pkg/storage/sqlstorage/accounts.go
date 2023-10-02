@@ -202,7 +202,9 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 
 	entry, ok := s.cache.Get(addr)
-	if ok {
+	// When having a single instance of the ledger, we can use the cached account.
+	// Otherwise, compute it every single time for now.
+	if s.singleWriter && ok {
 		return entry.(*core.AccountWithVolumes).Account.Copy(), nil
 	}
 

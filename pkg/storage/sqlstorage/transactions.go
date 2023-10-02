@@ -278,7 +278,9 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 }
 
 func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
-	if s.lastTx == nil {
+	// When having a single instance of the ledger, we can use the cached last transaction.
+	// Otherwise, compute it every single time for now.
+	if !s.singleWriter || s.lastTx == nil {
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 		sb.From(s.schema.Table("transactions"))

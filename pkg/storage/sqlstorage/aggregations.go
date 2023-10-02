@@ -13,7 +13,9 @@ import (
 
 func (s *Store) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	account, ok := s.cache.Get(address)
-	if ok {
+	// When having a single instance of the ledger, we can use the cached account.
+	// Otherwise, compute it every single time for now.
+	if s.singleWriter && ok {
 		return account.(*core.AccountWithVolumes).Copy(), nil
 	}
 
