@@ -14,7 +14,7 @@ func TestNewDriver(t *testing.T) {
 	d := NewDriver("sqlite", &sqliteDB{
 		directory: os.TempDir(),
 		dbName:    uuid.New(),
-	})
+	}, false)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 
@@ -39,7 +39,7 @@ func TestConfiguration(t *testing.T) {
 	d := NewDriver("sqlite", &sqliteDB{
 		directory: os.TempDir(),
 		dbName:    uuid.New(),
-	})
+	}, false)
 	require.NoError(t, d.Initialize(context.Background()))
 
 	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))

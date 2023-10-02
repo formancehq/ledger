@@ -14,7 +14,7 @@ func TestAccounts(t *testing.T) {
 	d := NewDriver("sqlite", &sqliteDB{
 		directory: os.TempDir(),
 		dbName:    uuid.New(),
-	})
+	}, false)
 
 	assert.NoError(t, d.Initialize(context.Background()))
 

@@ -126,7 +126,7 @@ func TestAnalyticsModule(t *testing.T) {
 		module,
 		fx.Provide(func(lc fx.Lifecycle) (storage.Driver[ledger.Store], error) {
 			id := uuid.New()
-			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id))
+			driver := sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id), false)
 			lc.Append(fx.Hook{
 				OnStart: driver.Initialize,
 			})
