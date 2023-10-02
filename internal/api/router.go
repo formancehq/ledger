@@ -15,6 +15,7 @@ func NewRouter(
 	backend backend.Backend,
 	healthController *health.HealthController,
 	globalMetricsRegistry metrics.GlobalRegistry,
+	readOnly bool,
 ) chi.Router {
 	mux := chi.NewRouter()
 	v2Router := v2.NewRouter(backend, healthController, globalMetricsRegistry)
@@ -23,6 +24,10 @@ func NewRouter(
 		v2Router.ServeHTTP(w, r)
 	})))
 	mux.Handle("/*", v1.NewRouter(backend, healthController, globalMetricsRegistry))
+
+	if readOnly {
+		mux.Use(ReadOnly)
+	}
 
 	return mux
 }

@@ -12,11 +12,7 @@ import (
 	"github.com/riandyrn/otelchi"
 )
 
-func NewRouter(
-	backend backend.Backend,
-	healthController *health.HealthController,
-	globalMetricsRegistry metrics.GlobalRegistry,
-) chi.Router {
+func NewRouter(backend backend.Backend, healthController *health.HealthController, globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
 	router := chi.NewMux()
 
 	router.Use(

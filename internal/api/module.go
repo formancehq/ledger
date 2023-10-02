@@ -3,6 +3,8 @@ package api
 import (
 	_ "embed"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
@@ -14,12 +16,18 @@ import (
 )
 
 type Config struct {
-	Version string
+	Version  string
+	ReadOnly bool
 }
 
 func Module(cfg Config) fx.Option {
 	return fx.Options(
-		fx.Provide(NewRouter),
+		fx.Provide(func(
+			backend backend.Backend,
+			healthController *health.HealthController,
+			globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
+			return NewRouter(backend, healthController, globalMetricsRegistry, cfg.ReadOnly)
+		}),
 		fx.Provide(func(storageDriver *driver.Driver, resolver *engine.Resolver) backend.Backend {
 			return backend.NewDefaultBackend(storageDriver, cfg.Version, resolver)
 		}),

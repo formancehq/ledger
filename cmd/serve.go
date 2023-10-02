@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/formancehq/ledger/internal/api"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
@@ -16,8 +18,9 @@ import (
 )
 
 const (
-	ballastSizeInBytesFlag = "ballast-size"
-	numscriptCacheMaxCount = "numscript-cache-max-count"
+	ballastSizeInBytesFlag     = "ballast-size"
+	numscriptCacheMaxCountFlag = "numscript-cache-max-count"
+	readOnlyFlag               = "read-only"
 )
 
 func NewServe() *cobra.Command {
@@ -27,6 +30,10 @@ func NewServe() *cobra.Command {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
 				cmd.OutOrStdout(),
 				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
+				api.Module(api.Config{
+					Version:  Version,
+					ReadOnly: viper.GetBool(readOnlyFlag),
+				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router, logger logging.Logger) {
 
 					wrappedRouter := chi.NewRouter()
@@ -45,7 +52,8 @@ func NewServe() *cobra.Command {
 		},
 	}
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
-	cmd.Flags().Int(numscriptCacheMaxCount, 1024, "Numscript cache max count")
+	cmd.Flags().Int(numscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
+	cmd.Flags().Bool(readOnlyFlag, false, "Read only mode")
 	return cmd
 }
 
