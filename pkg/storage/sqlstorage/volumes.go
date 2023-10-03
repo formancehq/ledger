@@ -12,7 +12,7 @@ import (
 
 func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
 
-	if s.singleWriter {
+	if s.singleInstance {
 		storage.OnTransactionCommitted(ctx, func() {
 			for address, accountVolumes := range volumes {
 				entry, ok := s.cache.Get(address)
