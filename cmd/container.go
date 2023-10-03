@@ -64,10 +64,9 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 
 	// Handle api part
 	options = append(options, api.Module(api.Config{
-		StorageDriver:     v.GetString(storageDriverFlag),
-		Version:           Version,
-		UseScopes:         v.GetBool(authBearerUseScopesFlag),
-		RedisLockStrategy: redisLockStrategy,
+		StorageDriver: v.GetString(storageDriverFlag),
+		Version:       Version,
+		UseScopes:     v.GetBool(authBearerUseScopesFlag),
 	}))
 
 	// Handle storage driver
@@ -90,6 +89,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 				ConnString: v.GetString(storagePostgresConnectionStringFlag),
 			}
 		}(),
+		RedisLockStrategy: redisLockStrategy,
 	}))
 
 	options = append(options, internal.NewAnalyticsModule(v, Version))
