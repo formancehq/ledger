@@ -728,7 +728,7 @@ func testTooManyClient(t *testing.T, store *sqlstorage.Store) {
 }
 
 func TestInitializeStore(t *testing.T) {
-	driver, stopFn, err := ledgertesting.StorageDriver()
+	driver, stopFn, err := ledgertesting.StorageDriver(false)
 	require.NoError(t, err)
 	defer stopFn()
 	defer func(driver storage.Driver[*sqlstorage.Store], ctx context.Context) {

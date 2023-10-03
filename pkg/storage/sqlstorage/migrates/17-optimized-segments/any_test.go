@@ -17,7 +17,7 @@ func TestMigrate17(t *testing.T) {
 		t.Skip()
 	}
 
-	driver, closeFunc, err := ledgertesting.StorageDriver()
+	driver, closeFunc, err := ledgertesting.StorageDriver(false)
 	require.NoError(t, err)
 	defer closeFunc()
 

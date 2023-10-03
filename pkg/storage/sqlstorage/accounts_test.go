@@ -28,6 +28,31 @@ func TestAccounts(t *testing.T) {
 	_, err = store.Initialize(context.Background())
 	assert.NoError(t, err)
 
+	accountTests(t, store)
+}
+
+func TestAccountsMultipleInstance(t *testing.T) {
+	d := NewDriver("sqlite", &sqliteDB{
+		directory: os.TempDir(),
+		dbName:    uuid.New(),
+	}, true)
+
+	assert.NoError(t, d.Initialize(context.Background()))
+
+	defer func(d *Driver, ctx context.Context) {
+		assert.NoError(t, d.Close(ctx))
+	}(d, context.Background())
+
+	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
+	assert.NoError(t, err)
+
+	_, err = store.Initialize(context.Background())
+	assert.NoError(t, err)
+
+	accountTests(t, store)
+}
+
+func accountTests(t *testing.T, store *Store) {
 	t.Run("success balance", func(t *testing.T) {
 		q := ledger.AccountsQuery{
 			PageSize: 10,

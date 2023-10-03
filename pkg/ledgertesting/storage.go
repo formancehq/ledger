@@ -22,11 +22,11 @@ func StorageDriverName() string {
 	return "sqlite"
 }
 
-func StorageDriver() (*sqlstorage.Driver, func(), error) {
+func StorageDriver(multipleInstance bool) (*sqlstorage.Driver, func(), error) {
 	switch StorageDriverName() {
 	case "sqlite":
 		id := uuid.New()
-		return sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id), false), func() {}, nil
+		return sqlstorage.NewDriver("sqlite", sqlstorage.NewSQLiteDB(os.TempDir(), id), multipleInstance), func() {}, nil
 	case "postgres":
 		pgServer, err := pgtesting.PostgresServer()
 		if err != nil {
@@ -39,7 +39,7 @@ func StorageDriver() (*sqlstorage.Driver, func(), error) {
 		return sqlstorage.NewDriver(
 				"postgres",
 				sqlstorage.NewPostgresDB(db),
-				false,
+				multipleInstance,
 			), func() {
 				_ = pgServer.Close()
 			}, nil
@@ -49,7 +49,7 @@ func StorageDriver() (*sqlstorage.Driver, func(), error) {
 
 func ProvideStorageDriver() fx.Option {
 	return fx.Provide(func(lc fx.Lifecycle) (*sqlstorage.Driver, error) {
-		driver, stopFn, err := StorageDriver()
+		driver, stopFn, err := StorageDriver(false)
 		if err != nil {
 			return nil, err
 		}
