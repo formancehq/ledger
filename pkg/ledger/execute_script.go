@@ -67,6 +67,7 @@ func (l *Ledger) ExecuteScript(ctx context.Context, preview bool, script core.Sc
 				"get transactions with reference")
 		}
 		if len(txs.Data) > 0 {
+
 			return core.ExpandedTransaction{}, NewConflictError()
 		}
 	}

@@ -24,7 +24,7 @@ type Store struct {
 	lastLog          *core.Log
 	lastTx           *core.ExpandedTransaction
 	cache            *cache.Cache
-	singleInstance   bool
+	multipleInstance bool
 }
 
 func (s *Store) error(err error) error {
@@ -64,7 +64,7 @@ func (s *Store) Close(ctx context.Context) error {
 	return s.onClose(ctx)
 }
 
-func NewStore(schema Schema, singleInstance bool, executorProvider func(ctx context.Context) (executor, error),
+func NewStore(schema Schema, multipleInstance bool, executorProvider func(ctx context.Context) (executor, error),
 	onClose, onDelete func(ctx context.Context) error) *Store {
 
 	return &Store{
@@ -72,7 +72,7 @@ func NewStore(schema Schema, singleInstance bool, executorProvider func(ctx cont
 		schema:           schema,
 		onClose:          onClose,
 		onDelete:         onDelete,
-		singleInstance:   singleInstance,
+		multipleInstance: multipleInstance,
 		cache:            cache.New(5*time.Minute, 10*time.Minute),
 	}
 }
