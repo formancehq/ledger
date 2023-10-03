@@ -114,6 +114,8 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		if s.singleInstance {
 			s.lastLog = &l
 		}
+
+		return &l, nil
 	}
 	return s.lastLog, nil
 }

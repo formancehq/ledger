@@ -330,6 +330,8 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransacti
 		if s.singleInstance {
 			s.lastTx = &tx
 		}
+
+		return &tx, nil
 	}
 
 	return s.lastTx, nil
