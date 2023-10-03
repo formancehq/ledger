@@ -12,18 +12,20 @@ import (
 
 func (s *Store) updateVolumes(ctx context.Context, volumes core.AccountsAssetsVolumes) error {
 
-	storage.OnTransactionCommitted(ctx, func() {
-		for address, accountVolumes := range volumes {
-			entry, ok := s.cache.Get(address)
-			if ok {
-				account := entry.(*core.AccountWithVolumes)
-				for asset, volumes := range accountVolumes {
-					account.Volumes[asset] = volumes
-					account.Balances[asset] = volumes.Balance()
+	if s.singleWriter {
+		storage.OnTransactionCommitted(ctx, func() {
+			for address, accountVolumes := range volumes {
+				entry, ok := s.cache.Get(address)
+				if ok {
+					account := entry.(*core.AccountWithVolumes)
+					for asset, volumes := range accountVolumes {
+						account.Volumes[asset] = volumes
+						account.Balances[asset] = volumes.Balance()
+					}
 				}
 			}
-		}
-	})
+		})
+	}
 
 	for address, accountVolumes := range volumes {
 

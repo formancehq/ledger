@@ -90,7 +90,9 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 	}
 	res.Balances = res.Volumes.Balances()
 
-	s.cache.Set(address, res.Copy(), cache.NoExpiration)
+	if s.singleWriter {
+		s.cache.Set(address, res.Copy(), cache.NoExpiration)
+	}
 
 	return res, nil
 }

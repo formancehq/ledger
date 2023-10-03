@@ -72,7 +72,9 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		return s.error(err)
 	}
 
-	s.lastLog = &log[len(log)-1]
+	if s.singleWriter {
+		s.lastLog = &log[len(log)-1]
+	}
 	return nil
 }
 
@@ -109,7 +111,9 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		}
 		l.Date = l.Date.UTC()
 
-		s.lastLog = &l
+		if s.singleWriter {
+			s.lastLog = &l
+		}
 	}
 	return s.lastLog, nil
 }

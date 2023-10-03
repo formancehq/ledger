@@ -327,7 +327,9 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransacti
 		tx.Timestamp = tx.Timestamp.UTC()
 		tx.Reference = ref.String
 
-		s.lastTx = &tx
+		if s.singleWriter {
+			s.lastTx = &tx
+		}
 	}
 
 	return s.lastTx, nil
@@ -493,7 +495,9 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		return s.error(err)
 	}
 
-	s.lastTx = &txs[len(txs)-1]
+	if s.singleWriter {
+		s.lastTx = &txs[len(txs)-1]
+	}
 
 	return nil
 }
@@ -533,7 +537,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		return errors.Wrap(err, "reading last log")
 	}
 
-	if s.lastTx.ID == id {
+	if s.singleWriter && s.lastTx.ID == id {
 		if s.lastTx.Metadata == nil {
 			s.lastTx.Metadata = metadata
 		} else {

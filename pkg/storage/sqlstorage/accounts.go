@@ -280,7 +280,7 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
 
 	entry, ok := s.cache.Get(address)
-	if ok {
+	if s.singleWriter && ok {
 		account := entry.(*core.AccountWithVolumes)
 		account.Metadata = account.Metadata.Merge(metadata)
 	}
