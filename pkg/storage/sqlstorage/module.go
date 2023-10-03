@@ -21,9 +21,10 @@ type PostgresConfig struct {
 }
 
 type ModuleConfig struct {
-	StorageDriver  string
-	SQLiteConfig   *SQLiteConfig
-	PostgresConfig *PostgresConfig
+	StorageDriver     string
+	SQLiteConfig      *SQLiteConfig
+	PostgresConfig    *PostgresConfig
+	RedisLockStrategy bool
 }
 
 func OpenSQLDB(flavor Flavor, dataSourceName string) (*sql.DB, error) {
@@ -49,7 +50,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 			return NewPostgresDB(db)
 		}))
 		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
-			return NewDriver(PostgreSQL.String(), db), nil
+			return NewDriver(PostgreSQL.String(), db, cfg.RedisLockStrategy), nil
 		}))
 		options = append(options, health.ProvideHealthCheck(func(db *sql.DB) health.NamedCheck {
 			return health.NewNamedCheck(PostgreSQL.String(), health.CheckFn(db.PingContext))
@@ -59,7 +60,7 @@ func DriverModule(cfg ModuleConfig) fx.Option {
 			return NewSQLiteDB(cfg.SQLiteConfig.Dir, cfg.SQLiteConfig.DBName)
 		}))
 		options = append(options, fx.Provide(func(db DB) (*Driver, error) {
-			return NewDriver(SQLite.String(), db), nil
+			return NewDriver(SQLite.String(), db, cfg.RedisLockStrategy), nil
 		}))
 		options = append(options, health.ProvideHealthCheck(func() health.NamedCheck {
 			return health.NewNamedCheck(SQLite.String(), health.CheckFn(func(ctx context.Context) error {

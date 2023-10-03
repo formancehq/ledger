@@ -72,12 +72,16 @@ func (s *Store) appendLog(ctx context.Context, log ...core.Log) error {
 		return s.error(err)
 	}
 
-	s.lastLog = &log[len(log)-1]
+	if !s.multipleInstance {
+		s.lastLog = &log[len(log)-1]
+	}
 	return nil
 }
 
 func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
-	if s.lastLog == nil {
+	// When having a single instance of the ledger, we can use the cached last log.
+	// Otherwise, compute it every single time for now.
+	if s.multipleInstance || s.lastLog == nil {
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.From(s.schema.Table("log"))
 		sb.Select("id", "type", "hash", "date", "data")
@@ -107,7 +111,11 @@ func (s *Store) GetLastLog(ctx context.Context) (*core.Log, error) {
 		}
 		l.Date = l.Date.UTC()
 
-		s.lastLog = &l
+		if !s.multipleInstance {
+			s.lastLog = &l
+		}
+
+		return &l, nil
 	}
 	return s.lastLog, nil
 }

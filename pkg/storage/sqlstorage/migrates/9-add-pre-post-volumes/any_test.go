@@ -215,7 +215,7 @@ var testCases = []testCase{
 }
 
 func TestMigrate9(t *testing.T) {
-	driver, closeFunc, err := ledgertesting.StorageDriver()
+	driver, closeFunc, err := ledgertesting.StorageDriver(false)
 	require.NoError(t, err)
 	defer closeFunc()
 

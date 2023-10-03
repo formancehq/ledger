@@ -278,7 +278,9 @@ func (s *Store) GetTransaction(ctx context.Context, txId uint64) (*core.Expanded
 }
 
 func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransaction, error) {
-	if s.lastTx == nil {
+	// When having a single instance of the ledger, we can use the cached last transaction.
+	// Otherwise, compute it every single time for now.
+	if s.multipleInstance || s.lastTx == nil {
 		sb := sqlbuilder.NewSelectBuilder()
 		sb.Select("id", "timestamp", "reference", "metadata", "postings", "pre_commit_volumes", "post_commit_volumes")
 		sb.From(s.schema.Table("transactions"))
@@ -325,7 +327,11 @@ func (s *Store) GetLastTransaction(ctx context.Context) (*core.ExpandedTransacti
 		tx.Timestamp = tx.Timestamp.UTC()
 		tx.Reference = ref.String
 
-		s.lastTx = &tx
+		if !s.multipleInstance {
+			s.lastTx = &tx
+		}
+
+		return &tx, nil
 	}
 
 	return s.lastTx, nil
@@ -491,7 +497,9 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 		return s.error(err)
 	}
 
-	s.lastTx = &txs[len(txs)-1]
+	if !s.multipleInstance {
+		s.lastTx = &txs[len(txs)-1]
+	}
 
 	return nil
 }
@@ -531,7 +539,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		return errors.Wrap(err, "reading last log")
 	}
 
-	if s.lastTx.ID == id {
+	if !s.multipleInstance && s.lastTx.ID == id {
 		if s.lastTx.Metadata == nil {
 			s.lastTx.Metadata = metadata
 		} else {

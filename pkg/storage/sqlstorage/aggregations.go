@@ -13,7 +13,9 @@ import (
 
 func (s *Store) GetAccountWithVolumes(ctx context.Context, address string) (*core.AccountWithVolumes, error) {
 	account, ok := s.cache.Get(address)
-	if ok {
+	// When having a single instance of the ledger, we can use the cached account.
+	// Otherwise, compute it every single time for now.
+	if !s.multipleInstance && ok {
 		return account.(*core.AccountWithVolumes).Copy(), nil
 	}
 
@@ -88,7 +90,9 @@ func (s *Store) GetAccountWithVolumes(ctx context.Context, address string) (*cor
 	}
 	res.Balances = res.Volumes.Balances()
 
-	s.cache.Set(address, res.Copy(), cache.NoExpiration)
+	if !s.multipleInstance {
+		s.cache.Set(address, res.Copy(), cache.NoExpiration)
+	}
 
 	return res, nil
 }

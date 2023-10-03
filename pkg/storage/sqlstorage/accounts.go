@@ -202,7 +202,9 @@ func (s *Store) GetAccounts(ctx context.Context, q ledger.AccountsQuery) (api.Cu
 func (s *Store) GetAccount(ctx context.Context, addr string) (*core.Account, error) {
 
 	entry, ok := s.cache.Get(addr)
-	if ok {
+	// When having a single instance of the ledger, we can use the cached account.
+	// Otherwise, compute it every single time for now.
+	if !s.multipleInstance && ok {
 		return entry.(*core.AccountWithVolumes).Account.Copy(), nil
 	}
 
@@ -278,7 +280,7 @@ func (s *Store) ensureAccountExists(ctx context.Context, account string) error {
 func (s *Store) UpdateAccountMetadata(ctx context.Context, address string, metadata core.Metadata, at time.Time) error {
 
 	entry, ok := s.cache.Get(address)
-	if ok {
+	if !s.multipleInstance && ok {
 		account := entry.(*core.AccountWithVolumes)
 		account.Metadata = account.Metadata.Merge(metadata)
 	}

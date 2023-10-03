@@ -15,76 +15,81 @@ import (
 )
 
 func TestMigrate(t *testing.T) {
-	driver, closeFunc, err := ledgertesting.StorageDriver()
+	driver, closeFunc, err := ledgertesting.StorageDriver(false)
 	require.NoError(t, err)
 	defer closeFunc()
 
-	require.NoError(t, driver.Initialize(context.Background()))
-	store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
+	driverMultipleInstance, closeMultipleInstanceFunc, err := ledgertesting.StorageDriver(true)
 	require.NoError(t, err)
+	defer closeMultipleInstanceFunc()
 
-	schema := store.Schema()
+	for _, driver := range []*sqlstorage.Driver{driver, driverMultipleInstance} {
+		require.NoError(t, driver.Initialize(context.Background()))
+		store, _, err := driver.GetLedgerStore(context.Background(), uuid.New(), true)
+		require.NoError(t, err)
 
-	migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
-	require.NoError(t, err)
+		schema := store.Schema()
 
-	modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:13]...)
-	require.NoError(t, err)
-	require.True(t, modified)
+		migrations, err := sqlstorage.CollectMigrationFiles(sqlstorage.MigrationsFS)
+		require.NoError(t, err)
 
-	sqlq, args := sqlbuilder.NewInsertBuilder().
-		InsertInto(schema.Table("log")).
-		Cols("id", "type", "hash", "date", "data").
-		Values("0", core.NewTransactionType, "", time.Now(), `{
-			"txid": 0,
-			"postings": [],
-			"reference": "tx1"
-		}`).
-		Values("1", core.NewTransactionType, "", time.Now(), `{
-			"txid": 1,
-			"postings": [],
-			"preCommitVolumes": {},
-			"postCommitVolumes": {},
-			"reference": "tx2"
-		}`).
-		BuildWithFlavor(schema.Flavor())
+		modified, err := sqlstorage.Migrate(context.Background(), schema, migrations[0:13]...)
+		require.NoError(t, err)
+		require.True(t, modified)
 
-	_, err = schema.ExecContext(context.Background(), sqlq, args...)
-	require.NoError(t, err)
+		sqlq, args := sqlbuilder.NewInsertBuilder().
+			InsertInto(schema.Table("log")).
+			Cols("id", "type", "hash", "date", "data").
+			Values("0", core.NewTransactionType, "", time.Now(), `{
+				"txid": 0,
+				"postings": [],
+				"reference": "tx1"
+			}`).
+			Values("1", core.NewTransactionType, "", time.Now(), `{
+				"txid": 1,
+				"postings": [],
+				"preCommitVolumes": {},
+				"postCommitVolumes": {},
+				"reference": "tx2"
+			}`).
+			BuildWithFlavor(schema.Flavor())
 
-	modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[13])
-	require.NoError(t, err)
-	require.True(t, modified)
+		_, err = schema.ExecContext(context.Background(), sqlq, args...)
+		require.NoError(t, err)
 
-	sqlq, args = sqlbuilder.NewSelectBuilder().
-		Select("data").
-		From(schema.Table("log")).
-		BuildWithFlavor(schema.Flavor())
+		modified, err = sqlstorage.Migrate(context.Background(), schema, migrations[13])
+		require.NoError(t, err)
+		require.True(t, modified)
 
-	rows, err := schema.QueryContext(context.Background(), sqlq, args...)
-	require.NoError(t, err)
+		sqlq, args = sqlbuilder.NewSelectBuilder().
+			Select("data").
+			From(schema.Table("log")).
+			BuildWithFlavor(schema.Flavor())
 
-	require.True(t, rows.Next())
-	var dataStr string
-	require.NoError(t, rows.Scan(&dataStr))
+		rows, err := schema.QueryContext(context.Background(), sqlq, args...)
+		require.NoError(t, err)
 
-	data := map[string]any{}
-	require.NoError(t, json.Unmarshal([]byte(dataStr), &data))
+		require.True(t, rows.Next())
+		var dataStr string
+		require.NoError(t, rows.Scan(&dataStr))
 
-	require.Equal(t, map[string]any{
-		"txid":      float64(0),
-		"postings":  []interface{}{},
-		"reference": "tx1",
-	}, data)
+		data := map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(dataStr), &data))
 
-	require.True(t, rows.Next())
-	require.NoError(t, rows.Scan(&dataStr))
-	require.NoError(t, json.Unmarshal([]byte(dataStr), &data))
+		require.Equal(t, map[string]any{
+			"txid":      float64(0),
+			"postings":  []interface{}{},
+			"reference": "tx1",
+		}, data)
 
-	require.Equal(t, map[string]any{
-		"txid":      float64(1),
-		"postings":  []interface{}{},
-		"reference": "tx2",
-	}, data)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(&dataStr))
+		require.NoError(t, json.Unmarshal([]byte(dataStr), &data))
 
+		require.Equal(t, map[string]any{
+			"txid":      float64(1),
+			"postings":  []interface{}{},
+			"reference": "tx2",
+		}, data)
+	}
 }

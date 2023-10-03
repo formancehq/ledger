@@ -43,6 +43,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 	// Handle OpenTelemetry
 	options = append(options, otlptraces.CLITracesModule(v))
 
+	redisLockStrategy := false
 	switch v.GetString(lockStrategyFlag) {
 	case "redis":
 		var tlsConfig *tls.Config
@@ -58,6 +59,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 			LockRetry:    v.GetDuration(lockStrategyRedisRetryFlag),
 			TLSConfig:    tlsConfig,
 		}))
+		redisLockStrategy = true
 	}
 
 	// Handle api part
@@ -87,6 +89,7 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 				ConnString: v.GetString(storagePostgresConnectionStringFlag),
 			}
 		}(),
+		RedisLockStrategy: redisLockStrategy,
 	}))
 
 	options = append(options, internal.NewAnalyticsModule(v, Version))
