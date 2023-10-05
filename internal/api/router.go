@@ -18,16 +18,15 @@ func NewRouter(
 	readOnly bool,
 ) chi.Router {
 	mux := chi.NewRouter()
+	if readOnly {
+		mux.Use(ReadOnly)
+	}
 	v2Router := v2.NewRouter(backend, healthController, globalMetricsRegistry)
 	mux.Handle("/v2/*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
 		v2Router.ServeHTTP(w, r)
 	})))
 	mux.Handle("/*", v1.NewRouter(backend, healthController, globalMetricsRegistry))
-
-	if readOnly {
-		mux.Use(ReadOnly)
-	}
 
 	return mux
 }
