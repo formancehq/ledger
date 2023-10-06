@@ -3,6 +3,8 @@ package v2
 import (
 	"net/http"
 
+	"github.com/formancehq/ledger/internal/api/shared"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/health"
@@ -37,7 +39,7 @@ func NewRouter(
 		router.Get("/_info", getInfo(backend))
 
 		router.Route("/{ledger}", func(router chi.Router) {
-			router.Use(LedgerMiddleware(backend))
+			router.Use(shared.LedgerMiddleware(backend, []string{"/_info"}))
 
 			// LedgerController
 			router.Get("/_info", getLedgerInfo)

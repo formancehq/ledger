@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/formancehq/ledger/internal/storage/driver"
+
 	"github.com/formancehq/ledger/internal/api"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -21,6 +23,7 @@ const (
 	ballastSizeInBytesFlag     = "ballast-size"
 	numscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	readOnlyFlag               = "read-only"
+	autoUpgradeFlag            = "auto-upgrade"
 )
 
 func NewServe() *cobra.Command {
@@ -33,6 +36,13 @@ func NewServe() *cobra.Command {
 				api.Module(api.Config{
 					Version:  Version,
 					ReadOnly: viper.GetBool(readOnlyFlag),
+				}),
+				fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
+					if viper.GetBool(autoUpgradeFlag) {
+						lc.Append(fx.Hook{
+							OnStart: driver.UpgradeAllLedgersSchemas,
+						})
+					}
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router, logger logging.Logger) {
 
@@ -54,6 +64,7 @@ func NewServe() *cobra.Command {
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
 	cmd.Flags().Int(numscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(readOnlyFlag, false, "Read only mode")
+	cmd.Flags().Bool(autoUpgradeFlag, false, "Automatically upgrade all schemas")
 	return cmd
 }
 

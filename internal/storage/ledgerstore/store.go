@@ -15,8 +15,7 @@ type Store struct {
 	db       *bun.DB
 	onDelete func(ctx context.Context) error
 
-	isInitialized bool
-	name          string
+	name string
 }
 
 func (store *Store) Name() string {
@@ -33,10 +32,6 @@ func (store *Store) Delete(ctx context.Context) error {
 		return err
 	}
 	return errors.Wrap(store.onDelete(ctx), "deleting ledger store")
-}
-
-func (store *Store) IsInitialized() bool {
-	return store.isInitialized
 }
 
 func (store *Store) prepareTransaction(ctx context.Context) (bun.Tx, error) {
@@ -62,6 +57,10 @@ func (store *Store) withTransaction(ctx context.Context, callback func(tx bun.Tx
 		return storage.PostgresError(err)
 	}
 	return tx.Commit()
+}
+
+func (store *Store) IsSchemaUpToDate(ctx context.Context) (bool, error) {
+	return store.getMigrator().IsUpToDate(ctx, store.db)
 }
 
 func New(

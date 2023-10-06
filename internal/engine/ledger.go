@@ -108,3 +108,7 @@ func (l *Ledger) SaveMeta(ctx context.Context, parameters command.Parameters, ta
 func (l *Ledger) DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error {
 	return l.commander.DeleteMetadata(ctx, parameters, targetType, targetID, key)
 }
+
+func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
+	return l.store.IsSchemaUpToDate(ctx)
+}

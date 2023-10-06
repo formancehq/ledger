@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/ledger/internal/api/shared"
+
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine"
@@ -27,7 +29,7 @@ import (
 func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
-	backend, mock := newTestingBackend(t)
+	backend, mock := newTestingBackend(t, false)
 	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	migrationInfo := []migrations.Info{
@@ -70,7 +72,7 @@ func TestGetLedgerInfo(t *testing.T) {
 func TestGetStats(t *testing.T) {
 	t.Parallel()
 
-	backend, mock := newTestingBackend(t)
+	backend, mock := newTestingBackend(t, true)
 	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	expectedStats := engine.Stats{
@@ -137,7 +139,7 @@ func TestGetLogs(t *testing.T) {
 				"cursor": []string{"xxx"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -155,7 +157,7 @@ func TestGetLogs(t *testing.T) {
 				},
 			}
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					GetLogs(gomock.Any(), ledgerstore.NewGetLogsQuery(testCase.expectQuery)).

@@ -77,22 +77,15 @@ func (d *Driver) GetSystemStore() *systemstore.Store {
 }
 
 func (d *Driver) newStore(name string) (*ledgerstore.Store, error) {
-	store, err := ledgerstore.New(d.db, name, func(ctx context.Context) error {
+	return ledgerstore.New(d.db, name, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return store, nil
 }
 
-func (d *Driver) CreateLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+func (d *Driver) createLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
 	if name == SystemSchema {
 		return nil, errors.New("reserved name")
 	}
-	d.lock.Lock()
-	defer d.lock.Unlock()
 
 	exists, err := d.systemStore.Exists(ctx, name)
 	if err != nil {
@@ -117,19 +110,33 @@ func (d *Driver) CreateLedgerStore(ctx context.Context, name string) (*ledgersto
 	return store, err
 }
 
+func (d *Driver) CreateLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	return d.createLedgerStore(ctx, name)
+}
+
 func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
 	exists, err := d.systemStore.Exists(ctx, name)
 	if err != nil {
-		return nil, errors.Wrap(err, "checking ledger existence")
-	}
-	if !exists {
-		return nil, storage.ErrStoreNotFound
+		return nil, err
 	}
 
-	return d.newStore(name)
+	var store *ledgerstore.Store
+	if !exists {
+		store, err = d.createLedgerStore(ctx, name)
+	} else {
+		store, err = d.newStore(name)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
@@ -149,6 +156,28 @@ func (d *Driver) Initialize(ctx context.Context) error {
 
 	if err := d.systemStore.Initialize(ctx); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (d *Driver) UpgradeAllLedgersSchemas(ctx context.Context) error {
+	systemStore := d.GetSystemStore()
+	ledgers, err := systemStore.ListLedgers(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, ledger := range ledgers {
+		store, err := d.GetLedgerStore(ctx, ledger)
+		if err != nil {
+			return err
+		}
+
+		logging.FromContext(ctx).Infof("Upgrading storage '%s'", ledger)
+		if _, err := store.Migrate(ctx); err != nil {
+			return err
+		}
 	}
 
 	return nil

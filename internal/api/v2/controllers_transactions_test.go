@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/api/shared"
+
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
@@ -179,7 +181,7 @@ func TestPostTransactions(t *testing.T) {
 			name:               "no postings or script",
 			payload:            v2.PostTransactionRequest{},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  v2.ErrValidation,
+			expectedErrorCode:  shared.ErrValidation,
 		},
 		{
 			name: "postings and script",
@@ -203,13 +205,13 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  v2.ErrValidation,
+			expectedErrorCode:  shared.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  v2.ErrValidation,
+			expectedErrorCode:  shared.ErrValidation,
 		},
 	}
 
@@ -224,7 +226,7 @@ func TestPostTransactions(t *testing.T) {
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 			)
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
 				mockLedger.EXPECT().
 					CreateTransaction(gomock.Any(), command.Parameters{
@@ -277,7 +279,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			name:              "invalid body",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -288,7 +290,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 				testCase.expectStatusCode = http.StatusNoContent
 			}
 
-			backend, mock := newTestingBackend(t)
+			backend, mock := newTestingBackend(t, true)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
 					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeTransaction, big.NewInt(0), testCase.body).
@@ -323,7 +325,7 @@ func TestGetTransaction(t *testing.T) {
 		nil,
 	)
 
-	backend, mock := newTestingBackend(t)
+	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
 		GetTransactionWithVolumes(gomock.Any(), ledgerstore.NewGetTransactionQuery(big.NewInt(0))).
 		Return(&tx, nil)
@@ -413,7 +415,7 @@ func TestGetTransactions(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -421,7 +423,7 @@ func TestGetTransactions(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 		{
 			name: "page size over maximum",
@@ -451,7 +453,7 @@ func TestGetTransactions(t *testing.T) {
 				},
 			}
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					GetTransactions(gomock.Any(), ledgerstore.NewGetTransactionsQuery(testCase.expectQuery)).
@@ -550,7 +552,7 @@ func TestCountTransactions(t *testing.T) {
 				testCase.expectStatusCode = http.StatusNoContent
 			}
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					CountTransactions(gomock.Any(), ledgerstore.NewGetTransactionsQuery(testCase.expectQuery)).
@@ -585,7 +587,7 @@ func TestRevertTransaction(t *testing.T) {
 		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 	)
 
-	backend, mockLedger := newTestingBackend(t)
+	backend, mockLedger := newTestingBackend(t, true)
 	mockLedger.
 		EXPECT().
 		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0)).

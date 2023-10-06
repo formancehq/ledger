@@ -16,9 +16,5 @@ func NewStore(db *bun.DB) *Store {
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
-	if err := s.CreateLedgersTable(ctx); err != nil {
-		return storage.PostgresError(err)
-	}
-
-	return storage.PostgresError(s.CreateConfigurationTable(ctx))
+	return storage.PostgresError(s.getMigrator().Up(ctx, s.db))
 }
