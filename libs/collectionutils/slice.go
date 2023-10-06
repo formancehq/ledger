@@ -12,6 +12,14 @@ func Map[FROM any, TO any](input []FROM, mapper func(FROM) TO) []TO {
 	return ret
 }
 
+func CopyMap[KEY comparable, VALUE any](m map[KEY]VALUE) map[KEY]VALUE {
+	ret := make(map[KEY]VALUE)
+	for k, v := range m {
+		ret[k] = v
+	}
+	return ret
+}
+
 func Filter[TYPE any](input []TYPE, filter func(TYPE) bool) []TYPE {
 	ret := make([]TYPE, 0)
 	for _, i := range input {
@@ -58,4 +66,19 @@ func Contains[T any](slice []T, t T) bool {
 		}
 	}
 	return false
+}
+
+type Set[T comparable] map[T]struct{}
+
+func (s Set[T]) Put(t T) {
+	s[t] = struct{}{}
+}
+
+func (s Set[T]) Contains(t T) bool {
+	_, ok := s[t]
+	return ok
+}
+
+func NewSet[T comparable]() Set[T] {
+	return make(Set[T], 0)
 }

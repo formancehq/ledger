@@ -156,31 +156,18 @@ func NewStorageUpgradeAll() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer func() {
+				if err := sqlDB.Close(); err != nil {
+					logger.Errorf("Error closing database: %s", err)
+				}
+			}()
 
 			driver := driver.New(sqlDB)
 			if err := driver.Initialize(ctx); err != nil {
 				return err
 			}
 
-			systemStore := driver.GetSystemStore()
-			ledgers, err := systemStore.ListLedgers(ctx)
-			if err != nil {
-				return err
-			}
-
-			for _, ledger := range ledgers {
-				store, err := driver.GetLedgerStore(ctx, ledger)
-				if err != nil {
-					return err
-				}
-				logger.Infof("Upgrading storage '%s'", ledger)
-				if err := upgradeStore(ctx, store, ledger); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return driver.UpgradeAllLedgersSchemas(ctx)
 		},
 	}
 	return cmd

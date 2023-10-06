@@ -2,9 +2,10 @@ package bus
 
 import (
 	"context"
-	ledger "github.com/formancehq/ledger/internal"
 	"testing"
 	"time"
+
+	ledger "github.com/formancehq/ledger/internal"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"

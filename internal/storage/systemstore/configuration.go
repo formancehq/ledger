@@ -16,15 +16,6 @@ type configuration struct {
 	AddedAt ledger.Time `bun:"addedAt,type:timestamp"`
 }
 
-func (s *Store) CreateConfigurationTable(ctx context.Context) error {
-	_, err := s.db.NewCreateTable().
-		Model((*configuration)(nil)).
-		IfNotExists().
-		Exec(ctx)
-
-	return storageerrors.PostgresError(err)
-}
-
 func (s *Store) GetConfiguration(ctx context.Context, key string) (string, error) {
 	query := s.db.NewSelect().
 		Model((*configuration)(nil)).

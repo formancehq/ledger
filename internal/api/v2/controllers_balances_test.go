@@ -47,7 +47,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 			expectedBalances := ledger.BalancesByAssets{
 				"world": big.NewInt(-100),
 			}
-			backend, mock := newTestingBackend(t)
+			backend, mock := newTestingBackend(t, true)
 			mock.EXPECT().
 				GetAggregatedBalances(gomock.Any(), ledgerstore.NewGetAggregatedBalancesQuery(testCase.expectQuery)).
 				Return(expectedBalances, nil)

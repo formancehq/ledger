@@ -16,7 +16,7 @@ type EventMessage struct {
 
 type CommittedTransactions struct {
 	Ledger          string                       `json:"ledger"`
-	Transaction     ledger.Transaction           `json:"transaction"`
+	Transactions    []ledger.Transaction         `json:"transactions"`
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 
@@ -66,7 +66,7 @@ func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
 type DeletedMetadata struct {
 	Ledger     string `json:"ledger"`
 	TargetType string `json:"targetType"`
-	TargetID   any    `json:"targetID"`
+	TargetID   any    `json:"targetId"`
 	Key        string `json:"key"`
 }
 

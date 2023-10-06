@@ -2,27 +2,15 @@ package driver_test
 
 import (
 	"context"
-	"os"
 	"testing"
+
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/google/uuid"
 
 	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/storagetesting"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
-
-func TestMain(t *testing.M) {
-	if err := pgtesting.CreatePostgresServer(); err != nil {
-		logging.Error(err)
-		os.Exit(1)
-	}
-	code := t.Run()
-	if err := pgtesting.DestroyPostgresServer(); err != nil {
-		logging.Error(err)
-	}
-	os.Exit(code)
-}
 
 func TestConfiguration(t *testing.T) {
 	d := storagetesting.StorageDriver(t)
@@ -39,4 +27,20 @@ func TestConfigurationError(t *testing.T) {
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
 	require.True(t, storage.IsNotFoundError(err))
+}
+
+func TestErrorOnOutdatedSchema(t *testing.T) {
+	d := storagetesting.StorageDriver(t)
+	ctx := logging.TestingContext()
+
+	name := uuid.NewString()
+	_, err := d.GetSystemStore().Register(ctx, name)
+	require.NoError(t, err)
+
+	store, err := d.GetLedgerStore(ctx, name)
+	require.NoError(t, err)
+
+	upToDate, err := store.IsSchemaUpToDate(ctx)
+	require.NoError(t, err)
+	require.False(t, upToDate)
 }

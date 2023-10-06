@@ -15,7 +15,7 @@ import (
 func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
-	backend, _ := newTestingBackend(t)
+	backend, _ := newTestingBackend(t, false)
 	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	backend.

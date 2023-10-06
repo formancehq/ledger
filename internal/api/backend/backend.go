@@ -32,6 +32,8 @@ type Ledger interface {
 	RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int) (*ledger.Transaction, error)
 	SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error
 	DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error
+
+	IsDatabaseUpToDate(ctx context.Context) (bool, error)
 }
 
 type Backend interface {

@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/api/shared"
+
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
@@ -65,7 +67,7 @@ func TestGetAccounts(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -73,7 +75,7 @@ func TestGetAccounts(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 		{
 			name: "page size over maximum",
@@ -110,7 +112,7 @@ func TestGetAccounts(t *testing.T) {
 				},
 			}
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					GetAccountsWithVolumes(gomock.Any(), ledgerstore.NewGetAccountsQuery(testCase.expectQuery)).
@@ -150,7 +152,7 @@ func TestGetAccount(t *testing.T) {
 		},
 	}
 
-	backend, mock := newTestingBackend(t)
+	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
 		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo")).
 		Return(&account, nil)
@@ -191,14 +193,14 @@ func TestPostAccountMetadata(t *testing.T) {
 			name:              "invalid account address format",
 			account:           "invalid-acc",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 		{
 			name:              "invalid body",
 			account:           "world",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: shared.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -209,7 +211,7 @@ func TestPostAccountMetadata(t *testing.T) {
 				testCase.expectStatusCode = http.StatusNoContent
 			}
 
-			backend, mock := newTestingBackend(t)
+			backend, mock := newTestingBackend(t, true)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
 					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, testCase.account, testCase.body).

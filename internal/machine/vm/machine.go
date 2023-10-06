@@ -43,7 +43,7 @@ type Machine struct {
 }
 
 type Posting struct {
-	Source      string                 `json:"source"`
+	Source      string                `json:"source"`
 	Destination string                `json:"destination"`
 	Amount      *internal.MonetaryInt `json:"amount"`
 	Asset       string                `json:"asset"`

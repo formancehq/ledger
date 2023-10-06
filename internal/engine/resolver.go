@@ -8,9 +8,7 @@ import (
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -73,6 +71,7 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	r.lock.RLock()
 	ledger, ok := r.ledgers[name]
 	r.lock.RUnlock()
+
 	if !ok {
 		r.lock.Lock()
 		defer r.lock.Unlock()
@@ -84,25 +83,9 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return ledger, nil
 		}
 
-		exists, err := r.storageDriver.GetSystemStore().Exists(ctx, name)
+		store, err := r.storageDriver.GetLedgerStore(ctx, name)
 		if err != nil {
 			return nil, err
-		}
-
-		var store *ledgerstore.Store
-		if !exists {
-			store, err = r.storageDriver.CreateLedgerStore(ctx, name)
-		} else {
-			store, err = r.storageDriver.GetLedgerStore(ctx, name)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		if !store.IsInitialized() {
-			if _, err := store.Migrate(ctx); err != nil {
-				return nil, errors.Wrap(err, "initializing ledger store")
-			}
 		}
 
 		ledger = New(store, r.publisher, r.compiler)

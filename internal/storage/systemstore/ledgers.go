@@ -16,15 +16,6 @@ type Ledgers struct {
 	AddedAt ledger.Time `bun:"addedat,type:timestamp"`
 }
 
-func (s *Store) CreateLedgersTable(ctx context.Context) error {
-	_, err := s.db.NewCreateTable().
-		Model((*Ledgers)(nil)).
-		IfNotExists().
-		Exec(ctx)
-
-	return storageerrors.PostgresError(err)
-}
-
 func (s *Store) ListLedgers(ctx context.Context) ([]string, error) {
 	query := s.db.NewSelect().
 		Model((*Ledgers)(nil)).

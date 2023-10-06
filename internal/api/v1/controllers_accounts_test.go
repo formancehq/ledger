@@ -115,7 +115,7 @@ func TestGetAccounts(t *testing.T) {
 				},
 			}
 
-			backend, mockLedger := newTestingBackend(t)
+			backend, mockLedger := newTestingBackend(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					GetAccountsWithVolumes(gomock.Any(), ledgerstore.NewGetAccountsQuery(testCase.expectQuery)).
@@ -153,7 +153,7 @@ func TestGetAccount(t *testing.T) {
 		},
 	}
 
-	backend, mock := newTestingBackend(t)
+	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
 		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo")).
 		Return(&account, nil)
@@ -212,7 +212,7 @@ func TestPostAccountMetadata(t *testing.T) {
 				testCase.expectStatusCode = http.StatusNoContent
 			}
 
-			backend, mock := newTestingBackend(t)
+			backend, mock := newTestingBackend(t, true)
 			if testCase.expectStatusCode == http.StatusNoContent {
 				mock.EXPECT().
 					SaveMeta(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeAccount, testCase.account, testCase.body).

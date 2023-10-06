@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	storage2 "github.com/formancehq/ledger/internal/storage"
+	storage "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/spf13/cobra"
@@ -18,12 +18,12 @@ import (
 // Or make the inverse (move analytics flags to pkg/analytics)
 // IMO, flags are more easily discoverable if located inside cmd/
 func InitCLIFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().Int(storage2.StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
-	cmd.PersistentFlags().Int(storage2.StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
-	cmd.PersistentFlags().String(storage2.StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
-	cmd.PersistentFlags().Int(storage2.StoragePostgresMaxIdleConnsFlag, 20, "Max idle connections to database")
-	cmd.PersistentFlags().Duration(storage2.StoragePostgresConnMaxIdleTimeFlag, time.Minute, "Max idle time of idle connections")
-	cmd.PersistentFlags().Int(storage2.StoragePostgresMaxOpenConns, 20, "Max open connections")
+	cmd.PersistentFlags().Int(storage.StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
+	cmd.PersistentFlags().Int(storage.StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
+	cmd.PersistentFlags().String(storage.StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
+	cmd.PersistentFlags().Int(storage.StoragePostgresMaxIdleConnsFlag, 20, "Max idle connections to database")
+	cmd.PersistentFlags().Duration(storage.StoragePostgresConnMaxIdleTimeFlag, time.Minute, "Max idle time of idle connections")
+	cmd.PersistentFlags().Int(storage.StoragePostgresMaxOpenConns, 20, "Max open connections")
 }
 
 type PostgresConfig struct {
@@ -31,7 +31,7 @@ type PostgresConfig struct {
 }
 
 type ModuleConfig struct {
-	PostgresConnectionOptions storage2.ConnectionOptions
+	PostgresConnectionOptions storage.ConnectionOptions
 	Debug                     bool
 }
 
@@ -39,9 +39,9 @@ func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func(logger logging.Logger) (*bun.DB, error) {
-		configuration := storage2.ConnectionOptionsFromFlags(v, output, debug)
+		configuration := storage.ConnectionOptionsFromFlags(v, output, debug)
 		logger.WithField("config", configuration).Infof("Opening connection to database...")
-		return storage2.OpenSQLDB(configuration)
+		return storage.OpenSQLDB(configuration)
 	}))
 	options = append(options, fx.Provide(func(db *bun.DB) (*Driver, error) {
 		return New(db), nil
