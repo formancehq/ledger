@@ -12,9 +12,9 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/paginate"
-	"github.com/formancehq/ledger/internal/storage/query"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
 

@@ -13,9 +13,9 @@ import (
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/paginate"
-	"github.com/formancehq/ledger/internal/storage/query"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )

@@ -11,10 +11,10 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/query"
 	internaltesting "github.com/formancehq/ledger/internal/testing"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
 )
 
