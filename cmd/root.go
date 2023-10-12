@@ -28,6 +28,7 @@ const (
 	storageCacheFlag                 = "storage.cache"
 	serverHttpBindAddressFlag        = "server.http.bind_address"
 	uiHttpBindAddressFlag            = "ui.http.bind_address"
+	uiBrowserFlag                    = "ui.browser"
 	lockStrategyFlag                 = "lock-strategy"
 	lockStrategyRedisUrlFlag         = "lock-strategy-redis-url"
 	lockStrategyRedisDurationFlag    = "lock-strategy-redis-duration"
@@ -131,6 +132,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	root.PersistentFlags().String(serverHttpBindAddressFlag, "localhost:3068", "API bind address")
 	root.PersistentFlags().String(uiHttpBindAddressFlag, "localhost:3068", "UI bind address")
+	root.PersistentFlags().Bool(uiBrowserFlag, true, "UI Open browser")
 	root.PersistentFlags().String(lockStrategyFlag, "memory", "Lock strategy (memory, none, redis)")
 	root.PersistentFlags().String(lockStrategyRedisUrlFlag, "", "Redis url when using redis locking strategy")
 	root.PersistentFlags().Duration(lockStrategyRedisDurationFlag, redis.DefaultLockDuration, "Lock duration")

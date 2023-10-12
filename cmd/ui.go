@@ -50,7 +50,9 @@ var UICmd = &cobra.Command{
 			handler.ServeHTTP(rw, r)
 		})
 
-		openuri(addr)
+		if viper.GetBool(uiBrowserFlag) {
+			openuri(addr)
+		}
 		fmt.Printf("Numary control is live on http://%s\n", addr)
 
 		httpErr := http.ListenAndServe(addr, nil)
