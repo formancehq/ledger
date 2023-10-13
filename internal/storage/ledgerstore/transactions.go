@@ -230,7 +230,7 @@ func (store *Store) GetTransactions(ctx context.Context, q *GetTransactionsQuery
 	}), nil
 }
 
-func (store *Store) CountTransactions(ctx context.Context, q *GetTransactionsQuery) (uint64, error) {
+func (store *Store) CountTransactions(ctx context.Context, q *GetTransactionsQuery) (int, error) {
 	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return store.buildTransactionListQuery(query, q.Options)
 	})

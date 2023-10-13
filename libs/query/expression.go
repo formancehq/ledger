@@ -29,6 +29,10 @@ type set struct {
 var _ Builder = (*set)(nil)
 
 func (set set) Build(ctx Context) (string, []any, error) {
+	if len(set.items) == 0 {
+		return "1 = 1", nil, nil
+	}
+
 	clauses := make([]string, 0)
 	args := make([]any, 0)
 	for _, builder := range set.items {

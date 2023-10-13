@@ -22,9 +22,6 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 
 	v := viper.GetViper()
 	debug := v.GetBool(service.DebugFlag)
-	if debug {
-		driver.InstrumentalizeSQLDriver()
-	}
 
 	options = append(options,
 		publish.CLIPublisherModule(v, ServiceName),

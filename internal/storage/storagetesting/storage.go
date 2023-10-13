@@ -14,20 +14,13 @@ import (
 func StorageDriver(t pgtesting.TestingT) *driver.Driver {
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
-	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
+	d := driver.New(storage.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 		MaxIdleConns:       40,
 		MaxOpenConns:       40,
 		ConnMaxIdleTime:    time.Minute,
 	})
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
-	d := driver.New(db)
 
 	require.NoError(t, d.Initialize(context.Background()))
 

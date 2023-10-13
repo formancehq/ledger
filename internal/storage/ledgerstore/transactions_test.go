@@ -575,7 +575,7 @@ func TestCountTransactions(t *testing.T) {
 
 	count, err := store.CountTransactions(context.Background(), ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
 	require.NoError(t, err, "counting transactions should not fail")
-	require.Equal(t, uint64(3), count, "count should be equal")
+	require.Equal(t, 3, count, "count should be equal")
 }
 
 func TestUpdateTransactionsMetadata(t *testing.T) {

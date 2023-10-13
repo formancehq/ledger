@@ -11,7 +11,6 @@ require (
 	github.com/formancehq/stack/libs/go-libs v0.0.0-20230517212829-71aaaacfd130
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/cors v1.2.1
-	github.com/golang/mock v1.4.4
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx/v5 v5.3.0
@@ -28,7 +27,6 @@ require (
 	github.com/uptrace/bun v1.1.14
 	github.com/uptrace/bun/dialect/pgdialect v1.1.14
 	github.com/uptrace/bun/extra/bunotel v1.1.14
-	go.nhat.io/otelsql v0.11.0
 	go.opentelemetry.io/otel v1.16.0
 	go.opentelemetry.io/otel/metric v1.16.0
 	go.opentelemetry.io/otel/trace v1.16.0

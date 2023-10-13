@@ -33,6 +33,7 @@ type Logs struct {
 }
 
 func (log *Logs) ToCore() *ledger.ChainedLog {
+
 	payload, err := ledger.HydrateLog(ledger.LogTypeFromString(log.Type), log.Data)
 	if err != nil {
 		panic(errors.Wrap(err, "hydrating log data"))

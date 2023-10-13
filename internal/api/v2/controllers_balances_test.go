@@ -14,8 +14,8 @@ import (
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestGetBalancesAggregated(t *testing.T) {

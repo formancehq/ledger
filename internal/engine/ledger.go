@@ -16,8 +16,9 @@ import (
 )
 
 type Ledger struct {
-	commander *command.Commander
-	store     *ledgerstore.Store
+	commander        *command.Commander
+	store            *ledgerstore.Store
+	isSchemaUpToDate bool
 }
 
 func New(
@@ -58,7 +59,7 @@ func (l *Ledger) GetTransactions(ctx context.Context, q *ledgerstore.GetTransact
 	return txs, errors.Wrap(err, "getting transactions")
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (uint64, error) {
+func (l *Ledger) CountTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (int, error) {
 	count, err := l.store.CountTransactions(ctx, q)
 	return count, errors.Wrap(err, "counting transactions")
 }
@@ -68,7 +69,7 @@ func (l *Ledger) GetTransactionWithVolumes(ctx context.Context, query ledgerstor
 	return tx, errors.Wrap(err, "getting transaction")
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, a *ledgerstore.GetAccountsQuery) (uint64, error) {
+func (l *Ledger) CountAccounts(ctx context.Context, a *ledgerstore.GetAccountsQuery) (int, error) {
 	count, err := l.store.CountAccounts(ctx, a)
 	return count, errors.Wrap(err, "counting accounts")
 }
@@ -110,5 +111,11 @@ func (l *Ledger) DeleteMetadata(ctx context.Context, parameters command.Paramete
 }
 
 func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
-	return l.store.IsSchemaUpToDate(ctx)
+	if l.isSchemaUpToDate {
+		return true, nil
+	}
+	var err error
+	l.isSchemaUpToDate, err = l.store.IsSchemaUpToDate(ctx)
+
+	return l.isSchemaUpToDate, err
 }

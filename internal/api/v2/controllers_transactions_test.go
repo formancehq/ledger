@@ -20,8 +20,8 @@ import (
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestPostTransactions(t *testing.T) {
@@ -556,7 +556,7 @@ func TestCountTransactions(t *testing.T) {
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
 				mockLedger.EXPECT().
 					CountTransactions(gomock.Any(), ledgerstore.NewGetTransactionsQuery(testCase.expectQuery)).
-					Return(uint64(10), nil)
+					Return(10, nil)
 			}
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
