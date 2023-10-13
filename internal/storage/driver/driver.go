@@ -2,9 +2,8 @@ package driver
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"fmt"
+	"net/url"
 	"sync"
 
 	"github.com/formancehq/ledger/internal/storage"
@@ -13,71 +12,29 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
-	"go.nhat.io/otelsql"
 )
 
 const SystemSchema = "_system"
 
-type pgxDriver struct {
-	driverName string
-}
-
-var pgxSqlDriver pgxDriver
-
-type otelSQLDriverWithCheckNamedValueDisabled struct {
-	driver.Driver
-}
-
-func (d otelSQLDriverWithCheckNamedValueDisabled) CheckNamedValue(*driver.NamedValue) error {
-	return nil
-}
-
-var _ = driver.NamedValueChecker(&otelSQLDriverWithCheckNamedValueDisabled{})
-
-func init() {
-	// Default mapping for app driver/sql driver
-	pgxSqlDriver.driverName = "pgx"
-}
-
-// todo: since se use pq, this is probably useless
-func InstrumentalizeSQLDriver() {
-	// otelsql has a function Register which wrap the underlying driver, but does not mirror driver.NamedValuedChecker interface of the underlying driver
-	// pgx implements this interface and just return nil
-	// so, we need to manually wrap the driver to implements this interface and return a nil error
-	db, err := sql.Open("pgx", "")
-	if err != nil {
-		panic(err)
-	}
-
-	dri := db.Driver()
-
-	if err = db.Close(); err != nil {
-		panic(err)
-	}
-
-	wrappedDriver := otelsql.Wrap(dri,
-		otelsql.AllowRoot(),
-		otelsql.TraceAll(),
-	)
-
-	pgxSqlDriver.driverName = fmt.Sprintf("otel-%s", pgxSqlDriver.driverName)
-	sql.Register(pgxSqlDriver.driverName, otelSQLDriverWithCheckNamedValueDisabled{
-		wrappedDriver,
-	})
-}
-
 type Driver struct {
-	db          *bun.DB
-	systemStore *systemstore.Store
-	lock        sync.Mutex
+	systemStore       *systemstore.Store
+	lock              sync.Mutex
+	connectionOptions storage.ConnectionOptions
+	db                *bun.DB
+	databasesBySchema map[string]*bun.DB
 }
 
 func (d *Driver) GetSystemStore() *systemstore.Store {
 	return d.systemStore
 }
 
-func (d *Driver) newStore(name string) (*ledgerstore.Store, error) {
-	return ledgerstore.New(d.db, name, func(ctx context.Context) error {
+func (d *Driver) newLedgerStore(name string) (*ledgerstore.Store, error) {
+	db, err := d.openDBWithSchema(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return ledgerstore.New(db, name, func(ctx context.Context) error {
 		return d.GetSystemStore().DeleteLedger(ctx, name)
 	})
 }
@@ -100,7 +57,7 @@ func (d *Driver) createLedgerStore(ctx context.Context, name string) (*ledgersto
 		return nil, err
 	}
 
-	store, err := d.newStore(name)
+	store, err := d.newLedgerStore(name)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +87,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.
 	if !exists {
 		store, err = d.createLedgerStore(ctx, name)
 	} else {
-		store, err = d.newStore(name)
+		store, err = d.newLedgerStore(name)
 	}
 	if err != nil {
 		return nil, err
@@ -139,10 +96,34 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.
 	return store, nil
 }
 
+func (d *Driver) openDBWithSchema(schema string) (*bun.DB, error) {
+	parsedConnectionParams, err := url.Parse(d.connectionOptions.DatabaseSourceName)
+	if err != nil {
+		return nil, storage.PostgresError(err)
+	}
+
+	query := parsedConnectionParams.Query()
+	query.Set("search_path", schema)
+	parsedConnectionParams.RawQuery = query.Encode()
+
+	connectionOptions := d.connectionOptions
+	connectionOptions.DatabaseSourceName = parsedConnectionParams.String()
+
+	db, err := storage.OpenSQLDB(connectionOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	d.databasesBySchema[schema] = db
+
+	return db, nil
+}
+
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
 
-	_, err := d.db.ExecContext(ctx, "create extension if not exists pgcrypto")
+	var err error
+	d.db, err = storage.OpenSQLDB(d.connectionOptions)
 	if err != nil {
 		return storage.PostgresError(err)
 	}
@@ -152,7 +133,12 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return storage.PostgresError(err)
 	}
 
-	d.systemStore = systemstore.NewStore(d.db)
+	dbWithSystemSchema, err := d.openDBWithSchema(SystemSchema)
+	if err != nil {
+		return storage.PostgresError(err)
+	}
+
+	d.systemStore = systemstore.NewStore(dbWithSystemSchema)
 
 	if err := d.systemStore.Initialize(ctx); err != nil {
 		return err
@@ -183,8 +169,23 @@ func (d *Driver) UpgradeAllLedgersSchemas(ctx context.Context) error {
 	return nil
 }
 
-func New(db *bun.DB) *Driver {
+func (d *Driver) Close() error {
+	if d.db != nil {
+		if err := d.db.Close(); err != nil {
+			return err
+		}
+	}
+	for _, db := range d.databasesBySchema {
+		if err := db.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func New(connectionOptions storage.ConnectionOptions) *Driver {
 	return &Driver{
-		db: db,
+		connectionOptions: connectionOptions,
+		databasesBySchema: make(map[string]*bun.DB),
 	}
 }

@@ -13,19 +13,19 @@ import (
 //go:generate mockgen -source backend.go -destination backend_test.go -package analytics . Ledger
 
 type Ledger interface {
-	CountTransactions(ctx context.Context) (uint64, error)
-	CountAccounts(ctx context.Context) (uint64, error)
+	CountTransactions(ctx context.Context) (int, error)
+	CountAccounts(ctx context.Context) (int, error)
 }
 
 type defaultLedger struct {
 	store *ledgerstore.Store
 }
 
-func (d defaultLedger) CountTransactions(ctx context.Context) (uint64, error) {
+func (d defaultLedger) CountTransactions(ctx context.Context) (int, error) {
 	return d.store.CountTransactions(ctx, ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
 }
 
-func (d defaultLedger) CountAccounts(ctx context.Context) (uint64, error) {
+func (d defaultLedger) CountAccounts(ctx context.Context) (int, error) {
 	return d.store.CountAccounts(ctx, ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
 }
 

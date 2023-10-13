@@ -15,20 +15,20 @@ import (
 )
 
 func fetch[T any](s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (T, error) {
+
 	var ret T
 	ret = reflect.New(reflect.TypeOf(ret).Elem()).Interface().(T)
-	err := s.withTransaction(ctx, func(tx bun.Tx) error {
-		query := s.db.NewSelect().Conn(tx)
-		for _, builder := range builders {
-			query = query.Apply(builder)
-		}
-		if query.GetTableName() == "" && query.GetModel() == nil {
-			//query = query.Model(ret)
-		}
 
-		return storage.PostgresError(query.Scan(ctx, ret))
-	})
-	return ret, err
+	query := s.db.NewSelect()
+	for _, builder := range builders {
+		query = query.Apply(builder)
+	}
+
+	if err := query.Scan(ctx, ret); err != nil {
+		return ret, storage.PostgresError(err)
+	}
+
+	return ret, nil
 }
 
 func fetchAndMap[T any, TO any](s *Store, ctx context.Context,
@@ -44,14 +44,9 @@ func fetchAndMap[T any, TO any](s *Store, ctx context.Context,
 
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 	q *paginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
-	tx, err := s.prepareTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 
 	var ret RETURN
-	query := s.db.NewSelect().Conn(tx)
+	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
@@ -63,13 +58,7 @@ func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 }
 
 func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *paginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
-	tx, err := s.prepareTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	query := s.db.NewSelect().Conn(tx)
+	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
@@ -77,25 +66,14 @@ func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, 
 	return paginate.UsingColumn[FILTERS, RETURN](ctx, query, *q)
 }
 
-func count(s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (uint64, error) {
-	var (
-		count int
-		err   error
-	)
-	if err := s.withTransaction(ctx, func(tx bun.Tx) error {
-		query := s.db.NewSelect()
-		for _, builder := range builders {
-			query = query.Apply(builder)
-		}
-		count, err = s.db.NewSelect().
-			TableExpr("(" + query.String() + ") data").
-			Conn(tx).
-			Count(ctx)
-		return err
-	}); err != nil {
-		return 0, err
+func count(s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (int, error) {
+	query := s.db.NewSelect()
+	for _, builder := range builders {
+		query = query.Apply(builder)
 	}
-	return uint64(count), nil
+	return s.db.NewSelect().
+		TableExpr("(" + query.String() + ") data").
+		Count(ctx)
 }
 
 func filterAccountAddress(address, key string) string {

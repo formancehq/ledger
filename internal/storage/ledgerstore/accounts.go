@@ -156,7 +156,7 @@ func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery
 	return account, nil
 }
 
-func (store *Store) CountAccounts(ctx context.Context, q *GetAccountsQuery) (uint64, error) {
+func (store *Store) CountAccounts(ctx context.Context, q *GetAccountsQuery) (int, error) {
 	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return store.buildAccountListQuery(query, q)
 	})

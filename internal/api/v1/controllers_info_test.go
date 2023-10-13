@@ -18,8 +18,8 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/migrations"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestGetLedgerInfo(t *testing.T) {

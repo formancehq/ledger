@@ -118,16 +118,13 @@ func NewStorageUpgrade() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
-			sqlDB, err := storage.OpenSQLDB(storage.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag)))
-			if err != nil {
-				return err
-			}
-			defer sqlDB.Close()
-
-			driver := driver.New(sqlDB)
+			driver := driver.New(storage.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag)))
 			if err := driver.Initialize(cmd.Context()); err != nil {
 				return err
 			}
+			defer func() {
+				_ = driver.Close()
+			}()
 
 			name := args[0]
 			store, err := driver.GetLedgerStore(cmd.Context(), name)
@@ -152,17 +149,11 @@ func NewStorageUpgradeAll() *cobra.Command {
 			logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag), false)
 			ctx := logging.ContextWithLogger(cmd.Context(), logger)
 
-			sqlDB, err := storage.OpenSQLDB(storage.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag)))
-			if err != nil {
-				return err
-			}
+			driver := driver.New(storage.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag)))
 			defer func() {
-				if err := sqlDB.Close(); err != nil {
-					logger.Errorf("Error closing database: %s", err)
-				}
+				_ = driver.Close()
 			}()
 
-			driver := driver.New(sqlDB)
 			if err := driver.Initialize(ctx); err != nil {
 				return err
 			}

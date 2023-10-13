@@ -47,10 +47,10 @@ func (m *MockLedger) EXPECT() *MockLedgerMockRecorder {
 }
 
 // CountAccounts mocks base method.
-func (m *MockLedger) CountAccounts(ctx context.Context, query *ledgerstore.GetAccountsQuery) (uint64, error) {
+func (m *MockLedger) CountAccounts(ctx context.Context, query *ledgerstore.GetAccountsQuery) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAccounts", ctx, query)
-	ret0, _ := ret[0].(uint64)
+	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -62,10 +62,10 @@ func (mr *MockLedgerMockRecorder) CountAccounts(ctx, query any) *gomock.Call {
 }
 
 // CountTransactions mocks base method.
-func (m *MockLedger) CountTransactions(ctx context.Context, query *ledgerstore.GetTransactionsQuery) (uint64, error) {
+func (m *MockLedger) CountTransactions(ctx context.Context, query *ledgerstore.GetTransactionsQuery) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountTransactions", ctx, query)
-	ret0, _ := ret[0].(uint64)
+	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

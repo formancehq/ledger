@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"gopkg.in/segmentio/analytics-go.v3"
 )
 
@@ -150,12 +150,12 @@ func TestAnalytics(t *testing.T) {
 				EXPECT().
 				CountTransactions(gomock.Any()).
 				AnyTimes().
-				Return(uint64(10), nil)
+				Return(10, nil)
 			mockLedger.
 				EXPECT().
 				CountAccounts(gomock.Any()).
 				AnyTimes().
-				Return(uint64(20), nil)
+				Return(20, nil)
 
 			h := newHeartbeat(backend, analyticsClient, version, interval)
 			go func() {

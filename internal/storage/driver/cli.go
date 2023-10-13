@@ -6,11 +6,9 @@ import (
 	"time"
 
 	storage "github.com/formancehq/ledger/internal/storage"
-	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 )
 
@@ -21,7 +19,7 @@ func InitCLIFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().Int(storage.StoreWorkerMaxPendingSize, 0, "Max pending size for store worker")
 	cmd.PersistentFlags().Int(storage.StoreWorkerMaxWriteChanSize, 1024, "Max write channel size for store worker")
 	cmd.PersistentFlags().String(storage.StoragePostgresConnectionStringFlag, "postgresql://localhost/postgres", "Postgres connection string")
-	cmd.PersistentFlags().Int(storage.StoragePostgresMaxIdleConnsFlag, 20, "Max idle connections to database")
+	cmd.PersistentFlags().Int(storage.StoragePostgresMaxIdleConnsFlag, 0, "Max idle connections to database")
 	cmd.PersistentFlags().Duration(storage.StoragePostgresConnMaxIdleTimeFlag, time.Minute, "Max idle time of idle connections")
 	cmd.PersistentFlags().Int(storage.StoragePostgresMaxOpenConns, 20, "Max open connections")
 }
@@ -30,35 +28,27 @@ type PostgresConfig struct {
 	ConnString string
 }
 
-type ModuleConfig struct {
-	PostgresConnectionOptions storage.ConnectionOptions
-	Debug                     bool
-}
-
 func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
-	options = append(options, fx.Provide(func(logger logging.Logger) (*bun.DB, error) {
-		configuration := storage.ConnectionOptionsFromFlags(v, output, debug)
-		logger.WithField("config", configuration).Infof("Opening connection to database...")
-		return storage.OpenSQLDB(configuration)
+	options = append(options, fx.Provide(func(logger logging.Logger) storage.ConnectionOptions {
+		connectionOptions := storage.ConnectionOptionsFromFlags(v, output, debug)
+		logger.WithField("config", connectionOptions).Infof("Opening connection to database...")
+		return connectionOptions
 	}))
-	options = append(options, fx.Provide(func(db *bun.DB) (*Driver, error) {
-		return New(db), nil
-	}))
-	options = append(options, health.ProvideHealthCheck(func(db *bun.DB) health.NamedCheck {
-		return health.NewNamedCheck("postgres", health.CheckFn(db.PingContext))
+	options = append(options, fx.Provide(func(connectionOptions storage.ConnectionOptions) (*Driver, error) {
+		return New(connectionOptions), nil
 	}))
 
-	options = append(options, fx.Invoke(func(db *bun.DB, driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {
+	options = append(options, fx.Invoke(func(driver *Driver, lifecycle fx.Lifecycle, logger logging.Logger) error {
 		lifecycle.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				logger.Infof("Initializing database...")
 				return driver.Initialize(ctx)
 			},
 			OnStop: func(ctx context.Context) error {
-				logger.Infof("Closing database...")
-				return db.Close()
+				logger.Infof("Closing driver...")
+				return driver.Close()
 			},
 		})
 		return nil

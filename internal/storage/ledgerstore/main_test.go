@@ -32,20 +32,17 @@ func newLedgerStore(t *testing.T) *ledgerstore.Store {
 	t.Helper()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
-		DatabaseSourceName: pgServer.ConnString(),
-		Debug:              testing.Verbose(),
-	},
-	//&explainHook{},
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
 
 	ctx := logging.TestingContext()
-	driver := driver.New(db)
+	driver := driver.New(storage.ConnectionOptions{
+		DatabaseSourceName: pgServer.ConnString(),
+		Debug:              testing.Verbose(),
+	})
 	require.NoError(t, driver.Initialize(ctx))
+	t.Cleanup(func() {
+		require.NoError(t, driver.Close())
+	})
+
 	ledgerStore, err := driver.CreateLedgerStore(ctx, uuid.NewString())
 	require.NoError(t, err)
 

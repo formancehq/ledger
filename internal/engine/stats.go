@@ -8,8 +8,8 @@ import (
 )
 
 type Stats struct {
-	Transactions uint64 `json:"transactions"`
-	Accounts     uint64 `json:"accounts"`
+	Transactions int `json:"transactions"`
+	Accounts     int `json:"accounts"`
 }
 
 func (l *Ledger) Stats(ctx context.Context) (Stats, error) {
