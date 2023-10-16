@@ -89,7 +89,7 @@ func (l *ledgerMonitor) DeletedMetadata(ctx context.Context, targetType string, 
 		}))
 }
 
-func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev EventMessage) {
+func (l *ledgerMonitor) publish(ctx context.Context, topic string, ev publish.EventMessage) {
 	if err := l.publisher.Publish(topic, publish.NewMessage(ctx, ev)); err != nil {
 		logging.FromContext(ctx).Errorf("publishing message: %s", err)
 		return
