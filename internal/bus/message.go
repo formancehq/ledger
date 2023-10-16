@@ -4,15 +4,8 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/events"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/stack/libs/go-libs/publish"
 )
-
-type EventMessage struct {
-	Date    ledger.Time `json:"date"`
-	App     string      `json:"app"`
-	Version string      `json:"version"`
-	Type    string      `json:"type"`
-	Payload any         `json:"payload"`
-}
 
 type CommittedTransactions struct {
 	Ledger          string                       `json:"ledger"`
@@ -20,9 +13,9 @@ type CommittedTransactions struct {
 	AccountMetadata map[string]metadata.Metadata `json:"accountMetadata"`
 }
 
-func newEventCommittedTransactions(txs CommittedTransactions) EventMessage {
-	return EventMessage{
-		Date:    ledger.Now(),
+func newEventCommittedTransactions(txs CommittedTransactions) publish.EventMessage {
+	return publish.EventMessage{
+		Date:    ledger.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeCommittedTransactions,
@@ -37,9 +30,9 @@ type SavedMetadata struct {
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
-func newEventSavedMetadata(metadata SavedMetadata) EventMessage {
-	return EventMessage{
-		Date:    ledger.Now(),
+func newEventSavedMetadata(metadata SavedMetadata) publish.EventMessage {
+	return publish.EventMessage{
+		Date:    ledger.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeSavedMetadata,
@@ -53,9 +46,9 @@ type RevertedTransaction struct {
 	RevertTransaction   ledger.Transaction `json:"revertTransaction"`
 }
 
-func newEventRevertedTransaction(tx RevertedTransaction) EventMessage {
-	return EventMessage{
-		Date:    ledger.Now(),
+func newEventRevertedTransaction(tx RevertedTransaction) publish.EventMessage {
+	return publish.EventMessage{
+		Date:    ledger.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeRevertedTransaction,
@@ -70,9 +63,9 @@ type DeletedMetadata struct {
 	Key        string `json:"key"`
 }
 
-func newEventDeletedMetadata(tx DeletedMetadata) EventMessage {
-	return EventMessage{
-		Date:    ledger.Now(),
+func newEventDeletedMetadata(tx DeletedMetadata) publish.EventMessage {
+	return publish.EventMessage{
+		Date:    ledger.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeDeletedMetadata,
