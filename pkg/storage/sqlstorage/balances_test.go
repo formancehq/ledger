@@ -160,6 +160,33 @@ func testGetBalances(t *testing.T, store *sqlstorage.Store) {
 	})
 }
 
+func testGetBalancesOn1Account(t *testing.T, store *sqlstorage.Store) {
+	err := store.Commit(context.Background(), tx1, tx2, tx3, tx4)
+	assert.NoError(t, err)
+
+	t.Run("on 1 accounts", func(t *testing.T) {
+		cursor, err := store.GetBalances(context.Background(),
+			ledger.BalancesQuery{
+				Filters: ledger.BalancesQueryFilters{
+					AddressRegexp: []string{"users:1"},
+				},
+				PageSize: 10,
+			})
+		assert.NoError(t, err)
+		assert.Equal(t, 10, cursor.PageSize)
+		assert.Equal(t, false, cursor.HasMore)
+		assert.Equal(t, "", cursor.Previous)
+		assert.Equal(t, "", cursor.Next)
+		assert.Equal(t, []core.AccountsBalances{
+			{
+				"users:1": core.AssetsBalances{
+					"USD": core.NewMonetaryInt(1),
+				},
+			},
+		}, cursor.Data)
+	})
+}
+
 func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	err := store.Commit(context.Background(), tx1, tx2, tx3)
 	assert.NoError(t, err)

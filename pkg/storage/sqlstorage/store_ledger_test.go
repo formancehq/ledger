@@ -43,6 +43,7 @@ func TestStore(t *testing.T) {
 		{name: "Mapping", fn: testMapping},
 		{name: "TooManyClient", fn: testTooManyClient},
 		{name: "GetBalances", fn: testGetBalances},
+		{name: "GetBalances1Accounts", fn: testGetBalancesOn1Account},
 		{name: "GetBalancesBigInts", fn: testGetBalancesBigInts},
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
 		{name: "CreateIK", fn: testIKS},
@@ -221,6 +222,55 @@ var tx3 = core.ExpandedTransaction{
 			},
 		},
 		"users:1": {
+			"USD": {
+				Input:  core.NewMonetaryInt(1),
+				Output: core.NewMonetaryInt(0),
+			},
+		},
+	},
+}
+
+var tx4 = core.ExpandedTransaction{
+	Transaction: core.Transaction{
+		ID: 3,
+		TransactionData: core.TransactionData{
+			Postings: []core.Posting{
+				{
+					Source:      "central_bank",
+					Destination: "users:11",
+					Amount:      core.NewMonetaryInt(1),
+					Asset:       "USD",
+				},
+			},
+			Reference: "tx4",
+			Metadata: core.Metadata{
+				"priority": json.RawMessage(`"high"`),
+			},
+			Timestamp: now.Add(-1 * time.Hour),
+		},
+	},
+	PreCommitVolumes: core.AccountsAssetsVolumes{
+		"central_bank": {
+			"USD": {
+				Input:  core.NewMonetaryInt(200),
+				Output: core.NewMonetaryInt(0),
+			},
+		},
+		"users:11": {
+			"USD": {
+				Input:  core.NewMonetaryInt(0),
+				Output: core.NewMonetaryInt(0),
+			},
+		},
+	},
+	PostCommitVolumes: core.AccountsAssetsVolumes{
+		"central_bank": {
+			"USD": {
+				Input:  core.NewMonetaryInt(200),
+				Output: core.NewMonetaryInt(1),
+			},
+		},
+		"users:11": {
 			"USD": {
 				Input:  core.NewMonetaryInt(1),
 				Output: core.NewMonetaryInt(0),
