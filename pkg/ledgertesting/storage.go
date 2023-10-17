@@ -47,9 +47,9 @@ func StorageDriver(multipleInstance bool) (*sqlstorage.Driver, func(), error) {
 	return nil, nil, errors.New("not found driver")
 }
 
-func ProvideStorageDriver() fx.Option {
+func ProvideStorageDriver(withMultipleInstance bool) fx.Option {
 	return fx.Provide(func(lc fx.Lifecycle) (*sqlstorage.Driver, error) {
-		driver, stopFn, err := StorageDriver(false)
+		driver, stopFn, err := StorageDriver(withMultipleInstance)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +66,7 @@ func ProvideStorageDriver() fx.Option {
 
 func ProvideLedgerStorageDriver() fx.Option {
 	return fx.Options(
-		ProvideStorageDriver(),
+		ProvideStorageDriver(false),
 		fx.Provide(
 			fx.Annotate(sqlstorage.NewLedgerStorageDriverFromRawDriver,
 				fx.As(new(storage.Driver[ledger.Store]))),

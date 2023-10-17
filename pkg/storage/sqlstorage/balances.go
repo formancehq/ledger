@@ -131,7 +131,7 @@ func (s *Store) GetBalances(ctx context.Context, q ledger.BalancesQuery) (api.Cu
 						continue
 					}
 
-					arg := sb.Args.Add(strings.ReplaceAll(segment, "\\", "\\\\"))
+					arg := sb.Args.Add("^" + strings.ReplaceAll(segment, "\\", "\\\\") + "$")
 					sb.Where(fmt.Sprintf("account_json @@ ('$[%d] like_regex \"' || %s::text || '\"')::jsonpath", i, arg))
 				}
 			} else {

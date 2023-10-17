@@ -1,58 +1,16 @@
-package sqlstorage
+package sqlstorage_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
+	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
-	"github.com/pborman/uuid"
+	"github.com/numary/ledger/pkg/storage/sqlstorage"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAccounts(t *testing.T) {
-	d := NewDriver("sqlite", &sqliteDB{
-		directory: os.TempDir(),
-		dbName:    uuid.New(),
-	}, false)
-
-	assert.NoError(t, d.Initialize(context.Background()))
-
-	defer func(d *Driver, ctx context.Context) {
-		assert.NoError(t, d.Close(ctx))
-	}(d, context.Background())
-
-	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
-	assert.NoError(t, err)
-
-	_, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
-
-	accountTests(t, store)
-}
-
-func TestAccountsMultipleInstance(t *testing.T) {
-	d := NewDriver("sqlite", &sqliteDB{
-		directory: os.TempDir(),
-		dbName:    uuid.New(),
-	}, true)
-
-	assert.NoError(t, d.Initialize(context.Background()))
-
-	defer func(d *Driver, ctx context.Context) {
-		assert.NoError(t, d.Close(ctx))
-	}(d, context.Background())
-
-	store, _, err := d.GetLedgerStore(context.Background(), "foo", true)
-	assert.NoError(t, err)
-
-	_, err = store.Initialize(context.Background())
-	assert.NoError(t, err)
-
-	accountTests(t, store)
-}
-
-func accountTests(t *testing.T, store *Store) {
+func testAccounts(t *testing.T, store *sqlstorage.Store) {
 	t.Run("success balance", func(t *testing.T) {
 		q := ledger.AccountsQuery{
 			PageSize: 10,
@@ -106,5 +64,22 @@ func accountTests(t *testing.T, store *Store) {
 
 		_, err := store.GetAccounts(context.Background(), q)
 		assert.NoError(t, err, "balance operator filter should not fail")
+	})
+
+	t.Run("success get accounts with address filters", func(t *testing.T) {
+		err := store.Commit(context.Background(), tx1, tx2, tx3, tx4)
+		assert.NoError(t, err)
+
+		q := ledger.AccountsQuery{
+			PageSize: 10,
+			Filters: ledger.AccountsQueryFilters{
+				Address: "users:1",
+			},
+		}
+
+		accounts, err := store.GetAccounts(context.Background(), q)
+		assert.NoError(t, err, "balance operator filter should not fail")
+		assert.Equal(t, len(accounts.Data), 1)
+		assert.Equal(t, accounts.Data[0].Address, core.AccountAddress("users:1"))
 	})
 }
