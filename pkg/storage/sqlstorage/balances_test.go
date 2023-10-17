@@ -2,10 +2,11 @@ package sqlstorage_test
 
 import (
 	"context"
-	"github.com/numary/ledger/pkg/ledgertesting"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/numary/ledger/pkg/ledgertesting"
 
 	"github.com/numary/ledger/pkg/core"
 	"github.com/numary/ledger/pkg/ledger"
@@ -198,6 +199,23 @@ func testGetBalancesAggregated(t *testing.T, store *sqlstorage.Store) {
 	assert.NoError(t, err)
 	assert.Equal(t, core.AssetsBalances{
 		"USD": core.NewMonetaryInt(0),
+	}, cursor)
+}
+
+func testGetBalancesAggregatedByAccount(t *testing.T, store *sqlstorage.Store) {
+	err := store.Commit(context.Background(), tx1, tx2, tx3, tx4)
+	assert.NoError(t, err)
+
+	q := ledger.AggregatedBalancesQuery{
+		PageSize: 10,
+		Filters: ledger.AggregatedBalancesQueryFilters{
+			AddressRegexp: "users:1",
+		},
+	}
+	cursor, err := store.GetBalancesAggregated(context.Background(), q)
+	assert.NoError(t, err)
+	assert.Equal(t, core.AssetsBalances{
+		"USD": core.NewMonetaryInt(1),
 	}, cursor)
 }
 
