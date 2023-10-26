@@ -539,7 +539,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id uint64, metada
 		return errors.Wrap(err, "reading last log")
 	}
 
-	if !s.multipleInstance && s.lastTx.ID == id {
+	if !s.multipleInstance && s.lastTx != nil && s.lastTx.ID == id {
 		if s.lastTx.Metadata == nil {
 			s.lastTx.Metadata = metadata
 		} else {
