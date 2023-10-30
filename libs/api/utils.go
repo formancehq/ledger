@@ -36,6 +36,13 @@ func NoContent(w http.ResponseWriter) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
+func Forbidden(w http.ResponseWriter, code string, err error) {
+	writeJSON(w, http.StatusForbidden, ErrorResponse{
+		ErrorCode:    code,
+		ErrorMessage: err.Error(),
+	})
+}
+
 func BadRequest(w http.ResponseWriter, code string, err error) {
 	writeJSON(w, http.StatusBadRequest, ErrorResponse{
 		ErrorCode:    code,

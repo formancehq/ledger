@@ -31,7 +31,12 @@ func (a *App) Run(ctx context.Context) error {
 		// app.Stop in order to gracefully shutdown the app
 	}
 
-	return app.Stop(logging.ContextWithLogger(context.Background(), logger))
+	logger.Infof("Stopping app...")
+
+	return app.Stop(logging.ContextWithLogger(contextWithLifecycle(
+		context.Background(), // Don't reuse original context as it can have been cancelled, and we really need to properly stop the app
+		lifecycleFromContext(ctx),
+	), logger))
 }
 
 func (a *App) Start(ctx context.Context) error {
@@ -40,10 +45,31 @@ func (a *App) Start(ctx context.Context) error {
 }
 
 func (a *App) newFxApp(logger logging.Logger) *fx.App {
-	return fx.New(append(a.options,
+	options := append(a.options,
 		fx.NopLogger,
 		fx.Supply(fx.Annotate(logger, fx.As(new(logging.Logger)))),
-	)...)
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					markAsAppReady(ctx)
+
+					return nil
+				},
+			})
+		}),
+	)
+	options = append([]fx.Option{
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					markAsAppStopped(ctx)
+
+					return nil
+				},
+			})
+		}),
+	}, options...)
+	return fx.New(options...)
 }
 
 func New(output io.Writer, options ...fx.Option) *App {
