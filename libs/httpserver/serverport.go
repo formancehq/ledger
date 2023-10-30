@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"net"
 	"net/http"
 	"strconv"
@@ -96,6 +97,7 @@ func NewHook(addr string, handler http.Handler, options ...func(server *http.Ser
 	)
 	return fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			logging.FromContext(ctx).Infof("Start HTTP server")
 			close, err = StartServer(ctx, addr, handler, options...)
 			return err
 		},
@@ -103,6 +105,7 @@ func NewHook(addr string, handler http.Handler, options ...func(server *http.Ser
 			if close == nil {
 				return nil
 			}
+			logging.FromContext(ctx).Infof("Stop HTTP server")
 			return close(ctx)
 		},
 	}
