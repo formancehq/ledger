@@ -3,13 +3,13 @@ package v2_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/internal/api/shared"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
-
-	"github.com/formancehq/ledger/internal/api/shared"
+	"time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
@@ -318,6 +318,8 @@ func TestPostTransactionMetadata(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	t.Parallel()
 
+	now := ledger.Now()
+
 	tx := ledger.ExpandTransaction(
 		ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
@@ -325,14 +327,17 @@ func TestGetTransaction(t *testing.T) {
 		nil,
 	)
 
+	query := ledgerstore.NewGetTransactionQuery(big.NewInt(0))
+	query.PIT = &now
+
 	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
-		GetTransactionWithVolumes(gomock.Any(), ledgerstore.NewGetTransactionQuery(big.NewInt(0))).
+		GetTransactionWithVolumes(gomock.Any(), query).
 		Return(&tx, nil)
 
 	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0?pit="+now.Format(time.RFC3339Nano), nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -357,49 +362,81 @@ func TestGetTransactions(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
+			name: "nominal",
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}),
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Match("metadata[roles]", "admin")),
 		},
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(ledger.DateFormat)),
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Gte("start_time", now.Format(ledger.DateFormat))),
 		},
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(ledger.DateFormat)),
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Lte("end_time", now.Format(ledger.DateFormat))),
 		},
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Match("account", "xxx")),
 		},
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Match("reference", "xxx")),
 		},
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Match("destination", "xxx")),
 		},
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithQueryBuilder(query.Match("source", "xxx")),
 		},
 		{
@@ -407,7 +444,9 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"cursor": []string{paginate.EncodeCursor(ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))},
 			},
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{},
+			}),
 		},
 		{
 			name: "using invalid cursor",
@@ -430,7 +469,11 @@ func TestGetTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
 				WithPageSize(v2.MaxPageSize),
 		},
 	}
@@ -464,9 +507,12 @@ func TestGetTransactions(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/transactions", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
+			params := url.Values{}
 			if testCase.queryParams != nil {
-				req.URL.RawQuery = testCase.queryParams.Encode()
+				params = testCase.queryParams
 			}
+			params.Set("pit", now.Format(time.RFC3339Nano))
+			req.URL.RawQuery = params.Encode()
 
 			router.ServeHTTP(rec, req)
 
@@ -486,6 +532,8 @@ func TestGetTransactions(t *testing.T) {
 func TestCountTransactions(t *testing.T) {
 	t.Parallel()
 
+	before := ledger.Now()
+
 	type testCase struct {
 		name              string
 		queryParams       url.Values
@@ -498,49 +546,81 @@ func TestCountTransactions(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
+			name: "nominal",
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}),
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": {"metadata[roles]": "admin"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("metadata[roles]", "admin")),
 		},
 		{
 			name: "using startTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
 		},
 		{
 			name: "using endTime",
 			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
 		},
 		{
 			name: "using account",
 			body: `{"$match": {"account": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("account", "xxx")),
 		},
 		{
 			name: "using reference",
 			body: `{"$match": {"reference": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("reference", "xxx")),
 		},
 		{
 			name: "using destination",
 			body: `{"$match": {"destination": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("destination", "xxx")),
 		},
 		{
 			name: "using source",
 			body: `{"$match": {"source": "xxx"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("source", "xxx")),
 		},
 	}
@@ -561,7 +641,7 @@ func TestCountTransactions(t *testing.T) {
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions", bytes.NewBufferString(testCase.body))
+			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
 			if testCase.queryParams != nil {
 				req.URL.RawQuery = testCase.queryParams.Encode()

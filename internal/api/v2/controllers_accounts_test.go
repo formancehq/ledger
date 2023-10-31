@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/formancehq/ledger/internal/api/shared"
 
@@ -33,24 +34,37 @@ func TestGetAccounts(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
+	before := ledger.Now()
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithPageSize(v2.DefaultPageSize),
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
 				WithPageSize(v2.DefaultPageSize),
 		},
 		{
 			name: "using address",
 			body: `{"$match": { "address": "foo" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Match("address", "foo")).
 				WithPageSize(v2.DefaultPageSize),
 		},
@@ -82,13 +96,21 @@ func TestGetAccounts(t *testing.T) {
 			queryParams: url.Values{
 				"pageSize": []string{"1000000"},
 			},
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithPageSize(v2.MaxPageSize),
 		},
 		{
 			name: "using balance filter",
 			body: `{"$lt": { "balance[USD/2]": 100 }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
 				WithQueryBuilder(query.Lt("balance[USD/2]", float64(100))).
 				WithPageSize(v2.DefaultPageSize),
 		},
@@ -121,11 +143,14 @@ func TestGetAccounts(t *testing.T) {
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", bytes.NewBufferString(testCase.body))
+			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
+			params := url.Values{}
 			if testCase.queryParams != nil {
-				req.URL.RawQuery = testCase.queryParams.Encode()
+				params = testCase.queryParams
 			}
+			params.Set("pit", before.Format(time.RFC3339Nano))
+			req.URL.RawQuery = params.Encode()
 
 			router.ServeHTTP(rec, req)
 
@@ -152,14 +177,18 @@ func TestGetAccount(t *testing.T) {
 		},
 	}
 
+	now := ledger.Now()
+	query := ledgerstore.NewGetAccountQuery("foo")
+	query.PIT = &now
+
 	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
-		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo")).
+		GetAccountWithVolumes(gomock.Any(), query).
 		Return(&account, nil)
 
 	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo", nil)
+	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo?pit="+now.Format(time.RFC3339Nano), nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

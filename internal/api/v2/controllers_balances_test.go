@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
@@ -28,15 +29,21 @@ func TestGetBalancesAggregated(t *testing.T) {
 		expectQuery ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter]
 	}
 
+	before := ledger.Now()
+
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}),
+			name: "nominal",
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
+				PIT: &before,
+			}),
 		},
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
+				PIT: &before,
+			}).
 				WithQueryBuilder(query.Match("address", "foo")),
 		},
 	}
@@ -54,7 +61,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", bytes.NewBufferString(testCase.body))
+			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
 			if testCase.queryParams != nil {
 				req.URL.RawQuery = testCase.queryParams.Encode()
