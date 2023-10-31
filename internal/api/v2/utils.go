@@ -1,20 +1,21 @@
 package v2
 
 import (
-	"io"
-	"net/http"
-
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"github.com/formancehq/stack/libs/go-libs/query"
+	"io"
+	"net/http"
 )
 
 func getPITFilter(r *http.Request) (*ledgerstore.PITFilter, error) {
 	pitString := r.URL.Query().Get("pit")
 	if pitString == "" {
-		return &ledgerstore.PITFilter{}, nil
+		return &ledgerstore.PITFilter{
+			PIT: pointer.For(ledger.Now()),
+		}, nil
 	}
 	pit, err := ledger.ParseTime(pitString)
 	if err != nil {
