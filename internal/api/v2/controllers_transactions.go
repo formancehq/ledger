@@ -69,38 +69,10 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	sharedapi.RenderCursor(w, *cursor)
 }
 
-type Script struct {
-	ledger.Script
-	Vars map[string]any `json:"vars"`
-}
-
-func (s Script) ToCore() ledger.Script {
-	s.Script.Vars = map[string]string{}
-	for k, v := range s.Vars {
-		switch v := v.(type) {
-		case string:
-			s.Script.Vars[k] = v
-		case map[string]any:
-			s.Script.Vars[k] = fmt.Sprintf("%s %v", v["asset"], v["amount"])
-		default:
-			s.Script.Vars[k] = fmt.Sprint(v)
-		}
-	}
-	return s.Script
-}
-
-type PostTransactionRequest struct {
-	Postings  ledger.Postings   `json:"postings"`
-	Script    Script            `json:"script"`
-	Timestamp ledger.Time       `json:"timestamp"`
-	Reference string            `json:"reference"`
-	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
-}
-
 func postTransaction(w http.ResponseWriter, r *http.Request) {
 	l := shared.LedgerFromContext(r.Context())
 
-	payload := PostTransactionRequest{}
+	payload := ledger.TransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		shared.ResponseError(w, r,
 			errorsutil.NewError(command.ErrValidation,
@@ -108,42 +80,13 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
-		len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		shared.ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-			errors.New("invalid payload: should contain either postings or script")))
-		return
-	} else if len(payload.Postings) > 0 {
-		if i, err := payload.Postings.Validate(); err != nil {
-			shared.ResponseError(w, r, errorsutil.NewError(command.ErrValidation, errors.Wrap(err,
-				fmt.Sprintf("invalid posting %d", i))))
-			return
-		}
-		txData := ledger.TransactionData{
-			Postings:  payload.Postings,
-			Timestamp: payload.Timestamp,
-			Reference: payload.Reference,
-			Metadata:  payload.Metadata,
-		}
-
-		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), ledger.TxToScriptData(txData))
-		if err != nil {
-			shared.ResponseError(w, r, err)
-			return
-		}
-
-		sharedapi.Ok(w, res)
+	rs, err := payload.ToRunScript()
+	if err != nil {
+		shared.ResponseError(w, r, errorsutil.NewError(command.ErrValidation, err))
 		return
 	}
 
-	script := ledger.RunScript{
-		Script:    payload.Script.ToCore(),
-		Timestamp: payload.Timestamp,
-		Reference: payload.Reference,
-		Metadata:  payload.Metadata,
-	}
-
-	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), script)
+	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), *rs)
 	if err != nil {
 		shared.ResponseError(w, r, err)
 		return

@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"fmt"
+	"github.com/pkg/errors"
 	"math/big"
 
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -14,7 +16,7 @@ type TransactionData struct {
 	Postings  Postings          `json:"postings"`
 	Metadata  metadata.Metadata `json:"metadata"`
 	Timestamp Time              `json:"timestamp"`
-	Reference string            `json:"reference"`
+	Reference string            `json:"reference,omitempty"`
 }
 
 func (d TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -113,4 +115,42 @@ func ExpandTransaction(tx *Transaction, preCommitVolumes AccountsAssetsVolumes) 
 		PreCommitVolumes:  preCommitVolumes,
 		PostCommitVolumes: postCommitVolumes,
 	}
+}
+
+type TransactionRequest struct {
+	Postings  Postings          `json:"postings"`
+	Script    ScriptV1          `json:"script"`
+	Timestamp Time              `json:"timestamp"`
+	Reference string            `json:"reference"`
+	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
+}
+
+func (req *TransactionRequest) ToRunScript() (*RunScript, error) {
+
+	if len(req.Postings) > 0 && req.Script.Plain != "" ||
+		len(req.Postings) == 0 && req.Script.Plain == "" {
+		return nil, errors.New("invalid payload: should contain either postings or script")
+	}
+
+	if len(req.Postings) > 0 {
+		if i, err := req.Postings.Validate(); err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("invalid posting %d", i))
+		}
+		txData := TransactionData{
+			Postings:  req.Postings,
+			Timestamp: req.Timestamp,
+			Reference: req.Reference,
+			Metadata:  req.Metadata,
+		}
+
+		rs := TxToScriptData(txData)
+		return &rs, nil
+	}
+
+	return &RunScript{
+		Script:    req.Script.ToCore(),
+		Timestamp: req.Timestamp,
+		Reference: req.Reference,
+		Metadata:  req.Metadata,
+	}, nil
 }

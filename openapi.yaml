@@ -54,6 +54,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v2/{ledger}/_bulk:
+    post:
+      summary: Bulk request
+      operationId: createBulk
+      tags:
+      - Ledger
+      parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Bulk'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
+        "400":
+          description: Failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v2/{ledger}/accounts:
     head:
       summary: Count the accounts from a ledger
@@ -1336,3 +1375,187 @@ components:
           enum:
             - "to do"
             - "done"
+
+    Bulk:
+      type: array
+      items:
+        $ref: '#/components/schemas/BulkElement'
+
+    BaseBulkElement:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+        ik:
+          type: string
+
+    BulkElement:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/BulkElementCreateTransaction'
+        - $ref: '#/components/schemas/BulkElementAddMetadata'
+        - $ref: '#/components/schemas/BulkElementRevertTransaction'
+        - $ref: '#/components/schemas/BulkElementDeleteMetadata'
+      discriminator:
+        propertyName: action
+        mapping:
+          CREATE_TRANSACTION: '#/components/schemas/BulkElementCreateTransaction'
+          ADD_METADATA: '#/components/schemas/BulkElementAddMetadata'
+          REVERT_TRANSACTION: '#/components/schemas/BulkElementRevertTransaction'
+          DELETE_METADATA: '#/components/schemas/BulkElementDeleteMetadata'
+
+    BulkElementCreateTransaction:
+      type: object
+      allOf:
+      - $ref:  '#/components/schemas/BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            $ref: '#/components/schemas/PostTransaction'
+
+    TargetId:
+      oneOf:
+        - type: string
+        - type: integer
+          format: bigint
+
+    TargetType:
+      type: string
+      enum:
+        - TRANSACTION
+        - ACCOUNT
+
+    BulkElementAddMetadata:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            type: object
+            properties:
+              targetId:
+                $ref: '#/components/schemas/TargetId'
+              targetType:
+                $ref: '#/components/schemas/TargetType'
+              metadata:
+                type: object
+                additionalProperties:
+                  type: string
+            required:
+              - targetId
+              - targetType
+              - metadata
+
+    BulkElementRevertTransaction:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            properties:
+              id:
+                type: integer
+                format: bigint
+            required:
+              - id
+
+    BulkElementDeleteMetadata:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElement'
+        - type: object
+          properties:
+            data:
+              properties:
+                targetId:
+                  $ref: '#/components/schemas/TargetId'
+                targetType:
+                  $ref: '#/components/schemas/TargetType'
+                key:
+                  type: string
+              required:
+                - targetId
+                - targetType
+                - key
+
+    BulkResponse:
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkElementResult'
+      type: object
+      required:
+        - data
+
+    BulkElementResult:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/BulkElementResultCreateTransaction'
+        - $ref: '#/components/schemas/BulkElementResultAddMetadata'
+        - $ref: '#/components/schemas/BulkElementResultRevertTransaction'
+        - $ref: '#/components/schemas/BulkElementResultDeleteMetadata'
+        - $ref: '#/components/schemas/BulkElementResultError'
+      discriminator:
+        propertyName: responseType
+        mapping:
+          CREATE_TRANSACTION: '#/components/schemas/BulkElementResultCreateTransaction'
+          ADD_METADATA: '#/components/schemas/BulkElementResultAddMetadata'
+          REVERT_TRANSACTION: '#/components/schemas/BulkElementResultRevertTransaction'
+          DELETE_METADATA: '#/components/schemas/BulkElementResultDeleteMetadata'
+          ERROR: '#/components/schemas/BulkElementResultError'
+
+    BaseBulkElementResult:
+      type: object
+      properties:
+        responseType:
+          type: string
+      required:
+        - responseType
+
+    BulkElementResultCreateTransaction:
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElementResult'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Transaction'
+          required:
+            - data
+
+    BulkElementResultAddMetadata:
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElementResult'
+
+    BulkElementResultRevertTransaction:
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElementResult'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Transaction'
+          required:
+            - data
+
+    BulkElementResultDeleteMetadata:
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElementResult'
+
+    BulkElementResultError:
+      allOf:
+        - $ref: '#/components/schemas/BaseBulkElementResult'
+        - type: object
+          properties:
+            errorCode:
+              type: string
+            errorDescription:
+              type: string
+            errorDetails:
+              type: string
+          required:
+            - errorCode
+            - errorDescription

@@ -38,8 +38,8 @@ func TestPostTransactions(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "using plain numscript",
-			payload: v2.PostTransactionRequest{
-				Script: v2.Script{
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
 					Script: ledger.Script{
 						Plain: `XXX`,
 					},
@@ -54,8 +54,8 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "using plain numscript with variables",
-			payload: v2.PostTransactionRequest{
-				Script: v2.Script{
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
 					Script: ledger.Script{
 						Plain: `vars {
 						monetary $val
@@ -89,8 +89,8 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "using plain numscript with variables (legacy format)",
-			payload: v2.PostTransactionRequest{
-				Script: v2.Script{
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
 					Script: ledger.Script{
 						Plain: `vars {
 						monetary $val
@@ -127,8 +127,8 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "using plain numscript and dry run",
-			payload: v2.PostTransactionRequest{
-				Script: v2.Script{
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
 					Script: ledger.Script{
 						Plain: `send (
 						source = @world
@@ -153,7 +153,7 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name: "using JSON postings",
-			payload: v2.PostTransactionRequest{
+			payload: ledger.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
@@ -167,7 +167,7 @@ func TestPostTransactions(t *testing.T) {
 			queryParams: url.Values{
 				"dryRun": []string{"true"},
 			},
-			payload: v2.PostTransactionRequest{
+			payload: ledger.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				},
@@ -179,13 +179,13 @@ func TestPostTransactions(t *testing.T) {
 		},
 		{
 			name:               "no postings or script",
-			payload:            v2.PostTransactionRequest{},
+			payload:            ledger.TransactionRequest{},
 			expectedStatusCode: http.StatusBadRequest,
 			expectedErrorCode:  shared.ErrValidation,
 		},
 		{
 			name: "postings and script",
-			payload: v2.PostTransactionRequest{
+			payload: ledger.TransactionRequest{
 				Postings: ledger.Postings{
 					{
 						Source:      "world",
@@ -194,7 +194,7 @@ func TestPostTransactions(t *testing.T) {
 						Asset:       "COIN",
 					},
 				},
-				Script: v2.Script{
+				Script: ledger.ScriptV1{
 					Script: ledger.Script{
 						Plain: `
 						send [COIN 100] (

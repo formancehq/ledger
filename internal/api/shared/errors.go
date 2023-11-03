@@ -35,7 +35,7 @@ const (
 )
 
 func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
-	status, code, details := coreErrorToErrorCode(err)
+	status, code, details := CoreErrorToErrorCode(err)
 
 	baseError := errors.Cause(err)
 
@@ -55,7 +55,7 @@ func ResponseError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
-func coreErrorToErrorCode(err error) (int, string, string) {
+func CoreErrorToErrorCode(err error) (int, string, string) {
 	switch {
 	case command.IsConflictError(err):
 		return http.StatusConflict, ErrConflict, ""
