@@ -36,6 +36,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		)...))
 
 	t.Run("aggregate on all", func(t *testing.T) {
+		t.Parallel()
 		q := ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).WithPageSize(10)
 		cursor, err := store.GetAggregatedBalances(context.Background(), ledgerstore.NewGetAggregatedBalancesQuery(q))
 		require.NoError(t, err)
@@ -44,6 +45,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		}, cursor)
 	})
 	t.Run("filter on address", func(t *testing.T) {
+		t.Parallel()
 		ret, err := store.GetAggregatedBalances(context.Background(), ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
 			WithQueryBuilder(query.Match("address", "users:")).
 			WithPageSize(10),
@@ -54,6 +56,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		}, ret)
 	})
 	t.Run("using pit", func(t *testing.T) {
+		t.Parallel()
 		ret, err := store.GetAggregatedBalances(context.Background(), ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
 			PIT: &now,
 		}).

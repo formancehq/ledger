@@ -381,6 +381,7 @@ func TestInsertTransactions(t *testing.T) {
 	})
 
 	t.Run("success inserting multiple transactions", func(t *testing.T) {
+		t.Parallel()
 		tx2 := ledger.ExpandedTransaction{
 			Transaction: ledger.Transaction{
 				ID: big.NewInt(1),
@@ -1010,6 +1011,7 @@ func TestListTransactions(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tc.query.Options.ExpandVolumes = true
 			tc.query.Options.ExpandEffectiveVolumes = false
 			cursor, err := store.GetTransactions(ctx, ledgerstore.NewGetTransactionsQuery(tc.query))

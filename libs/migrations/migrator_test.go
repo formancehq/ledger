@@ -33,6 +33,10 @@ func TestMigrations(t *testing.T) {
 	sqlDB, err := sql.Open("pgx", db.ConnString())
 	require.NoError(t, err)
 
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
+
 	bunDB := bun.NewDB(sqlDB, pgdialect.New())
 	if testing.Verbose() {
 		bunDB.AddQueryHook(bundebug.NewQueryHook(

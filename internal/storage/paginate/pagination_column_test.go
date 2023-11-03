@@ -20,6 +20,9 @@ func TestColumnPagination(t *testing.T) {
 		Debug:              testing.Verbose(),
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
 
 	_, err = db.Exec(`
 		CREATE TABLE "models" (id int, pair boolean);
