@@ -53,12 +53,14 @@ func TestGetAccounts(t *testing.T) {
 	))
 
 	t.Run("list all", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 7)
 	})
 
 	t.Run("list using metadata", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Match("metadata[category]", "1")),
 		))
@@ -67,6 +69,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list before date", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 			PITFilter: ledgerstore.PITFilter{
 				PIT: &now,
@@ -77,6 +80,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list with volumes", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 			ExpandVolumes: true,
 		}).WithQueryBuilder(query.Match("address", "account:1"))))
@@ -88,6 +92,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list with volumes using PIT", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 			PITFilter: ledgerstore.PITFilter{
 				PIT: &now,
@@ -102,6 +107,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list with effective volumes", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 			ExpandEffectiveVolumes: true,
 		}).WithQueryBuilder(query.Match("address", "account:1"))))
@@ -113,6 +119,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list with effective volumes using PIT", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 			PITFilter: ledgerstore.PITFilter{
 				PIT: &now,
@@ -127,6 +134,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 
 	t.Run("list using filter on address", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Match("address", "account:")),
 		))
@@ -134,6 +142,7 @@ func TestGetAccounts(t *testing.T) {
 		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 			WithQueryBuilder(
 				query.Or(
@@ -146,6 +155,7 @@ func TestGetAccounts(t *testing.T) {
 		require.Len(t, accounts.Data, 3)
 	})
 	t.Run("list using filter on balances", func(t *testing.T) {
+		t.Parallel()
 		accounts, err := store.GetAccountsWithVolumes(context.Background(), ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Lt("balance[USD]", 0)),
 		))
@@ -194,6 +204,7 @@ func TestGetAccount(t *testing.T) {
 	))
 
 	t.Run("find account", func(t *testing.T) {
+		t.Parallel()
 		account, err := store.GetAccountWithVolumes(context.Background(), ledgerstore.NewGetAccountQuery("multi"))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
@@ -207,6 +218,7 @@ func TestGetAccount(t *testing.T) {
 	})
 
 	t.Run("find account with volumes", func(t *testing.T) {
+		t.Parallel()
 		account, err := store.GetAccountWithVolumes(context.Background(), ledgerstore.NewGetAccountQuery("multi").
 			WithExpandVolumes())
 		require.NoError(t, err)
@@ -224,6 +236,7 @@ func TestGetAccount(t *testing.T) {
 	})
 
 	t.Run("find account with effective volumes", func(t *testing.T) {
+		t.Parallel()
 		account, err := store.GetAccountWithVolumes(context.Background(), ledgerstore.NewGetAccountQuery("multi").
 			WithExpandEffectiveVolumes())
 		require.NoError(t, err)
@@ -241,6 +254,7 @@ func TestGetAccount(t *testing.T) {
 	})
 
 	t.Run("find account using pit", func(t *testing.T) {
+		t.Parallel()
 		account, err := store.GetAccountWithVolumes(context.Background(), ledgerstore.NewGetAccountQuery("multi").WithPIT(now))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
@@ -253,6 +267,7 @@ func TestGetAccount(t *testing.T) {
 	})
 
 	t.Run("not existent account", func(t *testing.T) {
+		t.Parallel()
 		account, err := store.GetAccountWithVolumes(context.Background(), ledgerstore.NewGetAccountQuery("account_not_existing"))
 		require.NoError(t, err)
 		require.NotNil(t, account)

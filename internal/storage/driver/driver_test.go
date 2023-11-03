@@ -14,6 +14,9 @@ import (
 
 func TestConfiguration(t *testing.T) {
 	d := storagetesting.StorageDriver(t)
+	defer func() {
+		_ = d.Close()
+	}()
 
 	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))
 	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
@@ -23,6 +26,9 @@ func TestConfiguration(t *testing.T) {
 
 func TestConfigurationError(t *testing.T) {
 	d := storagetesting.StorageDriver(t)
+	defer func() {
+		_ = d.Close()
+	}()
 
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
@@ -31,6 +37,10 @@ func TestConfigurationError(t *testing.T) {
 
 func TestErrorOnOutdatedSchema(t *testing.T) {
 	d := storagetesting.StorageDriver(t)
+	defer func() {
+		_ = d.Close()
+	}()
+
 	ctx := logging.TestingContext()
 
 	name := uuid.NewString()
