@@ -189,7 +189,7 @@ func WithDockerHostConfigOption(opt func(hostConfig *docker.HostConfig)) option 
 var defaultOptions = []option{
 	WithStatusCheckInterval(200 * time.Millisecond),
 	WithInitialUser("root", "root"),
-	WithMaximumWaitingTime(15 * time.Second),
+	WithMaximumWaitingTime(time.Minute),
 	WithInitialDatabaseName("formance"),
 	WithContext(context.Background()),
 }

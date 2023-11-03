@@ -41,6 +41,8 @@ func NewRouter(
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(shared.LedgerMiddleware(backend, []string{"/_info"}))
 
+			router.Post("/_bulk", bulkHandler)
+
 			// LedgerController
 			router.Get("/_info", getLedgerInfo)
 			router.Get("/stats", getStats)

@@ -78,7 +78,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 			//	},
 			//}
 
-			script := v2.Script{
+			script := ledger.ScriptV1{
 				Script: ledger.Script{
 					Plain: `vars {
 	account $account
@@ -112,7 +112,7 @@ send [USD/2 100] (
 			//				},
 			//			}
 
-			err := json.NewEncoder(buf).Encode(v2.PostTransactionRequest{
+			err := json.NewEncoder(buf).Encode(ledger.TransactionRequest{
 				Script: script,
 			})
 			require.NoError(b, err)
