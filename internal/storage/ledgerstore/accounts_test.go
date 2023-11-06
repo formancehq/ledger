@@ -278,9 +278,11 @@ func TestGetAccountWithVolumes(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 
+	bigInt, _ := big.NewInt(0).SetString("999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)
+
 	require.NoError(t, insertTransactions(context.Background(), store,
 		*ledger.NewTransaction().WithPostings(
-			ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
+			ledger.NewPosting("world", "multi", "USD/2", bigInt),
 		),
 	))
 
@@ -293,7 +295,7 @@ func TestGetAccountWithVolumes(t *testing.T) {
 			Metadata: metadata.Metadata{},
 		},
 		Volumes: map[string]*ledger.Volumes{
-			"USD/2": ledger.NewEmptyVolumes().WithInputInt64(100),
+			"USD/2": ledger.NewEmptyVolumes().WithInput(bigInt),
 		},
 	}, accountWithVolumes)
 }
