@@ -46,7 +46,7 @@ var testCases = []testCase{
 				source = @bank
 				destination = @user:001
 			)`,
-		expectErrorCode: vm2.ErrInsufficientFund,
+		expectErrorCode: ledger.ErrInsufficientFund,
 	},
 	{
 		name: "send $0",

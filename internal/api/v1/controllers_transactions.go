@@ -202,7 +202,7 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 			Metadata:  payload.Metadata,
 		}
 
-		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), ledger.TxToScriptData(txData))
+		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), ledger.TxToScriptData(txData, false))
 		if err != nil {
 			ResponseError(w, r, err)
 			return
@@ -264,7 +264,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID)
+	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID, sharedapi.QueryParamBool(r, "disableChecks"))
 	if err != nil {
 		ResponseError(w, r, err)
 		return

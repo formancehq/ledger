@@ -98,8 +98,8 @@ func (l *Ledger) CreateTransaction(ctx context.Context, parameters command.Param
 	return l.commander.CreateTransaction(ctx, parameters, data)
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int) (*ledger.Transaction, error) {
-	return l.commander.RevertTransaction(ctx, parameters, id)
+func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
+	return l.commander.RevertTransaction(ctx, parameters, id, force)
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error {

@@ -138,7 +138,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID)
+	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID, sharedapi.QueryParamBool(r, "force"))
 	if err != nil {
 		shared.ResponseError(w, r, err)
 		return

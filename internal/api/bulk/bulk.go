@@ -114,14 +114,15 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 			}
 		case ActionRevertTransaction:
 			type revertTransactionRequest struct {
-				ID *big.Int `json:"id"`
+				ID    *big.Int `json:"id"`
+				Force bool     `json:"force"`
 			}
 			req := &revertTransactionRequest{}
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
 
-			tx, err := l.RevertTransaction(ctx, parameters, req.ID)
+			tx, err := l.RevertTransaction(ctx, parameters, req.ID, req.Force)
 			if err != nil {
 				bulkError(element.Action, err)
 				if !continueOnFailure {

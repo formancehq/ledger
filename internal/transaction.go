@@ -144,7 +144,7 @@ func (req *TransactionRequest) ToRunScript() (*RunScript, error) {
 			Metadata:  req.Metadata,
 		}
 
-		rs := TxToScriptData(txData)
+		rs := TxToScriptData(txData, false)
 		return &rs, nil
 	}
 

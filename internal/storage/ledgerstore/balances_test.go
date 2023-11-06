@@ -107,7 +107,10 @@ func TestGetBalancesAggregated(t *testing.T) {
 			WithPageSize(10)))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(400),
+			"USD": big.NewInt(0).Add(
+				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+			),
 		}, ret)
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
@@ -117,7 +120,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 			WithPageSize(10)))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(2),
+			"USD": big.NewInt(0).Mul(bigInt, big.NewInt(2)),
 		}, ret)
 	})
 	t.Run("when no matching", func(t *testing.T) {

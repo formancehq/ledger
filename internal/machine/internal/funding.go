@@ -3,6 +3,8 @@ package internal
 import (
 	"errors"
 	"fmt"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type FundingPart struct {
@@ -89,7 +91,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 		i++
 	}
 	if !remainingToWithdraw.Eq(Zero) {
-		return Funding{}, Funding{}, errors.New("account had insufficient funds")
+		return Funding{}, Funding{}, ledger.ErrInsufficientFund
 	}
 	return result, remainder, nil
 }

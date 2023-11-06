@@ -312,7 +312,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		result, remainder, err := funding.Take(mon.Amount)
 		if err != nil {
-			return true, errorsutil.NewError(ErrInsufficientFund, err)
+			return true, errorsutil.NewError(ledger.ErrInsufficientFund, err)
 		}
 		m.pushValue(remainder)
 		m.pushValue(result)

@@ -205,7 +205,7 @@ func TestRevert(t *testing.T) {
 	go commander.Run(ctx)
 	defer commander.Close()
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, txID)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, txID, false)
 	require.NoError(t, err)
 }
 
@@ -225,7 +225,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	go commander.Run(ctx)
 	defer commander.Close()
 
-	_, err = commander.RevertTransaction(context.Background(), Parameters{}, tx.ID)
+	_, err = commander.RevertTransaction(context.Background(), Parameters{}, tx.ID, false)
 	require.True(t, errors.Is(err, ErrAlreadyReverted))
 }
 
@@ -248,6 +248,47 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 
 	referencer.take(referenceReverts, big.NewInt(0))
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, tx.ID)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx.ID, false)
 	require.True(t, errors.Is(err, ErrRevertOccurring))
+}
+
+func TestForceRevert(t *testing.T) {
+
+	store := storageerrors.NewInMemoryStore()
+	ctx := logging.TestingContext()
+
+	tx1 := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+	)
+	tx2 := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("bank", "foo", "USD", big.NewInt(100)),
+	)
+	err := store.InsertLogs(ctx, ledger.ChainLogs(
+		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}),
+		ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}),
+	)...)
+	require.NoError(t, err)
+
+	commander := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), bus.NewNoOpMonitor())
+	go commander.Run(ctx)
+	defer commander.Close()
+
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false)
+	require.NotNil(t, err)
+	require.True(t, errors.Is(err, ledger.ErrInsufficientFund))
+
+	balance, err := store.GetBalance(ctx, "bank", "USD")
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), balance.Uint64())
+
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, true)
+	require.Nil(t, err)
+
+	balance, err = store.GetBalance(ctx, "bank", "USD")
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(-100), balance)
+
+	balance, err = store.GetBalance(ctx, "world", "USD")
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), balance.Uint64())
 }
