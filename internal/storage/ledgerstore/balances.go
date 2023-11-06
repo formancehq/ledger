@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/ledger/internal/storage"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -18,7 +20,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 	type Temp struct {
 		Aggregated ledger.VolumesByAssets `bun:"aggregated,type:jsonb"`
 	}
-	return fetchAndMap[*Temp, ledger.BalancesByAssets](store, ctx,
+	ret, err := fetchAndMap[*Temp, ledger.BalancesByAssets](store, ctx,
 		func(temp *Temp) ledger.BalancesByAssets {
 			return temp.Aggregated.Balances()
 		},
@@ -31,6 +33,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 				Apply(filterPIT(q.Options.Options.PIT, "insertion_date")) // todo(gfyrag): expose capability to use effective_date
 
 			if q.Options.QueryBuilder != nil {
+				joinOnMetadataAdded := false
 				subQuery, args, err := q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 					switch {
 					case key == "address":
@@ -44,6 +47,25 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 						default:
 							return "", nil, fmt.Errorf("unexpected type %T for column 'address'", address)
 						}
+					case metadataRegex.Match([]byte(key)):
+						if operator != "$match" {
+							return "", nil, errors.New("'metadata' column can only be used with $match")
+						}
+						match := metadataRegex.FindAllStringSubmatch(key, 3)
+						if !joinOnMetadataAdded {
+							moves = moves.Join(`left join lateral (	
+								select metadata
+								from accounts_metadata am 
+								where am.address = moves.account_address and (? is null or date <= ?)
+								order by revision desc 
+								limit 1
+							) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
+							joinOnMetadataAdded = true
+						}
+
+						return "am.metadata @> ?", []any{map[string]any{
+							match[0][1]: value,
+						}}, nil
 					default:
 						return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
 					}
@@ -60,6 +82,14 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 				ColumnExpr("volumes_to_jsonb((moves.asset, (sum((moves.post_commit_volumes).inputs), sum((moves.post_commit_volumes).outputs))::volumes)) as aggregated").
 				Group("moves.asset")
 		})
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, err
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		return ledger.BalancesByAssets{}, nil
+	}
+
+	return ret, nil
 }
 
 func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {

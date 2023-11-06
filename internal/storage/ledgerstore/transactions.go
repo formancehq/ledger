@@ -22,6 +22,10 @@ const (
 	MovesTableName = "moves"
 )
 
+var (
+	metadataRegex = regexp.MustCompile("metadata\\[(.+)\\]")
+)
+
 type Transaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
@@ -145,7 +149,6 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 }
 
 func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, error) {
-	metadataRegex := regexp.MustCompile("metadata\\[(.+)\\]")
 
 	return qb.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 		switch {
