@@ -19,14 +19,17 @@ func TestGetBalancesAggregated(t *testing.T) {
 	store := newLedgerStore(t)
 	now := ledger.Now()
 
+	bigInt, _ := big.NewInt(0).SetString("999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)
+	smallInt := big.NewInt(199)
+
 	tx1 := ledger.NewTransaction().WithPostings(
-		ledger.NewPosting("world", "users:1", "USD", big.NewInt(1)),
-		ledger.NewPosting("world", "users:2", "USD", big.NewInt(199)),
+		ledger.NewPosting("world", "users:1", "USD", bigInt),
+		ledger.NewPosting("world", "users:2", "USD", smallInt),
 	).WithDate(now)
 
 	tx2 := ledger.NewTransaction().WithPostings(
-		ledger.NewPosting("world", "users:1", "USD", big.NewInt(1)),
-		ledger.NewPosting("world", "users:2", "USD", big.NewInt(199)),
+		ledger.NewPosting("world", "users:1", "USD", bigInt),
+		ledger.NewPosting("world", "users:2", "USD", smallInt),
 	).WithDate(now.Add(time.Minute)).WithIDUint64(1)
 
 	require.NoError(t, store.InsertLogs(context.Background(),
@@ -52,7 +55,10 @@ func TestGetBalancesAggregated(t *testing.T) {
 		))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(400),
+			"USD": big.NewInt(0).Add(
+				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+			),
 		}, ret)
 	})
 	t.Run("using pit", func(t *testing.T) {
@@ -64,7 +70,10 @@ func TestGetBalancesAggregated(t *testing.T) {
 			WithPageSize(10)))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
-			"USD": big.NewInt(200),
+			"USD": big.NewInt(0).Add(
+				bigInt,
+				smallInt,
+			),
 		}, ret)
 	})
 }

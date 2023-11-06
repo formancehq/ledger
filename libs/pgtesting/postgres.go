@@ -82,7 +82,10 @@ func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 			s.lock.Lock()
 			defer s.lock.Unlock()
 
-			_, _ = s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
+			_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
+			if err != nil {
+				panic(err)
+			}
 		})
 	}
 
@@ -223,6 +226,19 @@ func CreatePostgresServer(opts ...option) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to start postgres server container")
 	}
+
+	go func() {
+		if err := pool.Client.Logs(docker.LogsOptions{
+			Container:    resource.Container.ID,
+			OutputStream: os.Stdout,
+			Stdout:       true,
+			Stderr:       true,
+			RawTerminal:  true,
+			Timestamps:   true,
+		}); err != nil {
+			fmt.Println(err)
+		}
+	}()
 
 	srv = &pgServer{
 		port: resource.GetPort("5432/tcp"),
