@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"encoding/json"
 	"regexp"
 
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -45,17 +44,6 @@ func NewExpandedAccount(address string) ExpandedAccount {
 		},
 		Volumes: map[string]*Volumes{},
 	}
-}
-
-func (v ExpandedAccount) MarshalJSON() ([]byte, error) {
-	type aux ExpandedAccount
-	return json.Marshal(struct {
-		aux
-		Balances BalancesByAssets `json:"balances"`
-	}{
-		aux:      aux(v),
-		Balances: v.Volumes.Balances(),
-	})
 }
 
 func (v ExpandedAccount) Copy() ExpandedAccount {
