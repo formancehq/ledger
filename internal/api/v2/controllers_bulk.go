@@ -2,10 +2,11 @@ package v2
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/formancehq/ledger/internal/api/bulk"
 	"github.com/formancehq/ledger/internal/api/shared"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"net/http"
 )
 
 func bulkHandler(w http.ResponseWriter, r *http.Request) {

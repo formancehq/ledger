@@ -2,8 +2,9 @@ package ledger
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"math/big"
+
+	"github.com/pkg/errors"
 
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )

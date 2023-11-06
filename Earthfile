@@ -78,5 +78,4 @@ lint:
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
-    BUILD --pass-args +generate-mocks
     BUILD --pass-args +copy-libs
