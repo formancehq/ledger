@@ -44,21 +44,27 @@ func (m *InMemoryStore) GetLastLog(ctx context.Context) (*ledger.ChainedLog, err
 
 func (m *InMemoryStore) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
 	balance := new(big.Int)
+
+	var processPostings = func(postings ledger.Postings) {
+		for _, posting := range postings {
+			if posting.Asset != asset {
+				continue
+			}
+			if posting.Source == address {
+				balance = balance.Sub(balance, posting.Amount)
+			}
+			if posting.Destination == address {
+				balance = balance.Add(balance, posting.Amount)
+			}
+		}
+	}
+
 	for _, log := range m.logs {
 		switch payload := log.Data.(type) {
 		case ledger.NewTransactionLogPayload:
-			postings := payload.Transaction.Postings
-			for _, posting := range postings {
-				if posting.Asset != asset {
-					continue
-				}
-				if posting.Source == address {
-					balance = balance.Sub(balance, posting.Amount)
-				}
-				if posting.Destination == address {
-					balance = balance.Add(balance, posting.Amount)
-				}
-			}
+			processPostings(payload.Transaction.Postings)
+		case ledger.RevertedTransactionLogPayload:
+			processPostings(payload.RevertTransaction.Postings)
 		}
 	}
 	return balance, nil
@@ -88,6 +94,7 @@ func (m *InMemoryStore) ReadLogWithIdempotencyKey(ctx context.Context, key strin
 }
 
 func (m *InMemoryStore) InsertLogs(ctx context.Context, logs ...*ledger.ChainedLog) error {
+
 	m.logs = append(m.logs, logs...)
 	for _, log := range logs {
 		switch payload := log.Data.(type) {
@@ -103,6 +110,12 @@ func (m *InMemoryStore) InsertLogs(ctx context.Context, logs ...*ledger.ChainedL
 				return transaction.ID.Cmp(payload.RevertedTransactionID) == 0
 			})[0]
 			tx.Reverted = true
+			m.transactions = append(m.transactions, &ledger.ExpandedTransaction{
+				Transaction: *payload.RevertTransaction,
+				// TODO
+				PreCommitVolumes:  nil,
+				PostCommitVolumes: nil,
+			})
 		case ledger.SetMetadataLogPayload:
 		}
 	}

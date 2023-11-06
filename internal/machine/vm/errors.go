@@ -1,11 +1,11 @@
 package vm
 
 import (
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/pkg/errors"
 )
 
 var (
-	ErrInsufficientFund                            = errors.New("insufficient fund")
 	ErrCompilationFailed                           = errors.New("compilation failed")
 	ErrInvalidScript                               = errors.New("invalid script")
 	ErrScriptFailed                                = errors.New("script exited with error code")
@@ -20,11 +20,7 @@ var (
 )
 
 func IsInsufficientFundError(err error) bool {
-	return errors.Is(err, ErrInsufficientFund)
-}
-
-func IsCompilationFailedError(err error) bool {
-	return errors.Is(err, ErrCompilationFailed)
+	return errors.Is(err, ledger.ErrInsufficientFund)
 }
 
 func IsMetadataOverrideError(err error) bool {
@@ -37,32 +33,4 @@ func IsResourceResolutionMissingMetadataError(err error) bool {
 
 func IsResourceResolutionInvalidTypeFromExtSourcesError(err error) bool {
 	return errors.Is(err, ErrResourceResolutionInvalidTypeFromExtSources)
-}
-
-func IsResourcesNotInitializedError(err error) bool {
-	return errors.Is(err, ErrResourcesNotInitialized)
-}
-
-func IsBalancesNotInitializedError(err error) bool {
-	return errors.Is(err, ErrBalancesNotInitialized)
-}
-
-func IsResourceNotFoundError(err error) bool {
-	return errors.Is(err, ErrResourceNotFound)
-}
-
-func IsNegativeMonetaryAmountError(err error) bool {
-	return errors.Is(err, ErrNegativeMonetaryAmount)
-}
-
-func IsInvalidVarsError(err error) bool {
-	return errors.Is(err, ErrInvalidVars)
-}
-
-func IsInvalidScriptError(err error) bool {
-	return errors.Is(err, ErrInvalidScript)
-}
-
-func IsScriptFailedError(err error) bool {
-	return errors.Is(err, ErrScriptFailed)
 }

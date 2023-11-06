@@ -156,7 +156,7 @@ func TestPostTransactions(t *testing.T) {
 			},
 			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-			)),
+			), false),
 		},
 		{
 			name: "using JSON postings and dry run",
@@ -171,7 +171,7 @@ func TestPostTransactions(t *testing.T) {
 			expectedPreview: true,
 			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-			)),
+			), false),
 		},
 		{
 			name:               "no postings or script",
@@ -608,12 +608,37 @@ func TestRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t, true)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0)).
+		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), false).
 		Return(expectedTx, nil)
 
 	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
 	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	tx, ok := sharedapi.DecodeSingleResponse[ledger.Transaction](t, rec.Body)
+	require.True(t, ok)
+	require.Equal(t, *expectedTx, tx)
+}
+
+func TestForceRevertTransaction(t *testing.T) {
+
+	expectedTx := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+	)
+
+	backend, mockLedger := newTestingBackend(t, true)
+	mockLedger.
+		EXPECT().
+		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), true).
+		Return(expectedTx, nil)
+
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+
+	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert?disableChecks=true", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

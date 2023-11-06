@@ -63,7 +63,7 @@ func TestBulk(t *testing.T) {
 					CreateTransaction(gomock.Any(), command.Parameters{}, ledger.TxToScriptData(ledger.TransactionData{
 						Postings:  postings,
 						Timestamp: now,
-					})).
+					}, false)).
 					Return(&ledger.Transaction{
 						TransactionData: ledger.TransactionData{
 							Postings:  postings,
@@ -147,7 +147,7 @@ func TestBulk(t *testing.T) {
 			}]`,
 			expectations: func(mockLedger *backend.MockLedger) {
 				mockLedger.EXPECT().
-					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1)).
+					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1), false).
 					Return(&ledger.Transaction{}, nil)
 			},
 			expectResults: []bulk.Result{{

@@ -490,7 +490,7 @@ func TestInsufficientFunds(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal2.Value{},
 		Postings: []Posting{},
-		Error:    ErrInsufficientFund,
+		Error:    ledger.ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -704,7 +704,7 @@ func TestTrackBalances2(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal2.Value{},
 		Postings: []Posting{},
-		Error:    ErrInsufficientFund,
+		Error:    ledger.ErrInsufficientFund,
 	}
 	test(t, tc)
 }

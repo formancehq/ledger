@@ -13,7 +13,7 @@ type variable struct {
 	value string
 }
 
-func TxToScriptData(txData TransactionData) RunScript {
+func TxToScriptData(txData TransactionData, allowUnboundedOverdrafts bool) RunScript {
 	sb := strings.Builder{}
 	monetaryToVars := map[string]variable{}
 	accountsToVars := map[string]variable{}
@@ -81,7 +81,11 @@ func TxToScriptData(txData TransactionData) RunScript {
 			if !ok {
 				panic(fmt.Sprintf("source %s not found", p.Source))
 			}
-			sb.WriteString(fmt.Sprintf("\tsource = $%s\n", src.name))
+			sb.WriteString(fmt.Sprintf("\tsource = $%s", src.name))
+			if allowUnboundedOverdrafts {
+				sb.WriteString(" allowing unbounded overdraft")
+			}
+			sb.WriteString("\n")
 		}
 		if p.Destination == WORLD {
 			sb.WriteString("\tdestination = @world\n")

@@ -3,6 +3,7 @@ package vm
 import (
 	"testing"
 
+	ledger "github.com/formancehq/ledger/internal"
 	internal2 "github.com/formancehq/ledger/internal/machine/internal"
 )
 
@@ -16,7 +17,7 @@ func TestOverdraftNotEnough(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal2.Value{},
 		Postings: []Posting{},
-		Error:    ErrInsufficientFund,
+		Error:    ledger.ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -250,7 +251,7 @@ func TestOverdraftComplexFailure(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal2.Value{},
 		Postings: []Posting{},
-		Error:    ErrInsufficientFund,
+		Error:    ledger.ErrInsufficientFund,
 	}
 	test(t, tc)
 }
@@ -265,7 +266,7 @@ func TestNegativeBalance(t *testing.T) {
 	tc.expected = CaseResult{
 		Printed:  []internal2.Value{},
 		Postings: []Posting{},
-		Error:    ErrInsufficientFund,
+		Error:    ledger.ErrInsufficientFund,
 	}
 	test(t, tc)
 }

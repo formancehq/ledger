@@ -218,7 +218,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 	return nil
 }
 
-func (commander *Commander) RevertTransaction(ctx context.Context, parameters Parameters, id *big.Int) (*ledger.Transaction, error) {
+func (commander *Commander) RevertTransaction(ctx context.Context, parameters Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
 
 	if err := commander.referencer.take(referenceReverts, id); err != nil {
 		return nil, ErrRevertOccurring
@@ -251,7 +251,7 @@ func (commander *Commander) RevertTransaction(ctx context.Context, parameters Pa
 		ledger.TxToScriptData(ledger.TransactionData{
 			Postings: rt.Postings,
 			Metadata: rt.Metadata,
-		}),
+		}, force),
 		func(tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) *ledger.Log {
 			return ledger.NewRevertedTransactionLog(tx.Timestamp, transactionToRevert.ID, tx)
 		})

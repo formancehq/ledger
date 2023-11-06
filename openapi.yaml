@@ -694,9 +694,15 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
+        - name: force
+          in: query
+          description: Force revert
+          required: false
+          schema:
+            type: boolean
       responses:
         "201":
           description: OK
@@ -1436,6 +1442,8 @@ components:
               id:
                 type: integer
                 format: bigint
+              force:
+                type: boolean
             required:
               - id
 
