@@ -1,0 +1,5 @@
+type: 'application'
+language: 'go'
+dependsOn:
+    - 'go-libs'
+    - 'openapi'

@@ -17,13 +17,13 @@ services:
     depends_on:
       - postgres
       - listener
-    image: golang:1.18-alpine
-    entrypoint: go run main.go server start
+    image: golang:1.19-alpine
+    entrypoint: go run main.go serve
     volumes:
       - ../..:/src
     working_dir: /src
     environment:
       CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
-      NUMARY_PUBLISHER_HTTP_ENABLED: "true"
-      NUMARY_PUBLISHER_TOPIC_MAPPING: "*:http://listener:8080"
+      DEBUG: "true"
+      PUBLISHER_HTTP_ENABLED: "true"
+      PUBLISHER_TOPIC_MAPPING: "*:http://listener:8080"

@@ -1,3 +1,14 @@
 vendor
 sdk
 .git
+.devbox
+.direnv
+.github
+.moon
+sdks
+config
+docs
+nix
+openapi
+tests
+worktrees

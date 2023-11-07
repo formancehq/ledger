@@ -2,65 +2,24 @@
 
 version: "3"
 
-vars:
-  PKG: "./..."
-  FAILFAST: "-failfast"
-  TIMEOUT: "10m"
-  RUN: ".*"
-  TAGS: "-tags json1,netgo"
-  BENCH_TIME: "30s"
-  BENCH_RESULTS_DIR: "/tmp/benchmarks"
-  BENCH_RESULTS_FILE: "/tmp/benchmarks/ledger.txt"
-  BENCH_CPU_PROFILE: "/tmp/benchmarks/ledger.cpu.prof"
-  BENCH_MEM_PROFILE: "/tmp/benchmarks/ledger.mem.prof"
+env:
   VERBOSE: "false"
+  BRANCH:
+    sh: "git rev-parse --abbrev-ref HEAD| cut -d / -f2"
+  BENCH_RESULTS_DIR: "./benchs"
 
 tasks:
-  default:
-    cmds:
-      - task: lint
-      - task: tests:local
-
   lint:
     cmds:
-      - golangci-lint run --fix {{if eq .VERBOSE "true"}}-v{{end}}
+      - golangci-lint run --fix --allow-parallel-runners --config ./../../.golangci.yml
 
   tests:
     cmds:
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} -coverpkg {{.PKG}}
-        -coverprofile coverage.out -covermode atomic {{.PKG}}
-
-  tests:local:
-    cmds:
-      - task: tests:local:sqlite
-      - task: tests:local:postgres
-
-  tests:local:sqlite:
-    cmds:
-      - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
-        -coverprofile coverage.out -covermode atomic
-        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
+        go test -failfast -coverpkg ./... -coverprofile coverage.out -covermode atomic ./... |
         sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
         sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
         sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
-      - task: print:coverage
-
-  tests:local:postgres:
-    deps: [postgres]
-    cmds:
-      - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.FAILFAST}} -coverpkg {{.PKG}}
-        -coverprofile coverage.out -covermode atomic
-        -run={{.RUN}} -timeout {{.TIMEOUT}} {{.PKG}} |
-        sed ''/PASS/s//$(printf "\033[32mPASS\033[0m")/'' |
-        sed ''/FAIL/s//$(printf "\033[31mFAIL\033[0m")/'' |
-        sed ''/RUN/s//$(printf "\033[34mRUN\033[0m")/''
-      - task: print:coverage
-    env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
 
   print:coverage:
     cmds:
@@ -71,52 +30,114 @@ tasks:
       - echo "xdg-open coverage.html on linux"
     silent: true
 
+  libs/sync:
+    cmds:
+      - rm -rf ./libs/*
+      - cp -R ./../../libs/go-libs/* ./libs/
+
   bench:
-    deps: [postgres]
+    internal: true
     cmds:
       - mkdir -p {{.BENCH_RESULTS_DIR}}
       - >
-        go test {{.TAGS}} {{if eq .VERBOSE "true"}}-v{{end}} {{.PKG}}
-        -run=XXX -bench={{.RUN}} -benchmem -benchtime={{.BENCH_TIME}} -timeout {{.TIMEOUT}}
-        -cpuprofile {{.BENCH_CPU_PROFILE}} -memprofile {{.BENCH_MEM_PROFILE}}
-        | tee {{.BENCH_RESULTS_FILE}}
-      - benchstat {{.BENCH_RESULTS_FILE}}
+        go test -run BenchmarkParallelWrites -bench=. {{if eq .VERBOSE "true"}}-v{{end}}
+        -test.benchmem
+        -timeout 1h
+        -memprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-memprofile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
+        -cpuprofile {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-profile-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
+        -benchtime={{if .DURATION}}{{.DURATION}}{{else}}15s{{end}}
+        {{if eq .RACE "true"}}-race{{end}}
+        -count={{if .COUNT}}{{.COUNT}}{{else}}10{{end}} ./benchmarks | tee {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
     env:
-      NUMARY_STORAGE_DRIVER: "postgres"
-      NUMARY_STORAGE_POSTGRES_CONN_STRING: "postgresql://ledger:ledger@127.0.0.1/ledger"
+      ASYNC: "{{.ASYNC}}"
+      GOMEMLIMIT: 1GiB
+      GOMAXPROCS: 2
+      VERBOSE: false
+#      GOGC: "1000" # https://dave.cheney.net/tag/gogc
+      CGO_ENABLED: 0
+#      GODEBUG: gctrace=1 #,gcpacertrace=1
 
-  bench:cpu:
+  bench:async:
     cmds:
-      - go tool pprof -http=":" {{.BENCH_CPU_PROFILE}}
+    - task: bench
+      vars:
+        ASYNC: true
 
-  bench:mem:
+  bench:sync:
     cmds:
-      - go tool pprof -http=":" {{.BENCH_MEM_PROFILE}}
+    - task: bench
 
-  install:
-    deps:
-    - install:golangci-lint
-    - install:perf
-
-  install:golangci-lint:
+  bench:both:
     cmds:
-      - >
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
-        sh -s -- -b $(go env GOPATH)/bin latest
-      - golangci-lint --version
+    - task: bench:sync
+    - task: bench:async
 
-  install:perf:
-    - go install golang.org/x/perf/cmd/...@latest
-
-  postgres:
+  bench:diff:
+    internal: true
     cmds:
-      - docker compose up -d postgres
+    - >
+      benchstat {{.BENCH_RESULTS_DIR}}/{{if .SOURCE}}{{.SOURCE}}{{else}}main{{end}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
+      {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.stats
 
-  clean:
+  bench:diff:sync:
     cmds:
-      - go clean
-      - rm -f {{.SERVICE}} coverage.out coverage.html
-      - docker compose down -v
+    - task: bench:diff
+
+  bench:diff:async:
+    cmds:
+    - task: bench:diff
+      vars:
+        ASYNC: "true"
+
+  bench:diff:both:
+    cmds:
+    - task: bench:diff:sync
+    - task: bench:diff:async
+
+  bench:pprof:
+    internal: true
+    cmds:
+    - go tool pprof -http=":" {{.BENCH_RESULTS_DIR}}/{{.BRANCH}}-{{.KIND}}-{{if eq .ASYNC "true"}}async{{else}}sync{{end}}.out
+
+  bench:cpu:pprof:
+    internal: true
+    cmds:
+    - task: bench:pprof
+      vars:
+        KIND: profile
+        ASYNC: "{{.ASYNC}}"
+
+  bench:mem:pprof:
+    internal: true
+    cmds:
+    - task: bench:pprof
+      vars:
+        KIND: memprofile
+        ASYNC: "{{.ASYNC}}"
+
+  bench:cpu:pprof:async:
+    cmds:
+    - task: bench:cpu:pprof
+      vars:
+        ASYNC: "true"
+
+  bench:cpu:pprof:sync:
+    cmds:
+    - task: bench:cpu:pprof
+      vars:
+        ASYNC: "false"
+
+  bench:mem:pprof:async:
+    cmds:
+    - task: bench:mem:pprof
+      vars:
+        ASYNC: "true"
+
+  bench:mem:pprof:sync:
+    cmds:
+    - task: bench:mem:pprof
+      vars:
+        ASYNC: "false"
 
   sdk:template:
     desc: Extract templates
@@ -126,7 +147,7 @@ tasks:
         msg: Please specify generator as first cli arg (ie "task template -- go")
     cmds:
       - >
-        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest author
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:v6.6.0 author
         template -g {{.CLI_ARGS}} -o templates/{{.CLI_ARGS}}
 
   sdk:generate:
@@ -139,30 +160,14 @@ tasks:
       - wget https://raw.githubusercontent.com/formancehq/ledger/{{.VERSION}}/pkg/api/controllers/swagger.yaml -O swagger.yaml
       - sed -i -e "s/LEDGER_VERSION/{{.VERSION}}/g" swagger.yaml
       - >
-        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:latest generate
+        docker run --rm -w /local -v ${PWD}:/local openapitools/openapi-generator-cli:v6.6.0 generate
         -i ./swagger.yaml
         -g {{ (split "-" .CLI_ARGS)._0 }}
         -c ./configs/{{.CLI_ARGS}}.yaml
         -o ./sdks/{{.CLI_ARGS}}
         --git-user-id=formancehq
-        --git-repo-id=numary-sdk-{{.CLI_ARGS}}
+        --git-repo-id=formance-sdk-{{.CLI_ARGS}}
         -p packageVersion={{.VERSION}}
-
-  sdk:test:
-    desc: Test client code
-    dir: ./sdk
-    preconditions:
-      - sh: '[ "{{.CLI_ARGS}}" != "" ]'
-        msg: Please specify generator as first cli arg (ie "task test -- go")
-      - sh: "[[ -e sdks/{{.CLI_ARGS}}/Taskfile.yml ]]"
-        msg: "Not Taskfile found. You have to create a taskfile in ./sdks/{{.CLI_ARGS}}/ with a 'test' task"
-    vars:
-      RANDOM:
-        sh: "echo $$"
-    cmds:
-      - |
-        cd ./sdks/{{.CLI_ARGS}}
-        task test
 
   goreleaser:test:pkg:
     desc: Test a package
@@ -178,12 +183,12 @@ tasks:
         vars:
           Platform: "amd64"
           Image: fedora
-          Cmd: "{{.rpm}} numary_*_linux_amd64.rpm"
+          Cmd: "{{.rpm}} *_linux_amd64.rpm"
       - task: goreleaser:test:pkg
         vars:
           Platform: "arm64"
           Image: fedora
-          Cmd: "{{.rpm}} numary_*_linux_arm64.rpm"
+          Cmd: "{{.rpm}} *_linux_arm64.rpm"
 
   goreleaser:test:deb:
     desc: Tests deb packages
@@ -194,28 +199,9 @@ tasks:
         vars:
           Platform: "amd64"
           Image: ubuntu
-          Cmd: "{{.dpkg}} numary_*_linux_amd64.deb"
+          Cmd: "{{.dpkg}} *_linux_amd64.deb"
       - task: goreleaser:test:pkg
         vars:
           Platform: "arm64"
           Image: ubuntu
-          Cmd: "{{.dpkg}} numary_*_linux_arm64.deb"
-
-  run:
-    cmds:
-      - docker compose up -d --remove-orphans
-
-  stop:
-    cmds:
-      - docker compose stop
-
-  ps:
-    cmds:
-      - docker compose ps
-
-  rm:
-    deps: [stop]
-    cmds:
-      - docker compose rm -f
-      - docker volume prune -f
-      - rm -f {{.BENCH_CPU_PROFILE}} {{.BENCH_MEM_PROFILE}}
+          Cmd: "{{.dpkg}} *_linux_arm64.deb"

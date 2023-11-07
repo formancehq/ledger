@@ -1,4 +1,3 @@
-numary
 coverage*
 /dist/
 cmd/control/*
@@ -13,3 +12,7 @@ sdk/sdks
 .env
 sqlstorage.test
 ledger.test
+antlr-*-complete.jar
+go.work
+go.work.sum
+benchs

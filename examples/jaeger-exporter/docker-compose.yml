@@ -17,8 +17,8 @@ services:
     depends_on:
       - postgres
       - jaeger
-    image: golang:1.18-alpine
-    entrypoint: go run main.go server start
+    image: golang:1.19-alpine
+    entrypoint: go run main.go serve
     volumes:
       - ../..:/src
     working_dir: /src
@@ -26,8 +26,8 @@ services:
     - "3068:3068/tcp"
     environment:
       CGO_ENABLED: 0
-      NUMARY_DEBUG: "true"
-      NUMARY_OTEL_TRACES: "true"
-      NUMARY_OTEL_TRACES_EXPORTER: jaeger
-      NUMARY_OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
-      NUMARY_OTEL_SERVICE_NAME: ledger
+      DEBUG: "true"
+      OTEL_TRACES: "true"
+      OTEL_TRACES_EXPORTER: jaeger
+      OTEL_TRACES_EXPORTER_JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: ledger
