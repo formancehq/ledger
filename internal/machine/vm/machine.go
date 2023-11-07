@@ -15,8 +15,8 @@ import (
 	"math/big"
 
 	ledger "github.com/formancehq/ledger/internal"
-	internal "github.com/formancehq/ledger/internal/machine/internal"
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/machine/internal"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/logrusorgru/aurora"
@@ -25,9 +25,9 @@ import (
 
 type Machine struct {
 	P                          uint
-	Program                    program2.Program
+	Program                    program.Program
 	Vars                       map[string]internal.Value
-	UnresolvedResources        []program2.Resource
+	UnresolvedResources        []program.Resource
 	Resources                  []internal.Value // Constants and Variables
 	UnresolvedResourceBalances map[string]int
 	resolveCalled              bool
@@ -51,7 +51,7 @@ type Posting struct {
 
 type Metadata map[string]any
 
-func NewMachine(p program2.Program) *Machine {
+func NewMachine(p program.Program) *Machine {
 	printChan := make(chan internal.Value)
 
 	m := Machine{
@@ -183,11 +183,11 @@ func (m *Machine) tick() (bool, error) {
 		fmt.Println("STATE ---------------------------------------------------------------------")
 		fmt.Printf("    %v\n", aurora.Blue(m.Stack))
 		fmt.Printf("    %v\n", aurora.Cyan(m.Balances))
-		fmt.Printf("    %v\n", program2.OpcodeName(op))
+		fmt.Printf("    %v\n", program.OpcodeName(op))
 	}
 
 	switch op {
-	case program2.OP_APUSH:
+	case program.OP_APUSH:
 		bytes := m.Program.Instructions[m.P+1 : m.P+3]
 		v, ok := m.getResource(internal.Address(binary.LittleEndian.Uint16(bytes)))
 		if !ok {
@@ -196,38 +196,38 @@ func (m *Machine) tick() (bool, error) {
 		m.Stack = append(m.Stack, *v)
 		m.P += 2
 
-	case program2.OP_BUMP:
+	case program.OP_BUMP:
 		n := big.Int(*pop[internal.Number](m))
 		idx := len(m.Stack) - int(n.Uint64()) - 1
 		v := m.Stack[idx]
 		m.Stack = append(m.Stack[:idx], m.Stack[idx+1:]...)
 		m.Stack = append(m.Stack, v)
 
-	case program2.OP_DELETE:
+	case program.OP_DELETE:
 		n := m.popValue()
 		if n.GetType() == internal.TypeFunding {
 			return true, errorsutil.NewError(ErrInvalidScript,
 				errors.Errorf("wrong type: want: %v, got: %v", n.GetType(), internal.TypeFunding))
 		}
 
-	case program2.OP_IADD:
+	case program.OP_IADD:
 		b := pop[internal.Number](m)
 		a := pop[internal.Number](m)
 		m.pushValue(a.Add(b))
 
-	case program2.OP_ISUB:
+	case program.OP_ISUB:
 		b := pop[internal.Number](m)
 		a := pop[internal.Number](m)
 		m.pushValue(a.Sub(b))
 
-	case program2.OP_PRINT:
+	case program.OP_PRINT:
 		a := m.popValue()
 		m.printChan <- a
 
-	case program2.OP_FAIL:
+	case program.OP_FAIL:
 		return true, ErrScriptFailed
 
-	case program2.OP_ASSET:
+	case program.OP_ASSET:
 		v := m.popValue()
 		switch v := v.(type) {
 		case internal.Asset:
@@ -241,7 +241,7 @@ func (m *Machine) tick() (bool, error) {
 				errors.Errorf("wrong type for op asset: %v", v.GetType()))
 		}
 
-	case program2.OP_MONETARY_NEW:
+	case program.OP_MONETARY_NEW:
 		amount := pop[internal.Number](m)
 		asset := pop[internal.Asset](m)
 		m.pushValue(internal.Monetary{
@@ -249,7 +249,7 @@ func (m *Machine) tick() (bool, error) {
 			Amount: amount,
 		})
 
-	case program2.OP_MONETARY_ADD:
+	case program.OP_MONETARY_ADD:
 		b := pop[internal.Monetary](m)
 		a := pop[internal.Monetary](m)
 		if a.Asset != b.Asset {
@@ -261,18 +261,18 @@ func (m *Machine) tick() (bool, error) {
 			Amount: a.Amount.Add(b.Amount),
 		})
 
-	case program2.OP_MONETARY_SUB:
+	case program.OP_MONETARY_SUB:
 		b := pop[internal.Monetary](m)
 		a := pop[internal.Monetary](m)
 		if a.Asset != b.Asset {
-			return true, fmt.Errorf("%s", program2.OpcodeName(op))
+			return true, fmt.Errorf("%s", program.OpcodeName(op))
 		}
 		m.pushValue(internal.Monetary{
 			Asset:  a.Asset,
 			Amount: a.Amount.Sub(b.Amount),
 		})
 
-	case program2.OP_MAKE_ALLOTMENT:
+	case program.OP_MAKE_ALLOTMENT:
 		n := pop[internal.Number](m)
 		portions := make([]internal.Portion, n.Uint64())
 		for i := uint64(0); i < n.Uint64(); i++ {
@@ -285,7 +285,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.pushValue(*allotment)
 
-	case program2.OP_TAKE_ALL:
+	case program.OP_TAKE_ALL:
 		overdraft := pop[internal.Monetary](m)
 		account := pop[internal.AccountAddress](m)
 		funding, err := m.withdrawAll(account, overdraft.Asset, overdraft.Amount)
@@ -294,7 +294,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.pushValue(*funding)
 
-	case program2.OP_TAKE_ALWAYS:
+	case program.OP_TAKE_ALWAYS:
 		mon := pop[internal.Monetary](m)
 		account := pop[internal.AccountAddress](m)
 		funding, err := m.withdrawAlways(account, mon)
@@ -303,7 +303,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.pushValue(*funding)
 
-	case program2.OP_TAKE:
+	case program.OP_TAKE:
 		mon := pop[internal.Monetary](m)
 		funding := pop[internal.Funding](m)
 		if funding.Asset != mon.Asset {
@@ -317,7 +317,7 @@ func (m *Machine) tick() (bool, error) {
 		m.pushValue(remainder)
 		m.pushValue(result)
 
-	case program2.OP_TAKE_MAX:
+	case program.OP_TAKE_MAX:
 		mon := pop[internal.Monetary](m)
 		if mon.Amount.Ltz() {
 			return true, fmt.Errorf(
@@ -342,7 +342,7 @@ func (m *Machine) tick() (bool, error) {
 		m.pushValue(remainder)
 		m.pushValue(result)
 
-	case program2.OP_FUNDING_ASSEMBLE:
+	case program.OP_FUNDING_ASSEMBLE:
 		num := pop[internal.Number](m)
 		n := int(num.Uint64())
 		if n == 0 {
@@ -372,7 +372,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.pushValue(result)
 
-	case program2.OP_FUNDING_SUM:
+	case program.OP_FUNDING_SUM:
 		funding := pop[internal.Funding](m)
 		sum := funding.Total()
 		m.pushValue(funding)
@@ -381,12 +381,12 @@ func (m *Machine) tick() (bool, error) {
 			Amount: sum,
 		})
 
-	case program2.OP_FUNDING_REVERSE:
+	case program.OP_FUNDING_REVERSE:
 		funding := pop[internal.Funding](m)
 		result := funding.Reverse()
 		m.pushValue(result)
 
-	case program2.OP_ALLOC:
+	case program.OP_ALLOC:
 		allotment := pop[internal.Allotment](m)
 		monetary := pop[internal.Monetary](m)
 		total := monetary.Amount
@@ -398,10 +398,10 @@ func (m *Machine) tick() (bool, error) {
 			})
 		}
 
-	case program2.OP_REPAY:
+	case program.OP_REPAY:
 		m.repay(pop[internal.Funding](m))
 
-	case program2.OP_SEND:
+	case program.OP_SEND:
 		dest := pop[internal.AccountAddress](m)
 		funding := pop[internal.Funding](m)
 		m.credit(dest, funding)
@@ -416,12 +416,12 @@ func (m *Machine) tick() (bool, error) {
 			})
 		}
 
-	case program2.OP_TX_META:
+	case program.OP_TX_META:
 		k := pop[internal.String](m)
 		v := m.popValue()
 		m.TxMeta[string(k)] = v
 
-	case program2.OP_ACCOUNT_META:
+	case program.OP_ACCOUNT_META:
 		a := pop[internal.AccountAddress](m)
 		k := pop[internal.String](m)
 		v := m.popValue()
@@ -430,7 +430,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		m.AccountsMeta[a][string(k)] = v
 
-	case program2.OP_SAVE:
+	case program.OP_SAVE:
 		a := pop[internal.AccountAddress](m)
 		v := m.popValue()
 		switch v := v.(type) {
@@ -518,7 +518,11 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 			return errors.New("invalid program (resolve balances: invalid address of account)")
 		}
 		accountAddress := (*account).(internal.AccountAddress)
-		m.Balances[accountAddress] = make(map[internal.Asset]*internal.MonetaryInt)
+
+		if _, ok := m.Balances[accountAddress]; !ok {
+			m.Balances[accountAddress] = make(map[internal.Asset]*internal.MonetaryInt)
+		}
+
 		// for every asset, send request
 		for addr := range neededAssets {
 			mon, ok := m.getResource(addr)
@@ -556,12 +560,12 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 		res := m.UnresolvedResources[idx]
 		var val internal.Value
 		switch res := res.(type) {
-		case program2.Constant:
+		case program.Constant:
 			val = res.Inner
 			if val.GetType() == internal.TypeAccount {
 				involvedAccountsMap[internal.Address(idx)] = string(val.(internal.AccountAddress))
 			}
-		case program2.Variable:
+		case program.Variable:
 			var ok bool
 			val, ok = m.Vars[res.Name]
 			if !ok {
@@ -570,7 +574,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			if val.GetType() == internal.TypeAccount {
 				involvedAccountsMap[internal.Address(idx)] = string(val.(internal.AccountAddress))
 			}
-		case program2.VariableAccountMetadata:
+		case program.VariableAccountMetadata:
 			acc, _ := m.getResource(res.Account)
 			addr := string((*acc).(internal.AccountAddress))
 
@@ -589,7 +593,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			if err != nil {
 				return nil, nil, err
 			}
-		case program2.VariableAccountBalance:
+		case program.VariableAccountBalance:
 			acc, _ := m.getResource(res.Account)
 			address := string((*acc).(internal.AccountAddress))
 			involvedAccountsMap[internal.Address(idx)] = address
@@ -610,7 +614,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			val = internal.Monetary{
 				Asset: (*ass).(internal.Asset),
 			}
-		case program2.Monetary:
+		case program.Monetary:
 			ass, _ := m.getResource(res.Asset)
 			val = internal.Monetary{
 				Asset:  (*ass).(internal.Asset),
