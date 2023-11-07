@@ -124,6 +124,7 @@ paths:
             maximum: 1000
             default: 15
         - name: page_size
+          x-speakeasy-ignore: true
           in: query
           description: |
             The maximum number of results to return per page.
@@ -165,6 +166,7 @@ paths:
             format: int64
             example: 2400
         - name: balanceOperator
+          x-speakeasy-ignore: true
           in: query
           description: |
             Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
@@ -173,6 +175,7 @@ paths:
             enum: [gte, lte, gt, lt, e, ne]
             example: gte
         - name: balance_operator
+          x-speakeasy-ignore: true
           in: query
           description: |
             Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
@@ -483,6 +486,7 @@ paths:
             type: string
             format: date-time
         - name: start_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred after this timestamp.
@@ -501,6 +505,7 @@ paths:
             type: string
             format: date-time
         - name: end_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred before this timestamp.
@@ -561,6 +566,7 @@ paths:
             maximum: 1000
             default: 15
         - name: page_size
+          x-speakeasy-ignore: true
           in: query
           description: |
             The maximum number of results to return per page.
@@ -614,6 +620,7 @@ paths:
             type: string
             format: date-time
         - name: start_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred after this timestamp.
@@ -632,6 +639,7 @@ paths:
             type: string
             format: date-time
         - name: end_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred before this timestamp.
@@ -1007,6 +1015,7 @@ paths:
             maximum: 1000
             default: 15
         - name: page_size
+          x-speakeasy-ignore: true
           in: query
           description: |
             The maximum number of results to return per page.
@@ -1035,6 +1044,7 @@ paths:
             type: string
             format: date-time
         - name: start_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred after this timestamp.
@@ -1053,6 +1063,7 @@ paths:
             type: string
             format: date-time
         - name: end_time
+          x-speakeasy-ignore: true
           in: query
           description: |
             Filter transactions that occurred before this timestamp.
