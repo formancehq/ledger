@@ -127,7 +127,7 @@ paths:
             Count:
               schema:
                 type: integer
-                format: int64
+                format: bigint
                 minimum: 0
         default:
           description: Error
@@ -555,7 +555,7 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
         - name: expand
@@ -605,7 +605,7 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
         - name: dryRun
@@ -658,7 +658,7 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
         - name: key
@@ -1109,7 +1109,7 @@ components:
           $ref: '#/components/schemas/Metadata'
         id:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
         reverted:
           type: boolean
@@ -1172,7 +1172,7 @@ components:
           minimum: 0
         transactions:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
       required:
         - accounts
@@ -1183,7 +1183,7 @@ components:
       properties:
         id:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
           example: 1234
         type:
