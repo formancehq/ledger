@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -33,6 +34,7 @@ type Accounts struct {
 type lockIntent struct {
 	accounts Accounts
 	acquired chan struct{}
+	at       time.Time
 }
 
 func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) bool {
@@ -105,6 +107,7 @@ func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts)
 	intent := &lockIntent{
 		accounts: accounts,
 		acquired: make(chan struct{}),
+		at:       time.Now(),
 	}
 
 	recheck := func() {
