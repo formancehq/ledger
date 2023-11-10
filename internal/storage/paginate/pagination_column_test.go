@@ -5,7 +5,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ func TestColumnPagination(t *testing.T) {
 	t.Parallel()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := storage.OpenSQLDB(storage.ConnectionOptions{
+	db, err := sqlutils.OpenSQLDB(sqlutils.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 	})

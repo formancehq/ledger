@@ -1,4 +1,4 @@
-package bulk
+package v2
 
 import (
 	"context"
@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"math/big"
 
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+
+	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/internal/machine"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/api/shared"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
@@ -40,12 +44,10 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 	ret := make([]Result, 0, len(bulk))
 
 	errorsInBulk := false
-	var bulkError = func(action string, err error) {
-		_, code, details := shared.CoreErrorToErrorCode(err)
+	var bulkError = func(action, code string, err error) {
 		ret = append(ret, Result{
 			ErrorCode:        code,
 			ErrorDescription: err.Error(),
-			ErrorDetails:     details,
 			ResponseType:     "ERROR",
 		})
 		errorsInBulk = true
@@ -63,14 +65,20 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 			if err := json.Unmarshal(element.Data, req); err != nil {
 				return nil, errorsInBulk, fmt.Errorf("error parsing element %d: %s", i, err)
 			}
-			rs, err := req.ToRunScript()
-			if err != nil {
-				return nil, errorsInBulk, fmt.Errorf("error converting request to script: %s", err)
-			}
+			rs := req.ToRunScript()
 
 			tx, err := l.CreateTransaction(ctx, parameters, *rs)
 			if err != nil {
-				bulkError(element.Action, err)
+				var code string
+				switch {
+				case machine.IsInsufficientFundError(err):
+					code = ErrInsufficientFund
+				case engine.IsCommandError(err):
+					code = ErrValidation
+				default:
+					code = sharedapi.ErrorInternal
+				}
+				bulkError(element.Action, code, err)
 				if !continueOnFailure {
 					return ret, errorsInBulk, nil
 				}
@@ -103,7 +111,14 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 			}
 
 			if err := l.SaveMeta(ctx, parameters, req.TargetType, targetID, req.Metadata); err != nil {
-				bulkError(element.Action, err)
+				var code string
+				switch {
+				case command.IsSaveMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
+					code = sharedapi.ErrorCodeNotFound
+				default:
+					code = sharedapi.ErrorInternal
+				}
+				bulkError(element.Action, code, err)
 				if !continueOnFailure {
 					return ret, errorsInBulk, nil
 				}
@@ -124,7 +139,14 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 
 			tx, err := l.RevertTransaction(ctx, parameters, req.ID, req.Force)
 			if err != nil {
-				bulkError(element.Action, err)
+				var code string
+				switch {
+				case engine.IsCommandError(err):
+					code = ErrValidation
+				default:
+					code = sharedapi.ErrorInternal
+				}
+				bulkError(element.Action, code, err)
 				if !continueOnFailure {
 					return ret, errorsInBulk, nil
 				}
@@ -158,7 +180,14 @@ func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFai
 
 			err := l.DeleteMetadata(ctx, parameters, req.TargetType, targetID, req.Key)
 			if err != nil {
-				bulkError(element.Action, err)
+				var code string
+				switch {
+				case command.IsDeleteMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
+					code = sharedapi.ErrorCodeNotFound
+				default:
+					code = sharedapi.ErrorInternal
+				}
+				bulkError(element.Action, code, err)
 				if !continueOnFailure {
 					return ret, errorsInBulk, nil
 				}

@@ -7,8 +7,9 @@ import (
 	"runtime"
 	"time"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pbnjay/memory"
 	"gopkg.in/segmentio/analytics-go.v3"

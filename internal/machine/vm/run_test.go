@@ -1,4 +1,4 @@
-package machine
+package vm
 
 import (
 	"context"
@@ -6,24 +6,25 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/machine"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	vm2 "github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
 )
 
-type testCase struct {
+type runTestCase struct {
 	name            string
 	script          string
 	vars            map[string]string
 	expectErrorCode error
 	expectResult    Result
-	store           vm2.Store
+	store           Store
 	metadata        metadata.Metadata
 }
 
-var testCases = []testCase{
+var runTestCases = []runTestCase{
 	{
 		name: "nominal",
 		script: `
@@ -46,7 +47,7 @@ var testCases = []testCase{
 				source = @bank
 				destination = @user:001
 			)`,
-		expectErrorCode: ledger.ErrInsufficientFund,
+		expectErrorCode: &machine.ErrInsufficientFund{},
 	},
 	{
 		name: "send $0",
@@ -117,8 +118,8 @@ var testCases = []testCase{
 	},
 	{
 		name: "using metadata",
-		store: vm2.StaticStore{
-			"sales:001": &vm2.AccountWithBalances{
+		store: StaticStore{
+			"sales:001": &AccountWithBalances{
 				Account: ledger.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
@@ -129,7 +130,7 @@ var testCases = []testCase{
 					"COIN": big.NewInt(100),
 				},
 			},
-			"users:001": &vm2.AccountWithBalances{
+			"users:001": &AccountWithBalances{
 				Account: ledger.Account{
 					Address: "sales:001",
 					Metadata: metadata.Metadata{
@@ -215,7 +216,7 @@ var testCases = []testCase{
 		metadata: metadata.Metadata{
 			"priority": "low",
 		},
-		expectErrorCode: vm2.ErrMetadataOverride,
+		expectErrorCode: &machine.ErrMetadataOverride{},
 	},
 	{
 		name: "set account meta",
@@ -248,7 +249,7 @@ var testCases = []testCase{
 	},
 	{
 		name: "balance function",
-		store: vm2.StaticStore{
+		store: StaticStore{
 			"users:001": {
 				Account: ledger.Account{
 					Address:  "users:001",
@@ -292,7 +293,7 @@ var testCases = []testCase{
 	},
 	{
 		name: "send amount 0",
-		store: vm2.StaticStore{
+		store: StaticStore{
 			"alice": {
 				Account: ledger.Account{
 					Address:  "alice",
@@ -316,7 +317,7 @@ var testCases = []testCase{
 	},
 	{
 		name: "send all with balance 0",
-		store: vm2.StaticStore{
+		store: StaticStore{
 			"alice": {
 				Account: ledger.Account{
 					Address:  "alice",
@@ -340,7 +341,7 @@ var testCases = []testCase{
 	},
 	{
 		name: "send account balance of 0",
-		store: vm2.StaticStore{
+		store: StaticStore{
 			"alice": {
 				Account: ledger.Account{
 					Address:  "alice",
@@ -367,21 +368,21 @@ var testCases = []testCase{
 	},
 }
 
-func TestMachine(t *testing.T) {
+func TestRun(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range testCases {
+	for _, tc := range runTestCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 
 			if tc.store == nil {
-				tc.store = vm2.StaticStore{}
+				tc.store = StaticStore{}
 			}
 
 			program, err := compiler.Compile(tc.script)
 			require.NoError(t, err)
 
-			m := vm2.NewMachine(*program)
+			m := NewMachine(*program)
 			require.NoError(t, m.SetVarsFromJSON(tc.vars))
 
 			_, _, err = m.ResolveResources(context.Background(), tc.store)

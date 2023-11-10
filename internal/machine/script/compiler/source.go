@@ -4,16 +4,17 @@ import (
 	"errors"
 	"fmt"
 
-	internal2 "github.com/formancehq/ledger/internal/machine/internal"
+	"github.com/formancehq/ledger/internal/machine"
+
 	"github.com/formancehq/ledger/internal/machine/script/parser"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
-type FallbackAccount internal2.Address
+type FallbackAccount machine.Address
 
 // VisitValueAwareSource returns the resource addresses of all the accounts
-func (p *parseVisitor) VisitValueAwareSource(c parser.IValueAwareSourceContext, pushAsset func(), monAddr *internal2.Address) (map[internal2.Address]struct{}, *CompileError) {
-	neededAccounts := map[internal2.Address]struct{}{}
+func (p *parseVisitor) VisitValueAwareSource(c parser.IValueAwareSourceContext, pushAsset func(), monAddr *machine.Address) (map[machine.Address]struct{}, *CompileError) {
+	neededAccounts := map[machine.Address]struct{}{}
 	isAll := monAddr == nil
 	switch c := c.(type) {
 	case *parser.SrcContext:
@@ -58,7 +59,7 @@ func (p *parseVisitor) VisitValueAwareSource(c parser.IValueAwareSourceContext, 
 				return nil, LogicError(c, err)
 			}
 		}
-		err := p.PushInteger(internal2.NewNumber(int64(n)))
+		err := p.PushInteger(machine.NewNumber(int64(n)))
 		if err != nil {
 			return nil, LogicError(c, err)
 		}
@@ -84,13 +85,13 @@ func (p *parseVisitor) TakeFromSource(fallback *FallbackAccount) error {
 		return err
 	}
 	p.AppendInstruction(program.OP_REPAY)
-	p.PushAddress(internal2.Address(*fallback))
+	p.PushAddress(machine.Address(*fallback))
 	err = p.Bump(2)
 	if err != nil {
 		return err
 	}
 	p.AppendInstruction(program.OP_TAKE_ALWAYS)
-	err = p.PushInteger(internal2.NewNumber(2))
+	err = p.PushInteger(machine.NewNumber(2))
 	if err != nil {
 		return err
 	}
@@ -101,9 +102,9 @@ func (p *parseVisitor) TakeFromSource(fallback *FallbackAccount) error {
 // VisitSource returns the resource addresses of all the accounts,
 // the addresses of accounts already emptied,
 // and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
-func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), isAll bool) (map[internal2.Address]struct{}, map[internal2.Address]struct{}, *FallbackAccount, *CompileError) {
-	neededAccounts := map[internal2.Address]struct{}{}
-	emptiedAccounts := map[internal2.Address]struct{}{}
+func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), isAll bool) (map[machine.Address]struct{}, map[machine.Address]struct{}, *FallbackAccount, *CompileError) {
+	neededAccounts := map[machine.Address]struct{}{}
+	emptiedAccounts := map[machine.Address]struct{}{}
 	var fallback *FallbackAccount
 	switch c := c.(type) {
 	case *parser.SrcAccountContext:
@@ -111,7 +112,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		if compErr != nil {
 			return nil, nil, nil, compErr
 		}
-		if ty != internal2.TypeAccount {
+		if ty != machine.TypeAccount {
 			return nil, nil, nil, LogicError(c, errors.New("wrong type: expected account or allocation as destination"))
 		}
 		if p.isWorld(*accAddr) {
@@ -123,7 +124,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		if overdraft == nil {
 			// no overdraft: use zero monetary
 			pushAsset()
-			err := p.PushInteger(internal2.NewNumber(0))
+			err := p.PushInteger(machine.NewNumber(0))
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
@@ -139,13 +140,13 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 				if compErr != nil {
 					return nil, nil, nil, compErr
 				}
-				if ty != internal2.TypeMonetary {
+				if ty != machine.TypeMonetary {
 					return nil, nil, nil, LogicError(c, errors.New("wrong type: expected monetary"))
 				}
 				p.AppendInstruction(program.OP_TAKE_ALL)
 			case *parser.SrcAccountOverdraftUnboundedContext:
 				pushAsset()
-				err := p.PushInteger(internal2.NewNumber(0))
+				err := p.PushInteger(machine.NewNumber(0))
 				if err != nil {
 					return nil, nil, nil, LogicError(c, err)
 				}
@@ -171,7 +172,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		if compErr != nil {
 			return nil, nil, nil, compErr
 		}
-		if ty != internal2.TypeMonetary {
+		if ty != machine.TypeMonetary {
 			return nil, nil, nil, LogicError(c, errors.New("wrong type: expected monetary as max"))
 		}
 		for k, v := range accounts {
@@ -184,13 +185,13 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		}
 		p.AppendInstruction(program.OP_REPAY)
 		if subsourceFallback != nil {
-			p.PushAddress(internal2.Address(*subsourceFallback))
+			p.PushAddress(machine.Address(*subsourceFallback))
 			err := p.Bump(2)
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
 			p.AppendInstruction(program.OP_TAKE_ALL)
-			err = p.PushInteger(internal2.NewNumber(2))
+			err = p.PushInteger(machine.NewNumber(2))
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
@@ -224,7 +225,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 				emptiedAccounts[k] = v
 			}
 		}
-		err := p.PushInteger(internal2.NewNumber(int64(n)))
+		err := p.PushInteger(machine.NewNumber(int64(n)))
 		if err != nil {
 			return nil, nil, nil, LogicError(c, err)
 		}

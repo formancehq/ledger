@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -68,10 +69,15 @@ func NewLogrus(logger *logrus.Logger) *logrusLogger {
 	}
 }
 
+var (
+	once sync.Once
+)
+
 func Testing() *logrusLogger {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
-	flag.Parse()
+	once.Do(flag.Parse)
+
 	if testing.Verbose() {
 		logger.SetOutput(os.Stdout)
 		logger.SetLevel(logrus.DebugLevel)

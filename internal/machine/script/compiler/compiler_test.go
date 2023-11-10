@@ -7,7 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	internal2 "github.com/formancehq/ledger/internal/machine/internal"
+	"github.com/formancehq/ledger/internal/machine"
+
 	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +68,7 @@ func checkResourcesEqual(actual, expected program2.Resource) bool {
 	}
 	switch res := actual.(type) {
 	case program2.Constant:
-		return internal2.ValueEquals(res.Inner, expected.(program2.Constant).Inner)
+		return machine.ValueEquals(res.Inner, expected.(program2.Constant).Inner)
 	case program2.Variable:
 		e := expected.(program2.Variable)
 		return res.Typ == e.Typ && res.Name == e.Name
@@ -97,7 +98,7 @@ func TestSimplePrint(t *testing.T) {
 				program2.OP_PRINT,
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
 			},
 		},
 	})
@@ -116,9 +117,9 @@ func TestCompositeExpr(t *testing.T) {
 				program2.OP_PRINT,
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.NewMonetaryInt(29)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(15)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.NewMonetaryInt(29)},
+				program2.Constant{Inner: machine.NewMonetaryInt(15)},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
 			},
 		},
 	})
@@ -145,15 +146,15 @@ func TestCRLF(t *testing.T) {
 				program2.OP_PRINT,
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.AccountAddress("a")},
-				program2.Constant{Inner: internal2.AccountAddress("b")},
+				program2.Constant{Inner: machine.AccountAddress("a")},
+				program2.Constant{Inner: machine.AccountAddress("b")},
 			},
 		},
 	})
 }
 
 func TestConstant(t *testing.T) {
-	user := internal2.AccountAddress("user:U001")
+	user := machine.AccountAddress("user:U001")
 	test(t, TestCase{
 		Case: "print @user:U001",
 		Expected: CaseResult{
@@ -198,22 +199,22 @@ func TestSetTxMeta(t *testing.T) {
 				program2.OP_TX_META,
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.AccountAddress("platform")},
-				program2.Constant{Inner: internal2.String("aaa")},
-				program2.Constant{Inner: internal2.Asset("GEM")},
-				program2.Constant{Inner: internal2.String("bbb")},
-				program2.Constant{Inner: internal2.NewNumber(42)},
-				program2.Constant{Inner: internal2.String("ccc")},
-				program2.Constant{Inner: internal2.String("test")},
-				program2.Constant{Inner: internal2.String("ddd")},
-				program2.Constant{Inner: internal2.Asset("COIN")},
-				program2.Monetary{Asset: 8, Amount: internal2.NewMonetaryInt(30)},
-				program2.Constant{Inner: internal2.String("eee")},
-				program2.Constant{Inner: internal2.Portion{
+				program2.Constant{Inner: machine.AccountAddress("platform")},
+				program2.Constant{Inner: machine.String("aaa")},
+				program2.Constant{Inner: machine.Asset("GEM")},
+				program2.Constant{Inner: machine.String("bbb")},
+				program2.Constant{Inner: machine.NewNumber(42)},
+				program2.Constant{Inner: machine.String("ccc")},
+				program2.Constant{Inner: machine.String("test")},
+				program2.Constant{Inner: machine.String("ddd")},
+				program2.Constant{Inner: machine.Asset("COIN")},
+				program2.Monetary{Asset: 8, Amount: machine.NewMonetaryInt(30)},
+				program2.Constant{Inner: machine.String("eee")},
+				program2.Constant{Inner: machine.Portion{
 					Remaining: false,
 					Specific:  big.NewRat(15, 100),
 				}},
-				program2.Constant{Inner: internal2.String("fff")},
+				program2.Constant{Inner: machine.String("fff")},
 			},
 		},
 	})
@@ -234,8 +235,8 @@ func TestSetTxMetaVars(t *testing.T) {
 				program2.OP_TX_META,
 			},
 			Resources: []program2.Resource{
-				program2.Variable{Typ: internal2.TypePortion, Name: "commission"},
-				program2.Constant{Inner: internal2.String("fee")},
+				program2.Variable{Typ: machine.TypePortion, Name: "commission"},
+				program2.Constant{Inner: machine.String("fee")},
 			},
 		},
 	})
@@ -258,7 +259,7 @@ func TestComments(t *testing.T) {
 				program2.OP_PRINT,
 			},
 			Resources: []program2.Resource{
-				program2.Variable{Typ: internal2.TypeAccount, Name: "a"},
+				program2.Variable{Typ: machine.TypeAccount, Name: "a"},
 			},
 		},
 	})
@@ -360,19 +361,19 @@ func TestDestinationAllotment(t *testing.T) {
 				program2.OP_REPAY,            //
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.Asset("EUR/2")},
+				program2.Constant{Inner: machine.Asset("EUR/2")},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(43),
+					Amount: machine.NewMonetaryInt(43),
 				},
-				program2.Constant{Inner: internal2.AccountAddress("foo")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-				program2.Constant{Inner: internal2.Portion{Specific: big.NewRat(7, 8)}},
-				program2.Constant{Inner: internal2.Portion{Specific: big.NewRat(1, 8)}},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-				program2.Constant{Inner: internal2.AccountAddress("bar")},
-				program2.Constant{Inner: internal2.AccountAddress("baz")},
+				program2.Constant{Inner: machine.AccountAddress("foo")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(7, 8)}},
+				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.AccountAddress("bar")},
+				program2.Constant{Inner: machine.AccountAddress("baz")},
 			},
 		},
 	})
@@ -444,22 +445,22 @@ func TestDestinationInOrder(t *testing.T) {
 				program2.OP_REPAY,            //
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.Asset("COIN")},
+				program2.Constant{Inner: machine.Asset("COIN")},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(50),
+					Amount: machine.NewMonetaryInt(50),
 				},
-				program2.Constant{Inner: internal2.AccountAddress("a")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.AccountAddress("a")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(10),
+					Amount: machine.NewMonetaryInt(10),
 				},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-				program2.Constant{Inner: internal2.AccountAddress("b")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(3)},
-				program2.Constant{Inner: internal2.AccountAddress("c")},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.AccountAddress("b")},
+				program2.Constant{Inner: machine.NewMonetaryInt(3)},
+				program2.Constant{Inner: machine.AccountAddress("c")},
 			},
 		},
 	})
@@ -477,22 +478,22 @@ func TestAllocationPercentages(t *testing.T) {
 		)`,
 		Expected: CaseResult{
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.Asset("EUR/2")},
+				program2.Constant{Inner: machine.Asset("EUR/2")},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(43),
+					Amount: machine.NewMonetaryInt(43),
 				},
-				program2.Constant{Inner: internal2.AccountAddress("foo")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-				program2.Constant{Inner: internal2.Portion{Specific: big.NewRat(1, 2)}},
-				program2.Constant{Inner: internal2.Portion{Specific: big.NewRat(3, 8)}},
-				program2.Constant{Inner: internal2.Portion{Specific: big.NewRat(1, 8)}},
-				program2.Constant{Inner: internal2.NewMonetaryInt(3)},
-				program2.Constant{Inner: internal2.AccountAddress("bar")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-				program2.Constant{Inner: internal2.AccountAddress("baz")},
-				program2.Constant{Inner: internal2.AccountAddress("qux")},
+				program2.Constant{Inner: machine.AccountAddress("foo")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 2)}},
+				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(3, 8)}},
+				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
+				program2.Constant{Inner: machine.NewMonetaryInt(3)},
+				program2.Constant{Inner: machine.AccountAddress("bar")},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.AccountAddress("baz")},
+				program2.Constant{Inner: machine.AccountAddress("qux")},
 			},
 		},
 	})
@@ -504,8 +505,8 @@ func TestSend(t *testing.T) {
 			source = @alice
 			destination = @bob
 		)`
-	alice := internal2.AccountAddress("alice")
-	bob := internal2.AccountAddress("bob")
+	alice := machine.AccountAddress("alice")
+	bob := machine.AccountAddress("bob")
 	test(t, TestCase{
 		Case: script,
 		Expected: CaseResult{
@@ -527,14 +528,14 @@ func TestSend(t *testing.T) {
 				program2.OP_SEND,  // [EUR/2]
 				program2.OP_REPAY, //
 			}, Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.Asset("EUR/2")},
+				program2.Constant{Inner: machine.Asset("EUR/2")},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(99),
+					Amount: machine.NewMonetaryInt(99),
 				},
 				program2.Constant{Inner: alice},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
 				program2.Constant{Inner: bob}},
 		},
 	})
@@ -559,10 +560,10 @@ func TestSendAll(t *testing.T) {
 				program2.OP_SEND,  // [EUR/2]
 				program2.OP_REPAY, //
 			}, Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.Asset("EUR/2")},
-				program2.Constant{Inner: internal2.AccountAddress("alice")},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.AccountAddress("bob")}},
+				program2.Constant{Inner: machine.Asset("EUR/2")},
+				program2.Constant{Inner: machine.AccountAddress("alice")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.AccountAddress("bob")}},
 		},
 	})
 }
@@ -584,27 +585,27 @@ func TestMetadata(t *testing.T) {
 		)`,
 		Expected: CaseResult{
 			Resources: []program2.Resource{
-				program2.Variable{Typ: internal2.TypeAccount, Name: "sale"},
+				program2.Variable{Typ: machine.TypeAccount, Name: "sale"},
 				program2.VariableAccountMetadata{
-					Typ:     internal2.TypeAccount,
-					Account: internal2.NewAddress(0),
+					Typ:     machine.TypeAccount,
+					Account: machine.NewAddress(0),
 					Key:     "seller",
 				},
 				program2.VariableAccountMetadata{
-					Typ:     internal2.TypePortion,
-					Account: internal2.NewAddress(1),
+					Typ:     machine.TypePortion,
+					Account: machine.NewAddress(1),
 					Key:     "commission",
 				},
-				program2.Constant{Inner: internal2.Asset("EUR/2")},
+				program2.Constant{Inner: machine.Asset("EUR/2")},
 				program2.Monetary{
 					Asset:  3,
-					Amount: internal2.NewMonetaryInt(53),
+					Amount: machine.NewMonetaryInt(53),
 				},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-				program2.Constant{Inner: internal2.NewPortionRemaining()},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-				program2.Constant{Inner: internal2.AccountAddress("platform")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.NewPortionRemaining()},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.AccountAddress("platform")},
 			},
 		},
 	})
@@ -970,26 +971,26 @@ func TestSetAccountMeta(t *testing.T) {
 					program2.OP_ACCOUNT_META,
 				},
 				Resources: []program2.Resource{
-					program2.Constant{Inner: internal2.AccountAddress("platform")},
-					program2.Constant{Inner: internal2.String("aaa")},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
-					program2.Constant{Inner: internal2.Asset("GEM")},
-					program2.Constant{Inner: internal2.String("bbb")},
-					program2.Constant{Inner: internal2.NewNumber(42)},
-					program2.Constant{Inner: internal2.String("ccc")},
-					program2.Constant{Inner: internal2.String("test")},
-					program2.Constant{Inner: internal2.String("ddd")},
-					program2.Constant{Inner: internal2.Asset("COIN")},
+					program2.Constant{Inner: machine.AccountAddress("platform")},
+					program2.Constant{Inner: machine.String("aaa")},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
+					program2.Constant{Inner: machine.Asset("GEM")},
+					program2.Constant{Inner: machine.String("bbb")},
+					program2.Constant{Inner: machine.NewNumber(42)},
+					program2.Constant{Inner: machine.String("ccc")},
+					program2.Constant{Inner: machine.String("test")},
+					program2.Constant{Inner: machine.String("ddd")},
+					program2.Constant{Inner: machine.Asset("COIN")},
 					program2.Monetary{
 						Asset:  9,
-						Amount: internal2.NewMonetaryInt(30),
+						Amount: machine.NewMonetaryInt(30),
 					},
-					program2.Constant{Inner: internal2.String("eee")},
-					program2.Constant{Inner: internal2.Portion{
+					program2.Constant{Inner: machine.String("eee")},
+					program2.Constant{Inner: machine.Portion{
 						Remaining: false,
 						Specific:  big.NewRat(15, 100),
 					}},
-					program2.Constant{Inner: internal2.String("fff")},
+					program2.Constant{Inner: machine.String("fff")},
 				},
 			},
 		})
@@ -1035,21 +1036,21 @@ func TestSetAccountMeta(t *testing.T) {
 					program2.OP_ACCOUNT_META,
 				},
 				Resources: []program2.Resource{
-					program2.Variable{Typ: internal2.TypeAccount, Name: "acc"},
-					program2.Constant{Inner: internal2.Asset("EUR/2")},
+					program2.Variable{Typ: machine.TypeAccount, Name: "acc"},
+					program2.Constant{Inner: machine.Asset("EUR/2")},
 					program2.Monetary{
 						Asset:  1,
-						Amount: internal2.NewMonetaryInt(100),
+						Amount: machine.NewMonetaryInt(100),
 					},
-					program2.Constant{Inner: internal2.AccountAddress("world")},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-					program2.Constant{Inner: internal2.Portion{
+					program2.Constant{Inner: machine.AccountAddress("world")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.NewMonetaryInt(2)},
+					program2.Constant{Inner: machine.Portion{
 						Remaining: false,
 						Specific:  big.NewRat(1, 100),
 					}},
-					program2.Constant{Inner: internal2.String("fees")},
+					program2.Constant{Inner: machine.String("fees")},
 				},
 			},
 		})
@@ -1116,12 +1117,12 @@ func TestVariableBalance(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
-					program2.Constant{Inner: internal2.Asset("COIN")},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
+					program2.Constant{Inner: machine.Asset("COIN")},
 					program2.VariableAccountBalance{Account: 0, Asset: 1},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("bob")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1163,14 +1164,14 @@ func TestVariableBalance(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Variable{Typ: internal2.TypeAccount, Name: "acc"},
-					program2.Constant{Inner: internal2.Asset("COIN")},
+					program2.Variable{Typ: machine.TypeAccount, Name: "acc"},
+					program2.Constant{Inner: machine.Asset("COIN")},
 					program2.VariableAccountBalance{Account: 0, Asset: 1},
-					program2.Constant{Inner: internal2.AccountAddress("world")},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
+					program2.Constant{Inner: machine.AccountAddress("world")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.NewMonetaryInt(2)},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
 				},
 			},
 		})
@@ -1333,20 +1334,20 @@ func TestVariableAsset(t *testing.T) {
 				program2.OP_REPAY,
 			},
 			Resources: []program2.Resource{
-				program2.Variable{Typ: internal2.TypeAsset, Name: "ass"},
-				program2.Constant{Inner: internal2.AccountAddress("alice")},
+				program2.Variable{Typ: machine.TypeAsset, Name: "ass"},
+				program2.Constant{Inner: machine.AccountAddress("alice")},
 				program2.VariableAccountBalance{
 					Name:    "bal",
 					Account: 1,
 					Asset:   0,
 				},
-				program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-				program2.Constant{Inner: internal2.AccountAddress("bob")},
+				program2.Constant{Inner: machine.NewMonetaryInt(0)},
+				program2.Constant{Inner: machine.AccountAddress("bob")},
 				program2.Monetary{
 					Asset:  0,
-					Amount: internal2.NewMonetaryInt(1),
+					Amount: machine.NewMonetaryInt(1),
 				},
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
 			},
 		},
 	})
@@ -1366,9 +1367,9 @@ func TestPrint(t *testing.T) {
 				program2.OP_PRINT,
 			},
 			Resources: []program2.Resource{
-				program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(2)},
-				program2.Constant{Inner: internal2.NewMonetaryInt(3)},
+				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+				program2.Constant{Inner: machine.NewMonetaryInt(3)},
 			},
 		},
 	})
@@ -1415,30 +1416,30 @@ func TestSendWithArithmetic(t *testing.T) {
 				},
 				Resources: []program2.Resource{
 					program2.Variable{
-						Typ:  internal2.TypeAsset,
+						Typ:  machine.TypeAsset,
 						Name: "ass",
 					},
 					program2.Variable{
-						Typ:  internal2.TypeMonetary,
+						Typ:  machine.TypeMonetary,
 						Name: "mon",
 					},
-					program2.Constant{Inner: internal2.Asset("EUR")},
+					program2.Constant{Inner: machine.Asset("EUR")},
 					program2.Monetary{
 						Asset:  2,
-						Amount: internal2.NewMonetaryInt(1),
+						Amount: machine.NewMonetaryInt(1),
 					},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(3),
+						Amount: machine.NewMonetaryInt(3),
 					},
 					program2.Monetary{
 						Asset:  2,
-						Amount: internal2.NewMonetaryInt(4),
+						Amount: machine.NewMonetaryInt(4),
 					},
-					program2.Constant{Inner: internal2.AccountAddress("a")},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("b")},
+					program2.Constant{Inner: machine.AccountAddress("a")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("b")},
 				},
 			},
 		})
@@ -1514,19 +1515,19 @@ func TestSaveFromAccount(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Constant{Inner: internal2.Asset("EUR")},
+					program2.Constant{Inner: machine.Asset("EUR")},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(10),
+						Amount: machine.NewMonetaryInt(10),
 					},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(20),
+						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("bob")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1564,15 +1565,15 @@ func TestSaveFromAccount(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Constant{Inner: internal2.Asset("EUR")},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
+					program2.Constant{Inner: machine.Asset("EUR")},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(20),
+						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("bob")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1614,19 +1615,19 @@ func TestSaveFromAccount(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Variable{Typ: internal2.TypeAsset, Name: "ass"},
+					program2.Variable{Typ: machine.TypeAsset, Name: "ass"},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(10),
+						Amount: machine.NewMonetaryInt(10),
 					},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
 					program2.Monetary{
 						Asset:  0,
-						Amount: internal2.NewMonetaryInt(20),
+						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("bob")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1668,16 +1669,16 @@ func TestSaveFromAccount(t *testing.T) {
 					program2.OP_REPAY,
 				},
 				Resources: []program2.Resource{
-					program2.Variable{Typ: internal2.TypeMonetary, Name: "mon"},
-					program2.Constant{Inner: internal2.AccountAddress("alice")},
-					program2.Constant{Inner: internal2.Asset("EUR")},
+					program2.Variable{Typ: machine.TypeMonetary, Name: "mon"},
+					program2.Constant{Inner: machine.AccountAddress("alice")},
+					program2.Constant{Inner: machine.Asset("EUR")},
 					program2.Monetary{
 						Asset:  2,
-						Amount: internal2.NewMonetaryInt(20),
+						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: internal2.NewMonetaryInt(0)},
-					program2.Constant{Inner: internal2.NewMonetaryInt(1)},
-					program2.Constant{Inner: internal2.AccountAddress("bob")},
+					program2.Constant{Inner: machine.NewMonetaryInt(0)},
+					program2.Constant{Inner: machine.NewMonetaryInt(1)},
+					program2.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})

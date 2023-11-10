@@ -3,11 +3,11 @@ package ledgerstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
@@ -60,11 +60,11 @@ func (store *Store) accountQueryContext(qb query.Builder) (string, []any, error)
 			case string:
 				return filterAccountAddress(address, "accounts.address"), nil, nil
 			default:
-				return "", nil, fmt.Errorf("unexpected type %T for column 'address'", address)
+				return "", nil, newErrInvalidQuery("unexpected type %T for column 'address'", address)
 			}
 		case metadataRegex.Match([]byte(key)):
 			if operator != "$match" {
-				return "", nil, errors.New("'account' column can only be used with $match")
+				return "", nil, newErrInvalidQuery("'account' column can only be used with $match")
 			}
 			match := metadataRegex.FindAllStringSubmatch(key, 3)
 
@@ -74,36 +74,31 @@ func (store *Store) accountQueryContext(qb query.Builder) (string, []any, error)
 		case balanceRegex.Match([]byte(key)):
 			match := balanceRegex.FindAllStringSubmatch(key, 2)
 
-			return fmt.Sprintf(`(
+			return `(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
 				where asset = ? and account_address = accounts.address
 				order by seq desc
 				limit 1
-			) < ?`), []any{match[0][1], value}, nil
+			) < ?`, []any{match[0][1], value}, nil
 		case key == "balance":
-			return fmt.Sprintf(`(
+			return `(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
 				where account_address = accounts.address
 				order by seq desc
 				limit 1
-			) < ?`), nil, nil
+			) < ?`, nil, nil
 		default:
-			return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
+			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}
 	}))
 }
 
-func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q *GetAccountsQuery) *bun.SelectQuery {
+func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q *GetAccountsQuery, where string, args []any) *bun.SelectQuery {
 	selectQuery = store.buildAccountQuery(q.Options.Options, selectQuery)
 
-	if q.Options.QueryBuilder != nil {
-		where, args, err := store.accountQueryContext(q.Options.QueryBuilder)
-		if err != nil {
-			// TODO: handle error
-			panic(err)
-		}
+	if where != "" {
 		return selectQuery.Where(where, args...)
 	}
 
@@ -111,10 +106,23 @@ func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q *GetAc
 }
 
 func (store *Store) GetAccountsWithVolumes(ctx context.Context, q *GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+
+	var (
+		where string
+		args  []any
+		err   error
+	)
+	if q.Options.QueryBuilder != nil {
+		where, args, err = store.accountQueryContext(q.Options.QueryBuilder)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return paginateWithOffset[PaginatedQueryOptions[PITFilterWithVolumes], ledger.ExpandedAccount](store, ctx,
 		(*paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
-			return store.buildAccountListQuery(query, q)
+			return store.buildAccountListQuery(query, q, where, args)
 		},
 	)
 }
@@ -157,8 +165,20 @@ func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery
 }
 
 func (store *Store) CountAccounts(ctx context.Context, q *GetAccountsQuery) (int, error) {
+	var (
+		where string
+		args  []any
+		err   error
+	)
+	if q.Options.QueryBuilder != nil {
+		where, args, err = store.accountQueryContext(q.Options.QueryBuilder)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return store.buildAccountListQuery(query, q)
+		return store.buildAccountListQuery(query, q, where, args)
 	})
 }
 

@@ -3,7 +3,8 @@ package systemstore
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/uptrace/bun"
 )
 
@@ -16,5 +17,9 @@ func NewStore(db *bun.DB) *Store {
 }
 
 func (s *Store) Initialize(ctx context.Context) error {
-	return storage.PostgresError(s.getMigrator().Up(ctx, s.db))
+	return sqlutils.PostgresError(s.getMigrator().Up(ctx, s.db))
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
 }

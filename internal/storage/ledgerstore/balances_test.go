@@ -1,4 +1,4 @@
-package ledgerstore_test
+package ledgerstore
 
 import (
 	"math/big"
@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	internaltesting "github.com/formancehq/ledger/internal/testing"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -62,8 +61,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
-		q := ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).WithPageSize(10)
-		cursor, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(q))
+		q := NewPaginatedQueryOptions(PITFilter{}).WithPageSize(10)
+		cursor, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(q))
 		require.NoError(t, err)
 		internaltesting.RequireEqual(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0),
@@ -71,7 +70,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
 			WithQueryBuilder(query.Match("address", "users:")).
 			WithPageSize(10),
 		))
@@ -85,7 +84,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{
 			PIT: &now,
 		}).
 			WithQueryBuilder(query.Match("address", "users:")).
@@ -100,7 +99,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{
 			PIT: pointer.For(now.Add(time.Minute)),
 		}).
 			WithQueryBuilder(query.Match("metadata[category]", "premium")).
@@ -115,7 +114,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
 			WithQueryBuilder(query.Match("metadata[category]", "premium")).
 			WithPageSize(10)))
 		require.NoError(t, err)
@@ -125,7 +124,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, ledgerstore.NewGetAggregatedBalancesQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
 			WithQueryBuilder(query.Match("metadata[category]", "guest")).
 			WithPageSize(10)))
 		require.NoError(t, err)

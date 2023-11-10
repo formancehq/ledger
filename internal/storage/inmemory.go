@@ -4,6 +4,8 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -20,7 +22,7 @@ func (m *InMemoryStore) GetTransactionByReference(ctx context.Context, ref strin
 		return transaction.Reference == ref
 	})
 	if len(filtered) == 0 {
-		return nil, ErrNotFound
+		return nil, sqlutils.ErrNotFound
 	}
 	return filtered[0], nil
 }
@@ -30,7 +32,7 @@ func (m *InMemoryStore) GetTransaction(ctx context.Context, txID *big.Int) (*led
 		return transaction.ID.Cmp(txID) == 0
 	})
 	if len(filtered) == 0 {
-		return nil, ErrNotFound
+		return nil, sqlutils.ErrNotFound
 	}
 	return &filtered[0].Transaction, nil
 }
@@ -88,7 +90,7 @@ func (m *InMemoryStore) ReadLogWithIdempotencyKey(ctx context.Context, key strin
 		return log.IdempotencyKey == key
 	})
 	if first == nil {
-		return nil, ErrNotFound
+		return nil, sqlutils.ErrNotFound
 	}
 	return first, nil
 }
@@ -125,7 +127,7 @@ func (m *InMemoryStore) InsertLogs(ctx context.Context, logs ...*ledger.ChainedL
 
 func (m *InMemoryStore) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTransaction, error) {
 	if len(m.transactions) == 0 {
-		return nil, ErrNotFound
+		return nil, sqlutils.ErrNotFound
 	}
 	return m.transactions[len(m.transactions)-1], nil
 }

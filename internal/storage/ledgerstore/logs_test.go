@@ -1,4 +1,4 @@
-package ledgerstore_test
+package ledgerstore
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -22,7 +22,7 @@ func TestGetLastLog(t *testing.T) {
 	now := ledger.Now()
 
 	lastLog, err := store.GetLastLog(context.Background())
-	require.True(t, storage.IsNotFoundError(err))
+	require.True(t, sqlutils.IsNotFoundError(err))
 	require.Nil(t, lastLog)
 	tx1 := ledger.ExpandedTransaction{
 		Transaction: ledger.Transaction{
@@ -256,7 +256,7 @@ func TestGetLogs(t *testing.T) {
 		previousLog = newLog
 	}
 
-	cursor, err := store.GetLogs(context.Background(), ledgerstore.NewGetLogsQuery(ledgerstore.NewPaginatedQueryOptions[any](nil)))
+	cursor, err := store.GetLogs(context.Background(), NewGetLogsQuery(NewPaginatedQueryOptions[any](nil)))
 	require.NoError(t, err)
 	require.Equal(t, paginate.QueryDefaultPageSize, cursor.PageSize)
 
@@ -266,13 +266,13 @@ func TestGetLogs(t *testing.T) {
 	require.Equal(t, tx3.Reference, cursor.Data[0].Data.(ledger.NewTransactionLogPayload).Transaction.Reference)
 	require.Equal(t, tx3.Timestamp, cursor.Data[0].Data.(ledger.NewTransactionLogPayload).Transaction.Timestamp)
 
-	cursor, err = store.GetLogs(context.Background(), ledgerstore.NewGetLogsQuery(ledgerstore.NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
+	cursor, err = store.GetLogs(context.Background(), NewGetLogsQuery(NewPaginatedQueryOptions[any](nil).WithPageSize(1)))
 	require.NoError(t, err)
 	// Should get only the first log.
 	require.Equal(t, 1, cursor.PageSize)
 	require.Equal(t, big.NewInt(2), cursor.Data[0].ID)
 
-	cursor, err = store.GetLogs(context.Background(), ledgerstore.NewGetLogsQuery(ledgerstore.NewPaginatedQueryOptions[any](nil).
+	cursor, err = store.GetLogs(context.Background(), NewGetLogsQuery(NewPaginatedQueryOptions[any](nil).
 		WithQueryBuilder(query.And(
 			query.Gte("date", now.Add(-2*time.Hour)),
 			query.Lt("date", now.Add(-time.Hour)),

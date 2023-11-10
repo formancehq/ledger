@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/api/shared"
-
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine"
@@ -139,7 +137,7 @@ func TestGetLogs(t *testing.T) {
 				"cursor": []string{"xxx"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {

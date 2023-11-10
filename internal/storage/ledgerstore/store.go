@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -54,7 +55,7 @@ func (store *Store) withTransaction(ctx context.Context, callback func(tx bun.Tx
 	}
 	if err := callback(tx); err != nil {
 		_ = tx.Rollback()
-		return storage.PostgresError(err)
+		return sqlutils.PostgresError(err)
 	}
 	return tx.Commit()
 }

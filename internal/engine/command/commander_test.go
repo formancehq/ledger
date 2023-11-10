@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/machine"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	storageerrors "github.com/formancehq/ledger/internal/storage"
@@ -20,14 +22,14 @@ var (
 )
 
 type testCase struct {
-	name          string
-	setup         func(t *testing.T, r Store)
-	script        string
-	reference     string
-	expectedError error
-	expectedTx    *ledger.Transaction
-	expectedLogs  []*ledger.Log
-	parameters    Parameters
+	name              string
+	setup             func(t *testing.T, r Store)
+	script            string
+	reference         string
+	expectedErrorCode string
+	expectedTx        *ledger.Transaction
+	expectedLogs      []*ledger.Log
+	parameters        Parameters
 }
 
 var testCases = []testCase{
@@ -50,14 +52,14 @@ var testCases = []testCase{
 		},
 	},
 	{
-		name:          "no script",
-		script:        ``,
-		expectedError: ErrNoScript,
+		name:              "no script",
+		script:            ``,
+		expectedErrorCode: ErrInvalidTransactionCodeNoScript,
 	},
 	{
-		name:          "invalid script",
-		script:        `XXX`,
-		expectedError: ErrCompilationFailed,
+		name:              "invalid script",
+		script:            `XXX`,
+		expectedErrorCode: ErrInvalidTransactionCodeCompilationFailed,
 	},
 	{
 		name: "set reference conflict",
@@ -74,8 +76,8 @@ var testCases = []testCase{
 				source = @world
 				destination = @mint
 			)`,
-		reference:     "tx_ref",
-		expectedError: ErrConflictError,
+		reference:         "tx_ref",
+		expectedErrorCode: ErrInvalidTransactionCodeConflict,
 	},
 	{
 		name: "set reference",
@@ -165,8 +167,8 @@ func TestCreateTransaction(t *testing.T) {
 				Reference: tc.reference,
 			})
 
-			if tc.expectedError != nil {
-				require.True(t, errors.Is(err, tc.expectedError))
+			if tc.expectedErrorCode != "" {
+				require.True(t, IsInvalidTransactionError(err, tc.expectedErrorCode))
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, ret)
@@ -226,7 +228,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	defer commander.Close()
 
 	_, err = commander.RevertTransaction(context.Background(), Parameters{}, tx.ID, false)
-	require.True(t, errors.Is(err, ErrAlreadyReverted))
+	require.True(t, IsRevertError(err, ErrRevertTransactionCodeAlreadyReverted))
 }
 
 func TestRevertWithRevertOccurring(t *testing.T) {
@@ -249,7 +251,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 	referencer.take(referenceReverts, big.NewInt(0))
 
 	_, err = commander.RevertTransaction(ctx, Parameters{}, tx.ID, false)
-	require.True(t, errors.Is(err, ErrRevertOccurring))
+	require.True(t, IsRevertError(err, ErrRevertTransactionCodeOccurring))
 }
 
 func TestForceRevert(t *testing.T) {
@@ -275,7 +277,7 @@ func TestForceRevert(t *testing.T) {
 
 	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false)
 	require.NotNil(t, err)
-	require.True(t, errors.Is(err, ledger.ErrInsufficientFund))
+	require.True(t, errors.Is(err, &machine.ErrInsufficientFund{}))
 
 	balance, err := store.GetBalance(ctx, "bank", "USD")
 	require.NoError(t, err)

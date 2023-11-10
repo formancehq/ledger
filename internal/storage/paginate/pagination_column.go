@@ -7,7 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage"
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
 )

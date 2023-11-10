@@ -13,6 +13,7 @@ const (
 	defaultLimit = 15
 
 	ErrorCodeNotFound = "NOT_FOUND"
+	ErrorInternal     = "INTERNAL"
 )
 
 func writeJSON(w http.ResponseWriter, statusCode int, v any) {
@@ -50,11 +51,19 @@ func BadRequest(w http.ResponseWriter, code string, err error) {
 	})
 }
 
+func BadRequestWithDetails(w http.ResponseWriter, code string, err error, details string) {
+	writeJSON(w, http.StatusBadRequest, ErrorResponse{
+		ErrorCode:    code,
+		ErrorMessage: err.Error(),
+		Details:      details,
+	})
+}
+
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	logging.FromContext(r.Context()).Error(err)
 
 	writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-		ErrorCode:    "INTERNAL_ERROR",
+		ErrorCode:    ErrorInternal,
 		ErrorMessage: err.Error(),
 	})
 }

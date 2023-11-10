@@ -6,14 +6,13 @@ import (
 	"math/big"
 	"sync"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/internal/engine/utils/batching"
-	"github.com/formancehq/ledger/internal/machine"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
@@ -73,7 +72,7 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 	logComputer func(tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) *ledger.Log) (*ledger.ChainedLog, error) {
 
 	if script.Script.Plain == "" {
-		return nil, ErrNoScript
+		return nil, NewErrNoScript()
 	}
 
 	if script.Timestamp.IsZero() {
@@ -84,35 +83,33 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 	return execContext.run(ctx, func(executionContext *executionContext) (*ledger.ChainedLog, chan struct{}, error) {
 		if script.Reference != "" {
 			if err := commander.referencer.take(referenceTxReference, script.Reference); err != nil {
-				return nil, nil, ErrConflictError
+				return nil, nil, NewErrConflict()
 			}
 			defer commander.referencer.release(referenceTxReference, script.Reference)
 
 			_, err := commander.store.GetTransactionByReference(ctx, script.Reference)
 			if err == nil {
-				return nil, nil, ErrConflictError
+				return nil, nil, NewErrConflict()
 			}
-			if err != storageerrors.ErrNotFound && err != nil {
+			if err != nil && !storageerrors.IsNotFoundError(err) {
 				return nil, nil, err
 			}
 		}
 
-		program, err := commander.compiler.Compile(ctx, script.Plain)
+		program, err := commander.compiler.Compile(script.Plain)
 		if err != nil {
-			return nil, nil, errorsutil.NewError(ErrCompilationFailed, errors.Wrap(err, "compiling numscript"))
+			return nil, nil, NewErrCompilationFailed(err)
 		}
 
 		m := vm.NewMachine(*program)
 
 		if err := m.SetVarsFromJSON(script.Vars); err != nil {
-			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
-				errors.Wrap(err, "could not set variables"))
+			return nil, nil, NewErrCompilationFailed(err)
 		}
 
 		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
 		if err != nil {
-			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
-				errors.Wrap(err, "could not resolve program resources"))
+			return nil, nil, NewErrCompilationFailed(err)
 		}
 
 		worldFilter := collectionutils.FilterNot(collectionutils.FilterEq("world"))
@@ -129,17 +126,16 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 
 		err = m.ResolveBalances(ctx, commander.store)
 		if err != nil {
-			return nil, nil, errorsutil.NewError(ErrCompilationFailed,
-				errors.Wrap(err, "could not resolve balances"))
+			return nil, nil, errors.Wrap(err, "could not resolve balances")
 		}
 
-		result, err := machine.Run(m, script)
+		result, err := vm.Run(m, script)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "running numscript")
+			return nil, nil, NewErrMachine(err)
 		}
 
 		if len(result.Postings) == 0 {
-			return nil, nil, ErrNoPostings
+			return nil, nil, NewErrNoPostings()
 		}
 
 		tx := ledger.NewTransaction().
@@ -170,17 +166,6 @@ func (commander *Commander) CreateTransaction(ctx context.Context, parameters Pa
 }
 
 func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters, targetType string, targetID interface{}, m metadata.Metadata) error {
-	if m == nil {
-		return nil
-	}
-
-	if targetType == "" {
-		return errorsutil.NewError(ErrValidation, errors.New("empty target type"))
-	}
-	if targetID == "" {
-		return errorsutil.NewError(ErrValidation, errors.New("empty target id"))
-	}
-
 	execContext := newExecutionContext(commander, parameters)
 	_, err := execContext.run(ctx, func(executionContext *executionContext) (*ledger.ChainedLog, chan struct{}, error) {
 		var (
@@ -191,7 +176,9 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 		case ledger.MetaTargetTypeTransaction:
 			_, err := commander.store.GetTransaction(ctx, targetID.(*big.Int))
 			if err != nil {
-				return nil, nil, err
+				if storageerrors.IsNotFoundError(err) {
+					return nil, nil, newErrSaveMetadataTransactionNotFound()
+				}
 			}
 			log = ledger.NewSetMetadataLog(at, ledger.SetMetadataLogPayload{
 				TargetType: ledger.MetaTargetTypeTransaction,
@@ -205,7 +192,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 				Metadata:   m,
 			})
 		default:
-			return nil, nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
+			panic(errors.Errorf("unknown target type '%s'", targetType))
 		}
 
 		return executionContext.AppendLog(ctx, log)
@@ -221,27 +208,19 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 func (commander *Commander) RevertTransaction(ctx context.Context, parameters Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
 
 	if err := commander.referencer.take(referenceReverts, id); err != nil {
-		return nil, ErrRevertOccurring
+		return nil, NewErrRevertTransactionOccurring()
 	}
 	defer commander.referencer.release(referenceReverts, id)
 
-	tx, err := commander.store.GetTransaction(ctx, id)
+	transactionToRevert, err := commander.store.GetTransaction(ctx, id)
 	if err != nil {
-		if errors.Is(err, storageerrors.ErrNotFound) {
-			return nil, errors.New("tx not found")
+		if storageerrors.IsNotFoundError(err) {
+			return nil, NewErrRevertTransactionNotFound()
 		}
 		return nil, err
 	}
-	if tx.Reverted {
-		return nil, ErrAlreadyReverted
-	}
-
-	transactionToRevert, err := commander.store.GetTransaction(ctx, id)
-	if storageerrors.IsNotFoundError(err) {
-		return nil, errorsutil.NewError(err, errors.Errorf("transaction %d not found", id))
-	}
-	if err != nil {
-		return nil, err
+	if transactionToRevert.Reverted {
+		return nil, NewErrRevertTransactionAlreadyReverted()
 	}
 
 	rt := transactionToRevert.Reverse()
@@ -259,7 +238,7 @@ func (commander *Commander) RevertTransaction(ctx context.Context, parameters Pa
 		return nil, err
 	}
 
-	commander.monitor.RevertedTransaction(ctx, log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction, tx)
+	commander.monitor.RevertedTransaction(ctx, log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction, transactionToRevert)
 
 	return log.Data.(ledger.RevertedTransactionLogPayload).RevertTransaction, nil
 }
@@ -288,13 +267,6 @@ func (commander *Commander) nextTXID() *big.Int {
 }
 
 func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Parameters, targetType string, targetID any, key string) error {
-	if targetType == "" {
-		return errorsutil.NewError(ErrValidation, errors.New("empty target type"))
-	}
-	if targetID == "" {
-		return errorsutil.NewError(ErrValidation, errors.New("empty target id"))
-	}
-
 	execContext := newExecutionContext(commander, parameters)
 	_, err := execContext.run(ctx, func(executionContext *executionContext) (*ledger.ChainedLog, chan struct{}, error) {
 		var (
@@ -305,7 +277,7 @@ func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Param
 		case ledger.MetaTargetTypeTransaction:
 			_, err := commander.store.GetTransaction(ctx, targetID.(*big.Int))
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, newErrDeleteMetadataTransactionNotFound()
 			}
 			log = ledger.NewDeleteMetadataLog(at, ledger.DeleteMetadataLogPayload{
 				TargetType: ledger.MetaTargetTypeTransaction,
@@ -319,7 +291,7 @@ func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Param
 				Key:        key,
 			})
 		default:
-			return nil, nil, errorsutil.NewError(ErrValidation, errors.Errorf("unknown target type '%s'", targetType))
+			panic(errors.Errorf("unknown target type '%s'", targetType))
 		}
 
 		return executionContext.AppendLog(ctx, log)

@@ -3,8 +3,6 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/shared"
-
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/health"
@@ -15,7 +13,7 @@ import (
 )
 
 func NewRouter(
-	backend backend.Backend,
+	b backend.Backend,
 	healthController *health.HealthController,
 	globalMetricsRegistry metrics.GlobalRegistry,
 ) chi.Router {
@@ -36,10 +34,10 @@ func NewRouter(
 
 	router.Group(func(router chi.Router) {
 		router.Use(otelchi.Middleware("ledger"))
-		router.Get("/_info", getInfo(backend))
+		router.Get("/_info", getInfo(b))
 
 		router.Route("/{ledger}", func(router chi.Router) {
-			router.Use(shared.LedgerMiddleware(backend, []string{"/_info"}))
+			router.Use(backend.LedgerMiddleware(b, []string{"/_info"}))
 
 			router.Post("/_bulk", bulkHandler)
 

@@ -4,25 +4,24 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/bulk"
-	"github.com/formancehq/ledger/internal/api/shared"
+	"github.com/formancehq/ledger/internal/api/backend"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
 
 func bulkHandler(w http.ResponseWriter, r *http.Request) {
-	b := bulk.Bulk{}
+	b := Bulk{}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		shared.ResponseError(w, r, err)
+		sharedapi.BadRequest(w, ErrValidation, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	ret, errorsInBulk, err := bulk.ProcessBulk(r.Context(), shared.LedgerFromContext(r.Context()), b, sharedapi.QueryParamBool(r, "continueOnFailure"))
+	ret, errorsInBulk, err := ProcessBulk(r.Context(), backend.LedgerFromContext(r.Context()), b, sharedapi.QueryParamBool(r, "continueOnFailure"))
 	if err != nil || errorsInBulk {
 		w.WriteHeader(http.StatusBadRequest)
 	}
 
-	if err := json.NewEncoder(w).Encode(sharedapi.BaseResponse[[]bulk.Result]{
+	if err := json.NewEncoder(w).Encode(sharedapi.BaseResponse[[]Result]{
 		Data: &ret,
 	}); err != nil {
 		panic(err)

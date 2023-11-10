@@ -29,6 +29,32 @@ var (
 type Transaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
+	ID         *paginate.BigInt  `bun:"id,type:numeric"`
+	Timestamp  ledger.Time       `bun:"timestamp,type:timestamp without time zone"`
+	Reference  string            `bun:"reference,type:varchar,unique,nullzero"`
+	Postings   []ledger.Posting  `bun:"postings,type:jsonb"`
+	Metadata   metadata.Metadata `bun:"metadata,type:jsonb,default:'{}'"`
+	RevertedAt *ledger.Time      `bun:"reverted_at"`
+	LastUpdate *ledger.Time      `bun:"last_update"`
+}
+
+func (t *Transaction) toCore() *ledger.Transaction {
+	return &ledger.Transaction{
+		TransactionData: ledger.TransactionData{
+			Reference: t.Reference,
+			Metadata:  t.Metadata,
+			Timestamp: t.Timestamp,
+			Postings:  t.Postings,
+		},
+		ID:       (*big.Int)(t.ID),
+		Reverted: t.RevertedAt != nil && !t.RevertedAt.IsZero(),
+	}
+}
+
+type ExpandedTransaction struct {
+	Transaction
+	bun.BaseModel `bun:"transactions,alias:transactions"`
+
 	ID                         *paginate.BigInt             `bun:"id,type:numeric"`
 	Timestamp                  ledger.Time                  `bun:"timestamp,type:timestamp without time zone"`
 	Reference                  string                       `bun:"reference,type:varchar,unique,nullzero"`
@@ -40,7 +66,7 @@ type Transaction struct {
 	LastUpdate                 *ledger.Time                 `bun:"last_update"`
 }
 
-func (t *Transaction) toCore() *ledger.ExpandedTransaction {
+func (t *ExpandedTransaction) toCore() *ledger.ExpandedTransaction {
 	var (
 		preCommitEffectiveVolumes ledger.AccountsAssetsVolumes
 		preCommitVolumes          ledger.AccountsAssetsVolumes
@@ -157,13 +183,13 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 		case key == "account":
 			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {
-				return "", nil, errors.New("'account' column can only be used with $match")
+				return "", nil, newErrInvalidQuery("'account' column can only be used with $match")
 			}
 			switch address := value.(type) {
 			case string:
 				return filterAccountAddress(address, "m.account_address"), nil, nil
 			default:
-				return "", nil, fmt.Errorf("unexpected type %T for column 'account'", address)
+				return "", nil, newErrInvalidQuery("unexpected type %T for column 'account'", address)
 			}
 		case key == "source":
 			// TODO: Should allow comparison operator only if segments not used
@@ -174,7 +200,7 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			case string:
 				return fmt.Sprintf("(%s) and m.is_source", filterAccountAddress(address, "m.account_address")), nil, nil
 			default:
-				return "", nil, fmt.Errorf("unexpected type %T for column 'source'", address)
+				return "", nil, newErrInvalidQuery("unexpected type %T for column 'source'", address)
 			}
 		case key == "destination":
 			// TODO: Should allow comparison operator only if segments not used
@@ -185,11 +211,11 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			case string:
 				return fmt.Sprintf("(%s) and not m.is_source", filterAccountAddress(address, "m.account_address")), nil, nil
 			default:
-				return "", nil, fmt.Errorf("unexpected type %T for column 'destination'", address)
+				return "", nil, newErrInvalidQuery("unexpected type %T for column 'destination'", address)
 			}
 		case metadataRegex.Match([]byte(key)):
 			if operator != "$match" {
-				return "", nil, errors.New("'account' column can only be used with $match")
+				return "", nil, newErrInvalidQuery("'account' column can only be used with $match")
 			}
 			match := metadataRegex.FindAllStringSubmatch(key, 3)
 
@@ -197,21 +223,15 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 				match[0][1]: value,
 			}}, nil
 		default:
-			return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
+			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}
 	}))
 }
 
-func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q PaginatedQueryOptions[PITFilterWithVolumes]) *bun.SelectQuery {
+func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q PaginatedQueryOptions[PITFilterWithVolumes], where string, args []any) *bun.SelectQuery {
 
 	selectQuery = store.buildTransactionQuery(q.Options, selectQuery)
-
-	if q.QueryBuilder != nil {
-		where, args, err := store.transactionQueryContext(q.QueryBuilder)
-		if err != nil {
-			// TODO: handle error
-			panic(err)
-		}
+	if where != "" {
 		return selectQuery.Where(where, args...)
 	}
 
@@ -219,38 +239,71 @@ func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q Pa
 }
 
 func (store *Store) GetTransactions(ctx context.Context, q *GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
-	transactions, err := paginateWithColumn[PaginatedQueryOptions[PITFilterWithVolumes], Transaction](store, ctx,
+
+	var (
+		where string
+		args  []any
+		err   error
+	)
+
+	if q.Options.QueryBuilder != nil {
+		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	transactions, err := paginateWithColumn[PaginatedQueryOptions[PITFilterWithVolumes], ExpandedTransaction](store, ctx,
 		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
-			return store.buildTransactionListQuery(query, q.Options)
+			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
-	return api.MapCursor(transactions, func(from Transaction) ledger.ExpandedTransaction {
+
+	return api.MapCursor(transactions, func(from ExpandedTransaction) ledger.ExpandedTransaction {
 		return *from.toCore()
 	}), nil
 }
 
 func (store *Store) CountTransactions(ctx context.Context, q *GetTransactionsQuery) (int, error) {
+
+	var (
+		where string
+		args  []any
+		err   error
+	)
+
+	if q.Options.QueryBuilder != nil {
+		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return store.buildTransactionListQuery(query, q.Options)
+		return store.buildTransactionListQuery(query, q.Options, where, args)
 	})
 }
 
 func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
-	return fetchAndMap[*Transaction, *ledger.ExpandedTransaction](store, ctx,
-		(*Transaction).toCore,
+	ret, err := fetch[*ExpandedTransaction](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionQuery(filter.PITFilterWithVolumes, query).
 				Where("transactions.id = ?", filter.ID).
 				Limit(1)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.toCore(), nil
 }
 
 func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.Transaction, error) {
-	return fetch[*ledger.Transaction](store, ctx,
+	tx, err := fetch[*Transaction](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
 				Table("transactions").
@@ -260,11 +313,15 @@ func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.
 				Order("tm.revision desc").
 				Limit(1)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return tx.toCore(), nil
 }
 
 func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (*ledger.ExpandedTransaction, error) {
-	return fetchAndMap[*Transaction, *ledger.ExpandedTransaction](store, ctx,
-		(*Transaction).toCore,
+	ret, err := fetch[*ExpandedTransaction](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
 				Table("transactions").
@@ -274,11 +331,15 @@ func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (
 				Order("tm.revision desc").
 				Limit(1)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.toCore(), nil
 }
 
 func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTransaction, error) {
-	return fetchAndMap[*Transaction, *ledger.ExpandedTransaction](store, ctx,
-		(*Transaction).toCore,
+	ret, err := fetch[*ExpandedTransaction](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
 				Table("transactions").
@@ -287,6 +348,11 @@ func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTra
 				Order("transactions.id desc", "tm.revision desc").
 				Limit(1)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.toCore(), nil
 }
 
 type GetTransactionsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]

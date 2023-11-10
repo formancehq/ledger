@@ -1,12 +1,17 @@
 package ledger
 
 import (
-	"fmt"
 	"math/big"
+
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+)
+
+var (
+	ErrNoPostings = errors.New("invalid payload: should contain either postings or script")
 )
 
 type Transactions struct {
@@ -126,17 +131,9 @@ type TransactionRequest struct {
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
 }
 
-func (req *TransactionRequest) ToRunScript() (*RunScript, error) {
-
-	if len(req.Postings) > 0 && req.Script.Plain != "" ||
-		len(req.Postings) == 0 && req.Script.Plain == "" {
-		return nil, errors.New("invalid payload: should contain either postings or script")
-	}
+func (req *TransactionRequest) ToRunScript() *RunScript {
 
 	if len(req.Postings) > 0 {
-		if i, err := req.Postings.Validate(); err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("invalid posting %d", i))
-		}
 		txData := TransactionData{
 			Postings:  req.Postings,
 			Timestamp: req.Timestamp,
@@ -144,8 +141,7 @@ func (req *TransactionRequest) ToRunScript() (*RunScript, error) {
 			Metadata:  req.Metadata,
 		}
 
-		rs := TxToScriptData(txData, false)
-		return &rs, nil
+		return pointer.For(TxToScriptData(txData, false))
 	}
 
 	return &RunScript{
@@ -153,5 +149,5 @@ func (req *TransactionRequest) ToRunScript() (*RunScript, error) {
 		Timestamp: req.Timestamp,
 		Reference: req.Reference,
 		Metadata:  req.Metadata,
-	}, nil
+	}
 }

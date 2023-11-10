@@ -220,7 +220,7 @@ func ParseJSON(data string) (Builder, error) {
 	}
 	m := make(map[string]any)
 	if err := json.Unmarshal([]byte(data), &m); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return mapMapToExpression(m)

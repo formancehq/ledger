@@ -5,8 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/formancehq/ledger/internal/machine"
+
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	internal2 "github.com/formancehq/ledger/internal/machine/internal"
 	parser2 "github.com/formancehq/ledger/internal/machine/script/parser"
 	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/pkg/errors"
@@ -19,20 +20,20 @@ type parseVisitor struct {
 	resources []program2.Resource
 	// sources store all source accounts
 	// a source can be also a destination of another posting
-	sources map[internal2.Address]struct{}
+	sources map[machine.Address]struct{}
 	// varIdx maps name to resource index
-	varIdx map[string]internal2.Address
+	varIdx map[string]machine.Address
 	// needBalances store for each account, the set of assets needed
-	neededBalances map[internal2.Address]map[internal2.Address]struct{}
+	neededBalances map[machine.Address]map[machine.Address]struct{}
 }
 
 // Allocates constants if it hasn't already been,
 // and returns its resource address.
-func (p *parseVisitor) findConstant(constant program2.Constant) (*internal2.Address, bool) {
+func (p *parseVisitor) findConstant(constant program2.Constant) (*machine.Address, bool) {
 	for i := 0; i < len(p.resources); i++ {
 		if c, ok := p.resources[i].(program2.Constant); ok {
-			if internal2.ValueEquals(c.Inner, constant.Inner) {
-				addr := internal2.Address(i)
+			if machine.ValueEquals(c.Inner, constant.Inner) {
+				addr := machine.Address(i)
 				return &addr, true
 			}
 		}
@@ -40,7 +41,7 @@ func (p *parseVisitor) findConstant(constant program2.Constant) (*internal2.Addr
 	return nil, false
 }
 
-func (p *parseVisitor) AllocateResource(res program2.Resource) (*internal2.Address, error) {
+func (p *parseVisitor) AllocateResource(res program2.Resource) (*machine.Address, error) {
 	if c, ok := res.(program2.Constant); ok {
 		idx, ok := p.findConstant(c)
 		if ok {
@@ -51,15 +52,15 @@ func (p *parseVisitor) AllocateResource(res program2.Resource) (*internal2.Addre
 		return nil, errors.New("number of unique constants exceeded 65536")
 	}
 	p.resources = append(p.resources, res)
-	addr := internal2.NewAddress(uint16(len(p.resources) - 1))
+	addr := machine.NewAddress(uint16(len(p.resources) - 1))
 	return &addr, nil
 }
 
-func (p *parseVisitor) isWorld(addr internal2.Address) bool {
+func (p *parseVisitor) isWorld(addr machine.Address) bool {
 	idx := int(addr)
 	if idx < len(p.resources) {
 		if c, ok := p.resources[idx].(program2.Constant); ok {
-			if acc, ok := c.Inner.(internal2.AccountAddress); ok {
+			if acc, ok := c.Inner.(machine.AccountAddress); ok {
 				if string(acc) == "world" {
 					return true
 				}
@@ -69,7 +70,7 @@ func (p *parseVisitor) isWorld(addr internal2.Address) bool {
 	return false
 }
 
-func (p *parseVisitor) VisitVariable(c parser2.IVariableContext, push bool) (internal2.Type, *internal2.Address, *CompileError) {
+func (p *parseVisitor) VisitVariable(c parser2.IVariableContext, push bool) (machine.Type, *machine.Address, *CompileError) {
 	name := c.GetText()[1:] // strip '$' prefix
 	if idx, ok := p.varIdx[name]; ok {
 		res := p.resources[idx]
@@ -82,7 +83,7 @@ func (p *parseVisitor) VisitVariable(c parser2.IVariableContext, push bool) (int
 	}
 }
 
-func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (internal2.Type, *internal2.Address, *CompileError) {
+func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (machine.Type, *machine.Address, *CompileError) {
 	switch c := c.(type) {
 	case *parser2.ExprAddSubContext:
 		lhsType, lhsAddr, err := p.VisitExpr(c.GetLhs(), push)
@@ -90,12 +91,12 @@ func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (inter
 			return 0, nil, err
 		}
 		switch lhsType {
-		case internal2.TypeNumber:
+		case machine.TypeNumber:
 			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
 			if err != nil {
 				return 0, nil, err
 			}
-			if rhsType != internal2.TypeNumber {
+			if rhsType != machine.TypeNumber {
 				return 0, nil, LogicError(c, fmt.Errorf(
 					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
 					lhsType, rhsType))
@@ -108,13 +109,13 @@ func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (inter
 					p.AppendInstruction(program2.OP_ISUB)
 				}
 			}
-			return internal2.TypeNumber, nil, nil
-		case internal2.TypeMonetary:
+			return machine.TypeNumber, nil, nil
+		case machine.TypeMonetary:
 			rhsType, _, err := p.VisitExpr(c.GetRhs(), push)
 			if err != nil {
 				return 0, nil, err
 			}
-			if rhsType != internal2.TypeMonetary {
+			if rhsType != machine.TypeMonetary {
 				return 0, nil, LogicError(c, fmt.Errorf(
 					"tried to do an arithmetic operation with incompatible left and right-hand side operand types: %s and %s",
 					lhsType, rhsType))
@@ -127,7 +128,7 @@ func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (inter
 					p.AppendInstruction(program2.OP_MONETARY_SUB)
 				}
 			}
-			return internal2.TypeMonetary, lhsAddr, nil
+			return machine.TypeMonetary, lhsAddr, nil
 		default:
 			return 0, nil, LogicError(c, fmt.Errorf(
 				"tried to do an arithmetic operation with unsupported left-hand side operand type: %s",
@@ -142,10 +143,10 @@ func (p *parseVisitor) VisitExpr(c parser2.IExpressionContext, push bool) (inter
 	}
 }
 
-func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2.Type, *internal2.Address, *CompileError) {
+func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (machine.Type, *machine.Address, *CompileError) {
 	switch c := c.(type) {
 	case *parser2.LitAccountContext:
-		account := internal2.AccountAddress(c.GetText()[1:])
+		account := machine.AccountAddress(c.GetText()[1:])
 		addr, err := p.AllocateResource(program2.Constant{Inner: account})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -153,9 +154,9 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*addr)
 		}
-		return internal2.TypeAccount, addr, nil
+		return machine.TypeAccount, addr, nil
 	case *parser2.LitAssetContext:
-		asset := internal2.Asset(c.GetText())
+		asset := machine.Asset(c.GetText())
 		addr, err := p.AllocateResource(program2.Constant{Inner: asset})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -163,9 +164,9 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*addr)
 		}
-		return internal2.TypeAsset, addr, nil
+		return machine.TypeAsset, addr, nil
 	case *parser2.LitNumberContext:
-		number, err := internal2.ParseNumber(c.GetText())
+		number, err := machine.ParseNumber(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
@@ -176,10 +177,10 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*addr)
 		}
-		return internal2.TypeNumber, addr, nil
+		return machine.TypeNumber, addr, nil
 	case *parser2.LitStringContext:
 		addr, err := p.AllocateResource(program2.Constant{
-			Inner: internal2.String(strings.Trim(c.GetText(), `"`)),
+			Inner: machine.String(strings.Trim(c.GetText(), `"`)),
 		})
 		if err != nil {
 			return 0, nil, LogicError(c, err)
@@ -187,9 +188,9 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*addr)
 		}
-		return internal2.TypeString, addr, nil
+		return machine.TypeString, addr, nil
 	case *parser2.LitPortionContext:
-		portion, err := internal2.ParsePortionSpecific(c.GetText())
+		portion, err := machine.ParsePortionSpecific(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
@@ -200,25 +201,25 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*addr)
 		}
-		return internal2.TypePortion, addr, nil
+		return machine.TypePortion, addr, nil
 	case *parser2.LitMonetaryContext:
 		typ, assetAddr, compErr := p.VisitExpr(c.Monetary().GetAsset(), false)
 		if compErr != nil {
 			return 0, nil, compErr
 		}
-		if typ != internal2.TypeAsset {
+		if typ != machine.TypeAsset {
 			return 0, nil, LogicError(c, fmt.Errorf(
 				"the expression in monetary literal should be of type '%s' instead of '%s'",
-				internal2.TypeAsset, typ))
+				machine.TypeAsset, typ))
 		}
 
-		amt, err := internal2.ParseMonetaryInt(c.Monetary().GetAmt().GetText())
+		amt, err := machine.ParseMonetaryInt(c.Monetary().GetAmt().GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
 
 		var (
-			monAddr          *internal2.Address
+			monAddr          *machine.Address
 			alreadyAllocated bool
 		)
 		for i, r := range p.resources {
@@ -226,7 +227,7 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 			case program2.Monetary:
 				if v.Asset == *assetAddr && v.Amount.Equal(amt) {
 					alreadyAllocated = true
-					tmp := internal2.Address(uint16(i))
+					tmp := machine.Address(uint16(i))
 					monAddr = &tmp
 					break
 				}
@@ -244,7 +245,7 @@ func (p *parseVisitor) VisitLit(c parser2.ILiteralContext, push bool) (internal2
 		if push {
 			p.PushAddress(*monAddr)
 		}
-		return internal2.TypeMonetary, monAddr, nil
+		return machine.TypeMonetary, monAddr, nil
 	default:
 		return 0, nil, InternalError(c)
 	}
@@ -255,7 +256,7 @@ func (p *parseVisitor) VisitMonetaryAll(c *parser2.SendContext, monAll parser2.I
 	if compErr != nil {
 		return compErr
 	}
-	if assetType != internal2.TypeAsset {
+	if assetType != machine.TypeAsset {
 		return LogicError(c, fmt.Errorf(
 			"send monetary all: the expression should be of type 'asset' instead of '%s'", assetType))
 	}
@@ -281,7 +282,7 @@ func (p *parseVisitor) VisitMonetary(c *parser2.SendContext, mon parser2.IExpres
 	if compErr != nil {
 		return compErr
 	}
-	if monType != internal2.TypeMonetary {
+	if monType != machine.TypeMonetary {
 		return LogicError(c, fmt.Errorf(
 			"send monetary: the expression should be of type 'monetary' instead of '%s'", monType))
 	}
@@ -332,7 +333,7 @@ func (p *parseVisitor) VisitMonetary(c *parser2.SendContext, mon parser2.IExpres
 			}
 		}
 
-		if err := p.PushInteger(internal2.NewNumber(int64(n))); err != nil {
+		if err := p.PushInteger(machine.NewNumber(int64(n))); err != nil {
 			return LogicError(c, err)
 		}
 
@@ -341,12 +342,12 @@ func (p *parseVisitor) VisitMonetary(c *parser2.SendContext, mon parser2.IExpres
 	return nil
 }
 
-func (p *parseVisitor) setNeededBalances(accounts map[internal2.Address]struct{}, addr *internal2.Address) {
+func (p *parseVisitor) setNeededBalances(accounts map[machine.Address]struct{}, addr *machine.Address) {
 	for acc := range accounts {
 		if b, ok := p.neededBalances[acc]; ok {
 			b[*addr] = struct{}{}
 		} else {
-			p.neededBalances[acc] = map[internal2.Address]struct{}{
+			p.neededBalances[acc] = map[machine.Address]struct{}{
 				*addr: {},
 			}
 		}
@@ -378,7 +379,7 @@ func (p *parseVisitor) VisitSetTxMeta(ctx *parser2.SetTxMetaContext) *CompileErr
 	}
 
 	keyAddr, err := p.AllocateResource(program2.Constant{
-		Inner: internal2.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
+		Inner: machine.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
 	})
 	if err != nil {
 		return LogicError(ctx, err)
@@ -397,7 +398,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser2.SetAccountMetaContext) *
 	}
 
 	keyAddr, err := p.AllocateResource(program2.Constant{
-		Inner: internal2.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
+		Inner: machine.String(strings.Trim(ctx.GetKey().GetText(), `"`)),
 	})
 	if err != nil {
 		return LogicError(ctx, err)
@@ -408,7 +409,7 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser2.SetAccountMetaContext) *
 	if compErr != nil {
 		return compErr
 	}
-	if ty != internal2.TypeAccount {
+	if ty != machine.TypeAccount {
 		return LogicError(ctx, fmt.Errorf(
 			"set_account_meta: expression is of type %s, and should be of type account", ty))
 	}
@@ -421,8 +422,8 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser2.SetAccountMetaContext) *
 
 func (p *parseVisitor) VisitSaveFromAccount(c *parser2.SaveFromAccountContext) *CompileError {
 	var (
-		typ     internal2.Type
-		addr    *internal2.Address
+		typ     machine.Type
+		addr    *machine.Address
 		compErr *CompileError
 	)
 	if monAll := c.GetMonAll(); monAll != nil {
@@ -430,7 +431,7 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser2.SaveFromAccountContext) *
 		if compErr != nil {
 			return compErr
 		}
-		if typ != internal2.TypeAsset {
+		if typ != machine.TypeAsset {
 			return LogicError(c, fmt.Errorf(
 				"save monetary all from account: the first expression should be of type 'asset' instead of '%s'", typ))
 		}
@@ -439,7 +440,7 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser2.SaveFromAccountContext) *
 		if compErr != nil {
 			return compErr
 		}
-		if typ != internal2.TypeMonetary {
+		if typ != machine.TypeMonetary {
 			return LogicError(c, fmt.Errorf(
 				"save monetary from account: the first expression should be of type 'monetary' instead of '%s'", typ))
 		}
@@ -450,7 +451,7 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser2.SaveFromAccountContext) *
 	if compErr != nil {
 		return compErr
 	}
-	if typ != internal2.TypeAccount {
+	if typ != machine.TypeAccount {
 		return LogicError(c, fmt.Errorf(
 			"save monetary from account: the second expression should be of type 'account' instead of '%s'", typ))
 	}
@@ -482,25 +483,25 @@ func (p *parseVisitor) VisitVars(c *parser2.VarListDeclContext) *CompileError {
 		if _, ok := p.varIdx[name]; ok {
 			return LogicError(c, fmt.Errorf("duplicate variable $%s", name))
 		}
-		var ty internal2.Type
+		var ty machine.Type
 		switch v.GetTy().GetText() {
 		case "account":
-			ty = internal2.TypeAccount
+			ty = machine.TypeAccount
 		case "asset":
-			ty = internal2.TypeAsset
+			ty = machine.TypeAsset
 		case "number":
-			ty = internal2.TypeNumber
+			ty = machine.TypeNumber
 		case "string":
-			ty = internal2.TypeString
+			ty = machine.TypeString
 		case "monetary":
-			ty = internal2.TypeMonetary
+			ty = machine.TypeMonetary
 		case "portion":
-			ty = internal2.TypePortion
+			ty = machine.TypePortion
 		default:
 			return InternalError(c)
 		}
 
-		var addr *internal2.Address
+		var addr *machine.Address
 		var err error
 		if v.GetOrig() == nil {
 			addr, err = p.AllocateResource(program2.Variable{Typ: ty, Name: name})
@@ -520,7 +521,7 @@ func (p *parseVisitor) VisitVars(c *parser2.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if srcTy != internal2.TypeAccount {
+			if srcTy != machine.TypeAccount {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: type should be 'account' to pull account metadata", name))
 			}
@@ -532,7 +533,7 @@ func (p *parseVisitor) VisitVars(c *parser2.VarListDeclContext) *CompileError {
 				Key:     key,
 			})
 		case *parser2.OriginAccountBalanceContext:
-			if ty != internal2.TypeMonetary {
+			if ty != machine.TypeMonetary {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: type should be 'monetary' to pull account balance", name))
 			}
@@ -540,7 +541,7 @@ func (p *parseVisitor) VisitVars(c *parser2.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if accTy != internal2.TypeAccount {
+			if accTy != machine.TypeAccount {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: the first argument to pull account balance should be of type 'account'", name))
 			}
@@ -549,7 +550,7 @@ func (p *parseVisitor) VisitVars(c *parser2.VarListDeclContext) *CompileError {
 			if compErr != nil {
 				return compErr
 			}
-			if assTy != internal2.TypeAsset {
+			if assTy != machine.TypeAsset {
 				return LogicError(c, fmt.Errorf(
 					"variable $%s: the second argument to pull account balance should be of type 'asset'", name))
 			}
@@ -656,9 +657,9 @@ func CompileFull(input string) CompileArtifacts {
 		errListener:    errListener,
 		instructions:   make([]byte, 0),
 		resources:      make([]program2.Resource, 0),
-		varIdx:         make(map[string]internal2.Address),
-		neededBalances: make(map[internal2.Address]map[internal2.Address]struct{}),
-		sources:        map[internal2.Address]struct{}{},
+		varIdx:         make(map[string]machine.Address),
+		neededBalances: make(map[machine.Address]map[machine.Address]struct{}),
+		sources:        map[machine.Address]struct{}{},
 	}
 
 	err := visitor.VisitScript(tree)
@@ -667,7 +668,7 @@ func CompileFull(input string) CompileArtifacts {
 		return artifacts
 	}
 
-	sources := make(internal2.Addresses, 0)
+	sources := make(machine.Addresses, 0)
 	for address := range visitor.sources {
 		sources = append(sources, address)
 	}

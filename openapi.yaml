@@ -1311,12 +1311,12 @@ components:
         - INSUFFICIENT_FUND
         - VALIDATION
         - CONFLICT
-        - NO_SCRIPT
         - COMPILATION_FAILED
         - METADATA_OVERRIDE
         - NOT_FOUND
-        - CONTEXT_CANCELLED
-        - STORE
+        - REVERT_OCCURRING
+        - ALREADY_REVERT
+        - NO_POSTINGS
       example: VALIDATION
 
     LedgerInfoResponse:

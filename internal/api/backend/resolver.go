@@ -1,4 +1,4 @@
-package shared
+package backend
 
 import (
 	"math/rand"
@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+
 	"github.com/pkg/errors"
 
-	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,10 @@ import (
 var (
 	r  *rand.Rand
 	mu sync.Mutex
+)
+
+const (
+	ErrOutdatedSchema = "OUTDATED_SCHEMA"
 )
 
 func init() {
@@ -38,7 +43,7 @@ func randomTraceID(n int) string {
 }
 
 func LedgerMiddleware(
-	resolver backend.Backend,
+	resolver Backend,
 	excludePathFromSchemaCheck []string,
 ) func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
@@ -67,7 +72,7 @@ func LedgerMiddleware(
 
 			l, err := resolver.GetLedger(r.Context(), name)
 			if err != nil {
-				ResponseError(w, r, err)
+				sharedapi.BadRequest(w, sharedapi.ErrorInternal, err)
 				return
 			}
 
@@ -82,11 +87,11 @@ func LedgerMiddleware(
 			if !excluded {
 				isUpToDate, err := l.IsDatabaseUpToDate(ctx)
 				if err != nil {
-					ResponseError(w, r, err)
+					sharedapi.BadRequest(w, sharedapi.ErrorInternal, err)
 					return
 				}
 				if !isUpToDate {
-					ResponseError(w, r, errors.New("outdated schema"))
+					sharedapi.BadRequest(w, ErrOutdatedSchema, errors.New("You need to upgrade your ledger schema to the last version"))
 					return
 				}
 			}

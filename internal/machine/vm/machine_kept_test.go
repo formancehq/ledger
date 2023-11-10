@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	internal2 "github.com/formancehq/ledger/internal/machine/internal"
+	"github.com/formancehq/ledger/internal/machine"
 )
 
 func TestKeptDestinationAllotment(t *testing.T) {
@@ -21,23 +21,23 @@ func TestKeptDestinationAllotment(t *testing.T) {
 	)`)
 	tc.setBalance("a", "GEM", 1)
 	tc.expected = CaseResult{
-		Printed: []internal2.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(1),
+				Amount:      machine.NewMonetaryInt(1),
 				Source:      "a",
 				Destination: "x",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(24),
+				Amount:      machine.NewMonetaryInt(24),
 				Source:      "world",
 				Destination: "x",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(25),
+				Amount:      machine.NewMonetaryInt(25),
 				Source:      "world",
 				Destination: "y",
 			},
@@ -73,41 +73,41 @@ func TestKeptComplex(t *testing.T) {
 	tc.setBalance("bar", "GEM", 40)
 	tc.setBalance("baz", "GEM", 40)
 	tc.expected = CaseResult{
-		Printed: []internal2.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(2),
+				Amount:      machine.NewMonetaryInt(2),
 				Source:      "foo",
 				Destination: "arst",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(18),
+				Amount:      machine.NewMonetaryInt(18),
 				Source:      "foo",
 				Destination: "thing",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(24),
+				Amount:      machine.NewMonetaryInt(24),
 				Source:      "bar",
 				Destination: "thing",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(16),
+				Amount:      machine.NewMonetaryInt(16),
 				Source:      "bar",
 				Destination: "qux",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(4),
+				Amount:      machine.NewMonetaryInt(4),
 				Source:      "baz",
 				Destination: "qux",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal2.NewMonetaryInt(25),
+				Amount:      machine.NewMonetaryInt(25),
 				Source:      "baz",
 				Destination: "quz",
 			},

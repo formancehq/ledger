@@ -18,6 +18,12 @@ func NewRouter(
 	readOnly bool,
 ) chi.Router {
 	mux := chi.NewRouter()
+	mux.Use(func(handler http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			handler.ServeHTTP(w, r)
+		})
+	})
 	if readOnly {
 		mux.Use(ReadOnly)
 	}

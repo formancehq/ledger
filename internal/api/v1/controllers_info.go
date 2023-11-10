@@ -3,17 +3,16 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/shared"
+	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/internal/engine"
+	"github.com/pkg/errors"
 
-	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/migrations"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 type Info struct {
@@ -26,7 +25,7 @@ type StorageInfo struct {
 }
 
 func getLedgerInfo(w http.ResponseWriter, r *http.Request) {
-	ledger := shared.LedgerFromContext(r.Context())
+	ledger := backend.LedgerFromContext(r.Context())
 
 	var err error
 	res := Info{
@@ -35,7 +34,7 @@ func getLedgerInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Storage.Migrations, err = ledger.GetMigrationsInfo(r.Context())
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -43,11 +42,11 @@ func getLedgerInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	stats, err := l.Stats(r.Context())
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -78,15 +77,14 @@ func buildGetLogsQuery(r *http.Request) (query.Builder, error) {
 }
 
 func getLogs(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	query := &ledgerstore.GetLogsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), query)
 		if err != nil {
-			ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
+			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return
 		}
 	} else {
@@ -94,7 +92,12 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 
 		pageSize, err := getPageSize(r)
 		if err != nil {
-			ResponseError(w, r, err)
+			switch {
+			case engine.IsStorageError(err):
+				sharedapi.BadRequest(w, ErrValidation, err)
+			default:
+				sharedapi.InternalServerError(w, r, err)
+			}
 			return
 		}
 
@@ -112,7 +115,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 
 	cursor, err := l.GetLogs(r.Context(), query)
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 

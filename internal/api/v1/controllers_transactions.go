@@ -8,19 +8,21 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/internal/api/shared"
+	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/internal/engine/command"
+	"github.com/formancehq/ledger/internal/machine"
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/pkg/errors"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/go-chi/chi/v5"
-	"github.com/pkg/errors"
 )
 
 func mapTransactionToV1(tx ledger.Transaction) any {
@@ -99,10 +101,10 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count, err := shared.LedgerFromContext(r.Context()).
+	count, err := backend.LedgerFromContext(r.Context()).
 		CountTransactions(r.Context(), ledgerstore.NewGetTransactionsQuery(*options))
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -111,15 +113,14 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTransactions(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	query := &ledgerstore.GetTransactionsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
-			ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-				errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
+			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return
 		}
 	} else {
@@ -138,7 +139,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	cursor, err := l.GetTransactions(r.Context(), query)
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -174,25 +175,21 @@ type PostTransactionRequest struct {
 }
 
 func postTransaction(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	payload := PostTransactionRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		ResponseError(w, r,
-			errorsutil.NewError(command.ErrValidation,
-				errors.New("invalid transaction format")))
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid transaction format"))
 		return
 	}
 
 	if len(payload.Postings) > 0 && payload.Script.Plain != "" ||
 		len(payload.Postings) == 0 && payload.Script.Plain == "" {
-		ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-			errors.New("invalid payload: should contain either postings or script")))
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid payload: should contain either postings or script"))
 		return
 	} else if len(payload.Postings) > 0 {
-		if i, err := payload.Postings.Validate(); err != nil {
-			ResponseError(w, r, errorsutil.NewError(command.ErrValidation, errors.Wrap(err,
-				fmt.Sprintf("invalid posting %d", i))))
+		if _, err := payload.Postings.Validate(); err != nil {
+			sharedapi.BadRequest(w, ErrValidation, err)
 			return
 		}
 		txData := ledger.TransactionData{
@@ -204,7 +201,29 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 
 		res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), ledger.TxToScriptData(txData, false))
 		if err != nil {
-			ResponseError(w, r, err)
+			switch {
+			case engine.IsCommandError(err):
+				switch {
+				case command.IsErrMachine(err):
+					switch {
+					case machine.IsInsufficientFundError(err):
+						sharedapi.BadRequest(w, ErrInsufficientFund, err)
+						return
+					case machine.IsMetadataOverride(err):
+						sharedapi.BadRequest(w, ErrScriptMetadataOverride, err)
+						return
+					}
+				case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeConflict):
+					sharedapi.BadRequest(w, ErrConflict, err)
+					return
+				case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeCompilationFailed):
+					sharedapi.BadRequestWithDetails(w, ErrScriptCompilationFailed, err, backend.EncodeLink(err.Error()))
+					return
+				}
+				sharedapi.BadRequest(w, ErrValidation, err)
+				return
+			}
+			sharedapi.InternalServerError(w, r, err)
 			return
 		}
 
@@ -221,7 +240,26 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 
 	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), script)
 	if err != nil {
-		ResponseError(w, r, err)
+		switch {
+		case engine.IsCommandError(err):
+			switch {
+			case command.IsErrMachine(err):
+				switch {
+				case machine.IsInsufficientFundError(err):
+					sharedapi.BadRequest(w, ErrInsufficientFund, err)
+					return
+				}
+			case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeConflict):
+				sharedapi.BadRequest(w, ErrConflict, err)
+				return
+			case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeCompilationFailed):
+				sharedapi.BadRequestWithDetails(w, ErrScriptCompilationFailed, err, backend.EncodeLink(err.Error()))
+				return
+			}
+			sharedapi.BadRequest(w, ErrValidation, err)
+			return
+		}
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -229,12 +267,11 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTransaction(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	txId, ok := big.NewInt(0).SetString(chi.URLParam(r, "id"), 10)
 	if !ok {
-		ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-			errors.New("invalid transaction ID")))
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid transaction ID"))
 		return
 	}
 
@@ -248,7 +285,12 @@ func getTransaction(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := l.GetTransactionWithVolumes(r.Context(), query)
 	if err != nil {
-		ResponseError(w, r, err)
+		switch {
+		case storageerrors.IsNotFoundError(err):
+			sharedapi.NotFound(w)
+		default:
+			sharedapi.InternalServerError(w, r, err)
+		}
 		return
 	}
 
@@ -256,7 +298,7 @@ func getTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func revertTransaction(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	transactionID, ok := big.NewInt(0).SetString(chi.URLParam(r, "id"), 10)
 	if !ok {
@@ -266,7 +308,23 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID, sharedapi.QueryParamBool(r, "disableChecks"))
 	if err != nil {
-		ResponseError(w, r, err)
+		switch {
+		case engine.IsCommandError(err):
+			switch {
+			case command.IsErrMachine(err):
+				switch {
+				case machine.IsInsufficientFundError(err):
+					sharedapi.BadRequest(w, ErrInsufficientFund, err)
+					return
+				}
+			case command.IsRevertError(err, command.ErrRevertTransactionCodeNotFound):
+				sharedapi.NotFound(w)
+				return
+			}
+			sharedapi.BadRequest(w, ErrValidation, err)
+			return
+		}
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -274,12 +332,11 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func postTransactionMetadata(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	var m metadata.Metadata
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-			errors.New("invalid metadata format")))
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid metadata format"))
 		return
 	}
 
@@ -290,7 +347,12 @@ func postTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := l.SaveMeta(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeTransaction, txID, m); err != nil {
-		ResponseError(w, r, err)
+		switch {
+		case command.IsSaveMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
+			sharedapi.NotFound(w)
+		default:
+			sharedapi.InternalServerError(w, r, err)
+		}
 		return
 	}
 
@@ -298,19 +360,23 @@ func postTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	transactionID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		ResponseError(w, r, errorsutil.NewError(command.ErrValidation,
-			errors.New("invalid transaction ID")))
+		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid transaction ID"))
 		return
 	}
 
 	metadataKey := chi.URLParam(r, "key")
 
 	if err := l.DeleteMetadata(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeTransaction, transactionID, metadataKey); err != nil {
-		ResponseError(w, r, err)
+		switch {
+		case command.IsSaveMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
+			sharedapi.NotFound(w)
+		default:
+			sharedapi.InternalServerError(w, r, err)
+		}
 		return
 	}
 
