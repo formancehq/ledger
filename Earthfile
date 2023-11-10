@@ -15,7 +15,7 @@ sources:
     COPY main.go .
     SAVE ARTIFACT /src
 
-generate-mocks:
+generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
     DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
@@ -52,7 +52,7 @@ tests:
     FROM core+builder-image
     COPY (+sources/*) /src
     WORKDIR /src/components/ledger
-    COPY --dir --pass-args (+generate-mocks/*) .
+    COPY --dir --pass-args (+generate/*) .
     WITH DOCKER --pull=postgres:15-alpine
         DO --pass-args core+GO_TESTS
     END

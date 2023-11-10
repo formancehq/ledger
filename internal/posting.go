@@ -4,7 +4,6 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"math/big"
-	"regexp"
 
 	"github.com/pkg/errors"
 )
@@ -56,14 +55,6 @@ func (p *Postings) Scan(value interface{}) error {
 	default:
 		panic("not supported type")
 	}
-}
-
-// Account addresses are composed of segments separated by colons.
-// Each segment contains only the following characters: a to z (lower or upper case) and/or digits and/or the special character "_".
-var addressRegexp = regexp.MustCompile(`^\w+(:\w+)*$`)
-
-func ValidateAddress(addr string) bool {
-	return addressRegexp.Match([]byte(addr))
 }
 
 func (p Postings) Validate() (int, error) {

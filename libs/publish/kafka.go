@@ -88,7 +88,7 @@ func ProvideSaramaOption(options ...SaramaOption) fx.Option {
 
 type clientId string
 
-func newSaramaConfig(clientId clientId, version sarama.KafkaVersion, options ...SaramaOption) *sarama.Config {
+func NewSaramaConfig(clientId clientId, version sarama.KafkaVersion, options ...SaramaOption) *sarama.Config {
 	config := sarama.NewConfig()
 	config.ClientID = string(clientId)
 	config.Version = version
@@ -100,7 +100,7 @@ func newSaramaConfig(clientId clientId, version sarama.KafkaVersion, options ...
 	return config
 }
 
-func newKafkaPublisher(logger watermill.LoggerAdapter, config *sarama.Config, marshaller kafka.Marshaler, brokers ...string) (*kafka.Publisher, error) {
+func NewKafkaPublisher(logger watermill.LoggerAdapter, config *sarama.Config, marshaller kafka.Marshaler, brokers ...string) (*kafka.Publisher, error) {
 	return kafka.NewPublisher(kafka.PublisherConfig{
 		Brokers:               brokers,
 		Marshaler:             marshaller,
@@ -109,7 +109,7 @@ func newKafkaPublisher(logger watermill.LoggerAdapter, config *sarama.Config, ma
 	}, logger)
 }
 
-func newKafkaSubscriber(logger watermill.LoggerAdapter, config *sarama.Config,
+func NewKafkaSubscriber(logger watermill.LoggerAdapter, config *sarama.Config,
 	unmarshaler kafka.Unmarshaler, consumerGroup string, brokers ...string) (*kafka.Subscriber, error) {
 	return kafka.NewSubscriber(kafka.SubscriberConfig{
 		Brokers:               brokers,
@@ -126,9 +126,9 @@ func kafkaModule(clientId clientId, consumerGroup string, brokers ...string) fx.
 		fx.Supply(sarama.V1_0_0_0),
 		fx.Supply(fx.Annotate(kafka.DefaultMarshaler{}, fx.As(new(kafka.Marshaler)))),
 		fx.Supply(fx.Annotate(kafka.DefaultMarshaler{}, fx.As(new(kafka.Unmarshaler)))),
-		fx.Provide(fx.Annotate(newSaramaConfig, fx.ParamTags(``, ``, `group:"saramaOptions"`))),
+		fx.Provide(fx.Annotate(NewSaramaConfig, fx.ParamTags(``, ``, `group:"saramaOptions"`))),
 		fx.Provide(func(lc fx.Lifecycle, logger watermill.LoggerAdapter, marshaller kafka.Marshaler, config *sarama.Config) (*kafka.Publisher, error) {
-			ret, err := newKafkaPublisher(logger, config, marshaller, brokers...)
+			ret, err := NewKafkaPublisher(logger, config, marshaller, brokers...)
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +140,7 @@ func kafkaModule(clientId clientId, consumerGroup string, brokers ...string) fx.
 			return ret, nil
 		}),
 		fx.Provide(func(lc fx.Lifecycle, logger watermill.LoggerAdapter, unmarshaler kafka.Unmarshaler, config *sarama.Config) (*kafka.Subscriber, error) {
-			ret, err := newKafkaSubscriber(logger, config, unmarshaler, consumerGroup, brokers...)
+			ret, err := NewKafkaSubscriber(logger, config, unmarshaler, consumerGroup, brokers...)
 			if err != nil {
 				return nil, err
 			}

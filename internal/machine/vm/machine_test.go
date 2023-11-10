@@ -1554,7 +1554,7 @@ func TestSetVarsFromJSON(t *testing.T) {
 			vars: map[string]string{
 				"dest": "invalid-acc",
 			},
-			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z_]+[a-zA-Z0-9_:]*$"),
+			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z0-9_]+(:[a-zA-Z0-9_]+)*$"),
 		},
 	} {
 		tc := tc

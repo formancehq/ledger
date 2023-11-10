@@ -281,11 +281,11 @@ var runTestCases = []runTestCase{
 		script: `
 		send [USD/2 100] (
 		  	source = @users:001 allowing unbounded overdraft
-		  	destination = @users:002
+		  	destination = @123:users:002
 		)`,
 		expectResult: Result{
 			Postings: []ledger.Posting{
-				ledger.NewPosting("users:001", "users:002", "USD/2", big.NewInt(100)),
+				ledger.NewPosting("users:001", "123:users:002", "USD/2", big.NewInt(100)),
 			},
 			Metadata:        metadata.Metadata{},
 			AccountMetadata: map[string]metadata.Metadata{},

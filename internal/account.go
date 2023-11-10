@@ -52,6 +52,11 @@ func (v ExpandedAccount) Copy() ExpandedAccount {
 	return v
 }
 
-const AccountPattern = "^[a-zA-Z_]+[a-zA-Z0-9_:]*$"
+const AccountSegmentRegex = "[a-zA-Z0-9_]+"
+const AccountPattern = "^" + AccountSegmentRegex + "(:" + AccountSegmentRegex + ")*$"
 
 var AccountRegexp = regexp.MustCompile(AccountPattern)
+
+func ValidateAddress(addr string) bool {
+	return AccountRegexp.Match([]byte(addr))
+}
