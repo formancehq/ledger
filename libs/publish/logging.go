@@ -34,6 +34,12 @@ func (w watermillLoggerAdapter) With(fields watermill.LogFields) watermill.Logge
 	}
 }
 
+func NewWatermillLoggerAdapter(logger logging.Logger) watermill.LoggerAdapter {
+	return watermillLoggerAdapter{
+		Logger: logger,
+	}
+}
+
 var _ watermill.LoggerAdapter = &watermillLoggerAdapter{}
 
 func defaultLoggingModule() fx.Option {

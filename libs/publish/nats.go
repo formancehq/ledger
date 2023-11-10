@@ -12,7 +12,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func newNatsConn(config wNats.PublisherConfig) (*nats.Conn, error) {
+func NewNatsConn(config wNats.PublisherConfig) (*nats.Conn, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -25,11 +25,11 @@ func newNatsConn(config wNats.PublisherConfig) (*nats.Conn, error) {
 	return conn, nil
 }
 
-func newNatsPublisherWithConn(conn *nats.Conn, logger watermill.LoggerAdapter, config wNats.PublisherConfig) (*wNats.Publisher, error) {
+func NewNatsPublisherWithConn(conn *nats.Conn, logger watermill.LoggerAdapter, config wNats.PublisherConfig) (*wNats.Publisher, error) {
 	return wNats.NewPublisherWithNatsConn(conn, config.GetPublisherPublishConfig(), logger)
 }
 
-func newNatsSubscriberWithConn(conn *nats.Conn, logger watermill.LoggerAdapter, config wNats.SubscriberConfig) (*wNats.Subscriber, error) {
+func NewNatsSubscriberWithConn(conn *nats.Conn, logger watermill.LoggerAdapter, config wNats.SubscriberConfig) (*wNats.Subscriber, error) {
 	return wNats.NewSubscriberWithNatsConn(conn, config.GetSubscriberSubscriptionConfig(), logger)
 }
 
@@ -42,10 +42,10 @@ func NatsModule(clientID, url, serviceName string) fx.Option {
 		nats.Name(clientID),
 	}
 	return fx.Options(
-		fx.Provide(newNatsConn),
+		fx.Provide(NewNatsConn),
 		fx.Provide(newNatsDefaultCallbacks),
-		fx.Provide(newNatsPublisherWithConn),
-		fx.Provide(newNatsSubscriberWithConn),
+		fx.Provide(NewNatsPublisherWithConn),
+		fx.Provide(NewNatsSubscriberWithConn),
 		fx.Provide(func(natsCallbacks NATSCallbacks) wNats.PublisherConfig {
 			natsOptions = append(natsOptions,
 				nats.ConnectHandler(natsCallbacks.ConnectedCB),

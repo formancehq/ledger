@@ -1,0 +1,21 @@
+VERSION --arg-scope-and-set --pass-args 0.7
+
+ARG core=github.com/formancehq/earthly:v0.5.2
+IMPORT $core AS core
+
+FROM core+base-image
+
+sources:
+    WORKDIR src
+    COPY go.* .
+    COPY *.go .
+    SAVE ARTIFACT /src
+
+tidy:
+    FROM core+builder-image
+    COPY (+sources/*) /src
+    WORKDIR /src
+    RUN --mount=type=cache,id=gomod,target=${GOPATH}/pkg/mod \
+        --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
+        go mod tidy
+    SAVE ARTIFACT go.* AS LOCAL ./
