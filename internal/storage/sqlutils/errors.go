@@ -1,9 +1,8 @@
-package storage
+package sqlutils
 
 import (
 	"database/sql"
 
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 )
@@ -19,15 +18,13 @@ func PostgresError(err error) error {
 		case *pq.Error:
 			switch pge.Code {
 			case "23505":
-				return errorsutil.NewError(ErrStorage,
-					errorsutil.NewError(ErrConstraintFailed, err))
+				return newErrConstraintsFailed(err)
 			case "53300":
-				return errorsutil.NewError(ErrStorage,
-					errorsutil.NewError(ErrTooManyClients, err))
+				return newErrTooManyClient(err)
 			}
 		}
 
-		return errorsutil.NewError(ErrStorage, err)
+		return err
 	}
 
 	return nil
@@ -35,18 +32,38 @@ func PostgresError(err error) error {
 
 var (
 	ErrNotFound           = errors.New("not found")
-	ErrConstraintFailed   = errors.New("23505: constraint failed")
-	ErrTooManyClients     = errors.New("53300: too many clients")
 	ErrStoreAlreadyExists = errors.New("store already exists")
 	ErrStoreNotFound      = errors.New("store not found")
-
-	ErrStorage = errors.New("storage error")
 )
 
 func IsNotFoundError(err error) bool {
 	return errors.Is(err, ErrNotFound)
 }
 
-func IsStorageError(err error) bool {
-	return errors.Is(err, ErrStorage)
+type errConstraintsFailed struct {
+	err error
+}
+
+func (e errConstraintsFailed) Error() string {
+	return e.err.Error()
+}
+
+func newErrConstraintsFailed(err error) *errConstraintsFailed {
+	return &errConstraintsFailed{
+		err: err,
+	}
+}
+
+type errTooManyClient struct {
+	err error
+}
+
+func (e errTooManyClient) Error() string {
+	return e.err.Error()
+}
+
+func newErrTooManyClient(err error) *errTooManyClient {
+	return &errTooManyClient{
+		err: err,
+	}
 }

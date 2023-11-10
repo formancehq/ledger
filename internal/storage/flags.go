@@ -3,6 +3,8 @@ package storage
 import (
 	"io"
 
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/spf13/viper"
 )
 
@@ -15,8 +17,8 @@ const (
 	StoragePostgresMaxOpenConns         = "storage-postgres-max-open-conns"
 )
 
-func ConnectionOptionsFromFlags(v *viper.Viper, output io.Writer, debug bool) ConnectionOptions {
-	return ConnectionOptions{
+func ConnectionOptionsFromFlags(v *viper.Viper, output io.Writer, debug bool) sqlutils.ConnectionOptions {
+	return sqlutils.ConnectionOptions{
 		DatabaseSourceName: v.GetString(StoragePostgresConnectionStringFlag),
 		Debug:              debug,
 		Writer:             output,

@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/pkg/errors"
 )
 
 type Ledger struct {
@@ -56,58 +55,66 @@ func (l *Ledger) Close(ctx context.Context) {
 
 func (l *Ledger) GetTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
 	txs, err := l.store.GetTransactions(ctx, q)
-	return txs, errors.Wrap(err, "getting transactions")
+	return txs, newStorageError(err, "getting transactions")
 }
 
 func (l *Ledger) CountTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (int, error) {
 	count, err := l.store.CountTransactions(ctx, q)
-	return count, errors.Wrap(err, "counting transactions")
+	return count, newStorageError(err, "counting transactions")
 }
 
 func (l *Ledger) GetTransactionWithVolumes(ctx context.Context, query ledgerstore.GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
 	tx, err := l.store.GetTransactionWithVolumes(ctx, query)
-	return tx, errors.Wrap(err, "getting transaction")
+	return tx, newStorageError(err, "getting transaction")
 }
 
 func (l *Ledger) CountAccounts(ctx context.Context, a *ledgerstore.GetAccountsQuery) (int, error) {
 	count, err := l.store.CountAccounts(ctx, a)
-	return count, errors.Wrap(err, "counting accounts")
+	return count, newStorageError(err, "counting accounts")
 }
 
 func (l *Ledger) GetAccountsWithVolumes(ctx context.Context, a *ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
 	accounts, err := l.store.GetAccountsWithVolumes(ctx, a)
-	return accounts, errors.Wrap(err, "getting accounts")
+	return accounts, newStorageError(err, "getting accounts")
 }
 
 func (l *Ledger) GetAccountWithVolumes(ctx context.Context, q ledgerstore.GetAccountQuery) (*ledger.ExpandedAccount, error) {
 	accounts, err := l.store.GetAccountWithVolumes(ctx, q)
-	return accounts, errors.Wrap(err, "getting account")
+	return accounts, newStorageError(err, "getting account")
 }
 
 func (l *Ledger) GetAggregatedBalances(ctx context.Context, q *ledgerstore.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 	balances, err := l.store.GetAggregatedBalances(ctx, q)
-	return balances, errors.Wrap(err, "getting balances aggregated")
+	return balances, newStorageError(err, "getting balances aggregated")
 }
 
 func (l *Ledger) GetLogs(ctx context.Context, q *ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
-	return logs, errors.Wrap(err, "getting logs")
+	return logs, newStorageError(err, "getting logs")
 }
 
 func (l *Ledger) CreateTransaction(ctx context.Context, parameters command.Parameters, data ledger.RunScript) (*ledger.Transaction, error) {
-	return l.commander.CreateTransaction(ctx, parameters, data)
+	ret, err := l.commander.CreateTransaction(ctx, parameters, data)
+	if err != nil {
+		return nil, NewCommandError(err)
+	}
+	return ret, nil
 }
 
 func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
-	return l.commander.RevertTransaction(ctx, parameters, id, force)
+	ret, err := l.commander.RevertTransaction(ctx, parameters, id, force)
+	if err != nil {
+		return nil, NewCommandError(err)
+	}
+	return ret, nil
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error {
-	return l.commander.SaveMeta(ctx, parameters, targetType, targetID, m)
+	return NewCommandError(l.commander.SaveMeta(ctx, parameters, targetType, targetID, m))
 }
 
 func (l *Ledger) DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error {
-	return l.commander.DeleteMetadata(ctx, parameters, targetType, targetID, key)
+	return NewCommandError(l.commander.DeleteMetadata(ctx, parameters, targetType, targetID, key))
 }
 
 func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {

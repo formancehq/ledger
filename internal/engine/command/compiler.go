@@ -1,27 +1,24 @@
 package command
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 
 	"github.com/bluele/gcache"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 )
 
 type Compiler struct {
 	cache gcache.Cache
 }
 
-func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program, error) {
+func (c *Compiler) Compile(script string) (*program.Program, error) {
 
 	digest := sha256.New()
 	_, err := digest.Write([]byte(script))
 	if err != nil {
-		return nil, errorsutil.NewError(vm.ErrCompilationFailed, err)
+		return nil, err
 	}
 
 	cacheKey := base64.StdEncoding.EncodeToString(digest.Sum(nil))
@@ -32,7 +29,7 @@ func (c *Compiler) Compile(ctx context.Context, script string) (*program.Program
 
 	program, err := compiler.Compile(script)
 	if err != nil {
-		return nil, errorsutil.NewError(vm.ErrCompilationFailed, err)
+		return nil, err
 	}
 	_ = c.cache.Set(cacheKey, program)
 

@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/api/shared"
-
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
@@ -81,7 +79,7 @@ func TestGetAccounts(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -89,7 +87,7 @@ func TestGetAccounts(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 		{
 			name: "page size over maximum",
@@ -113,6 +111,12 @@ func TestGetAccounts(t *testing.T) {
 			}).
 				WithQueryBuilder(query.Lt("balance[USD/2]", float64(100))).
 				WithPageSize(v2.DefaultPageSize),
+		},
+		{
+			name:              "using invalid query payload",
+			body:              `[]`,
+			expectStatusCode:  http.StatusBadRequest,
+			expectedErrorCode: v2.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -222,14 +226,14 @@ func TestPostAccountMetadata(t *testing.T) {
 			name:              "invalid account address format",
 			account:           "invalid-acc",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 		{
 			name:              "invalid body",
 			account:           "world",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {

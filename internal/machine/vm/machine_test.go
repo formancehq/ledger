@@ -8,8 +8,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/machine"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -23,9 +24,9 @@ const (
 )
 
 type CaseResult struct {
-	Printed       []internal.Value
+	Printed       []machine.Value
 	Postings      []Posting
-	Metadata      map[string]internal.Value
+	Metadata      map[string]machine.Value
 	Error         error
 	ErrorContains string
 }
@@ -34,7 +35,7 @@ type TestCase struct {
 	program  *program.Program
 	vars     map[string]string
 	meta     map[string]metadata.Metadata
-	balances map[string]map[string]*internal.MonetaryInt
+	balances map[string]map[string]*machine.MonetaryInt
 	expected CaseResult
 }
 
@@ -42,11 +43,11 @@ func NewTestCase() TestCase {
 	return TestCase{
 		vars:     make(map[string]string),
 		meta:     make(map[string]metadata.Metadata),
-		balances: make(map[string]map[string]*internal.MonetaryInt),
+		balances: make(map[string]map[string]*machine.MonetaryInt),
 		expected: CaseResult{
-			Printed:  []internal.Value{},
+			Printed:  []machine.Value{},
 			Postings: []Posting{},
-			Metadata: make(map[string]internal.Value),
+			Metadata: make(map[string]machine.Value),
 			Error:    nil,
 		},
 	}
@@ -70,9 +71,9 @@ func (c *TestCase) setVarsFromJSON(t *testing.T, str string) {
 
 func (c *TestCase) setBalance(account, asset string, amount int64) {
 	if _, ok := c.balances[account]; !ok {
-		c.balances[account] = make(map[string]*internal.MonetaryInt)
+		c.balances[account] = make(map[string]*machine.MonetaryInt)
 	}
-	c.balances[account][asset] = internal.NewMonetaryInt(amount)
+	c.balances[account][asset] = machine.NewMonetaryInt(amount)
 }
 
 func test(t *testing.T, testCase TestCase) {
@@ -113,7 +114,7 @@ func test(t *testing.T, testCase TestCase) {
 }
 
 func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec func(*Machine) error) {
-	printed := []internal.Value{}
+	printed := []machine.Value{}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -122,7 +123,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 
 	m := NewMachine(*prog)
 	m.Debug = DEBUG
-	m.Printer = func(c chan internal.Value) {
+	m.Printer = func(c chan machine.Value) {
 		for v := range c {
 			printed = append(printed, v)
 		}
@@ -146,7 +147,7 @@ func testImpl(t *testing.T, prog *program.Program, expected CaseResult, exec fun
 		expected.Postings = make([]Posting, 0)
 	}
 	if expected.Metadata == nil {
-		expected.Metadata = make(map[string]internal.Value)
+		expected.Metadata = make(map[string]machine.Value)
 	}
 
 	assert.Equalf(t, expected.Postings, m.Postings, "unexpected postings output: %v", m.Postings)
@@ -161,9 +162,9 @@ func TestFail(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, "fail")
 	tc.expected = CaseResult{
-		Printed:  []internal.Value{},
+		Printed:  []machine.Value{},
 		Postings: []Posting{},
-		Error:    ErrScriptFailed,
+		Error:    machine.ErrScriptFailed,
 	}
 	test(t, tc)
 }
@@ -171,9 +172,9 @@ func TestFail(t *testing.T) {
 func TestPrint(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, "print 29 + 15 - 2")
-	mi := internal.MonetaryInt(*big.NewInt(42))
+	mi := machine.MonetaryInt(*big.NewInt(42))
 	tc.expected = CaseResult{
-		Printed:  []internal.Value{&mi},
+		Printed:  []machine.Value{&mi},
 		Postings: []Posting{},
 		Error:    nil,
 	}
@@ -188,11 +189,11 @@ func TestSend(t *testing.T) {
 	)`)
 	tc.setBalance("alice", "EUR/2", 100)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      internal.NewMonetaryInt(100),
+				Amount:      machine.NewMonetaryInt(100),
 				Source:      "alice",
 				Destination: "bob",
 			},
@@ -226,18 +227,18 @@ func TestVariables(t *testing.T) {
 	}
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      internal.NewMonetaryInt(999),
+				Amount:      machine.NewMonetaryInt(999),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 		},
-		Metadata: map[string]internal.Value{
-			"description": internal.String("midnight ride"),
-			"ride":        internal.NewMonetaryInt(1),
+		Metadata: map[string]machine.Value{
+			"description": machine.String("midnight ride"),
+			"ride":        machine.NewMonetaryInt(1),
 		},
 		Error: nil,
 	}
@@ -267,18 +268,18 @@ func TestVariablesJSON(t *testing.T) {
 	}`)
 	tc.setBalance("users:001", "EUR/2", 1000)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      internal.NewMonetaryInt(999),
+				Amount:      machine.NewMonetaryInt(999),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 		},
-		Metadata: map[string]internal.Value{
-			"description": internal.String("midnight ride"),
-			"ride":        internal.NewMonetaryInt(1),
+		Metadata: map[string]machine.Value{
+			"description": machine.String("midnight ride"),
+			"ride":        machine.NewMonetaryInt(1),
 		},
 		Error: nil,
 	}
@@ -307,17 +308,17 @@ func TestSource(t *testing.T) {
 	tc.setBalance("users:001", "GEM", 3)
 	tc.setBalance("payments:001", "GEM", 12)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(3),
+				Amount:      machine.NewMonetaryInt(3),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(12),
+				Amount:      machine.NewMonetaryInt(12),
 				Source:      "payments:001",
 				Destination: "users:002",
 			},
@@ -347,23 +348,23 @@ func TestAllocation(t *testing.T) {
 	}`)
 	tc.setBalance("users:001", "GEM", 15)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(13),
+				Amount:      machine.NewMonetaryInt(13),
 				Source:      "users:001",
 				Destination: "users:002",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      machine.NewMonetaryInt(1),
 				Source:      "users:001",
 				Destination: "a",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      machine.NewMonetaryInt(1),
 				Source:      "users:001",
 				Destination: "b",
 			},
@@ -391,17 +392,17 @@ func TestDynamicAllocation(t *testing.T) {
 	}`)
 	tc.setBalance("a", "GEM", 15)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(13),
+				Amount:      machine.NewMonetaryInt(13),
 				Source:      "a",
 				Destination: "b",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(2),
+				Amount:      machine.NewMonetaryInt(2),
 				Source:      "a",
 				Destination: "c",
 			},
@@ -419,11 +420,11 @@ func TestSendAll(t *testing.T) {
 	)`)
 	tc.setBalance("users:001", "USD/2", 17)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "USD/2",
-				Amount:      internal.NewMonetaryInt(17),
+				Amount:      machine.NewMonetaryInt(17),
 				Source:      "users:001",
 				Destination: "platform",
 			},
@@ -446,17 +447,17 @@ func TestSendAllMulti(t *testing.T) {
 	tc.setBalance("users:001:wallet", "USD/2", 19)
 	tc.setBalance("users:001:credit", "USD/2", 22)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "USD/2",
-				Amount:      internal.NewMonetaryInt(19),
+				Amount:      machine.NewMonetaryInt(19),
 				Source:      "users:001:wallet",
 				Destination: "platform",
 			},
 			{
 				Asset:       "USD/2",
-				Amount:      internal.NewMonetaryInt(22),
+				Amount:      machine.NewMonetaryInt(22),
 				Source:      "users:001:credit",
 				Destination: "platform",
 			},
@@ -488,9 +489,9 @@ func TestInsufficientFunds(t *testing.T) {
 	tc.setBalance("users:001", "GEM", 3)
 	tc.setBalance("payments:001", "GEM", 12)
 	tc.expected = CaseResult{
-		Printed:  []internal.Value{},
+		Printed:  []machine.Value{},
 		Postings: []Posting{},
-		Error:    ledger.ErrInsufficientFund,
+		Error:    &machine.ErrInsufficientFund{},
 	}
 	test(t, tc)
 }
@@ -506,17 +507,17 @@ func TestWorldSource(t *testing.T) {
 	)`)
 	tc.setBalance("a", "GEM", 1)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(1),
+				Amount:      machine.NewMonetaryInt(1),
 				Source:      "a",
 				Destination: "b",
 			},
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(14),
+				Amount:      machine.NewMonetaryInt(14),
 				Source:      "world",
 				Destination: "b",
 			},
@@ -536,11 +537,11 @@ func TestNoEmptyPostings(t *testing.T) {
 		}
 	)`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "GEM",
-				Amount:      internal.NewMonetaryInt(2),
+				Amount:      machine.NewMonetaryInt(2),
 				Source:      "world",
 				Destination: "a",
 			},
@@ -558,12 +559,12 @@ func TestEmptyPostings(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Source:      "foo",
 				Destination: "bar",
-				Amount:      internal.NewMonetaryInt(0),
+				Amount:      machine.NewMonetaryInt(0),
 				Asset:       "GEM",
 			},
 		},
@@ -587,17 +588,17 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 	tc.setBalance("users:001", "CREDIT", 100)
 	tc.setBalance("users:002", "CREDIT", 110)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "CREDIT",
-				Amount:      internal.NewMonetaryInt(100),
+				Amount:      machine.NewMonetaryInt(100),
 				Source:      "users:001",
 				Destination: "foo",
 			},
 			{
 				Asset:       "CREDIT",
-				Amount:      internal.NewMonetaryInt(100),
+				Amount:      machine.NewMonetaryInt(100),
 				Source:      "users:002",
 				Destination: "bar",
 			},
@@ -608,7 +609,7 @@ func TestAllocateDontTakeTooMuch(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	//commission, _ := internal.NewPortionSpecific(*big.NewRat(125, 1000))
+	//commission, _ := machine.NewPortionSpecific(*big.NewRat(125, 1000))
 	tc := NewTestCase()
 	tc.compile(t, `vars {
 		account $sale
@@ -636,17 +637,17 @@ func TestMetadata(t *testing.T) {
 	tc.setBalance("sales:042", "EUR/2", 2500)
 	tc.setBalance("users:053", "EUR/2", 500)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "EUR/2",
-				Amount:      internal.NewMonetaryInt(88),
+				Amount:      machine.NewMonetaryInt(88),
 				Source:      "sales:042",
 				Destination: "users:053",
 			},
 			{
 				Asset:       "EUR/2",
-				Amount:      internal.NewMonetaryInt(12),
+				Amount:      machine.NewMonetaryInt(12),
 				Source:      "sales:042",
 				Destination: "platform",
 			},
@@ -669,17 +670,17 @@ func TestTrackBalances(t *testing.T) {
 	)`)
 	tc.setBalance("a", "COIN", 50)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(50),
+				Amount:      machine.NewMonetaryInt(50),
 				Source:      "world",
 				Destination: "a",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(100),
+				Amount:      machine.NewMonetaryInt(100),
 				Source:      "a",
 				Destination: "b",
 			},
@@ -702,9 +703,9 @@ func TestTrackBalances2(t *testing.T) {
 	)`)
 	tc.setBalance("a", "COIN", 60)
 	tc.expected = CaseResult{
-		Printed:  []internal.Value{},
+		Printed:  []machine.Value{},
 		Postings: []Posting{},
-		Error:    ledger.ErrInsufficientFund,
+		Error:    &machine.ErrInsufficientFund{},
 	}
 	test(t, tc)
 }
@@ -724,17 +725,17 @@ func TestTrackBalances3(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "COIN", 2000)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(1000),
+				Amount:      machine.NewMonetaryInt(1000),
 				Source:      "foo",
 				Destination: "bar",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(1000),
+				Amount:      machine.NewMonetaryInt(1000),
 				Source:      "foo",
 				Destination: "bar",
 			},
@@ -758,23 +759,23 @@ func TestSourceAllotment(t *testing.T) {
 	tc.setBalance("b", "COIN", 100)
 	tc.setBalance("c", "COIN", 100)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(61),
+				Amount:      machine.NewMonetaryInt(61),
 				Source:      "a",
 				Destination: "d",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(35),
+				Amount:      machine.NewMonetaryInt(35),
 				Source:      "b",
 				Destination: "d",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(4),
+				Amount:      machine.NewMonetaryInt(4),
 				Source:      "c",
 				Destination: "d",
 			},
@@ -800,17 +801,17 @@ func TestSourceOverlapping(t *testing.T) {
 	tc.setBalance("a", "COIN", 99)
 	tc.setBalance("b", "COIN", 3)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(3),
+				Amount:      machine.NewMonetaryInt(3),
 				Source:      "b",
 				Destination: "world",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(96),
+				Amount:      machine.NewMonetaryInt(96),
 				Source:      "a",
 				Destination: "world",
 			},
@@ -844,29 +845,29 @@ func TestSourceComplex(t *testing.T) {
 	tc.setBalance("c", "COIN", 1000)
 	tc.setBalance("d", "COIN", 1000)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(4),
+				Amount:      machine.NewMonetaryInt(4),
 				Source:      "a",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(40),
+				Amount:      machine.NewMonetaryInt(40),
 				Source:      "b",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(56),
+				Amount:      machine.NewMonetaryInt(56),
 				Source:      "c",
 				Destination: "platform",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(100),
+				Amount:      machine.NewMonetaryInt(100),
 				Source:      "d",
 				Destination: "platform",
 			},
@@ -890,23 +891,23 @@ func TestDestinationComplex(t *testing.T) {
 		}
 	)`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(20),
+				Amount:      machine.NewMonetaryInt(20),
 				Source:      "world",
 				Destination: "a",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(10),
+				Amount:      machine.NewMonetaryInt(10),
 				Source:      "world",
 				Destination: "b",
 			},
 			{
 				Asset:       "COIN",
-				Amount:      internal.NewMonetaryInt(50),
+				Amount:      machine.NewMonetaryInt(50),
 				Source:      "world",
 				Destination: "c",
 			},
@@ -1096,17 +1097,17 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("A", "USD/2", 40)
 		tc.setBalance("C", "USD/2", 90)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(40),
+					Amount:      machine.NewMonetaryInt(40),
 					Source:      "A",
 					Destination: "B",
 				},
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(60),
+					Amount:      machine.NewMonetaryInt(60),
 					Source:      "C",
 					Destination: "D",
 				},
@@ -1122,11 +1123,11 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("A", "USD/2", 400)
 		tc.setBalance("C", "USD/2", 90)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(100),
+					Amount:      machine.NewMonetaryInt(100),
 					Source:      "A",
 					Destination: "B",
 				},
@@ -1159,17 +1160,17 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("C", "USD/2", 90)
 		tc.setVarsFromJSON(t, `{"acc": "A"}`)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(40),
+					Amount:      machine.NewMonetaryInt(40),
 					Source:      "A",
 					Destination: "B",
 				},
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(60),
+					Amount:      machine.NewMonetaryInt(60),
 					Source:      "C",
 					Destination: "D",
 				},
@@ -1186,11 +1187,11 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("C", "USD/2", 90)
 		tc.setVarsFromJSON(t, `{"acc": "A"}`)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD/2",
-					Amount:      internal.NewMonetaryInt(100),
+					Amount:      machine.NewMonetaryInt(100),
 					Source:      "A",
 					Destination: "B",
 				},
@@ -1223,29 +1224,29 @@ func TestVariableBalance(t *testing.T) {
 		tc.setBalance("c", "COIN", 1000)
 		tc.setBalance("d", "COIN", 1000)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "COIN",
-					Amount:      internal.NewMonetaryInt(4),
+					Amount:      machine.NewMonetaryInt(4),
 					Source:      "a",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      internal.NewMonetaryInt(40),
+					Amount:      machine.NewMonetaryInt(40),
 					Source:      "b",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      internal.NewMonetaryInt(56),
+					Amount:      machine.NewMonetaryInt(56),
 					Source:      "c",
 					Destination: "platform",
 				},
 				{
 					Asset:       "COIN",
-					Amount:      internal.NewMonetaryInt(100),
+					Amount:      machine.NewMonetaryInt(100),
 					Source:      "d",
 					Destination: "platform",
 				},
@@ -1268,7 +1269,7 @@ func TestVariableBalance(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("world", "USD/2", -40)
 		tc.expected = CaseResult{
-			Error:         ErrNegativeMonetaryAmount,
+			Error:         &machine.ErrNegativeAmount{},
 			ErrorContains: "must be non-negative",
 		}
 		test(t, tc)
@@ -1513,9 +1514,9 @@ func TestVariablesErrors(t *testing.T) {
 		"mon": "COIN -1",
 	}
 	tc.expected = CaseResult{
-		Printed:       []internal.Value{},
+		Printed:       []machine.Value{},
 		Postings:      []Posting{},
-		Error:         ErrInvalidVars,
+		Error:         &machine.ErrInvalidVars{},
 		ErrorContains: "negative amount",
 	}
 	test(t, tc)
@@ -1597,7 +1598,7 @@ func TestResolveResources(t *testing.T) {
 			vars: map[string]string{
 				"sale": "sales:042",
 			},
-			expectedError: ErrResourceResolutionMissingMetadata,
+			expectedError: &machine.ErrMissingMetadata{},
 		},
 	} {
 		tc := tc
@@ -1650,7 +1651,7 @@ func TestResolveBalances(t *testing.T) {
 					source = @users:001
 					destination = @world
 				)`,
-			expectedError: ErrNegativeMonetaryAmount,
+			expectedError: &machine.ErrNegativeAmount{},
 		},
 	} {
 		tc := tc
@@ -1713,7 +1714,7 @@ func TestMachine(t *testing.T) {
 	t.Run("err resources", func(t *testing.T) {
 		m := NewMachine(*p)
 		err := m.Execute()
-		require.True(t, errors.Is(err, ErrResourcesNotInitialized))
+		require.True(t, errors.Is(err, machine.ErrResourcesNotInitialized))
 	})
 
 	t.Run("err balances not initialized", func(t *testing.T) {
@@ -1728,7 +1729,7 @@ func TestMachine(t *testing.T) {
 		require.NoError(t, err)
 
 		err = m.Execute()
-		require.True(t, errors.Is(err, ErrBalancesNotInitialized))
+		require.True(t, errors.Is(err, machine.ErrBalancesNotInitialized))
 	})
 
 	t.Run("err resolve resources twice", func(t *testing.T) {
@@ -1744,31 +1745,6 @@ func TestMachine(t *testing.T) {
 
 		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to call ResolveResources twice")
-	})
-
-	t.Run("err balances before resources", func(t *testing.T) {
-		m := NewMachine(*p)
-
-		err := m.ResolveBalances(context.Background(), EmptyStore)
-		require.ErrorContains(t, err, "tried to resolve balances before resources")
-	})
-
-	t.Run("err resolve balances twice", func(t *testing.T) {
-		m := NewMachine(*p)
-
-		err = m.SetVarsFromJSON(map[string]string{
-			"dest": "charlie",
-		})
-		require.NoError(t, err)
-
-		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
-		require.NoError(t, err)
-
-		err = m.ResolveBalances(context.Background(), EmptyStore)
-		require.NoError(t, err)
-
-		err = m.ResolveBalances(context.Background(), EmptyStore)
-		require.ErrorContains(t, err, "tried to call ResolveBalances twice")
 	})
 
 	t.Run("err missing var", func(t *testing.T) {
@@ -1810,29 +1786,29 @@ func TestVariableAsset(t *testing.T) {
 	tc.setBalance("alice", "USD", 10)
 	tc.setBalance("bob", "USD", 10)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{
 			{
 				Asset:       "USD",
-				Amount:      internal.NewMonetaryInt(10),
+				Amount:      machine.NewMonetaryInt(10),
 				Source:      "alice",
 				Destination: "swap",
 			},
 			{
 				Asset:       "USD",
-				Amount:      internal.NewMonetaryInt(5),
+				Amount:      machine.NewMonetaryInt(5),
 				Source:      "bob",
 				Destination: "swap",
 			},
 			{
 				Asset:       "USD",
-				Amount:      internal.NewMonetaryInt(10),
+				Amount:      machine.NewMonetaryInt(10),
 				Source:      "swap",
 				Destination: "alice_2",
 			},
 			{
 				Asset:       "USD",
-				Amount:      internal.NewMonetaryInt(5),
+				Amount:      machine.NewMonetaryInt(5),
 				Source:      "swap",
 				Destination: "bob_2",
 			},
@@ -1858,17 +1834,17 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(10),
+					Amount:      machine.NewMonetaryInt(10),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(20),
+					Amount:      machine.NewMonetaryInt(20),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -1893,17 +1869,17 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(0),
+					Amount:      machine.NewMonetaryInt(0),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(30),
+					Amount:      machine.NewMonetaryInt(30),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -1928,17 +1904,17 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(0),
+					Amount:      machine.NewMonetaryInt(0),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(30),
+					Amount:      machine.NewMonetaryInt(30),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -1969,17 +1945,17 @@ func TestSaveFromAccount(t *testing.T) {
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(10),
+					Amount:      machine.NewMonetaryInt(10),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(20),
+					Amount:      machine.NewMonetaryInt(20),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -2011,17 +1987,17 @@ func TestSaveFromAccount(t *testing.T) {
 		}
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(10),
+					Amount:      machine.NewMonetaryInt(10),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(20),
+					Amount:      machine.NewMonetaryInt(20),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -2051,23 +2027,23 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(10),
+					Amount:      machine.NewMonetaryInt(10),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(5),
+					Amount:      machine.NewMonetaryInt(5),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(25),
+					Amount:      machine.NewMonetaryInt(25),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -2093,17 +2069,17 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.setBalance("alice", "COIN", 100)
 		tc.setBalance("alice", "USD", 20)
 		tc.expected = CaseResult{
-			Printed: []internal.Value{},
+			Printed: []machine.Value{},
 			Postings: []Posting{
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(20),
+					Amount:      machine.NewMonetaryInt(20),
 					Source:      "alice",
 					Destination: "bob",
 				},
 				{
 					Asset:       "USD",
-					Amount:      internal.NewMonetaryInt(10),
+					Amount:      machine.NewMonetaryInt(10),
 					Source:      "world",
 					Destination: "bob",
 				},
@@ -2123,9 +2099,9 @@ func TestSaveFromAccount(t *testing.T) {
 		tc.compile(t, script)
 		tc.setBalance("A", "USD", -100)
 		tc.expected = CaseResult{
-			Printed:  []internal.Value{},
+			Printed:  []machine.Value{},
 			Postings: []Posting{},
-			Error:    ErrNegativeMonetaryAmount,
+			Error:    &machine.ErrNegativeAmount{},
 		}
 		test(t, tc)
 	})
@@ -2148,16 +2124,16 @@ send [B 100] (
 	tc.setBalance("account2", "B", 100)
 	tc.setVarsFromJSON(t, `{"a_account": "world"}`)
 	tc.expected = CaseResult{
-		Printed: []internal.Value{},
+		Printed: []machine.Value{},
 		Postings: []Posting{{
 			Source:      "world",
 			Destination: "account1",
-			Amount:      internal.NewMonetaryInt(100),
+			Amount:      machine.NewMonetaryInt(100),
 			Asset:       "A",
 		}, {
 			Source:      "world",
 			Destination: "account2",
-			Amount:      internal.NewMonetaryInt(100),
+			Amount:      machine.NewMonetaryInt(100),
 			Asset:       "B",
 		}},
 	}

@@ -4,15 +4,13 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/shared"
+	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/pkg/errors"
 
-	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/pkg/errors"
 )
 
 func buildAggregatedBalancesQuery(r *http.Request) (query.Builder, error) {
@@ -33,9 +31,9 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 	query := ledgerstore.NewGetAggregatedBalancesQuery(*options)
 	query.Options.QueryBuilder, err = buildAggregatedBalancesQuery(r)
 
-	balances, err := shared.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), query)
+	balances, err := backend.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), query)
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 
@@ -43,14 +41,14 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBalances(w http.ResponseWriter, r *http.Request) {
-	l := shared.LedgerFromContext(r.Context())
+	l := backend.LedgerFromContext(r.Context())
 
 	q := &ledgerstore.GetAccountsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
 		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), q)
 		if err != nil {
-			ResponseError(w, r, errorsutil.NewError(command.ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor)))
+			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return
 		}
 	} else {
@@ -65,7 +63,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 
 	cursor, err := l.GetAccountsWithVolumes(r.Context(), q)
 	if err != nil {
-		ResponseError(w, r, err)
+		sharedapi.InternalServerError(w, r, err)
 		return
 	}
 

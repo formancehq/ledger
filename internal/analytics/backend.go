@@ -3,7 +3,8 @@ package analytics
 import (
 	"context"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage"
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/google/uuid"

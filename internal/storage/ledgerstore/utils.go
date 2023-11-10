@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -25,21 +26,10 @@ func fetch[T any](s *Store, ctx context.Context, builders ...func(query *bun.Sel
 	}
 
 	if err := query.Scan(ctx, ret); err != nil {
-		return ret, storage.PostgresError(err)
+		return ret, sqlutils.PostgresError(err)
 	}
 
 	return ret, nil
-}
-
-func fetchAndMap[T any, TO any](s *Store, ctx context.Context,
-	mapper func(T) TO,
-	builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (TO, error) {
-	ret, err := fetch[T](s, ctx, builders...)
-	if err != nil {
-		var zero TO
-		return zero, storage.PostgresError(err)
-	}
-	return mapper(ret), nil
 }
 
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,

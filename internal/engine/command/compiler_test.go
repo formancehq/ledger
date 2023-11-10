@@ -1,7 +1,6 @@
 package command
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,10 +14,10 @@ func TestCompiler(t *testing.T) {
 )`
 
 	compiler := NewCompiler(1024)
-	p1, err := compiler.Compile(context.Background(), script)
+	p1, err := compiler.Compile(script)
 	require.NoError(t, err)
 
-	p2, err := compiler.Compile(context.Background(), script)
+	p2, err := compiler.Compile(script)
 	require.NoError(t, err)
 
 	require.Equal(t, p1, p2)

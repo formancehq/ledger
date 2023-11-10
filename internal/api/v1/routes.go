@@ -3,8 +3,6 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/shared"
-
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/health"
@@ -14,7 +12,7 @@ import (
 	"github.com/riandyrn/otelchi"
 )
 
-func NewRouter(backend backend.Backend, healthController *health.HealthController, globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
+func NewRouter(b backend.Backend, healthController *health.HealthController, globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
 	router := chi.NewMux()
 
 	router.Use(
@@ -32,7 +30,7 @@ func NewRouter(backend backend.Backend, healthController *health.HealthControlle
 
 	router.Group(func(router chi.Router) {
 		router.Use(otelchi.Middleware("ledger"))
-		router.Get("/_info", getInfo(backend))
+		router.Get("/_info", getInfo(b))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
@@ -40,7 +38,7 @@ func NewRouter(backend backend.Backend, healthController *health.HealthControlle
 					handler.ServeHTTP(w, r)
 				})
 			})
-			router.Use(shared.LedgerMiddleware(backend, []string{"/_info"}))
+			router.Use(backend.LedgerMiddleware(b, []string{"/_info"}))
 
 			// LedgerController
 			router.Get("/_info", getLedgerInfo)

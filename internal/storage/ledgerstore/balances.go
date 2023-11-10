@@ -3,10 +3,9 @@ package ledgerstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/paginate"
@@ -17,13 +16,50 @@ import (
 // todo: should return a cursor?
 func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 
+	var (
+		needJoinMetadata bool
+		subQuery         string
+		args             []any
+		err              error
+	)
+	if q.Options.QueryBuilder != nil {
+		subQuery, args, err = q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+			switch {
+			case key == "address":
+				// TODO: Should allow comparison operator only if segments not used
+				if operator != "$match" {
+					return "", nil, newErrInvalidQuery("'address' column can only be used with $match")
+				}
+
+				switch address := value.(type) {
+				case string:
+					return filterAccountAddress(address, "account_address"), nil, nil
+				default:
+					return "", nil, newErrInvalidQuery("unexpected type %T for column 'address'", address)
+				}
+			case metadataRegex.Match([]byte(key)):
+				if operator != "$match" {
+					return "", nil, newErrInvalidQuery("'metadata' column can only be used with $match")
+				}
+				match := metadataRegex.FindAllStringSubmatch(key, 3)
+				needJoinMetadata = true
+
+				return "am.metadata @> ?", []any{map[string]any{
+					match[0][1]: value,
+				}}, nil
+			default:
+				return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
+			}
+		}))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	type Temp struct {
 		Aggregated ledger.VolumesByAssets `bun:"aggregated,type:jsonb"`
 	}
-	ret, err := fetchAndMap[*Temp, ledger.BalancesByAssets](store, ctx,
-		func(temp *Temp) ledger.BalancesByAssets {
-			return temp.Aggregated.Balances()
-		},
+	ret, err := fetch[*Temp](store, ctx,
 		func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
 			moves := store.db.
 				NewSelect().
@@ -32,47 +68,16 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 				Order("account_address", "asset", "moves.seq desc").
 				Apply(filterPIT(q.Options.Options.PIT, "insertion_date")) // todo(gfyrag): expose capability to use effective_date
 
-			if q.Options.QueryBuilder != nil {
-				joinOnMetadataAdded := false
-				subQuery, args, err := q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-					switch {
-					case key == "address":
-						// TODO: Should allow comparison operator only if segments not used
-						if operator != "$match" {
-							return "", nil, errors.New("'address' column can only be used with $match")
-						}
-						switch address := value.(type) {
-						case string:
-							return filterAccountAddress(address, "account_address"), nil, nil
-						default:
-							return "", nil, fmt.Errorf("unexpected type %T for column 'address'", address)
-						}
-					case metadataRegex.Match([]byte(key)):
-						if operator != "$match" {
-							return "", nil, errors.New("'metadata' column can only be used with $match")
-						}
-						match := metadataRegex.FindAllStringSubmatch(key, 3)
-						if !joinOnMetadataAdded {
-							moves = moves.Join(`left join lateral (	
-								select metadata
-								from accounts_metadata am 
-								where am.address = moves.account_address and (? is null or date <= ?)
-								order by revision desc 
-								limit 1
-							) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
-							joinOnMetadataAdded = true
-						}
-
-						return "am.metadata @> ?", []any{map[string]any{
-							match[0][1]: value,
-						}}, nil
-					default:
-						return "", nil, fmt.Errorf("unknown key '%s' when building query", key)
-					}
-				}))
-				if err != nil {
-					panic(err)
-				}
+			if needJoinMetadata {
+				moves = moves.Join(`left join lateral (	
+					select metadata
+					from accounts_metadata am 
+					where am.address = moves.account_address and (? is null or date <= ?)
+					order by revision desc 
+					limit 1
+				) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
+			}
+			if subQuery != "" {
 				moves = moves.Where(subQuery, args...)
 			}
 
@@ -82,25 +87,28 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q *GetAggregatedB
 				ColumnExpr("volumes_to_jsonb((moves.asset, (sum((moves.post_commit_volumes).inputs), sum((moves.post_commit_volumes).outputs))::volumes)) as aggregated").
 				Group("moves.asset")
 		})
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+	if err != nil && !errors.Is(err, sqlutils.ErrNotFound) {
 		return nil, err
 	}
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, sqlutils.ErrNotFound) {
 		return ledger.BalancesByAssets{}, nil
 	}
 
-	return ret, nil
+	return ret.Aggregated.Balances(), nil
 }
 
 func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
 	type Temp struct {
 		Balance *big.Int `bun:"balance,type:numeric"`
 	}
-	return fetchAndMap[*Temp, *big.Int](store, ctx, func(temp *Temp) *big.Int {
-		return temp.Balance
-	}, func(query *bun.SelectQuery) *bun.SelectQuery {
+	v, err := fetch[*Temp](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.TableExpr("get_account_balance(?, ?) as balance", address, asset)
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	return v.Balance, nil
 }
 
 type GetAggregatedBalanceQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]

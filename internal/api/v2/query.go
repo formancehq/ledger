@@ -7,7 +7,6 @@ import (
 
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/paginate"
-	"github.com/formancehq/stack/libs/go-libs/errorsutil"
 	"github.com/pkg/errors"
 )
 
@@ -38,7 +37,7 @@ func getPageSize(r *http.Request) (uint64, error) {
 	if pageSizeParam != "" {
 		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
 		if err != nil {
-			return 0, errorsutil.NewError(command.ErrValidation, ErrInvalidPageSize)
+			return 0, ErrInvalidPageSize
 		}
 	}
 

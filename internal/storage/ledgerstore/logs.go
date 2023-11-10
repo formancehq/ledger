@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"math/big"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -127,13 +128,18 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 }
 
 func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) {
-	return fetchAndMap[*Logs, *ledger.ChainedLog](store, ctx, (*Logs).ToCore,
+	ret, err := fetch[*Logs](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
 				Table(LogTableName).
 				OrderExpr("id desc").
 				Limit(1)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.ToCore(), nil
 }
 
 func (store *Store) GetLogs(ctx context.Context, q *GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
@@ -151,7 +157,7 @@ func (store *Store) GetLogs(ctx context.Context, q *GetLogsQuery) (*api.Cursor[l
 }
 
 func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.ChainedLog, error) {
-	return fetchAndMap[*Logs, *ledger.ChainedLog](store, ctx, (*Logs).ToCore,
+	ret, err := fetch[*Logs](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
 				Table(LogTableName).
@@ -159,6 +165,11 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 				Limit(1).
 				Where("idempotency_key = ?", key)
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.ToCore(), nil
 }
 
 type GetLogsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]

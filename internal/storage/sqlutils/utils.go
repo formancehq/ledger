@@ -1,9 +1,10 @@
-package storage
+package sqlutils
 
 import (
 	"database/sql"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
@@ -55,4 +56,19 @@ func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, erro
 	}
 
 	return db, nil
+}
+
+func OpenDBWithSchema(connectionOptions ConnectionOptions, schema string) (*bun.DB, error) {
+	parsedConnectionParams, err := url.Parse(connectionOptions.DatabaseSourceName)
+	if err != nil {
+		return nil, PostgresError(err)
+	}
+
+	query := parsedConnectionParams.Query()
+	query.Set("search_path", schema)
+	parsedConnectionParams.RawQuery = query.Encode()
+
+	connectionOptions.DatabaseSourceName = parsedConnectionParams.String()
+
+	return OpenSQLDB(connectionOptions)
 }

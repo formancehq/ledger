@@ -10,7 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/api/shared"
+	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/pkg/errors"
+
+	"github.com/formancehq/ledger/internal/engine"
+
+	"github.com/formancehq/ledger/internal/machine"
 
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
@@ -27,13 +32,16 @@ import (
 
 func TestPostTransactions(t *testing.T) {
 	type testCase struct {
-		name               string
-		expectedDryRun     bool
-		expectedRunScript  ledger.RunScript
-		payload            any
-		expectedStatusCode int
-		expectedErrorCode  string
-		queryParams        url.Values
+		name                 string
+		expectedDryRun       bool
+		expectedRunScript    ledger.RunScript
+		returnError          error
+		payload              any
+		expectedStatusCode   int
+		expectedErrorCode    string
+		expectedErrorDetails string
+		queryParams          url.Values
+		expectEngineCall     bool
 	}
 
 	testCases := []testCase{
@@ -52,6 +60,7 @@ func TestPostTransactions(t *testing.T) {
 					Vars:  map[string]string{},
 				},
 			},
+			expectEngineCall: true,
 		},
 		{
 			name: "using plain numscript with variables",
@@ -72,6 +81,7 @@ func TestPostTransactions(t *testing.T) {
 					},
 				},
 			},
+			expectEngineCall: true,
 			expectedRunScript: ledger.RunScript{
 				Script: ledger.Script{
 					Plain: `vars {
@@ -89,7 +99,8 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "using plain numscript with variables (legacy format)",
+			name:             "using plain numscript with variables (legacy format)",
+			expectEngineCall: true,
 			payload: ledger.TransactionRequest{
 				Script: ledger.ScriptV1{
 					Script: ledger.Script{
@@ -127,7 +138,8 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "using plain numscript and dry run",
+			name:             "using plain numscript and dry run",
+			expectEngineCall: true,
 			payload: ledger.TransactionRequest{
 				Script: ledger.ScriptV1{
 					Script: ledger.Script{
@@ -153,7 +165,8 @@ func TestPostTransactions(t *testing.T) {
 			},
 		},
 		{
-			name: "using JSON postings",
+			name:             "using JSON postings",
+			expectEngineCall: true,
 			payload: ledger.TransactionRequest{
 				Postings: []ledger.Posting{
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
@@ -164,7 +177,8 @@ func TestPostTransactions(t *testing.T) {
 			), false),
 		},
 		{
-			name: "using JSON postings and dry run",
+			name:             "using JSON postings and dry run",
+			expectEngineCall: true,
 			queryParams: url.Values{
 				"dryRun": []string{"true"},
 			},
@@ -179,10 +193,18 @@ func TestPostTransactions(t *testing.T) {
 			), false),
 		},
 		{
-			name:               "no postings or script",
-			payload:            ledger.TransactionRequest{},
+			name:             "no postings or script",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.TxToScriptData(ledger.NewTransactionData(), false).Script,
+				},
+				Metadata: map[string]string{},
+			},
+			expectedRunScript:  ledger.TxToScriptData(ledger.NewTransactionData(), false),
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  shared.ErrValidation,
+			expectedErrorCode:  v2.ErrNoPostings,
+			returnError:        engine.NewCommandError(command.NewErrNoPostings()),
 		},
 		{
 			name: "postings and script",
@@ -206,13 +228,193 @@ func TestPostTransactions(t *testing.T) {
 				},
 			},
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  shared.ErrValidation,
+			expectedErrorCode:  v2.ErrValidation,
 		},
 		{
 			name:               "using invalid body",
 			payload:            "not a valid payload",
 			expectedStatusCode: http.StatusBadRequest,
-			expectedErrorCode:  shared.ErrValidation,
+			expectedErrorCode:  v2.ErrValidation,
+		},
+		{
+			name:             "with insufficient funds",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `XXX`,
+					},
+				},
+			},
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `XXX`,
+					Vars:  map[string]string{},
+				},
+			},
+			returnError:        engine.NewCommandError(command.NewErrMachine(&machine.ErrInsufficientFund{})),
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrInsufficientFund,
+		},
+		{
+			name: "using JSON postings and negative amount",
+			payload: ledger.TransactionRequest{
+				Postings: []ledger.Posting{
+					ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
+				},
+			},
+			expectEngineCall:   true,
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrCompilationFailed,
+			expectedRunScript: ledger.TxToScriptData(ledger.NewTransactionData().WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(-100)),
+			), false),
+			expectedErrorDetails: backend.EncodeLink(`compilation failed`),
+			returnError: engine.NewCommandError(
+				command.NewErrInvalidTransaction(command.ErrInvalidTransactionCodeCompilationFailed, errors.New("compilation failed")),
+			),
+		},
+		{
+			expectEngineCall: true,
+			name:             "numscript and negative amount",
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `send [COIN -100] (
+						source = @world
+						destination = @bob
+					)`,
+					},
+				},
+			},
+			expectedStatusCode:   http.StatusBadRequest,
+			expectedErrorCode:    v2.ErrCompilationFailed,
+			expectedErrorDetails: backend.EncodeLink("compilation failed"),
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `send [COIN -100] (
+						source = @world
+						destination = @bob
+					)`,
+					Vars: map[string]string{},
+				},
+			},
+			returnError: engine.NewCommandError(
+				command.NewErrInvalidTransaction(command.ErrInvalidTransactionCodeCompilationFailed, errors.New("compilation failed")),
+			),
+		},
+		{
+			name:             "numscript and compilation failed",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `send [COIN XXX] (
+						source = @world
+						destination = @bob
+					)`,
+					},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrCompilationFailed,
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `send [COIN XXX] (
+						source = @world
+						destination = @bob
+					)`,
+					Vars: map[string]string{},
+				},
+			},
+			expectedErrorDetails: backend.EncodeLink("compilation failed"),
+			returnError: engine.NewCommandError(
+				command.NewErrCompilationFailed(fmt.Errorf("compilation failed")),
+			),
+		},
+		{
+			name:             "numscript and no postings",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `vars {}`,
+					},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrNoPostings,
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `vars {}`,
+					Vars:  map[string]string{},
+				},
+			},
+			returnError: engine.NewCommandError(
+				command.NewErrNoPostings(),
+			),
+		},
+		{
+			name:             "numscript and conflict",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `vars {}`,
+					},
+				},
+				Reference: "xxx",
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrConflict,
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `vars {}`,
+					Vars:  map[string]string{},
+				},
+				Reference: "xxx",
+			},
+			returnError: engine.NewCommandError(
+				command.NewErrConflict(),
+			),
+		},
+		{
+			name:             "numscript and metadata override",
+			expectEngineCall: true,
+			payload: ledger.TransactionRequest{
+				Script: ledger.ScriptV1{
+					Script: ledger.Script{
+						Plain: `send [COIN 100] (
+						source = @world
+						destination = @bob
+					)
+					set_tx_meta("foo", "bar")`,
+					},
+				},
+				Reference: "xxx",
+				Metadata: map[string]string{
+					"foo": "baz",
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  v2.ErrMetadataOverride,
+			expectedRunScript: ledger.RunScript{
+				Script: ledger.Script{
+					Plain: `send [COIN 100] (
+						source = @world
+						destination = @bob
+					)
+					set_tx_meta("foo", "bar")`,
+					Vars: map[string]string{},
+				},
+				Reference: "xxx",
+				Metadata: map[string]string{
+					"foo": "baz",
+				},
+			},
+			returnError: engine.NewCommandError(
+				command.NewErrMachine(&machine.ErrMetadataOverride{}),
+			),
 		},
 	}
 
@@ -228,12 +430,17 @@ func TestPostTransactions(t *testing.T) {
 			)
 
 			backend, mockLedger := newTestingBackend(t, true)
-			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
-				mockLedger.EXPECT().
+			if testCase.expectEngineCall {
+				expect := mockLedger.EXPECT().
 					CreateTransaction(gomock.Any(), command.Parameters{
 						DryRun: tc.expectedDryRun,
-					}, testCase.expectedRunScript).
-					Return(expectedTx, nil)
+					}, testCase.expectedRunScript)
+
+				if tc.returnError == nil {
+					expect.Return(expectedTx, nil)
+				} else {
+					expect.Return(nil, tc.returnError)
+				}
 			}
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
@@ -253,6 +460,7 @@ func TestPostTransactions(t *testing.T) {
 				err := sharedapi.ErrorResponse{}
 				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+				require.EqualValues(t, testCase.expectedErrorDetails, err.Details)
 			}
 		})
 	}
@@ -280,7 +488,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 			name:              "invalid body",
 			body:              "invalid - not an object",
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 	}
 	for _, testCase := range testCases {
@@ -455,7 +663,7 @@ func TestGetTransactions(t *testing.T) {
 				"cursor": []string{"XXX"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 		{
 			name: "invalid page size",
@@ -463,7 +671,7 @@ func TestGetTransactions(t *testing.T) {
 				"pageSize": []string{"nan"},
 			},
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: shared.ErrValidation,
+			expectedErrorCode: v2.ErrValidation,
 		},
 		{
 			name: "page size over maximum",
@@ -662,52 +870,99 @@ func TestCountTransactions(t *testing.T) {
 	}
 }
 
-func TestRevertTransaction(t *testing.T) {
+func TestRevert(t *testing.T) {
+	t.Parallel()
+	type testCase struct {
+		name             string
+		queryParams      url.Values
+		returnTx         *ledger.Transaction
+		returnErr        error
+		expectForce      bool
+		expectStatusCode int
+		expectErrorCode  string
+	}
 
-	expectedTx := ledger.NewTransaction().WithPostings(
-		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-	)
+	testCases := []testCase{
+		{
+			name: "nominal",
+			returnTx: ledger.NewTransaction().WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			),
+		},
+		{
+			name: "force revert",
+			returnTx: ledger.NewTransaction().WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			),
+			expectForce: true,
+			queryParams: map[string][]string{"force": {"true"}},
+		},
+		{
+			name: "with insufficient fund",
+			returnErr: engine.NewCommandError(
+				command.NewErrMachine(&machine.ErrInsufficientFund{}),
+			),
+			expectStatusCode: http.StatusBadRequest,
+			expectErrorCode:  v2.ErrInsufficientFund,
+		},
+		{
+			name: "with revert already occurring",
+			returnErr: engine.NewCommandError(
+				command.NewErrRevertTransactionOccurring(),
+			),
+			expectStatusCode: http.StatusBadRequest,
+			expectErrorCode:  v2.ErrRevertOccurring,
+		},
+		{
+			name: "with already revert",
+			returnErr: engine.NewCommandError(
+				command.NewErrRevertTransactionAlreadyReverted(),
+			),
+			expectStatusCode: http.StatusBadRequest,
+			expectErrorCode:  v2.ErrAlreadyRevert,
+		},
+		{
+			name: "with transaction not found",
+			returnErr: engine.NewCommandError(
+				command.NewErrRevertTransactionNotFound(),
+			),
+			expectStatusCode: http.StatusNotFound,
+			expectErrorCode:  sharedapi.ErrorCodeNotFound,
+		},
+	}
 
-	backend, mockLedger := newTestingBackend(t, true)
-	mockLedger.
-		EXPECT().
-		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), false).
-		Return(expectedTx, nil)
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			backend, mockLedger := newTestingBackend(t, true)
+			mockLedger.
+				EXPECT().
+				RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), tc.expectForce).
+				Return(tc.returnTx, tc.returnErr)
 
-	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
-	rec := httptest.NewRecorder()
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
 
-	router.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
+			if tc.queryParams != nil {
+				req.URL.RawQuery = tc.queryParams.Encode()
+			}
+			rec := httptest.NewRecorder()
 
-	require.Equal(t, http.StatusCreated, rec.Code)
-	tx, ok := sharedapi.DecodeSingleResponse[ledger.Transaction](t, rec.Body)
-	require.True(t, ok)
-	require.Equal(t, *expectedTx, tx)
-}
+			router.ServeHTTP(rec, req)
 
-func TestForceRevertTransaction(t *testing.T) {
-
-	expectedTx := ledger.NewTransaction().WithPostings(
-		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-	)
-
-	backend, mockLedger := newTestingBackend(t, true)
-	mockLedger.
-		EXPECT().
-		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), true).
-		Return(expectedTx, nil)
-
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
-
-	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert?force=true", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusCreated, rec.Code)
-	tx, ok := sharedapi.DecodeSingleResponse[ledger.Transaction](t, rec.Body)
-	require.True(t, ok)
-	require.Equal(t, *expectedTx, tx)
+			if tc.expectStatusCode == 0 {
+				require.Equal(t, http.StatusCreated, rec.Code)
+				tx, ok := sharedapi.DecodeSingleResponse[ledger.Transaction](t, rec.Body)
+				require.True(t, ok)
+				require.Equal(t, *tc.returnTx, tx)
+			} else {
+				require.Equal(t, tc.expectStatusCode, rec.Code)
+				err := sharedapi.ErrorResponse{}
+				sharedapi.Decode(t, rec.Body, &err)
+				require.EqualValues(t, tc.expectErrorCode, err.ErrorCode)
+			}
+		})
+	}
 }

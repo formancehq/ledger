@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/storagetesting"
 	"github.com/stretchr/testify/require"
 )
@@ -32,13 +33,13 @@ func TestConfigurationError(t *testing.T) {
 
 	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
 	require.Error(t, err)
-	require.True(t, storage.IsNotFoundError(err))
+	require.True(t, sqlutils.IsNotFoundError(err))
 }
 
 func TestErrorOnOutdatedSchema(t *testing.T) {
 	d := storagetesting.StorageDriver(t)
 	defer func() {
-		_ = d.Close()
+		require.NoError(t, d.Close())
 	}()
 
 	ctx := logging.TestingContext()

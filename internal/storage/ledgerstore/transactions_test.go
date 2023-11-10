@@ -1,4 +1,4 @@
-package ledgerstore_test
+package ledgerstore
 
 import (
 	"context"
@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	internaltesting "github.com/formancehq/ledger/internal/testing"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
@@ -170,7 +171,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 
 	require.NoError(t, insertTransactions(ctx, store, tx1.Transaction, tx2.Transaction))
 
-	tx, err := store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx1.ID).
+	tx, err := store.GetTransactionWithVolumes(ctx, NewGetTransactionQuery(tx1.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.NoError(t, err)
@@ -206,7 +207,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 		},
 	}, tx.PreCommitVolumes)
 
-	tx, err = store.GetTransactionWithVolumes(ctx, ledgerstore.NewGetTransactionQuery(tx2.ID).
+	tx, err = store.GetTransactionWithVolumes(ctx, NewGetTransactionQuery(tx2.ID).
 		WithExpandVolumes().
 		WithExpandEffectiveVolumes())
 	require.Equal(t, tx2.Postings, tx.Postings)
@@ -375,7 +376,7 @@ func TestInsertTransactions(t *testing.T) {
 		err := insertTransactions(context.Background(), store, tx1.Transaction)
 		require.NoError(t, err, "inserting transaction should not fail")
 
-		tx, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(big.NewInt(0)).
+		tx, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(0)).
 			WithExpandVolumes())
 		internaltesting.RequireEqual(t, tx1, *tx)
 	})
@@ -455,11 +456,11 @@ func TestInsertTransactions(t *testing.T) {
 			ledger.NewTransactionLog(&tx3.Transaction, map[string]metadata.Metadata{}).ChainLog(nil).WithID(3),
 		))
 
-		tx, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(big.NewInt(1)).WithExpandVolumes())
+		tx, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(1)).WithExpandVolumes())
 		require.NoError(t, err, "getting transaction should not fail")
 		internaltesting.RequireEqual(t, tx2, *tx)
 
-		tx, err = store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(big.NewInt(2)).WithExpandVolumes())
+		tx, err = store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(2)).WithExpandVolumes())
 		require.NoError(t, err, "getting transaction should not fail")
 		internaltesting.RequireEqual(t, tx3, *tx)
 	})
@@ -574,7 +575,7 @@ func TestCountTransactions(t *testing.T) {
 	err := insertTransactions(context.Background(), store, tx1.Transaction, tx2.Transaction, tx3.Transaction)
 	require.NoError(t, err, "inserting transaction should not fail")
 
-	count, err := store.CountTransactions(context.Background(), ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))
+	count, err := store.CountTransactions(context.Background(), NewGetTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
 	require.NoError(t, err, "counting transactions should not fail")
 	require.Equal(t, 3, count, "count should be equal")
 }
@@ -660,11 +661,11 @@ func TestUpdateTransactionsMetadata(t *testing.T) {
 	)
 	require.NoError(t, err, "updating multiple transaction metadata should not fail")
 
-	tx, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(big.NewInt(0)).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(0)).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar2"}, "metadata should be equal")
 
-	tx, err = store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(big.NewInt(1)).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err = store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(1)).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 }
@@ -736,7 +737,7 @@ func TestInsertTransactionInPast(t *testing.T) {
 		ledger.NewTransactionLog(tx3, map[string]metadata.Metadata{}).ChainLog(nil).WithID(3),
 	))
 
-	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
@@ -777,7 +778,7 @@ func TestInsertTransactionInPastInOneBatch(t *testing.T) {
 
 	require.NoError(t, insertTransactions(context.Background(), store, *tx1, *tx2, *tx3))
 
-	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
@@ -817,7 +818,7 @@ func TestInsertTwoTransactionAtSameDateInSameBatch(t *testing.T) {
 
 	require.NoError(t, insertTransactions(context.Background(), store, *tx1, *tx2, *tx3))
 
-	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
@@ -837,7 +838,7 @@ func TestInsertTwoTransactionAtSameDateInSameBatch(t *testing.T) {
 		},
 	}, tx2FromDatabase.PreCommitVolumes)
 
-	tx3FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(tx3.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx3FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx3.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
@@ -881,7 +882,7 @@ func TestInsertTwoTransactionAtSameDateInTwoBatch(t *testing.T) {
 		ledger.NewTransactionLog(tx3, map[string]metadata.Metadata{}).ChainLog(nil).WithID(3),
 	))
 
-	tx3FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), ledgerstore.NewGetTransactionQuery(tx3.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx3FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx3.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
@@ -902,7 +903,7 @@ func TestInsertTwoTransactionAtSameDateInTwoBatch(t *testing.T) {
 	}, tx3FromDatabase.PostCommitVolumes)
 }
 
-func TestListTransactions(t *testing.T) {
+func TestGetTransactions(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	now := ledger.Now()
@@ -949,14 +950,15 @@ func TestListTransactions(t *testing.T) {
 	require.NoError(t, store.InsertLogs(ctx, ledger.ChainLogs(logs...)...))
 
 	type testCase struct {
-		name     string
-		query    ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilterWithVolumes]
-		expected *api.Cursor[ledger.ExpandedTransaction]
+		name        string
+		query       PaginatedQueryOptions[PITFilterWithVolumes]
+		expected    *api.Cursor[ledger.ExpandedTransaction]
+		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:  "nominal",
-			query: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}),
 			expected: &api.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
@@ -965,7 +967,7 @@ func TestListTransactions(t *testing.T) {
 		},
 		{
 			name: "address filter",
-			query: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "bob")),
 			expected: &api.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
@@ -975,7 +977,7 @@ func TestListTransactions(t *testing.T) {
 		},
 		{
 			name: "address filter using segment",
-			query: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "users:")),
 			expected: &api.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
@@ -985,7 +987,7 @@ func TestListTransactions(t *testing.T) {
 		},
 		{
 			name: "filter using metadata",
-			query: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("metadata[category]", "2")),
 			expected: &api.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
@@ -995,8 +997,8 @@ func TestListTransactions(t *testing.T) {
 		},
 		{
 			name: "using point in time",
-			query: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{
+				PITFilter: PITFilter{
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			}),
@@ -1006,6 +1008,12 @@ func TestListTransactions(t *testing.T) {
 				Data:     Reverse(expandLogs(logs[:3]...)...),
 			},
 		},
+		{
+			name: "filter using invalid key",
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Match("invalid", "2")),
+			expectError: &errInvalidQuery{},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1014,13 +1022,17 @@ func TestListTransactions(t *testing.T) {
 			t.Parallel()
 			tc.query.Options.ExpandVolumes = true
 			tc.query.Options.ExpandEffectiveVolumes = false
-			cursor, err := store.GetTransactions(ctx, ledgerstore.NewGetTransactionsQuery(tc.query))
-			require.NoError(t, err)
-			internaltesting.RequireEqual(t, *tc.expected, *cursor)
+			cursor, err := store.GetTransactions(ctx, NewGetTransactionsQuery(tc.query))
+			if tc.expectError != nil {
+				require.True(t, errors.Is(err, tc.expectError))
+			} else {
+				require.NoError(t, err)
+				internaltesting.RequireEqual(t, *tc.expected, *cursor)
 
-			count, err := store.CountTransactions(ctx, ledgerstore.NewGetTransactionsQuery(tc.query))
-			require.NoError(t, err)
-			require.EqualValues(t, len(tc.expected.Data), count)
+				count, err := store.CountTransactions(ctx, NewGetTransactionsQuery(tc.query))
+				require.NoError(t, err)
+				require.EqualValues(t, len(tc.expected.Data), count)
+			}
 		})
 	}
 }

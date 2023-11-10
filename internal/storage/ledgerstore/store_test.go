@@ -1,11 +1,10 @@
-package ledgerstore_test
+package ledgerstore
 
 import (
 	"context"
 	"testing"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/stretchr/testify/require"
@@ -25,7 +24,7 @@ func TestInitializeStore(t *testing.T) {
 }
 
 // TODO: remove that
-func insertTransactions(ctx context.Context, s *ledgerstore.Store, txs ...ledger.Transaction) error {
+func insertTransactions(ctx context.Context, s *Store, txs ...ledger.Transaction) error {
 	var previous *ledger.ChainedLog
 	logs := collectionutils.Map(txs, func(from ledger.Transaction) *ledger.ChainedLog {
 		previous = ledger.NewTransactionLog(&from, map[string]metadata.Metadata{}).ChainLog(previous)

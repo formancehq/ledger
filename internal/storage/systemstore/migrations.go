@@ -3,7 +3,8 @@ package systemstore
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/storage"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/stack/libs/go-libs/migrations"
 	"github.com/uptrace/bun"
 )
@@ -19,14 +20,14 @@ func (s *Store) getMigrator() *migrations.Migrator {
 					IfNotExists().
 					Exec(ctx)
 				if err != nil {
-					return storage.PostgresError(err)
+					return sqlutils.PostgresError(err)
 				}
 
 				_, err = s.db.NewCreateTable().
 					Model((*configuration)(nil)).
 					IfNotExists().
 					Exec(ctx)
-				return storage.PostgresError(err)
+				return sqlutils.PostgresError(err)
 			},
 		},
 	)

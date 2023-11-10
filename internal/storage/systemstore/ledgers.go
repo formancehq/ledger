@@ -3,8 +3,9 @@ package systemstore
 import (
 	"context"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	ledger "github.com/formancehq/ledger/internal"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )

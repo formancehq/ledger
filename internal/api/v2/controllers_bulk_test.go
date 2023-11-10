@@ -12,7 +12,6 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/api/bulk"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
@@ -34,7 +33,7 @@ func TestBulk(t *testing.T) {
 		body          string
 		expectations  func(mockLedger *backend.MockLedger)
 		expectError   bool
-		expectResults []bulk.Result
+		expectResults []v2.Result
 	}
 
 	testCases := []bulkTestCase{
@@ -73,7 +72,7 @@ func TestBulk(t *testing.T) {
 						ID: big.NewInt(0),
 					}, nil)
 			},
-			expectResults: []bulk.Result{{
+			expectResults: []v2.Result{{
 				Data: map[string]any{
 					"postings": []any{
 						map[string]any{
@@ -88,7 +87,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"id":        float64(0),
 				},
-				ResponseType: bulk.ActionCreateTransaction,
+				ResponseType: v2.ActionCreateTransaction,
 			}},
 		},
 		{
@@ -110,8 +109,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(nil)
 			},
-			expectResults: []bulk.Result{{
-				ResponseType: bulk.ActionAddMetadata,
+			expectResults: []v2.Result{{
+				ResponseType: v2.ActionAddMetadata,
 			}},
 		},
 		{
@@ -133,8 +132,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(nil)
 			},
-			expectResults: []bulk.Result{{
-				ResponseType: bulk.ActionAddMetadata,
+			expectResults: []v2.Result{{
+				ResponseType: v2.ActionAddMetadata,
 			}},
 		},
 		{
@@ -150,7 +149,7 @@ func TestBulk(t *testing.T) {
 					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1), false).
 					Return(&ledger.Transaction{}, nil)
 			},
-			expectResults: []bulk.Result{{
+			expectResults: []v2.Result{{
 				Data: map[string]any{
 					"id":        nil,
 					"metadata":  nil,
@@ -158,7 +157,7 @@ func TestBulk(t *testing.T) {
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",
 				},
-				ResponseType: bulk.ActionRevertTransaction,
+				ResponseType: v2.ActionRevertTransaction,
 			}},
 		},
 		{
@@ -176,8 +175,8 @@ func TestBulk(t *testing.T) {
 					DeleteMetadata(gomock.Any(), command.Parameters{}, ledger.MetaTargetTypeTransaction, big.NewInt(1), "foo").
 					Return(nil)
 			},
-			expectResults: []bulk.Result{{
-				ResponseType: bulk.ActionDeleteMetadata,
+			expectResults: []v2.Result{{
+				ResponseType: v2.ActionDeleteMetadata,
 			}},
 		},
 		{
@@ -226,8 +225,8 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(errors.New("unexpected error"))
 			},
-			expectResults: []bulk.Result{{
-				ResponseType: bulk.ActionAddMetadata,
+			expectResults: []v2.Result{{
+				ResponseType: v2.ActionAddMetadata,
 			}, {
 				ErrorCode:        "INTERNAL",
 				ErrorDescription: "unexpected error",
@@ -289,14 +288,14 @@ func TestBulk(t *testing.T) {
 					}).
 					Return(nil)
 			},
-			expectResults: []bulk.Result{{
-				ResponseType: bulk.ActionAddMetadata,
+			expectResults: []v2.Result{{
+				ResponseType: v2.ActionAddMetadata,
 			}, {
 				ResponseType:     "ERROR",
 				ErrorCode:        "INTERNAL",
 				ErrorDescription: "unexpected error",
 			}, {
-				ResponseType: bulk.ActionAddMetadata,
+				ResponseType: v2.ActionAddMetadata,
 			}},
 			expectError: true,
 		},
@@ -324,7 +323,7 @@ func TestBulk(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code)
 			}
 
-			ret, _ := sharedapi.DecodeSingleResponse[[]bulk.Result](t, rec.Body)
+			ret, _ := sharedapi.DecodeSingleResponse[[]v2.Result](t, rec.Body)
 			require.Equal(t, testCase.expectResults, ret)
 		})
 	}
