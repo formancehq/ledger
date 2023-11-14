@@ -6,9 +6,8 @@ IMPORT $core AS core
 FROM core+base-image
 
 sources:
+    COPY . /src
     WORKDIR src
-    COPY go.* .
-    COPY *.go .
     SAVE ARTIFACT /src
 
 tidy:
