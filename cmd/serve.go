@@ -56,7 +56,7 @@ func NewServe() *cobra.Command {
 					wrappedRouter.Use(Log())
 					wrappedRouter.Mount("/", h)
 
-					lc.Append(httpserver.NewHook(viper.GetString(bindFlag), wrappedRouter))
+					lc.Append(httpserver.NewHook(wrappedRouter, httpserver.WithAddress(viper.GetString(bindFlag))))
 				}),
 			)...).Run(cmd.Context())
 		},
