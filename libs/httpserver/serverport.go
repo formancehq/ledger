@@ -70,7 +70,7 @@ func (s *server) StartServer(ctx context.Context, handler http.Handler, options 
 		if s.address == "" {
 			return nil, errors.New("either address or listener must be provided")
 		}
-		listener, err := net.Listen("tcp", ":0")
+		listener, err := net.Listen("tcp", s.address)
 		if err != nil {
 			return nil, err
 		}
