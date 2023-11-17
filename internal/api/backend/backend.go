@@ -18,14 +18,14 @@ import (
 
 type Ledger interface {
 	GetAccountWithVolumes(ctx context.Context, query ledgerstore.GetAccountQuery) (*ledger.ExpandedAccount, error)
-	GetAccountsWithVolumes(ctx context.Context, query *ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error)
-	CountAccounts(ctx context.Context, query *ledgerstore.GetAccountsQuery) (int, error)
-	GetAggregatedBalances(ctx context.Context, q *ledgerstore.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
+	GetAccountsWithVolumes(ctx context.Context, query ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error)
+	CountAccounts(ctx context.Context, query ledgerstore.GetAccountsQuery) (int, error)
+	GetAggregatedBalances(ctx context.Context, q ledgerstore.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 	Stats(ctx context.Context) (engine.Stats, error)
-	GetLogs(ctx context.Context, query *ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error)
-	CountTransactions(ctx context.Context, query *ledgerstore.GetTransactionsQuery) (int, error)
-	GetTransactions(ctx context.Context, query *ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error)
+	GetLogs(ctx context.Context, query ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error)
+	CountTransactions(ctx context.Context, query ledgerstore.GetTransactionsQuery) (int, error)
+	GetTransactions(ctx context.Context, query ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error)
 	GetTransactionWithVolumes(ctx context.Context, query ledgerstore.GetTransactionQuery) (*ledger.ExpandedTransaction, error)
 
 	CreateTransaction(ctx context.Context, parameters command.Parameters, data ledger.RunScript) (*ledger.Transaction, error)

@@ -53,12 +53,12 @@ func (l *Ledger) Close(ctx context.Context) {
 	l.commander.Close()
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
 	txs, err := l.store.GetTransactions(ctx, q)
 	return txs, newStorageError(err, "getting transactions")
 }
 
-func (l *Ledger) CountTransactions(ctx context.Context, q *ledgerstore.GetTransactionsQuery) (int, error) {
+func (l *Ledger) CountTransactions(ctx context.Context, q ledgerstore.GetTransactionsQuery) (int, error) {
 	count, err := l.store.CountTransactions(ctx, q)
 	return count, newStorageError(err, "counting transactions")
 }
@@ -68,12 +68,12 @@ func (l *Ledger) GetTransactionWithVolumes(ctx context.Context, query ledgerstor
 	return tx, newStorageError(err, "getting transaction")
 }
 
-func (l *Ledger) CountAccounts(ctx context.Context, a *ledgerstore.GetAccountsQuery) (int, error) {
+func (l *Ledger) CountAccounts(ctx context.Context, a ledgerstore.GetAccountsQuery) (int, error) {
 	count, err := l.store.CountAccounts(ctx, a)
 	return count, newStorageError(err, "counting accounts")
 }
 
-func (l *Ledger) GetAccountsWithVolumes(ctx context.Context, a *ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+func (l *Ledger) GetAccountsWithVolumes(ctx context.Context, a ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
 	accounts, err := l.store.GetAccountsWithVolumes(ctx, a)
 	return accounts, newStorageError(err, "getting accounts")
 }
@@ -83,12 +83,12 @@ func (l *Ledger) GetAccountWithVolumes(ctx context.Context, q ledgerstore.GetAcc
 	return accounts, newStorageError(err, "getting account")
 }
 
-func (l *Ledger) GetAggregatedBalances(ctx context.Context, q *ledgerstore.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
+func (l *Ledger) GetAggregatedBalances(ctx context.Context, q ledgerstore.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 	balances, err := l.store.GetAggregatedBalances(ctx, q)
 	return balances, newStorageError(err, "getting balances aggregated")
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q *ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
 	return logs, newStorageError(err, "getting logs")
 }

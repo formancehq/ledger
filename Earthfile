@@ -79,3 +79,27 @@ lint:
 
 pre-commit:
     BUILD --pass-args +copy-libs
+
+bench:
+    FROM core+builder-image
+    COPY (+sources/*) /src
+    WORKDIR /src/components/ledger/internal/storage/ledgerstore
+    ARG numberOfTransactions=10000
+    ARG benchTime=1s
+    ARG count=1
+    ARG GOPROXY
+    WITH DOCKER --pull postgres:15-alpine
+        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
+            --mount type=cache,id=gobuild,target=/root/.cache/go-build \
+            go test -bench=. -run ^$ \
+            -benchtime=$benchTime \
+            -count=$count \
+            -transactions=$numberOfTransactions | tee -a /results.txt
+    END
+    SAVE ARTIFACT /results.txt
+
+benchstat:
+    FROM core+builder-image
+    DO core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat
+    COPY +bench/results.txt /tmp/branch.txt
+    COPY ../../components/ledger:main+bench/results.txt /tmp/main.txt
