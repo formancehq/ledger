@@ -88,10 +88,12 @@ bench:
     ARG benchTime=1s
     ARG count=1
     ARG GOPROXY
+    ARG testTimeout=10m
+    ARG bench=.
     WITH DOCKER --pull postgres:15-alpine
         RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
             --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            go test -bench=. -run ^$ \
+            go test -timeout $testTimeout -bench=$bench -run ^$ \
             -benchtime=$benchTime \
             -count=$count \
             -transactions=$numberOfTransactions | tee -a /results.txt
