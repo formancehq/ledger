@@ -100,6 +100,7 @@ bench:
 
 benchstat:
     FROM core+builder-image
-    DO core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat
-    COPY +bench/results.txt /tmp/branch.txt
-    COPY ../../components/ledger:main+bench/results.txt /tmp/main.txt
+    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
+    COPY --pass-args +bench/results.txt /tmp/branch.txt
+    COPY --pass-args github.com/formancehq/stack/components/ledger:main+bench/results.txt /tmp/main.txt
+    RUN benchstat /tmp/main.txt /tmp/branch.txt
