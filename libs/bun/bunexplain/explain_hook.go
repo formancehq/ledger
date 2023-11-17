@@ -17,17 +17,13 @@ func (h *explainHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {}
 
 //nolint:unused
 func (h *explainHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) context.Context {
+
 	lowerQuery := strings.ToLower(event.Query)
-	if strings.HasPrefix(lowerQuery, "explain") ||
-		strings.HasPrefix(lowerQuery, "create") ||
-		strings.HasPrefix(lowerQuery, "begin") ||
-		strings.HasPrefix(lowerQuery, "alter") ||
-		strings.HasPrefix(lowerQuery, "rollback") ||
-		strings.HasPrefix(lowerQuery, "commit") {
+	if !strings.HasPrefix(lowerQuery, "select") {
 		return ctx
 	}
 
-	event.DB.RunInTx(context.Background(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+	if err := event.DB.RunInTx(context.Background(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
 		rows, err := tx.Query("explain analyze " + event.Query)
 		if err != nil {
 			return err
@@ -44,7 +40,13 @@ func (h *explainHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) co
 
 		return tx.Rollback()
 
-	})
+	}); err != nil {
+		// Nothing to do, let the original request fail
+	}
 
 	return ctx
+}
+
+func NewExplainHook() *explainHook {
+	return &explainHook{}
 }

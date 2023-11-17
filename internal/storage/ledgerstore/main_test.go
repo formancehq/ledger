@@ -43,7 +43,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func newLedgerStore(t *testing.T) *Store {
+type T interface {
+	require.TestingT
+	Helper()
+	Cleanup(func())
+}
+
+func newLedgerStore(t T, hooks ...bun.QueryHook) *Store {
 	t.Helper()
 
 	ledgerName := uuid.NewString()
@@ -59,7 +65,7 @@ func newLedgerStore(t *testing.T) *Store {
 	ledgerDB, err := sqlutils.OpenDBWithSchema(sqlutils.ConnectionOptions{
 		DatabaseSourceName: pgtesting.Server().GetDSN(),
 		Debug:              testing.Verbose(),
-	}, ledgerName)
+	}, ledgerName, hooks...)
 	require.NoError(t, err)
 
 	store, err := New(ledgerDB, ledgerName, func(ctx context.Context) error {

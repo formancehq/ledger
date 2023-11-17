@@ -6,16 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"regexp"
-	"strings"
-
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
+	"math/big"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -238,7 +237,7 @@ func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q Pa
 	return selectQuery
 }
 
-func (store *Store) GetTransactions(ctx context.Context, q *GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
+func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
 
 	var (
 		where string
@@ -254,7 +253,7 @@ func (store *Store) GetTransactions(ctx context.Context, q *GetTransactionsQuery
 	}
 
 	transactions, err := paginateWithColumn[PaginatedQueryOptions[PITFilterWithVolumes], ExpandedTransaction](store, ctx,
-		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q),
+		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},
@@ -268,7 +267,7 @@ func (store *Store) GetTransactions(ctx context.Context, q *GetTransactionsQuery
 	}), nil
 }
 
-func (store *Store) CountTransactions(ctx context.Context, q *GetTransactionsQuery) (int, error) {
+func (store *Store) CountTransactions(ctx context.Context, q GetTransactionsQuery) (int, error) {
 
 	var (
 		where string
@@ -357,8 +356,20 @@ func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTra
 
 type GetTransactionsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
 
-func NewGetTransactionsQuery(options PaginatedQueryOptions[PITFilterWithVolumes]) *GetTransactionsQuery {
-	return &GetTransactionsQuery{
+func (q GetTransactionsQuery) WithExpandVolumes() GetTransactionsQuery {
+	q.Options.Options.ExpandVolumes = true
+
+	return q
+}
+
+func (q GetTransactionsQuery) WithExpandEffectiveVolumes() GetTransactionsQuery {
+	q.Options.Options.ExpandEffectiveVolumes = true
+
+	return q
+}
+
+func NewGetTransactionsQuery(options PaginatedQueryOptions[PITFilterWithVolumes]) GetTransactionsQuery {
+	return GetTransactionsQuery{
 		PageSize: options.PageSize,
 		Column:   "id",
 		Order:    paginate.OrderDesc,

@@ -142,9 +142,9 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 	return ret.ToCore(), nil
 }
 
-func (store *Store) GetLogs(ctx context.Context, q *GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
+func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
 	logs, err := paginateWithColumn[PaginatedQueryOptions[any], Logs](store, ctx,
-		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(q),
+		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
 		store.logsQueryBuilder(q.Options),
 	)
 	if err != nil {
@@ -174,8 +174,8 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 
 type GetLogsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]
 
-func NewGetLogsQuery(options PaginatedQueryOptions[any]) *GetLogsQuery {
-	return &GetLogsQuery{
+func NewGetLogsQuery(options PaginatedQueryOptions[any]) GetLogsQuery {
+	return GetLogsQuery{
 		PageSize: options.PageSize,
 		Column:   "id",
 		Order:    paginate.OrderDesc,

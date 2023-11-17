@@ -53,10 +53,10 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 func getLogs(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	query := &ledgerstore.GetLogsQuery{}
+	query := ledgerstore.GetLogsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), query)
+		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
 			sharedapi.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return

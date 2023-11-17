@@ -95,7 +95,7 @@ func (store *Store) accountQueryContext(qb query.Builder) (string, []any, error)
 	}))
 }
 
-func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q *GetAccountsQuery, where string, args []any) *bun.SelectQuery {
+func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q GetAccountsQuery, where string, args []any) *bun.SelectQuery {
 	selectQuery = store.buildAccountQuery(q.Options.Options, selectQuery)
 
 	if where != "" {
@@ -105,7 +105,7 @@ func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q *GetAc
 	return selectQuery
 }
 
-func (store *Store) GetAccountsWithVolumes(ctx context.Context, q *GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
 
 	var (
 		where string
@@ -120,7 +120,7 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q *GetAccountsQu
 	}
 
 	return paginateWithOffset[PaginatedQueryOptions[PITFilterWithVolumes], ledger.ExpandedAccount](store, ctx,
-		(*paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q),
+		(*paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildAccountListQuery(query, q, where, args)
 		},
@@ -164,7 +164,7 @@ func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery
 	return account, nil
 }
 
-func (store *Store) CountAccounts(ctx context.Context, q *GetAccountsQuery) (int, error) {
+func (store *Store) CountAccounts(ctx context.Context, q GetAccountsQuery) (int, error) {
 	var (
 		where string
 		args  []any
@@ -213,8 +213,20 @@ func NewGetAccountQuery(addr string) GetAccountQuery {
 
 type GetAccountsQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
 
-func NewGetAccountsQuery(opts PaginatedQueryOptions[PITFilterWithVolumes]) *GetAccountsQuery {
-	return &GetAccountsQuery{
+func (q GetAccountsQuery) WithExpandVolumes() GetAccountsQuery {
+	q.Options.Options.ExpandVolumes = true
+
+	return q
+}
+
+func (q GetAccountsQuery) WithExpandEffectiveVolumes() GetAccountsQuery {
+	q.Options.Options.ExpandEffectiveVolumes = true
+
+	return q
+}
+
+func NewGetAccountsQuery(opts PaginatedQueryOptions[PITFilterWithVolumes]) GetAccountsQuery {
+	return GetAccountsQuery{
 		PageSize: opts.PageSize,
 		Order:    paginate.OrderAsc,
 		Options:  opts,
