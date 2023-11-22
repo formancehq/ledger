@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/big"
+	"testing"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -11,8 +14,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"math/big"
-	"testing"
 )
 
 var nbTransactions = flag.Int("transactions", 10000, "number of transactions to create")
