@@ -3,10 +3,11 @@ package ledgerstore
 import (
 	"context"
 	"fmt"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/logging"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
