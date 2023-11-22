@@ -55,7 +55,11 @@ create table transactions (
     timestamp timestamp without time zone not null,
     reference varchar,
     reverted_at timestamp without time zone,
-    postings varchar not null
+    postings varchar not null,
+    sources jsonb,
+    destinations jsonb,
+    sources_arrays jsonb,
+    destinations_arrays jsonb
 );
 
 create table transactions_metadata (
@@ -127,6 +131,10 @@ create index moves_range_dates on moves (account_address, asset, effective_date)
 create index transactions_date on transactions (timestamp);
 create index transactions_metadata_metadata on transactions_metadata using gin (metadata);
 --create unique index transactions_revisions on transactions_metadata(id desc, revision desc);
+create index transactions_sources on transactions using gin (sources jsonb_path_ops);
+create index transactions_destinations on transactions using gin (destinations jsonb_path_ops);
+create index transactions_sources_arrays on transactions using gin (sources_arrays jsonb_path_ops);
+create index transactions_destinations_arrays on transactions using gin (destinations_arrays jsonb_path_ops);
 
 create index moves_account_address on moves (account_address);
 create index moves_account_address_array on moves using gin (account_address_array jsonb_ops);
@@ -158,6 +166,23 @@ as $$
 
         return _account is not null;
     end;
+$$;
+
+-- given the input : "a:b:c", the function will produce : '{"0": "a", "1": "b", "2": "c", "3": null}'
+create function explode_address(_address varchar)
+	returns jsonb
+	language sql
+	immutable
+as $$
+    select aggregate_objects(jsonb_build_object(data.number - 1, data.value))
+	from (
+	    select row_number() over () as number, v.value
+	    from (
+	        select unnest(string_to_array(_address, ':')) as value
+	        union all
+	        select null
+	    ) v
+    ) data
 $$;
 
 create function get_account(_account_address varchar, _before timestamp default null)
@@ -405,11 +430,28 @@ as $$
     declare
         posting jsonb;
     begin
-        insert into transactions (id, timestamp, reference, postings)
+        insert into transactions (id, timestamp, reference, postings, sources, destinations, sources_arrays, destinations_arrays)
         values ((data->>'id')::numeric,
                 (data->>'timestamp')::timestamp without time zone,
                 data->>'reference',
-                jsonb_pretty(data->'postings'));
+                jsonb_pretty(data->'postings'),
+                (
+	                select to_jsonb(array_agg(v->>'source')) as value
+	                from jsonb_array_elements(data->'postings') v
+                ),
+                (
+	                select to_jsonb(array_agg(v->>'destination')) as value
+	                from jsonb_array_elements(data->'postings') v
+                ),
+                (
+	                select to_jsonb(array_agg(explode_address(v->>'source'))) as value
+	                from jsonb_array_elements(data->'postings') v
+                ),
+                (
+	                select to_jsonb(array_agg(explode_address(v->>'destination'))) as value
+	                from jsonb_array_elements(data->'postings') v
+                )
+        );
 
         for posting in (select jsonb_array_elements(data->'postings')) loop
             -- todo: sometimes the balance is known at commit time (for sources != world), we need to forward the value to populate the pre_commit_aggregated_input and output

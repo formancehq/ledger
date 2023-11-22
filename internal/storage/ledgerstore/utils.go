@@ -2,6 +2,7 @@ package ledgerstore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -92,6 +93,59 @@ func filterAccountAddress(address, key string) string {
 	}
 
 	return strings.Join(parts, " and ")
+}
+
+func filterAccountAddressOnTransactions(address string, source, destination bool) string {
+	src := strings.Split(address, ":")
+
+	needSegmentCheck := false
+	for _, segment := range src {
+		needSegmentCheck = segment == ""
+		if needSegmentCheck {
+			break
+		}
+	}
+
+	if needSegmentCheck {
+		m := map[string]any{
+			fmt.Sprint(len(src)): nil,
+		}
+		parts := make([]string, 0)
+
+		for i, segment := range src {
+			if len(segment) == 0 {
+				continue
+			}
+			m[fmt.Sprint(i)] = segment
+		}
+
+		data, err := json.Marshal([]any{m})
+		if err != nil {
+			panic(err)
+		}
+
+		if source {
+			parts = append(parts, fmt.Sprintf("sources_arrays @> '%s'", string(data)))
+		}
+		if destination {
+			parts = append(parts, fmt.Sprintf("destinations_arrays @> '%s'", string(data)))
+		}
+		return strings.Join(parts, " or ")
+	} else {
+		data, err := json.Marshal([]string{address})
+		if err != nil {
+			panic(err)
+		}
+
+		parts := make([]string, 0)
+		if source {
+			parts = append(parts, fmt.Sprintf("sources @> '%s'", string(data)))
+		}
+		if destination {
+			parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
+		}
+		return strings.Join(parts, " or ")
+	}
 }
 
 func filterPIT(pit *ledger.Time, column string) func(query *bun.SelectQuery) *bun.SelectQuery {
