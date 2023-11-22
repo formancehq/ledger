@@ -1020,6 +1020,7 @@ func TestGetTransactions(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			tc.query.Options.ExpandVolumes = true
 			tc.query.Options.ExpandEffectiveVolumes = false
 			cursor, err := store.GetTransactions(ctx, NewGetTransactionsQuery(tc.query))
@@ -1027,6 +1028,7 @@ func TestGetTransactions(t *testing.T) {
 				require.True(t, errors.Is(err, tc.expectError))
 			} else {
 				require.NoError(t, err)
+				require.Len(t, cursor.Data, len(tc.expected.Data))
 				internaltesting.RequireEqual(t, *tc.expected, *cursor)
 
 				count, err := store.CountTransactions(ctx, NewGetTransactionsQuery(tc.query))

@@ -155,7 +155,6 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 	query = query.
 		Table("transactions").
 		ColumnExpr("distinct on(transactions.id) transactions.*, transactions_metadata.metadata").
-		Join("join moves m on transactions.id = m.transaction_id").
 		Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String()))
 
 	if p.PIT != nil && !p.PIT.IsZero() {
@@ -186,7 +185,7 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			}
 			switch address := value.(type) {
 			case string:
-				return filterAccountAddress(address, "m.account_address"), nil, nil
+				return filterAccountAddressOnTransactions(address, true, true), nil, nil
 			default:
 				return "", nil, newErrInvalidQuery("unexpected type %T for column 'account'", address)
 			}
@@ -197,7 +196,7 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			}
 			switch address := value.(type) {
 			case string:
-				return fmt.Sprintf("(%s) and m.is_source", filterAccountAddress(address, "m.account_address")), nil, nil
+				return filterAccountAddressOnTransactions(address, true, false), nil, nil
 			default:
 				return "", nil, newErrInvalidQuery("unexpected type %T for column 'source'", address)
 			}
@@ -208,7 +207,7 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			}
 			switch address := value.(type) {
 			case string:
-				return fmt.Sprintf("(%s) and not m.is_source", filterAccountAddress(address, "m.account_address")), nil, nil
+				return filterAccountAddressOnTransactions(address, false, true), nil, nil
 			default:
 				return "", nil, newErrInvalidQuery("unexpected type %T for column 'destination'", address)
 			}
