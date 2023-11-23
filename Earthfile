@@ -82,6 +82,7 @@ pre-commit:
 
 bench:
     FROM core+builder-image
+    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
     COPY (+sources/*) /src
     WORKDIR /src/components/ledger/internal/storage/ledgerstore
     ARG numberOfTransactions=10000
@@ -90,19 +91,28 @@ bench:
     ARG GOPROXY
     ARG testTimeout=10m
     ARG bench=.
+    ARG verbose=0
+    ARG GOMAXPROCS=2
+    ARG GOMEMLIMIT=1024MiB
+    LET additionalArgs=""
+    IF [ "$verbose" = "1" ]
+        SET additionalArgs=-v
+    END
     WITH DOCKER --pull postgres:15-alpine
         RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
             --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            go test -timeout $testTimeout -bench=$bench -run ^$ \
+            go test -timeout $testTimeout -bench=$bench -run ^$ $additionalArgs \
             -benchtime=$benchTime \
             -count=$count \
             -transactions=$numberOfTransactions | tee -a /results.txt
     END
+    RUN benchstat /results.txt
     SAVE ARTIFACT /results.txt
 
 benchstat:
     FROM core+builder-image
     DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
     COPY --pass-args +bench/results.txt /tmp/branch.txt
-    COPY --pass-args github.com/formancehq/stack/components/ledger:main+bench/results.txt /tmp/main.txt
+    ARG compareAgainstRevision=main
+    COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
     RUN benchstat /tmp/main.txt /tmp/branch.txt

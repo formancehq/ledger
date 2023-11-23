@@ -19,12 +19,12 @@ func (h *explainHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {}
 func (h *explainHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) context.Context {
 
 	lowerQuery := strings.ToLower(event.Query)
-	if !strings.HasPrefix(lowerQuery, "select") {
+	if !strings.HasPrefix(lowerQuery, "select") && !strings.HasPrefix(lowerQuery, "with") {
 		return ctx
 	}
 
 	if err := event.DB.RunInTx(context.Background(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		rows, err := tx.Query("explain analyze " + event.Query)
+		rows, err := tx.Query("explain analyze verbose " + event.Query)
 		if err != nil {
 			return err
 		}
