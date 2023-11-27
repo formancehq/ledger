@@ -1,6 +1,7 @@
 package bunexplain
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -9,8 +10,13 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type listener func(data string)
+
 //nolint:unused
-type explainHook struct{}
+type explainHook struct {
+	listener listener
+	json     bool
+}
 
 //nolint:unused
 func (h *explainHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {}
@@ -24,19 +30,34 @@ func (h *explainHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) co
 	}
 
 	if err := event.DB.RunInTx(context.Background(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		rows, err := tx.Query("explain analyze verbose " + event.Query)
+		query := "explain "
+		if h.json {
+			query += "(format json) "
+		} else {
+			query += "analyze verbose "
+		}
+		query += event.Query
+		rows, err := tx.Query(query)
 		if err != nil {
 			return err
 		}
-		defer rows.Next()
+		defer func() {
+			_ = rows.Close()
+		}()
 
+		data := bytes.NewBufferString("")
 		for rows.Next() {
 			var line string
 			if err := rows.Scan(&line); err != nil {
 				return err
 			}
-			fmt.Println(line)
+			data.WriteString(line)
+			data.WriteString("\r\n")
 		}
+		if rows.Err() != nil {
+			return rows.Err()
+		}
+		h.listener(data.String())
 
 		return tx.Rollback()
 
@@ -47,6 +68,30 @@ func (h *explainHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) co
 	return ctx
 }
 
-func NewExplainHook() *explainHook {
-	return &explainHook{}
+func NewExplainHook(opts ...option) *explainHook {
+	ret := &explainHook{}
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(ret)
+	}
+	return ret
+}
+
+type option func(hook *explainHook)
+
+var defaultOptions = []option{
+	WithListener(func(data string) {
+		fmt.Println(data)
+	}),
+}
+
+var WithListener = func(w listener) option {
+	return func(hook *explainHook) {
+		hook.listener = w
+	}
+}
+
+var WithJSONFormat = func() option {
+	return func(hook *explainHook) {
+		hook.json = true
+	}
 }
