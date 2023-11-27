@@ -112,7 +112,7 @@ bench:
 benchstat:
     FROM core+builder-image
     DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
-    COPY --pass-args +bench/results.txt /tmp/branch.txt
     ARG compareAgainstRevision=main
     COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
+    COPY --pass-args +bench/results.txt /tmp/branch.txt
     RUN benchstat /tmp/main.txt /tmp/branch.txt

@@ -2,13 +2,18 @@ package ledgerstore
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"math/big"
+	"os"
 	"testing"
+	"text/tabwriter"
+	"time"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -19,6 +24,40 @@ import (
 var nbTransactions = flag.Int("transactions", 10000, "number of transactions to create")
 var batch = flag.Int("batch", 1000, "logs batching")
 
+type bunContextHook struct{}
+
+func (b bunContextHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) context.Context {
+	hooks := ctx.Value("hooks")
+	if hooks == nil {
+		return ctx
+	}
+
+	for _, hook := range hooks.([]bun.QueryHook) {
+		ctx = hook.BeforeQuery(ctx, event)
+	}
+
+	return ctx
+}
+
+func (b bunContextHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {
+	hooks := ctx.Value("hooks")
+	if hooks == nil {
+		return
+	}
+
+	for _, hook := range hooks.([]bun.QueryHook) {
+		hook.AfterQuery(ctx, event)
+	}
+
+	return
+}
+
+var _ bun.QueryHook = &bunContextHook{}
+
+func contextWithHook(ctx context.Context, hooks ...bun.QueryHook) context.Context {
+	return context.WithValue(ctx, "hooks", hooks)
+}
+
 type scenarioInfo struct {
 	nbAccounts int
 }
@@ -27,6 +66,8 @@ type scenario struct {
 	name  string
 	setup func(ctx context.Context, b *testing.B, store *Store) *scenarioInfo
 }
+
+var now = ledger.Now()
 
 var scenarios = []scenario{
 	{
@@ -46,23 +87,29 @@ var scenarios = []scenario{
 					fees := itemPrice.Div(itemPrice, big.NewInt(100)) // 1%
 
 					appendLog(ledger.NewTransactionLog(
-						ledger.NewTransaction().WithPostings(ledger.NewPosting(
-							"world", fmt.Sprintf("player:%d", j/2), "USD/2", provision,
-						)).WithID(big.NewInt(int64(i*(*batch)+j))),
+						ledger.NewTransaction().
+							WithPostings(ledger.NewPosting(
+								"world", fmt.Sprintf("player:%d", j/2), "USD/2", provision,
+							)).
+							WithID(big.NewInt(int64(i*(*batch)+j))).
+							WithDate(now.Add(time.Minute*time.Duration(i*(*batch)+j))),
 						map[string]metadata.Metadata{},
 					))
 					appendLog(ledger.NewTransactionLog(
-						ledger.NewTransaction().WithPostings(
-							ledger.NewPosting(fmt.Sprintf("player:%d", j/2), "seller", "USD/2", itemPrice),
-							ledger.NewPosting("seller", "fees", "USD/2", fees),
-						).WithID(big.NewInt(int64(i*(*batch)+j+1))),
+						ledger.NewTransaction().
+							WithPostings(
+								ledger.NewPosting(fmt.Sprintf("player:%d", j/2), "seller", "USD/2", itemPrice),
+								ledger.NewPosting("seller", "fees", "USD/2", fees),
+							).
+							WithID(big.NewInt(int64(i*(*batch)+j+1))).
+							WithDate(now.Add(time.Minute*time.Duration(i*(*batch)+j))),
 						map[string]metadata.Metadata{},
 					))
 					status := "pending"
 					if j%8 == 0 {
 						status = "terminated"
 					}
-					appendLog(ledger.NewSetMetadataLog(ledger.Now(), ledger.SetMetadataLogPayload{
+					appendLog(ledger.NewSetMetadataLog(now.Add(time.Minute*time.Duration(i*(*batch)+j)), ledger.SetMetadataLogPayload{
 						TargetType: ledger.MetaTargetTypeTransaction,
 						TargetID:   big.NewInt(int64(i*(*batch) + j + 1)),
 						Metadata: map[string]string{
@@ -76,7 +123,7 @@ var scenarios = []scenario{
 			nbAccounts := *batch / 2
 
 			for i := 0; i < nbAccounts; i++ {
-				lastLog = ledger.NewSetMetadataLog(ledger.Now(), ledger.SetMetadataLogPayload{
+				lastLog = ledger.NewSetMetadataLog(now, ledger.SetMetadataLogPayload{
 					TargetType: ledger.MetaTargetTypeAccount,
 					TargetID:   fmt.Sprintf("player:%d", i),
 					Metadata: map[string]string{
@@ -93,36 +140,141 @@ var scenarios = []scenario{
 	},
 }
 
+func reportMetrics(ctx context.Context, b *testing.B, store *Store) {
+	type stat struct {
+		RelID        string `bun:"relid"`
+		IndexRelID   string `bun:"indexrelid"`
+		RelName      string `bun:"relname"`
+		IndexRelName string `bun:"indexrelname"`
+		IdxScan      int    `bun:"idxscan"`
+		IdxTupRead   int    `bun:"idx_tup_read"`
+		IdxTupFetch  int    `bun:"idx_tup_fetch"`
+	}
+	ret := make([]stat, 0)
+	err := store.db.NewSelect().
+		Table("pg_stat_user_indexes").
+		Where("schemaname = ?", store.name).
+		Scan(ctx, &ret)
+	require.NoError(b, err)
+
+	tabWriter := tabwriter.NewWriter(os.Stdout, 8, 8, 0, '\t', 0)
+	defer func() {
+		require.NoError(b, tabWriter.Flush())
+	}()
+	_, err = fmt.Fprintf(tabWriter, "IndexRelName\tIdxScan\tIdxTypRead\tIdxTupFetch\r\n")
+	require.NoError(b, err)
+
+	_, err = fmt.Fprintf(tabWriter, "---\t---\r\n")
+	require.NoError(b, err)
+
+	for _, s := range ret {
+		_, err := fmt.Fprintf(tabWriter, "%s\t%d\t%d\t%d\r\n", s.IndexRelName, s.IdxScan, s.IdxTupRead, s.IdxTupFetch)
+		require.NoError(b, err)
+	}
+}
+
+func reportTableSizes(ctx context.Context, b *testing.B, store *Store) {
+
+	tabWriter := tabwriter.NewWriter(os.Stdout, 12, 8, 0, '\t', 0)
+	defer func() {
+		require.NoError(b, tabWriter.Flush())
+	}()
+	_, err := fmt.Fprintf(tabWriter, "Table\tTotal size\tTable size\tRelation size\tIndexes size\tMain size\tFSM size\tVM size\tInit size\r\n")
+	require.NoError(b, err)
+
+	_, err = fmt.Fprintf(tabWriter, "---\t---\t---\t---\t---\t---\t---\t---\r\n")
+	require.NoError(b, err)
+
+	for _, table := range []string{
+		"transactions", "accounts", "moves", "logs", "transactions_metadata", "accounts_metadata",
+	} {
+		totalRelationSize := ""
+		err := store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_total_relation_size('%s'))`, table)).
+			Scan(&totalRelationSize)
+		require.NoError(b, err)
+
+		tableSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_table_size('%s'))`, table)).
+			Scan(&tableSize)
+		require.NoError(b, err)
+
+		relationSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s'))`, table)).
+			Scan(&relationSize)
+		require.NoError(b, err)
+
+		indexesSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_indexes_size('%s'))`, table)).
+			Scan(&indexesSize)
+		require.NoError(b, err)
+
+		mainSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'main'))`, table)).
+			Scan(&mainSize)
+		require.NoError(b, err)
+
+		fsmSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'fsm'))`, table)).
+			Scan(&fsmSize)
+		require.NoError(b, err)
+
+		vmSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'vm'))`, table)).
+			Scan(&vmSize)
+		require.NoError(b, err)
+
+		initSize := ""
+		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'init'))`, table)).
+			Scan(&initSize)
+		require.NoError(b, err)
+
+		_, err = fmt.Fprintf(tabWriter, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\r\n",
+			table, totalRelationSize, tableSize, relationSize, indexesSize, mainSize, fsmSize, vmSize, initSize)
+		require.NoError(b, err)
+	}
+}
+
 func BenchmarkList(b *testing.B) {
 
 	ctx := logging.TestingContext()
-	hooks := make([]bun.QueryHook, 0)
-	if testing.Verbose() {
-		hooks = append(hooks, bunexplain.NewExplainHook())
-	}
 
 	for _, scenario := range scenarios {
 		b.Run(scenario.name, func(b *testing.B) {
-			store := newLedgerStore(b, hooks...)
+			store := newLedgerStore(b, &bunContextHook{})
 			info := scenario.setup(ctx, b, store)
 
-			_, err := store.db.Exec("VACUUM ANALYZE")
+			defer func() {
+				if testing.Verbose() {
+					reportMetrics(ctx, b, store)
+					reportTableSizes(ctx, b, store)
+				}
+			}()
+
+			_, err := store.db.Exec("VACUUM FULL ANALYZE")
 			require.NoError(b, err)
 
-			b.Run("transactions", func(b *testing.B) {
-				benchmarksReadTransactions(b, ctx, store, info)
-			})
-			b.Run("accounts", func(b *testing.B) {
-				benchmarksReadAccounts(b, ctx, store)
-			})
-			b.Run("aggregates", func(b *testing.B) {
-				benchmarksGetAggregatedBalances(b, ctx, store)
+			runAllWithPIT := func(b *testing.B, pit *ledger.Time) {
+				b.Run("transactions", func(b *testing.B) {
+					benchmarksReadTransactions(b, ctx, store, info, pit)
+				})
+				b.Run("accounts", func(b *testing.B) {
+					benchmarksReadAccounts(b, ctx, store, pit)
+				})
+				b.Run("aggregates", func(b *testing.B) {
+					benchmarksGetAggregatedBalances(b, ctx, store, pit)
+				})
+			}
+			runAllWithPIT(b, nil)
+			b.Run("using pit", func(b *testing.B) {
+				// Use pit with the more recent, this way we force the storage to use a join
+				// Doing this allowing to test the worst case
+				runAllWithPIT(b, pointer.For(now.Add(time.Minute*time.Duration(*nbTransactions))))
 			})
 		})
 	}
 }
 
-func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store, info *scenarioInfo) {
+func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store, info *scenarioInfo, pit *ledger.Time) {
 	type testCase struct {
 		name                   string
 		query                  query.Builder
@@ -170,10 +322,16 @@ func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store,
 	for _, t := range testCases {
 		t := t
 		b.Run(t.name, func(b *testing.B) {
+			var q GetTransactionsQuery
 			for i := 0; i < b.N; i++ {
-				q := NewGetTransactionsQuery(PaginatedQueryOptions[PITFilterWithVolumes]{
-					PageSize:     10,
+				q = NewGetTransactionsQuery(PaginatedQueryOptions[PITFilterWithVolumes]{
+					PageSize:     100,
 					QueryBuilder: t.query,
+					Options: PITFilterWithVolumes{
+						PITFilter: PITFilter{
+							PIT: pit,
+						},
+					},
 				})
 				if t.expandVolumes {
 					q = q.WithExpandVolumes()
@@ -187,11 +345,16 @@ func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store,
 					require.Fail(b, "response should not be empty")
 				}
 			}
+
+			explainRequest(ctx, b, func(ctx context.Context) {
+				_, err := store.GetTransactions(ctx, q)
+				require.NoError(b, err)
+			})
 		})
 	}
 }
 
-func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store) {
+func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store, pit *ledger.Time) {
 	type testCase struct {
 		name                                  string
 		query                                 query.Builder
@@ -224,10 +387,16 @@ func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store) {
 	for _, t := range testCases {
 		t := t
 		b.Run(t.name, func(b *testing.B) {
+			var q GetAccountsQuery
 			for i := 0; i < b.N; i++ {
-				q := NewGetAccountsQuery(PaginatedQueryOptions[PITFilterWithVolumes]{
-					PageSize:     10,
+				q = NewGetAccountsQuery(PaginatedQueryOptions[PITFilterWithVolumes]{
+					PageSize:     100,
 					QueryBuilder: t.query,
+					Options: PITFilterWithVolumes{
+						PITFilter: PITFilter{
+							PIT: pit,
+						},
+					},
 				})
 				if t.expandVolumes {
 					q = q.WithExpandVolumes()
@@ -241,11 +410,16 @@ func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store) {
 					require.Fail(b, "response should not be empty")
 				}
 			}
+
+			explainRequest(ctx, b, func(ctx context.Context) {
+				_, err := store.GetAccountsWithVolumes(ctx, q)
+				require.NoError(b, err)
+			})
 		})
 	}
 }
 
-func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *Store) {
+func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *Store, pit *ledger.Time) {
 	type testCase struct {
 		name               string
 		query              query.Builder
@@ -273,16 +447,55 @@ func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *S
 	for _, t := range testCases {
 		t := t
 		b.Run(t.name, func(b *testing.B) {
+			var q GetAggregatedBalanceQuery
 			for i := 0; i < b.N; i++ {
-				ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PaginatedQueryOptions[PITFilter]{
-					PageSize:     10,
+				q = NewGetAggregatedBalancesQuery(PaginatedQueryOptions[PITFilter]{
+					PageSize:     100,
 					QueryBuilder: t.query,
-				}))
+					Options: PITFilter{
+						PIT: pit,
+					},
+				})
+				ret, err := store.GetAggregatedBalances(ctx, q)
 				require.NoError(b, err)
 				if !t.allowEmptyResponse && len(ret) == 0 {
 					require.Fail(b, "response should not be empty")
 				}
 			}
+
+			explainRequest(ctx, b, func(ctx context.Context) {
+				_, err := store.GetAggregatedBalances(ctx, q)
+				require.NoError(b, err)
+			})
 		})
 	}
+}
+
+func explainRequest(ctx context.Context, b *testing.B, f func(ctx context.Context)) {
+	var (
+		explained     string
+		jsonExplained string
+	)
+	additionalHooks := make([]bun.QueryHook, 0)
+	if testing.Verbose() {
+		additionalHooks = append(additionalHooks, bunexplain.NewExplainHook(bunexplain.WithListener(func(data string) {
+			explained = data
+		})))
+	}
+	additionalHooks = append(additionalHooks, bunexplain.NewExplainHook(
+		bunexplain.WithListener(func(data string) {
+			jsonExplained = data
+		}),
+		bunexplain.WithJSONFormat(),
+	))
+	ctx = contextWithHook(ctx, additionalHooks...)
+	f(ctx)
+
+	if testing.Verbose() {
+		fmt.Println(explained)
+	}
+	jsonQueryPlan := make([]any, 0)
+
+	require.NoError(b, json.Unmarshal([]byte(jsonExplained), &jsonQueryPlan))
+	b.ReportMetric(jsonQueryPlan[0].(map[string]any)["Plan"].(map[string]any)["Total Cost"].(float64), "cost")
 }
