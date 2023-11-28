@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
-	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"math/big"
 	"os"
 	"testing"
 	"text/tabwriter"
 	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/logging"
