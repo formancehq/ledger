@@ -197,8 +197,9 @@ func TestGetAccount(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	now := ledger.Now()
+	ctx := logging.TestingContext()
 
-	require.NoError(t, store.InsertLogs(context.Background(),
+	require.NoError(t, store.InsertLogs(ctx,
 		ledger.ChainLogs(
 			ledger.NewTransactionLog(ledger.NewTransaction().WithPostings(
 				ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
@@ -215,7 +216,7 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("find account", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("multi"))
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("multi"))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
 			Account: ledger.Account{
@@ -225,11 +226,43 @@ func TestGetAccount(t *testing.T) {
 				},
 			},
 		}, *account)
+
+		account, err = store.GetAccountWithVolumes(ctx, NewGetAccountQuery("world"))
+		require.NoError(t, err)
+		require.Equal(t, ledger.ExpandedAccount{
+			Account: ledger.Account{
+				Address:  "world",
+				Metadata: metadata.Metadata{},
+			},
+		}, *account)
+	})
+
+	t.Run("find account in past", func(t *testing.T) {
+		t.Parallel()
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("multi"))
+		require.NoError(t, err)
+		require.Equal(t, ledger.ExpandedAccount{
+			Account: ledger.Account{
+				Address: "multi",
+				Metadata: metadata.Metadata{
+					"category": "gold",
+				},
+			},
+		}, *account)
+
+		account, err = store.GetAccountWithVolumes(ctx, NewGetAccountQuery("world").WithPIT(ledger.Now()))
+		require.NoError(t, err)
+		require.Equal(t, ledger.ExpandedAccount{
+			Account: ledger.Account{
+				Address:  "world",
+				Metadata: metadata.Metadata{},
+			},
+		}, *account)
 	})
 
 	t.Run("find account with volumes", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("multi").
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("multi").
 			WithExpandVolumes())
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
@@ -247,7 +280,7 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("find account with effective volumes", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("multi").
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("multi").
 			WithExpandEffectiveVolumes())
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
@@ -265,7 +298,7 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("find account using pit", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("multi").WithPIT(now))
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("multi").WithPIT(now))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
 			Account: ledger.Account{
@@ -278,7 +311,7 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("not existent account", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("account_not_existing"))
+		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("account_not_existing"))
 		require.NoError(t, err)
 		require.NotNil(t, account)
 	})
