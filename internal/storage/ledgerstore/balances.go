@@ -17,10 +17,10 @@ import (
 func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 
 	var (
-		needJoinMetadata bool
-		subQuery         string
-		args             []any
-		err              error
+		needMetadata bool
+		subQuery     string
+		args         []any
+		err          error
 	)
 	if q.Options.QueryBuilder != nil {
 		subQuery, args, err = q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
@@ -42,9 +42,13 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 					return "", nil, newErrInvalidQuery("'metadata' column can only be used with $match")
 				}
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
-				needJoinMetadata = true
+				needMetadata = true
+				key := "accounts.metadata"
+				if q.Options.Options.PIT != nil {
+					key = "am.metadata"
+				}
 
-				return "am.metadata @> ?", []any{map[string]any{
+				return key + " @> ?", []any{map[string]any{
 					match[0][1]: value,
 				}}, nil
 			default:
@@ -68,14 +72,22 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				Order("account_address", "asset", "moves.seq desc").
 				Apply(filterPIT(q.Options.Options.PIT, "insertion_date")) // todo(gfyrag): expose capability to use effective_date
 
-			if needJoinMetadata {
-				moves = moves.Join(`left join lateral (	
-					select metadata
-					from accounts_metadata am 
-					where am.address = moves.account_address and (? is null or date <= ?)
-					order by revision desc 
-					limit 1
-				) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
+			if needMetadata {
+				if q.Options.Options.PIT != nil {
+					moves = moves.Join(`join lateral (	
+						select metadata
+						from accounts_metadata am 
+						where am.address = moves.account_address and (? is null or date <= ?)
+						order by revision desc 
+						limit 1
+					) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
+				} else {
+					moves = moves.Join(`join lateral (	
+						select metadata
+						from accounts a 
+						where a.address = moves.account_address
+					) accounts on true`)
+				}
 			}
 			if subQuery != "" {
 				moves = moves.Where(subQuery, args...)

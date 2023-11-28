@@ -410,6 +410,7 @@ func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store, pit
 				if !t.allowEmptyResponse && len(ret.Data) == 0 {
 					require.Fail(b, "response should not be empty")
 				}
+
 			}
 
 			explainRequest(ctx, b, func(ctx context.Context) {

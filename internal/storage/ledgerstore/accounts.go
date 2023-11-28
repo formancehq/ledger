@@ -16,18 +16,21 @@ import (
 )
 
 func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
+
 	query = query.
-		DistinctOn("accounts.address").
 		Column("accounts.address").
-		ColumnExpr("coalesce(metadata, '{}'::jsonb) as metadata").
 		Table("accounts").
 		Apply(filterPIT(q.PIT, "insertion_date")).
-		Order("accounts.address", "revision desc")
+		Order("accounts.address")
 
-	if q.PIT == nil {
-		query = query.Join("left join accounts_metadata on accounts_metadata.address = accounts.address")
+	if q.PIT != nil && !q.PIT.IsZero() {
+		query = query.
+			Column("accounts.address").
+			ColumnExpr("accounts_metadata.metadata").
+			Join("left join accounts_metadata on accounts_metadata.address = accounts.address and accounts_metadata.date < ?", q.PIT).
+			Order("revision desc")
 	} else {
-		query = query.Join("left join accounts_metadata on accounts_metadata.address = accounts.address and accounts_metadata.date < ?", q.PIT)
+		query = query.Column("metadata")
 	}
 
 	if q.ExpandVolumes {
@@ -45,7 +48,7 @@ func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQ
 	return query
 }
 
-func (store *Store) accountQueryContext(qb query.Builder) (string, []any, error) {
+func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (string, []any, error) {
 	metadataRegex := regexp.MustCompile("metadata\\[(.+)\\]")
 	balanceRegex := regexp.MustCompile("balance\\[(.*)\\]")
 
@@ -68,7 +71,12 @@ func (store *Store) accountQueryContext(qb query.Builder) (string, []any, error)
 			}
 			match := metadataRegex.FindAllStringSubmatch(key, 3)
 
-			return "metadata @> ?", []any{map[string]any{
+			key := "metadata"
+			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
+				key = "accounts_metadata.metadata"
+			}
+
+			return key + " @> ?", []any{map[string]any{
 				match[0][1]: value,
 			}}, nil
 		case balanceRegex.Match([]byte(key)):
@@ -113,7 +121,7 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQue
 		err   error
 	)
 	if q.Options.QueryBuilder != nil {
-		where, args, err = store.accountQueryContext(q.Options.QueryBuilder)
+		where, args, err = store.accountQueryContext(q.Options.QueryBuilder, q)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +179,7 @@ func (store *Store) CountAccounts(ctx context.Context, q GetAccountsQuery) (int,
 		err   error
 	)
 	if q.Options.QueryBuilder != nil {
-		where, args, err = store.accountQueryContext(q.Options.QueryBuilder)
+		where, args, err = store.accountQueryContext(q.Options.QueryBuilder, q)
 		if err != nil {
 			return 0, err
 		}

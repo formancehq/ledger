@@ -378,6 +378,7 @@ func TestInsertTransactions(t *testing.T) {
 
 		tx, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(big.NewInt(0)).
 			WithExpandVolumes())
+		require.NoError(t, err)
 		internaltesting.RequireEqual(t, tx1, *tx)
 	})
 

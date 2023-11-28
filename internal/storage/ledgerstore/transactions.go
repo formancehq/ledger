@@ -153,27 +153,29 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 		selectMetadata = selectMetadata.Where("date <= ?", p.PIT)
 	}
 
-	query = query.
-		Table("transactions").
-		ColumnExpr("distinct on(transactions.id) transactions.*, transactions_metadata.metadata").
-		Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String()))
+	query = query.Table("transactions")
 
 	if p.PIT != nil && !p.PIT.IsZero() {
 		query = query.
 			Where("timestamp <= ?", p.PIT).
+			ColumnExpr("distinct on(transactions.id) transactions.*").
+			Column("transactions_metadata.metadata").
+			Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String())).
 			ColumnExpr(fmt.Sprintf("case when reverted_at is not null and reverted_at > '%s' then null else reverted_at end", p.PIT.Format(ledger.DateFormat)))
+	} else {
+		query = query.Column("transactions.metadata", "transactions.*")
 	}
 
 	if p.ExpandEffectiveVolumes {
-		query = query.ColumnExpr("get_aggregated_effective_volumes_for_transaction(transactions) as post_commit_effective_volumes")
+		query = query.ColumnExpr("get_aggregated_effective_volumes_for_transaction(transactions.id) as post_commit_effective_volumes")
 	}
 	if p.ExpandVolumes {
-		query = query.ColumnExpr("get_aggregated_volumes_for_transaction(transactions) as post_commit_volumes")
+		query = query.ColumnExpr("get_aggregated_volumes_for_transaction(transactions.id) as post_commit_volumes")
 	}
 	return query
 }
 
-func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, error) {
+func (store *Store) transactionQueryContext(qb query.Builder, q GetTransactionsQuery) (string, []any, error) {
 
 	return qb.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 		switch {
@@ -218,7 +220,12 @@ func (store *Store) transactionQueryContext(qb query.Builder) (string, []any, er
 			}
 			match := metadataRegex.FindAllStringSubmatch(key, 3)
 
-			return "metadata @> ?", []any{map[string]any{
+			key := "metadata"
+			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
+				key = "transactions_metadata.metadata"
+			}
+
+			return key + " @> ?", []any{map[string]any{
 				match[0][1]: value,
 			}}, nil
 		default:
@@ -246,7 +253,7 @@ func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery)
 	)
 
 	if q.Options.QueryBuilder != nil {
-		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder)
+		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder, q)
 		if err != nil {
 			return nil, err
 		}
@@ -276,7 +283,7 @@ func (store *Store) CountTransactions(ctx context.Context, q GetTransactionsQuer
 	)
 
 	if q.Options.QueryBuilder != nil {
-		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder)
+		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder, q)
 		if err != nil {
 			return 0, err
 		}

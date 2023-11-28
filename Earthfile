@@ -115,4 +115,4 @@ benchstat:
     ARG compareAgainstRevision=main
     COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
     COPY --pass-args +bench/results.txt /tmp/branch.txt
-    RUN benchstat /tmp/main.txt /tmp/branch.txt
+    RUN --no-cache benchstat /tmp/main.txt /tmp/branch.txt

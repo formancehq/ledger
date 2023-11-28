@@ -36,14 +36,14 @@ func fetch[T any](s *Store, ctx context.Context, builders ...func(query *bun.Sel
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 	q *paginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
 
-	var ret RETURN
+	//var ret RETURN
 	query := s.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
-	if query.GetModel() == nil && query.GetTableName() == "" {
-		query = query.Model(ret)
-	}
+	//if query.GetModel() == nil && query.GetTableName() == "" {
+	//	query = query.Model(ret)
+	//}
 
 	return paginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
