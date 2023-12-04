@@ -65,11 +65,12 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 	}
 	ret, err := fetch[*Temp](store, ctx,
 		func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
-			moves := store.db.
+			moves := store.bucket.db.
 				NewSelect().
 				Table(MovesTableName).
 				ColumnExpr("distinct on (moves.account_address, moves.asset) moves.*").
 				Order("account_address", "asset", "moves.seq desc").
+				Where("moves.ledger = ?", store.name).
 				Apply(filterPIT(q.Options.Options.PIT, "insertion_date")) // todo(gfyrag): expose capability to use effective_date
 
 			if needMetadata {
@@ -77,7 +78,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 					moves = moves.Join(`join lateral (	
 						select metadata
 						from accounts_metadata am 
-						where am.address = moves.account_address and (? is null or date <= ?)
+						where am.accounts_seq = moves.accounts_seq and (? is null or date <= ?)
 						order by revision desc 
 						limit 1
 					) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
@@ -85,7 +86,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 					moves = moves.Join(`join lateral (	
 						select metadata
 						from accounts a 
-						where a.address = moves.account_address
+						where a.seq = moves.accounts_seq
 					) accounts on true`)
 				}
 			}
@@ -114,7 +115,7 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 		Balance *big.Int `bun:"balance,type:numeric"`
 	}
 	v, err := fetch[*Temp](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
-		return query.TableExpr("get_account_balance(?, ?) as balance", address, asset)
+		return query.TableExpr("get_account_balance(?, ?, ?) as balance", store.name, address, asset)
 	})
 	if err != nil {
 		return nil, err

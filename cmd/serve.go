@@ -40,7 +40,7 @@ func NewServe() *cobra.Command {
 				fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
 					if viper.GetBool(autoUpgradeFlag) {
 						lc.Append(fx.Hook{
-							OnStart: driver.UpgradeAllLedgersSchemas,
+							OnStart: driver.UpgradeAllBuckets,
 						})
 					}
 				}),

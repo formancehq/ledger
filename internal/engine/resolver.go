@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
@@ -67,6 +69,15 @@ func NewResolver(storageDriver *driver.Driver, options ...option) *Resolver {
 	return r
 }
 
+func (r *Resolver) startLedgerUsingStore(ctx context.Context, name string, store *ledgerstore.Store) *Ledger {
+	ledger := New(store, r.publisher, r.compiler)
+	ledger.Start(logging.ContextWithLogger(context.Background(), r.logger))
+	r.ledgers[name] = ledger
+	r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
+
+	return ledger
+}
+
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
 	r.lock.RLock()
 	ledger, ok := r.ledgers[name]
@@ -75,8 +86,6 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 	if !ok {
 		r.lock.Lock()
 		defer r.lock.Unlock()
-
-		logging.FromContext(ctx).Infof("Initialize new ledger")
 
 		ledger, ok = r.ledgers[name]
 		if ok {
@@ -88,13 +97,22 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return nil, err
 		}
 
-		ledger = New(store, r.publisher, r.compiler)
-		ledger.Start(logging.ContextWithLogger(context.Background(), r.logger))
-		r.ledgers[name] = ledger
-		r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
+		ledger = r.startLedgerUsingStore(ctx, name, store)
 	}
 
 	return ledger, nil
+}
+
+func (r *Resolver) CreateLedger(ctx context.Context, name string, configuration driver.LedgerConfiguration) (*Ledger, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	store, err := r.storageDriver.CreateLedgerStore(ctx, name, configuration)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.startLedgerUsingStore(ctx, name, store), nil
 }
 
 func (r *Resolver) CloseLedgers(ctx context.Context) error {

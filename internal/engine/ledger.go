@@ -122,7 +122,7 @@ func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	var err error
-	l.isSchemaUpToDate, err = l.store.IsSchemaUpToDate(ctx)
+	l.isSchemaUpToDate, err = l.store.IsUpToDate(ctx)
 
 	return l.isSchemaUpToDate, err
 }

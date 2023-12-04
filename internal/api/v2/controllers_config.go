@@ -9,36 +9,15 @@ import (
 )
 
 type ConfigInfo struct {
-	Server  string        `json:"server"`
-	Version string        `json:"version"`
-	Config  *LedgerConfig `json:"config"`
-}
-
-type LedgerConfig struct {
-	LedgerStorage *LedgerStorage `json:"storage"`
-}
-
-type LedgerStorage struct {
-	Driver  string   `json:"driver"`
-	Ledgers []string `json:"ledgers"`
+	Server  string `json:"server"`
+	Version string `json:"version"`
 }
 
 func getInfo(backend backend.Backend) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ledgers, err := backend.ListLedgers(r.Context())
-		if err != nil {
-			panic(err)
-		}
-
 		sharedapi.RawOk(w, ConfigInfo{
 			Server:  "ledger",
 			Version: backend.GetVersion(),
-			Config: &LedgerConfig{
-				LedgerStorage: &LedgerStorage{
-					Driver:  "postgres",
-					Ledgers: ledgers,
-				},
-			},
 		})
 	}
 }

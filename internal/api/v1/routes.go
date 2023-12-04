@@ -38,6 +38,7 @@ func NewRouter(b backend.Backend, healthController *health.HealthController, glo
 					handler.ServeHTTP(w, r)
 				})
 			})
+			router.Use(autoCreateMiddleware(b))
 			router.Use(backend.LedgerMiddleware(b, []string{"/_info"}))
 
 			// LedgerController

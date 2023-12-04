@@ -25,6 +25,7 @@ const (
 type Logs struct {
 	bun.BaseModel `bun:"logs,alias:logs"`
 
+	Ledger         string           `bun:"ledger,type:varchar"`
 	ID             *paginate.BigInt `bun:"id,unique,type:numeric"`
 	Type           string           `bun:"type,type:log_type"`
 	Hash           []byte           `bun:"hash,type:bytea"`
@@ -88,9 +89,9 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 	return store.withTransaction(ctx, func(tx bun.Tx) error {
 		// Beware: COPY query is not supported by bun if the pgx driver is used.
 		stmt, err := tx.Prepare(pq.CopyInSchema(
-			store.name,
+			store.bucket.name,
 			LogTableName,
-			"id", "type", "hash", "date", "data", "idempotency_key",
+			"ledger", "id", "type", "hash", "date", "data", "idempotency_key",
 		))
 		if err != nil {
 			return storageerrors.PostgresError(err)
@@ -104,6 +105,7 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 			}
 
 			ls[i] = Logs{
+				Ledger:         store.name,
 				ID:             (*paginate.BigInt)(chainedLogs.ID),
 				Type:           chainedLogs.Type.String(),
 				Hash:           chainedLogs.Hash,
@@ -112,7 +114,7 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 				IdempotencyKey: chainedLogs.IdempotencyKey,
 			}
 
-			_, err = stmt.Exec(ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), chainedLogs.IdempotencyKey)
+			_, err = stmt.Exec(ls[i].Ledger, ls[i].ID, ls[i].Type, ls[i].Hash, ls[i].Date, RawMessage(ls[i].Data), chainedLogs.IdempotencyKey)
 			if err != nil {
 				return storageerrors.PostgresError(err)
 			}
@@ -133,6 +135,7 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 			return query.
 				Table(LogTableName).
 				OrderExpr("id desc").
+				Where("ledger = ?", store.name).
 				Limit(1)
 		})
 	if err != nil {
@@ -163,7 +166,8 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 				Table(LogTableName).
 				OrderExpr("id desc").
 				Limit(1).
-				Where("idempotency_key = ?", key)
+				Where("idempotency_key = ?", key).
+				Where("ledger = ?", store.name)
 		})
 	if err != nil {
 		return nil, err

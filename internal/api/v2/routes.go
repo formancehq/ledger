@@ -36,36 +36,39 @@ func NewRouter(
 		router.Use(otelchi.Middleware("ledger"))
 		router.Get("/_info", getInfo(b))
 
+		router.Get("/", listLedgers(b))
 		router.Route("/{ledger}", func(router chi.Router) {
-			router.Use(backend.LedgerMiddleware(b, []string{"/_info"}))
+			router.Post("/", createLedger(b))
+			router.Get("/", getLedger(b))
 
-			router.Post("/_bulk", bulkHandler)
+			router.With(backend.LedgerMiddleware(b, []string{"/_info"})).Group(func(router chi.Router) {
+				router.Post("/_bulk", bulkHandler)
 
-			// LedgerController
-			router.Get("/_info", getLedgerInfo)
-			router.Get("/stats", getStats)
-			router.Get("/logs", getLogs)
+				// LedgerController
+				router.Get("/_info", getLedgerInfo)
+				router.Get("/stats", getStats)
+				router.Get("/logs", getLogs)
 
-			// AccountController
-			router.Get("/accounts", getAccounts)
-			router.Head("/accounts", countAccounts)
-			router.Get("/accounts/{address}", getAccount)
-			router.Post("/accounts/{address}/metadata", postAccountMetadata)
-			router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
+				// AccountController
+				router.Get("/accounts", getAccounts)
+				router.Head("/accounts", countAccounts)
+				router.Get("/accounts/{address}", getAccount)
+				router.Post("/accounts/{address}/metadata", postAccountMetadata)
+				router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
 
-			// TransactionController
-			router.Get("/transactions", getTransactions)
-			router.Head("/transactions", countTransactions)
+				// TransactionController
+				router.Get("/transactions", getTransactions)
+				router.Head("/transactions", countTransactions)
 
-			router.Post("/transactions", postTransaction)
+				router.Post("/transactions", postTransaction)
 
-			router.Get("/transactions/{id}", getTransaction)
-			router.Post("/transactions/{id}/revert", revertTransaction)
-			router.Post("/transactions/{id}/metadata", postTransactionMetadata)
-			router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
+				router.Get("/transactions/{id}", getTransaction)
+				router.Post("/transactions/{id}/revert", revertTransaction)
+				router.Post("/transactions/{id}/metadata", postTransactionMetadata)
+				router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
 
-			// TODO: Rename to /aggregatedBalances
-			router.Get("/aggregate/balances", getBalancesAggregated)
+				router.Get("/aggregate/balances", getBalancesAggregated)
+			})
 		})
 	})
 

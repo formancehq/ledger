@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+
+	"github.com/formancehq/ledger/internal/storage/systemstore"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"gopkg.in/segmentio/analytics-go.v3"
@@ -124,9 +128,15 @@ func TestAnalytics(t *testing.T) {
 			backend := NewMockBackend(ctrl)
 			backend.
 				EXPECT().
-				ListLedgers(gomock.Any()).
+				ListLedgers(gomock.Any(), gomock.Any()).
 				AnyTimes().
-				Return([]string{"default"}, nil)
+				Return(&sharedapi.Cursor[systemstore.Ledger]{
+					Data: []systemstore.Ledger{
+						{
+							Name: "default",
+						},
+					},
+				}, nil)
 			backend.
 				EXPECT().
 				AppID(gomock.Any()).

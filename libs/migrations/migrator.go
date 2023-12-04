@@ -16,6 +16,10 @@ const (
 	migrationTable = "goose_db_version"
 )
 
+var (
+	ErrMissingVersionTable = errors.New("missing version table")
+)
+
 type Info struct {
 	bun.BaseModel `bun:"goose_db_version"`
 
@@ -83,7 +87,7 @@ func (m *Migrator) getLastVersion(ctx context.Context, querier interface {
 			case *pq.Error:
 				switch err.Code {
 				case "42P01": // Table not exists
-					return -1, nil
+					return -1, ErrMissingVersionTable
 				}
 			}
 		}
@@ -109,136 +113,126 @@ func (m *Migrator) insertVersion(ctx context.Context, tx bun.Tx, version int) er
 	return err
 }
 
-func (m *Migrator) GetDBVersion(ctx context.Context, db *bun.DB) (int64, error) {
-	tx, err := m.newTx(ctx, db)
-	if err != nil {
-		return -1, err
+func (m *Migrator) GetDBVersion(ctx context.Context, db bun.IDB) (int64, error) {
+	ret := int64(0)
+	if err := m.runInTX(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		var err error
+		ret, err = m.getLastVersion(ctx, tx)
+		return err
+	}); err != nil {
+		return 0, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
 
-	return m.getLastVersion(ctx, tx)
+	return ret, nil
 }
 
-func (m *Migrator) newTx(ctx context.Context, db bun.IDB) (bun.Tx, error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return bun.Tx{}, err
-	}
-
-	if m.schema != "" {
-		_, err := tx.ExecContext(ctx, fmt.Sprintf(`set search_path = "%s"`, m.schema))
-		if err != nil {
-			return bun.Tx{}, err
-		}
-	}
-
-	return tx, err
-}
-
-func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
-	tx, err := m.newTx(ctx, db)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if m.schema != "" && m.createSchema {
-		_, err := tx.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, m.schema))
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := m.createVersionTable(ctx, tx); err != nil {
-		return err
-	}
-
-	lastMigration, err := m.getLastVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-
-	if len(m.migrations) > int(lastMigration)-1 {
-		for ind, migration := range m.migrations[lastMigration:] {
-			if migration.UpWithContext != nil {
-				if err := migration.UpWithContext(ctx, tx); err != nil {
-					return err
-				}
-			} else if migration.Up != nil {
-				if err := migration.Up(tx); err != nil {
-					return err
-				}
-			} else {
-				return errors.New("no code defined for migration")
-			}
-
-			if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
+func (m *Migrator) runInTX(ctx context.Context, db bun.IDB, fn func(ctx context.Context, tx bun.Tx) error) error {
+	return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		if m.schema != "" {
+			_, err := tx.ExecContext(ctx, fmt.Sprintf(`set search_path = "%s"`, m.schema))
+			if err != nil {
 				return err
 			}
 		}
-	}
+		return fn(ctx, tx)
+	})
+}
 
-	return tx.Commit()
+func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
+	return m.runInTX(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		if m.schema != "" && m.createSchema {
+			_, err := tx.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, m.schema))
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := m.createVersionTable(ctx, tx); err != nil {
+			return err
+		}
+
+		lastMigration, err := m.getLastVersion(ctx, tx)
+		if err != nil {
+			return err
+		}
+
+		if len(m.migrations) > int(lastMigration)-1 {
+			for ind, migration := range m.migrations[lastMigration:] {
+				if migration.UpWithContext != nil {
+					if err := migration.UpWithContext(ctx, tx); err != nil {
+						return err
+					}
+				} else if migration.Up != nil {
+					if err := migration.Up(tx); err != nil {
+						return err
+					}
+				} else {
+					return errors.New("no code defined for migration")
+				}
+
+				if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (m *Migrator) GetMigrations(ctx context.Context, db bun.IDB) ([]Info, error) {
-	tx, err := m.newTx(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	migrationTableName := migrationTable
-	if m.schema != "" {
-		migrationTableName = fmt.Sprintf(`"%s".%s`, m.schema, migrationTableName)
-	}
 
 	ret := make([]Info, 0)
-	if err := tx.NewSelect().
-		TableExpr(migrationTableName).
-		Order("version_id").
-		Where("version_id >= 1").
-		Column("version_id", "tstamp").
-		Scan(ctx, &ret); err != nil {
+	if err := m.runInTX(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		migrationTableName := migrationTable
+		if m.schema != "" {
+			migrationTableName = fmt.Sprintf(`"%s".%s`, m.schema, migrationTableName)
+		}
+
+		if err := tx.NewSelect().
+			TableExpr(migrationTableName).
+			Order("version_id").
+			Where("version_id >= 1").
+			Column("version_id", "tstamp").
+			Scan(ctx, &ret); err != nil {
+			return err
+		}
+
+		for i := 0; i < len(ret); i++ {
+			ret[i].Name = m.migrations[i].Name
+			ret[i].State = "DONE"
+		}
+
+		for i := len(ret); i < len(m.migrations); i++ {
+			ret = append(ret, Info{
+				Version: fmt.Sprint(i),
+				Name:    m.migrations[i].Name,
+				State:   "TO DO",
+			})
+		}
+
+		return nil
+	}); err != nil {
 		return nil, err
-	}
-
-	for i := 0; i < len(ret); i++ {
-		ret[i].Name = m.migrations[i].Name
-		ret[i].State = "DONE"
-	}
-
-	for i := len(ret); i < len(m.migrations); i++ {
-		ret = append(ret, Info{
-			Version: fmt.Sprint(i),
-			Name:    m.migrations[i].Name,
-			State:   "TO DO",
-		})
 	}
 
 	return ret, nil
 }
 
 func (m *Migrator) IsUpToDate(ctx context.Context, db *bun.DB) (bool, error) {
-	tx, err := m.newTx(ctx, db)
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-	version, err := m.getLastVersion(ctx, tx)
-	if err != nil {
+	ret := false
+	if err := m.runInTX(ctx, db, func(ctx context.Context, tx bun.Tx) error {
+		version, err := m.getLastVersion(ctx, tx)
+		if err != nil {
+			return err
+		}
+
+		ret = int(version) == len(m.migrations)
+		return nil
+	}); err != nil {
 		return false, err
 	}
 
-	return int(version) == len(m.migrations), nil
+	return ret, nil
 }
 
 func NewMigrator(opts ...option) *Migrator {

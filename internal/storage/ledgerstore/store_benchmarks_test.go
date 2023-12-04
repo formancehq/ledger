@@ -24,6 +24,7 @@ import (
 
 var nbTransactions = flag.Int("transactions", 10000, "number of transactions to create")
 var batch = flag.Int("batch", 1000, "logs batching")
+var ledgers = flag.Int("ledgers", 100, "number of ledger for multi ledgers benchmarks")
 
 type bunContextHook struct{}
 
@@ -139,6 +140,82 @@ var scenarios = []scenario{
 			}
 		},
 	},
+	{
+		name: "multi-ledger",
+		setup: func(ctx context.Context, b *testing.B, store *Store) *scenarioInfo {
+			var lastLog *ledger.ChainedLog
+
+			nbAccounts := *batch / 2
+			loadData := func(store *Store) {
+				for i := 0; i < *nbTransactions/(*batch); i++ {
+					logs := make([]*ledger.ChainedLog, 0)
+					appendLog := func(log *ledger.Log) {
+						chainedLog := log.ChainLog(lastLog)
+						logs = append(logs, chainedLog)
+						lastLog = chainedLog
+					}
+					for j := 0; j < (*batch); j += 2 {
+						provision := big.NewInt(10000)
+						itemPrice := provision.Div(provision, big.NewInt(2))
+						fees := itemPrice.Div(itemPrice, big.NewInt(100)) // 1%
+
+						appendLog(ledger.NewTransactionLog(
+							ledger.NewTransaction().
+								WithPostings(ledger.NewPosting(
+									"world", fmt.Sprintf("player:%d", j/2), "USD/2", provision,
+								)).
+								WithID(big.NewInt(int64(i*(*batch)+j))).
+								WithDate(now.Add(time.Minute*time.Duration(i*(*batch)+j))),
+							map[string]metadata.Metadata{},
+						))
+						appendLog(ledger.NewTransactionLog(
+							ledger.NewTransaction().
+								WithPostings(
+									ledger.NewPosting(fmt.Sprintf("player:%d", j/2), "seller", "USD/2", itemPrice),
+									ledger.NewPosting("seller", "fees", "USD/2", fees),
+								).
+								WithID(big.NewInt(int64(i*(*batch)+j+1))).
+								WithDate(now.Add(time.Minute*time.Duration(i*(*batch)+j))),
+							map[string]metadata.Metadata{},
+						))
+						status := "pending"
+						if j%8 == 0 {
+							status = "terminated"
+						}
+						appendLog(ledger.NewSetMetadataLog(now.Add(time.Minute*time.Duration(i*(*batch)+j)), ledger.SetMetadataLogPayload{
+							TargetType: ledger.MetaTargetTypeTransaction,
+							TargetID:   big.NewInt(int64(i*(*batch) + j + 1)),
+							Metadata: map[string]string{
+								"status": status,
+							},
+						}))
+					}
+					require.NoError(b, store.InsertLogs(ctx, logs...))
+				}
+
+				for i := 0; i < nbAccounts; i++ {
+					lastLog = ledger.NewSetMetadataLog(now, ledger.SetMetadataLogPayload{
+						TargetType: ledger.MetaTargetTypeAccount,
+						TargetID:   fmt.Sprintf("player:%d", i),
+						Metadata: map[string]string{
+							"level": fmt.Sprint(i % 4),
+						},
+					}).ChainLog(lastLog)
+					require.NoError(b, store.InsertLogs(ctx, lastLog))
+				}
+			}
+
+			for i := 0; i < *ledgers; i++ {
+				store := newLedgerStore(b)
+				loadData(store)
+			}
+			loadData(store)
+
+			return &scenarioInfo{
+				nbAccounts: nbAccounts,
+			}
+		},
+	},
 }
 
 func reportMetrics(ctx context.Context, b *testing.B, store *Store) {
@@ -152,13 +229,13 @@ func reportMetrics(ctx context.Context, b *testing.B, store *Store) {
 		IdxTupFetch  int    `bun:"idx_tup_fetch"`
 	}
 	ret := make([]stat, 0)
-	err := store.db.NewSelect().
+	err := store.GetDB().NewSelect().
 		Table("pg_stat_user_indexes").
 		Where("schemaname = ?", store.name).
 		Scan(ctx, &ret)
 	require.NoError(b, err)
 
-	tabWriter := tabwriter.NewWriter(os.Stdout, 8, 8, 0, '\t', 0)
+	tabWriter := tabwriter.NewWriter(os.Stderr, 8, 8, 0, '\t', 0)
 	defer func() {
 		require.NoError(b, tabWriter.Flush())
 	}()
@@ -176,7 +253,7 @@ func reportMetrics(ctx context.Context, b *testing.B, store *Store) {
 
 func reportTableSizes(ctx context.Context, b *testing.B, store *Store) {
 
-	tabWriter := tabwriter.NewWriter(os.Stdout, 12, 8, 0, '\t', 0)
+	tabWriter := tabwriter.NewWriter(os.Stderr, 12, 8, 0, '\t', 0)
 	defer func() {
 		require.NoError(b, tabWriter.Flush())
 	}()
@@ -190,42 +267,42 @@ func reportTableSizes(ctx context.Context, b *testing.B, store *Store) {
 		"transactions", "accounts", "moves", "logs", "transactions_metadata", "accounts_metadata",
 	} {
 		totalRelationSize := ""
-		err := store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_total_relation_size('%s'))`, table)).
+		err := store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_total_relation_size('%s'))`, table)).
 			Scan(&totalRelationSize)
 		require.NoError(b, err)
 
 		tableSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_table_size('%s'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_table_size('%s'))`, table)).
 			Scan(&tableSize)
 		require.NoError(b, err)
 
 		relationSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s'))`, table)).
 			Scan(&relationSize)
 		require.NoError(b, err)
 
 		indexesSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_indexes_size('%s'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_indexes_size('%s'))`, table)).
 			Scan(&indexesSize)
 		require.NoError(b, err)
 
 		mainSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'main'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'main'))`, table)).
 			Scan(&mainSize)
 		require.NoError(b, err)
 
 		fsmSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'fsm'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'fsm'))`, table)).
 			Scan(&fsmSize)
 		require.NoError(b, err)
 
 		vmSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'vm'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'vm'))`, table)).
 			Scan(&vmSize)
 		require.NoError(b, err)
 
 		initSize := ""
-		err = store.db.DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'init'))`, table)).
+		err = store.GetDB().DB.QueryRowContext(ctx, fmt.Sprintf(`select pg_size_pretty(pg_relation_size('%s', 'init'))`, table)).
 			Scan(&initSize)
 		require.NoError(b, err)
 
@@ -251,7 +328,7 @@ func BenchmarkList(b *testing.B) {
 				}
 			}()
 
-			_, err := store.db.Exec("VACUUM FULL ANALYZE")
+			_, err := store.GetDB().Exec("VACUUM FULL ANALYZE")
 			require.NoError(b, err)
 
 			runAllWithPIT := func(b *testing.B, pit *ledger.Time) {
