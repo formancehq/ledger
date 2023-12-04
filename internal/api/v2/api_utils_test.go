@@ -14,7 +14,7 @@ func newTestingBackend(t *testing.T, expectedSchemaCheck bool) (*backend.MockBac
 	backend := backend.NewMockBackend(ctrl)
 	backend.
 		EXPECT().
-		GetLedger(gomock.Any(), gomock.Any()).
+		GetLedgerEngine(gomock.Any(), gomock.Any()).
 		MinTimes(0).
 		Return(mockLedger, nil)
 	t.Cleanup(func() {

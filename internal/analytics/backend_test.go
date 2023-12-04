@@ -12,6 +12,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	systemstore "github.com/formancehq/ledger/internal/storage/systemstore"
+	api "github.com/formancehq/stack/libs/go-libs/api"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -122,16 +124,16 @@ func (mr *MockBackendMockRecorder) GetLedgerStore(ctx, l any) *gomock.Call {
 }
 
 // ListLedgers mocks base method.
-func (m *MockBackend) ListLedgers(ctx context.Context) ([]string, error) {
+func (m *MockBackend) ListLedgers(ctx context.Context, query systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].([]string)
+	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
+	ret0, _ := ret[0].(*api.Cursor[systemstore.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListLedgers indicates an expected call of ListLedgers.
-func (mr *MockBackendMockRecorder) ListLedgers(ctx any) *gomock.Call {
+func (mr *MockBackendMockRecorder) ListLedgers(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockBackend)(nil).ListLedgers), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockBackend)(nil).ListLedgers), ctx, query)
 }

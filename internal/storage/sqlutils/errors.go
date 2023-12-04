@@ -31,9 +31,10 @@ func PostgresError(err error) error {
 }
 
 var (
-	ErrNotFound           = errors.New("not found")
-	ErrStoreAlreadyExists = errors.New("store already exists")
-	ErrStoreNotFound      = errors.New("store not found")
+	ErrNotFound            = errors.New("not found")
+	ErrBucketAlreadyExists = errors.New("bucket already exists")
+	ErrStoreAlreadyExists  = errors.New("store already exists")
+	ErrStoreNotFound       = errors.New("store not found")
 )
 
 func IsNotFoundError(err error) bool {

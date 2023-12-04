@@ -1,8 +1,10 @@
 package driver_test
 
 import (
-	"context"
+	"fmt"
 	"testing"
+
+	"github.com/formancehq/ledger/internal/storage/driver"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
@@ -14,44 +16,88 @@ import (
 )
 
 func TestConfiguration(t *testing.T) {
-	d := storagetesting.StorageDriver(t)
-	defer func() {
-		_ = d.Close()
-	}()
+	t.Parallel()
 
-	require.NoError(t, d.GetSystemStore().InsertConfiguration(context.Background(), "foo", "bar"))
-	bar, err := d.GetSystemStore().GetConfiguration(context.Background(), "foo")
+	d := storagetesting.StorageDriver(t)
+	ctx := logging.TestingContext()
+
+	require.NoError(t, d.GetSystemStore().InsertConfiguration(ctx, "foo", "bar"))
+	bar, err := d.GetSystemStore().GetConfiguration(ctx, "foo")
 	require.NoError(t, err)
 	require.Equal(t, "bar", bar)
 }
 
 func TestConfigurationError(t *testing.T) {
-	d := storagetesting.StorageDriver(t)
-	defer func() {
-		_ = d.Close()
-	}()
+	t.Parallel()
 
-	_, err := d.GetSystemStore().GetConfiguration(context.Background(), "not_existing")
+	d := storagetesting.StorageDriver(t)
+	ctx := logging.TestingContext()
+
+	_, err := d.GetSystemStore().GetConfiguration(ctx, "not_existing")
 	require.Error(t, err)
 	require.True(t, sqlutils.IsNotFoundError(err))
 }
 
-func TestErrorOnOutdatedSchema(t *testing.T) {
-	d := storagetesting.StorageDriver(t)
-	defer func() {
-		require.NoError(t, d.Close())
-	}()
+func TestErrorOnOutdatedBucket(t *testing.T) {
+	t.Parallel()
 
+	ctx := logging.TestingContext()
+	d := storagetesting.StorageDriver(t)
+
+	name := uuid.NewString()
+
+	b, err := d.OpenBucket(name)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = b.Close()
+	})
+
+	upToDate, err := b.IsUpToDate(ctx)
+	require.NoError(t, err)
+	require.False(t, upToDate)
+}
+
+func TestGetLedgerFromDefaultBucket(t *testing.T) {
+	t.Parallel()
+
+	d := storagetesting.StorageDriver(t)
 	ctx := logging.TestingContext()
 
 	name := uuid.NewString()
-	_, err := d.GetSystemStore().Register(ctx, name)
+	_, err := d.CreateLedgerStore(ctx, name, driver.LedgerConfiguration{})
 	require.NoError(t, err)
+}
 
-	store, err := d.GetLedgerStore(ctx, name)
-	require.NoError(t, err)
+func TestGetLedgerFromAlternateBucket(t *testing.T) {
+	t.Parallel()
 
-	upToDate, err := store.IsSchemaUpToDate(ctx)
+	d := storagetesting.StorageDriver(t)
+	ctx := logging.TestingContext()
+
+	ledgerName := "ledger0"
+	bucketName := "bucket0"
+
+	_, err := d.CreateLedgerStore(ctx, ledgerName, driver.LedgerConfiguration{
+		Bucket: bucketName,
+	})
 	require.NoError(t, err)
-	require.False(t, upToDate)
+}
+
+func TestUpgradeAllBuckets(t *testing.T) {
+	t.Parallel()
+
+	d := storagetesting.StorageDriver(t)
+	ctx := logging.TestingContext()
+
+	count := 30
+
+	for i := 0; i < count; i++ {
+		name := fmt.Sprintf("ledger%d", i)
+		_, err := d.CreateLedgerStore(ctx, name, driver.LedgerConfiguration{
+			Bucket: name,
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, d.UpgradeAllBuckets(ctx))
 }

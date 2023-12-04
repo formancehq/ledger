@@ -79,7 +79,7 @@ func Testing() *logrusLogger {
 	once.Do(flag.Parse)
 
 	if testing.Verbose() {
-		logger.SetOutput(os.Stdout)
+		logger.SetOutput(os.Stderr)
 		logger.SetLevel(logrus.DebugLevel)
 	}
 

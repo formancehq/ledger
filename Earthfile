@@ -86,6 +86,7 @@ bench:
     COPY (+sources/*) /src
     WORKDIR /src/components/ledger/internal/storage/ledgerstore
     ARG numberOfTransactions=10000
+    ARG ledgers=10
     ARG benchTime=1s
     ARG count=1
     ARG GOPROXY
@@ -104,6 +105,7 @@ bench:
             go test -timeout $testTimeout -bench=$bench -run ^$ $additionalArgs \
             -benchtime=$benchTime \
             -count=$count \
+            -ledgers=$ledgers \
             -transactions=$numberOfTransactions | tee -a /results.txt
     END
     RUN benchstat /results.txt

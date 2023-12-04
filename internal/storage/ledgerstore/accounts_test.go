@@ -56,14 +56,14 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list all", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 7)
 	})
 
 	t.Run("list using metadata", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Match("metadata[category]", "1")),
 		))
 		require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list before date", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
 			PITFilter: PITFilter{
 				PIT: &now,
 			},
@@ -83,7 +83,7 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list with volumes", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
 			ExpandVolumes: true,
 		}).WithQueryBuilder(query.Match("address", "account:1"))))
 		require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list with volumes using PIT", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
 			PITFilter: PITFilter{
 				PIT: &now,
 			},
@@ -110,7 +110,7 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list with effective volumes", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{
 			ExpandEffectiveVolumes: true,
 		}).WithQueryBuilder(query.Match("address", "account:1"))))
 		require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestGetAccounts(t *testing.T) {
 
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Match("address", "account:")),
 		))
 		require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 	t.Run("list using filter on multiple address", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 			WithQueryBuilder(
 				query.Or(
 					query.Match("address", "account:1"),
@@ -158,7 +158,7 @@ func TestGetAccounts(t *testing.T) {
 	})
 	t.Run("list using filter on balances", func(t *testing.T) {
 		t.Parallel()
-		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+		accounts, err := store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 			WithQueryBuilder(query.Lt("balance[USD]", 0)),
 		))
 		require.NoError(t, err)
@@ -320,16 +320,17 @@ func TestGetAccount(t *testing.T) {
 func TestGetAccountWithVolumes(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
 
 	bigInt, _ := big.NewInt(0).SetString("999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)
 
-	require.NoError(t, insertTransactions(context.Background(), store,
+	require.NoError(t, insertTransactions(ctx, store,
 		*ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", "multi", "USD/2", bigInt),
 		),
 	))
 
-	accountWithVolumes, err := store.GetAccountWithVolumes(context.Background(),
+	accountWithVolumes, err := store.GetAccountWithVolumes(ctx,
 		NewGetAccountQuery("multi").WithExpandVolumes())
 	require.NoError(t, err)
 	require.Equal(t, &ledger.ExpandedAccount{
@@ -346,14 +347,15 @@ func TestGetAccountWithVolumes(t *testing.T) {
 func TestUpdateAccountMetadata(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
 
-	require.NoError(t, store.InsertLogs(context.Background(),
+	require.NoError(t, store.InsertLogs(ctx,
 		ledger.NewSetMetadataOnAccountLog(ledger.Now(), "central_bank", metadata.Metadata{
 			"foo": "bar",
 		}).ChainLog(nil),
 	))
 
-	account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("central_bank"))
+	account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("central_bank"))
 	require.NoError(t, err)
 	require.EqualValues(t, "bar", account.Metadata["foo"])
 }
@@ -361,14 +363,15 @@ func TestUpdateAccountMetadata(t *testing.T) {
 func TestCountAccounts(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
 
-	require.NoError(t, insertTransactions(context.Background(), store,
+	require.NoError(t, insertTransactions(ctx, store,
 		*ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", "central_bank", "USD/2", big.NewInt(100)),
 		),
 	))
 
-	countAccounts, err := store.CountAccounts(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
+	countAccounts, err := store.CountAccounts(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))
 	require.NoError(t, err)
 	require.EqualValues(t, 2, countAccounts) // world + central_bank
 }

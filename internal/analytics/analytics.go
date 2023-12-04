@@ -7,6 +7,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/formancehq/ledger/internal/storage/paginate"
+	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/stack/libs/go-libs/api"
+
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -90,44 +94,49 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		Set(CPUCountProperty, runtime.NumCPU()).
 		Set(TotalMemoryProperty, memory.TotalMemory()/1024/1024)
 
-	ledgers, err := m.backend.ListLedgers(ctx)
+	ledgersProperty := map[string]any{}
+	err = paginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
+		func(ctx context.Context, q systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
+			return m.backend.ListLedgers(ctx, q)
+		},
+		func(cursor *api.Cursor[systemstore.Ledger]) error {
+			for _, l := range cursor.Data {
+				stats := map[string]any{}
+				if err := func() error {
+					store, err := m.backend.GetLedgerStore(ctx, l.Name)
+					if err != nil && err != storageerrors.ErrStoreNotFound {
+						return err
+					}
+
+					transactions, err := store.CountTransactions(ctx)
+					if err != nil {
+						return err
+					}
+
+					accounts, err := store.CountAccounts(ctx)
+					if err != nil {
+						return err
+					}
+					stats[TransactionsProperty] = transactions
+					stats[AccountsProperty] = accounts
+
+					return nil
+				}(); err != nil {
+					return err
+				}
+
+				digest := sha256.New()
+				digest.Write([]byte(l.Name))
+				ledgerHash := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
+
+				ledgersProperty[ledgerHash] = stats
+			}
+			return nil
+		})
 	if err != nil {
 		return err
 	}
 
-	ledgersProperty := map[string]any{}
-
-	for _, l := range ledgers {
-		stats := map[string]any{}
-		if err := func() error {
-			store, err := m.backend.GetLedgerStore(ctx, l)
-			if err != nil && err != storageerrors.ErrStoreNotFound {
-				return err
-			}
-
-			transactions, err := store.CountTransactions(ctx)
-			if err != nil {
-				return err
-			}
-
-			accounts, err := store.CountAccounts(ctx)
-			if err != nil {
-				return err
-			}
-			stats[TransactionsProperty] = transactions
-			stats[AccountsProperty] = accounts
-
-			return nil
-		}(); err != nil {
-			return err
-		}
-
-		digest := sha256.New()
-		digest.Write([]byte(l))
-		ledgerHash := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
-
-		ledgersProperty[ledgerHash] = stats
-	}
 	if len(ledgersProperty) > 0 {
 		properties.Set(LedgersProperty, ledgersProperty)
 	}

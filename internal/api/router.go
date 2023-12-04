@@ -28,7 +28,7 @@ func NewRouter(
 		mux.Use(ReadOnly)
 	}
 	v2Router := v2.NewRouter(backend, healthController, globalMetricsRegistry)
-	mux.Handle("/v2/*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
 		v2Router.ServeHTTP(w, r)
 	})))

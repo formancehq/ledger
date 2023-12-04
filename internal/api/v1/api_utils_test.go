@@ -3,6 +3,8 @@ package v1_test
 import (
 	"testing"
 
+	"github.com/formancehq/ledger/internal/storage/systemstore"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"go.uber.org/mock/gomock"
 )
@@ -14,6 +16,14 @@ func newTestingBackend(t *testing.T, expectedSchemaCheck bool) (*backend.MockBac
 	backend.
 		EXPECT().
 		GetLedger(gomock.Any(), gomock.Any()).
+		MinTimes(0).
+		Return(&systemstore.Ledger{}, nil)
+	t.Cleanup(func() {
+		ctrl.Finish()
+	})
+	backend.
+		EXPECT().
+		GetLedgerEngine(gomock.Any(), gomock.Any()).
 		MinTimes(0).
 		Return(mockLedger, nil)
 	t.Cleanup(func() {

@@ -25,6 +25,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /v2:
+    get:
+      summary: List ledgers
+      operationId: listLedgers
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      tags:
+        - Ledger
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerListResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v2/{ledger}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+
+    get:
+      summary: Get a ledger
+      operationId: getLedger
+      tags:
+      - Ledger
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ledger'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a ledger
+      operationId: createLedger
+      tags:
+      - Ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLedgerRequest'
+      responses:
+        "204":
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v2/{ledger}/_info:
     get:
       summary: Get information about a ledger
@@ -949,27 +1039,6 @@ components:
         data:
           $ref: '#/components/schemas/AssetsBalances'
 
-    Config:
-      type: object
-      properties:
-        storage:
-          $ref: '#/components/schemas/LedgerStorage'
-      required:
-        - storage
-
-    LedgerStorage:
-      type: object
-      properties:
-        driver:
-          type: string
-        ledgers:
-          type: array
-          items:
-            type: string
-      required:
-        - driver
-        - ledgers
-
     Metadata:
       type: object
       additionalProperties:
@@ -979,8 +1048,6 @@ components:
     ConfigInfo:
       type: object
       properties:
-        config:
-          $ref: '#/components/schemas/Config'
         server:
           type: string
         version:
@@ -1527,3 +1594,56 @@ components:
           required:
             - errorCode
             - errorDescription
+
+    CreateLedgerRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+
+    Ledger:
+      type: object
+      properties:
+        name:
+          type: string
+        addedAt:
+          type: string
+          format: date-time
+        bucket:
+          type: string
+      required:
+        - name
+        - addedAt
+        - bucket
+
+    LedgerListResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Ledger'

@@ -20,6 +20,7 @@ func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQ
 	query = query.
 		Column("accounts.address").
 		Table("accounts").
+		Where("accounts.ledger = ?", store.name).
 		Apply(filterPIT(q.PIT, "insertion_date")).
 		Order("accounts.address")
 
@@ -27,7 +28,7 @@ func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQ
 		query = query.
 			Column("accounts.address").
 			ColumnExpr("accounts_metadata.metadata").
-			Join("left join accounts_metadata on accounts_metadata.address = accounts.address and accounts_metadata.date < ?", q.PIT).
+			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq and accounts_metadata.date < ?", q.PIT).
 			Order("revision desc")
 	} else {
 		query = query.Column("metadata")
@@ -36,13 +37,13 @@ func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQ
 	if q.ExpandVolumes {
 		query = query.
 			ColumnExpr("volumes.*").
-			Join("join get_account_aggregated_volumes(accounts.address, ?) volumes on true", q.PIT)
+			Join("join get_account_aggregated_volumes(?, accounts.address, ?) volumes on true", store.name, q.PIT)
 	}
 
 	if q.ExpandEffectiveVolumes {
 		query = query.
 			ColumnExpr("effective_volumes.*").
-			Join("join get_account_aggregated_effective_volumes(accounts.address, ?) effective_volumes on true", q.PIT)
+			Join("join get_account_aggregated_effective_volumes(?, accounts.address, ?) effective_volumes on true", store.name, q.PIT)
 	}
 
 	return query
@@ -85,18 +86,18 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 			return `(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where asset = ? and account_address = accounts.address
+				where asset = ? and account_address = accounts.address and ledger = ?
 				order by seq desc
 				limit 1
-			) < ?`, []any{match[0][1], value}, nil
+			) < ?`, []any{match[0][1], store.name, value}, nil
 		case key == "balance":
 			return `(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
-				where account_address = accounts.address
+				where account_address = accounts.address and ledger = ?
 				order by seq desc
 				limit 1
-			) < ?`, nil, nil
+			) < ?`, []any{store.name, value}, nil
 		default:
 			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}
@@ -143,6 +144,7 @@ func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Acc
 			Table("accounts").
 			Join("left join accounts_metadata on accounts_metadata.address = accounts.address").
 			Where("accounts.address = ?", address).
+			Where("accounts.ledger = ?", store.name).
 			Order("revision desc").
 			Limit(1)
 	})

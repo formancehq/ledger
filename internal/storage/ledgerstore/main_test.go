@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
-	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/uptrace/bun"
+
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
@@ -49,31 +51,48 @@ type T interface {
 	Cleanup(func())
 }
 
+func newBucket(t T, hooks ...bun.QueryHook) *Bucket {
+	name := uuid.NewString()
+	ctx := logging.TestingContext()
+
+	pgDatabase := pgtesting.NewPostgresDatabase(t)
+
+	connectionOptions := sqlutils.ConnectionOptions{
+		DatabaseSourceName: pgDatabase.ConnString(),
+		Debug:              testing.Verbose(),
+		MaxIdleConns:       40,
+		MaxOpenConns:       40,
+		ConnMaxIdleTime:    time.Minute,
+	}
+
+	bucket, err := ConnectToBucket(connectionOptions, name, hooks...)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = bucket.Close()
+	})
+
+	require.NoError(t, bucket.Migrate(ctx))
+
+	return bucket
+}
+
 func newLedgerStore(t T, hooks ...bun.QueryHook) *Store {
 	t.Helper()
 
 	ledgerName := uuid.NewString()
+	ctx := logging.TestingContext()
 
-	_, err := bunDB.Exec(fmt.Sprintf(`create schema if not exists "%s"`, ledgerName))
+	_, err := bunDB.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, ledgerName))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_, err = bunDB.Exec(fmt.Sprintf(`drop schema "%s" cascade`, ledgerName))
+		_, err = bunDB.ExecContext(ctx, fmt.Sprintf(`drop schema "%s" cascade`, ledgerName))
 		require.NoError(t, err)
 	})
 
-	ledgerDB, err := sqlutils.OpenDBWithSchema(sqlutils.ConnectionOptions{
-		DatabaseSourceName: pgtesting.Server().GetDSN(),
-		Debug:              testing.Verbose(),
-	}, ledgerName, hooks...)
-	require.NoError(t, err)
+	bucket := newBucket(t, hooks...)
 
-	store, err := New(ledgerDB, ledgerName, func(ctx context.Context) error {
-		return nil
-	})
-	require.NoError(t, err)
-
-	_, err = store.Migrate(logging.TestingContext())
+	store, err := bucket.CreateLedgerStore(ledgerName)
 	require.NoError(t, err)
 
 	return store

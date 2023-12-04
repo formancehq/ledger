@@ -15,8 +15,6 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 )
 
 type TestingT interface {
@@ -35,7 +33,7 @@ func (s *pgDatabase) ConnString() string {
 type pgServer struct {
 	destroy func() error
 	lock    sync.Mutex
-	db      *bun.DB
+	db      *sql.DB
 	port    string
 	config  config
 }
@@ -221,7 +219,12 @@ func CreatePostgresServer(opts ...option) error {
 			fmt.Sprintf("POSTGRES_DB=%s", cfg.initialDatabaseName),
 		},
 		Entrypoint: nil,
-		Cmd:        []string{"-c", "superuser-reserved-connections=0"},
+		Cmd: []string{
+			"-c", "superuser-reserved-connections=0",
+			"-c", "enable_partition_pruning=on",
+			"-c", "enable_partitionwise_join=on",
+			"-c", "enable_partitionwise_aggregate=on",
+		},
 	}, cfg.hostConfigOptions...)
 	if err != nil {
 		return errors.Wrap(err, "unable to start postgres server container")
@@ -249,11 +252,11 @@ func CreatePostgresServer(opts ...option) error {
 	}
 
 	try := time.Duration(0)
-	sqldb, err := sql.Open("postgres", srv.GetDatabaseDSN(cfg.initialDatabaseName))
+	srv.db, err = sql.Open("postgres", srv.GetDatabaseDSN(cfg.initialDatabaseName))
 	if err != nil {
 		return err
 	}
-	srv.db = bun.NewDB(sqldb, pgdialect.New())
+
 	for try*cfg.statusCheckInterval < cfg.maximumWaitingTime {
 		err := srv.db.Ping()
 		if err != nil {

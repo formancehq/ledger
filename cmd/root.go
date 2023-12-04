@@ -37,18 +37,12 @@ func NewRootCommand() *cobra.Command {
 	serve := NewServe()
 	version := NewVersion()
 
-	conf := NewConfig()
-	conf.AddCommand(NewConfigInit())
-	store := NewStorage()
-	store.AddCommand(NewStorageInit())
-	store.AddCommand(NewStorageList())
-	store.AddCommand(NewStorageUpgrade())
-	store.AddCommand(NewStorageUpgradeAll())
-	store.AddCommand(NewStorageDelete())
+	buckets := NewBucket()
+	buckets.AddCommand(NewBucketUpgrade())
+	buckets.AddCommand(NewBucketUpgradeAll())
 
 	root.AddCommand(serve)
-	root.AddCommand(conf)
-	root.AddCommand(store)
+	root.AddCommand(buckets)
 	root.AddCommand(version)
 
 	root.AddCommand(NewDocCommand())

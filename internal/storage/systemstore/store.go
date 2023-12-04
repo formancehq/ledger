@@ -2,22 +2,36 @@ package systemstore
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	"github.com/uptrace/bun"
 )
 
+const Schema = "_system"
+
 type Store struct {
 	db *bun.DB
 }
 
-func NewStore(db *bun.DB) *Store {
-	return &Store{db: db}
+func Connect(ctx context.Context, connectionOptions sqlutils.ConnectionOptions) (*Store, error) {
+
+	db, err := sqlutils.OpenDBWithSchema(connectionOptions, Schema)
+	if err != nil {
+		return nil, sqlutils.PostgresError(err)
+	}
+
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, Schema))
+	if err != nil {
+		return nil, sqlutils.PostgresError(err)
+	}
+
+	return &Store{db: db}, nil
 }
 
-func (s *Store) Initialize(ctx context.Context) error {
-	return sqlutils.PostgresError(s.getMigrator().Up(ctx, s.db))
+func (s *Store) DB() *bun.DB {
+	return s.db
 }
 
 func (s *Store) Close() error {

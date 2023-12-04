@@ -3,18 +3,15 @@ package ledgerstore
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/stack/libs/go-libs/migrations"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
 
 type Store struct {
-	db       *bun.DB
-	onDelete func(ctx context.Context) error
+	bucket *Bucket
 
 	name string
 }
@@ -23,55 +20,30 @@ func (store *Store) Name() string {
 	return store.name
 }
 
-func (store *Store) GetDatabase() *bun.DB {
-	return store.db
-}
-
-func (store *Store) Delete(ctx context.Context) error {
-	_, err := store.db.ExecContext(ctx, "delete schema ? cascade", store.name)
-	if err != nil {
-		return err
-	}
-	return errors.Wrap(store.onDelete(ctx), "deleting ledger store")
-}
-
-func (store *Store) prepareTransaction(ctx context.Context) (bun.Tx, error) {
-	txOptions := &sql.TxOptions{}
-
-	tx, err := store.db.BeginTx(ctx, txOptions)
-	if err != nil {
-		return tx, err
-	}
-	if _, err := tx.Exec(fmt.Sprintf(`set search_path = "%s"`, store.Name())); err != nil {
-		return tx, err
-	}
-	return tx, nil
+func (store *Store) GetDB() *bun.DB {
+	return store.bucket.db
 }
 
 func (store *Store) withTransaction(ctx context.Context, callback func(tx bun.Tx) error) error {
-	tx, err := store.prepareTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	if err := callback(tx); err != nil {
-		_ = tx.Rollback()
-		return sqlutils.PostgresError(err)
-	}
-	return tx.Commit()
+	return store.bucket.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		return callback(tx)
+	})
 }
 
-func (store *Store) IsSchemaUpToDate(ctx context.Context) (bool, error) {
-	return store.getMigrator().IsUpToDate(ctx, store.db)
+func (store *Store) IsUpToDate(ctx context.Context) (bool, error) {
+	return store.bucket.IsUpToDate(ctx)
+}
+
+func (store *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
+	return store.bucket.GetMigrationsInfo(ctx)
 }
 
 func New(
-	db *bun.DB,
+	bucket *Bucket,
 	name string,
-	onDelete func(ctx context.Context) error,
 ) (*Store, error) {
 	return &Store{
-		db:       db,
-		name:     name,
-		onDelete: onDelete,
+		bucket: bucket,
+		name:   name,
 	}, nil
 }
