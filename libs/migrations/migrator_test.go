@@ -15,9 +15,9 @@ import (
 
 func TestMigrations(t *testing.T) {
 	require.NoError(t, pgtesting.CreatePostgresServer())
-	defer func() {
+	t.Cleanup(func() {
 		require.NoError(t, pgtesting.DestroyPostgresServer())
-	}()
+	})
 
 	migrator := NewMigrator()
 	migrator.RegisterMigrations(

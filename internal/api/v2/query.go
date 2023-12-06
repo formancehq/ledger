@@ -5,14 +5,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/pkg/errors"
 )
 
 const (
 	MaxPageSize     = 100
-	DefaultPageSize = paginate.QueryDefaultPageSize
+	DefaultPageSize = bunpaginate.QueryDefaultPageSize
 
 	QueryKeyCursor   = "cursor"
 	QueryKeyPageSize = "pageSize"

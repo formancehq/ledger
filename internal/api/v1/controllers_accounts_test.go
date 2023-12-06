@@ -6,12 +6,13 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -57,7 +58,7 @@ func TestGetAccounts(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{paginate.EncodeCursor(ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgerstore.NewGetAccountsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
 		},

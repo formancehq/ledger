@@ -5,7 +5,7 @@ import (
 	_ "embed"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/storage/paginate"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
@@ -33,7 +33,7 @@ func getInfo(backend backend.Backend) func(w http.ResponseWriter, r *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ledgerNames := make([]string, 0)
-		if err := paginate.Iterate(r.Context(), systemstore.NewListLedgersQuery(100),
+		if err := bunpaginate.Iterate(r.Context(), systemstore.NewListLedgersQuery(100),
 			func(ctx context.Context, q systemstore.ListLedgersQuery) (*sharedapi.Cursor[systemstore.Ledger], error) {
 				return backend.ListLedgers(ctx, q)
 			},

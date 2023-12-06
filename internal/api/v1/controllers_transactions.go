@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/engine/command"
@@ -17,12 +20,10 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/go-chi/chi/v5"
 )
 
 func mapTransactionToV1(tx ledger.Transaction) any {
@@ -118,7 +119,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	query := ledgerstore.GetTransactionsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
+		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
 			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return

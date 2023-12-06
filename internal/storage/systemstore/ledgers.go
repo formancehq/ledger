@@ -3,7 +3,8 @@ package systemstore
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/storage/paginate"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 
@@ -24,7 +25,7 @@ type PaginatedQueryOptions struct {
 	PageSize uint64 `json:"pageSize"`
 }
 
-type ListLedgersQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions]
+type ListLedgersQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions]
 
 func (query ListLedgersQuery) WithPageSize(pageSize uint64) ListLedgersQuery {
 	query.PageSize = pageSize
@@ -43,7 +44,7 @@ func (s *Store) ListLedgers(ctx context.Context, q ListLedgersQuery) (*sharedapi
 		Column("ledger", "bucket", "addedat").
 		Order("addedat asc")
 
-	return paginate.UsingOffset[PaginatedQueryOptions, Ledger](ctx, query, paginate.OffsetPaginatedQuery[PaginatedQueryOptions](q))
+	return bunpaginate.UsingOffset[PaginatedQueryOptions, Ledger](ctx, query, bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions](q))
 }
 
 func (s *Store) DeleteLedger(ctx context.Context, name string) error {

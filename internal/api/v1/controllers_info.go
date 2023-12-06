@@ -3,16 +3,17 @@ package v1
 import (
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/migrations"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/go-chi/chi/v5"
 )
 
 type Info struct {
@@ -82,7 +83,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	query := ledgerstore.GetLogsQuery{}
 
 	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
+		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
 		if err != nil {
 			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
 			return

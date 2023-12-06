@@ -1,4 +1,4 @@
-package paginate
+package bunpaginate
 
 import (
 	"encoding/base64"

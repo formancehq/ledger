@@ -5,10 +5,11 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
@@ -129,12 +130,12 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	return v.Balance, nil
 }
 
-type GetAggregatedBalanceQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]
+type GetAggregatedBalanceQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]
 
 func NewGetAggregatedBalancesQuery(options PaginatedQueryOptions[PITFilter]) GetAggregatedBalanceQuery {
 	return GetAggregatedBalanceQuery{
 		PageSize: options.PageSize,
-		Order:    paginate.OrderAsc,
+		Order:    bunpaginate.OrderAsc,
 		Options:  options,
 	}
 }

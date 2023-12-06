@@ -1,4 +1,4 @@
-package paginate
+package bunpaginate
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"math/big"
 	"reflect"
 	"strings"
-
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
@@ -44,7 +42,7 @@ func UsingColumn[FILTERS any, ENTITY any](ctx context.Context,
 	}
 
 	if err := sb.Scan(ctx, &ret); err != nil {
-		return nil, storageerrors.PostgresError(err)
+		return nil, err
 	}
 	var (
 		paginatedColumnIndex = 0

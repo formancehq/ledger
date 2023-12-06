@@ -1,4 +1,4 @@
-package paginate_test
+package bunpaginate_test
 
 import (
 	"os"

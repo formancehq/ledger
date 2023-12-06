@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/uptrace/bun"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
@@ -57,7 +58,7 @@ func newBucket(t T, hooks ...bun.QueryHook) *Bucket {
 
 	pgDatabase := pgtesting.NewPostgresDatabase(t)
 
-	connectionOptions := sqlutils.ConnectionOptions{
+	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),
 		Debug:              testing.Verbose(),
 		MaxIdleConns:       40,

@@ -1,18 +1,15 @@
-package sqlutils
+package bunconnect
 
 import (
 	"database/sql"
 	"fmt"
-	"io"
-	"net/url"
-	"time"
-
-	"github.com/pkg/errors"
-
 	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/extra/bunotel"
+	"io"
+	"net/url"
+	"time"
 )
 
 type ConnectionOptions struct {
@@ -32,7 +29,7 @@ func (opts ConnectionOptions) String() string {
 func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, error) {
 	sqldb, err := sql.Open("postgres", options.DatabaseSourceName)
 	if err != nil {
-		return nil, errors.Wrap(err, "connecting to server")
+		return nil, err
 	}
 	if options.MaxIdleConns != 0 {
 		sqldb.SetMaxIdleConns(options.MaxIdleConns)
@@ -54,27 +51,23 @@ func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, erro
 	}
 
 	if err := db.Ping(); err != nil {
-		return nil, errors.Wrap(err, "pinging server")
+		return nil, err
 	}
 
 	return db, nil
 }
 
 func OpenDBWithSchema(connectionOptions ConnectionOptions, schema string, hooks ...bun.QueryHook) (*bun.DB, error) {
-	connectionOptions.DatabaseSourceName = SchemaConnectionString(connectionOptions.DatabaseSourceName, schema)
-
-	return OpenSQLDB(connectionOptions, hooks...)
-}
-
-func SchemaConnectionString(sourceName, schema string) string {
-	parsedConnectionParams, err := url.Parse(sourceName)
+	parsedConnectionParams, err := url.Parse(connectionOptions.DatabaseSourceName)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	query := parsedConnectionParams.Query()
 	query.Set("search_path", schema)
 	parsedConnectionParams.RawQuery = query.Encode()
 
-	return parsedConnectionParams.String()
+	connectionOptions.DatabaseSourceName = parsedConnectionParams.String()
+
+	return OpenSQLDB(connectionOptions, hooks...)
 }

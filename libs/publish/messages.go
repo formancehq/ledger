@@ -26,3 +26,11 @@ type EventMessage struct {
 	Type    string    `json:"type"`
 	Payload any       `json:"payload"`
 }
+
+func UnmarshalMessage(msg *message.Message) (*EventMessage, error) {
+	ev := &EventMessage{}
+	if err := json.Unmarshal(msg.Payload, ev); err != nil {
+		return nil, err
+	}
+	return ev, nil
+}

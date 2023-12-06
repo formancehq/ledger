@@ -10,8 +10,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -29,13 +30,13 @@ var (
 type Transaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
-	ID         *paginate.BigInt  `bun:"id,type:numeric"`
-	Timestamp  ledger.Time       `bun:"timestamp,type:timestamp without time zone"`
-	Reference  string            `bun:"reference,type:varchar,unique,nullzero"`
-	Postings   []ledger.Posting  `bun:"postings,type:jsonb"`
-	Metadata   metadata.Metadata `bun:"metadata,type:jsonb,default:'{}'"`
-	RevertedAt *ledger.Time      `bun:"reverted_at"`
-	LastUpdate *ledger.Time      `bun:"last_update"`
+	ID         *bunpaginate.BigInt `bun:"id,type:numeric"`
+	Timestamp  ledger.Time         `bun:"timestamp,type:timestamp without time zone"`
+	Reference  string              `bun:"reference,type:varchar,unique,nullzero"`
+	Postings   []ledger.Posting    `bun:"postings,type:jsonb"`
+	Metadata   metadata.Metadata   `bun:"metadata,type:jsonb,default:'{}'"`
+	RevertedAt *ledger.Time        `bun:"reverted_at"`
+	LastUpdate *ledger.Time        `bun:"last_update"`
 }
 
 func (t *Transaction) toCore() *ledger.Transaction {
@@ -55,7 +56,7 @@ type ExpandedTransaction struct {
 	Transaction
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
-	ID                         *paginate.BigInt             `bun:"id,type:numeric"`
+	ID                         *bunpaginate.BigInt          `bun:"id,type:numeric"`
 	Timestamp                  ledger.Time                  `bun:"timestamp,type:timestamp without time zone"`
 	Reference                  string                       `bun:"reference,type:varchar,unique,nullzero"`
 	Postings                   []ledger.Posting             `bun:"postings,type:jsonb"`
@@ -261,7 +262,7 @@ func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery)
 	}
 
 	transactions, err := paginateWithColumn[PaginatedQueryOptions[PITFilterWithVolumes], ExpandedTransaction](store, ctx,
-		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
+		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionListQuery(query, q.Options, where, args)
 		},
@@ -316,7 +317,7 @@ func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.
 				Table("transactions").
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
-				Where("transactions.id = ?", (*paginate.BigInt)(txId)).
+				Where("transactions.id = ?", (*bunpaginate.BigInt)(txId)).
 				Where("transactions.ledger = ?", store.name).
 				Order("tm.revision desc").
 				Limit(1)
@@ -365,7 +366,7 @@ func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTra
 	return ret.toCore(), nil
 }
 
-type GetTransactionsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
+type GetTransactionsQuery bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
 
 func (q GetTransactionsQuery) WithExpandVolumes() GetTransactionsQuery {
 	q.Options.Options.ExpandVolumes = true
@@ -383,7 +384,7 @@ func NewGetTransactionsQuery(options PaginatedQueryOptions[PITFilterWithVolumes]
 	return GetTransactionsQuery{
 		PageSize: options.PageSize,
 		Column:   "id",
-		Order:    paginate.OrderDesc,
+		Order:    bunpaginate.OrderDesc,
 		Options:  options,
 	}
 }

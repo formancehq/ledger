@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/formancehq/stack/libs/go-libs/migrations"
 	"github.com/pkg/errors"
@@ -124,8 +126,8 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 	)
 }
 
-func ConnectToBucket(connectionOptions sqlutils.ConnectionOptions, name string, hooks ...bun.QueryHook) (*Bucket, error) {
-	db, err := sqlutils.OpenDBWithSchema(connectionOptions, name, hooks...)
+func ConnectToBucket(connectionOptions bunconnect.ConnectionOptions, name string, hooks ...bun.QueryHook) (*Bucket, error) {
+	db, err := bunconnect.OpenDBWithSchema(connectionOptions, name, hooks...)
 	if err != nil {
 		return nil, sqlutils.PostgresError(err)
 	}

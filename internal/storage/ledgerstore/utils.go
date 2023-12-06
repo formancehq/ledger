@@ -7,10 +7,11 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
@@ -34,7 +35,7 @@ func fetch[T any](s *Store, ctx context.Context, builders ...func(query *bun.Sel
 }
 
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
-	q *paginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
+	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
 
 	//var ret RETURN
 	query := s.bucket.db.NewSelect()
@@ -45,16 +46,21 @@ func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 	//	query = query.Model(ret)
 	//}
 
-	return paginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
+	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
 
-func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *paginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
+func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
 	query := s.bucket.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
 
-	return paginate.UsingColumn[FILTERS, RETURN](ctx, query, *q)
+	ret, err := bunpaginate.UsingColumn[FILTERS, RETURN](ctx, query, *q)
+	if err != nil {
+		return nil, sqlutils.PostgresError(err)
+	}
+
+	return ret, nil
 }
 
 func count(s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (int, error) {
@@ -178,7 +184,7 @@ func (opts PaginatedQueryOptions[T]) WithPageSize(pageSize uint64) PaginatedQuer
 func NewPaginatedQueryOptions[T any](options T) PaginatedQueryOptions[T] {
 	return PaginatedQueryOptions[T]{
 		Options:  options,
-		PageSize: paginate.QueryDefaultPageSize,
+		PageSize: bunpaginate.QueryDefaultPageSize,
 	}
 }
 

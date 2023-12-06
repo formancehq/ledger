@@ -1,12 +1,11 @@
-package paginate_test
+package bunpaginate_test
 
 import (
 	"context"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	bunpaginate2 "github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
-
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ func TestOffsetPagination(t *testing.T) {
 	t.Parallel()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := sqlutils.OpenSQLDB(sqlutils.ConnectionOptions{
+	db, err := bunconnect.OpenSQLDB(bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 	})
@@ -49,87 +48,87 @@ func TestOffsetPagination(t *testing.T) {
 
 	type testCase struct {
 		name                  string
-		query                 paginate.OffsetPaginatedQuery[bool]
-		expectedNext          *paginate.OffsetPaginatedQuery[bool]
-		expectedPrevious      *paginate.OffsetPaginatedQuery[bool]
+		query                 bunpaginate2.OffsetPaginatedQuery[bool]
+		expectedNext          *bunpaginate2.OffsetPaginatedQuery[bool]
+		expectedPrevious      *bunpaginate2.OffsetPaginatedQuery[bool]
 		expectedNumberOfItems uint64
 	}
 	testCases := []testCase{
 		{
 			name: "asc first page",
-			query: paginate.OffsetPaginatedQuery[bool]{
+			query: bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
-			expectedNext: &paginate.OffsetPaginatedQuery[bool]{
+			expectedNext: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
 				Offset:   10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
 			expectedNumberOfItems: 10,
 		},
 		{
 			name: "asc second page using next cursor",
-			query: paginate.OffsetPaginatedQuery[bool]{
+			query: bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
 				Offset:   10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
-			expectedPrevious: &paginate.OffsetPaginatedQuery[bool]{
+			expectedPrevious: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   0,
 			},
-			expectedNext: &paginate.OffsetPaginatedQuery[bool]{
+			expectedNext: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   20,
 			},
 			expectedNumberOfItems: 10,
 		},
 		{
 			name: "asc last page using next cursor",
-			query: paginate.OffsetPaginatedQuery[bool]{
+			query: bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
 				Offset:   90,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
-			expectedPrevious: &paginate.OffsetPaginatedQuery[bool]{
+			expectedPrevious: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   80,
 			},
 			expectedNumberOfItems: 10,
 		},
 		{
 			name: "asc last page partial",
-			query: paginate.OffsetPaginatedQuery[bool]{
+			query: bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
 				Offset:   95,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
-			expectedPrevious: &paginate.OffsetPaginatedQuery[bool]{
+			expectedPrevious: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   85,
 			},
 			expectedNumberOfItems: 10,
 		},
 		{
 			name: "asc fist page partial",
-			query: paginate.OffsetPaginatedQuery[bool]{
+			query: bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
 				Offset:   5,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 			},
-			expectedPrevious: &paginate.OffsetPaginatedQuery[bool]{
+			expectedPrevious: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   0,
 			},
-			expectedNext: &paginate.OffsetPaginatedQuery[bool]{
+			expectedNext: &bunpaginate2.OffsetPaginatedQuery[bool]{
 				PageSize: 10,
-				Order:    paginate.OrderAsc,
+				Order:    bunpaginate2.OrderAsc,
 				Offset:   15,
 			},
 			expectedNumberOfItems: 10,
@@ -144,7 +143,7 @@ func TestOffsetPagination(t *testing.T) {
 			if tc.query.Options {
 				query = query.Where("pair = ?", true)
 			}
-			cursor, err := paginate.UsingOffset[bool, model](
+			cursor, err := bunpaginate2.UsingOffset[bool, model](
 				context.Background(),
 				query,
 				tc.query)
@@ -155,8 +154,8 @@ func TestOffsetPagination(t *testing.T) {
 			} else {
 				require.NotEmpty(t, cursor.Next)
 
-				q := paginate.OffsetPaginatedQuery[bool]{}
-				require.NoError(t, paginate.UnmarshalCursor(cursor.Next, &q))
+				q := bunpaginate2.OffsetPaginatedQuery[bool]{}
+				require.NoError(t, bunpaginate2.UnmarshalCursor(cursor.Next, &q))
 				require.EqualValues(t, *tc.expectedNext, q)
 			}
 
@@ -165,8 +164,8 @@ func TestOffsetPagination(t *testing.T) {
 			} else {
 				require.NotEmpty(t, cursor.Previous)
 
-				q := paginate.OffsetPaginatedQuery[bool]{}
-				require.NoError(t, paginate.UnmarshalCursor(cursor.Previous, &q))
+				q := bunpaginate2.OffsetPaginatedQuery[bool]{}
+				require.NoError(t, bunpaginate2.UnmarshalCursor(cursor.Previous, &q))
 				require.EqualValues(t, *tc.expectedPrevious, q)
 			}
 		})

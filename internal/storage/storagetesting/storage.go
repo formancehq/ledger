@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -15,7 +15,7 @@ import (
 func StorageDriver(t pgtesting.TestingT) *driver.Driver {
 	pgDatabase := pgtesting.NewPostgresDatabase(t)
 
-	d := driver.New(sqlutils.ConnectionOptions{
+	d := driver.New(bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),
 		Debug:              testing.Verbose(),
 		MaxIdleConns:       40,
