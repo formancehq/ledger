@@ -94,11 +94,16 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				moves = moves.Where(subQuery, args...)
 			}
 
-			return selectQuery.
-				With("moves", moves).
+			asJsonb := selectQuery.NewSelect().
 				TableExpr("moves").
 				ColumnExpr("volumes_to_jsonb((moves.asset, (sum((moves.post_commit_volumes).inputs), sum((moves.post_commit_volumes).outputs))::volumes)) as aggregated").
 				Group("moves.asset")
+
+			return selectQuery.
+				With("moves", moves).
+				With("data", asJsonb).
+				TableExpr("data").
+				ColumnExpr("aggregate_objects(data.aggregated) as aggregated")
 		})
 	if err != nil && !errors.Is(err, sqlutils.ErrNotFound) {
 		return nil, err

@@ -32,6 +32,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 	tx2 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "users:1", "USD", bigInt),
 		ledger.NewPosting("world", "users:2", "USD", smallInt),
+		ledger.NewPosting("world", "xxx", "EUR", smallInt),
 	).WithDate(now.Add(time.Minute)).WithIDUint64(1)
 
 	require.NoError(t, store.InsertLogs(ctx,
@@ -66,6 +67,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		require.NoError(t, err)
 		internaltesting.RequireEqual(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0),
+			"EUR": big.NewInt(0),
 		}, cursor)
 	})
 	t.Run("filter on address", func(t *testing.T) {
