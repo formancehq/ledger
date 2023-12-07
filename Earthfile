@@ -3,6 +3,7 @@ VERSION --pass-args --arg-scope-and-set 0.7
 ARG core=github.com/formancehq/earthly:v0.5.2
 IMPORT $core AS core
 IMPORT ../.. AS stack
+IMPORT .. AS components
 
 FROM core+base-image
 
@@ -69,7 +70,7 @@ deploy:
 lint:
     FROM core+builder-image
     COPY (+sources/*) /src
-    COPY --pass-args (stack+tidy/go.* --component=ledger) .
+    COPY --pass-args (components+tidy/go.* --components=ledger) .
     WORKDIR /src/components/ledger
     DO --pass-args stack+GO_LINT
     SAVE ARTIFACT cmd AS LOCAL cmd
