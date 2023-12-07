@@ -1,6 +1,6 @@
 project_name: ledger
 monorepo:
-  tag_prefix: apps/ledger/
+  tag_prefix: components/ledger/
   dir: ./
 
 includes:
