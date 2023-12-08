@@ -188,7 +188,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 			return err
 		}
 
-		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucket)
+		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucket.Name())
 		if err := bucket.Migrate(ctx); err != nil {
 			return err
 		}

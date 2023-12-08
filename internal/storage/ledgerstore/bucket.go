@@ -22,6 +22,10 @@ type Bucket struct {
 	db   *bun.DB
 }
 
+func (b *Bucket) Name() string {
+	return b.name
+}
+
 func (b *Bucket) Migrate(ctx context.Context) error {
 	return MigrateBucket(ctx, b.db, b.name)
 }
