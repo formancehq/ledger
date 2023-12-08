@@ -2,6 +2,7 @@ package systemstore
 
 import (
 	"context"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 

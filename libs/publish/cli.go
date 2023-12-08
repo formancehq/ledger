@@ -79,7 +79,7 @@ func CLIPublisherModule(v *viper.Viper, serviceName string) fx.Option {
 		options = append(options, NatsModule(
 			v.GetString(PublisherNatsURLFlag),
 			serviceName,
-			nats.Name(v.GetString(PublisherNatsClientIDFlag)),
+			nats.Name(serviceName),
 			nats.MaxReconnects(v.GetInt(PublisherNatsMaxReconnectFlag)),
 			nats.ReconnectWait(v.GetDuration(PublisherNatsReconnectWaitFlag)),
 		))
