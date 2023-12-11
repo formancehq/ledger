@@ -5,30 +5,120 @@ info:
   version: "LEDGER_VERSION"
 
 paths:
-  /_info:
+  /v2/_info:
     get:
       tags:
-        - Server
+        - Ledger
       summary: Show server information
-      operationId: getInfo
+      operationId: v2GetInfo
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConfigInfoResponse'
+                $ref: '#/components/schemas/V2ConfigInfoResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/_info:
+  /v2:
+    get:
+      summary: List ledgers
+      operationId: v2ListLedgers
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+      tags:
+        - Ledger
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2LedgerListResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+  /v2/{ledger}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+
+    get:
+      summary: Get a ledger
+      operationId: v2GetLedger
+      tags:
+      - Ledger
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2Ledger'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+    post:
+      summary: Create a ledger
+      operationId: v2CreateLedger
+      tags:
+      - Ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2CreateLedgerRequest'
+      responses:
+        "204":
+          description: OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+  /v2/{ledger}/_info:
     get:
       summary: Get information about a ledger
-      operationId: getLedgerInfo
+      operationId: v2GetLedgerInfo
       tags:
         - Ledger
       parameters:
@@ -45,20 +135,59 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LedgerInfoResponse'
+                $ref: '#/components/schemas/V2LedgerInfoResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/accounts:
+  /v2/{ledger}/_bulk:
+    post:
+      summary: Bulk request
+      operationId: v2CreateBulk
+      tags:
+      - Ledger
+      parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2Bulk'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2BulkResponse'
+        "400":
+          description: Failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2BulkResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+  /v2/{ledger}/accounts:
     head:
       summary: Count the accounts from a ledger
-      operationId: countAccounts
+      operationId: v2CountAccounts
       tags:
-        - Accounts
+        - Ledger
       parameters:
         - name: ledger
           in: path
@@ -67,42 +196,40 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: address
+        - name: pit
           in: query
-          description: Filter accounts by address pattern (regular expression placed between ^ and $).
+          required: false
           schema:
             type: string
-            example: users:.+
-        - name: metadata
-          in: query
-          description: Filter accounts by metadata key value pairs. The filter can be used like this metadata[key]=value1&metadata[a.nested.key]=value2
-          style: deepObject
-          explode: true
-          schema:
-            type: object
-            properties: {}
+            format: date-time
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
-        "200":
+        "204":
           description: OK
           headers:
             Count:
               schema:
                 type: integer
-                format: int64
+                format: bigint
                 minimum: 0
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
     get:
       summary: List accounts from a ledger
       description: List accounts from a ledger, sorted by address in descending order.
-      operationId: listAccounts
+      operationId: v2ListAccounts
       tags:
-        - Accounts
+        - Ledger
       parameters:
         - name: ledger
           in: path
@@ -121,42 +248,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
-        - name: after
-          in: query
-          description: Pagination cursor, will return accounts after given address, in descending order.
-          schema:
-            type: string
-            example: users:003
-        - name: address
-          in: query
-          description: Filter accounts by address pattern (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:.+
-        - name: metadata
-          in: query
-          description: Filter accounts by metadata key value pairs. Nested objects can be used as seen in the example below.
-          style: deepObject
-          explode: true
-          schema:
-            type: object
-            properties: {}
-        - name: balance
-          in: query
-          description: Filter accounts by their balance (default operator is gte)
-          schema:
-            type: integer
-            format: int64
-            example: 2400
-        - name: balanceOperator
-          in: query
-          description: |
-            Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
-          schema:
-            type: string
-            enum: [gte, lte, gt, lt, e, ne]
-            example: gte
         - name: cursor
           in: query
           description: |
@@ -167,26 +258,44 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountsCursorResponse'
+                $ref: '#/components/schemas/V2AccountsCursorResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/accounts/{address}:
+  /v2/{ledger}/accounts/{address}:
     get:
       summary: Get account by its address
-      operationId: getAccount
+      operationId: v2GetAccount
       tags:
-        - Accounts
+        - Ledger
       parameters:
         - name: ledger
           in: path
@@ -206,26 +315,38 @@ paths:
           schema:
             type: string
             example: users:001
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountResponse'
+                $ref: '#/components/schemas/V2AccountResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/accounts/{address}/metadata:
+  /v2/{ledger}/accounts/{address}/metadata:
     post:
       summary: Add metadata to an account
-      operationId: addMetadataToAccount
+      operationId: v2AddMetadataToAccount
       tags:
-        - Accounts
+        - Ledger
       parameters:
         - name: ledger
           in: path
@@ -245,12 +366,23 @@ paths:
           schema:
             type: string
             example: users:001
+        - name: dryRun
+          in: query
+          description: Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       requestBody:
         description: metadata
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/V2Metadata'
         required: true
       responses:
         "204":
@@ -261,118 +393,46 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/mapping:
+  /v2/{ledger}/accounts/{address}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: v2DeleteAccountMetadata
+      tags:
+        - Ledger
+      summary: Delete metadata by key
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: address
+          in: path
+          description: Account address
+          required: true
+          schema:
+            type: string
+        - name: key
+          in: path
+          description: The key to remove.
+          required: true
+          schema:
+            type: string
+            example: foo
+      responses:
+        2XX:
+          description: Key deleted
+          content: {}
+
+  /v2/{ledger}/stats:
     get:
       tags:
-        - Mapping
-      operationId: getMapping
-      summary: Get the mapping of a ledger
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MappingResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-    put:
-      tags:
-        - Mapping
-      operationId: updateMapping
-      summary: Update the mapping of a ledger
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Mapping'
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MappingResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledger}/script:
-    post:
-      deprecated: true
-      tags:
-        - Script
-      operationId: runScript
-      summary: Execute a Numscript
-      description: >
-        This route is deprecated, and has been merged into `POST /{ledger}/transactions`.
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-        - name: preview
-          in: query
-          description: Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.
-          schema:
-            type: boolean
-            example: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Script'
-      responses:
-        "200":
-          description: >
-            On success, it will return a 200 status code, and the resulting transaction under the `transaction` field.
-
-
-            On failure, it will also return a 200 status code, and the following fields:
-              - `details`: contains a URL. When there is an error parsing Numscript, the result can be difficult to read—the provided URL will render the error in an easy-to-read format.
-              - `errorCode` and `error_code` (deprecated): contains the string code of the error
-              - `errorMessage` and `error_message` (deprecated): contains a human-readable indication of what went wrong, for example that an account had insufficient funds, or that there was an error in the provided Numscript.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScriptResponse'
-
-  /{ledger}/stats:
-    get:
-      tags:
-        - Stats
-      operationId: readStats
+        - Ledger
+      operationId: v2ReadStats
       summary: Get statistics from a ledger
       description: |
         Get statistics from a ledger. (aggregate metrics on accounts and transactions)
@@ -390,20 +450,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StatsResponse'
+                $ref: '#/components/schemas/V2StatsResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/transactions:
+  /v2/{ledger}/transactions:
     head:
       tags:
-        - Transactions
+        - Ledger
       summary: Count the transactions from a ledger
-      operationId: countTransactions
+      operationId: v2CountTransactions
       parameters:
         - name: ledger
           in: path
@@ -412,57 +472,20 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: reference
+        - name: pit
           in: query
-          description: Filter transactions by reference field.
-          schema:
-            type: string
-            example: ref:001
-        - name: account
-          in: query
-          description: Filter transactions with postings involving given account, either
-            as source or destination (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: source
-          in: query
-          description: Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: destination
-          in: query
-          description: Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: startTime
-          in: query
-          description: |
-            Filter transactions that occurred after this timestamp.
-            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
+          required: false
           schema:
             type: string
             format: date-time
-        - name: endTime
-          in: query
-          description: |
-            Filter transactions that occurred before this timestamp.
-            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
-          schema:
-            type: string
-            format: date-time
-        - name: metadata
-          in: query
-          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
-          style: deepObject
-          explode: true
-          schema:
-            type: object
-            properties: { }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
-        "200":
+        "204":
           description: OK
           headers:
             Count:
@@ -475,14 +498,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
     get:
       tags:
-        - Transactions
+        - Ledger
       summary: List transactions from a ledger
-      description: List transactions from a ledger, sorted by txid in descending order.
-      operationId: listTransactions
+      description: List transactions from a ledger, sorted by id in descending order.
+      operationId: v2ListTransactions
       parameters:
         - name: ledger
           in: path
@@ -501,55 +524,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
-        - name: after
-          in: query
-          description: Pagination cursor, will return transactions after given txid
-            (in descending order).
-          schema:
-            type: string
-            example: "1234"
-        - name: reference
-          in: query
-          description: Find transactions by reference field.
-          schema:
-            type: string
-            example: ref:001
-        - name: account
-          in: query
-          description: Filter transactions with postings involving given account, either
-            as source or destination (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: source
-          in: query
-          description: Filter transactions with postings involving given account at source (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: destination
-          in: query
-          description: Filter transactions with postings involving given account at destination (regular expression placed between ^ and $).
-          schema:
-            type: string
-            example: users:001
-        - name: startTime
-          in: query
-          description: |
-            Filter transactions that occurred after this timestamp.
-            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
-          schema:
-            type: string
-            format: date-time
-        - name: endTime
-          in: query
-          description: |
-            Filter transactions that occurred before this timestamp.
-            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
-          schema:
-            type: string
-            format: date-time
         - name: cursor
           in: query
           description: |
@@ -560,33 +534,43 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        - name: metadata
+        - name: expand
           in: query
-          description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
-          style: deepObject
-          explode: true
           schema:
-            type: object
-            properties: { }
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsCursorResponse'
+                $ref: '#/components/schemas/V2TransactionsCursorResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
     post:
       tags:
-        - Transactions
+        - Ledger
       summary: Create a new transaction to a ledger
-      operationId: createTransaction
+      operationId: v2CreateTransaction
       parameters:
         - name: ledger
           in: path
@@ -595,12 +579,17 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: preview
+        - name: dryRun
           in: query
-          description: Set the preview mode. Preview mode doesn't add the logs to the database or publish a message to the message broker.
+          description: Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
           schema:
             type: boolean
             example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       requestBody:
         required: true
         description: >
@@ -610,27 +599,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PostTransaction'
+              $ref: '#/components/schemas/V2PostTransaction'
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/V2CreateTransactionResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/transactions/{txid}:
+  /v2/{ledger}/transactions/{id}:
     get:
       tags:
-        - Transactions
+        - Ledger
       summary: Get transaction from a ledger by its ID
-      operationId: getTransaction
+      operationId: v2GetTransaction
       parameters:
         - name: ledger
           in: path
@@ -639,7 +628,7 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: txid
+        - name: id
           in: path
           description: Transaction ID.
           required: true
@@ -648,26 +637,38 @@ paths:
             format: bigint
             minimum: 0
             example: 1234
+        - name: expand
+          in: query
+          schema:
+            type: string
+            items:
+              type: string
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionResponse'
+                $ref: '#/components/schemas/V2GetTransactionResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/transactions/{txid}/metadata:
+  /v2/{ledger}/transactions/{id}/metadata:
     post:
       tags:
-        - Transactions
+        - Ledger
       summary: Set the metadata of a transaction by its ID
-      operationId: addMetadataOnTransaction
+      operationId: v2AddMetadataOnTransaction
       parameters:
         - name: ledger
           in: path
@@ -676,21 +677,32 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: txid
+        - name: id
           in: path
           description: Transaction ID.
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
+        - name: dryRun
+          in: query
+          description: Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
+        - name: Idempotency-Key
+          in: header
+          description: Use an idempotency key
+          schema:
+            type: string
       requestBody:
         description: metadata
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/V2Metadata'
       responses:
         "204":
           description: No Content
@@ -700,13 +712,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/transactions/{txid}/revert:
+  /v2/{ledger}/transactions/{id}/metadata/{key}:
+    delete:
+      description: Delete metadata by key
+      operationId: v2DeleteTransactionMetadata
+      summary: Delete metadata by key
+      tags:
+        - Ledger
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: id
+          in: path
+          description: Transaction ID.
+          required: true
+          schema:
+            type: integer
+            format: bigint
+            minimum: 0
+            example: 1234
+        - name: key
+          in: path
+          required: true
+          description: The key to remove.
+          schema:
+            type: string
+            example: foo
+      responses:
+        2XX:
+          description: Key deleted
+          content: { }
+
+  /v2/{ledger}/transactions/{id}/revert:
     post:
       tags:
-        - Transactions
-      operationId: revertTransaction
+        - Ledger
+      operationId: v2RevertTransaction
       summary: Revert a ledger transaction by its ID
       parameters:
         - name: ledger
@@ -716,7 +764,7 @@ paths:
           schema:
             type: string
             example: ledger001
-        - name: txid
+        - name: id
           in: path
           description: Transaction ID.
           required: true
@@ -725,32 +773,31 @@ paths:
             format: bigint
             minimum: 0
             example: 1234
-        - name: disableChecks
+        - name: force
           in: query
-          description: Allow to disable balances checks
+          description: Force revert
           required: false
           schema:
             type: boolean
       responses:
-        "200":
+        "201":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionResponse'
+                $ref: '#/components/schemas/V2RevertTransactionResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledger}/transactions/batch:
-    post:
+                $ref: '#/components/schemas/V2ErrorResponse'
+  /v2/{ledger}/aggregate/balances:
+    get:
       tags:
-        - Transactions
-      summary: Create a new batch of transactions to a ledger
-      operationId: CreateTransactions
+        - Ledger
+      summary: Get the aggregated balances from selected accounts
+      operationId: v2GetBalancesAggregated
       parameters:
         - name: ledger
           in: path
@@ -759,119 +806,39 @@ paths:
           schema:
             type: string
             example: ledger001
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Transactions'
-        required: true
+              type: object
+              additionalProperties: true
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionsResponse'
+                $ref: '#/components/schemas/V2AggregateBalancesResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
-  /{ledger}/balances:
+  /v2/{ledger}/logs:
     get:
       tags:
-        - Balances
-      summary: Get the balances from a ledger's account
-      operationId: getBalances
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-        - name: address
-          in: query
-          description: Filter balances involving given account, either
-            as source or destination.
-          schema:
-            type: string
-            example: users:001
-        - name: after
-          in: query
-          description: Pagination cursor, will return accounts after given address, in descending order.
-          schema:
-            type: string
-            example: users:003
-        - name: cursor
-          in: query
-          description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
-            Set to the value of next for the next page of results.
-            Set to the value of previous for the previous page of results.
-            No other parameters can be set when this parameter is set.
-          schema:
-            type: string
-            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BalancesCursorResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledger}/aggregate/balances:
-    get:
-      tags:
-        - Balances
-      summary: Get the aggregated balances from selected accounts
-      operationId: getBalancesAggregated
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-        - name: address
-          in: query
-          description: Filter balances involving given account, either
-            as source or destination.
-          schema:
-            type: string
-            example: users:001
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AggregateBalancesResponse'
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /{ledger}/logs:
-    get:
-      tags:
-        - Logs
+        - Ledger
       summary: List the logs from a ledger
       description: List the logs from a ledger, sorted by ID in descending order.
-      operationId: listLogs
+      operationId: v2ListLogs
       parameters:
         - name: ledger
           in: path
@@ -890,30 +857,6 @@ paths:
             format: int64
             minimum: 1
             maximum: 1000
-            default: 15
-        - name: after
-          in: query
-          description: Pagination cursor, will return the logs after a given ID.
-            (in descending order).
-          schema:
-            type: string
-            example: "1234"
-        - name: startTime
-          in: query
-          description: |
-            Filter transactions that occurred after this timestamp.
-            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
-          schema:
-            type: string
-            format: date-time
-        - name: endTime
-          in: query
-          description: |
-            Filter transactions that occurred before this timestamp.
-            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
-          schema:
-            type: string
-            format: date-time
         - name: cursor
           in: query
           description: |
@@ -924,23 +867,35 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pit
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LogsCursorResponse'
+                $ref: '#/components/schemas/V2LogsCursorResponse'
         default:
           description: Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/V2ErrorResponse'
 
 components:
   schemas:
-    AccountsCursorResponse:
+    V2AccountsCursorResponse:
       type: object
       required:
         - cursor
@@ -970,9 +925,9 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/Account'
+                $ref: '#/components/schemas/V2Account'
 
-    BalancesCursorResponse:
+    V2BalancesCursorResponse:
       type: object
       required:
         - cursor
@@ -1002,9 +957,9 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/AccountsBalances'
+                $ref: '#/components/schemas/V2AccountsBalances'
 
-    TransactionsCursorResponse:
+    V2TransactionsCursorResponse:
       type: object
       required:
         - cursor
@@ -1034,9 +989,9 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/Transaction'
+                $ref: '#/components/schemas/V2ExpandedTransaction'
 
-    LogsCursorResponse:
+    V2LogsCursorResponse:
       type: object
       required:
         - cursor
@@ -1066,55 +1021,33 @@ components:
             data:
               type: array
               items:
-                $ref: '#/components/schemas/Log'
+                $ref: '#/components/schemas/V2Log'
 
-    AccountResponse:
+    V2AccountResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/AccountWithVolumesAndBalances'
+          $ref: '#/components/schemas/V2Account'
 
-    AggregateBalancesResponse:
+    V2AggregateBalancesResponse:
       type: object
       required:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/AssetsBalances'
+          $ref: '#/components/schemas/V2AssetsBalances'
 
-    Config:
+    V2Metadata:
+      type: object
+      additionalProperties:
+        type: string
+      example: { admin: "true" }
+
+    V2ConfigInfo:
       type: object
       properties:
-        storage:
-          $ref: '#/components/schemas/LedgerStorage'
-      required:
-        - storage
-
-    LedgerStorage:
-      type: object
-      properties:
-        driver:
-          type: string
-        ledgers:
-          type: array
-          items:
-            type: string
-      required:
-        - driver
-        - ledgers
-
-    Metadata:
-      type: object
-      nullable: true
-      additionalProperties: {}
-
-    ConfigInfo:
-      type: object
-      properties:
-        config:
-          $ref: '#/components/schemas/Config'
         server:
           type: string
         version:
@@ -1124,70 +1057,30 @@ components:
         - server
         - version
 
-    ScriptResponse:
-      type: object
-      properties:
-        errorCode:
-          $ref: '#/components/schemas/ErrorsEnum'
-        errorMessage:
-          type: string
-          example: "account had insufficient funds"
-        details:
-          type: string
-          example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-        transaction:
-          $ref: '#/components/schemas/Transaction'
-
-    Account:
+    V2Account:
       type: object
       required:
         - address
+        - metadata
       properties:
         address:
           type: string
           example: users:001
-        type:
-          type: string
-          example: virtual
         metadata:
           type: object
           properties: {}
-
-    AccountWithVolumesAndBalances:
-      type: object
-      required:
-        - address
-      properties:
-        address:
-          type: string
-          example: users:001
-        type:
-          type: string
-          example: virtual
-        metadata:
-          type: object
-          properties: {}
+          additionalProperties:
+            type: string
+          example: { admin: "true" }
         volumes:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
-              format: int64
-              minimum: 0
-          example: { COIN: { input: 100, output: 0 } }
-        balances:
-          type: object
-          additionalProperties:
-            type: integer
-            format: int64
-          example:
-            COIN: 100
+          $ref: '#/components/schemas/V2Volumes'
+        effectiveVolumes:
+          $ref: '#/components/schemas/V2Volumes'
 
-    AccountsBalances:
+    V2AccountsBalances:
       type: object
       additionalProperties:
-        $ref: '#/components/schemas/AssetsBalances'
+        $ref: '#/components/schemas/V2AssetsBalances'
       example:
         account1:
           USD: 100
@@ -1196,39 +1089,16 @@ components:
           CAD: 20
           JPY: 21
 
-    AssetsBalances:
+    V2AssetsBalances:
       type: object
       additionalProperties:
         type: integer
-        format: int64
+        format: bigint
       example:
         USD: 100
         EUR: 12
 
-    Contract:
-      type: object
-      properties:
-        account:
-          type: string
-          example: users:001
-        expr:
-          type: object
-      required:
-        - accounts
-        - expr
-
-    Mapping:
-      type: object
-      nullable: true
-      required:
-        - contracts
-      properties:
-        contracts:
-          type: array
-          items:
-            $ref: '#/components/schemas/Contract'
-
-    Posting:
+    V2Posting:
       type: object
       properties:
         amount:
@@ -1251,7 +1121,7 @@ components:
         - destination
         - source
 
-    Script:
+    V2Script:
       type: object
       properties:
         plain:
@@ -1260,19 +1130,20 @@ components:
         vars:
           type: object
           properties: {}
+          additionalProperties: true
           example: {
-            "user": "users:042"
-          }
+              "user": "users:042"
+            }
         reference:
           type: string
           example: order_1234
           description: Reference to attach to the generated transaction
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/V2Metadata'
       required:
         - plain
 
-    Transaction:
+    V2Transaction:
       type: object
       properties:
         timestamp:
@@ -1281,55 +1152,39 @@ components:
         postings:
           type: array
           items:
-            $ref: '#/components/schemas/Posting'
+            $ref: '#/components/schemas/V2Posting'
         reference:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
-        txid:
+          $ref: '#/components/schemas/V2Metadata'
+        id:
           type: integer
           format: bigint
           minimum: 0
-        preCommitVolumes:
-          $ref: '#/components/schemas/AggregatedVolumes'
-        postCommitVolumes:
-          $ref: '#/components/schemas/AggregatedVolumes'
+        reverted:
+          type: boolean
       required:
-        - postings
-        - timestamp
-        - txid
+      - postings
+      - timestamp
+      - id
+      - metadata
+      - reverted
 
-    TransactionData:
+    V2ExpandedTransaction:
+      allOf:
+      - $ref: '#/components/schemas/V2Transaction'
+      - type: object
+        properties:
+          preCommitVolumes:
+            $ref: '#/components/schemas/V2AggregatedVolumes'
+          postCommitVolumes:
+            $ref: '#/components/schemas/V2AggregatedVolumes'
+
+    V2PostTransaction:
       type: object
       required:
-        - postings
-      properties:
-        postings:
-          type: array
-          items:
-            $ref: '#/components/schemas/Posting'
-        reference:
-          type: string
-          example: ref:001
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-        timestamp:
-          type: string
-          format: date-time
-
-    Transactions:
-      required:
-        - transactions
-      type: object
-      properties:
-        transactions:
-          type: array
-          items:
-            $ref: '#/components/schemas/TransactionData'
-
-    PostTransaction:
-      type: object
+      - metadata
       properties:
         timestamp:
           type: string
@@ -1337,7 +1192,7 @@ components:
         postings:
           type: array
           items:
-            $ref: '#/components/schemas/Posting'
+            $ref: '#/components/schemas/V2Posting'
         script:
           type: object
           properties:
@@ -1347,18 +1202,19 @@ components:
             vars:
               type: object
               properties: {}
+              additionalProperties: true
               example: {
-                "user": "users:042"
-              }
+                  "user": "users:042"
+                }
           required:
             - plain
         reference:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/V2Metadata'
 
-    Stats:
+    V2Stats:
       type: object
       properties:
         accounts:
@@ -1367,18 +1223,18 @@ components:
           minimum: 0
         transactions:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
       required:
         - accounts
         - transactions
 
-    Log:
+    V2Log:
       type: object
       properties:
         id:
           type: integer
-          format: int64
+          format: bigint
           minimum: 0
           example: 1234
         type:
@@ -1386,9 +1242,11 @@ components:
           enum:
             - NEW_TRANSACTION
             - SET_METADATA
+            - REVERTED_TRANSACTION
         data:
           type: object
           properties: {}
+          additionalProperties: true
         hash:
           type: string
           example: "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e"
@@ -1402,58 +1260,48 @@ components:
         - hash
         - date
 
-    TransactionsResponse:
-      type: object
+    V2CreateTransactionResponse:
       properties:
         data:
-          items:
-            $ref: '#/components/schemas/Transaction'
-          type: array
-      required:
-        - data
-
-    TransactionResponse:
-      properties:
-        data:
-          $ref: '#/components/schemas/Transaction'
+          $ref: '#/components/schemas/V2Transaction'
       type: object
       required:
         - data
 
-    StatsResponse:
+    V2RevertTransactionResponse:
+      $ref: '#/components/schemas/V2CreateTransactionResponse'
+
+    V2GetTransactionResponse:
       properties:
         data:
-          $ref: '#/components/schemas/Stats'
+          $ref: '#/components/schemas/V2ExpandedTransaction'
+      type: object
+      required:
+      - data
+
+    V2StatsResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/V2Stats'
       type: object
       required:
         - data
 
-    MappingResponse:
-      properties:
-        data:
-          $ref: '#/components/schemas/Mapping'
-      type: object
+    V2ConfigInfoResponse:
+      $ref: '#/components/schemas/V2ConfigInfo'
 
-    ConfigInfoResponse:
-      properties:
-        data:
-          $ref: '#/components/schemas/ConfigInfo'
-      type: object
-      required:
-        - data
-
-    Volume:
+    V2Volume:
       type: object
       properties:
         input:
           type: integer
-          format: int64
+          format: bigint
         output:
           type: integer
-          format: int64
+          format: bigint
         balance:
           type: integer
-          format: int64
+          format: bigint
       required:
         - input
         - output
@@ -1462,10 +1310,10 @@ components:
         output: 20
         balance: 80
 
-    Volumes:
+    V2Volumes:
       type: object
       additionalProperties:
-        $ref: '#/components/schemas/Volume'
+        $ref: '#/components/schemas/V2Volume'
       example:
         USD:
           input: 100
@@ -1476,10 +1324,10 @@ components:
           output: 10
           balance: 90
 
-    AggregatedVolumes:
+    V2AggregatedVolumes:
       type: object
       additionalProperties:
-        $ref: '#/components/schemas/Volumes'
+        $ref: '#/components/schemas/V2Volumes'
       example:
         "orders:1":
           "USD":
@@ -1492,38 +1340,42 @@ components:
             output: 10
             balance: 90
 
-    ErrorResponse:
+    V2ErrorResponse:
       type: object
       required:
-        - error_code
+        - errorCode
+        - errorMessage
       properties:
         errorCode:
-          $ref: '#/components/schemas/ErrorsEnum'
+          $ref: '#/components/schemas/V2ErrorsEnum'
         errorMessage:
           type: string
-          example: "[INSUFFICIENT_FUND] account had insufficient funds"
+          example: "[VALIDATION] invalid 'cursor' query param"
         details:
           type: string
           example: "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
 
-    ErrorsEnum:
+    V2ErrorsEnum:
       type: string
       enum:
         - INTERNAL
         - INSUFFICIENT_FUND
         - VALIDATION
         - CONFLICT
-        - NO_SCRIPT
         - COMPILATION_FAILED
         - METADATA_OVERRIDE
-      example: INSUFFICIENT_FUND
+        - NOT_FOUND
+        - REVERT_OCCURRING
+        - ALREADY_REVERT
+        - NO_POSTINGS
+      example: VALIDATION
 
-    LedgerInfoResponse:
+    V2LedgerInfoResponse:
       properties:
         data:
-          $ref: '#/components/schemas/LedgerInfo'
+          $ref: '#/components/schemas/V2LedgerInfo'
 
-    LedgerInfo:
+    V2LedgerInfo:
       type: object
       properties:
         name:
@@ -1535,9 +1387,9 @@ components:
             migrations:
               type: array
               items:
-                $ref: '#/components/schemas/MigrationInfo'
+                $ref: '#/components/schemas/V2MigrationInfo'
 
-    MigrationInfo:
+    V2MigrationInfo:
       type: object
       properties:
         version:
@@ -1556,3 +1408,242 @@ components:
           enum:
             - "to do"
             - "done"
+
+    V2Bulk:
+      type: array
+      items:
+        $ref: '#/components/schemas/V2BulkElement'
+
+    V2BaseBulkElement:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+        ik:
+          type: string
+
+    V2BulkElement:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/V2BulkElementCreateTransaction'
+        - $ref: '#/components/schemas/V2BulkElementAddMetadata'
+        - $ref: '#/components/schemas/V2BulkElementRevertTransaction'
+        - $ref: '#/components/schemas/V2BulkElementDeleteMetadata'
+      discriminator:
+        propertyName: action
+        mapping:
+          CREATE_TRANSACTION: '#/components/schemas/V2BulkElementCreateTransaction'
+          ADD_METADATA: '#/components/schemas/V2BulkElementAddMetadata'
+          REVERT_TRANSACTION: '#/components/schemas/V2BulkElementRevertTransaction'
+          DELETE_METADATA: '#/components/schemas/V2BulkElementDeleteMetadata'
+
+    V2BulkElementCreateTransaction:
+      type: object
+      allOf:
+      - $ref:  '#/components/schemas/V2BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            $ref: '#/components/schemas/V2PostTransaction'
+
+    V2TargetId:
+      oneOf:
+        - type: string
+        - type: integer
+          format: bigint
+
+    V2TargetType:
+      type: string
+      enum:
+        - TRANSACTION
+        - ACCOUNT
+
+    V2BulkElementAddMetadata:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/V2BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            type: object
+            properties:
+              targetId:
+                $ref: '#/components/schemas/V2TargetId'
+              targetType:
+                $ref: '#/components/schemas/V2TargetType'
+              metadata:
+                type: object
+                additionalProperties:
+                  type: string
+            required:
+              - targetId
+              - targetType
+              - metadata
+
+    V2BulkElementRevertTransaction:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/V2BaseBulkElement'
+      - type: object
+        properties:
+          data:
+            properties:
+              id:
+                type: integer
+                format: bigint
+              force:
+                type: boolean
+            required:
+              - id
+
+    V2BulkElementDeleteMetadata:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElement'
+        - type: object
+          properties:
+            data:
+              properties:
+                targetId:
+                  $ref: '#/components/schemas/V2TargetId'
+                targetType:
+                  $ref: '#/components/schemas/V2TargetType'
+                key:
+                  type: string
+              required:
+                - targetId
+                - targetType
+                - key
+
+    V2BulkResponse:
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/V2BulkElementResult'
+      type: object
+      required:
+        - data
+
+    V2BulkElementResult:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/V2BulkElementResultCreateTransaction'
+        - $ref: '#/components/schemas/V2BulkElementResultAddMetadata'
+        - $ref: '#/components/schemas/V2BulkElementResultRevertTransaction'
+        - $ref: '#/components/schemas/V2BulkElementResultDeleteMetadata'
+        - $ref: '#/components/schemas/V2BulkElementResultError'
+      discriminator:
+        propertyName: responseType
+        mapping:
+          CREATE_TRANSACTION: '#/components/schemas/V2BulkElementResultCreateTransaction'
+          ADD_METADATA: '#/components/schemas/V2BulkElementResultAddMetadata'
+          REVERT_TRANSACTION: '#/components/schemas/V2BulkElementResultRevertTransaction'
+          DELETE_METADATA: '#/components/schemas/V2BulkElementResultDeleteMetadata'
+          ERROR: '#/components/schemas/V2BulkElementResultError'
+
+    V2BaseBulkElementResult:
+      type: object
+      properties:
+        responseType:
+          type: string
+      required:
+        - responseType
+
+    V2BulkElementResultCreateTransaction:
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/V2Transaction'
+          required:
+            - data
+
+    V2BulkElementResultAddMetadata:
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+
+    V2BulkElementResultRevertTransaction:
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/V2Transaction'
+          required:
+            - data
+
+    V2BulkElementResultDeleteMetadata:
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+
+    V2BulkElementResultError:
+      allOf:
+        - $ref: '#/components/schemas/V2BaseBulkElementResult'
+        - type: object
+          properties:
+            errorCode:
+              type: string
+            errorDescription:
+              type: string
+            errorDetails:
+              type: string
+          required:
+            - errorCode
+            - errorDescription
+
+    V2CreateLedgerRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+
+    V2Ledger:
+      type: object
+      properties:
+        name:
+          type: string
+        addedAt:
+          type: string
+          format: date-time
+        bucket:
+          type: string
+      required:
+        - name
+        - addedAt
+        - bucket
+
+    V2LedgerListResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol="
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/V2Ledger'
