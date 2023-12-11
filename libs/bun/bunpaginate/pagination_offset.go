@@ -10,8 +10,12 @@ import (
 func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q]) (*api.Cursor[T], error) {
 	ret := make([]T, 0)
 
-	sb = sb.Offset(int(query.Offset))
-	sb = sb.Limit(int(query.PageSize) + 1)
+	if query.Offset > 0 {
+		sb = sb.Offset(int(query.Offset))
+	}
+	if query.PageSize > 0 {
+		sb = sb.Limit(int(query.PageSize) + 1)
+	}
 
 	if err := sb.Scan(ctx, &ret); err != nil {
 		return nil, err
@@ -31,7 +35,7 @@ func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query O
 	}
 
 	// Page with transactions after
-	if len(ret) > int(query.PageSize) {
+	if query.PageSize != 0 && len(ret) > int(query.PageSize) {
 		cp := query
 		cp.Offset = query.Offset + query.PageSize
 		next = &cp

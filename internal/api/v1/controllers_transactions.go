@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/pointer"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"github.com/go-chi/chi/v5"
 
@@ -116,29 +118,23 @@ func countTransactions(w http.ResponseWriter, r *http.Request) {
 func getTransactions(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	query := ledgerstore.GetTransactionsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := bunpaginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
-		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
-			return
-		}
-	} else {
+	query, err := bunpaginate.Extract[ledgerstore.GetTransactionsQuery](r, func() (*ledgerstore.GetTransactionsQuery, error) {
 		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
 		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, err)
-			return
+			return nil, err
 		}
 		options.QueryBuilder, err = buildGetTransactionsQuery(r)
 		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, err)
-			return
+			return nil, err
 		}
-		query = ledgerstore.NewGetTransactionsQuery(*options)
+		return pointer.For(ledgerstore.NewGetTransactionsQuery(*options)), nil
+	})
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.GetTransactions(r.Context(), query)
+	cursor, err := l.GetTransactions(r.Context(), *query)
 	if err != nil {
 		sharedapi.InternalServerError(w, r, err)
 		return

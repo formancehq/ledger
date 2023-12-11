@@ -65,7 +65,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var err error
 
-		pageSize, err := getPageSize(r)
+		pageSize, err := bunpaginate.GetPageSize(r)
 		if err != nil {
 			sharedapi.BadRequest(w, ErrValidation, err)
 			return

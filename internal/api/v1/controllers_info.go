@@ -91,7 +91,9 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var err error
 
-		pageSize, err := getPageSize(r)
+		pageSize, err := bunpaginate.GetPageSize(r,
+			bunpaginate.WithDefaultPageSize(DefaultPageSize),
+			bunpaginate.WithMaxPageSize(MaxPageSize))
 		if err != nil {
 			switch {
 			case engine.IsStorageError(err):

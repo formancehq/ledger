@@ -3,7 +3,11 @@ package bunpaginate
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"github.com/pkg/errors"
 	"math/big"
+	"net/http"
+	"strconv"
 )
 
 const (
@@ -11,6 +15,14 @@ const (
 	OrderDesc
 
 	QueryDefaultPageSize = 15
+	MaxPageSize          = 100
+
+	QueryKeyPageSize = "pageSize"
+	QueryKeyCursor   = "cursor"
+)
+
+var (
+	ErrInvalidPageSize = errors.New("invalid 'pageSize' query param")
 )
 
 type Order int
@@ -96,4 +108,65 @@ func UnmarshalCursor(v string, to any) error {
 	}
 
 	return nil
+}
+
+type pageSizeConfiguration struct {
+	defaultPageSize uint64
+	maxPageSize     uint64
+}
+
+func WithDefaultPageSize(v uint64) func(configuration *pageSizeConfiguration) {
+	return func(configuration *pageSizeConfiguration) {
+		configuration.defaultPageSize = v
+	}
+}
+
+func WithMaxPageSize(v uint64) func(configuration *pageSizeConfiguration) {
+	return func(configuration *pageSizeConfiguration) {
+		configuration.maxPageSize = v
+	}
+}
+
+func GetPageSize(r *http.Request, opts ...func(*pageSizeConfiguration)) (uint64, error) {
+
+	cfg := pageSizeConfiguration{
+		defaultPageSize: QueryDefaultPageSize,
+		maxPageSize:     MaxPageSize,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	pageSizeParam := r.URL.Query().Get(QueryKeyPageSize)
+	if pageSizeParam == "" {
+		return cfg.defaultPageSize, nil
+	}
+
+	var pageSize uint64
+	var err error
+	if pageSizeParam != "" {
+		pageSize, err = strconv.ParseUint(pageSizeParam, 10, 32)
+		if err != nil {
+			return 0, ErrInvalidPageSize
+		}
+	}
+
+	if pageSize > cfg.maxPageSize {
+		return cfg.maxPageSize, nil
+	}
+
+	return pageSize, nil
+}
+
+func Extract[Q any](r *http.Request, defaulter func() (*Q, error)) (*Q, error) {
+	var query Q
+	if r.URL.Query().Get(QueryKeyCursor) != "" {
+		err := UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
+		if err != nil {
+			return nil, fmt.Errorf("invalid '%s' query param", QueryKeyCursor)
+		}
+		return &query, nil
+	} else {
+		return defaulter()
+	}
 }

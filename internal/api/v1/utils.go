@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
@@ -53,14 +55,14 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgersto
 		return nil, err
 	}
 
-	pageSize, err := getPageSize(r)
+	pageSize, err := bunpaginate.GetPageSize(r, bunpaginate.WithMaxPageSize(MaxPageSize), bunpaginate.WithDefaultPageSize(DefaultPageSize))
 	if err != nil {
 		return nil, err
 	}
 
 	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*pitFilter).
 		WithQueryBuilder(qb).
-		WithPageSize(uint64(pageSize))), nil
+		WithPageSize(pageSize)), nil
 }
 
 func getPaginatedQueryOptionsOfPITFilter(r *http.Request) (*ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter], error) {
@@ -74,14 +76,16 @@ func getPaginatedQueryOptionsOfPITFilter(r *http.Request) (*ledgerstore.Paginate
 		return nil, err
 	}
 
-	pageSize, err := getPageSize(r)
+	pageSize, err := bunpaginate.GetPageSize(r,
+		bunpaginate.WithDefaultPageSize(DefaultPageSize),
+		bunpaginate.WithMaxPageSize(MaxPageSize))
 	if err != nil {
 		return nil, err
 	}
 
 	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*pitFilter).
 		WithQueryBuilder(qb).
-		WithPageSize(uint64(pageSize))), nil
+		WithPageSize(pageSize)), nil
 }
 
 func getCommandParameters(r *http.Request) command.Parameters {
