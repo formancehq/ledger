@@ -21,7 +21,7 @@ func (t WithBodiesTracingHTTPTransport) RoundTrip(req *http.Request) (*http.Resp
 	}
 
 	rsp, err := t.underlying.RoundTrip(req)
-	if t.debug || rsp.StatusCode >= 400 {
+	if t.debug || err != nil || rsp.StatusCode >= 400 {
 		span := trace.SpanFromContext(req.Context())
 		span.SetAttributes(attribute.String("raw-request", string(rawRequest)))
 		if err != nil {
