@@ -119,3 +119,13 @@ benchstat:
     COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
     COPY --pass-args +bench/results.txt /tmp/branch.txt
     RUN --no-cache benchstat /tmp/main.txt /tmp/branch.txt
+
+openapi:
+  FROM node:20-alpine
+  RUN apk update && apk add yq
+  RUN npm install -g openapi-merge-cli
+  COPY --dir openapi /src/openapi
+  WORKDIR /src/openapi
+  RUN openapi-merge-cli --config ./openapi-merge.json
+  RUN yq -oy ./openapi.json > openapi.yaml
+  SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
