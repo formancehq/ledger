@@ -141,7 +141,7 @@ paths:
           explode: true
           schema:
             type: object
-            properties: {}
+            additionalProperties: true
         - name: balance
           in: query
           description: Filter accounts by their balance (default operator is gte)
@@ -567,7 +567,7 @@ paths:
           explode: true
           schema:
             type: object
-            properties: { }
+            additionalProperties: true
       responses:
         "200":
           description: OK
@@ -1151,7 +1151,7 @@ components:
           example: virtual
         metadata:
           type: object
-          properties: {}
+          additionalProperties: true
 
     AccountWithVolumesAndBalances:
       type: object
@@ -1166,21 +1166,21 @@ components:
           example: virtual
         metadata:
           type: object
-          properties: {}
+          additionalProperties: true
         volumes:
           type: object
           additionalProperties:
             type: object
             additionalProperties:
               type: integer
-              format: int64
+              format: bigint
               minimum: 0
           example: { COIN: { input: 100, output: 0 } }
         balances:
           type: object
           additionalProperties:
             type: integer
-            format: int64
+            format: bigint
           example:
             COIN: 100
 
@@ -1259,7 +1259,7 @@ components:
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
         vars:
           type: object
-          properties: {}
+          additionalProperties: true
           example: {
             "user": "users:042"
           }
@@ -1346,7 +1346,7 @@ components:
               example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
             vars:
               type: object
-              properties: {}
+              additionalProperties: true
               example: {
                 "user": "users:042"
               }
@@ -1447,13 +1447,13 @@ components:
       properties:
         input:
           type: integer
-          format: int64
+          format: bigint
         output:
           type: integer
-          format: int64
+          format: bigint
         balance:
           type: integer
-          format: int64
+          format: bigint
       required:
         - input
         - output

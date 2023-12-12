@@ -14,7 +14,5 @@ tidy:
     FROM core+builder-image
     COPY (+sources/*) /src
     WORKDIR /src
-    RUN --mount=type=cache,id=gomod,target=${GOPATH}/pkg/mod \
-        --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
-        go mod tidy
+    DO --pass-args stack+GO_TIDY
     SAVE ARTIFACT go.* AS LOCAL ./

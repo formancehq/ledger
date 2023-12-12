@@ -70,7 +70,7 @@ deploy:
 lint:
     FROM core+builder-image
     COPY (+sources/*) /src
-    COPY --pass-args (components+tidy/go.* --components=ledger) .
+    COPY --pass-args +tidy/go.* .
     WORKDIR /src/components/ledger
     DO --pass-args stack+GO_LINT
     SAVE ARTIFACT cmd AS LOCAL cmd
@@ -79,7 +79,10 @@ lint:
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
+    BUILD --pass-args +tidy
+    BUILD --pass-args +lint
     BUILD --pass-args +copy-libs
+    BUILD +openapi
 
 bench:
     FROM core+builder-image
@@ -124,8 +127,14 @@ openapi:
   FROM node:20-alpine
   RUN apk update && apk add yq
   RUN npm install -g openapi-merge-cli
-  COPY --dir openapi /src/openapi
-  WORKDIR /src/openapi
-  RUN openapi-merge-cli --config ./openapi-merge.json
+  WORKDIR /src/components/ledger
+  COPY --dir openapi openapi
+  RUN openapi-merge-cli --config ./openapi/openapi-merge.json
   RUN yq -oy ./openapi.json > openapi.yaml
   SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
+
+tidy:
+    FROM core+builder-image
+    COPY --pass-args (+sources/src) /src
+    WORKDIR /src/components/ledger
+    DO --pass-args stack+GO_TIDY

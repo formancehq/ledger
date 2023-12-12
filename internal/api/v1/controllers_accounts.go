@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,10 +19,22 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 )
+
+type accountWithVolumesAndBalances ledger.ExpandedAccount
+
+func (a accountWithVolumesAndBalances) MarshalJSON() ([]byte, error) {
+	type aux struct {
+		ledger.ExpandedAccount
+		Balances map[string]*big.Int `json:"balances"`
+	}
+	return json.Marshal(aux{
+		ExpandedAccount: ledger.ExpandedAccount(a),
+		Balances:        a.Volumes.Balances(),
+	})
+}
 
 func buildAccountsFilterQuery(r *http.Request) (query.Builder, error) {
 	clauses := make([]query.Builder, 0)
@@ -119,12 +132,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
 	query := ledgerstore.NewGetAccountQuery(chi.URLParam(r, "address"))
-	if collectionutils.Contains(r.URL.Query()["expand"], "volumes") {
-		query = query.WithExpandVolumes()
-	}
-	if collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes") {
-		query = query.WithExpandEffectiveVolumes()
-	}
+	query = query.WithExpandVolumes()
 
 	acc, err := l.GetAccountWithVolumes(r.Context(), query)
 	if err != nil {
@@ -132,7 +140,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sharedapi.Ok(w, acc)
+	sharedapi.Ok(w, accountWithVolumesAndBalances(*acc))
 }
 
 func postAccountMetadata(w http.ResponseWriter, r *http.Request) {

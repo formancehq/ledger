@@ -7,5 +7,5 @@
       "inputFile": "./v2.yaml"
     }
   ],
-  "output": "./openapi.json"
+  "output": "./../openapi.json"
 }

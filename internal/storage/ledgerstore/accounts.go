@@ -141,9 +141,9 @@ func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Acc
 	account, err := fetch[*ledger.Account](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.
 			ColumnExpr("accounts.address").
-			ColumnExpr("coalesce(metadata, '{}'::jsonb) as metadata").
+			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata").
 			Table("accounts").
-			Join("left join accounts_metadata on accounts_metadata.address = accounts.address").
+			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq").
 			Where("accounts.address = ?", address).
 			Where("accounts.ledger = ?", store.name).
 			Order("revision desc").

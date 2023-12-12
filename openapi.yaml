@@ -137,7 +137,7 @@ paths:
           explode: true
           schema:
             type: object
-            properties: {}
+            additionalProperties: true
         - name: balance
           in: query
           description: Filter accounts by their balance (default operator is gte)
@@ -557,7 +557,7 @@ paths:
           explode: true
           schema:
             type: object
-            properties: {}
+            additionalProperties: true
       responses:
         "200":
           description: OK
@@ -1015,6 +1015,12 @@ paths:
       responses:
         "204":
           description: OK
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1050,6 +1056,10 @@ paths:
                 $ref: '#/components/schemas/V2ErrorResponse'
   /v2/{ledger}/_bulk:
     post:
+      x-speakeasy-errors:
+        override: true
+        statusCodes:
+          - 5XX
       summary: Bulk request
       operationId: v2CreateBulk
       tags:
@@ -1186,6 +1196,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2AccountsCursorResponse'
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1289,6 +1305,18 @@ paths:
         "204":
           description: No Content
           content: {}
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+        "404":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1456,6 +1484,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2TransactionsCursorResponse'
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+        "404":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1503,6 +1543,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2CreateTransactionResponse'
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1551,6 +1597,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2GetTransactionResponse'
+        "404":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1601,6 +1653,18 @@ paths:
         "204":
           description: No Content
           content: {}
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+        "404":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1639,9 +1703,21 @@ paths:
             type: string
             example: foo
       responses:
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         2XX:
           description: Key deleted
           content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
   /v2/{ledger}/transactions/{id}/revert:
     post:
       tags:
@@ -1678,6 +1754,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2RevertTransactionResponse'
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
         default:
           description: Error
           content:
@@ -1985,7 +2067,7 @@ components:
           example: virtual
         metadata:
           type: object
-          properties: {}
+          additionalProperties: true
     AccountWithVolumesAndBalances:
       type: object
       required:
@@ -1999,14 +2081,14 @@ components:
           example: virtual
         metadata:
           type: object
-          properties: {}
+          additionalProperties: true
         volumes:
           type: object
           additionalProperties:
             type: object
             additionalProperties:
               type: integer
-              format: int64
+              format: bigint
               minimum: 0
           example:
             COIN:
@@ -2016,7 +2098,7 @@ components:
           type: object
           additionalProperties:
             type: integer
-            format: int64
+            format: bigint
           example:
             COIN: 100
     AccountsBalances:
@@ -2096,7 +2178,7 @@ components:
             )
         vars:
           type: object
-          properties: {}
+          additionalProperties: true
           example:
             user: users:042
         reference:
@@ -2185,7 +2267,7 @@ components:
                 )
             vars:
               type: object
-              properties: {}
+              additionalProperties: true
               example:
                 user: users:042
           required:
@@ -2277,13 +2359,13 @@ components:
       properties:
         input:
           type: integer
-          format: int64
+          format: bigint
         output:
           type: integer
-          format: int64
+          format: bigint
         balance:
           type: integer
-          format: int64
+          format: bigint
       required:
         - input
         - output

@@ -156,7 +156,7 @@ func TestGetAccount(t *testing.T) {
 
 	backend, mock := newTestingBackend(t, true)
 	mock.EXPECT().
-		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo")).
+		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo").WithExpandVolumes()).
 		Return(&account, nil)
 
 	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
