@@ -12,6 +12,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	natsServer "github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/require"
@@ -137,7 +138,7 @@ func TestModule(t *testing.T) {
 				t.Cleanup(server.Shutdown)
 
 				return fx.Options(
-					NatsModule("example", "nats://127.0.0.1:4322", "testing"),
+					NatsModule("nats://127.0.0.1:4322", "testing", nats.Name("example")),
 				)
 			},
 			topicMapping: map[string]string{},

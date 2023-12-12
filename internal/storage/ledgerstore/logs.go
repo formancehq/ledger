@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/lib/pq"
@@ -25,13 +26,13 @@ const (
 type Logs struct {
 	bun.BaseModel `bun:"logs,alias:logs"`
 
-	Ledger         string           `bun:"ledger,type:varchar"`
-	ID             *paginate.BigInt `bun:"id,unique,type:numeric"`
-	Type           string           `bun:"type,type:log_type"`
-	Hash           []byte           `bun:"hash,type:bytea"`
-	Date           ledger.Time      `bun:"date,type:timestamptz"`
-	Data           []byte           `bun:"data,type:jsonb"`
-	IdempotencyKey string           `bun:"idempotency_key,type:varchar(256),unique"`
+	Ledger         string              `bun:"ledger,type:varchar"`
+	ID             *bunpaginate.BigInt `bun:"id,unique,type:numeric"`
+	Type           string              `bun:"type,type:log_type"`
+	Hash           []byte              `bun:"hash,type:bytea"`
+	Date           ledger.Time         `bun:"date,type:timestamptz"`
+	Data           []byte              `bun:"data,type:jsonb"`
+	IdempotencyKey string              `bun:"idempotency_key,type:varchar(256),unique"`
 }
 
 func (log *Logs) ToCore() *ledger.ChainedLog {
@@ -106,7 +107,7 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 
 			ls[i] = Logs{
 				Ledger:         store.name,
-				ID:             (*paginate.BigInt)(chainedLogs.ID),
+				ID:             (*bunpaginate.BigInt)(chainedLogs.ID),
 				Type:           chainedLogs.Type.String(),
 				Hash:           chainedLogs.Hash,
 				Date:           chainedLogs.Date,
@@ -147,7 +148,7 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 
 func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
 	logs, err := paginateWithColumn[PaginatedQueryOptions[any], Logs](store, ctx,
-		(*paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
+		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
 		store.logsQueryBuilder(q.Options),
 	)
 	if err != nil {
@@ -176,13 +177,13 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 	return ret.ToCore(), nil
 }
 
-type GetLogsQuery paginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]
+type GetLogsQuery bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]
 
 func NewGetLogsQuery(options PaginatedQueryOptions[any]) GetLogsQuery {
 	return GetLogsQuery{
 		PageSize: options.PageSize,
 		Column:   "id",
-		Order:    paginate.OrderDesc,
+		Order:    bunpaginate.OrderDesc,
 		Options:  options,
 	}
 }

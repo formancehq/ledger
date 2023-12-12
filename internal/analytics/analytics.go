@@ -7,7 +7,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/formancehq/ledger/internal/storage/paginate"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
 
@@ -95,7 +96,7 @@ func (m *heartbeat) enqueue(ctx context.Context) error {
 		Set(TotalMemoryProperty, memory.TotalMemory()/1024/1024)
 
 	ledgersProperty := map[string]any{}
-	err = paginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
+	err = bunpaginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
 		func(ctx context.Context, q systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
 			return m.backend.ListLedgers(ctx, q)
 		},

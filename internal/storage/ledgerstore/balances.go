@@ -5,10 +5,11 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
@@ -94,11 +95,16 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				moves = moves.Where(subQuery, args...)
 			}
 
-			return selectQuery.
-				With("moves", moves).
+			asJsonb := selectQuery.NewSelect().
 				TableExpr("moves").
 				ColumnExpr("volumes_to_jsonb((moves.asset, (sum((moves.post_commit_volumes).inputs), sum((moves.post_commit_volumes).outputs))::volumes)) as aggregated").
 				Group("moves.asset")
+
+			return selectQuery.
+				With("moves", moves).
+				With("data", asJsonb).
+				TableExpr("data").
+				ColumnExpr("aggregate_objects(data.aggregated) as aggregated")
 		})
 	if err != nil && !errors.Is(err, sqlutils.ErrNotFound) {
 		return nil, err
@@ -124,12 +130,12 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	return v.Balance, nil
 }
 
-type GetAggregatedBalanceQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]
+type GetAggregatedBalanceQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]
 
 func NewGetAggregatedBalancesQuery(options PaginatedQueryOptions[PITFilter]) GetAggregatedBalanceQuery {
 	return GetAggregatedBalanceQuery{
 		PageSize: options.PageSize,
-		Order:    paginate.OrderAsc,
+		Order:    bunpaginate.OrderAsc,
 		Options:  options,
 	}
 }

@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/formancehq/ledger/internal/storage/paginate"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+
 	"github.com/formancehq/stack/libs/go-libs/api"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -35,7 +38,7 @@ type LedgerConfiguration struct {
 type Driver struct {
 	systemStore       *systemstore.Store
 	lock              sync.Mutex
-	connectionOptions sqlutils.ConnectionOptions
+	connectionOptions bunconnect.ConnectionOptions
 	buckets           map[string]*ledgerstore.Bucket
 	db                *bun.DB
 }
@@ -143,7 +146,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
 
 	var err error
-	d.db, err = sqlutils.OpenSQLDB(d.connectionOptions)
+	d.db, err = bunconnect.OpenSQLDB(d.connectionOptions)
 	if err != nil {
 		return errors.Wrap(err, "connecting to database")
 	}
@@ -165,7 +168,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	systemStore := d.GetSystemStore()
 
 	buckets := collectionutils.Set[string]{}
-	err := paginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
+	err := bunpaginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
 		func(ctx context.Context, q systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
 			return systemStore.ListLedgers(ctx, q)
 		},
@@ -185,7 +188,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 			return err
 		}
 
-		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucket)
+		logging.FromContext(ctx).Infof("Upgrading bucket '%s'", bucket.Name())
 		if err := bucket.Migrate(ctx); err != nil {
 			return err
 		}
@@ -209,7 +212,7 @@ func (d *Driver) Close() error {
 	return nil
 }
 
-func New(connectionOptions sqlutils.ConnectionOptions) *Driver {
+func New(connectionOptions bunconnect.ConnectionOptions) *Driver {
 	return &Driver{
 		connectionOptions: connectionOptions,
 		buckets:           make(map[string]*ledgerstore.Bucket),

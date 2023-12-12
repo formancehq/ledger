@@ -4,11 +4,12 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/pkg/errors"
+	"github.com/formancehq/stack/libs/go-libs/pointer"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
+	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
 )
@@ -43,25 +44,20 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 func getBalances(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	q := ledgerstore.GetAccountsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &q)
-		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, errors.Errorf("invalid '%s' query param", QueryKeyCursor))
-			return
-		}
-	} else {
+	q, err := bunpaginate.Extract[ledgerstore.GetAccountsQuery](r, func() (*ledgerstore.GetAccountsQuery, error) {
 		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
 		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, err)
-			return
+			return nil, err
 		}
 		options.QueryBuilder, err = buildAccountsFilterQuery(r)
-		q = ledgerstore.NewGetAccountsQuery(*options)
+		return pointer.For(ledgerstore.NewGetAccountsQuery(*options)), nil
+	})
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.GetAccountsWithVolumes(r.Context(), q)
+	cursor, err := l.GetAccountsWithVolumes(r.Context(), *q)
 	if err != nil {
 		sharedapi.InternalServerError(w, r, err)
 		return

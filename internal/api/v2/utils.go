@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
@@ -62,7 +64,7 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgersto
 		return nil, err
 	}
 
-	pageSize, err := getPageSize(r)
+	pageSize, err := bunpaginate.GetPageSize(r)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +85,7 @@ func getPaginatedQueryOptionsOfPITFilter(r *http.Request) (*ledgerstore.Paginate
 		return nil, err
 	}
 
-	pageSize, err := getPageSize(r)
+	pageSize, err := bunpaginate.GetPageSize(r)
 	if err != nil {
 		return nil, err
 	}

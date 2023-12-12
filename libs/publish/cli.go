@@ -3,8 +3,10 @@ package publish
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/xdg-go/scram"
@@ -26,9 +28,11 @@ const (
 	// HTTP configuration
 	PublisherHttpEnabledFlag = "publisher-http-enabled"
 	// Nats configuration
-	PublisherNatsEnabledFlag  = "publisher-nats-enabled"
-	PublisherNatsClientIDFlag = "publisher-nats-client-id"
-	PublisherNatsURLFlag      = "publisher-nats-url"
+	PublisherNatsEnabledFlag       = "publisher-nats-enabled"
+	PublisherNatsClientIDFlag      = "publisher-nats-client-id"
+	PublisherNatsURLFlag           = "publisher-nats-url"
+	PublisherNatsMaxReconnectFlag  = "publisher-nats-max-reconnect"
+	PublisherNatsReconnectWaitFlag = "publisher-nats-reconnect-wait"
 )
 
 func InitCLIFlags(cmd *cobra.Command) {
@@ -42,8 +46,14 @@ func InitCLIFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String(PublisherKafkaSASLMechanism, "", "SASL authentication mechanism")
 	cmd.PersistentFlags().Int(PublisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
 	cmd.PersistentFlags().Bool(PublisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
+	InitNatsCliFlags(cmd)
+}
+
+func InitNatsCliFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool(PublisherNatsEnabledFlag, false, "Publish write events to nats")
 	cmd.PersistentFlags().String(PublisherNatsClientIDFlag, "", "Nats client ID")
+	cmd.PersistentFlags().Int(PublisherNatsMaxReconnectFlag, 30, "Nats: set the maximum number of reconnect attempts.")
+	cmd.PersistentFlags().Duration(PublisherNatsReconnectWaitFlag, time.Second*2, "Nats: the wait time between reconnect attempts.")
 	cmd.PersistentFlags().String(PublisherNatsURLFlag, "", "Nats url")
 }
 
@@ -67,7 +77,12 @@ func CLIPublisherModule(v *viper.Viper, serviceName string) fx.Option {
 		options = append(options, httpModule(""))
 	case v.GetBool(PublisherNatsEnabledFlag):
 		options = append(options, NatsModule(
-			v.GetString(PublisherNatsClientIDFlag), v.GetString(PublisherNatsURLFlag), serviceName))
+			v.GetString(PublisherNatsURLFlag),
+			serviceName,
+			nats.Name(serviceName),
+			nats.MaxReconnects(v.GetInt(PublisherNatsMaxReconnectFlag)),
+			nats.ReconnectWait(v.GetDuration(PublisherNatsReconnectWaitFlag)),
+		))
 	case v.GetBool(PublisherKafkaEnabledFlag):
 		options = append(options,
 			kafkaModule(clientId(serviceName), serviceName, v.GetStringSlice(PublisherKafkaBrokerFlag)...),

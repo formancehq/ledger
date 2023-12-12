@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
@@ -260,7 +261,7 @@ func TestGetLogs(t *testing.T) {
 
 	cursor, err := store.GetLogs(context.Background(), NewGetLogsQuery(NewPaginatedQueryOptions[any](nil)))
 	require.NoError(t, err)
-	require.Equal(t, paginate.QueryDefaultPageSize, cursor.PageSize)
+	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.Equal(t, big.NewInt(2), cursor.Data[0].ID)

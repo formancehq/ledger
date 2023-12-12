@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func newSystemStore(t *testing.T) *Store {
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
 
-	store, err := Connect(ctx, sqlutils.ConnectionOptions{
+	store, err := Connect(ctx, bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 	})
@@ -59,7 +60,7 @@ func TestListLedgers(t *testing.T) {
 
 	for i := pageSize; i < count; i += pageSize {
 		query := ListLedgersQuery{}
-		require.NoError(t, paginate.UnmarshalCursor(cursor.Next, &query))
+		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
 
 		cursor, err = store.ListLedgers(ctx, query)
 		require.NoError(t, err)

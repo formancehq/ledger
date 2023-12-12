@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	storage "github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -33,12 +33,12 @@ type PostgresConfig struct {
 func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
-	options = append(options, fx.Provide(func(logger logging.Logger) sqlutils.ConnectionOptions {
+	options = append(options, fx.Provide(func(logger logging.Logger) bunconnect.ConnectionOptions {
 		connectionOptions := storage.ConnectionOptionsFromFlags(v, output, debug)
 		logger.WithField("config", connectionOptions).Infof("Opening connection to database...")
 		return connectionOptions
 	}))
-	options = append(options, fx.Provide(func(connectionOptions sqlutils.ConnectionOptions) (*Driver, error) {
+	options = append(options, fx.Provide(func(connectionOptions bunconnect.ConnectionOptions) (*Driver, error) {
 		return New(connectionOptions), nil
 	}))
 

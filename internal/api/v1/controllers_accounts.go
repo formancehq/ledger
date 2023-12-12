@@ -3,22 +3,38 @@ package v1
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/stack/libs/go-libs/pointer"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/pkg/errors"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
-	"github.com/go-chi/chi/v5"
 )
+
+type accountWithVolumesAndBalances ledger.ExpandedAccount
+
+func (a accountWithVolumesAndBalances) MarshalJSON() ([]byte, error) {
+	type aux struct {
+		ledger.ExpandedAccount
+		Balances map[string]*big.Int `json:"balances"`
+	}
+	return json.Marshal(aux{
+		ExpandedAccount: ledger.ExpandedAccount(a),
+		Balances:        a.Volumes.Balances(),
+	})
+}
 
 func buildAccountsFilterQuery(r *http.Request) (query.Builder, error) {
 	clauses := make([]query.Builder, 0)
@@ -90,25 +106,20 @@ func countAccounts(w http.ResponseWriter, r *http.Request) {
 func getAccounts(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	q := ledgerstore.GetAccountsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &q)
-		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
-			return
-		}
-	} else {
+	query, err := bunpaginate.Extract[ledgerstore.GetAccountsQuery](r, func() (*ledgerstore.GetAccountsQuery, error) {
 		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
 		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, err)
-			return
+			return nil, err
 		}
 		options.QueryBuilder, err = buildAccountsFilterQuery(r)
-		q = ledgerstore.NewGetAccountsQuery(*options)
+		return pointer.For(ledgerstore.NewGetAccountsQuery(*options)), nil
+	})
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.GetAccountsWithVolumes(r.Context(), q)
+	cursor, err := l.GetAccountsWithVolumes(r.Context(), *query)
 	if err != nil {
 		sharedapi.InternalServerError(w, r, err)
 		return
@@ -121,12 +132,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
 	query := ledgerstore.NewGetAccountQuery(chi.URLParam(r, "address"))
-	if collectionutils.Contains(r.URL.Query()["expand"], "volumes") {
-		query = query.WithExpandVolumes()
-	}
-	if collectionutils.Contains(r.URL.Query()["expand"], "effectiveVolumes") {
-		query = query.WithExpandEffectiveVolumes()
-	}
+	query = query.WithExpandVolumes()
 
 	acc, err := l.GetAccountWithVolumes(r.Context(), query)
 	if err != nil {
@@ -134,7 +140,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sharedapi.Ok(w, acc)
+	sharedapi.Ok(w, accountWithVolumesAndBalances(*acc))
 }
 
 func postAccountMetadata(w http.ResponseWriter, r *http.Request) {

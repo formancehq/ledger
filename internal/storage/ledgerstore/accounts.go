@@ -5,10 +5,11 @@ import (
 	"errors"
 	"regexp"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -129,7 +130,7 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQue
 	}
 
 	return paginateWithOffset[PaginatedQueryOptions[PITFilterWithVolumes], ledger.ExpandedAccount](store, ctx,
-		(*paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
+		(*bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildAccountListQuery(query, q, where, args)
 		},
@@ -140,9 +141,9 @@ func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Acc
 	account, err := fetch[*ledger.Account](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.
 			ColumnExpr("accounts.address").
-			ColumnExpr("coalesce(metadata, '{}'::jsonb) as metadata").
+			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata").
 			Table("accounts").
-			Join("left join accounts_metadata on accounts_metadata.address = accounts.address").
+			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq").
 			Where("accounts.address = ?", address).
 			Where("accounts.ledger = ?", store.name).
 			Order("revision desc").
@@ -221,7 +222,7 @@ func NewGetAccountQuery(addr string) GetAccountQuery {
 	}
 }
 
-type GetAccountsQuery paginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
+type GetAccountsQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]]
 
 func (q GetAccountsQuery) WithExpandVolumes() GetAccountsQuery {
 	q.Options.Options.ExpandVolumes = true
@@ -238,7 +239,7 @@ func (q GetAccountsQuery) WithExpandEffectiveVolumes() GetAccountsQuery {
 func NewGetAccountsQuery(opts PaginatedQueryOptions[PITFilterWithVolumes]) GetAccountsQuery {
 	return GetAccountsQuery{
 		PageSize: opts.PageSize,
-		Order:    paginate.OrderAsc,
+		Order:    bunpaginate.OrderAsc,
 		Options:  opts,
 	}
 }

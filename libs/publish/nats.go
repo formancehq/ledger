@@ -33,13 +33,10 @@ func NewNatsSubscriberWithConn(conn *nats.Conn, logger watermill.LoggerAdapter, 
 	return wNats.NewSubscriberWithNatsConn(conn, config.GetSubscriberSubscriptionConfig(), logger)
 }
 
-func NatsModule(clientID, url, serviceName string) fx.Option {
+func NatsModule(url, serviceName string, natsOptions ...nats.Option) fx.Option {
 	jetStreamConfig := wNats.JetStreamConfig{
 		AutoProvision: true,
 		DurablePrefix: serviceName,
-	}
-	natsOptions := []nats.Option{
-		nats.Name(clientID),
 	}
 	return fx.Options(
 		fx.Provide(NewNatsConn),
@@ -110,15 +107,20 @@ type NATSCallbacks interface {
 }
 
 type natsDefaultCallbacks struct {
-	logger logging.Logger
+	logger     logging.Logger
+	shutdowner fx.Shutdowner
 }
 
-func newNatsDefaultCallbacks(logger logging.Logger) NATSCallbacks {
-	return &natsDefaultCallbacks{logger: logger}
+func newNatsDefaultCallbacks(logger logging.Logger, shutdowner fx.Shutdowner) NATSCallbacks {
+	return &natsDefaultCallbacks{
+		logger:     logger,
+		shutdowner: shutdowner,
+	}
 }
 
 func (c *natsDefaultCallbacks) ClosedCB(nc *nats.Conn) {
 	c.logger.Infof("nats connection closed: %s", nc.Opts.Name)
+	c.shutdowner.Shutdown()
 }
 
 func (c *natsDefaultCallbacks) DisconnectedCB(nc *nats.Conn) {

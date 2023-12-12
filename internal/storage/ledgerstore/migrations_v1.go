@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -114,7 +115,7 @@ func (l *LogV1) ToLogsV2() (Logs, error) {
 	}
 
 	return Logs{
-		ID:   (*paginate.BigInt)(big.NewInt(int64(l.ID))),
+		ID:   (*bunpaginate.BigInt)(big.NewInt(int64(l.ID))),
 		Type: logType.String(),
 		Hash: []byte(l.Hash),
 		Date: l.Date,

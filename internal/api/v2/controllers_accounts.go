@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/pointer"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/go-chi/chi/v5"
+
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
 )
 
@@ -43,24 +46,19 @@ func countAccounts(w http.ResponseWriter, r *http.Request) {
 func getAccounts(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	query := ledgerstore.GetAccountsQuery{}
-
-	if r.URL.Query().Get(QueryKeyCursor) != "" {
-		err := paginate.UnmarshalCursor(r.URL.Query().Get(QueryKeyCursor), &query)
-		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, fmt.Errorf("invalid '%s' query param", QueryKeyCursor))
-			return
-		}
-	} else {
+	query, err := bunpaginate.Extract[ledgerstore.GetAccountsQuery](r, func() (*ledgerstore.GetAccountsQuery, error) {
 		options, err := getPaginatedQueryOptionsOfPITFilterWithVolumes(r)
 		if err != nil {
-			sharedapi.BadRequest(w, ErrValidation, err)
-			return
+			return nil, err
 		}
-		query = ledgerstore.NewGetAccountsQuery(*options)
+		return pointer.For(ledgerstore.NewGetAccountsQuery(*options)), nil
+	})
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
 	}
 
-	cursor, err := l.GetAccountsWithVolumes(r.Context(), query)
+	cursor, err := l.GetAccountsWithVolumes(r.Context(), *query)
 	if err != nil {
 		switch {
 		case ledgerstore.IsErrInvalidQuery(err):

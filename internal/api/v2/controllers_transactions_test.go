@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/pkg/errors"
 
@@ -22,7 +24,6 @@ import (
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/paginate"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
@@ -651,7 +652,7 @@ func TestGetTransactions(t *testing.T) {
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{paginate.EncodeCursor(ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))},
+				"cursor": []string{bunpaginate.EncodeCursor(ledgerstore.NewGetTransactionsQuery(ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{})))},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 				PITFilter: ledgerstore.PITFilter{},
