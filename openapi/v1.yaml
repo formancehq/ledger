@@ -831,7 +831,7 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
       requestBody:
@@ -1385,14 +1385,7 @@ components:
           additionalProperties: true
           example: { admin: true, a: { nested: { key: value}} }
         volumes:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
-              format: bigint
-              minimum: 0
-          example: { COIN: { input: 100, output: 0 } }
+          $ref: '#/components/schemas/Volumes'
         balances:
           type: object
           additionalProperties:
@@ -1712,7 +1705,8 @@ components:
     ErrorResponse:
       type: object
       required:
-        - error_code
+        - errorCode
+        - errorMessage
       properties:
         errorCode:
           $ref: '#/components/schemas/ErrorsEnum'

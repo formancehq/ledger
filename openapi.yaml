@@ -7,6 +7,7 @@ paths:
   /_info:
     get:
       tags:
+        - Ledger
         - Server
       summary: Show server information
       operationId: getInfo
@@ -55,6 +56,7 @@ paths:
       summary: Count the accounts from a ledger
       operationId: countAccounts
       tags:
+        - Ledger
         - Accounts
       parameters:
         - name: ledger
@@ -77,7 +79,8 @@ paths:
           explode: true
           schema:
             type: object
-            properties: {}
+            additionalProperties: true
+          example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
           description: OK
@@ -98,6 +101,7 @@ paths:
       description: List accounts from a ledger, sorted by address in descending order.
       operationId: listAccounts
       tags:
+        - Ledger
         - Accounts
       parameters:
         - name: ledger
@@ -118,6 +122,20 @@ paths:
             minimum: 1
             maximum: 1000
             default: 15
+        - name: page_size
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            The maximum number of results to return per page.
+            Deprecated, please use `pageSize` instead.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+            default: 15
+          deprecated: true
         - name: after
           in: query
           description: Pagination cursor, will return accounts after given address, in descending order.
@@ -138,6 +156,7 @@ paths:
           schema:
             type: object
             additionalProperties: true
+          example: metadata[key]=value1&metadata[a.nested.key]=value2
         - name: balance
           in: query
           description: Filter accounts by their balance (default operator is gte)
@@ -146,6 +165,7 @@ paths:
             format: int64
             example: 2400
         - name: balanceOperator
+          x-speakeasy-ignore: true
           in: query
           description: |
             Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
@@ -159,6 +179,23 @@ paths:
               - e
               - ne
             example: gte
+        - name: balance_operator
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Operator used for the filtering of balances can be greater than/equal, less than/equal, greater than, less than, equal or not.
+            Deprecated, please use `balanceOperator` instead.
+          schema:
+            type: string
+            enum:
+              - gte
+              - lte
+              - gt
+              - lt
+              - e
+              - ne
+            example: gte
+          deprecated: true
         - name: cursor
           in: query
           description: |
@@ -169,6 +206,18 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pagination_token
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+            Deprecated, please use `cursor` instead.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -187,6 +236,7 @@ paths:
       summary: Get account by its address
       operationId: getAccount
       tags:
+        - Ledger
         - Accounts
       parameters:
         - name: ledger
@@ -225,6 +275,7 @@ paths:
       summary: Add metadata to an account
       operationId: addMetadataToAccount
       tags:
+        - Ledger
         - Accounts
       parameters:
         - name: ledger
@@ -277,6 +328,7 @@ paths:
   /{ledger}/mapping:
     get:
       tags:
+        - Ledger
         - Mapping
       operationId: getMapping
       summary: Get the mapping of a ledger
@@ -303,6 +355,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     put:
       tags:
+        - Ledger
         - Mapping
       operationId: updateMapping
       summary: Update the mapping of a ledger
@@ -337,6 +390,7 @@ paths:
     post:
       deprecated: true
       tags:
+        - Ledger
         - Script
       operationId: runScript
       summary: Execute a Numscript
@@ -378,6 +432,7 @@ paths:
   /{ledger}/stats:
     get:
       tags:
+        - Ledger
         - Stats
       operationId: readStats
       summary: Get statistics from a ledger
@@ -407,6 +462,7 @@ paths:
   /{ledger}/transactions:
     head:
       tags:
+        - Ledger
         - Transactions
       summary: Count the transactions from a ledger
       operationId: countTransactions
@@ -450,6 +506,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: start_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred after this timestamp.
+            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
+            Deprecated, please use `startTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: endTime
           in: query
           description: |
@@ -458,6 +525,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: end_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred before this timestamp.
+            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
+            Deprecated, please use `endTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: metadata
           in: query
           description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
@@ -466,6 +544,7 @@ paths:
           schema:
             type: object
             properties: {}
+          example: metadata[key]=value1&metadata[a.nested.key]=value2
       responses:
         "200":
           description: OK
@@ -483,6 +562,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     get:
       tags:
+        - Ledger
         - Transactions
       summary: List transactions from a ledger
       description: List transactions from a ledger, sorted by txid in descending order.
@@ -506,12 +586,26 @@ paths:
             minimum: 1
             maximum: 1000
             default: 15
+        - name: page_size
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            The maximum number of results to return per page.
+            Deprecated, please use `pageSize` instead.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+            default: 15
+          deprecated: true
         - name: after
           in: query
           description: Pagination cursor, will return transactions after given txid (in descending order).
           schema:
             type: string
-            example: "1234"
+            example: 1234
         - name: reference
           in: query
           description: Find transactions by reference field.
@@ -544,6 +638,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: start_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred after this timestamp.
+            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
+            Deprecated, please use `startTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: endTime
           in: query
           description: |
@@ -552,6 +657,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: end_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred before this timestamp.
+            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
+            Deprecated, please use `endTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: cursor
           in: query
           description: |
@@ -562,6 +678,19 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pagination_token
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+            Deprecated, please use `cursor` instead.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
         - name: metadata
           in: query
           description: Filter transactions by metadata key value pairs. Nested objects can be used as seen in the example below.
@@ -585,6 +714,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
       tags:
+        - Ledger
         - Transactions
       summary: Create a new transaction to a ledger
       operationId: createTransaction
@@ -634,6 +764,7 @@ paths:
   /{ledger}/transactions/{txid}:
     get:
       tags:
+        - Ledger
         - Transactions
       summary: Get transaction from a ledger by its ID
       operationId: getTransaction
@@ -670,6 +801,7 @@ paths:
   /{ledger}/transactions/{txid}/metadata:
     post:
       tags:
+        - Ledger
         - Transactions
       summary: Set the metadata of a transaction by its ID
       operationId: addMetadataOnTransaction
@@ -687,7 +819,7 @@ paths:
           required: true
           schema:
             type: integer
-            format: int64
+            format: bigint
             minimum: 0
             example: 1234
       requestBody:
@@ -700,18 +832,6 @@ paths:
         "204":
           description: No Content
           content: {}
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "404":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         default:
           description: Error
           content:
@@ -721,6 +841,7 @@ paths:
   /{ledger}/transactions/{txid}/revert:
     post:
       tags:
+        - Ledger
         - Transactions
       operationId: revertTransaction
       summary: Revert a ledger transaction by its ID
@@ -754,12 +875,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TransactionResponse'
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         default:
           description: Error
           content:
@@ -769,6 +884,7 @@ paths:
   /{ledger}/transactions/batch:
     post:
       tags:
+        - Ledger
         - Transactions
       summary: Create a new batch of transactions to a ledger
       operationId: CreateTransactions
@@ -802,6 +918,7 @@ paths:
   /{ledger}/balances:
     get:
       tags:
+        - Ledger
         - Balances
       summary: Get the balances from a ledger's account
       operationId: getBalances
@@ -835,6 +952,18 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pagination_token
+          x-speakeasy-ignore: true
+          in: query
+          description: |-
+            Parameter used in pagination requests.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            Deprecated, please use `cursor` instead.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -851,6 +980,7 @@ paths:
   /{ledger}/aggregate/balances:
     get:
       tags:
+        - Ledger
         - Balances
       summary: Get the aggregated balances from selected accounts
       operationId: getBalancesAggregated
@@ -884,6 +1014,7 @@ paths:
   /{ledger}/logs:
     get:
       tags:
+        - Ledger
         - Logs
       summary: List the logs from a ledger
       description: List the logs from a ledger, sorted by ID in descending order.
@@ -907,12 +1038,26 @@ paths:
             minimum: 1
             maximum: 1000
             default: 15
+        - name: page_size
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            The maximum number of results to return per page.
+            Deprecated, please use `pageSize` instead.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+            default: 15
+          deprecated: true
         - name: after
           in: query
           description: Pagination cursor, will return the logs after a given ID. (in descending order).
           schema:
             type: string
-            example: "1234"
+            example: 1234
         - name: startTime
           in: query
           description: |
@@ -921,6 +1066,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: start_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred after this timestamp.
+            The format is RFC3339 and is inclusive (for example, "2023-01-02T15:04:01Z" includes the first second of 4th minute).
+            Deprecated, please use `startTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: endTime
           in: query
           description: |
@@ -929,6 +1085,17 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: end_time
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Filter transactions that occurred before this timestamp.
+            The format is RFC3339 and is exclusive (for example, "2023-01-02T15:04:01Z" excludes the first second of 4th minute).
+            Deprecated, please use `endTime` instead.
+          schema:
+            type: string
+            format: date-time
+          deprecated: true
         - name: cursor
           in: query
           description: |
@@ -939,6 +1106,19 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: pagination_token
+          x-speakeasy-ignore: true
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+            Deprecated, please use `cursor` instead.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+          deprecated: true
       responses:
         "200":
           description: OK
@@ -2104,6 +2284,11 @@ components:
         metadata:
           type: object
           additionalProperties: true
+          example:
+            admin: true
+            a:
+              nested:
+                key: value
     AccountWithVolumesAndBalances:
       type: object
       required:
@@ -2118,18 +2303,13 @@ components:
         metadata:
           type: object
           additionalProperties: true
-        volumes:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
-              format: bigint
-              minimum: 0
           example:
-            COIN:
-              input: 100
-              output: 0
+            admin: true
+            a:
+              nested:
+                key: value
+        volumes:
+          $ref: '#/components/schemas/Volumes'
         balances:
           type: object
           additionalProperties:
@@ -2342,7 +2522,7 @@ components:
             - SET_METADATA
         data:
           type: object
-          properties: {}
+          additionalProperties: true
         hash:
           type: string
           example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
@@ -2440,7 +2620,8 @@ components:
     ErrorResponse:
       type: object
       required:
-        - error_code
+        - errorCode
+        - errorMessage
       properties:
         errorCode:
           $ref: '#/components/schemas/ErrorsEnum'
