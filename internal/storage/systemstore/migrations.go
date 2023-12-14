@@ -34,8 +34,15 @@ func Migrate(ctx context.Context, db bun.IDB) error {
 						Table("ledgers").
 						ColumnExpr("bucket varchar(255)").
 						Exec(ctx)
-
-					return errors.Wrap(err, "adding 'bucket' column")
+					if err != nil {
+						return errors.Wrap(err, "adding 'bucket' column")
+					}
+					_, err = tx.NewUpdate().
+						Table("ledgers").
+						Set("bucket = ledger").
+						Where("1 = 1").
+						Exec(ctx)
+					return errors.Wrap(err, "setting 'bucket' column")
 				}
 
 				_, err = tx.NewCreateTable().
