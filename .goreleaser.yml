@@ -24,6 +24,14 @@ builds:
       - amd64
       - arm64
 
+release:
+  prerelease: auto
+  extra_files:
+    - glob: openapi.yaml
+  footer: |
+    ## What to do next?
+    - Read the [documentation](https://docs.formance.com/)
+    - Join our [Slack server](https://formance.com/slack)
 
 archives:
   - id: "{{.ProjectName}}"

@@ -133,14 +133,14 @@ func batchLogs(
 	stmt, err := sqlTx.PrepareContext(ctx, pq.CopyInSchema(
 		schema,
 		"logs",
-		"id", "type", "hash", "date", "data",
+		"ledger", "id", "type", "hash", "date", "data",
 	))
 	if err != nil {
 		return err
 	}
 
 	for _, l := range logs {
-		_, err = stmt.ExecContext(ctx, l.ID, l.Type, l.Hash, l.Date, RawMessage(l.Data))
+		_, err = stmt.ExecContext(ctx, schema, l.ID, l.Type, l.Hash, l.Date, RawMessage(l.Data))
 		if err != nil {
 			return err
 		}
