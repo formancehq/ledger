@@ -1,6 +1,6 @@
 VERSION --pass-args --arg-scope-and-set 0.7
 
-ARG core=github.com/formancehq/earthly:v0.5.2
+ARG core=github.com/formancehq/earthly:v0.6.0
 IMPORT $core AS core
 IMPORT ../.. AS stack
 IMPORT .. AS components
