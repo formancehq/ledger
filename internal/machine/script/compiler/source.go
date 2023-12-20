@@ -208,8 +208,8 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
-			// ... <final_max_out_funding>
 			p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
+			// ... <final_max_out_funding>
 		} else {
 			// Had no fallback, discard the missing amount required to max out
 			err := p.Bump(1)
