@@ -3,6 +3,10 @@ package publish
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"os"
 	"testing"
@@ -80,6 +84,10 @@ func createRedpandaServer(t *testing.T) string {
 func TestModule(t *testing.T) {
 	t.Parallel()
 
+	tracerProvider := tracesdk.NewTracerProvider()
+	otel.SetTracerProvider(tracerProvider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
 	type moduleTestCase struct {
 		name         string
 		setup        func(t *testing.T) fx.Option
@@ -130,10 +138,12 @@ func TestModule(t *testing.T) {
 					Host:      "0.0.0.0",
 					Port:      4322,
 					JetStream: true,
+					StoreDir:  os.TempDir(),
 				})
 				require.NoError(t, err)
 
 				server.Start()
+				require.Eventually(t, server.Running, 3*time.Second, 10*time.Millisecond)
 
 				t.Cleanup(server.Shutdown)
 
@@ -152,7 +162,7 @@ func TestModule(t *testing.T) {
 			var (
 				publisher      message.Publisher
 				router         *message.Router
-				messageHandled = make(chan struct{})
+				messageHandled = make(chan *message.Message, 1)
 			)
 			options := []fx.Option{
 				Module(tc.topicMapping),
@@ -161,7 +171,7 @@ func TestModule(t *testing.T) {
 				fx.Supply(fx.Annotate(logging.Testing(), fx.As(new(logging.Logger)))),
 				fx.Invoke(func(r *message.Router, subscriber message.Subscriber) {
 					r.AddNoPublisherHandler("testing", tc.topic, subscriber, func(msg *message.Message) error {
-						require.Equal(t, "\"baz\"", string(msg.Payload))
+						messageHandled <- msg
 						close(messageHandled)
 						return nil
 					})
@@ -178,11 +188,22 @@ func TestModule(t *testing.T) {
 
 			<-router.Running()
 
-			msg := NewMessage(context.TODO(), "baz")
+			tracer := otel.Tracer("main")
+			ctx, span := tracer.Start(context.TODO(), "main")
+			t.Cleanup(func() {
+				span.End()
+			})
+			require.True(t, trace.SpanFromContext(ctx).SpanContext().IsValid())
+			msg := NewMessage(ctx, EventMessage{})
 			require.NoError(t, publisher.Publish(tc.topic, msg))
 
 			select {
-			case <-messageHandled:
+			case msg := <-messageHandled:
+				span, event, err := UnmarshalMessage(msg)
+				require.NoError(t, err)
+				require.NotNil(t, event)
+				require.NotNil(t, ctx)
+				require.True(t, span.SpanContext().IsValid())
 			case <-time.After(10 * time.Second):
 				t.Fatal("timeout waiting message")
 			}
