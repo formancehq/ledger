@@ -165,10 +165,12 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 
 	case *parser.SrcMaxedContext:
 		accounts, _, subsourceFallback, compErr := p.VisitSource(c.SourceMaxed().GetSrc(), pushAsset, false)
+		// ... <subsource_funding>
 		if compErr != nil {
 			return nil, nil, nil, compErr
 		}
 		ty, _, compErr := p.VisitExpr(c.SourceMaxed().GetMax(), true)
+		// ... <subsource_funding> <max>
 		if compErr != nil {
 			return nil, nil, nil, compErr
 		}
@@ -178,30 +180,45 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		for k, v := range accounts {
 			neededAccounts[k] = v
 		}
+
+		// Only take up to the max amount from the funding
 		p.AppendInstruction(program.OP_TAKE_MAX)
+		// ... <missing> <remaining> <taken_funding>
 		err := p.Bump(1)
+		// ... <missing> <taken_funding> <remaining>
 		if err != nil {
 			return nil, nil, nil, LogicError(c, err)
 		}
+		// Repay the remaining amount (if there was too much)
 		p.AppendInstruction(program.OP_REPAY)
+		// ... <missing> <taken_funding>
 		if subsourceFallback != nil {
+			// Subsource had a fallback, use it to complete the current funding if it wasn't maxed out
 			p.PushAddress(machine.Address(*subsourceFallback))
+			// ... <missing> <taken_funding> <fallback_account>
 			err := p.Bump(2)
+			// ... <taken_funding> <fallback_account> <missing>
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
-			p.AppendInstruction(program.OP_TAKE_ALL)
+			p.AppendInstruction(program.OP_TAKE_ALWAYS)
+			// ... <taken_funding> <fallback_missing_funding>
 			err = p.PushInteger(machine.NewNumber(2))
+			// ... <taken_funding> <fallback_missing_funding> 2
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
+			// ... <final_max_out_funding>
 			p.AppendInstruction(program.OP_FUNDING_ASSEMBLE)
 		} else {
+			// Had no fallback, discard the missing amount required to max out
 			err := p.Bump(1)
+			// ... <taken_funding> <missing>
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
 			p.AppendInstruction(program.OP_DELETE)
+			// ... <taken_funding>
 		}
 	case *parser.SrcInOrderContext:
 		sources := c.SourceInOrder().GetSources()
