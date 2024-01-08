@@ -3,13 +3,14 @@ package bunconnect
 import (
 	"database/sql"
 	"fmt"
+	"io"
+	"net/url"
+	"time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/extra/bunotel"
-	"io"
-	"net/url"
-	"time"
 )
 
 type ConnectionOptions struct {
@@ -64,7 +65,7 @@ func OpenDBWithSchema(connectionOptions ConnectionOptions, schema string, hooks 
 	}
 
 	query := parsedConnectionParams.Query()
-	query.Set("search_path", schema)
+	query.Set("search_path", fmt.Sprintf(`"%s"`, schema))
 	parsedConnectionParams.RawQuery = query.Encode()
 
 	connectionOptions.DatabaseSourceName = parsedConnectionParams.String()

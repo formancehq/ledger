@@ -60,6 +60,20 @@ func Migrate(ctx context.Context, db bun.IDB) error {
 				return sqlutils.PostgresError(err)
 			},
 		},
+		migrations.Migration{
+			Name: "Add ledger, bucket naming constraints 63 chars",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					alter table ledgers
+					alter column ledger type varchar(63),
+					alter column bucket type varchar(63);
+				`)
+				if err != nil {
+					return err
+				}
+				return nil
+			},
+		},
 	)
 	return migrator.Up(ctx, db)
 }
