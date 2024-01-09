@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 
@@ -19,7 +20,7 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, _ := newTestingBackend(t, false)
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	backend.
 		EXPECT().

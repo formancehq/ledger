@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -307,7 +308,7 @@ func TestBulk(t *testing.T) {
 			backend, mock := newTestingBackend(t, true)
 			testCase.expectations(mock)
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/_bulk", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

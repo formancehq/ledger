@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -53,6 +54,7 @@ func NewRootCommand() *cobra.Command {
 
 	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
+	auth.InitAuthFlags(root.PersistentFlags())
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 	driver.InitCLIFlags(root)

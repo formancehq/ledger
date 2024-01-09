@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -25,8 +26,10 @@ func Module(cfg Config) fx.Option {
 		fx.Provide(func(
 			backend backend.Backend,
 			healthController *health.HealthController,
-			globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
-			return NewRouter(backend, healthController, globalMetricsRegistry, cfg.ReadOnly)
+			globalMetricsRegistry metrics.GlobalRegistry,
+			a auth.Auth,
+		) chi.Router {
+			return NewRouter(backend, healthController, globalMetricsRegistry, a, cfg.ReadOnly)
 		}),
 		fx.Provide(func(storageDriver *driver.Driver, resolver *engine.Resolver) backend.Backend {
 			return backend.NewDefaultBackend(storageDriver, cfg.Version, resolver)

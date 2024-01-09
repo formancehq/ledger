@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -29,7 +30,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t, false)
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	migrationInfo := []migrations.Info{
 		{
@@ -72,7 +73,7 @@ func TestGetStats(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t, true)
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	expectedStats := engine.Stats{
 		Transactions: 10,
@@ -163,7 +164,7 @@ func TestGetLogs(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/logs", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

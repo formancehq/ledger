@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/internal/engine"
 	driver "github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
@@ -27,6 +28,7 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 		publish.CLIPublisherModule(v, ServiceName),
 		otlptraces.CLITracesModule(v),
 		otlpmetrics.CLIMetricsModule(v),
+		auth.CLIAuthModule(v),
 		driver.CLIModule(v, output, debug),
 		internal.NewAnalyticsModule(v, Version),
 		engine.Module(engine.Configuration{

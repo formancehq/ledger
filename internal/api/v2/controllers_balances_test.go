@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -59,7 +60,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 				GetAggregatedBalances(gomock.Any(), ledgerstore.NewGetAggregatedBalancesQuery(testCase.expectQuery)).
 				Return(expectedBalances, nil)
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
