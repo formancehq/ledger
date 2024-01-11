@@ -46,6 +46,31 @@ func TestValidateAddress(t *testing.T) {
 			address:    "a:",
 			shouldBeOk: false,
 		},
+		{
+			name:       "using single dash",
+			address:    "-",
+			shouldBeOk: false,
+		},
+		{
+			name:       "using dash without alphanum before",
+			address:    "-toto",
+			shouldBeOk: false,
+		},
+		{
+			name:       "using dash without alphanum after",
+			address:    "toto-",
+			shouldBeOk: false,
+		},
+		{
+			name:       "using dash",
+			address:    "toto-titi",
+			shouldBeOk: true,
+		},
+		{
+			name:       "using dash multi segment",
+			address:    "toto-titi:tata-tutu",
+			shouldBeOk: true,
+		},
 	}
 
 	for _, testCase := range testsCases {

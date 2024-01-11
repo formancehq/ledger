@@ -52,7 +52,7 @@ func (v ExpandedAccount) Copy() ExpandedAccount {
 	return v
 }
 
-const AccountSegmentRegex = "[a-zA-Z0-9_]+"
+const AccountSegmentRegex = "[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*"
 const AccountPattern = "^" + AccountSegmentRegex + "(:" + AccountSegmentRegex + ")*$"
 
 var AccountRegexp = regexp.MustCompile(AccountPattern)

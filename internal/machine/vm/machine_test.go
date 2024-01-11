@@ -1292,8 +1292,16 @@ func TestVariablesParsing(t *testing.T) {
 			"acc": "valid:acc",
 		}))
 
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "valid-acc",
+		}))
+
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "account:valid-acc",
+		}))
+
 		require.Error(t, m.SetVarsFromJSON(map[string]string{
-			"acc": "invalid-acc",
+			"acc": "account:invalid--acc",
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]string{
@@ -1301,7 +1309,7 @@ func TestVariablesParsing(t *testing.T) {
 		}))
 
 		require.Error(t, m.SetVarsFromJSON(map[string]string{
-			"acc": "invalid-acc",
+			"acc": "invalid--acc",
 		}))
 	})
 
@@ -1552,9 +1560,9 @@ func TestSetVarsFromJSON(t *testing.T) {
 				destination = $dest
 			)`,
 			vars: map[string]string{
-				"dest": "invalid-acc",
+				"dest": "invalid--acc",
 			},
-			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid-acc: accounts should respect pattern ^[a-zA-Z0-9_]+(:[a-zA-Z0-9_]+)*$"),
+			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid--acc: accounts should respect pattern ^[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*(:[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*)*$"),
 		},
 	} {
 		tc := tc
