@@ -2147,3 +2147,32 @@ send [B 100] (
 	}
 	test(t, tc)
 }
+
+func TestMaxWithUnboundedOverdraft(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `
+send [COIN 100] (
+	source = {
+		max [COIN 10] from @account1 allowing unbounded overdraft
+		@account2
+	}
+	destination = @world
+)`)
+	tc.setBalance("account1", "COIN", 10000)
+	tc.setBalance("account2", "COIN", 10000)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{{
+			Source:      "account1",
+			Destination: "world",
+			Amount:      machine.NewMonetaryInt(10),
+			Asset:       "COIN",
+		}, {
+			Source:      "account2",
+			Destination: "world",
+			Amount:      machine.NewMonetaryInt(90),
+			Asset:       "COIN",
+		}},
+	}
+	test(t, tc)
+}
