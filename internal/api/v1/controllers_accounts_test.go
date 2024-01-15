@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -123,7 +124,7 @@ func TestGetAccounts(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
@@ -159,7 +160,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo").WithExpandVolumes()).
 		Return(&account, nil)
 
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo", nil)
 	rec := httptest.NewRecorder()
@@ -193,7 +194,7 @@ func TestPostAccountMetadata(t *testing.T) {
 		},
 		{
 			name:              "invalid account address format",
-			account:           "invalid-acc",
+			account:           "invalid--acc",
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: v1.ErrValidation,
 		},
@@ -220,7 +221,7 @@ func TestPostAccountMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

@@ -9,6 +9,7 @@ paths:
       tags:
         - Ledger
         - Server
+      x-speakeasy-group: ledger
       summary: Show server information
       operationId: getInfo
       responses:
@@ -30,6 +31,7 @@ paths:
       operationId: getLedgerInfo
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -58,6 +60,7 @@ paths:
       tags:
         - Ledger
         - Accounts
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -103,6 +106,7 @@ paths:
       tags:
         - Ledger
         - Accounts
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -238,6 +242,7 @@ paths:
       tags:
         - Ledger
         - Accounts
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -277,6 +282,7 @@ paths:
       tags:
         - Ledger
         - Accounts
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -330,6 +336,7 @@ paths:
       tags:
         - Ledger
         - Mapping
+      x-speakeasy-group: ledger
       operationId: getMapping
       summary: Get the mapping of a ledger
       parameters:
@@ -357,6 +364,7 @@ paths:
       tags:
         - Ledger
         - Mapping
+      x-speakeasy-group: ledger
       operationId: updateMapping
       summary: Update the mapping of a ledger
       parameters:
@@ -392,6 +400,7 @@ paths:
       tags:
         - Ledger
         - Script
+      x-speakeasy-group: ledger
       operationId: runScript
       summary: Execute a Numscript
       description: |
@@ -434,6 +443,7 @@ paths:
       tags:
         - Ledger
         - Stats
+      x-speakeasy-group: ledger
       operationId: readStats
       summary: Get statistics from a ledger
       description: |
@@ -464,6 +474,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: Count the transactions from a ledger
       operationId: countTransactions
       parameters:
@@ -564,6 +575,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: List transactions from a ledger
       description: List transactions from a ledger, sorted by txid in descending order.
       operationId: listTransactions
@@ -716,6 +728,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: Create a new transaction to a ledger
       operationId: createTransaction
       parameters:
@@ -766,6 +779,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: Get transaction from a ledger by its ID
       operationId: getTransaction
       parameters:
@@ -803,6 +817,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: Set the metadata of a transaction by its ID
       operationId: addMetadataOnTransaction
       parameters:
@@ -843,6 +858,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       operationId: revertTransaction
       summary: Revert a ledger transaction by its ID
       parameters:
@@ -886,6 +902,7 @@ paths:
       tags:
         - Ledger
         - Transactions
+      x-speakeasy-group: ledger
       summary: Create a new batch of transactions to a ledger
       operationId: CreateTransactions
       parameters:
@@ -920,6 +937,7 @@ paths:
       tags:
         - Ledger
         - Balances
+      x-speakeasy-group: ledger
       summary: Get the balances from a ledger's account
       operationId: getBalances
       parameters:
@@ -982,6 +1000,7 @@ paths:
       tags:
         - Ledger
         - Balances
+      x-speakeasy-group: ledger
       summary: Get the aggregated balances from selected accounts
       operationId: getBalancesAggregated
       parameters:
@@ -1016,6 +1035,7 @@ paths:
       tags:
         - Ledger
         - Logs
+      x-speakeasy-group: ledger
       summary: List the logs from a ledger
       description: List the logs from a ledger, sorted by ID in descending order.
       operationId: listLogs
@@ -1136,6 +1156,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Show server information
       operationId: v2GetInfo
       responses:
@@ -1178,6 +1199,7 @@ paths:
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       responses:
         "200":
           description: OK
@@ -1205,6 +1227,7 @@ paths:
       operationId: v2GetLedger
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       responses:
         "200":
           description: OK
@@ -1223,6 +1246,7 @@ paths:
       operationId: v2CreateLedger
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       requestBody:
         content:
           application/json:
@@ -1249,6 +1273,7 @@ paths:
       operationId: v2GetLedgerInfo
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1280,6 +1305,7 @@ paths:
       operationId: v2CreateBulk
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1318,6 +1344,7 @@ paths:
       operationId: v2CountAccounts
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1359,6 +1386,7 @@ paths:
       operationId: v2ListAccounts
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1430,6 +1458,7 @@ paths:
       operationId: v2GetAccount
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1480,6 +1509,7 @@ paths:
       operationId: v2AddMetadataToAccount
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1545,6 +1575,7 @@ paths:
       operationId: v2DeleteAccountMetadata
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Delete metadata by key
       parameters:
         - name: ledger
@@ -1575,6 +1606,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       operationId: v2ReadStats
       summary: Get statistics from a ledger
       description: |
@@ -1604,6 +1636,7 @@ paths:
     head:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Count the transactions from a ledger
       operationId: v2CountTransactions
       parameters:
@@ -1644,6 +1677,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: List transactions from a ledger
       description: List transactions from a ledger, sorted by id in descending order.
       operationId: v2ListTransactions
@@ -1721,6 +1755,7 @@ paths:
     post:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Create a new transaction to a ledger
       operationId: v2CreateTransaction
       parameters:
@@ -1775,6 +1810,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Get transaction from a ledger by its ID
       operationId: v2GetTransaction
       parameters:
@@ -1829,6 +1865,7 @@ paths:
     post:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Set the metadata of a transaction by its ID
       operationId: v2AddMetadataOnTransaction
       parameters:
@@ -1894,6 +1931,7 @@ paths:
       summary: Delete metadata by key
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       parameters:
         - name: ledger
           in: path
@@ -1938,6 +1976,7 @@ paths:
     post:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       operationId: v2RevertTransaction
       summary: Revert a ledger transaction by its ID
       parameters:
@@ -1986,6 +2025,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: Get the aggregated balances from selected accounts
       operationId: v2GetBalancesAggregated
       parameters:
@@ -2025,6 +2065,7 @@ paths:
     get:
       tags:
         - Ledger
+      x-speakeasy-group: ledger
       summary: List the logs from a ledger
       description: List the logs from a ledger, sorted by ID in descending order.
       operationId: v2ListLogs

@@ -70,13 +70,23 @@ func Contains[T any](slice []T, t T) bool {
 
 type Set[T comparable] map[T]struct{}
 
-func (s Set[T]) Put(t T) {
-	s[t] = struct{}{}
+func (s Set[T]) Put(t ...T) {
+	for _, t2 := range t {
+		s[t2] = struct{}{}
+	}
 }
 
 func (s Set[T]) Contains(t T) bool {
 	_, ok := s[t]
 	return ok
+}
+
+func (s Set[T]) ToSlice() []T {
+	ret := make([]T, 0)
+	for k := range s {
+		ret = append(ret, k)
+	}
+	return ret
 }
 
 func NewSet[T comparable]() Set[T] {

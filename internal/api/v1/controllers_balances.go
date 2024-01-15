@@ -57,7 +57,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cursor, err := l.GetAccountsWithVolumes(r.Context(), *q)
+	cursor, err := l.GetAccountsWithVolumes(r.Context(), q.WithExpandVolumes())
 	if err != nil {
 		sharedapi.InternalServerError(w, r, err)
 		return

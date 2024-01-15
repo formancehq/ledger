@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/storagetesting"
 	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -40,7 +41,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	ledgerName := uuid.NewString()
 
 	backend := backend.NewDefaultBackend(driver, "latest", resolver)
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := logging.ContextWithLogger(r.Context(), logging.FromContext(ctx))
 		router.ServeHTTP(w, r.WithContext(ctx))

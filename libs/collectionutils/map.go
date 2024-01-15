@@ -18,6 +18,21 @@ func ConvertMap[K comparable, FROM any, TO any](m map[K]FROM, mapper func(v FROM
 	return ret
 }
 
+func MergeMaps[K comparable, V any](m1, m2 map[K]V) map[K]V {
+	ret := make(map[K]V)
+	if m1 != nil {
+		for k, v := range m1 {
+			ret[k] = v
+		}
+	}
+	if m2 != nil {
+		for k, v := range m2 {
+			ret[k] = v
+		}
+	}
+	return ret
+}
+
 func ToAny[V any](v V) any {
 	return v
 }

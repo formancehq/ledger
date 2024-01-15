@@ -1,6 +1,6 @@
 project_name: ledger
 monorepo:
-  tag_prefix: components/ledger/
+  tag_prefix: v
   dir: ./
 
 includes:
@@ -26,8 +26,6 @@ builds:
 
 release:
   prerelease: auto
-  extra_files:
-    - glob: openapi.yaml
   footer: |
     ## What to do next?
     - Read the [documentation](https://docs.formance.com/)

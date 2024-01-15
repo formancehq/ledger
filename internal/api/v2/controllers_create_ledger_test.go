@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
@@ -19,7 +20,7 @@ func TestConfigureLedger(t *testing.T) {
 	t.Parallel()
 
 	b, _ := newTestingBackend(t, false)
-	router := v2.NewRouter(b, nil, metrics.NewNoOpRegistry())
+	router := v2.NewRouter(b, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	name := uuid.NewString()
 	b.

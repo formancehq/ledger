@@ -190,7 +190,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)
 			}
-			p.AppendInstruction(program.OP_TAKE_ALL)
+			p.AppendInstruction(program.OP_TAKE_ALWAYS)
 			err = p.PushInteger(machine.NewNumber(2))
 			if err != nil {
 				return nil, nil, nil, LogicError(c, err)

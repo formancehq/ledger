@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/health"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -12,7 +13,12 @@ import (
 	"github.com/riandyrn/otelchi"
 )
 
-func NewRouter(b backend.Backend, healthController *health.HealthController, globalMetricsRegistry metrics.GlobalRegistry) chi.Router {
+func NewRouter(
+	b backend.Backend,
+	healthController *health.HealthController,
+	globalMetricsRegistry metrics.GlobalRegistry,
+	a auth.Auth,
+) chi.Router {
 	router := chi.NewMux()
 
 	router.Use(
@@ -27,10 +33,11 @@ func NewRouter(b backend.Backend, healthController *health.HealthController, glo
 	)
 
 	router.Get("/_healthcheck", healthController.Check)
+	router.Get("/_info", getInfo(b))
 
 	router.Group(func(router chi.Router) {
+		router.Use(auth.Middleware(a))
 		router.Use(otelchi.Middleware("ledger"))
-		router.Get("/_info", getInfo(b))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
