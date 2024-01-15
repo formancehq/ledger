@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/formancehq/stack/libs/go-libs/service"
@@ -151,7 +152,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Int(cacheMaxNumKeys, 100, "Maximum number of Numscript to be stored in the cache in RAM")
 
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
-	internal.InitHTTPBasicFlags(root)
+	auth.InitAuthFlags(root.PersistentFlags())
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 

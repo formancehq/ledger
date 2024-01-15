@@ -100,7 +100,6 @@ func TestAnalyticsFlags(t *testing.T) {
 					require.Equal(t, testCase.expectedValue, rValue)
 				},
 			}
-			InitHTTPBasicFlags(cmd)
 			BindEnv(v)
 
 			restoreEnvVar := setEnvVar(testCase.key, testCase.envValue)
