@@ -2717,8 +2717,8 @@ components:
         state:
           type: string
           enum:
-            - to do
-            - done
+            - TO DO
+            - DONE
     V2AccountsCursorResponse:
       type: object
       required:
@@ -3214,8 +3214,8 @@ components:
         state:
           type: string
           enum:
-            - to do
-            - done
+            - TO DO
+            - DONE
     V2Bulk:
       type: array
       items:

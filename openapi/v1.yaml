@@ -1785,5 +1785,5 @@ components:
         state:
           type: string
           enum:
-            - "to do"
-            - "done"
+            - "TO DO"
+            - "DONE"
