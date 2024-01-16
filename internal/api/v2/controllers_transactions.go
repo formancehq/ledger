@@ -152,7 +152,7 @@ func getTransaction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case storageerrors.IsNotFoundError(err):
-			sharedapi.NotFound(w)
+			sharedapi.NotFound(w, err)
 		default:
 			sharedapi.InternalServerError(w, r, err)
 		}
@@ -167,7 +167,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 
 	transactionID, ok := big.NewInt(0).SetString(chi.URLParam(r, "id"), 10)
 	if !ok {
-		sharedapi.NotFound(w)
+		sharedapi.NotFound(w, errors.New("invalid transaction ID"))
 		return
 	}
 
@@ -183,7 +183,7 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			case command.IsRevertError(err, command.ErrRevertTransactionCodeNotFound):
-				sharedapi.NotFound(w)
+				sharedapi.NotFound(w, err)
 				return
 			case command.IsRevertError(err, command.ErrRevertTransactionCodeOccurring):
 				sharedapi.BadRequest(w, ErrRevertOccurring, err)
@@ -211,14 +211,14 @@ func postTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 
 	txID, ok := big.NewInt(0).SetString(chi.URLParam(r, "id"), 10)
 	if !ok {
-		sharedapi.NotFound(w)
+		sharedapi.NotFound(w, errors.New("invalid transaction ID"))
 		return
 	}
 
 	if err := l.SaveMeta(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeTransaction, txID, m); err != nil {
 		switch {
 		case command.IsSaveMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
-			sharedapi.NotFound(w)
+			sharedapi.NotFound(w, err)
 		default:
 			sharedapi.InternalServerError(w, r, err)
 		}
@@ -242,7 +242,7 @@ func deleteTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 	if err := l.DeleteMetadata(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeTransaction, transactionID, metadataKey); err != nil {
 		switch {
 		case command.IsSaveMetaError(err, command.ErrSaveMetaCodeTransactionNotFound):
-			sharedapi.NotFound(w)
+			sharedapi.NotFound(w, err)
 		default:
 			sharedapi.InternalServerError(w, r, err)
 		}

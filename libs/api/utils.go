@@ -13,6 +13,7 @@ const (
 	defaultLimit = 15
 
 	ErrorCodeNotFound = "NOT_FOUND"
+	ErrorCodeAccepted = "ACCEPTED"
 	ErrorInternal     = "INTERNAL"
 )
 
@@ -26,10 +27,14 @@ func writeJSON(w http.ResponseWriter, statusCode int, v any) {
 	}
 }
 
-func NotFound(w http.ResponseWriter) {
+func Accepted(w http.ResponseWriter, v any) {
+	writeJSON(w, http.StatusAccepted, v)
+}
+
+func NotFound(w http.ResponseWriter, err error) {
 	writeJSON(w, http.StatusNotFound, ErrorResponse{
 		ErrorCode:    ErrorCodeNotFound,
-		ErrorMessage: "resource not found",
+		ErrorMessage: err.Error(),
 	})
 }
 
