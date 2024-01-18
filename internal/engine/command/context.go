@@ -6,7 +6,6 @@ import (
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 )
 
 type executionContext struct {
@@ -14,25 +13,25 @@ type executionContext struct {
 	parameters Parameters
 }
 
-func (e *executionContext) AppendLog(ctx context.Context, log *ledger.Log) (*ledger.ChainedLog, chan struct{}, error) {
+func (e *executionContext) AppendLog(ctx context.Context, log *ledger.Log) (*ledger.ChainedLog, error) {
 	if e.parameters.DryRun {
-		ret := make(chan struct{})
-		close(ret)
-		return log.ChainLog(nil), ret, nil
+		return log.ChainLog(nil), nil
 	}
 
 	chainedLog := e.commander.chainLog(log)
-	logging.FromContext(ctx).WithFields(map[string]any{
-		"id": chainedLog.ID,
-	}).Debugf("Appending log")
 	done := make(chan struct{})
 	e.commander.Append(chainedLog, func() {
 		close(done)
 	})
-	return chainedLog, done, nil
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+	}
+	return chainedLog, nil
 }
 
-func (e *executionContext) run(ctx context.Context, executor func(e *executionContext) (*ledger.ChainedLog, chan struct{}, error)) (*ledger.ChainedLog, error) {
+func (e *executionContext) run(ctx context.Context, executor func(e *executionContext) (*ledger.ChainedLog, error)) (*ledger.ChainedLog, error) {
 	if ik := e.parameters.IdempotencyKey; ik != "" {
 		if err := e.commander.referencer.take(referenceIks, ik); err != nil {
 			return nil, err
@@ -47,16 +46,7 @@ func (e *executionContext) run(ctx context.Context, executor func(e *executionCo
 			return nil, err
 		}
 	}
-	chainedLog, done, err := executor(e)
-	if err != nil {
-		return nil, err
-	}
-	<-done
-	logger := logging.FromContext(ctx).WithFields(map[string]any{
-		"id": chainedLog.ID,
-	})
-	logger.Debugf("Log inserted in database")
-	return chainedLog, nil
+	return executor(e)
 }
 
 func newExecutionContext(commander *Commander, parameters Parameters) *executionContext {

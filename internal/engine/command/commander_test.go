@@ -2,7 +2,12 @@ package command
 
 import (
 	"context"
+	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/google/uuid"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/formancehq/ledger/internal/machine"
@@ -293,4 +298,76 @@ func TestForceRevert(t *testing.T) {
 	balance, err = store.GetBalance(ctx, "world", "USD")
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), balance.Uint64())
+}
+
+func TestParallelTransactions(t *testing.T) {
+	require.NoError(t, pgtesting.CreatePostgresServer())
+	t.Cleanup(func() {
+		require.NoError(t, pgtesting.DestroyPostgresServer())
+	})
+	ctx := logging.TestingContext()
+
+	pgDB := pgtesting.NewPostgresDatabase(t)
+
+	connectionOptions := bunconnect.ConnectionOptions{
+		DatabaseSourceName: pgDB.ConnString(),
+		Debug:              testing.Verbose(),
+	}
+
+	sqlDB, err := bunconnect.OpenSQLDB(connectionOptions)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+
+	bucketName := uuid.NewString()
+
+	bucket, err := ledgerstore.ConnectToBucket(connectionOptions, bucketName)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, bucket.Close())
+	})
+
+	err = ledgerstore.MigrateBucket(ctx, sqlDB, bucketName)
+	require.NoError(t, err)
+
+	store, err := ledgerstore.New(bucket, "default")
+	require.NoError(t, err)
+
+	commander := New(store, NewDefaultLocker(), NewCompiler(1024), NewReferencer(), bus.NewNoOpMonitor())
+	go commander.Run(ctx)
+	defer commander.Close()
+
+	_, err = commander.CreateTransaction(ctx, Parameters{}, ledger.TxToScriptData(ledger.TransactionData{
+		Postings: []ledger.Posting{{
+			Source:      "world",
+			Destination: "foo",
+			Amount:      big.NewInt(1000),
+			Asset:       "USD",
+		}},
+	}, false))
+	require.NoError(t, err)
+
+	count := 100
+	wg := sync.WaitGroup{}
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		go func() {
+			_, _ = commander.CreateTransaction(ctx, Parameters{}, ledger.TxToScriptData(ledger.TransactionData{
+				Postings: []ledger.Posting{{
+					Source:      "foo",
+					Destination: "bar",
+					Amount:      big.NewInt(100),
+					Asset:       "USD",
+				}},
+			}, false))
+			wg.Done()
+		}()
+
+	}
+	wg.Wait()
+
+	account, err := store.GetAccountWithVolumes(ctx, ledgerstore.NewGetAccountQuery("bar").WithExpandVolumes())
+	require.NoError(t, err)
+	internaltesting.RequireEqual(t, big.NewInt(1000), account.Volumes.Balances()["USD"])
 }

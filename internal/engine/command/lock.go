@@ -114,11 +114,12 @@ func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts)
 		node := defaultLocker.intents.FirstNode()
 		for {
 			if node == nil {
-				break
+				return
 			}
 			if node.Value().tryLock(ctx, defaultLocker) {
 				node.Remove()
 				close(node.Value().acquired)
+				return
 			}
 			node = node.Next()
 		}
@@ -135,8 +136,8 @@ func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts)
 
 	acquired := intent.tryLock(ctx, defaultLocker)
 	if acquired {
-		defaultLocker.mu.Unlock()
 		logger.Debugf("Lock directly acquired")
+		defaultLocker.mu.Unlock()
 
 		return releaseIntent, nil
 	}
