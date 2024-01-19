@@ -2,13 +2,14 @@ package command
 
 import (
 	"context"
+	"math/big"
+	"sync"
+	"testing"
+
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/google/uuid"
-	"math/big"
-	"sync"
-	"testing"
 
 	"github.com/formancehq/ledger/internal/machine"
 
