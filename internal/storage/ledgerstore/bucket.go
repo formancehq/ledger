@@ -17,6 +17,9 @@ import (
 //go:embed migrations/0-init-schema.sql
 var initSchema string
 
+//go:embed migrations/1-fix-trigger.sql
+var fixTrigger string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -125,6 +128,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 				}
 
 				return nil
+			},
+		},
+		migrations.Migration{
+			Name: "Fix trigger",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, fixTrigger)
+				return err
 			},
 		},
 	)

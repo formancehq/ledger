@@ -1074,3 +1074,20 @@ func TestGetLastTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, *tx3, tx.Transaction)
 }
+
+func TestTransactionFromWorldToWorld(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
+
+	tx := ledger.NewTransaction().
+		WithIDUint64(0).
+		WithPostings(
+			ledger.NewPosting("world", "world", "USD", big.NewInt(100)),
+		)
+	require.NoError(t, store.InsertLogs(ctx, ledger.ChainLogs(ledger.NewTransactionLog(tx, map[string]metadata.Metadata{}))...))
+
+	account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("world").WithExpandVolumes())
+	require.NoError(t, err)
+	internaltesting.RequireEqual(t, big.NewInt(0), account.Volumes.Balances()["USD"])
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"github.com/pkg/errors"
+
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -79,6 +81,9 @@ func (r *Resolver) startLedgerUsingStore(ctx context.Context, name string, store
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
+	if name == "" {
+		return nil, errors.New("empty name")
+	}
 	r.lock.RLock()
 	ledger, ok := r.ledgers[name]
 	r.lock.RUnlock()
