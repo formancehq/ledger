@@ -143,17 +143,17 @@ func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
 		if m.schema != "" && m.createSchema {
 			_, err := tx.ExecContext(ctx, fmt.Sprintf(`create schema if not exists "%s"`, m.schema))
 			if err != nil {
-				return err
+				return errors.Wrap(err, "creating schema")
 			}
 		}
 
 		if err := m.createVersionTable(ctx, tx); err != nil {
-			return err
+			return errors.Wrap(err, "creating version table")
 		}
 
 		lastMigration, err := m.getLastVersion(ctx, tx)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "getting last migration")
 		}
 
 		if len(m.migrations) > int(lastMigration)-1 {
@@ -164,14 +164,14 @@ func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
 					}
 				} else if migration.Up != nil {
 					if err := migration.Up(tx); err != nil {
-						return err
+						return errors.Wrapf(err, "executing migration %d", ind)
 					}
 				} else {
 					return errors.New("no code defined for migration")
 				}
 
 				if err := m.insertVersion(ctx, tx, int(lastMigration)+ind+1); err != nil {
-					return err
+					return errors.Wrap(err, "inserting new version")
 				}
 			}
 		}

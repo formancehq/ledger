@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/formancehq/stack/libs/go-libs/aws/iam"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+
 	"github.com/formancehq/ledger/cmd/internal"
-	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
@@ -57,7 +59,8 @@ func NewRootCommand() *cobra.Command {
 	auth.InitAuthFlags(root.PersistentFlags())
 	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
-	driver.InitCLIFlags(root)
+	bunconnect.InitFlags(root.PersistentFlags())
+	iam.InitFlags(root.PersistentFlags())
 
 	if err := viper.BindPFlags(root.PersistentFlags()); err != nil {
 		panic(err)

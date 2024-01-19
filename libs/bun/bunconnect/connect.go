@@ -2,6 +2,7 @@ package bunconnect
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"io"
 	"net/url"
@@ -20,6 +21,7 @@ type ConnectionOptions struct {
 	MaxIdleConns       int
 	MaxOpenConns       int
 	ConnMaxIdleTime    time.Duration
+	Connector          func(dsn string) (driver.Connector, error) `json:",omitempty"`
 }
 
 func (opts ConnectionOptions) String() string {
@@ -28,9 +30,21 @@ func (opts ConnectionOptions) String() string {
 }
 
 func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, error) {
-	sqldb, err := sql.Open("postgres", options.DatabaseSourceName)
-	if err != nil {
-		return nil, err
+	var (
+		sqldb *sql.DB
+		err   error
+	)
+	if options.Connector == nil {
+		sqldb, err = sql.Open("postgres", options.DatabaseSourceName)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		connector, err := options.Connector(options.DatabaseSourceName)
+		if err != nil {
+			return nil, err
+		}
+		sqldb = sql.OpenDB(connector)
 	}
 	if options.MaxIdleConns != 0 {
 		sqldb.SetMaxIdleConns(options.MaxIdleConns)

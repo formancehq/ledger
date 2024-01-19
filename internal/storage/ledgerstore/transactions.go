@@ -349,6 +349,7 @@ func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (
 }
 
 func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTransaction, error) {
+
 	ret, err := fetch[*ExpandedTransaction](store, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
