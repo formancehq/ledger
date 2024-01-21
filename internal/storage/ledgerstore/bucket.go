@@ -20,6 +20,9 @@ var initSchema string
 //go:embed migrations/1-fix-trigger.sql
 var fixTrigger string
 
+//go:embed migrations/2-fix-volumes-aggregation.sql
+var fixVolumesAggregation string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -134,6 +137,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Fix trigger",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, fixTrigger)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Fix volumes aggregation",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, fixVolumesAggregation)
 				return err
 			},
 		},
