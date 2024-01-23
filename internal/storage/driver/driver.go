@@ -174,7 +174,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 		},
 		func(cursor *api.Cursor[systemstore.Ledger]) error {
 			for _, name := range cursor.Data {
-				buckets.Put(name.Name)
+				buckets.Put(name.Bucket)
 			}
 			return nil
 		})
