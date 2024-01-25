@@ -225,10 +225,18 @@ func TestPostAccountMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:              "invalid account address format",
-			account:           "invalid--acc",
-			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			name:    "nominal",
+			account: "test-",
+			body: metadata.Metadata{
+				"foo": "bar",
+			},
+		},
+		{
+			name:    "nominal",
+			account: "-t--e-st-",
+			body: metadata.Metadata{
+				"foo": "bar",
+			},
 		},
 		{
 			name:              "invalid body",

@@ -1300,16 +1300,31 @@ func TestVariablesParsing(t *testing.T) {
 			"acc": "account:valid-acc",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]string{
-			"acc": "account:invalid--acc",
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "account:valid--acc",
 		}))
 
 		require.NoError(t, m.SetVarsFromJSON(map[string]string{
 			"acc": "valid:acc",
 		}))
 
-		require.Error(t, m.SetVarsFromJSON(map[string]string{
-			"acc": "invalid--acc",
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "valid--acc",
+		}))
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "-valid--acc",
+		}))
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "-valid--acc-",
+		}))
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "valid--acc-",
+		}))
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "-",
+		}))
+		require.NoError(t, m.SetVarsFromJSON(map[string]string{
+			"acc": "---------",
 		}))
 	})
 
@@ -1549,20 +1564,6 @@ func TestSetVarsFromJSON(t *testing.T) {
 				destination = $dest
 			)`,
 			expectedError: fmt.Errorf("missing variable $dest"),
-		},
-		{
-			name: "invalid format for account",
-			script: `vars {
-				account $dest
-			}
-			send [COIN 99] (
-				source = @world
-				destination = $dest
-			)`,
-			vars: map[string]string{
-				"dest": "invalid--acc",
-			},
-			expectedError: fmt.Errorf("invalid JSON value for variable $dest of type account: value invalid--acc: accounts should respect pattern ^[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*(:[a-zA-Z0-9_]+(?:-[a-zA-Z0-9_]+)*)*$"),
 		},
 	} {
 		tc := tc

@@ -80,6 +80,51 @@ var runTestCases = []runTestCase{
 		},
 	},
 	{
+		name: "send $42 dash",
+		script: `
+			send [USD/2 42] (
+				source = @world
+				destination = @user:001-toto
+			)`,
+		expectResult: Result{
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "user:001-toto", "USD/2", big.NewInt(42)),
+			},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
+		},
+	},
+	{
+		name: "send $42 dash 2",
+		script: `
+			send [USD/2 42] (
+				source = @world
+				destination = @user:001-toto
+			)`,
+		expectResult: Result{
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "user:001-toto", "USD/2", big.NewInt(42)),
+			},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
+		},
+	},
+	{
+		name: "send $42 dash 3",
+		script: `
+			send [USD/2 42] (
+				source = @world
+				destination = @--t-t--edd-st---
+			)`,
+		expectResult: Result{
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "--t-t--edd-st---", "USD/2", big.NewInt(42)),
+			},
+			Metadata:        metadata.Metadata{},
+			AccountMetadata: map[string]metadata.Metadata{},
+		},
+	},
+	{
 		name: "send all available",
 		script: `
 			send [USD/2 *] (
