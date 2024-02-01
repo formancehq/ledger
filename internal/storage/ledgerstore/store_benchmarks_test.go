@@ -528,13 +528,9 @@ func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *S
 		b.Run(t.name, func(b *testing.B) {
 			var q GetAggregatedBalanceQuery
 			for i := 0; i < b.N; i++ {
-				q = NewGetAggregatedBalancesQuery(PaginatedQueryOptions[PITFilter]{
-					PageSize:     100,
-					QueryBuilder: t.query,
-					Options: PITFilter{
-						PIT: pit,
-					},
-				})
+				q = NewGetAggregatedBalancesQuery(PITFilter{
+					PIT: pit,
+				}, t.query, false)
 				ret, err := store.GetAggregatedBalances(ctx, q)
 				require.NoError(b, err)
 				if !t.allowEmptyResponse && len(ret) == 0 {

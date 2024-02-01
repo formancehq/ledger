@@ -33,37 +33,37 @@ func TestGetBalancesAggregated(t *testing.T) {
 		ledger.NewPosting("world", "users:1", "USD", bigInt),
 		ledger.NewPosting("world", "users:2", "USD", smallInt),
 		ledger.NewPosting("world", "xxx", "EUR", smallInt),
-	).WithDate(now.Add(time.Minute)).WithIDUint64(1)
+	).WithDate(now.Add(-time.Minute)).WithIDUint64(1)
 
-	require.NoError(t, store.InsertLogs(ctx,
-		ledger.ChainLogs(
-			ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}).WithDate(tx1.Timestamp),
-			ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}).WithDate(tx2.Timestamp),
-			ledger.NewSetMetadataLog(now.Add(time.Minute), ledger.SetMetadataLogPayload{
-				TargetType: ledger.MetaTargetTypeAccount,
-				TargetID:   "users:1",
-				Metadata: metadata.Metadata{
-					"category": "premium",
-				},
-			}),
-			ledger.NewSetMetadataLog(now.Add(time.Minute), ledger.SetMetadataLogPayload{
-				TargetType: ledger.MetaTargetTypeAccount,
-				TargetID:   "users:2",
-				Metadata: metadata.Metadata{
-					"category": "premium",
-				},
-			}),
-			ledger.NewDeleteMetadataLog(now.Add(2*time.Minute), ledger.DeleteMetadataLogPayload{
-				TargetType: ledger.MetaTargetTypeAccount,
-				TargetID:   "users:2",
-				Key:        "category",
-			}),
-		)...))
+	logs := []*ledger.Log{
+		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}).WithDate(now),
+		ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}).WithDate(now.Add(time.Minute)),
+		ledger.NewSetMetadataLog(now.Add(time.Minute), ledger.SetMetadataLogPayload{
+			TargetType: ledger.MetaTargetTypeAccount,
+			TargetID:   "users:1",
+			Metadata: metadata.Metadata{
+				"category": "premium",
+			},
+		}),
+		ledger.NewSetMetadataLog(now.Add(time.Minute), ledger.SetMetadataLogPayload{
+			TargetType: ledger.MetaTargetTypeAccount,
+			TargetID:   "users:2",
+			Metadata: metadata.Metadata{
+				"category": "premium",
+			},
+		}),
+		ledger.NewDeleteMetadataLog(now.Add(2*time.Minute), ledger.DeleteMetadataLogPayload{
+			TargetType: ledger.MetaTargetTypeAccount,
+			TargetID:   "users:2",
+			Key:        "category",
+		}),
+	}
+
+	require.NoError(t, store.InsertLogs(ctx, ledger.ChainLogs(logs...)...))
 
 	t.Run("aggregate on all", func(t *testing.T) {
 		t.Parallel()
-		q := NewPaginatedQueryOptions(PITFilter{}).WithPageSize(10)
-		cursor, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(q))
+		cursor, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{}, nil, false))
 		require.NoError(t, err)
 		internaltesting.RequireEqual(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0),
@@ -72,10 +72,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("filter on address", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
-			WithQueryBuilder(query.Match("address", "users:")).
-			WithPageSize(10),
-		))
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{},
+			query.Match("address", "users:"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Add(
@@ -84,13 +82,24 @@ func TestGetBalancesAggregated(t *testing.T) {
 			),
 		}, ret)
 	})
-	t.Run("using pit", func(t *testing.T) {
+	t.Run("using pit on effective date", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{
-			PIT: &now,
-		}).
-			WithQueryBuilder(query.Match("address", "users:")).
-			WithPageSize(10)))
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{
+			PIT: pointer.For(now.Add(-time.Second)),
+		}, query.Match("address", "users:"), false))
+		require.NoError(t, err)
+		require.Equal(t, ledger.BalancesByAssets{
+			"USD": big.NewInt(0).Add(
+				bigInt,
+				smallInt,
+			),
+		}, ret)
+	})
+	t.Run("using pit on insertion date", func(t *testing.T) {
+		t.Parallel()
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{
+			PIT: pointer.For(now),
+		}, query.Match("address", "users:"), true))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Add(
@@ -101,11 +110,9 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using a metadata and pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{
 			PIT: pointer.For(now.Add(time.Minute)),
-		}).
-			WithQueryBuilder(query.Match("metadata[category]", "premium")).
-			WithPageSize(10)))
+		}, query.Match("metadata[category]", "premium"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Add(
@@ -116,9 +123,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("using a metadata without pit", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
-			WithQueryBuilder(query.Match("metadata[category]", "premium")).
-			WithPageSize(10)))
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{},
+			query.Match("metadata[category]", "premium"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Mul(bigInt, big.NewInt(2)),
@@ -126,9 +132,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 	})
 	t.Run("when no matching", func(t *testing.T) {
 		t.Parallel()
-		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(NewPaginatedQueryOptions(PITFilter{}).
-			WithQueryBuilder(query.Match("metadata[category]", "guest")).
-			WithPageSize(10)))
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{},
+			query.Match("metadata[category]", "guest"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{}, ret)
 	})

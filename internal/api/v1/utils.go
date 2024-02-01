@@ -65,29 +65,6 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgersto
 		WithPageSize(pageSize)), nil
 }
 
-func getPaginatedQueryOptionsOfPITFilter(r *http.Request) (*ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter], error) {
-	qb, err := getQueryBuilder(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pitFilter, err := getPITFilter(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pageSize, err := bunpaginate.GetPageSize(r,
-		bunpaginate.WithDefaultPageSize(DefaultPageSize),
-		bunpaginate.WithMaxPageSize(MaxPageSize))
-	if err != nil {
-		return nil, err
-	}
-
-	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*pitFilter).
-		WithQueryBuilder(qb).
-		WithPageSize(pageSize)), nil
-}
-
 func getCommandParameters(r *http.Request) command.Parameters {
 	dryRunAsString := r.URL.Query().Get("preview")
 	dryRun := strings.ToUpper(dryRunAsString) == "YES" || strings.ToUpper(dryRunAsString) == "TRUE" || dryRunAsString == "1"

@@ -27,25 +27,53 @@ func TestGetBalancesAggregated(t *testing.T) {
 		name        string
 		queryParams url.Values
 		body        string
-		expectQuery ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter]
+		expectQuery ledgerstore.GetAggregatedBalanceQuery
 	}
 
-	before := ledger.Now()
+	now := ledger.Now()
 
 	testCases := []testCase{
 		{
 			name: "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
-				PIT: &before,
-			}),
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			},
 		},
 		{
 			name: "using address",
 			body: `{"$match": {"address": "foo"}}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{
-				PIT: &before,
-			}).
-				WithQueryBuilder(query.Match("address", "foo")),
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+				QueryBuilder: query.Match("address", "foo"),
+			},
+		},
+		{
+			name: "using pit",
+			queryParams: url.Values{
+				"pit": []string{now.Format(time.RFC3339Nano)},
+			},
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			},
+		},
+		{
+			name: "using pit + insertion date",
+			queryParams: url.Values{
+				"pit":                []string{now.Format(time.RFC3339Nano)},
+				"use_insertion_date": []string{"true"},
+			},
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+				UseInsertionDate: true,
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -57,12 +85,12 @@ func TestGetBalancesAggregated(t *testing.T) {
 			}
 			backend, mock := newTestingBackend(t, true)
 			mock.EXPECT().
-				GetAggregatedBalances(gomock.Any(), ledgerstore.NewGetAggregatedBalancesQuery(testCase.expectQuery)).
+				GetAggregatedBalances(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
-			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
+			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances?pit="+now.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
 			if testCase.queryParams != nil {
 				req.URL.RawQuery = testCase.queryParams.Encode()

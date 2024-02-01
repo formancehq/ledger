@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
@@ -24,21 +25,51 @@ func TestGetBalancesAggregated(t *testing.T) {
 	type testCase struct {
 		name        string
 		queryParams url.Values
-		expectQuery ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter]
+		expectQuery ledgerstore.GetAggregatedBalanceQuery
 	}
+
+	now := ledger.Now()
 
 	testCases := []testCase{
 		{
-			name:        "nominal",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}),
+			name: "nominal",
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				UseInsertionDate: true,
+			},
 		},
 		{
 			name: "using address",
 			queryParams: url.Values{
 				"address": []string{"foo"},
 			},
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilter{}).
-				WithQueryBuilder(query.Match("address", "foo")),
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				QueryBuilder:     query.Match("address", "foo"),
+				UseInsertionDate: true,
+			},
+		},
+		{
+			name: "using pit",
+			queryParams: url.Values{
+				"pit": []string{now.Format(time.RFC3339Nano)},
+			},
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			},
+		},
+		{
+			name: "using pit + insertion date",
+			queryParams: url.Values{
+				"pit":                []string{now.Format(time.RFC3339Nano)},
+				"use_insertion_date": []string{"true"},
+			},
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+				UseInsertionDate: true,
+			},
 		},
 	}
 	for _, testCase := range testCases {
@@ -50,7 +81,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 			}
 			backend, mock := newTestingBackend(t, true)
 			mock.EXPECT().
-				GetAggregatedBalances(gomock.Any(), ledgerstore.NewGetAggregatedBalancesQuery(testCase.expectQuery)).
+				GetAggregatedBalances(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
 			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())

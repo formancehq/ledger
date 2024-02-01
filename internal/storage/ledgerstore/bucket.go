@@ -23,6 +23,12 @@ var fixTrigger string
 //go:embed migrations/2-fix-volumes-aggregation.sql
 var fixVolumesAggregation string
 
+// notes(gfyrag): This fix a bug where post_commit_effective_volumes are not properly initialized
+// when inserting a transaction before any other in the timeline
+//
+//go:embed migrations/3-fix-trigger-inserting-backdated-transactions.sql
+var fixTriggerBackdatedTransaction string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -144,6 +150,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Fix volumes aggregation",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, fixVolumesAggregation)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Fix trigger backdated transaction",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, fixTriggerBackdatedTransaction)
 				return err
 			},
 		},

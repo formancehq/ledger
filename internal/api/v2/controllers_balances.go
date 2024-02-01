@@ -9,14 +9,22 @@ import (
 )
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
-	options, err := getPaginatedQueryOptionsOfPITFilter(r)
+
+	pitFilter, err := getPITFilter(r)
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
+	}
+
+	queryBuilder, err := getQueryBuilder(r)
 	if err != nil {
 		sharedapi.BadRequest(w, ErrValidation, err)
 		return
 	}
 
 	balances, err := backend.LedgerFromContext(r.Context()).
-		GetAggregatedBalances(r.Context(), ledgerstore.NewGetAggregatedBalancesQuery(*options))
+		GetAggregatedBalances(r.Context(), ledgerstore.NewGetAggregatedBalancesQuery(
+			*pitFilter, queryBuilder, sharedapi.QueryParamBool(r, "use_insertion_date")))
 	if err != nil {
 		switch {
 		case ledgerstore.IsErrInvalidQuery(err):

@@ -73,24 +73,3 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgersto
 		WithQueryBuilder(qb).
 		WithPageSize(pageSize)), nil
 }
-
-func getPaginatedQueryOptionsOfPITFilter(r *http.Request) (*ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilter], error) {
-	qb, err := getQueryBuilder(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pitFilter, err := getPITFilter(r)
-	if err != nil {
-		return nil, err
-	}
-
-	pageSize, err := bunpaginate.GetPageSize(r)
-	if err != nil {
-		return nil, err
-	}
-
-	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*pitFilter).
-		WithQueryBuilder(qb).
-		WithPageSize(pageSize)), nil
-}

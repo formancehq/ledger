@@ -3,9 +3,8 @@ package ledgerstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
-
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// todo: should return a cursor?
 func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 
 	var (
@@ -23,8 +21,8 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 		args         []any
 		err          error
 	)
-	if q.Options.QueryBuilder != nil {
-		subQuery, args, err = q.Options.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+	if q.QueryBuilder != nil {
+		subQuery, args, err = q.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
 				// TODO: Should allow comparison operator only if segments not used
@@ -45,7 +43,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
 				needMetadata = true
 				key := "accounts.metadata"
-				if q.Options.Options.PIT != nil {
+				if q.PIT != nil {
 					key = "am.metadata"
 				}
 
@@ -66,23 +64,33 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 	}
 	ret, err := fetch[*Temp](store, ctx,
 		func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
+			pitColumn := "effective_date"
+			if q.UseInsertionDate {
+				pitColumn = "insertion_date"
+			}
 			moves := store.bucket.db.
 				NewSelect().
 				Table(MovesTableName).
 				ColumnExpr("distinct on (moves.account_address, moves.asset) moves.*").
-				Order("account_address", "asset", "moves.seq desc").
+				Order("account_address", "asset").
 				Where("moves.ledger = ?", store.name).
-				Apply(filterPIT(q.Options.Options.PIT, "insertion_date")) // todo(gfyrag): expose capability to use effective_date
+				Apply(filterPIT(q.PIT, pitColumn))
+
+			if q.UseInsertionDate {
+				moves = moves.Order("moves.insertion_date desc")
+			} else {
+				moves = moves.Order("moves.effective_date desc")
+			}
 
 			if needMetadata {
-				if q.Options.Options.PIT != nil {
+				if q.PIT != nil {
 					moves = moves.Join(`join lateral (	
 						select metadata
 						from accounts_metadata am 
 						where am.accounts_seq = moves.accounts_seq and (? is null or date <= ?)
 						order by revision desc 
 						limit 1
-					) am on true`, q.Options.Options.PIT, q.Options.Options.PIT)
+					) am on true`, q.PIT, q.PIT)
 				} else {
 					moves = moves.Join(`join lateral (	
 						select metadata
@@ -95,9 +103,14 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 				moves = moves.Where(subQuery, args...)
 			}
 
+			volumesColumn := "post_commit_effective_volumes"
+			if q.UseInsertionDate {
+				volumesColumn = "post_commit_volumes"
+			}
+
 			asJsonb := selectQuery.NewSelect().
 				TableExpr("moves").
-				ColumnExpr("volumes_to_jsonb((moves.asset, (sum((moves.post_commit_volumes).inputs), sum((moves.post_commit_volumes).outputs))::volumes)) as aggregated").
+				ColumnExpr(fmt.Sprintf("volumes_to_jsonb((moves.asset, (sum((moves.%s).inputs), sum((moves.%s).outputs))::volumes)) as aggregated", volumesColumn, volumesColumn)).
 				Group("moves.asset")
 
 			return selectQuery.
@@ -130,12 +143,16 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	return v.Balance, nil
 }
 
-type GetAggregatedBalanceQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilter]]
+type GetAggregatedBalanceQuery struct {
+	PITFilter
+	QueryBuilder     query.Builder
+	UseInsertionDate bool
+}
 
-func NewGetAggregatedBalancesQuery(options PaginatedQueryOptions[PITFilter]) GetAggregatedBalanceQuery {
+func NewGetAggregatedBalancesQuery(filter PITFilter, qb query.Builder, useInsertionDate bool) GetAggregatedBalanceQuery {
 	return GetAggregatedBalanceQuery{
-		PageSize: options.PageSize,
-		Order:    bunpaginate.OrderAsc,
-		Options:  options,
+		PITFilter:        filter,
+		QueryBuilder:     qb,
+		UseInsertionDate: useInsertionDate,
 	}
 }

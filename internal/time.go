@@ -112,6 +112,6 @@ func ParseTime(v string) (Time, error) {
 		return Time{}, err
 	}
 	return Time{
-		Time: t.Round(DatePrecision),
+		Time: t.Round(DatePrecision).UTC(),
 	}, nil
 }

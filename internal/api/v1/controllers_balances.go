@@ -23,14 +23,22 @@ func buildAggregatedBalancesQuery(r *http.Request) (query.Builder, error) {
 }
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
-	options, err := getPaginatedQueryOptionsOfPITFilter(r)
+
+	pitFilter, err := getPITFilter(r)
 	if err != nil {
 		sharedapi.BadRequest(w, ErrValidation, err)
 		return
 	}
 
-	query := ledgerstore.NewGetAggregatedBalancesQuery(*options)
-	query.Options.QueryBuilder, err = buildAggregatedBalancesQuery(r)
+	queryBuilder, err := buildAggregatedBalancesQuery(r)
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
+	}
+
+	query := ledgerstore.NewGetAggregatedBalancesQuery(*pitFilter, queryBuilder,
+		// notes(gfyrag): if pit is not specified, always use insertion date to be backward compatible
+		r.URL.Query().Get("pit") == "" || sharedapi.QueryParamBool(r, "use_insertion_date"))
 
 	balances, err := backend.LedgerFromContext(r.Context()).GetAggregatedBalances(r.Context(), query)
 	if err != nil {

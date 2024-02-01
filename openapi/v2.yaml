@@ -933,6 +933,12 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: use_insertion_date
+          in: query
+          description: Use insertion date instead of effective date
+          required: false
+          schema:
+            type: boolean
       requestBody:
         content:
           application/json:
