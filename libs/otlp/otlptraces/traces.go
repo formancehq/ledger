@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/otlp"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
@@ -16,7 +15,6 @@ import (
 )
 
 const (
-	JaegerExporter = "jaeger"
 	StdoutExporter = "stdout"
 	OTLPExporter   = "otlp"
 
@@ -81,27 +79,6 @@ func TracesModule(cfg ModuleConfig) fx.Option {
 	}
 
 	switch cfg.Exporter {
-	case JaegerExporter:
-		options = append(options, JaegerTracerModule())
-		if cfg.JaegerConfig != nil {
-			if v := cfg.JaegerConfig.Endpoint; v != "" {
-				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-					return jaeger.WithEndpoint(v)
-				}))
-			}
-
-			if v := cfg.JaegerConfig.User; v != "" {
-				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-					return jaeger.WithUsername(v)
-				}))
-			}
-
-			if v := cfg.JaegerConfig.Password; v != "" {
-				options = append(options, ProvideJaegerTracerCollectorEndpoint(func() jaeger.CollectorEndpointOption {
-					return jaeger.WithPassword(v)
-				}))
-			}
-		}
 	case StdoutExporter:
 		options = append(options, StdoutTracerModule())
 	case OTLPExporter:

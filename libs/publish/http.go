@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/ThreeDotsLabs/watermill"
-	wHttp "github.com/ThreeDotsLabs/watermill-http/pkg/http"
+	wHttp "github.com/ThreeDotsLabs/watermill-http/v2/pkg/http"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"go.uber.org/fx"
 )

@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/fx"
@@ -27,14 +26,6 @@ func TestOTLPTracesModule(t *testing.T) {
 	}
 
 	for _, testCase := range []testCase{
-		{
-			name: "jaeger",
-			args: []string{
-				fmt.Sprintf("--%s", OtelTracesFlag),
-				fmt.Sprintf("--%s=%s", OtelTracesExporterFlag, "jaeger"),
-			},
-			expectedSpanExporter: &jaeger.Exporter{},
-		},
 		{
 			name: "otlp",
 			args: []string{

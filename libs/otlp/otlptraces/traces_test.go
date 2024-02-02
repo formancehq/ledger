@@ -46,19 +46,6 @@ func TestTracesModule(t *testing.T) {
 			},
 		},
 		{
-			name: "jaeger-exporter",
-			config: ModuleConfig{
-				Exporter: JaegerExporter,
-			},
-		},
-		{
-			name: "jaeger-exporter-with-config",
-			config: ModuleConfig{
-				Exporter:     JaegerExporter,
-				JaegerConfig: &JaegerConfig{},
-			},
-		},
-		{
 			name: "stdout-exporter",
 			config: ModuleConfig{
 				Exporter: StdoutExporter,

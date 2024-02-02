@@ -38,16 +38,6 @@ func CLITracesModule(v *viper.Viper) fx.Option {
 		return TracesModule(ModuleConfig{
 			Batch:    v.GetBool(OtelTracesBatchFlag),
 			Exporter: v.GetString(OtelTracesExporterFlag),
-			JaegerConfig: func() *JaegerConfig {
-				if v.GetString(OtelTracesExporterFlag) != JaegerExporter {
-					return nil
-				}
-				return &JaegerConfig{
-					Endpoint: v.GetString(OtelTracesExporterJaegerEndpointFlag),
-					User:     v.GetString(OtelTracesExporterJaegerUserFlag),
-					Password: v.GetString(OtelTracesExporterJaegerPasswordFlag),
-				}
-			}(),
 			OTLPConfig: func() *OTLPConfig {
 				if v.GetString(OtelTracesExporterFlag) != OTLPExporter {
 					return nil
