@@ -37,6 +37,10 @@ func ToAny[V any](v V) any {
 	return v
 }
 
+func ToPointer[V any](v V) *V {
+	return &v
+}
+
 func ToFmtString[V any](v any) string {
 	return fmt.Sprint(v)
 }
