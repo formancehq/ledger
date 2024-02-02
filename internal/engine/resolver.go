@@ -109,6 +109,10 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 }
 
 func (r *Resolver) CreateLedger(ctx context.Context, name string, configuration driver.LedgerConfiguration) (*Ledger, error) {
+	if name == "" {
+		return nil, errors.New("empty name")
+	}
+
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
