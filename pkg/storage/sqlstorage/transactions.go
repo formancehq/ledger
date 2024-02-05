@@ -130,15 +130,30 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 			// use checkpoints table to nudge the query planner in the right direction
 			// we have to use a raw SQL query here because the go-sqlbuilder library
 			// does not support subqueries in the WHERE clause
+			params := []any{
+				s.schema.Name(),
+				endTime.UTC().Format(time.RFC3339),
+			}
+
+			if destination != "" {
+				params = append(params, fmt.Sprintf(
+					`AND account = '%s'`,
+					destination,
+				))
+			} else {
+				params = append(params, "")
+			}
+
 			sb.SQL(fmt.Sprintf(
 				`AND id <= (
-				SELECT txid
-				FROM "%s".accounts_checkpoints
-				WHERE last_tx_at <= '%s'::timestamptz
-				ORDER BY last_tx_at
-				DESC LIMIT 1
-			)`,
-				s.schema.Name(), endTime.UTC().Format(time.RFC3339),
+					SELECT txid
+					FROM "%s".accounts_checkpoints
+					WHERE last_tx_at <= '%s'::timestamptz
+					%s
+					ORDER BY last_tx_at, txid
+					DESC LIMIT 1
+				)`,
+				params...,
 			))
 		}
 	}
