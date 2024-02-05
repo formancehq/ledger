@@ -461,7 +461,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
                                pre_commit_volumes,
                                post_commit_volumes) (SELECT * FROM unnest(
                                    $1::int[],
-                                   $2::timestamp[],
+                                   $2::timestamptz[],
                                    $3::varchar[],
                                    $4::jsonb[],
                                    $5::jsonb[],
