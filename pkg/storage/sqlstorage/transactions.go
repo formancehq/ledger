@@ -121,18 +121,26 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 		t.StartTime = startTime
 	}
 	if !endTime.IsZero() {
+		// while we narrow down the query in the next step, we still
+		// need to strictly filter the resuling set by the end time
 		sb.Where(sb.L("timestamp", endTime.UTC()))
-		sub := sqlbuilder.NewSelectBuilder()
-		sb.Where(
-			sb.In(
-				"id",
-				sub.Select("txid").
-					From(s.schema.Table("accounts_checkpoints")).
-					Where(sub.LE("last_tx_at", endTime.UTC())).
-					OrderBy("last_tx_at").Desc(),
-			),
-		)
 		t.EndTime = endTime
+
+		if flavor == PostgreSQL {
+			// use checkpoints table to nudge the query planner in the right direction
+			// we have to use a raw SQL query here because the go-sqlbuilder library
+			// does not support subqueries in the WHERE clause
+			sb.SQL(fmt.Sprintf(
+				`AND id <= (
+				SELECT txid
+				FROM "%s".accounts_checkpoints
+				WHERE last_tx_at <= '%s'::timestamptz
+				ORDER BY last_tx_at
+				DESC LIMIT 1
+			)`,
+				s.schema.Name(), endTime.UTC().Format(time.RFC3339),
+			))
+		}
 	}
 
 	for key, value := range metadata {
