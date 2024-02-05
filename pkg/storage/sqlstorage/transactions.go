@@ -122,6 +122,8 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	}
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
+		sub := sqlbuilder.NewSelectBuilder()
+		sb.Where(sb.In("id", sub.Select("txid").From(s.schema.Table("accounts_checkpoints")).Where(sub.L("last_tx_at", endTime.UTC()))))
 		t.EndTime = endTime
 	}
 
@@ -348,115 +350,118 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
 
 	switch s.Schema().Flavor() {
 	case sqlbuilder.SQLite:
-		ibTxs := sqlbuilder.NewInsertBuilder()
-		ibTxs.InsertInto(s.schema.Table("transactions"))
-		ibTxs.Cols("id", "timestamp", "reference", "postings", "metadata",
-			"pre_commit_volumes", "post_commit_volumes")
+		{
+			ibTxs := sqlbuilder.NewInsertBuilder()
+			ibTxs.InsertInto(s.schema.Table("transactions"))
+			ibTxs.Cols("id", "timestamp", "reference", "postings", "metadata",
+				"pre_commit_volumes", "post_commit_volumes")
 
-		for _, tx := range txs {
-			postingsData, err := json.Marshal(tx.Postings)
-			if err != nil {
-				panic(err)
-			}
-
-			metadataData := []byte("{}")
-			if tx.Metadata != nil {
-				metadataData, err = json.Marshal(tx.Metadata)
+			for _, tx := range txs {
+				postingsData, err := json.Marshal(tx.Postings)
 				if err != nil {
 					panic(err)
 				}
+
+				metadataData := []byte("{}")
+				if tx.Metadata != nil {
+					metadataData, err = json.Marshal(tx.Metadata)
+					if err != nil {
+						panic(err)
+					}
+				}
+
+				preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
+				if err != nil {
+					panic(err)
+				}
+
+				postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
+				if err != nil {
+					panic(err)
+				}
+
+				var reference *string
+				if tx.Reference != "" {
+					cp := tx.Reference
+					reference = &cp
+				}
+
+				ibTxs.Values(tx.ID, tx.Timestamp, reference, postingsData,
+					metadataData, preCommitVolumesData, postCommitVolumesData)
 			}
 
-			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
-
-			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
-
-			var reference *string
-			if tx.Reference != "" {
-				cp := tx.Reference
-				reference = &cp
-			}
-
-			ibTxs.Values(tx.ID, tx.Timestamp, reference, postingsData,
-				metadataData, preCommitVolumesData, postCommitVolumesData)
+			queryTxs, argsTxs = ibTxs.BuildWithFlavor(s.schema.Flavor())
 		}
-
-		queryTxs, argsTxs = ibTxs.BuildWithFlavor(s.schema.Flavor())
 
 	case sqlbuilder.PostgreSQL:
-		txIds := make([]uint64, len(txs))
-		timestamps := make([]time.Time, len(txs))
-		references := make([]*string, len(txs))
-		postingDataSet := make([]string, len(txs))
-		metadataDataSet := make([]string, len(txs))
-		preCommitVolumesDataSet := make([]string, len(txs))
-		postCommitVolumesDataSet := make([]string, len(txs))
+		{
+			txIds := make([]uint64, len(txs))
+			timestamps := make([]time.Time, len(txs))
+			references := make([]*string, len(txs))
+			postingDataSet := make([]string, len(txs))
+			metadataDataSet := make([]string, len(txs))
+			preCommitVolumesDataSet := make([]string, len(txs))
+			postCommitVolumesDataSet := make([]string, len(txs))
 
-		postingTxIds := []uint64{}
-		postingIndices := []int{}
-		sources := []string{}
-		destinations := []string{}
+			postingTxIds := []uint64{}
+			postingIndices := []int{}
+			sources := []string{}
+			destinations := []string{}
 
-		for i, tx := range txs {
-			postingsData, err := json.Marshal(tx.Postings)
-			if err != nil {
-				panic(err)
-			}
-
-			metadataData := []byte("{}")
-			if tx.Metadata != nil {
-				metadataData, err = json.Marshal(tx.Metadata)
+			for i, tx := range txs {
+				postingsData, err := json.Marshal(tx.Postings)
 				if err != nil {
 					panic(err)
 				}
-			}
 
-			preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
+				metadataData := []byte("{}")
+				if tx.Metadata != nil {
+					metadataData, err = json.Marshal(tx.Metadata)
+					if err != nil {
+						panic(err)
+					}
+				}
 
-			postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
-			if err != nil {
-				panic(err)
-			}
-
-			txIds[i] = tx.ID
-			timestamps[i] = tx.Timestamp
-			postingDataSet[i] = string(postingsData)
-			metadataDataSet[i] = string(metadataData)
-			preCommitVolumesDataSet[i] = string(preCommitVolumesData)
-			postCommitVolumesDataSet[i] = string(postCommitVolumesData)
-			references[i] = nil
-			if tx.Reference != "" {
-				cp := tx.Reference
-				references[i] = &cp
-			}
-
-			for i, p := range tx.Postings {
-				sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
+				preCommitVolumesData, err := json.Marshal(tx.PreCommitVolumes)
 				if err != nil {
 					panic(err)
 				}
-				destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
+
+				postCommitVolumesData, err := json.Marshal(tx.PostCommitVolumes)
 				if err != nil {
 					panic(err)
 				}
-				postingTxIds = append(postingTxIds, tx.ID)
-				postingIndices = append(postingIndices, i)
-				sources = append(sources, string(sourcesBy))
-				destinations = append(destinations, string(destinationsBy))
-			}
-		}
 
-		queryTxs = fmt.Sprintf(
-			`INSERT INTO "%s".transactions (id, timestamp, reference,
+				txIds[i] = tx.ID
+				timestamps[i] = tx.Timestamp
+				postingDataSet[i] = string(postingsData)
+				metadataDataSet[i] = string(metadataData)
+				preCommitVolumesDataSet[i] = string(preCommitVolumesData)
+				postCommitVolumesDataSet[i] = string(postCommitVolumesData)
+				references[i] = nil
+				if tx.Reference != "" {
+					cp := tx.Reference
+					references[i] = &cp
+				}
+
+				for i, p := range tx.Postings {
+					sourcesBy, err := json.Marshal(strings.Split(p.Source, ":"))
+					if err != nil {
+						panic(err)
+					}
+					destinationsBy, err := json.Marshal(strings.Split(p.Destination, ":"))
+					if err != nil {
+						panic(err)
+					}
+					postingTxIds = append(postingTxIds, tx.ID)
+					postingIndices = append(postingIndices, i)
+					sources = append(sources, string(sourcesBy))
+					destinations = append(destinations, string(destinationsBy))
+				}
+			}
+
+			queryTxs = fmt.Sprintf(
+				`INSERT INTO "%s".transactions (id, timestamp, reference,
                                postings, metadata,
                                pre_commit_volumes,
                                post_commit_volumes) (SELECT * FROM unnest(
@@ -467,28 +472,83 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
                                    $5::jsonb[],
                                    $6::jsonb[],
                                    $7::jsonb[]))`,
-			s.schema.Name())
-		argsTxs = []any{
-			txIds, timestamps, references,
-			postingDataSet, metadataDataSet,
-			preCommitVolumesDataSet, postCommitVolumesDataSet,
-		}
+				s.schema.Name())
+			argsTxs = []any{
+				txIds, timestamps, references,
+				postingDataSet, metadataDataSet,
+				preCommitVolumesDataSet, postCommitVolumesDataSet,
+			}
 
-		queryPostings := fmt.Sprintf(
-			`INSERT INTO "%s".postings (txid, posting_index,
-                           source, destination) (SELECT * FROM unnest(
-                                   $1::int[],
-                                   $2::int[],
-                                   $3::jsonb[],
-                                   $4::jsonb[]))`,
-			s.schema.Name())
-		argsPostings := []any{
-			postingTxIds, postingIndices, sources, destinations,
-		}
+			// Insert postings
+			{
+				queryPostings := fmt.Sprintf(
+					`INSERT INTO "%s".postings (txid, posting_index,
+														 source, destination) (SELECT * FROM unnest(
+																		 $1::int[],
+																		 $2::int[],
+																		 $3::jsonb[],
+																		 $4::jsonb[]))`,
+					s.schema.Name())
+				argsPostings := []any{
+					postingTxIds, postingIndices, sources, destinations,
+				}
 
-		_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
-		if err != nil {
-			return s.error(err)
+				_, err = executor.ExecContext(ctx, queryPostings, argsPostings...)
+				if err != nil {
+					return s.error(err)
+				}
+			}
+
+			// Insert accounts checkpoints
+			{
+				type checkpoint struct {
+					ts   time.Time
+					txid uint64
+				}
+				accts := map[string]checkpoint{}
+				for _, tx := range txs {
+					for _, p := range tx.Postings {
+						accts[p.Source] = checkpoint{ts: tx.Timestamp, txid: tx.ID}
+						accts[p.Destination] = checkpoint{ts: tx.Timestamp, txid: tx.ID}
+					}
+				}
+				addrs := []string{}
+				txids := []uint64{}
+				tss := []time.Time{}
+
+				for addr, acct := range accts {
+					addrs = append(addrs, addr)
+					txids = append(txids, acct.txid)
+					tss = append(tss, time.Date(
+						acct.ts.Year(),
+						acct.ts.Month(),
+						acct.ts.Day(),
+						0, 0, 0, 0,
+						acct.ts.Location(),
+					))
+				}
+
+				queryAccts := fmt.Sprintf(
+					`INSERT INTO "%s".accounts_checkpoints (
+						txid,
+						account,
+						last_tx_at
+					) (SELECT * FROM unnest(
+						$1::bigint[],
+						$2::text[],
+						$3::timestamptz[]
+					))
+					ON CONFLICT (account, last_tx_at) DO UPDATE SET txid = EXCLUDED.txid, last_tx_at = EXCLUDED.last_tx_at`,
+					s.schema.Name(),
+				)
+
+				args := []any{txids, addrs, tss}
+
+				_, err = executor.ExecContext(ctx, queryAccts, args...)
+				if err != nil {
+					return s.error(err)
+				}
+			}
 		}
 	}
 
