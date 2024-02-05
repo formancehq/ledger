@@ -354,7 +354,7 @@ func testTransactions(t *testing.T, store *sqlstorage.Store) {
 		require.Equal(t, 1, cursor.PageSize)
 
 		// Transaction timestamp fetched should be equal to the timestamp of the committed transaction.
-		require.Equal(t, cursor.Data[0].Timestamp, tx3.Timestamp.Format(time.RFC3339))
+		require.True(t, cursor.Data[0].Timestamp.Equal(tx3.Timestamp))
 
 		cursor, err = store.GetTransactions(context.Background(), ledger.TransactionsQuery{
 			AfterTxID: cursor.Data[0].ID,
