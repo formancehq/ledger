@@ -123,7 +123,15 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
 		sub := sqlbuilder.NewSelectBuilder()
-		sb.Where(sb.In("id", sub.Select("txid").From(s.schema.Table("accounts_checkpoints")).Where(sub.L("last_tx_at", endTime.UTC()))))
+		sb.Where(
+			sb.In(
+				"id",
+				sub.Select("txid").
+					From(s.schema.Table("accounts_checkpoints")).
+					Where(sub.LE("last_tx_at", endTime.UTC())).
+					OrderBy("last_tx_at").Desc(),
+			),
+		)
 		t.EndTime = endTime
 	}
 
