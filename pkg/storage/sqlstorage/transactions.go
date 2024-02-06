@@ -123,7 +123,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
 
-		if p.PageSize == 1 {
+		if flavor == PostgreSQL {
 			// We nudge the query planner in the right direction,
 			// by reducing the search space according to the end time.
 			// We have to use a raw query as the sqlbuilder
