@@ -145,22 +145,36 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 type Script struct {
 	ledger.Script
-	Vars map[string]any `json:"vars"`
+	Vars map[string]json.RawMessage `json:"vars"`
 }
 
-func (s Script) ToCore() ledger.Script {
+func (s Script) ToCore() (*ledger.Script, error) {
 	s.Script.Vars = map[string]string{}
 	for k, v := range s.Vars {
-		switch v := v.(type) {
-		case string:
-			s.Script.Vars[k] = v
-		case map[string]any:
-			s.Script.Vars[k] = fmt.Sprintf("%s %v", v["asset"], v["amount"])
-		default:
-			s.Script.Vars[k] = fmt.Sprint(v)
+
+		m := make(map[string]json.RawMessage)
+		if err := json.Unmarshal(v, &m); err != nil {
+			var rawValue string
+			if err := json.Unmarshal(v, &rawValue); err != nil {
+				panic(err)
+			}
+			s.Script.Vars[k] = rawValue
+			continue
 		}
+
+		// Is a monetary
+		var asset string
+		if err := json.Unmarshal(m["asset"], &asset); err != nil {
+			return nil, errors.Wrap(err, "unmarshalling asset")
+		}
+		amount := &big.Int{}
+		if err := json.Unmarshal(m["amount"], amount); err != nil {
+			return nil, errors.Wrap(err, "unmarshalling amount")
+		}
+
+		s.Script.Vars[k] = fmt.Sprintf("%s %s", asset, amount)
 	}
-	return s.Script
+	return &s.Script, nil
 }
 
 type PostTransactionRequest struct {
@@ -228,14 +242,20 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	script := ledger.RunScript{
-		Script:    payload.Script.ToCore(),
+	script, err := payload.Script.ToCore()
+	if err != nil {
+		sharedapi.BadRequest(w, ErrValidation, err)
+		return
+	}
+
+	runScript := ledger.RunScript{
+		Script:    *script,
 		Timestamp: payload.Timestamp,
 		Reference: payload.Reference,
 		Metadata:  payload.Metadata,
 	}
 
-	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), script)
+	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), runScript)
 	if err != nil {
 		switch {
 		case engine.IsCommandError(err):

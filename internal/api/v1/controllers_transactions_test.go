@@ -1,6 +1,7 @@
 package v1_test
 
 import (
+	"encoding/json"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -64,8 +65,8 @@ func TestPostTransactions(t *testing.T) {
 						destination = @bank
 					)`,
 					},
-					Vars: map[string]any{
-						"val": "USD/2 100",
+					Vars: map[string]json.RawMessage{
+						"val": json.RawMessage(`"USD/2 100"`),
 					},
 				},
 			},
@@ -99,11 +100,11 @@ func TestPostTransactions(t *testing.T) {
 						destination = @bank
 					)`,
 					},
-					Vars: map[string]any{
-						"val": map[string]any{
+					Vars: map[string]json.RawMessage{
+						"val": json.RawMessage(`{
 							"asset":  "USD/2",
-							"amount": 100,
-						},
+							"amount": 100
+						}`),
 					},
 				},
 			},
