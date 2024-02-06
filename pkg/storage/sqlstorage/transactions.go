@@ -123,21 +123,24 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
 
-		// We nudge the query planner in the right direction,
-		// by reducing the search space according to the end time.
-		// We have to use a raw query as the sqlbuilder
-		// does not support LTE+subqueries in the where clause.
-		sb.SQL(fmt.Sprintf(`
-			AND "id" <= (
-				SELECT "id"
-				FROM "%s".transactions
-				WHERE "timestamp" < '%s'::timestamptz
-				ORDER BY "timestamp" DESC, "id" DESC
-				LIMIT 1
-			)`,
-			s.schema.Name(),
-			endTime.UTC().Format(time.RFC3339),
-		))
+		if p.PageSize == 1 {
+			// We nudge the query planner in the right direction,
+			// by reducing the search space according to the end time.
+			// We have to use a raw query as the sqlbuilder
+			// does not support LTE+subqueries in the where clause.
+			sb.SQL(fmt.Sprintf(`
+				AND "id" <= (
+					SELECT "id"
+					FROM "%s".transactions
+					WHERE "timestamp" < '%s'::timestamptz
+					ORDER BY "timestamp" DESC, "id" DESC
+					LIMIT 1
+				)`,
+				s.schema.Name(),
+				endTime.UTC().Format(time.RFC3339),
+			))
+		}
+
 		t.EndTime = endTime
 	}
 
