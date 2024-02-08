@@ -30,6 +30,7 @@ func InitFlags(flags *pflag.FlagSet) {
 
 func ConnectionOptionsFromFlags(v *viper.Viper, output io.Writer, debug bool) (*ConnectionOptions, error) {
 	var connector func(string) (driver.Connector, error)
+
 	if v.GetBool(PostgresAWSEnableIAMFlag) {
 		cfg, err := config.LoadDefaultConfig(context.Background(), iam.LoadOptionFromViper(v))
 		if err != nil {
