@@ -195,7 +195,7 @@ paths:
         - name: cursor
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -205,7 +205,7 @@ paths:
         - name: pagination_token
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -690,7 +690,7 @@ paths:
         - name: cursor
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -701,7 +701,7 @@ paths:
           x-speakeasy-ignore: true
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -970,6 +970,10 @@ paths:
           schema:
             type: string
             example: users:001
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
         - name: after
           in: query
           description: Pagination cursor, will return accounts after given address, in descending order.
@@ -979,7 +983,7 @@ paths:
         - name: cursor
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -1145,7 +1149,7 @@ paths:
         - name: cursor
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
@@ -1156,7 +1160,7 @@ paths:
           x-speakeasy-ignore: true
           in: query
           description: |
-            Parameter used in pagination requests. Maximum page size is set to 15.
+            Parameter used in pagination requests. Maximum page size is set to 1000.
             Set to the value of next for the next page of results.
             Set to the value of previous for the previous page of results.
             No other parameters can be set when this parameter is set.
