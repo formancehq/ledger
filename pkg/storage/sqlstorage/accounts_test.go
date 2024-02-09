@@ -93,6 +93,21 @@ func testAccounts(t *testing.T, store *sqlstorage.Store) {
 		require.Len(t, accounts.Data, 1)
 		require.EqualValues(t, "world", accounts.Data[0].Address)
 	})
+	t.Run("filter balance when specifying asset", func(t *testing.T) {
+		q := ledger.AccountsQuery{
+			PageSize: 10,
+			Filters: ledger.AccountsQueryFilters{
+				Balance:         "0",
+				BalanceOperator: "gt",
+				BalanceAsset:    "USD/2",
+			},
+		}
+
+		accounts, err := store.GetAccounts(context.Background(), q)
+		require.NoError(t, err, "balance filter should not fail")
+		require.Len(t, accounts.Data, 1)
+		require.EqualValues(t, "us_bank", accounts.Data[0].Address)
+	})
 
 	t.Run("panic invalid balance", func(t *testing.T) {
 		q := ledger.AccountsQuery{
