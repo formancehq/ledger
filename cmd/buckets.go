@@ -51,32 +51,23 @@ func NewBucketUpgrade() *cobra.Command {
 	return cmd
 }
 
-func NewBucketUpgradeAll() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:          "upgrade-all",
-		Args:         cobra.ExactArgs(0),
-		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+func upgradeAll(cmd *cobra.Command, args []string) error {
+	logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag), false)
+	ctx := logging.ContextWithLogger(cmd.Context(), logger)
 
-			logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag), false)
-			ctx := logging.ContextWithLogger(cmd.Context(), logger)
-
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag))
-			if err != nil {
-				return err
-			}
-
-			driver := driver.New(*connectionOptions)
-			defer func() {
-				_ = driver.Close()
-			}()
-
-			if err := driver.Initialize(ctx); err != nil {
-				return err
-			}
-
-			return driver.UpgradeAllBuckets(ctx)
-		},
+	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(viper.GetViper(), cmd.OutOrStdout(), viper.GetBool(service.DebugFlag))
+	if err != nil {
+		return err
 	}
-	return cmd
+
+	driver := driver.New(*connectionOptions)
+	defer func() {
+		_ = driver.Close()
+	}()
+
+	if err := driver.Initialize(ctx); err != nil {
+		return err
+	}
+
+	return driver.UpgradeAllBuckets(ctx)
 }

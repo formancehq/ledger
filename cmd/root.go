@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunmigrate"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/stack/libs/go-libs/aws/iam"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
@@ -42,11 +45,13 @@ func NewRootCommand() *cobra.Command {
 
 	buckets := NewBucket()
 	buckets.AddCommand(NewBucketUpgrade())
-	buckets.AddCommand(NewBucketUpgradeAll())
 
 	root.AddCommand(serve)
 	root.AddCommand(buckets)
 	root.AddCommand(version)
+	root.AddCommand(bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, args []string, db *bun.DB) error {
+		return upgradeAll(cmd, args)
+	}))
 
 	root.AddCommand(NewDocCommand())
 
