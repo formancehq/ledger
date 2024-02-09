@@ -27,6 +27,7 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
+	sb.Distinct()
 
 	var (
 		address         = p.Filters.Address
