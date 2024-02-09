@@ -974,6 +974,12 @@ paths:
           in: query
           description: |
             The maximum number of results to return per page.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+            default: 15
         - name: after
           in: query
           description: Pagination cursor, will return accounts after given address, in descending order.
