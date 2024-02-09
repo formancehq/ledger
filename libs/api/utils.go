@@ -26,11 +26,15 @@ func writeJSON(w http.ResponseWriter, statusCode int, v any) {
 	}
 }
 
-func NotFound(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusNotFound, ErrorResponse{
-		ErrorCode:    ErrorCodeNotFound,
+func WriteErrorResponse(w http.ResponseWriter, statusCode int, errorCode string, err error) {
+	writeJSON(w, statusCode, ErrorResponse{
+		ErrorCode:    errorCode,
 		ErrorMessage: err.Error(),
 	})
+}
+
+func NotFound(w http.ResponseWriter, err error) {
+	WriteErrorResponse(w, http.StatusNotFound, ErrorCodeNotFound, err)
 }
 
 func NoContent(w http.ResponseWriter) {
@@ -38,17 +42,11 @@ func NoContent(w http.ResponseWriter) {
 }
 
 func Forbidden(w http.ResponseWriter, code string, err error) {
-	writeJSON(w, http.StatusForbidden, ErrorResponse{
-		ErrorCode:    code,
-		ErrorMessage: err.Error(),
-	})
+	WriteErrorResponse(w, http.StatusForbidden, code, err)
 }
 
 func BadRequest(w http.ResponseWriter, code string, err error) {
-	writeJSON(w, http.StatusBadRequest, ErrorResponse{
-		ErrorCode:    code,
-		ErrorMessage: err.Error(),
-	})
+	WriteErrorResponse(w, http.StatusBadRequest, code, err)
 }
 
 func BadRequestWithDetails(w http.ResponseWriter, code string, err error, details string) {
@@ -61,11 +59,7 @@ func BadRequestWithDetails(w http.ResponseWriter, code string, err error, detail
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	logging.FromContext(r.Context()).Error(err)
-
-	writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-		ErrorCode:    ErrorInternal,
-		ErrorMessage: err.Error(),
-	})
+	WriteErrorResponse(w, http.StatusInternalServerError, ErrorInternal, err)
 }
 
 func Accepted(w http.ResponseWriter, v any) {

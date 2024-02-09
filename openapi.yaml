@@ -3201,6 +3201,7 @@ components:
         - REVERT_OCCURRING
         - ALREADY_REVERT
         - NO_POSTINGS
+        - LEDGER_NOT_FOUND
       example: VALIDATION
     V2LedgerInfoResponse:
       properties:

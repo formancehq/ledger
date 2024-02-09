@@ -76,7 +76,7 @@ func LedgerMiddleware(
 			if err != nil {
 				switch {
 				case sqlutils.IsNotFoundError(err):
-					sharedapi.NotFound(w, err)
+					sharedapi.WriteErrorResponse(w, http.StatusNotFound, "LEDGER_NOT_FOUND", err)
 				default:
 					sharedapi.InternalServerError(w, r, err)
 				}
