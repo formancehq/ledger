@@ -22,12 +22,12 @@ func InitAuthFlags(flags *flag.FlagSet) {
 	flags.String(AuthServiceFlag, "", "Service")
 }
 
-func CLIAuthModule(v *viper.Viper) fx.Option {
+func CLIAuthModule() fx.Option {
 	return Module(ModuleConfig{
-		Enabled:              v.GetBool(AuthEnabled),
-		Issuer:               v.GetString(AuthIssuerFlag),
-		ReadKeySetMaxRetries: v.GetInt(AuthReadKeySetMaxRetriesFlag),
-		CheckScopes:          v.GetBool(AuthCheckScopesFlag),
-		Service:              v.GetString(AuthServiceFlag),
+		Enabled:              viper.GetBool(AuthEnabled),
+		Issuer:               viper.GetString(AuthIssuerFlag),
+		ReadKeySetMaxRetries: viper.GetInt(AuthReadKeySetMaxRetriesFlag),
+		CheckScopes:          viper.GetBool(AuthCheckScopesFlag),
+		Service:              viper.GetString(AuthServiceFlag),
 	})
 }

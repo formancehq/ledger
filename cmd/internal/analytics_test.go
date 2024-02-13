@@ -80,7 +80,7 @@ func TestAnalyticsModuleDisabled(t *testing.T) {
 	v := viper.GetViper()
 	v.Set(telemetryEnabledFlag, false)
 
-	module := NewAnalyticsModule(v, "1.0.0")
+	module := NewAnalyticsModule("1.0.0")
 	app := fx.New(module)
 	require.NoError(t, app.Start(context.Background()))
 	require.NoError(t, app.Stop(context.Background()))

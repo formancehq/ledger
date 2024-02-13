@@ -28,11 +28,11 @@ func InitFlags(flags *pflag.FlagSet) {
 	flags.Int(PostgresMaxOpenConnsFlag, 20, "Max opened connections")
 }
 
-func ConnectionOptionsFromFlags(v *viper.Viper, output io.Writer, debug bool) (*ConnectionOptions, error) {
+func ConnectionOptionsFromFlags(output io.Writer, debug bool) (*ConnectionOptions, error) {
 	var connector func(string) (driver.Connector, error)
 
-	if v.GetBool(PostgresAWSEnableIAMFlag) {
-		cfg, err := config.LoadDefaultConfig(context.Background(), iam.LoadOptionFromViper(v))
+	if viper.GetBool(PostgresAWSEnableIAMFlag) {
+		cfg, err := config.LoadDefaultConfig(context.Background(), iam.LoadOptionFromViper())
 		if err != nil {
 			return nil, err
 		}
@@ -51,12 +51,12 @@ func ConnectionOptionsFromFlags(v *viper.Viper, output io.Writer, debug bool) (*
 		}
 	}
 	return &ConnectionOptions{
-		DatabaseSourceName: v.GetString(PostgresURIFlag),
+		DatabaseSourceName: viper.GetString(PostgresURIFlag),
 		Debug:              debug,
 		Writer:             output,
-		MaxIdleConns:       v.GetInt(PostgresMaxIdleConnsFlag),
-		ConnMaxIdleTime:    v.GetDuration(PostgresConnMaxIdleTimeFlag),
-		MaxOpenConns:       v.GetInt(PostgresMaxOpenConnsFlag),
+		MaxIdleConns:       viper.GetInt(PostgresMaxIdleConnsFlag),
+		ConnMaxIdleTime:    viper.GetDuration(PostgresConnMaxIdleTimeFlag),
+		MaxOpenConns:       viper.GetInt(PostgresMaxOpenConnsFlag),
 		Connector:          connector,
 	}, nil
 }

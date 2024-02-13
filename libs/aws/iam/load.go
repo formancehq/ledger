@@ -24,20 +24,20 @@ func InitFlags(flags *pflag.FlagSet) {
 	flags.String(AWSProfileFlag, "", "AWS profile")
 }
 
-func LoadOptionFromViper(v *viper.Viper) func(opts *config.LoadOptions) error {
+func LoadOptionFromViper() func(opts *config.LoadOptions) error {
 	return func(opts *config.LoadOptions) error {
-		if v.GetString(AWSAccessKeyIDFlag) != "" {
+		if viper.GetString(AWSAccessKeyIDFlag) != "" {
 			opts.Credentials = aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
 				return aws.Credentials{
-					AccessKeyID:     v.GetString(AWSAccessKeyIDFlag),
-					SecretAccessKey: v.GetString(AWSSecretAccessKeyFlag),
-					SessionToken:    v.GetString(AWSSessionTokenFlag),
+					AccessKeyID:     viper.GetString(AWSAccessKeyIDFlag),
+					SecretAccessKey: viper.GetString(AWSSecretAccessKeyFlag),
+					SessionToken:    viper.GetString(AWSSessionTokenFlag),
 					Source:          "flags",
 				}, nil
 			})
 		}
-		opts.Region = v.GetString(AWSRegionFlag)
-		opts.SharedConfigProfile = v.GetString(AWSProfileFlag)
+		opts.Region = viper.GetString(AWSRegionFlag)
+		opts.SharedConfigProfile = viper.GetString(AWSProfileFlag)
 
 		return nil
 	}

@@ -46,7 +46,7 @@ func TestOTLPTracesModule(t *testing.T) {
 				RunE: func(cmd *cobra.Command, args []string) error {
 					app := fx.New(
 						fx.NopLogger,
-						CLITracesModule(viper.GetViper()),
+						CLITracesModule(),
 						fx.Invoke(func(lc fx.Lifecycle, spanExporter tracesdk.SpanExporter) {
 							lc.Append(fx.Hook{
 								OnStart: func(ctx context.Context) error {

@@ -39,8 +39,8 @@ func InitAnalyticsFlags(cmd *cobra.Command, defaultWriteKey string, useDeprecate
 	cmd.PersistentFlags().Duration(telemetryHeartbeatIntervalFlag, 4*time.Hour, "telemetry heartbeat interval")
 }
 
-func NewAnalyticsModule(logger logging.Logger, v *viper.Viper, version string, useDeprecatedFlags bool) fx.Option {
-	if v.GetBool(telemetryEnabledFlag) || (useDeprecatedFlags && v.GetBool(segmentEnabledFlag)) {
+func NewAnalyticsModule(logger logging.Logger, version string, useDeprecatedFlags bool) fx.Option {
+	if viper.GetBool(telemetryEnabledFlag) || (useDeprecatedFlags && viper.GetBool(segmentEnabledFlag)) {
 
 		writeKey := viper.GetString(telemetryWriteKeyFlag)
 		if writeKey == "" && useDeprecatedFlags {

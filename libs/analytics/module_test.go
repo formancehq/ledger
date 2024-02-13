@@ -30,7 +30,7 @@ func TestAnalyticsModule(t *testing.T) {
 
 	handled := make(chan *analytics.Track, 1)
 
-	module := NewAnalyticsModule(logging.NewLogrus(logrus.New()), v, "1.0.0", true)
+	module := NewAnalyticsModule(logging.NewLogrus(logrus.New()), "1.0.0", true)
 	app := fx.New(
 		module,
 		fx.NopLogger,
@@ -78,7 +78,7 @@ func TestAnalyticsModuleDisabled(t *testing.T) {
 	v := viper.GetViper()
 	v.Set(telemetryEnabledFlag, false)
 
-	module := NewAnalyticsModule(logging.NewLogrus(logrus.New()), v, "1.0.0", true)
+	module := NewAnalyticsModule(logging.NewLogrus(logrus.New()), "1.0.0", true)
 	app := fx.New(module, fx.NopLogger)
 	require.NoError(t, app.Start(context.Background()))
 	require.NoError(t, app.Stop(context.Background()))

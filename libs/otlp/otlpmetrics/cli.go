@@ -33,21 +33,21 @@ func InitOTLPMetricsFlags(flags *flag.FlagSet) {
 	flags.Bool(OtelMetricsExporterOTLPInsecureFlag, false, "OpenTelemetry traces grpc insecure")
 }
 
-func CLIMetricsModule(v *viper.Viper) fx.Option {
-	if v.GetBool(OtelMetricsFlag) {
+func CLIMetricsModule() fx.Option {
+	if viper.GetBool(OtelMetricsFlag) {
 		return MetricsModule(ModuleConfig{
-			ServiceName:    v.GetString(otlp.OtelServiceName),
+			ServiceName:    viper.GetString(otlp.OtelServiceName),
 			ServiceVersion: "develop",
 			OTLPConfig: &OTLPConfig{
-				Mode:     v.GetString(OtelMetricsExporterOTLPModeFlag),
-				Endpoint: v.GetString(OtelMetricsExporterOTLPEndpointFlag),
-				Insecure: v.GetBool(OtelMetricsExporterOTLPInsecureFlag),
+				Mode:     viper.GetString(OtelMetricsExporterOTLPModeFlag),
+				Endpoint: viper.GetString(OtelMetricsExporterOTLPEndpointFlag),
+				Insecure: viper.GetBool(OtelMetricsExporterOTLPInsecureFlag),
 			},
-			Exporter:                    v.GetString(OtelMetricsExporterFlag),
-			RuntimeMetrics:              v.GetBool(OtelMetricsRuntimeFlag),
-			MinimumReadMemStatsInterval: v.GetDuration(OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag),
-			PushInterval:                v.GetDuration(OtelMetricsExporterPushIntervalFlag),
-			ResourceAttributes:          v.GetStringSlice(otlp.OtelResourceAttributes),
+			Exporter:                    viper.GetString(OtelMetricsExporterFlag),
+			RuntimeMetrics:              viper.GetBool(OtelMetricsRuntimeFlag),
+			MinimumReadMemStatsInterval: viper.GetDuration(OtelMetricsRuntimeMinimumReadMemStatsIntervalFlag),
+			PushInterval:                viper.GetDuration(OtelMetricsExporterPushIntervalFlag),
+			ResourceAttributes:          viper.GetStringSlice(otlp.OtelResourceAttributes),
 		})
 	}
 	return fx.Options()

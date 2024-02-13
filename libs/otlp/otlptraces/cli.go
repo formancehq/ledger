@@ -33,23 +33,23 @@ func InitOTLPTracesFlags(flags *flag.FlagSet) {
 	flags.Bool(OtelTracesExporterOTLPInsecureFlag, false, "OpenTelemetry traces grpc insecure")
 }
 
-func CLITracesModule(v *viper.Viper) fx.Option {
-	if v.GetBool(OtelTracesFlag) {
+func CLITracesModule() fx.Option {
+	if viper.GetBool(OtelTracesFlag) {
 		return TracesModule(ModuleConfig{
-			Batch:    v.GetBool(OtelTracesBatchFlag),
-			Exporter: v.GetString(OtelTracesExporterFlag),
+			Batch:    viper.GetBool(OtelTracesBatchFlag),
+			Exporter: viper.GetString(OtelTracesExporterFlag),
 			OTLPConfig: func() *OTLPConfig {
-				if v.GetString(OtelTracesExporterFlag) != OTLPExporter {
+				if viper.GetString(OtelTracesExporterFlag) != OTLPExporter {
 					return nil
 				}
 				return &OTLPConfig{
-					Mode:     v.GetString(OtelTracesExporterOTLPModeFlag),
-					Endpoint: v.GetString(OtelTracesExporterOTLPEndpointFlag),
-					Insecure: v.GetBool(OtelTracesExporterOTLPInsecureFlag),
+					Mode:     viper.GetString(OtelTracesExporterOTLPModeFlag),
+					Endpoint: viper.GetString(OtelTracesExporterOTLPEndpointFlag),
+					Insecure: viper.GetBool(OtelTracesExporterOTLPInsecureFlag),
 				}
 			}(),
-			ServiceName:        v.GetString(otlp.OtelServiceName),
-			ResourceAttributes: v.GetStringSlice(otlp.OtelResourceAttributes),
+			ServiceName:        viper.GetString(otlp.OtelServiceName),
+			ResourceAttributes: viper.GetStringSlice(otlp.OtelResourceAttributes),
 		})
 	}
 	return fx.Options()

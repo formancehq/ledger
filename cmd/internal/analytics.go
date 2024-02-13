@@ -25,8 +25,8 @@ func InitAnalyticsFlags(cmd *cobra.Command, defaultWriteKey string) {
 	cmd.PersistentFlags().Duration(telemetryHeartbeatIntervalFlag, 4*time.Hour, "telemetry heartbeat interval")
 }
 
-func NewAnalyticsModule(v *viper.Viper, version string) fx.Option {
-	if v.GetBool(telemetryEnabledFlag) {
+func NewAnalyticsModule(version string) fx.Option {
+	if viper.GetBool(telemetryEnabledFlag) {
 		applicationID := viper.GetString(telemetryApplicationIdFlag)
 		writeKey := viper.GetString(telemetryWriteKeyFlag)
 		interval := viper.GetDuration(telemetryHeartbeatIntervalFlag)

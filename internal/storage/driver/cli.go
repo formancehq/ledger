@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -15,11 +14,11 @@ type PostgresConfig struct {
 	ConnString string
 }
 
-func CLIModule(v *viper.Viper, output io.Writer, debug bool) fx.Option {
+func CLIModule(output io.Writer, debug bool) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func() (*bunconnect.ConnectionOptions, error) {
-		return bunconnect.ConnectionOptionsFromFlags(v, output, debug)
+		return bunconnect.ConnectionOptionsFromFlags(output, debug)
 	}))
 	options = append(options, fx.Provide(func(connectionOptions *bunconnect.ConnectionOptions) (*Driver, error) {
 		return New(*connectionOptions), nil

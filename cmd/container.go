@@ -21,19 +21,18 @@ func resolveOptions(output io.Writer, userOptions ...fx.Option) []fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options, fx.NopLogger)
 
-	v := viper.GetViper()
-	debug := v.GetBool(service.DebugFlag)
+	debug := viper.GetBool(service.DebugFlag)
 
 	options = append(options,
-		publish.CLIPublisherModule(v, ServiceName),
-		otlptraces.CLITracesModule(v),
-		otlpmetrics.CLIMetricsModule(v),
-		auth.CLIAuthModule(v),
-		driver.CLIModule(v, output, debug),
-		internal.NewAnalyticsModule(v, Version),
+		publish.CLIPublisherModule(ServiceName),
+		otlptraces.CLITracesModule(),
+		otlpmetrics.CLIMetricsModule(),
+		auth.CLIAuthModule(),
+		driver.CLIModule(output, debug),
+		internal.NewAnalyticsModule(Version),
 		engine.Module(engine.Configuration{
 			NumscriptCache: engine.NumscriptCacheConfiguration{
-				MaxCount: v.GetInt(numscriptCacheMaxCountFlag),
+				MaxCount: viper.GetInt(numscriptCacheMaxCountFlag),
 			},
 		}),
 	)

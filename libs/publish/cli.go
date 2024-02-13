@@ -57,10 +57,10 @@ func InitNatsCliFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String(PublisherNatsURLFlag, "", "Nats url")
 }
 
-func CLIPublisherModule(v *viper.Viper, serviceName string) fx.Option {
+func CLIPublisherModule(serviceName string) fx.Option {
 	options := make([]fx.Option, 0)
 
-	topics := v.GetStringSlice(PublisherTopicMappingFlag)
+	topics := viper.GetStringSlice(PublisherTopicMappingFlag)
 	mapping := make(map[string]string)
 	for _, topic := range topics {
 		parts := strings.SplitN(topic, ":", 2)
@@ -72,39 +72,39 @@ func CLIPublisherModule(v *viper.Viper, serviceName string) fx.Option {
 
 	options = append(options, Module(mapping))
 	switch {
-	case v.GetBool(PublisherHttpEnabledFlag):
+	case viper.GetBool(PublisherHttpEnabledFlag):
 		// Currently don't expose http listener, so pass addr == ""
 		options = append(options, httpModule(""))
-	case v.GetBool(PublisherNatsEnabledFlag):
+	case viper.GetBool(PublisherNatsEnabledFlag):
 		options = append(options, NatsModule(
-			v.GetString(PublisherNatsURLFlag),
+			viper.GetString(PublisherNatsURLFlag),
 			serviceName,
 			nats.Name(serviceName),
-			nats.MaxReconnects(v.GetInt(PublisherNatsMaxReconnectFlag)),
-			nats.ReconnectWait(v.GetDuration(PublisherNatsReconnectWaitFlag)),
+			nats.MaxReconnects(viper.GetInt(PublisherNatsMaxReconnectFlag)),
+			nats.ReconnectWait(viper.GetDuration(PublisherNatsReconnectWaitFlag)),
 		))
-	case v.GetBool(PublisherKafkaEnabledFlag):
+	case viper.GetBool(PublisherKafkaEnabledFlag):
 		options = append(options,
-			kafkaModule(clientId(serviceName), serviceName, v.GetStringSlice(PublisherKafkaBrokerFlag)...),
+			kafkaModule(clientId(serviceName), serviceName, viper.GetStringSlice(PublisherKafkaBrokerFlag)...),
 			ProvideSaramaOption(
 				WithConsumerReturnErrors(),
 				WithProducerReturnSuccess(),
 			),
 		)
-		if v.GetBool(PublisherKafkaTLSEnabled) {
+		if viper.GetBool(PublisherKafkaTLSEnabled) {
 			options = append(options, ProvideSaramaOption(WithTLS()))
 		}
-		if v.GetBool(PublisherKafkaSASLEnabled) {
+		if viper.GetBool(PublisherKafkaSASLEnabled) {
 			options = append(options, ProvideSaramaOption(
 				WithSASLEnabled(),
 				WithSASLCredentials(
-					v.GetString(PublisherKafkaSASLUsername),
-					v.GetString(PublisherKafkaSASLPassword),
+					viper.GetString(PublisherKafkaSASLUsername),
+					viper.GetString(PublisherKafkaSASLPassword),
 				),
-				WithSASLMechanism(sarama.SASLMechanism(v.GetString(PublisherKafkaSASLMechanism))),
+				WithSASLMechanism(sarama.SASLMechanism(viper.GetString(PublisherKafkaSASLMechanism))),
 				WithSASLScramClient(func() sarama.SCRAMClient {
 					var fn scram.HashGeneratorFcn
-					switch v.GetInt(PublisherKafkaSASLScramSHASize) {
+					switch viper.GetInt(PublisherKafkaSASLScramSHASize) {
 					case 512:
 						fn = SHA512
 					case 256:
