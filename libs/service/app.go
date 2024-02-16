@@ -2,15 +2,29 @@ package service
 
 import (
 	"context"
-	"io"
-
 	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+	"io"
+	"os"
 )
 
 const DebugFlag = "debug"
 const JsonFormattingLoggerFlag = "json-formatting-logger"
+
+func BindFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().Bool(DebugFlag, false, "Debug mode")
+	cmd.PersistentFlags().Bool(JsonFormattingLoggerFlag, false, "Format logs as json")
+
+	if err := viper.BindPFlags(cmd.PersistentFlags()); err != nil {
+		panic(err)
+	}
+}
+
+func IsDebug() bool {
+	return viper.GetBool(DebugFlag)
+}
 
 type App struct {
 	options []fx.Option
@@ -18,7 +32,13 @@ type App struct {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	logger := GetDefaultLogger(a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
+	logger := GetDefaultLogger(a.output)
+	logger.Infof("Starting application")
+	logger.Debugf("Environment variables")
+	for _, v := range os.Environ() {
+		logger.Debugf(v)
+	}
+
 	app := a.newFxApp(logger)
 	if err := app.Start(logging.ContextWithLogger(ctx, logger)); err != nil {
 		return err
@@ -40,7 +60,7 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) Start(ctx context.Context) error {
-	logger := GetDefaultLogger(a.output, viper.GetBool(DebugFlag), viper.GetBool(JsonFormattingLoggerFlag))
+	logger := GetDefaultLogger(a.output)
 	return a.newFxApp(logger).Start(ctx)
 }
 

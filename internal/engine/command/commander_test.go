@@ -315,7 +315,7 @@ func TestParallelTransactions(t *testing.T) {
 		Debug:              testing.Verbose(),
 	}
 
-	sqlDB, err := bunconnect.OpenSQLDB(connectionOptions)
+	sqlDB, err := bunconnect.OpenSQLDB(ctx, connectionOptions)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, sqlDB.Close())
@@ -323,7 +323,7 @@ func TestParallelTransactions(t *testing.T) {
 
 	bucketName := uuid.NewString()
 
-	bucket, err := ledgerstore.ConnectToBucket(connectionOptions, bucketName)
+	bucket, err := ledgerstore.ConnectToBucket(ctx, connectionOptions, bucketName)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bucket.Close())

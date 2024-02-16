@@ -10,15 +10,15 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 )
 
-func GetDefaultLogger(w io.Writer, debug, jsonFormattingLog bool) logging.Logger {
+func GetDefaultLogger(w io.Writer) logging.Logger {
 	l := logrus.New()
 	l.SetOutput(w)
-	if debug {
+	if IsDebug() {
 		l.Level = logrus.DebugLevel
 	}
 
 	var formatter logrus.Formatter
-	if jsonFormattingLog {
+	if viper.GetBool(JsonFormattingLoggerFlag) {
 		jsonFormatter := &logrus.JSONFormatter{}
 		jsonFormatter.TimestampFormat = "15-01-2018 15:04:05.000000"
 		formatter = jsonFormatter

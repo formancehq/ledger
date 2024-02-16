@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	bunpaginate2 "github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"math/big"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestColumnPagination(t *testing.T) {
 	t.Parallel()
 
 	pgServer := pgtesting.NewPostgresDatabase(t)
-	db, err := bunconnect.OpenSQLDB(bunconnect.ConnectionOptions{
+	db, err := bunconnect.OpenSQLDB(logging.TestingContext(), bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
 		Debug:              testing.Verbose(),
 	})

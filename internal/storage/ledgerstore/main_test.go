@@ -66,7 +66,7 @@ func newBucket(t T, hooks ...bun.QueryHook) *Bucket {
 		ConnMaxIdleTime:    time.Minute,
 	}
 
-	bucket, err := ConnectToBucket(connectionOptions, name, hooks...)
+	bucket, err := ConnectToBucket(ctx, connectionOptions, name, hooks...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = bucket.Close()

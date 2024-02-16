@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
+	"github.com/pkg/errors"
 	"github.com/xo/dburl"
 )
 
@@ -36,19 +38,20 @@ var _ driver.DriverContext = &iamDriver{}
 type iamConnector struct {
 	dsn    string
 	driver *iamDriver
+	logger logging.Logger
 }
 
 func (i *iamConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	url, err := dburl.Parse(i.dsn)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "parsing dsn: %s", i.dsn)
 	}
 
 	authenticationToken, err := auth.BuildAuthToken(
 		context.Background(), url.Host, i.driver.awsConfig.Region,
 		url.User.Username(), i.driver.awsConfig.Credentials)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "building aws auth token")
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s",
@@ -58,6 +61,8 @@ func (i *iamConnector) Connect(ctx context.Context) (driver.Conn, error) {
 			dsn = fmt.Sprintf("%s %s=%s", dsn, key, value)
 		}
 	}
+
+	i.logger.Debugf("IAM: Connect using dsn '%s'", dsn)
 
 	pqConnector, err := pq.NewConnector(dsn)
 	if err != nil {

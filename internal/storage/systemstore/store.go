@@ -19,7 +19,7 @@ type Store struct {
 
 func Connect(ctx context.Context, connectionOptions bunconnect.ConnectionOptions) (*Store, error) {
 
-	db, err := bunconnect.OpenDBWithSchema(connectionOptions, Schema)
+	db, err := bunconnect.OpenDBWithSchema(ctx, connectionOptions, Schema)
 	if err != nil {
 		return nil, sqlutils.PostgresError(err)
 	}

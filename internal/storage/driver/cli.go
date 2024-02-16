@@ -2,9 +2,9 @@ package driver
 
 import (
 	"context"
-	"io"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"go.uber.org/fx"
@@ -14,11 +14,11 @@ type PostgresConfig struct {
 	ConnString string
 }
 
-func CLIModule(output io.Writer, debug bool) fx.Option {
+func CLIModule(cmd *cobra.Command) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func() (*bunconnect.ConnectionOptions, error) {
-		return bunconnect.ConnectionOptionsFromFlags(output, debug)
+		return bunconnect.ConnectionOptionsFromFlags(cmd.Context())
 	}))
 	options = append(options, fx.Provide(func(connectionOptions *bunconnect.ConnectionOptions) (*Driver, error) {
 		return New(*connectionOptions), nil

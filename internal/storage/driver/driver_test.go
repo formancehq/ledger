@@ -46,7 +46,7 @@ func TestErrorOnOutdatedBucket(t *testing.T) {
 
 	name := uuid.NewString()
 
-	b, err := d.OpenBucket(name)
+	b, err := d.OpenBucket(ctx, name)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = b.Close()

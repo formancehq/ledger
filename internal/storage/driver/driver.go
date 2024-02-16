@@ -47,14 +47,14 @@ func (d *Driver) GetSystemStore() *systemstore.Store {
 	return d.systemStore
 }
 
-func (d *Driver) OpenBucket(name string) (*ledgerstore.Bucket, error) {
+func (d *Driver) OpenBucket(ctx context.Context, name string) (*ledgerstore.Bucket, error) {
 
 	bucket, ok := d.buckets[name]
 	if ok {
 		return bucket, nil
 	}
 
-	b, err := ledgerstore.ConnectToBucket(d.connectionOptions, name)
+	b, err := ledgerstore.ConnectToBucket(ctx, d.connectionOptions, name)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.
 		return nil, err
 	}
 
-	bucket, err := d.OpenBucket(ledgerConfiguration.Bucket)
+	bucket, err := d.OpenBucket(ctx, ledgerConfiguration.Bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 		bucketName = configuration.Bucket
 	}
 
-	bucket, err := f.OpenBucket(bucketName)
+	bucket, err := f.OpenBucket(ctx, bucketName)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening bucket")
 	}
@@ -146,7 +146,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
 
 	var err error
-	d.db, err = bunconnect.OpenSQLDB(d.connectionOptions)
+	d.db, err = bunconnect.OpenSQLDB(ctx, d.connectionOptions)
 	if err != nil {
 		return errors.Wrap(err, "connecting to database")
 	}
@@ -183,7 +183,7 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 	}
 
 	for _, bucket := range collectionutils.Keys(buckets) {
-		bucket, err := d.OpenBucket(bucket)
+		bucket, err := d.OpenBucket(ctx, bucket)
 		if err != nil {
 			return err
 		}

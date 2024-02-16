@@ -31,7 +31,7 @@ func NewServe() *cobra.Command {
 		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return app.New(cmd.OutOrStdout(), resolveOptions(
-				cmd.OutOrStdout(),
+				cmd,
 				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
 				api.Module(api.Config{
 					Version:  Version,

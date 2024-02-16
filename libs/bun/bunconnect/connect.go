@@ -1,10 +1,11 @@
 package bunconnect
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"io"
+	"github.com/formancehq/stack/libs/go-libs/logging"
 	"net/url"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 type ConnectionOptions struct {
 	DatabaseSourceName string
 	Debug              bool
-	Writer             io.Writer
 	MaxIdleConns       int
 	MaxOpenConns       int
 	ConnMaxIdleTime    time.Duration
@@ -29,17 +29,19 @@ func (opts ConnectionOptions) String() string {
 		opts.DatabaseSourceName, opts.Debug, opts.MaxIdleConns, opts.MaxOpenConns, opts.ConnMaxIdleTime)
 }
 
-func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, error) {
+func OpenSQLDB(ctx context.Context, options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, error) {
 	var (
 		sqldb *sql.DB
 		err   error
 	)
 	if options.Connector == nil {
+		logging.FromContext(ctx).Debugf("Opening database with default connector and dsn: '%s'", options.DatabaseSourceName)
 		sqldb, err = sql.Open("postgres", options.DatabaseSourceName)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		logging.FromContext(ctx).Debugf("Opening database with iam connector and dsn: '%s'", options.DatabaseSourceName)
 		connector, err := options.Connector(options.DatabaseSourceName)
 		if err != nil {
 			return nil, err
@@ -72,7 +74,7 @@ func OpenSQLDB(options ConnectionOptions, hooks ...bun.QueryHook) (*bun.DB, erro
 	return db, nil
 }
 
-func OpenDBWithSchema(connectionOptions ConnectionOptions, schema string, hooks ...bun.QueryHook) (*bun.DB, error) {
+func OpenDBWithSchema(ctx context.Context, connectionOptions ConnectionOptions, schema string, hooks ...bun.QueryHook) (*bun.DB, error) {
 	parsedConnectionParams, err := url.Parse(connectionOptions.DatabaseSourceName)
 	if err != nil {
 		return nil, err
@@ -84,5 +86,5 @@ func OpenDBWithSchema(connectionOptions ConnectionOptions, schema string, hooks 
 
 	connectionOptions.DatabaseSourceName = parsedConnectionParams.String()
 
-	return OpenSQLDB(connectionOptions, hooks...)
+	return OpenSQLDB(ctx, connectionOptions, hooks...)
 }

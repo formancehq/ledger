@@ -163,8 +163,8 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 	)
 }
 
-func ConnectToBucket(connectionOptions bunconnect.ConnectionOptions, name string, hooks ...bun.QueryHook) (*Bucket, error) {
-	db, err := bunconnect.OpenDBWithSchema(connectionOptions, name, hooks...)
+func ConnectToBucket(ctx context.Context, connectionOptions bunconnect.ConnectionOptions, name string, hooks ...bun.QueryHook) (*Bucket, error) {
+	db, err := bunconnect.OpenDBWithSchema(ctx, connectionOptions, name, hooks...)
 	if err != nil {
 		return nil, sqlutils.PostgresError(err)
 	}
