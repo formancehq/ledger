@@ -65,7 +65,7 @@ func (j RawMessage) Value() (driver.Value, error) {
 
 func (store *Store) logsQueryBuilder(q PaginatedQueryOptions[any]) func(*bun.SelectQuery) *bun.SelectQuery {
 	return func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
-		selectQuery = selectQuery.Table(LogTableName)
+		selectQuery = selectQuery
 
 		if q.QueryBuilder != nil {
 			subQuery, args, err := q.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
@@ -131,10 +131,9 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 }
 
 func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) {
-	ret, err := fetch[*Logs](store, ctx,
+	ret, err := fetch[*Logs](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
-				Table(LogTableName).
 				OrderExpr("id desc").
 				Where("ledger = ?", store.name).
 				Limit(1)
@@ -161,10 +160,9 @@ func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*api.Cursor[le
 }
 
 func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (*ledger.ChainedLog, error) {
-	ret, err := fetch[*Logs](store, ctx,
+	ret, err := fetch[*Logs](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
-				Table(LogTableName).
 				OrderExpr("id desc").
 				Limit(1).
 				Where("idempotency_key = ?", key).

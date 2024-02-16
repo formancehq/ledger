@@ -40,7 +40,6 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 
 func (s *Store) ListLedgers(ctx context.Context, q ListLedgersQuery) (*sharedapi.Cursor[Ledger], error) {
 	query := s.db.NewSelect().
-		Table("_system.ledgers").
 		Column("ledger", "bucket", "addedat").
 		Order("addedat asc")
 

@@ -20,7 +20,6 @@ func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQ
 
 	query = query.
 		Column("accounts.address").
-		Table("accounts").
 		Where("accounts.ledger = ?", store.name).
 		Apply(filterPIT(q.PIT, "insertion_date")).
 		Order("accounts.address")
@@ -116,7 +115,6 @@ func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q GetAcc
 }
 
 func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
-
 	var (
 		where string
 		args  []any
@@ -138,7 +136,7 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQue
 }
 
 func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
-	account, err := fetch[*ledger.Account](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	account, err := fetch[*ledger.Account](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.
 			ColumnExpr("accounts.address").
 			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata").
@@ -159,7 +157,7 @@ func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Acc
 }
 
 func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery) (*ledger.ExpandedAccount, error) {
-	account, err := fetch[*ledger.ExpandedAccount](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	account, err := fetch[*ledger.ExpandedAccount](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		query = store.buildAccountQuery(q.PITFilterWithVolumes, query).
 			Where("accounts.address = ?", q.Addr).
 			Limit(1)
@@ -188,7 +186,7 @@ func (store *Store) CountAccounts(ctx context.Context, q GetAccountsQuery) (int,
 		}
 	}
 
-	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	return count[ledger.Account](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return store.buildAccountListQuery(query, q, where, args)
 	})
 }

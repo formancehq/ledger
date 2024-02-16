@@ -62,7 +62,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 	type Temp struct {
 		Aggregated ledger.VolumesByAssets `bun:"aggregated,type:jsonb"`
 	}
-	ret, err := fetch[*Temp](store, ctx,
+	ret, err := fetch[*Temp](store, false, ctx,
 		func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
 			pitColumn := "effective_date"
 			if q.UseInsertionDate {
@@ -133,7 +133,7 @@ func (store *Store) GetBalance(ctx context.Context, address, asset string) (*big
 	type Temp struct {
 		Balance *big.Int `bun:"balance,type:numeric"`
 	}
-	v, err := fetch[*Temp](store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	v, err := fetch[*Temp](store, false, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.TableExpr("get_account_balance(?, ?, ?) as balance", store.name, address, asset)
 	})
 	if err != nil {

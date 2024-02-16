@@ -154,7 +154,7 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 		selectMetadata = selectMetadata.Where("date <= ?", p.PIT)
 	}
 
-	query = query.Table("transactions").
+	query = query.
 		Where("transactions.ledger = ?", store.name)
 
 	if p.PIT != nil && !p.PIT.IsZero() {
@@ -291,13 +291,13 @@ func (store *Store) CountTransactions(ctx context.Context, q GetTransactionsQuer
 		}
 	}
 
-	return count(store, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	return count[ExpandedTransaction](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return store.buildTransactionListQuery(query, q.Options, where, args)
 	})
 }
 
 func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
-	ret, err := fetch[*ExpandedTransaction](store, ctx,
+	ret, err := fetch[*ExpandedTransaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildTransactionQuery(filter.PITFilterWithVolumes, query).
 				Where("transactions.id = ?", filter.ID).
@@ -311,10 +311,9 @@ func (store *Store) GetTransactionWithVolumes(ctx context.Context, filter GetTra
 }
 
 func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.Transaction, error) {
-	tx, err := fetch[*Transaction](store, ctx,
+	tx, err := fetch[*Transaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
-				Table("transactions").
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
 				Where("transactions.id = ?", (*bunpaginate.BigInt)(txId)).
@@ -330,10 +329,9 @@ func (store *Store) GetTransaction(ctx context.Context, txId *big.Int) (*ledger.
 }
 
 func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (*ledger.ExpandedTransaction, error) {
-	ret, err := fetch[*ExpandedTransaction](store, ctx,
+	ret, err := fetch[*ExpandedTransaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
-				Table("transactions").
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
 				Where("transactions.reference = ?", ref).
@@ -349,11 +347,9 @@ func (store *Store) GetTransactionByReference(ctx context.Context, ref string) (
 }
 
 func (store *Store) GetLastTransaction(ctx context.Context) (*ledger.ExpandedTransaction, error) {
-
-	ret, err := fetch[*ExpandedTransaction](store, ctx,
+	ret, err := fetch[*ExpandedTransaction](store, true, ctx,
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
-				Table("transactions").
 				ColumnExpr(`transactions.id, transactions.reference, transactions.postings, transactions.timestamp, transactions.reverted_at, tm.metadata`).
 				Join("left join transactions_metadata tm on tm.transactions_seq = transactions.seq").
 				Order("transactions.seq desc", "tm.revision desc").

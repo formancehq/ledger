@@ -17,12 +17,17 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func fetch[T any](s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (T, error) {
+func fetch[T any](s *Store, addModel bool, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (T, error) {
 
 	var ret T
 	ret = reflect.New(reflect.TypeOf(ret).Elem()).Interface().(T)
 
 	query := s.bucket.db.NewSelect()
+
+	if addModel {
+		query = query.Model(ret)
+	}
+
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
@@ -63,8 +68,11 @@ func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, 
 	return ret, nil
 }
 
-func count(s *Store, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (int, error) {
+func count[T any](s *Store, addModel bool, ctx context.Context, builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (int, error) {
 	query := s.bucket.db.NewSelect()
+	if addModel {
+		query = query.Model((*T)(nil))
+	}
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}

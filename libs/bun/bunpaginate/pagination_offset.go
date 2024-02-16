@@ -7,17 +7,24 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q]) (*api.Cursor[T], error) {
+func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[T], error) {
 	ret := make([]T, 0)
+
+	sb = sb.Model(&ret)
+
+	for _, builder := range builders {
+		sb = sb.Apply(builder)
+	}
 
 	if query.Offset > 0 {
 		sb = sb.Offset(int(query.Offset))
 	}
+
 	if query.PageSize > 0 {
 		sb = sb.Limit(int(query.PageSize) + 1)
 	}
 
-	if err := sb.Scan(ctx, &ret); err != nil {
+	if err := sb.Scan(ctx); err != nil {
 		return nil, err
 	}
 

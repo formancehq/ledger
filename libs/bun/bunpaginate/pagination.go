@@ -4,10 +4,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"math/big"
 	"net/http"
 	"strconv"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -128,7 +129,6 @@ func WithMaxPageSize(v uint64) func(configuration *pageSizeConfiguration) {
 }
 
 func GetPageSize(r *http.Request, opts ...func(*pageSizeConfiguration)) (uint64, error) {
-
 	cfg := pageSizeConfiguration{
 		defaultPageSize: QueryDefaultPageSize,
 		maxPageSize:     MaxPageSize,
@@ -149,6 +149,10 @@ func GetPageSize(r *http.Request, opts ...func(*pageSizeConfiguration)) (uint64,
 		if err != nil {
 			return 0, ErrInvalidPageSize
 		}
+	}
+
+	if pageSize == 0 {
+		return cfg.defaultPageSize, nil
 	}
 
 	if pageSize > cfg.maxPageSize {
