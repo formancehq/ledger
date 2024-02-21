@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 	"net/url"
 	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/logging"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
 	"github.com/uptrace/bun"
@@ -41,7 +42,7 @@ func OpenSQLDB(ctx context.Context, options ConnectionOptions, hooks ...bun.Quer
 			return nil, err
 		}
 	} else {
-		logging.FromContext(ctx).Debugf("Opening database with iam connector and dsn: '%s'", options.DatabaseSourceName)
+		logging.FromContext(ctx).Debugf("Opening database with connector and dsn: '%s'", options.DatabaseSourceName)
 		connector, err := options.Connector(options.DatabaseSourceName)
 		if err != nil {
 			return nil, err
