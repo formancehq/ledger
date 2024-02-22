@@ -177,6 +177,33 @@ type PaginatedQueryOptions[T any] struct {
 	Options      T             `json:"options"`
 }
 
+func (v *PaginatedQueryOptions[T]) UnmarshalJSON(data []byte) error {
+	type aux struct {
+		QueryBuilder json.RawMessage `json:"qb"`
+		PageSize     uint64          `json:"pageSize"`
+		Options      T               `json:"options"`
+	}
+	x := &aux{}
+	if err := json.Unmarshal(data, x); err != nil {
+		return err
+	}
+
+	*v = PaginatedQueryOptions[T]{
+		PageSize: x.PageSize,
+		Options:  x.Options,
+	}
+
+	var err error
+	if x.QueryBuilder != nil {
+		v.QueryBuilder, err = query.ParseJSON(string(x.QueryBuilder))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (opts PaginatedQueryOptions[T]) WithQueryBuilder(qb query.Builder) PaginatedQueryOptions[T] {
 	opts.QueryBuilder = qb
 

@@ -687,6 +687,13 @@ func TestGetTransactions(t *testing.T) {
 			}).
 				WithPageSize(v2.MaxPageSize),
 		},
+		{
+			name: "using cursor",
+			queryParams: url.Values{
+				"cursor": []string{"eyJwYWdlU2l6ZSI6MTUsImJvdHRvbSI6bnVsbCwiY29sdW1uIjoiaWQiLCJwYWdpbmF0aW9uSUQiOm51bGwsIm9yZGVyIjoxLCJmaWx0ZXJzIjp7InFiIjp7fSwicGFnZVNpemUiOjE1LCJvcHRpb25zIjp7InBpdCI6bnVsbCwidm9sdW1lcyI6ZmFsc2UsImVmZmVjdGl2ZVZvbHVtZXMiOmZhbHNlfX0sInJldmVyc2UiOmZhbHNlfQ"},
+			},
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
+		},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase

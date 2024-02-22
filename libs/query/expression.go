@@ -26,6 +26,12 @@ type set struct {
 	items    []Builder
 }
 
+func (s set) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"$" + s.operator: s.items,
+	})
+}
+
 var _ Builder = (*set)(nil)
 
 func (set set) Build(ctx Context) (string, []any, error) {
@@ -50,6 +56,14 @@ type keyValue struct {
 	operator string
 	key      string
 	value    any
+}
+
+func (s keyValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		s.operator: map[string]any{
+			s.key: s.value,
+		},
+	})
 }
 
 var _ Builder = (*keyValue)(nil)
@@ -221,6 +235,10 @@ func ParseJSON(data string) (Builder, error) {
 	m := make(map[string]any)
 	if err := json.Unmarshal([]byte(data), &m); err != nil {
 		return nil, err
+	}
+
+	if len(m) == 0 {
+		return nil, nil
 	}
 
 	return mapMapToExpression(m)

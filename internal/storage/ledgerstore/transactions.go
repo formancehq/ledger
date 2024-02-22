@@ -253,7 +253,6 @@ func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery)
 		args  []any
 		err   error
 	)
-
 	if q.Options.QueryBuilder != nil {
 		where, args, err = store.transactionQueryContext(q.Options.QueryBuilder, q)
 		if err != nil {
