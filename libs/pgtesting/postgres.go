@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"os"
 	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +30,13 @@ type pgDatabase struct {
 
 func (s *pgDatabase) ConnString() string {
 	return s.url
+}
+
+func (s *pgDatabase) ConnectionOptions() bunconnect.ConnectionOptions {
+	return bunconnect.ConnectionOptions{
+		DatabaseSourceName: s.ConnString(),
+		Debug:              testing.Verbose(),
+	}
 }
 
 type pgServer struct {
