@@ -17,14 +17,14 @@ const (
 	// General configuration
 	PublisherTopicMappingFlag = "publisher-topic-mapping"
 	// Kafka configuration
-	PublisherKafkaEnabledFlag      = "publisher-kafka-enabled"
-	PublisherKafkaBrokerFlag       = "publisher-kafka-broker"
-	PublisherKafkaSASLEnabled      = "publisher-kafka-sasl-enabled"
-	PublisherKafkaSASLUsername     = "publisher-kafka-sasl-username"
-	PublisherKafkaSASLPassword     = "publisher-kafka-sasl-password"
-	PublisherKafkaSASLMechanism    = "publisher-kafka-sasl-mechanism"
-	PublisherKafkaSASLScramSHASize = "publisher-kafka-sasl-scram-sha-size"
-	PublisherKafkaTLSEnabled       = "publisher-kafka-tls-enabled"
+	PublisherKafkaEnabledFlag          = "publisher-kafka-enabled"
+	PublisherKafkaBrokerFlag           = "publisher-kafka-broker"
+	PublisherKafkaSASLEnabledFlag      = "publisher-kafka-sasl-enabled"
+	PublisherKafkaSASLUsernameFlag     = "publisher-kafka-sasl-username"
+	PublisherKafkaSASLPasswordFlag     = "publisher-kafka-sasl-password"
+	PublisherKafkaSASLMechanismFlag    = "publisher-kafka-sasl-mechanism"
+	PublisherKafkaSASLScramSHASizeFlag = "publisher-kafka-sasl-scram-sha-size"
+	PublisherKafkaTLSEnabledFlag       = "publisher-kafka-tls-enabled"
 	// HTTP configuration
 	PublisherHttpEnabledFlag = "publisher-http-enabled"
 	// Nats configuration
@@ -35,26 +35,73 @@ const (
 	PublisherNatsReconnectWaitFlag = "publisher-nats-reconnect-wait"
 )
 
-func InitCLIFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().Bool(PublisherKafkaEnabledFlag, false, "Publish write events to kafka")
-	cmd.PersistentFlags().StringSlice(PublisherKafkaBrokerFlag, []string{"localhost:9092"}, "Kafka address is kafka enabled")
-	cmd.PersistentFlags().StringSlice(PublisherTopicMappingFlag, []string{}, "Define mapping between internal event types and topics")
-	cmd.PersistentFlags().Bool(PublisherHttpEnabledFlag, false, "Sent write event to http endpoint")
-	cmd.PersistentFlags().Bool(PublisherKafkaSASLEnabled, false, "Enable SASL authentication on kafka publisher")
-	cmd.PersistentFlags().String(PublisherKafkaSASLUsername, "", "SASL username")
-	cmd.PersistentFlags().String(PublisherKafkaSASLPassword, "", "SASL password")
-	cmd.PersistentFlags().String(PublisherKafkaSASLMechanism, "", "SASL authentication mechanism")
-	cmd.PersistentFlags().Int(PublisherKafkaSASLScramSHASize, 512, "SASL SCRAM SHA size")
-	cmd.PersistentFlags().Bool(PublisherKafkaTLSEnabled, false, "Enable TLS to connect on kafka")
-	InitNatsCliFlags(cmd)
+type ConfigDefault struct {
+	PublisherTopicMapping []string
+	// Kafka configuration
+	PublisherKafkaEnabled          bool
+	PublisherKafkaBroker           []string
+	PublisherKafkaSASLEnabled      bool
+	PublisherKafkaSASLUsername     string
+	PublisherKafkaSASLPassword     string
+	PublisherKafkaSASLMechanism    string
+	PublisherKafkaSASLScramSHASize int
+	PublisherKafkaTLSEnabled       bool
+	// HTTP configuration
+	PublisherHttpEnabled bool
+	// Nats configuration
+	PublisherNatsEnabled       bool
+	PublisherNatsClientID      string
+	PublisherNatsURL           string
+	PublisherNatsMaxReconnect  int
+	PublisherNatsReconnectWait time.Duration
 }
 
-func InitNatsCliFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().Bool(PublisherNatsEnabledFlag, false, "Publish write events to nats")
-	cmd.PersistentFlags().String(PublisherNatsClientIDFlag, "", "Nats client ID")
-	cmd.PersistentFlags().Int(PublisherNatsMaxReconnectFlag, 30, "Nats: set the maximum number of reconnect attempts.")
-	cmd.PersistentFlags().Duration(PublisherNatsReconnectWaitFlag, time.Second*2, "Nats: the wait time between reconnect attempts.")
-	cmd.PersistentFlags().String(PublisherNatsURLFlag, "", "Nats url")
+var (
+	defaultConfigValues = ConfigDefault{
+		PublisherTopicMapping:          []string{},
+		PublisherKafkaEnabled:          false,
+		PublisherKafkaBroker:           []string{"localhost:9092"},
+		PublisherKafkaSASLEnabled:      false,
+		PublisherKafkaSASLUsername:     "",
+		PublisherKafkaSASLPassword:     "",
+		PublisherKafkaSASLMechanism:    "",
+		PublisherKafkaSASLScramSHASize: 512,
+		PublisherKafkaTLSEnabled:       false,
+		PublisherHttpEnabled:           false,
+		PublisherNatsEnabled:           false,
+		PublisherNatsClientID:          "",
+		PublisherNatsURL:               "",
+		PublisherNatsMaxReconnect:      30,
+		PublisherNatsReconnectWait:     2 * time.Second,
+	}
+)
+
+func InitCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
+	values := defaultConfigValues
+	for _, option := range options {
+		option(&values)
+	}
+
+	// HTTP
+	cmd.PersistentFlags().Bool(PublisherHttpEnabledFlag, values.PublisherHttpEnabled, "Sent write event to http endpoint")
+
+	// KAFKA
+	cmd.PersistentFlags().Bool(PublisherKafkaEnabledFlag, values.PublisherKafkaEnabled, "Publish write events to kafka")
+	cmd.PersistentFlags().StringSlice(PublisherKafkaBrokerFlag, values.PublisherKafkaBroker, "Kafka address is kafka enabled")
+	cmd.PersistentFlags().StringSlice(PublisherTopicMappingFlag, values.PublisherTopicMapping, "Define mapping between internal event types and topics")
+	cmd.PersistentFlags().Bool(PublisherKafkaSASLEnabledFlag, values.PublisherKafkaSASLEnabled, "Enable SASL authentication on kafka publisher")
+	cmd.PersistentFlags().String(PublisherKafkaSASLUsernameFlag, values.PublisherKafkaSASLUsername, "SASL username")
+	cmd.PersistentFlags().String(PublisherKafkaSASLPasswordFlag, values.PublisherKafkaSASLPassword, "SASL password")
+	cmd.PersistentFlags().String(PublisherKafkaSASLMechanismFlag, values.PublisherKafkaSASLMechanism, "SASL authentication mechanism")
+	cmd.PersistentFlags().Int(PublisherKafkaSASLScramSHASizeFlag, values.PublisherKafkaSASLScramSHASize, "SASL SCRAM SHA size")
+	cmd.PersistentFlags().Bool(PublisherKafkaTLSEnabledFlag, values.PublisherKafkaTLSEnabled, "Enable TLS to connect on kafka")
+
+	// NATS
+	cmd.PersistentFlags().Bool(PublisherNatsEnabledFlag, values.PublisherNatsEnabled, "Publish write events to nats")
+	cmd.PersistentFlags().String(PublisherNatsClientIDFlag, values.PublisherNatsClientID, "Nats client ID")
+	cmd.PersistentFlags().Int(PublisherNatsMaxReconnectFlag, values.PublisherNatsMaxReconnect, "Nats: set the maximum number of reconnect attempts.")
+	cmd.PersistentFlags().Duration(PublisherNatsReconnectWaitFlag, values.PublisherNatsReconnectWait, "Nats: the wait time between reconnect attempts.")
+	cmd.PersistentFlags().String(PublisherNatsURLFlag, values.PublisherNatsURL, "Nats url")
 }
 
 func CLIPublisherModule(serviceName string) fx.Option {
@@ -91,20 +138,20 @@ func CLIPublisherModule(serviceName string) fx.Option {
 				WithProducerReturnSuccess(),
 			),
 		)
-		if viper.GetBool(PublisherKafkaTLSEnabled) {
+		if viper.GetBool(PublisherKafkaTLSEnabledFlag) {
 			options = append(options, ProvideSaramaOption(WithTLS()))
 		}
-		if viper.GetBool(PublisherKafkaSASLEnabled) {
+		if viper.GetBool(PublisherKafkaSASLEnabledFlag) {
 			options = append(options, ProvideSaramaOption(
 				WithSASLEnabled(),
 				WithSASLCredentials(
-					viper.GetString(PublisherKafkaSASLUsername),
-					viper.GetString(PublisherKafkaSASLPassword),
+					viper.GetString(PublisherKafkaSASLUsernameFlag),
+					viper.GetString(PublisherKafkaSASLPasswordFlag),
 				),
-				WithSASLMechanism(sarama.SASLMechanism(viper.GetString(PublisherKafkaSASLMechanism))),
+				WithSASLMechanism(sarama.SASLMechanism(viper.GetString(PublisherKafkaSASLMechanismFlag))),
 				WithSASLScramClient(func() sarama.SCRAMClient {
 					var fn scram.HashGeneratorFcn
-					switch viper.GetInt(PublisherKafkaSASLScramSHASize) {
+					switch viper.GetInt(PublisherKafkaSASLScramSHASizeFlag) {
 					case 512:
 						fn = SHA512
 					case 256:
