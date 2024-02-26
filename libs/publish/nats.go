@@ -40,20 +40,11 @@ func NatsModule(url, serviceName string, natsOptions ...nats.Option) fx.Option {
 	}
 	return fx.Options(
 		fx.Provide(NewNatsConn),
-		fx.Provide(newNatsDefaultCallbacks),
+		fx.Provide(NewNatsDefaultCallbacks),
 		fx.Provide(NewNatsPublisherWithConn),
 		fx.Provide(NewNatsSubscriberWithConn),
 		fx.Provide(func(natsCallbacks NATSCallbacks) wNats.PublisherConfig {
-			natsOptions = append(natsOptions,
-				nats.ConnectHandler(natsCallbacks.ConnectedCB),
-				nats.DisconnectErrHandler(natsCallbacks.DisconnectedErrCB),
-				nats.DiscoveredServersHandler(natsCallbacks.DiscoveredServersCB),
-				nats.ErrorHandler(natsCallbacks.AsyncErrorCB),
-				nats.ReconnectHandler(natsCallbacks.ReconnectedCB),
-				nats.DisconnectHandler(natsCallbacks.DisconnectedCB),
-				nats.ClosedHandler(natsCallbacks.ClosedCB),
-			)
-
+			natsOptions = AppendCallBacks(natsOptions, natsCallbacks)
 			return wNats.PublisherConfig{
 				NatsOptions:       natsOptions,
 				URL:               url,
@@ -63,16 +54,7 @@ func NatsModule(url, serviceName string, natsOptions ...nats.Option) fx.Option {
 			}
 		}),
 		fx.Provide(func(natsCallbacks NATSCallbacks) wNats.SubscriberConfig {
-			natsOptions = append(natsOptions,
-				nats.ConnectHandler(natsCallbacks.ConnectedCB),
-				nats.DisconnectErrHandler(natsCallbacks.DisconnectedErrCB),
-				nats.DiscoveredServersHandler(natsCallbacks.DiscoveredServersCB),
-				nats.ErrorHandler(natsCallbacks.AsyncErrorCB),
-				nats.ReconnectHandler(natsCallbacks.ReconnectedCB),
-				nats.DisconnectHandler(natsCallbacks.DisconnectedCB),
-				nats.ClosedHandler(natsCallbacks.ClosedCB),
-			)
-
+			natsOptions = AppendCallBacks(natsOptions, natsCallbacks)
 			return wNats.SubscriberConfig{
 				NatsOptions:       natsOptions,
 				Unmarshaler:       &wNats.NATSMarshaler{},
@@ -106,43 +88,55 @@ type NATSCallbacks interface {
 	AsyncErrorCB(nc *nats.Conn, sub *nats.Subscription, err error)
 }
 
-type natsDefaultCallbacks struct {
+func AppendCallBacks(natsOptions []nats.Option, c NATSCallbacks) []nats.Option {
+	return append(natsOptions,
+		nats.ConnectHandler(c.ConnectedCB),
+		nats.DisconnectErrHandler(c.DisconnectedErrCB),
+		nats.DiscoveredServersHandler(c.DiscoveredServersCB),
+		nats.ErrorHandler(c.AsyncErrorCB),
+		nats.ReconnectHandler(c.ReconnectedCB),
+		nats.DisconnectHandler(c.DisconnectedCB),
+		nats.ClosedHandler(c.ClosedCB),
+	)
+}
+
+type NatsDefaultCallbacks struct {
 	logger     logging.Logger
 	shutdowner fx.Shutdowner
 }
 
-func newNatsDefaultCallbacks(logger logging.Logger, shutdowner fx.Shutdowner) NATSCallbacks {
-	return &natsDefaultCallbacks{
+func NewNatsDefaultCallbacks(logger logging.Logger, shutdowner fx.Shutdowner) NATSCallbacks {
+	return &NatsDefaultCallbacks{
 		logger:     logger,
 		shutdowner: shutdowner,
 	}
 }
 
-func (c *natsDefaultCallbacks) ClosedCB(nc *nats.Conn) {
+func (c *NatsDefaultCallbacks) ClosedCB(nc *nats.Conn) {
 	c.logger.Infof("nats connection closed: %s", nc.Opts.Name)
 	c.shutdowner.Shutdown()
 }
 
-func (c *natsDefaultCallbacks) DisconnectedCB(nc *nats.Conn) {
+func (c *NatsDefaultCallbacks) DisconnectedCB(nc *nats.Conn) {
 	c.logger.Infof("nats connection disconnected: %s", nc.Opts.Name)
 }
 
-func (c *natsDefaultCallbacks) DiscoveredServersCB(nc *nats.Conn) {
+func (c *NatsDefaultCallbacks) DiscoveredServersCB(nc *nats.Conn) {
 	c.logger.Infof("nats server discovered: %s", nc.Opts.Name)
 }
 
-func (c *natsDefaultCallbacks) ReconnectedCB(nc *nats.Conn) {
+func (c *NatsDefaultCallbacks) ReconnectedCB(nc *nats.Conn) {
 	c.logger.Infof("nats connection reconnected: %s", nc.Opts.Name)
 }
 
-func (c *natsDefaultCallbacks) DisconnectedErrCB(nc *nats.Conn, err error) {
+func (c *NatsDefaultCallbacks) DisconnectedErrCB(nc *nats.Conn, err error) {
 	c.logger.Errorf("nats connection disconnected error for %s: %v", nc.Opts.Name, err)
 }
 
-func (c *natsDefaultCallbacks) ConnectedCB(nc *nats.Conn) {
+func (c *NatsDefaultCallbacks) ConnectedCB(nc *nats.Conn) {
 	c.logger.Infof("nats connection done: %s", nc.Opts.Name)
 }
 
-func (c *natsDefaultCallbacks) AsyncErrorCB(nc *nats.Conn, sub *nats.Subscription, err error) {
+func (c *NatsDefaultCallbacks) AsyncErrorCB(nc *nats.Conn, sub *nats.Subscription, err error) {
 	c.logger.Errorf("nats async error for %s with subject %s: %v", nc.Opts.Name, sub.Subject, err)
 }

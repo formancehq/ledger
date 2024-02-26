@@ -6,7 +6,6 @@ toolchain go1.21.5
 
 require (
 	github.com/IBM/sarama v1.42.1
-	github.com/Shopify/sarama v1.38.1
 	github.com/ThreeDotsLabs/watermill v1.3.5
 	github.com/ThreeDotsLabs/watermill-http/v2 v2.1.0
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.0

@@ -97,6 +97,16 @@ func InitCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	cmd.PersistentFlags().Bool(PublisherKafkaTLSEnabledFlag, values.PublisherKafkaTLSEnabled, "Enable TLS to connect on kafka")
 
 	// NATS
+	InitNatsCliFlags(cmd, options...)
+}
+
+func InitNatsCliFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
+	values := defaultConfigValues
+	for _, option := range options {
+		option(&values)
+	}
+
+	// NATS
 	cmd.PersistentFlags().Bool(PublisherNatsEnabledFlag, values.PublisherNatsEnabled, "Publish write events to nats")
 	cmd.PersistentFlags().String(PublisherNatsClientIDFlag, values.PublisherNatsClientID, "Nats client ID")
 	cmd.PersistentFlags().Int(PublisherNatsMaxReconnectFlag, values.PublisherNatsMaxReconnect, "Nats: set the maximum number of reconnect attempts.")
