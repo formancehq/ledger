@@ -44,7 +44,7 @@ func NatsModule(url, serviceName string, natsOptions ...nats.Option) fx.Option {
 		fx.Provide(NewNatsPublisherWithConn),
 		fx.Provide(NewNatsSubscriberWithConn),
 		fx.Provide(func(natsCallbacks NATSCallbacks) wNats.PublisherConfig {
-			natsOptions = AppendCallBacks(natsOptions, natsCallbacks)
+			natsOptions = AppendNatsCallBacks(natsOptions, natsCallbacks)
 			return wNats.PublisherConfig{
 				NatsOptions:       natsOptions,
 				URL:               url,
@@ -54,7 +54,7 @@ func NatsModule(url, serviceName string, natsOptions ...nats.Option) fx.Option {
 			}
 		}),
 		fx.Provide(func(natsCallbacks NATSCallbacks) wNats.SubscriberConfig {
-			natsOptions = AppendCallBacks(natsOptions, natsCallbacks)
+			natsOptions = AppendNatsCallBacks(natsOptions, natsCallbacks)
 			return wNats.SubscriberConfig{
 				NatsOptions:       natsOptions,
 				Unmarshaler:       &wNats.NATSMarshaler{},
@@ -88,7 +88,7 @@ type NATSCallbacks interface {
 	AsyncErrorCB(nc *nats.Conn, sub *nats.Subscription, err error)
 }
 
-func AppendCallBacks(natsOptions []nats.Option, c NATSCallbacks) []nats.Option {
+func AppendNatsCallBacks(natsOptions []nats.Option, c NATSCallbacks) []nats.Option {
 	return append(natsOptions,
 		nats.ConnectHandler(c.ConnectedCB),
 		nats.DisconnectErrHandler(c.DisconnectedErrCB),

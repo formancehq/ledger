@@ -59,6 +59,9 @@ func (p *Postings) Scan(value interface{}) error {
 
 func (p Postings) Validate() (int, error) {
 	for i, p := range p {
+		if p.Amount == nil {
+			return i, errors.New("no amount defined")
+		}
 		if p.Amount.Cmp(Zero) < 0 {
 			return i, errors.New("negative amount")
 		}
