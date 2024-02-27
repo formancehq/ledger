@@ -122,6 +122,25 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 	}
 	if !endTime.IsZero() {
 		sb.Where(sb.L("timestamp", endTime.UTC()))
+
+		if flavor == PostgreSQL {
+			// We nudge the query planner in the right direction,
+			// by reducing the search space according to the end time.
+			// We have to use a raw query as the sqlbuilder
+			// does not support LTE+subqueries in the where clause.
+			sb.SQL(fmt.Sprintf(`
+				AND "id" <= (
+					SELECT "id"
+					FROM "%s".transactions
+					WHERE "timestamp" < '%s'::timestamptz
+					ORDER BY "timestamp" DESC, "id" DESC
+					LIMIT 1
+				)`,
+				s.schema.Name(),
+				endTime.UTC().Format(time.RFC3339),
+			))
+		}
+
 		t.EndTime = endTime
 	}
 
@@ -461,7 +480,7 @@ func (s *Store) insertTransactions(ctx context.Context, txs ...core.ExpandedTran
                                pre_commit_volumes,
                                post_commit_volumes) (SELECT * FROM unnest(
                                    $1::int[],
-                                   $2::timestamp[],
+                                   $2::timestamptz[],
                                    $3::varchar[],
                                    $4::jsonb[],
                                    $5::jsonb[],
