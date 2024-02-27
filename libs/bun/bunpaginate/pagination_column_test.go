@@ -2,11 +2,12 @@ package bunpaginate_test
 
 import (
 	"context"
+	"math/big"
+	"testing"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	bunpaginate2 "github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"math/big"
-	"testing"
 
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"

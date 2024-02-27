@@ -3,6 +3,8 @@ package bunconnect
 import (
 	"context"
 	"database/sql/driver"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/formancehq/stack/libs/go-libs/aws/iam"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -10,7 +12,6 @@ import (
 	"github.com/lib/pq"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"time"
 )
 
 const (

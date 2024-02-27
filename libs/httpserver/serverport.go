@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 
@@ -80,7 +81,8 @@ func (s *server) StartServer(ctx context.Context, handler http.Handler, options 
 	StartedServer(ctx, s.listener)
 
 	srv := &http.Server{
-		Handler: handler,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	for _, option := range options {
 		option(srv)

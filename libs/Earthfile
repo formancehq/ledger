@@ -2,6 +2,7 @@ VERSION --arg-scope-and-set --pass-args --use-function-keyword 0.7
 
 ARG core=github.com/formancehq/earthly
 IMPORT $core AS core
+IMPORT ../.. AS stack
 
 FROM core+base-image
 
@@ -16,3 +17,17 @@ tidy:
     WORKDIR /src
     DO --pass-args stack+GO_TIDY
     SAVE ARTIFACT go.* AS LOCAL ./
+
+lint:
+    FROM core+builder-image
+    COPY (+sources/*) /src
+    WORKDIR /src
+    COPY --pass-args +tidy/go.* .
+    DO --pass-args stack+GO_LINT
+    SAVE ARTIFACT * AS LOCAL ./
+
+pre-commit:
+    WAIT
+      BUILD --pass-args +tidy
+    END
+    BUILD --pass-args +lint

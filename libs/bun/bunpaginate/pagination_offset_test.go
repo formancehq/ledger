@@ -2,10 +2,11 @@ package bunpaginate_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	bunpaginate2 "github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"testing"
 
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"

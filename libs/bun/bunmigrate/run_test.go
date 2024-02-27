@@ -1,13 +1,14 @@
 package bunmigrate
 
 import (
+	"os"
+	"testing"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"os"
-	"testing"
 )
 
 func TestRunMigrate(t *testing.T) {
@@ -19,7 +20,6 @@ func TestRunMigrate(t *testing.T) {
 	connectionOptions := &bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgtesting.Server().GetDatabaseDSN("testing"),
 		Debug:              testing.Verbose(),
-		Writer:             os.Stdout,
 	}
 	executor := func(args []string, db *bun.DB) error {
 		return nil

@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"os"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"

@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/lib/pq"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	sharedlogging "github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
@@ -14,7 +16,6 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/xo/dburl"
-	"io"
 )
 
 func isDatabaseExists(ctx context.Context, db *bun.DB, name string) (bool, error) {

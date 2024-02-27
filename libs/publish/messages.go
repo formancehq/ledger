@@ -3,10 +3,11 @@ package publish
 import (
 	"context"
 	"encoding/json"
+	"time"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
