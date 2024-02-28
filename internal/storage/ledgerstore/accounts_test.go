@@ -163,6 +163,14 @@ func TestGetAccounts(t *testing.T) {
 		))
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 1) // world
+
+		accounts, err = store.GetAccountsWithVolumes(context.Background(), NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+			WithQueryBuilder(query.Gt("balance[USD]", 0)),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 2)
+		require.Equal(t, "account:1", accounts.Data[0].Account.Address)
+		require.Equal(t, "bank", accounts.Data[1].Account.Address)
 	})
 	t.Run("list using filter invalid field", func(t *testing.T) {
 		t.Parallel()

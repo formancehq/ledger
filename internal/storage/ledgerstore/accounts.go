@@ -3,6 +3,7 @@ package ledgerstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -54,6 +55,21 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 	balanceRegex := regexp.MustCompile("balance\\[(.*)\\]")
 
 	return qb.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
+		convertOperatorToSQL := func() string {
+			switch operator {
+			case "$match":
+				return "="
+			case "$lt":
+				return "<"
+			case "$gt":
+				return ">"
+			case "$lte":
+				return "<="
+			case "$gte":
+				return ">="
+			}
+			panic("unreachable")
+		}
 		switch {
 		case key == "address":
 			// TODO: Should allow comparison operator only if segments not used
@@ -83,21 +99,21 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 		case balanceRegex.Match([]byte(key)):
 			match := balanceRegex.FindAllStringSubmatch(key, 2)
 
-			return `(
+			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
 				where asset = ? and account_address = accounts.address and ledger = ?
 				order by seq desc
 				limit 1
-			) < ?`, []any{match[0][1], store.name, value}, nil
+			) %s ?`, convertOperatorToSQL()), []any{match[0][1], store.name, value}, nil
 		case key == "balance":
-			return `(
+			return fmt.Sprintf(`(
 				select balance_from_volumes(post_commit_volumes)
 				from moves
 				where account_address = accounts.address and ledger = ?
 				order by seq desc
 				limit 1
-			) < ?`, []any{store.name, value}, nil
+			) %s ?`, convertOperatorToSQL()), []any{store.name, value}, nil
 		default:
 			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}
