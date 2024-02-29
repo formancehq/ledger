@@ -133,6 +133,7 @@ type AccountsQueryFilters struct {
 	Balance         string
 	BalanceOperator BalanceOperator
 	Metadata        map[string]string
+	BalanceAsset    string
 }
 
 type BalanceOperator string
@@ -216,6 +217,12 @@ func (a *AccountsQuery) WithBalanceOperatorFilter(balanceOperator BalanceOperato
 
 func (a *AccountsQuery) WithMetadataFilter(metadata map[string]string) *AccountsQuery {
 	a.Filters.Metadata = metadata
+
+	return a
+}
+
+func (a *AccountsQuery) WithBalanceAssetFilter(value string) *AccountsQuery {
+	a.Filters.BalanceAsset = value
 
 	return a
 }

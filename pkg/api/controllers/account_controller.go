@@ -142,6 +142,7 @@ func (ctl *AccountController) GetAccounts(c *gin.Context) {
 			WithAddressFilter(c.Query("address")).
 			WithBalanceFilter(balance).
 			WithBalanceOperatorFilter(balanceOperator).
+			WithBalanceAssetFilter(c.Query("balanceAsset")).
 			WithMetadataFilter(c.QueryMap("metadata")).
 			WithPageSize(pageSize)
 	}

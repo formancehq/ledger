@@ -27,11 +27,13 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 	sb := sqlbuilder.NewSelectBuilder()
 	t := AccPaginationToken{}
 	sb.From(s.schema.Table("accounts"))
+	sb.Distinct()
 
 	var (
 		address         = p.Filters.Address
 		metadata        = p.Filters.Metadata
 		balance         = p.Filters.Balance
+		balanceAsset    = p.Filters.BalanceAsset
 		balanceOperator = p.Filters.BalanceOperator
 	)
 
@@ -78,6 +80,9 @@ func (s *Store) buildAccountsQuery(p ledger.AccountsQuery) (*sqlbuilder.SelectBu
 
 	if balance != "" {
 		sb.Join(s.schema.Table("volumes"), "accounts.address = volumes.account")
+		if balanceAsset != "" {
+			sb = sb.Where(sb.E("volumes.asset", balanceAsset))
+		}
 		balanceOperation := "volumes.input - volumes.output"
 
 		balanceValue, err := strconv.ParseInt(balance, 10, 0)
