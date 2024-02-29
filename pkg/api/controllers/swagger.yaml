@@ -168,6 +168,11 @@ paths:
             type: integer
             format: int64
             example: 2400
+        - name: balanceAsset
+          in: query
+          description: Filter accounts by their balance asset
+          schema:
+            type: string
         - name: balanceOperator
           x-speakeasy-ignore: true
           in: query
