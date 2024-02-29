@@ -45,6 +45,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-kafka/v3 v3.0.0 // indirect
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.0.2 // indirect
 	github.com/ajg/form v1.5.1 // indirect
+	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.24.1 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.26.4 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.15 // indirect

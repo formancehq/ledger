@@ -63,6 +63,12 @@ func WithSASLCredentials(user, pwd string) SaramaOptionFn {
 	}
 }
 
+func WithTokenProvider(provider sarama.AccessTokenProvider) SaramaOptionFn {
+	return func(config *sarama.Config) {
+		config.Net.SASL.TokenProvider = provider
+	}
+}
+
 func WithTLS() SaramaOptionFn {
 	return func(config *sarama.Config) {
 		config.Net.TLS = struct {

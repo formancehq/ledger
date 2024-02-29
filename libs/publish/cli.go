@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/formancehq/stack/libs/go-libs/aws/iam"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,14 +18,16 @@ const (
 	// General configuration
 	PublisherTopicMappingFlag = "publisher-topic-mapping"
 	// Kafka configuration
-	PublisherKafkaEnabledFlag          = "publisher-kafka-enabled"
-	PublisherKafkaBrokerFlag           = "publisher-kafka-broker"
-	PublisherKafkaSASLEnabledFlag      = "publisher-kafka-sasl-enabled"
-	PublisherKafkaSASLUsernameFlag     = "publisher-kafka-sasl-username"
-	PublisherKafkaSASLPasswordFlag     = "publisher-kafka-sasl-password"
-	PublisherKafkaSASLMechanismFlag    = "publisher-kafka-sasl-mechanism"
-	PublisherKafkaSASLScramSHASizeFlag = "publisher-kafka-sasl-scram-sha-size"
-	PublisherKafkaTLSEnabledFlag       = "publisher-kafka-tls-enabled"
+	PublisherKafkaEnabledFlag            = "publisher-kafka-enabled"
+	PublisherKafkaBrokerFlag             = "publisher-kafka-broker"
+	PublisherKafkaSASLEnabledFlag        = "publisher-kafka-sasl-enabled"
+	PublisherKafkaSASLIAMEnabledFlag     = "publisher-kafka-sasl-iam-enabled"
+	PublisherKafkaSASLIAMSessionNameFlag = "publisher-kafka-sasl-session-name"
+	PublisherKafkaSASLUsernameFlag       = "publisher-kafka-sasl-username"
+	PublisherKafkaSASLPasswordFlag       = "publisher-kafka-sasl-password"
+	PublisherKafkaSASLMechanismFlag      = "publisher-kafka-sasl-mechanism"
+	PublisherKafkaSASLScramSHASizeFlag   = "publisher-kafka-sasl-scram-sha-size"
+	PublisherKafkaTLSEnabledFlag         = "publisher-kafka-tls-enabled"
 	// HTTP configuration
 	PublisherHttpEnabledFlag = "publisher-http-enabled"
 	// Nats configuration
@@ -38,14 +41,16 @@ const (
 type ConfigDefault struct {
 	PublisherTopicMapping []string
 	// Kafka configuration
-	PublisherKafkaEnabled          bool
-	PublisherKafkaBroker           []string
-	PublisherKafkaSASLEnabled      bool
-	PublisherKafkaSASLUsername     string
-	PublisherKafkaSASLPassword     string
-	PublisherKafkaSASLMechanism    string
-	PublisherKafkaSASLScramSHASize int
-	PublisherKafkaTLSEnabled       bool
+	PublisherKafkaEnabled            bool
+	PublisherKafkaBroker             []string
+	PublisherKafkaSASLEnabled        bool
+	PublisherKafkaSASLIAMEnabled     bool
+	PublisherKafkaSASLIAMSessionName string
+	PublisherKafkaSASLUsername       string
+	PublisherKafkaSASLPassword       string
+	PublisherKafkaSASLMechanism      string
+	PublisherKafkaSASLScramSHASize   int
+	PublisherKafkaTLSEnabled         bool
 	// HTTP configuration
 	PublisherHttpEnabled bool
 	// Nats configuration
@@ -58,21 +63,23 @@ type ConfigDefault struct {
 
 var (
 	defaultConfigValues = ConfigDefault{
-		PublisherTopicMapping:          []string{},
-		PublisherKafkaEnabled:          false,
-		PublisherKafkaBroker:           []string{"localhost:9092"},
-		PublisherKafkaSASLEnabled:      false,
-		PublisherKafkaSASLUsername:     "",
-		PublisherKafkaSASLPassword:     "",
-		PublisherKafkaSASLMechanism:    "",
-		PublisherKafkaSASLScramSHASize: 512,
-		PublisherKafkaTLSEnabled:       false,
-		PublisherHttpEnabled:           false,
-		PublisherNatsEnabled:           false,
-		PublisherNatsClientID:          "",
-		PublisherNatsURL:               "",
-		PublisherNatsMaxReconnect:      30,
-		PublisherNatsReconnectWait:     2 * time.Second,
+		PublisherTopicMapping:            []string{},
+		PublisherKafkaEnabled:            false,
+		PublisherKafkaBroker:             []string{"localhost:9092"},
+		PublisherKafkaSASLEnabled:        false,
+		PublisherKafkaSASLIAMEnabled:     false,
+		PublisherKafkaSASLIAMSessionName: "",
+		PublisherKafkaSASLUsername:       "",
+		PublisherKafkaSASLPassword:       "",
+		PublisherKafkaSASLMechanism:      "",
+		PublisherKafkaSASLScramSHASize:   512,
+		PublisherKafkaTLSEnabled:         false,
+		PublisherHttpEnabled:             false,
+		PublisherNatsEnabled:             false,
+		PublisherNatsClientID:            "",
+		PublisherNatsURL:                 "",
+		PublisherNatsMaxReconnect:        30,
+		PublisherNatsReconnectWait:       2 * time.Second,
 	}
 )
 
@@ -90,20 +97,14 @@ func InitCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	cmd.PersistentFlags().StringSlice(PublisherKafkaBrokerFlag, values.PublisherKafkaBroker, "Kafka address is kafka enabled")
 	cmd.PersistentFlags().StringSlice(PublisherTopicMappingFlag, values.PublisherTopicMapping, "Define mapping between internal event types and topics")
 	cmd.PersistentFlags().Bool(PublisherKafkaSASLEnabledFlag, values.PublisherKafkaSASLEnabled, "Enable SASL authentication on kafka publisher")
+	cmd.PersistentFlags().Bool(PublisherKafkaSASLIAMEnabledFlag, values.PublisherKafkaSASLIAMEnabled, "Enable IAM authentication on kafka publisher")
+	cmd.PersistentFlags().String(PublisherKafkaSASLIAMSessionNameFlag, values.PublisherKafkaSASLIAMSessionName, "IAM session name")
 	cmd.PersistentFlags().String(PublisherKafkaSASLUsernameFlag, values.PublisherKafkaSASLUsername, "SASL username")
 	cmd.PersistentFlags().String(PublisherKafkaSASLPasswordFlag, values.PublisherKafkaSASLPassword, "SASL password")
 	cmd.PersistentFlags().String(PublisherKafkaSASLMechanismFlag, values.PublisherKafkaSASLMechanism, "SASL authentication mechanism")
 	cmd.PersistentFlags().Int(PublisherKafkaSASLScramSHASizeFlag, values.PublisherKafkaSASLScramSHASize, "SASL SCRAM SHA size")
 	cmd.PersistentFlags().Bool(PublisherKafkaTLSEnabledFlag, values.PublisherKafkaTLSEnabled, "Enable TLS to connect on kafka")
 
-	InitNatsCLIFlags(cmd, options...)
-}
-
-func InitNatsCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
-	values := defaultConfigValues
-	for _, option := range options {
-		option(&values)
-	}
 	// NATS
 	cmd.PersistentFlags().Bool(PublisherNatsEnabledFlag, values.PublisherNatsEnabled, "Publish write events to nats")
 	cmd.PersistentFlags().String(PublisherNatsClientIDFlag, values.PublisherNatsClientID, "Nats client ID")
@@ -150,13 +151,13 @@ func CLIPublisherModule(serviceName string) fx.Option {
 			options = append(options, ProvideSaramaOption(WithTLS()))
 		}
 		if viper.GetBool(PublisherKafkaSASLEnabledFlag) {
-			options = append(options, ProvideSaramaOption(
+			saramaOptions := []SaramaOption{
 				WithSASLEnabled(),
+				WithSASLMechanism(sarama.SASLMechanism(viper.GetString(PublisherKafkaSASLMechanismFlag))),
 				WithSASLCredentials(
 					viper.GetString(PublisherKafkaSASLUsernameFlag),
 					viper.GetString(PublisherKafkaSASLPasswordFlag),
 				),
-				WithSASLMechanism(sarama.SASLMechanism(viper.GetString(PublisherKafkaSASLMechanismFlag))),
 				WithSASLScramClient(func() sarama.SCRAMClient {
 					var fn scram.HashGeneratorFcn
 					switch viper.GetInt(PublisherKafkaSASLScramSHASizeFlag) {
@@ -171,7 +172,19 @@ func CLIPublisherModule(serviceName string) fx.Option {
 						HashGeneratorFcn: fn,
 					}
 				}),
-			))
+			}
+
+			if viper.GetBool(PublisherKafkaSASLIAMEnabledFlag) {
+				saramaOptions = append(saramaOptions,
+					WithTokenProvider(&MSKAccessTokenProvider{
+						region:      viper.GetString(iam.AWSRegionFlag),
+						roleArn:     viper.GetString(iam.AWSRoleArnFlag),
+						sessionName: viper.GetString(PublisherKafkaSASLIAMSessionNameFlag),
+					}),
+				)
+			}
+
+			options = append(options, ProvideSaramaOption(saramaOptions...))
 		}
 	default:
 		options = append(options, GoChannelModule())

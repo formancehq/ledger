@@ -15,6 +15,7 @@ const (
 	AWSSecretAccessKeyFlag = "aws-secret-access-key"
 	AWSSessionTokenFlag    = "aws-session-token"
 	AWSProfileFlag         = "aws-profile"
+	AWSRoleArnFlag         = "aws-role-arn"
 )
 
 func InitFlags(flags *pflag.FlagSet) {
@@ -23,6 +24,7 @@ func InitFlags(flags *pflag.FlagSet) {
 	flags.String(AWSSecretAccessKeyFlag, "", "AWS secret access key")
 	flags.String(AWSSessionTokenFlag, "", "AWS session token")
 	flags.String(AWSProfileFlag, "", "AWS profile")
+	flags.String(AWSRoleArnFlag, "", "AWS Role ARN")
 }
 
 func LoadOptionFromViper() func(opts *config.LoadOptions) error {
