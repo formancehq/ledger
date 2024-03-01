@@ -3,11 +3,12 @@ package publish
 import (
 	"context"
 
+	"sync"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"go.uber.org/fx"
-	"sync"
 )
 
 func newGoChannel() *gochannel.GoChannel {
