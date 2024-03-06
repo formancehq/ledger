@@ -416,9 +416,6 @@ func (m *Machine) tick() (bool, byte, error) {
 		for _, part := range funding.Parts {
 			src := part.Account
 			amt := part.Amount
-			if amt.Eq(core.NewMonetaryInt(0)) {
-				continue
-			}
 			m.Postings = append(m.Postings, Posting{
 				Source:      string(src),
 				Destination: string(dest),

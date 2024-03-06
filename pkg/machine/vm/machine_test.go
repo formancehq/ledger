@@ -207,6 +207,28 @@ func TestSend(t *testing.T) {
 	test(t, tc)
 }
 
+func TestSend0Amount(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `send [EUR/2 0] (
+		source=@alice
+		destination=@bob
+	)`)
+	tc.setBalance("alice", "EUR/2", 100)
+	tc.expected = CaseResult{
+		Printed: []core.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "EUR/2",
+				Amount:      core.NewMonetaryInt(0),
+				Source:      "alice",
+				Destination: "bob",
+			},
+		},
+		ExitCode: EXIT_OK,
+	}
+	test(t, tc)
+}
+
 func TestVariables(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, `vars {
@@ -555,7 +577,7 @@ func TestNoEmptyPostings(t *testing.T) {
 	test(t, tc)
 }
 
-func TestNoEmptyPostings2(t *testing.T) {
+func TestEmptyPostings(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, `send [GEM *] (
 		source = @foo
@@ -563,8 +585,15 @@ func TestNoEmptyPostings2(t *testing.T) {
 	)`)
 	tc.setBalance("foo", "GEM", 0)
 	tc.expected = CaseResult{
-		Printed:  []core.Value{},
-		Postings: []Posting{},
+		Printed: []core.Value{},
+		Postings: []Posting{
+			{
+				Source:      "foo",
+				Destination: "bar",
+				Amount:      core.NewMonetaryInt(0),
+				Asset:       "GEM",
+			},
+		},
 		ExitCode: EXIT_OK,
 	}
 	test(t, tc)
