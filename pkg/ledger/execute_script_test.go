@@ -107,10 +107,10 @@ func TestSend(t *testing.T) {
 					)`,
 				},
 			}
-			_, err := l.ExecuteScript(context.Background(), false, script)
-			require.Error(t, err)
-			require.True(t, ledger.IsValidationError(err))
-			require.ErrorContains(t, err, "transaction has no postings")
+			res, err := l.ExecuteScript(context.Background(), false, script)
+			require.NoError(t, err)
+
+			require.Equal(t, 1, len(res.Postings))
 		})
 
 		t.Run("one send with monetary all should fail", func(t *testing.T) {
@@ -123,10 +123,10 @@ func TestSend(t *testing.T) {
 					)`,
 				},
 			}
-			_, err := l.ExecuteScript(context.Background(), false, script)
-			require.Error(t, err)
-			require.True(t, ledger.IsValidationError(err))
-			require.ErrorContains(t, err, "transaction has no postings")
+			res, err := l.ExecuteScript(context.Background(), false, script)
+			require.NoError(t, err)
+
+			require.Equal(t, 1, len(res.Postings))
 		})
 
 		t.Run("one send with zero amount and another with positive amount should succeed", func(t *testing.T) {
@@ -145,7 +145,7 @@ func TestSend(t *testing.T) {
 			}
 			res, err := l.ExecuteScript(context.Background(), false, script)
 			require.NoError(t, err)
-			require.Equal(t, 1, len(res.Postings))
+			require.Equal(t, 2, len(res.Postings))
 
 			assertBalance(t, l, "user:001",
 				"USD/2", core.NewMonetaryInt(100))
@@ -167,7 +167,7 @@ func TestSend(t *testing.T) {
 			}
 			res, err := l.ExecuteScript(context.Background(), false, script)
 			require.NoError(t, err)
-			require.Equal(t, 1, len(res.Postings))
+			require.Equal(t, 2, len(res.Postings))
 
 			assertBalance(t, l, "user:001",
 				"USD/2", core.NewMonetaryInt(101))
