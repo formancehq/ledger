@@ -109,6 +109,7 @@ func InitCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	InitNatsCLIFlags(cmd, options...)
 }
 
+// DO NOT REMOVE: Used by membership
 func InitNatsCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	values := defaultConfigValues
 	for _, option := range options {
