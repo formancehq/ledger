@@ -8,7 +8,6 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/oauth2/oauth2introspect"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/formancehq/stack/libs/go-libs/service"
@@ -43,6 +42,9 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 	// Handle OpenTelemetry
 	options = append(options, otlptraces.CLITracesModule(v))
 
+	// Authentication
+	options = append(options, auth.CLIAuthModule(v))
+
 	redisLockStrategy := false
 	switch v.GetString(lockStrategyFlag) {
 	case "redis":
@@ -66,7 +68,6 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 	options = append(options, api.Module(api.Config{
 		StorageDriver: v.GetString(storageDriverFlag),
 		Version:       Version,
-		UseScopes:     v.GetBool(authBearerUseScopesFlag),
 	}))
 
 	// Handle storage driver
@@ -109,41 +110,6 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 	// Handle resolver
 	options = append(options, ledger.ResolveModule(
 		v.GetInt64(cacheCapacityBytes), v.GetInt64(cacheMaxNumKeys)))
-
-	// Api middlewares
-	options = append(options, routes.ProvidePerLedgerMiddleware(func(tp trace.TracerProvider) []gin.HandlerFunc {
-		res := make([]gin.HandlerFunc, 0)
-
-		methods := make([]auth.Method, 0)
-		if httpBasicMethod := internal.HTTPBasicAuthMethod(v); httpBasicMethod != nil {
-			methods = append(methods, httpBasicMethod)
-		}
-		if v.GetBool(authBearerEnabledFlag) {
-			methods = append(methods, auth.NewHttpBearerMethod(
-				auth.NewIntrospectionValidator(
-					oauth2introspect.NewIntrospecter(v.GetString(authBearerIntrospectUrlFlag)),
-					v.GetBool(authBearerAudiencesWildcardFlag),
-					auth.AudienceIn(v.GetStringSlice(authBearerAudienceFlag)...),
-				),
-			))
-		}
-		if len(methods) > 0 {
-			res = append(res, func(c *gin.Context) {
-				handled := false
-				auth.Middleware(methods...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					handled = true
-					// The middleware replace the context of the request to include the agent
-					// We have to forward it to gin
-					c.Request = r
-					c.Next()
-				})).ServeHTTP(c.Writer, c.Request)
-				if !handled {
-					c.Abort()
-				}
-			})
-		}
-		return res
-	}, fx.ParamTags(`optional:"true"`)))
 
 	options = append(options, routes.ProvideMiddlewares(func(tp trace.TracerProvider, logger logging.Logger) []gin.HandlerFunc {
 		res := make([]gin.HandlerFunc, 0)

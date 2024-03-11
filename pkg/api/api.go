@@ -31,7 +31,6 @@ func NewAPI(routes *routes.Routes) *API {
 type Config struct {
 	StorageDriver string
 	Version       string
-	UseScopes     bool
 }
 
 func Module(cfg Config) fx.Option {
@@ -43,7 +42,6 @@ func Module(cfg Config) fx.Option {
 		routes.Module,
 		controllers.Module,
 		fx.Provide(NewAPI),
-		fx.Supply(routes.UseScopes(cfg.UseScopes)),
 		health.Module(),
 	)
 }
