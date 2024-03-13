@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 type logrusLogger struct {
@@ -89,4 +90,26 @@ func Testing() *logrusLogger {
 	logger.SetFormatter(textFormatter)
 
 	return NewLogrus(logger)
+}
+
+func DefaultLogger(w io.Writer, debug bool) *logrus.Logger {
+	l := logrus.New()
+	l.SetOutput(w)
+	if debug {
+		l.Level = logrus.DebugLevel
+	}
+
+	var formatter logrus.Formatter
+	if viper.GetBool(JsonFormattingLoggerFlag) {
+		jsonFormatter := &logrus.JSONFormatter{}
+		formatter = jsonFormatter
+	} else {
+		textFormatter := new(logrus.TextFormatter)
+		textFormatter.FullTimestamp = true
+		formatter = textFormatter
+	}
+
+	l.SetFormatter(formatter)
+
+	return l
 }

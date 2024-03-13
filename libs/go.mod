@@ -59,6 +59,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.22.0
 	go.uber.org/fx v1.19.1
 	go.uber.org/zap v1.24.0
+	google.golang.org/grpc v1.60.1
 )
 
 require (
@@ -183,7 +184,6 @@ require (
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
-	google.golang.org/grpc v1.60.1 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect

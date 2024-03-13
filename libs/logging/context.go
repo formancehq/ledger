@@ -2,8 +2,7 @@ package logging
 
 import (
 	"context"
-
-	"github.com/sirupsen/logrus"
+	"os"
 )
 
 type contextKey string
@@ -13,7 +12,7 @@ var loggerKey contextKey = "_logger"
 func FromContext(ctx context.Context) Logger {
 	l := ctx.Value(loggerKey)
 	if l == nil {
-		return NewLogrus(logrus.New())
+		return NewLogrus(DefaultLogger(os.Stderr, false))
 	}
 	return l.(Logger)
 }

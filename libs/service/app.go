@@ -12,11 +12,10 @@ import (
 )
 
 const DebugFlag = "debug"
-const JsonFormattingLoggerFlag = "json-formatting-logger"
 
 func BindFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool(DebugFlag, false, "Debug mode")
-	cmd.PersistentFlags().Bool(JsonFormattingLoggerFlag, false, "Format logs as json")
+	cmd.PersistentFlags().Bool(logging.JsonFormattingLoggerFlag, false, "Format logs as json")
 
 	if err := viper.BindPFlags(cmd.PersistentFlags()); err != nil {
 		panic(err)
