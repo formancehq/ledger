@@ -92,3 +92,7 @@ func (s Set[T]) ToSlice() []T {
 func NewSet[T comparable]() Set[T] {
 	return make(Set[T], 0)
 }
+
+func Prepend[T any](slice []T, t T) []T {
+	return append([]T{t}, slice...)
+}
