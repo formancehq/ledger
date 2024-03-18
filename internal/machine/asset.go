@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/assets"
 )
 
 type Asset string
@@ -20,8 +20,8 @@ type HasAsset interface {
 func (a Asset) GetAsset() Asset { return a }
 
 func ValidateAsset(ass Asset) error {
-	if !ledger.AssetRegexp.MatchString(string(ass)) {
-		return fmt.Errorf("asset should respect pattern '%s'", ledger.AssetPattern)
+	if !assets.Regexp.MatchString(string(ass)) {
+		return fmt.Errorf("asset should respect pattern '%s'", assets.Pattern)
 	}
 	return nil
 }

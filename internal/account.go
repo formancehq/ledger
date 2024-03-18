@@ -1,8 +1,6 @@
 package ledger
 
 import (
-	"regexp"
-
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/uptrace/bun"
 )
@@ -50,13 +48,4 @@ func (v ExpandedAccount) Copy() ExpandedAccount {
 	v.Account = v.Account.copy()
 	v.Volumes = v.Volumes.copy()
 	return v
-}
-
-const AccountSegmentRegex = "[a-zA-Z0-9_-]+"
-const AccountPattern = "^" + AccountSegmentRegex + "(:" + AccountSegmentRegex + ")*$"
-
-var AccountRegexp = regexp.MustCompile(AccountPattern)
-
-func ValidateAddress(addr string) bool {
-	return AccountRegexp.Match([]byte(addr))
 }

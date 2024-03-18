@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/accounts"
 )
 
 type AccountAddress string
@@ -14,8 +14,8 @@ func (a AccountAddress) String() string {
 }
 
 func ValidateAccountAddress(acc AccountAddress) error {
-	if !ledger.AccountRegexp.MatchString(string(acc)) {
-		return fmt.Errorf("accounts should respect pattern %s", ledger.AccountPattern)
+	if !accounts.Regexp.MatchString(string(acc)) {
+		return fmt.Errorf("accounts should respect pattern %s", accounts.Pattern)
 	}
 	return nil
 }

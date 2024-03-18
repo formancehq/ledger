@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/formancehq/ledger/pkg/accounts"
+
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -101,7 +103,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 func postAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	if !ledger.ValidateAddress(chi.URLParam(r, "address")) {
+	if !accounts.ValidateAddress(chi.URLParam(r, "address")) {
 		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid account address format"))
 		return
 	}

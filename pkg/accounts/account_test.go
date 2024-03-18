@@ -1,4 +1,4 @@
-package ledger
+package accounts
 
 import (
 	"testing"

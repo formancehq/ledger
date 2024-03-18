@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"math/big"
 
+	"github.com/formancehq/ledger/pkg/accounts"
+	"github.com/formancehq/ledger/pkg/assets"
+
 	"github.com/pkg/errors"
 )
 
@@ -65,13 +68,13 @@ func (p Postings) Validate() (int, error) {
 		if p.Amount.Cmp(Zero) < 0 {
 			return i, errors.New("negative amount")
 		}
-		if !ValidateAddress(p.Source) {
+		if !accounts.ValidateAddress(p.Source) {
 			return i, errors.New("invalid source address")
 		}
-		if !ValidateAddress(p.Destination) {
+		if !accounts.ValidateAddress(p.Destination) {
 			return i, errors.New("invalid destination address")
 		}
-		if !AssetIsValid(p.Asset) {
+		if !assets.IsValid(p.Asset) {
 			return i, errors.New("invalid asset")
 		}
 	}
