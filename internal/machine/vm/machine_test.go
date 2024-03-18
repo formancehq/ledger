@@ -1018,7 +1018,7 @@ func TestSetAccountMeta(t *testing.T) {
 			"ddd": "hello",
 			"eee": "COIN 30",
 			"fff": "3/20",
-			`string/with{very:}complicated \"useless\" chars`: `string/with{very:}complicated \"useless\" chars`,
+			`string/with{very:}complicated "useless" chars`: `string/with{very:}complicated "useless" chars`,
 		}
 
 		resMeta := m.GetAccountsMetaJSON()
