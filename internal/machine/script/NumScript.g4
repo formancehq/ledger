@@ -33,7 +33,7 @@ TY_NUMBER: 'number';
 TY_MONETARY: 'monetary';
 TY_PORTION: 'portion';
 TY_STRING: 'string';
-STRING: '"' [a-zA-Z0-9_\- ]* '"';
+STRING: '"' ('\\"' | ~[\r\n"])* '"';
 PORTION:
     ( [0-9]+ [ ]? '/' [ ]? [0-9]+
     | [0-9]+     ('.'      [0-9]+)? '%'

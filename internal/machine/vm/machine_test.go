@@ -995,7 +995,9 @@ func TestSetAccountMeta(t *testing.T) {
 			set_account_meta(@platform, "ccc", 45)
 			set_account_meta(@platform, "ddd", "hello")
 			set_account_meta(@platform, "eee", [COIN 30])
-			set_account_meta(@platform, "fff", 15%)`)
+			set_account_meta(@platform, "fff", 15%)
+			set_account_meta(@platform, "string/with{very:}complicated \"useless\" chars", "string/with{very:}complicated \"useless\" chars")`,
+		)
 		require.NoError(t, err)
 
 		m := NewMachine(*p)
@@ -1016,6 +1018,7 @@ func TestSetAccountMeta(t *testing.T) {
 			"ddd": "hello",
 			"eee": "COIN 30",
 			"fff": "3/20",
+			`string/with{very:}complicated \"useless\" chars`: `string/with{very:}complicated \"useless\" chars`,
 		}
 
 		resMeta := m.GetAccountsMetaJSON()
@@ -1023,7 +1026,7 @@ func TestSetAccountMeta(t *testing.T) {
 
 		for acc, meta := range resMeta {
 			assert.Equal(t, "platform", acc)
-			assert.Equal(t, 6, len(meta))
+			assert.Equal(t, 7, len(meta))
 			for key, val := range meta {
 				assert.Equal(t, expectedMeta[key], val)
 			}
