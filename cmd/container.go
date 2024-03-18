@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/internal/engine"
 	driver "github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/stack/libs/go-libs/auth"
@@ -25,7 +24,6 @@ func resolveOptions(cmd *cobra.Command, userOptions ...fx.Option) []fx.Option {
 		otlpmetrics.CLIMetricsModule(),
 		auth.CLIAuthModule(),
 		driver.CLIModule(cmd),
-		internal.NewAnalyticsModule(Version),
 		engine.Module(engine.Configuration{
 			NumscriptCache: engine.NumscriptCacheConfiguration{
 				MaxCount: viper.GetInt(numscriptCacheMaxCountFlag),

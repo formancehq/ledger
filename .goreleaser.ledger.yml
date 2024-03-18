@@ -6,7 +6,6 @@ builds:
       - -X github.com/formancehq/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/formancehq/ledger/cmd.Version={{ .Version }}
       - -X github.com/formancehq/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/formancehq/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -extldflags "-static"
     env:
       - CGO_ENABLED=0

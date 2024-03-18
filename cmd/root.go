@@ -26,10 +26,9 @@ const (
 )
 
 var (
-	Version                = "develop"
-	BuildDate              = "-"
-	Commit                 = "-"
-	DefaultSegmentWriteKey = ""
+	Version   = "develop"
+	BuildDate = "-"
+	Commit    = "-"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -63,7 +62,6 @@ func NewRootCommand() *cobra.Command {
 	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	auth.InitAuthFlags(root.PersistentFlags())
-	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 	bunconnect.InitFlags(root.PersistentFlags())
 	iam.InitFlags(root.PersistentFlags())

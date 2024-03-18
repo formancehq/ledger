@@ -5,7 +5,6 @@ go 1.21
 toolchain go1.21.5
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/ThreeDotsLabs/watermill v1.3.5
 	github.com/alitto/pond v1.8.3
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
@@ -18,7 +17,6 @@ require (
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lib/pq v1.10.7
 	github.com/logrusorgru/aurora v2.0.3+incompatible
-	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
 	github.com/riandyrn/otelchi v0.5.1
@@ -33,7 +31,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.22.0
 	go.uber.org/fx v1.19.2
 	go.uber.org/mock v0.3.0
-	gopkg.in/segmentio/analytics-go.v3 v3.1.0
 )
 
 require (
@@ -129,7 +126,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rs/cors v1.10.0 // indirect
-	github.com/segmentio/backo-go v1.0.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.12 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
@@ -154,7 +150,6 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xo/dburl v0.20.2 // indirect
-	github.com/xtgo/uuid v0.0.0-20140804021211-a0b114877d4c // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	github.com/zitadel/oidc/v2 v2.11.0 // indirect
 	go.opentelemetry.io/contrib v1.0.0 // indirect
