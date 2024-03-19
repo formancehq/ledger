@@ -34,10 +34,10 @@ func getInfo(backend backend.Backend) func(w http.ResponseWriter, r *http.Reques
 
 		ledgerNames := make([]string, 0)
 		if err := bunpaginate.Iterate(r.Context(), systemstore.NewListLedgersQuery(100),
-			func(ctx context.Context, q systemstore.ListLedgersQuery) (*sharedapi.Cursor[systemstore.Ledger], error) {
+			func(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error) {
 				return backend.ListLedgers(ctx, q)
 			},
-			func(cursor *sharedapi.Cursor[systemstore.Ledger]) error {
+			func(cursor *bunpaginate.Cursor[systemstore.Ledger]) error {
 				ledgerNames = append(ledgerNames, collectionutils.Map(cursor.Data, func(from systemstore.Ledger) string {
 					return from.Name
 				})...)

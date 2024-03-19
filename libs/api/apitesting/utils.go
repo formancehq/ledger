@@ -2,6 +2,7 @@ package apitesting
 
 import (
 	"encoding/json"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -24,7 +25,7 @@ func ReadResponse[T any](t *testing.T, rec *httptest.ResponseRecorder, to T) {
 	reflect.ValueOf(to).Elem().Set(reflect.ValueOf(*ret.Data).Elem())
 }
 
-func ReadCursor[T any](t *testing.T, rec *httptest.ResponseRecorder, to *api.Cursor[T]) {
+func ReadCursor[T any](t *testing.T, rec *httptest.ResponseRecorder, to *bunpaginate.Cursor[T]) {
 	t.Helper()
 	ret := &api.BaseResponse[T]{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(ret))

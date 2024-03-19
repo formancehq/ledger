@@ -454,7 +454,7 @@ func TestGetTransactions(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[ledger.ExpandedTransaction]{
+			expectedCursor := bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				Data: []ledger.ExpandedTransaction{
 					ledger.ExpandTransaction(
 						ledger.NewTransaction().WithPostings(

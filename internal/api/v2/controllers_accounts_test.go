@@ -129,7 +129,7 @@ func TestGetAccounts(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[ledger.ExpandedAccount]{
+			expectedCursor := bunpaginate.Cursor[ledger.ExpandedAccount]{
 				Data: []ledger.ExpandedAccount{
 					{
 						Account: ledger.Account{

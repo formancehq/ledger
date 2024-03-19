@@ -7,13 +7,12 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
 )
 
 func UsingColumn[FILTERS any, ENTITY any](ctx context.Context,
 	sb *bun.SelectQuery,
-	query ColumnPaginatedQuery[FILTERS]) (*api.Cursor[ENTITY], error) {
+	query ColumnPaginatedQuery[FILTERS]) (*Cursor[ENTITY], error) {
 	ret := make([]ENTITY, 0)
 
 	sb = sb.Model(&ret)
@@ -109,7 +108,7 @@ func UsingColumn[FILTERS any, ENTITY any](ctx context.Context,
 		}
 	}
 
-	return &api.Cursor[ENTITY]{
+	return &Cursor[ENTITY]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
 		Previous: previous.EncodeAsCursor(),

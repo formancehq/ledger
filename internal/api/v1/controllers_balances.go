@@ -82,7 +82,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 		ret = append(ret, e)
 	}
 
-	sharedapi.RenderCursor(w, sharedapi.Cursor[map[string]map[string]*big.Int]{
+	sharedapi.RenderCursor(w, bunpaginate.Cursor[map[string]map[string]*big.Int]{
 		PageSize: cursor.PageSize,
 		HasMore:  cursor.HasMore,
 		Previous: cursor.Previous,

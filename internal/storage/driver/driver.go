@@ -9,8 +9,6 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
-	"github.com/formancehq/stack/libs/go-libs/api"
-
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/pkg/errors"
@@ -169,10 +167,10 @@ func (d *Driver) UpgradeAllBuckets(ctx context.Context) error {
 
 	buckets := collectionutils.Set[string]{}
 	err := bunpaginate.Iterate(ctx, systemstore.NewListLedgersQuery(10),
-		func(ctx context.Context, q systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
+		func(ctx context.Context, q systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error) {
 			return systemStore.ListLedgers(ctx, q)
 		},
-		func(cursor *api.Cursor[systemstore.Ledger]) error {
+		func(cursor *bunpaginate.Cursor[systemstore.Ledger]) error {
 			for _, name := range cursor.Data {
 				buckets.Put(name.Bucket)
 			}

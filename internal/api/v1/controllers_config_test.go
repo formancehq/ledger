@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/auth"
@@ -25,7 +27,7 @@ func TestGetInfo(t *testing.T) {
 	backend.
 		EXPECT().
 		ListLedgers(gomock.Any(), gomock.Any()).
-		Return(&sharedapi.Cursor[systemstore.Ledger]{
+		Return(&bunpaginate.Cursor[systemstore.Ledger]{
 			Data: []systemstore.Ledger{
 				{
 					Name: "a",

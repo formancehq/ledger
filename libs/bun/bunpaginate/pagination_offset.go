@@ -3,11 +3,10 @@ package bunpaginate
 import (
 	"context"
 
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/uptrace/bun"
 )
 
-func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[T], error) {
+func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query OffsetPaginatedQuery[Q], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*Cursor[T], error) {
 	ret := make([]T, 0)
 
 	sb = sb.Model(&ret)
@@ -49,7 +48,7 @@ func UsingOffset[Q any, T any](ctx context.Context, sb *bun.SelectQuery, query O
 		ret = ret[:len(ret)-1]
 	}
 
-	return &api.Cursor[T]{
+	return &Cursor[T]{
 		PageSize: int(query.PageSize),
 		HasMore:  next != nil,
 		Previous: previous.EncodeAsCursor(),

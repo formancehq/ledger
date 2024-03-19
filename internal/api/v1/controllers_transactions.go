@@ -140,7 +140,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sharedapi.RenderCursor(w, *sharedapi.MapCursor(cursor, mapExpandedTransactionToV1))
+	sharedapi.RenderCursor(w, *bunpaginate.MapCursor(cursor, mapExpandedTransactionToV1))
 }
 
 type Script struct {

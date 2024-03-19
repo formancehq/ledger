@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
@@ -40,7 +39,7 @@ func fetch[T any](s *Store, addModel bool, ctx context.Context, builders ...func
 }
 
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
-	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
+	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
 
 	//var ret RETURN
 	query := s.bucket.db.NewSelect()
@@ -54,7 +53,7 @@ func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
 
-func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*api.Cursor[RETURN], error) {
+func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
 	query := s.bucket.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)

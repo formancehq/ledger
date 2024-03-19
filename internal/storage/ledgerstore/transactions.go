@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
@@ -246,7 +245,7 @@ func (store *Store) buildTransactionListQuery(selectQuery *bun.SelectQuery, q Pa
 	return selectQuery
 }
 
-func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
+func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
 
 	var (
 		where string
@@ -270,7 +269,7 @@ func (store *Store) GetTransactions(ctx context.Context, q GetTransactionsQuery)
 		return nil, err
 	}
 
-	return api.MapCursor(transactions, func(from ExpandedTransaction) ledger.ExpandedTransaction {
+	return bunpaginate.MapCursor(transactions, func(from ExpandedTransaction) ledger.ExpandedTransaction {
 		return *from.toCore()
 	}), nil
 }

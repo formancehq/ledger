@@ -12,7 +12,6 @@ import (
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
@@ -145,7 +144,7 @@ func (store *Store) GetLastLog(ctx context.Context) (*ledger.ChainedLog, error) 
 	return ret.ToCore(), nil
 }
 
-func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
+func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.ChainedLog], error) {
 	logs, err := paginateWithColumn[PaginatedQueryOptions[any], Logs](store, ctx,
 		(*bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]])(&q),
 		store.logsQueryBuilder(q.Options),
@@ -154,7 +153,7 @@ func (store *Store) GetLogs(ctx context.Context, q GetLogsQuery) (*api.Cursor[le
 		return nil, err
 	}
 
-	return api.MapCursor(logs, func(from Logs) ledger.ChainedLog {
+	return bunpaginate.MapCursor(logs, func(from Logs) ledger.ChainedLog {
 		return *from.ToCore()
 	}), nil
 }

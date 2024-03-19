@@ -10,6 +10,7 @@ package backend
 
 import (
 	context "context"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	big "math/big"
 	reflect "reflect"
 
@@ -19,7 +20,6 @@ import (
 	driver "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledgerstore"
 	systemstore "github.com/formancehq/ledger/internal/storage/systemstore"
-	api "github.com/formancehq/stack/libs/go-libs/api"
 	metadata "github.com/formancehq/stack/libs/go-libs/metadata"
 	migrations "github.com/formancehq/stack/libs/go-libs/migrations"
 	gomock "go.uber.org/mock/gomock"
@@ -123,10 +123,10 @@ func (mr *MockLedgerMockRecorder) GetAccountWithVolumes(ctx, query any) *gomock.
 }
 
 // GetAccountsWithVolumes mocks base method.
-func (m *MockLedger) GetAccountsWithVolumes(ctx context.Context, query ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+func (m *MockLedger) GetAccountsWithVolumes(ctx context.Context, query ledgerstore.GetAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccountsWithVolumes", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[ledger.ExpandedAccount])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -153,10 +153,10 @@ func (mr *MockLedgerMockRecorder) GetAggregatedBalances(ctx, q any) *gomock.Call
 }
 
 // GetLogs mocks base method.
-func (m *MockLedger) GetLogs(ctx context.Context, query ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
+func (m *MockLedger) GetLogs(ctx context.Context, query ledgerstore.GetLogsQuery) (*bunpaginate.Cursor[ledger.ChainedLog], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLogs", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[ledger.ChainedLog])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ChainedLog])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -198,10 +198,10 @@ func (mr *MockLedgerMockRecorder) GetTransactionWithVolumes(ctx, query any) *gom
 }
 
 // GetTransactions mocks base method.
-func (m *MockLedger) GetTransactions(ctx context.Context, query ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
+func (m *MockLedger) GetTransactions(ctx context.Context, query ledgerstore.GetTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransactions", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[ledger.ExpandedTransaction])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedTransaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -353,10 +353,10 @@ func (mr *MockBackendMockRecorder) GetVersion() *gomock.Call {
 }
 
 // ListLedgers mocks base method.
-func (m *MockBackend) ListLedgers(ctx context.Context, query systemstore.ListLedgersQuery) (*api.Cursor[systemstore.Ledger], error) {
+func (m *MockBackend) ListLedgers(ctx context.Context, query systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
-	ret0, _ := ret[0].(*api.Cursor[systemstore.Ledger])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[systemstore.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

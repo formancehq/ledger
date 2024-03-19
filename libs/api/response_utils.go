@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"io"
 
 	"github.com/stretchr/testify/assert"
@@ -30,7 +31,7 @@ func DecodeSingleResponse[T any](t require.TestingT, reader io.Reader) (T, bool)
 	return *res.Data, true
 }
 
-func DecodeCursorResponse[T any](t require.TestingT, reader io.Reader) *Cursor[T] {
+func DecodeCursorResponse[T any](t require.TestingT, reader io.Reader) *bunpaginate.Cursor[T] {
 	res := BaseResponse[T]{}
 	Decode(t, reader, &res)
 	return res.Cursor

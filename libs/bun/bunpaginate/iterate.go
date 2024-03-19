@@ -4,11 +4,10 @@ import (
 	"context"
 	"reflect"
 
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
 )
 
-func Iterate[T any, Q any](ctx context.Context, q Q, iterator func(ctx context.Context, q Q) (*sharedapi.Cursor[T], error), cb func(cursor *sharedapi.Cursor[T]) error) error {
+func Iterate[T any, Q any](ctx context.Context, q Q, iterator func(ctx context.Context, q Q) (*Cursor[T], error), cb func(cursor *Cursor[T]) error) error {
 
 	for {
 		cursor, err := iterator(ctx, q)

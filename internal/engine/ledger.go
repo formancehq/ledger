@@ -4,12 +4,13 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/ThreeDotsLabs/watermill/message"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
@@ -53,7 +54,7 @@ func (l *Ledger) Close(ctx context.Context) {
 	l.commander.Close()
 }
 
-func (l *Ledger) GetTransactions(ctx context.Context, q ledgerstore.GetTransactionsQuery) (*api.Cursor[ledger.ExpandedTransaction], error) {
+func (l *Ledger) GetTransactions(ctx context.Context, q ledgerstore.GetTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
 	txs, err := l.store.GetTransactions(ctx, q)
 	return txs, newStorageError(err, "getting transactions")
 }
@@ -73,7 +74,7 @@ func (l *Ledger) CountAccounts(ctx context.Context, a ledgerstore.GetAccountsQue
 	return count, newStorageError(err, "counting accounts")
 }
 
-func (l *Ledger) GetAccountsWithVolumes(ctx context.Context, a ledgerstore.GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+func (l *Ledger) GetAccountsWithVolumes(ctx context.Context, a ledgerstore.GetAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
 	accounts, err := l.store.GetAccountsWithVolumes(ctx, a)
 	return accounts, newStorageError(err, "getting accounts")
 }
@@ -88,7 +89,7 @@ func (l *Ledger) GetAggregatedBalances(ctx context.Context, q ledgerstore.GetAgg
 	return balances, newStorageError(err, "getting balances aggregated")
 }
 
-func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.GetLogsQuery) (*api.Cursor[ledger.ChainedLog], error) {
+func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.GetLogsQuery) (*bunpaginate.Cursor[ledger.ChainedLog], error) {
 	logs, err := l.store.GetLogs(ctx, q)
 	return logs, newStorageError(err, "getting logs")
 }

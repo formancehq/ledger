@@ -151,7 +151,7 @@ func TestGetLogs(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := sharedapi.Cursor[ledger.ChainedLog]{
+			expectedCursor := bunpaginate.Cursor[ledger.ChainedLog]{
 				Data: []ledger.ChainedLog{
 					*ledger.NewTransactionLog(ledger.NewTransaction(), map[string]metadata.Metadata{}).
 						ChainLog(nil),

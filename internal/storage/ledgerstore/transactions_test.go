@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+
 	"github.com/pkg/errors"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -13,7 +15,6 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	internaltesting "github.com/formancehq/ledger/internal/testing"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
@@ -954,14 +955,14 @@ func TestGetTransactions(t *testing.T) {
 	type testCase struct {
 		name        string
 		query       PaginatedQueryOptions[PITFilterWithVolumes]
-		expected    *api.Cursor[ledger.ExpandedTransaction]
+		expected    *bunpaginate.Cursor[ledger.ExpandedTransaction]
 		expectError error
 	}
 	testCases := []testCase{
 		{
 			name:  "nominal",
 			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}),
-			expected: &api.Cursor[ledger.ExpandedTransaction]{
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
 				Data:     Reverse(expandLogs(logs...)...),
@@ -971,7 +972,7 @@ func TestGetTransactions(t *testing.T) {
 			name: "address filter",
 			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "bob")),
-			expected: &api.Cursor[ledger.ExpandedTransaction]{
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
 				Data:     expandLogs(logs...)[1:2],
@@ -981,7 +982,7 @@ func TestGetTransactions(t *testing.T) {
 			name: "address filter using segment",
 			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "users:")),
-			expected: &api.Cursor[ledger.ExpandedTransaction]{
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
 				Data:     Reverse(expandLogs(logs...)[2:]...),
@@ -991,7 +992,7 @@ func TestGetTransactions(t *testing.T) {
 			name: "filter using metadata",
 			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("metadata[category]", "2")),
-			expected: &api.Cursor[ledger.ExpandedTransaction]{
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
 				Data:     expandLogs(logs...)[1:2],
@@ -1004,7 +1005,7 @@ func TestGetTransactions(t *testing.T) {
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			}),
-			expected: &api.Cursor[ledger.ExpandedTransaction]{
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
 				PageSize: 15,
 				HasMore:  false,
 				Data:     Reverse(expandLogs(logs[:3]...)...),

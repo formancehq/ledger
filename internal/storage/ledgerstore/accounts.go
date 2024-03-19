@@ -11,7 +11,6 @@ import (
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
@@ -130,7 +129,7 @@ func (store *Store) buildAccountListQuery(selectQuery *bun.SelectQuery, q GetAcc
 	return selectQuery
 }
 
-func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQuery) (*api.Cursor[ledger.ExpandedAccount], error) {
+func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
 	var (
 		where string
 		args  []any

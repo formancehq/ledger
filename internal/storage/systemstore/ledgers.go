@@ -5,10 +5,8 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 )
@@ -38,7 +36,7 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 	}
 }
 
-func (s *Store) ListLedgers(ctx context.Context, q ListLedgersQuery) (*sharedapi.Cursor[Ledger], error) {
+func (s *Store) ListLedgers(ctx context.Context, q ListLedgersQuery) (*bunpaginate.Cursor[Ledger], error) {
 	query := s.db.NewSelect().
 		Column("ledger", "bucket", "addedat").
 		Order("addedat asc")

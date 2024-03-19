@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,7 +84,7 @@ func Ok(w http.ResponseWriter, v any) {
 	})
 }
 
-func RenderCursor[T any](w http.ResponseWriter, v Cursor[T]) {
+func RenderCursor[T any](w http.ResponseWriter, v bunpaginate.Cursor[T]) {
 	writeJSON(w, http.StatusOK, BaseResponse[T]{
 		Cursor: &v,
 	})
@@ -97,7 +98,7 @@ func WriteResponse(w http.ResponseWriter, status int, body []byte) {
 }
 
 func CursorFromListResponse[T any, V any](w http.ResponseWriter, query ListQuery[V], response *ListResponse[T]) {
-	RenderCursor(w, Cursor[T]{
+	RenderCursor(w, bunpaginate.Cursor[T]{
 		PageSize: query.Limit,
 		HasMore:  response.HasMore,
 		Previous: response.Previous,
