@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"net/http"
 	"net/url"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/pkg/errors"
 )

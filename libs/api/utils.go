@@ -2,10 +2,11 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 )

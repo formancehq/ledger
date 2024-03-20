@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"testing"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

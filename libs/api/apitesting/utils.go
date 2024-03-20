@@ -2,10 +2,11 @@ package apitesting
 
 import (
 	"encoding/json"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/stretchr/testify/require"

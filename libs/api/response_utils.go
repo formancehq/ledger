@@ -3,8 +3,9 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"io"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
