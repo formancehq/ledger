@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
@@ -24,7 +26,7 @@ import (
 )
 
 var (
-	now = ledger.Now()
+	now = time.Now()
 )
 
 type testCase struct {
@@ -225,7 +227,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	tx := ledger.NewTransaction().WithPostings(ledger.NewPosting("world", "bank", "USD", big.NewInt(100)))
 	err := store.InsertLogs(context.Background(),
 		ledger.NewTransactionLog(tx, map[string]metadata.Metadata{}).ChainLog(nil),
-		ledger.NewRevertedTransactionLog(ledger.Now(), tx.ID, ledger.NewTransaction()).ChainLog(nil),
+		ledger.NewRevertedTransactionLog(time.Now(), tx.ID, ledger.NewTransaction()).ChainLog(nil),
 	)
 	require.NoError(t, err)
 

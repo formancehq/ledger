@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -180,7 +182,7 @@ func (s Script) ToCore() (*ledger.Script, error) {
 type PostTransactionRequest struct {
 	Postings  ledger.Postings   `json:"postings"`
 	Script    Script            `json:"script"`
-	Timestamp ledger.Time       `json:"timestamp"`
+	Timestamp time.Time         `json:"timestamp"`
 	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
 }

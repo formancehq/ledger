@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"net/http"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 
 	"github.com/formancehq/ledger/internal/api"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
 	"github.com/formancehq/stack/libs/go-libs/logging"
@@ -71,7 +71,7 @@ func NewServe() *cobra.Command {
 func Log() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := ledger.Now()
+			start := time.Now()
 			h.ServeHTTP(w, r)
 			latency := time.Since(start.Time)
 			logging.FromContext(r.Context()).WithFields(map[string]interface{}{

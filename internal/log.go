@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
@@ -117,13 +119,13 @@ func (l *ChainedLog) ComputeHash(previous *ChainedLog) {
 }
 
 type Log struct {
-	Type           LogType `json:"type"`
-	Data           any     `json:"data"`
-	Date           Time    `json:"date"`
-	IdempotencyKey string  `json:"idempotencyKey"`
+	Type           LogType   `json:"type"`
+	Data           any       `json:"data"`
+	Date           time.Time `json:"date"`
+	IdempotencyKey string    `json:"idempotencyKey"`
 }
 
-func (l *Log) WithDate(date Time) *Log {
+func (l *Log) WithDate(date time.Time) *Log {
 	l.Date = date
 	return l
 }
@@ -152,7 +154,7 @@ type NewTransactionLogPayload struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
-func NewTransactionLogWithDate(tx *Transaction, accountMetadata map[string]metadata.Metadata, time Time) *Log {
+func NewTransactionLogWithDate(tx *Transaction, accountMetadata map[string]metadata.Metadata, time time.Time) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return &Log{
@@ -166,7 +168,7 @@ func NewTransactionLogWithDate(tx *Transaction, accountMetadata map[string]metad
 }
 
 func NewTransactionLog(tx *Transaction, accountMetadata map[string]metadata.Metadata) *Log {
-	return NewTransactionLogWithDate(tx, accountMetadata, Now())
+	return NewTransactionLogWithDate(tx, accountMetadata, time.Now())
 }
 
 type SetMetadataLogPayload struct {
@@ -208,7 +210,7 @@ func (s *SetMetadataLogPayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewSetMetadataLog(at Time, metadata SetMetadataLogPayload) *Log {
+func NewSetMetadataLog(at time.Time, metadata SetMetadataLogPayload) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return &Log{
@@ -224,7 +226,7 @@ type DeleteMetadataLogPayload struct {
 	Key        string `json:"key"`
 }
 
-func NewDeleteMetadataLog(at Time, payload DeleteMetadataLogPayload) *Log {
+func NewDeleteMetadataLog(at time.Time, payload DeleteMetadataLogPayload) *Log {
 	// Since the id is unique and the hash is a hash of the previous log, they
 	// will be filled at insertion time during the batch process.
 	return &Log{
@@ -234,7 +236,7 @@ func NewDeleteMetadataLog(at Time, payload DeleteMetadataLogPayload) *Log {
 	}
 }
 
-func NewSetMetadataOnAccountLog(at Time, account string, metadata metadata.Metadata) *Log {
+func NewSetMetadataOnAccountLog(at time.Time, account string, metadata metadata.Metadata) *Log {
 	return &Log{
 		Type: SetMetadataLogType,
 		Date: at,
@@ -246,7 +248,7 @@ func NewSetMetadataOnAccountLog(at Time, account string, metadata metadata.Metad
 	}
 }
 
-func NewSetMetadataOnTransactionLog(at Time, txID *big.Int, metadata metadata.Metadata) *Log {
+func NewSetMetadataOnTransactionLog(at time.Time, txID *big.Int, metadata metadata.Metadata) *Log {
 	return &Log{
 		Type: SetMetadataLogType,
 		Date: at,
@@ -263,7 +265,7 @@ type RevertedTransactionLogPayload struct {
 	RevertTransaction     *Transaction `json:"transaction"`
 }
 
-func NewRevertedTransactionLog(at Time, revertedTxID *big.Int, tx *Transaction) *Log {
+func NewRevertedTransactionLog(at time.Time, revertedTxID *big.Int, tx *Transaction) *Log {
 	return &Log{
 		Type: RevertedTransactionLogType,
 		Date: at,

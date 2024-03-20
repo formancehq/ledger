@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -30,12 +32,12 @@ type Transaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
 	ID         *bunpaginate.BigInt `bun:"id,type:numeric"`
-	Timestamp  ledger.Time         `bun:"timestamp,type:timestamp without time zone"`
+	Timestamp  time.Time           `bun:"timestamp,type:timestamp without time zone"`
 	Reference  string              `bun:"reference,type:varchar,unique,nullzero"`
 	Postings   []ledger.Posting    `bun:"postings,type:jsonb"`
 	Metadata   metadata.Metadata   `bun:"metadata,type:jsonb,default:'{}'"`
-	RevertedAt *ledger.Time        `bun:"reverted_at"`
-	LastUpdate *ledger.Time        `bun:"last_update"`
+	RevertedAt *time.Time          `bun:"reverted_at"`
+	LastUpdate *time.Time          `bun:"last_update"`
 }
 
 func (t *Transaction) toCore() *ledger.Transaction {
@@ -56,14 +58,14 @@ type ExpandedTransaction struct {
 	bun.BaseModel `bun:"transactions,alias:transactions"`
 
 	ID                         *bunpaginate.BigInt          `bun:"id,type:numeric"`
-	Timestamp                  ledger.Time                  `bun:"timestamp,type:timestamp without time zone"`
+	Timestamp                  time.Time                    `bun:"timestamp,type:timestamp without time zone"`
 	Reference                  string                       `bun:"reference,type:varchar,unique,nullzero"`
 	Postings                   []ledger.Posting             `bun:"postings,type:jsonb"`
 	Metadata                   metadata.Metadata            `bun:"metadata,type:jsonb,default:'{}'"`
 	PostCommitEffectiveVolumes ledger.AccountsAssetsVolumes `bun:"post_commit_effective_volumes,type:jsonb"`
 	PostCommitVolumes          ledger.AccountsAssetsVolumes `bun:"post_commit_volumes,type:jsonb"`
-	RevertedAt                 *ledger.Time                 `bun:"reverted_at"`
-	LastUpdate                 *ledger.Time                 `bun:"last_update"`
+	RevertedAt                 *time.Time                   `bun:"reverted_at"`
+	LastUpdate                 *time.Time                   `bun:"last_update"`
 }
 
 func (t *ExpandedTransaction) toCore() *ledger.ExpandedTransaction {
@@ -162,7 +164,7 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 			ColumnExpr("distinct on(transactions.id) transactions.*").
 			Column("transactions_metadata.metadata").
 			Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String())).
-			ColumnExpr(fmt.Sprintf("case when reverted_at is not null and reverted_at > '%s' then null else reverted_at end", p.PIT.Format(ledger.DateFormat)))
+			ColumnExpr(fmt.Sprintf("case when reverted_at is not null and reverted_at > '%s' then null else reverted_at end", p.PIT.Format(time.DateFormat)))
 	} else {
 		query = query.Column("transactions.metadata", "transactions.*")
 	}

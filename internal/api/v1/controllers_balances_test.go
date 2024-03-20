@@ -6,7 +6,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
@@ -28,7 +29,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		expectQuery ledgerstore.GetAggregatedBalanceQuery
 	}
 
-	now := ledger.Now()
+	now := time.Now()
 
 	testCases := []testCase{
 		{

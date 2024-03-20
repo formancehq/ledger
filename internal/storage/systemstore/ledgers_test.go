@@ -3,12 +3,12 @@ package systemstore
 import (
 	"fmt"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestListLedgers(t *testing.T) {
 	ledgers := make([]Ledger, 0)
 	pageSize := uint64(2)
 	count := uint64(10)
-	now := ledger.Now()
+	now := time.Now()
 	for i := uint64(0); i < count; i++ {
 		ledger := Ledger{
 			Name:    fmt.Sprintf("ledger%d", i),

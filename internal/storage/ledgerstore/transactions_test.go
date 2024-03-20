@@ -4,7 +4,8 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
@@ -76,7 +77,7 @@ func Reverse[T any](values ...T) []T {
 func TestGetTransactionWithVolumes(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	tx1 := ledger.ExpandedTransaction{
@@ -247,7 +248,7 @@ func TestGetTransactionWithVolumes(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.Transaction{
 		ID: big.NewInt(0),
@@ -292,7 +293,7 @@ func TestGetTransaction(t *testing.T) {
 func TestGetTransactionByReference(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.Transaction{
 		ID: big.NewInt(0),
@@ -337,7 +338,7 @@ func TestGetTransactionByReference(t *testing.T) {
 func TestInsertTransactions(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	t.Run("success inserting transaction", func(t *testing.T) {
@@ -472,7 +473,7 @@ func TestInsertTransactions(t *testing.T) {
 func TestCountTransactions(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.ExpandedTransaction{
 		Transaction: ledger.Transaction{
@@ -586,7 +587,7 @@ func TestCountTransactions(t *testing.T) {
 func TestUpdateTransactionsMetadata(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.ExpandedTransaction{
 		Transaction: ledger.Transaction{
@@ -659,8 +660,8 @@ func TestUpdateTransactionsMetadata(t *testing.T) {
 	require.NoError(t, err, "inserting transaction should not fail")
 
 	err = store.InsertLogs(context.Background(),
-		ledger.NewSetMetadataOnTransactionLog(ledger.Now(), tx1.ID, metadata.Metadata{"foo1": "bar2"}).ChainLog(nil).WithID(3),
-		ledger.NewSetMetadataOnTransactionLog(ledger.Now(), tx2.ID, metadata.Metadata{"foo2": "bar2"}).ChainLog(nil).WithID(4),
+		ledger.NewSetMetadataOnTransactionLog(time.Now(), tx1.ID, metadata.Metadata{"foo1": "bar2"}).ChainLog(nil).WithID(3),
+		ledger.NewSetMetadataOnTransactionLog(time.Now(), tx2.ID, metadata.Metadata{"foo2": "bar2"}).ChainLog(nil).WithID(4),
 	)
 	require.NoError(t, err, "updating multiple transaction metadata should not fail")
 
@@ -676,7 +677,7 @@ func TestUpdateTransactionsMetadata(t *testing.T) {
 func TestDeleteTransactionsMetadata(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.Transaction{
 		ID: big.NewInt(0),
@@ -696,7 +697,7 @@ func TestDeleteTransactionsMetadata(t *testing.T) {
 
 	require.NoError(t, store.InsertLogs(context.Background(),
 		ledger.NewTransactionLog(&tx1, map[string]metadata.Metadata{}).ChainLog(nil).WithID(1),
-		ledger.NewSetMetadataOnTransactionLog(ledger.Now(), tx1.ID, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"}).ChainLog(nil).WithID(2),
+		ledger.NewSetMetadataOnTransactionLog(time.Now(), tx1.ID, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"}).ChainLog(nil).WithID(2),
 	))
 
 	tx, err := store.GetTransaction(context.Background(), tx1.ID)
@@ -704,7 +705,7 @@ func TestDeleteTransactionsMetadata(t *testing.T) {
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar1", "foo2": "bar2"})
 
 	require.NoError(t, store.InsertLogs(context.Background(),
-		ledger.NewDeleteMetadataLog(ledger.Now(), ledger.DeleteMetadataLogPayload{
+		ledger.NewDeleteMetadataLog(time.Now(), ledger.DeleteMetadataLogPayload{
 			TargetType: ledger.MetaTargetTypeTransaction,
 			TargetID:   tx1.ID,
 			Key:        "foo1",
@@ -719,7 +720,7 @@ func TestDeleteTransactionsMetadata(t *testing.T) {
 func TestInsertTransactionInPast(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
@@ -764,7 +765,7 @@ func TestInsertTransactionInPast(t *testing.T) {
 func TestInsertTransactionInPastInOneBatch(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
@@ -805,7 +806,7 @@ func TestInsertTransactionInPastInOneBatch(t *testing.T) {
 func TestInsertTwoTransactionAtSameDateInSameBatch(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
@@ -865,7 +866,7 @@ func TestInsertTwoTransactionAtSameDateInSameBatch(t *testing.T) {
 func TestInsertTwoTransactionAtSameDateInTwoBatch(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
@@ -909,7 +910,7 @@ func TestInsertTwoTransactionAtSameDateInTwoBatch(t *testing.T) {
 func TestGetTransactions(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	tx1 := ledger.NewTransaction().
@@ -944,8 +945,8 @@ func TestGetTransactions(t *testing.T) {
 		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}),
 		ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}),
 		ledger.NewTransactionLog(tx3, map[string]metadata.Metadata{}),
-		ledger.NewRevertedTransactionLog(ledger.Now(), tx3.ID, tx4),
-		ledger.NewSetMetadataOnTransactionLog(ledger.Now(), tx3.ID, metadata.Metadata{
+		ledger.NewRevertedTransactionLog(time.Now(), tx3.ID, tx4),
+		ledger.NewSetMetadataOnTransactionLog(time.Now(), tx3.ID, metadata.Metadata{
 			"additional_metadata": "true",
 		}),
 	}

@@ -6,7 +6,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -34,7 +35,7 @@ func TestGetAccounts(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
-	before := ledger.Now()
+	before := time.Now()
 
 	testCases := []testCase{
 		{
@@ -183,7 +184,7 @@ func TestGetAccount(t *testing.T) {
 		},
 	}
 
-	now := ledger.Now()
+	now := time.Now()
 	query := ledgerstore.NewGetAccountQuery("foo")
 	query.PIT = &now
 

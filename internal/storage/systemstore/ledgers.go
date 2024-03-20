@@ -3,9 +3,10 @@ package systemstore
 import (
 	"context"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -14,9 +15,9 @@ import (
 type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
-	Name    string      `bun:"ledger,type:varchar(255),pk" json:"name"` // Primary key
-	AddedAt ledger.Time `bun:"addedat,type:timestamp" json:"addedAt"`
-	Bucket  string      `bun:"bucket,type:varchar(255)" json:"bucket"`
+	Name    string    `bun:"ledger,type:varchar(255),pk" json:"name"` // Primary key
+	AddedAt time.Time `bun:"addedat,type:timestamp" json:"addedAt"`
+	Bucket  string    `bun:"bucket,type:varchar(255)" json:"bucket"`
 }
 
 type PaginatedQueryOptions struct {

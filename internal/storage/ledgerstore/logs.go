@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
@@ -29,7 +31,7 @@ type Logs struct {
 	ID             *bunpaginate.BigInt `bun:"id,unique,type:numeric"`
 	Type           string              `bun:"type,type:log_type"`
 	Hash           []byte              `bun:"hash,type:bytea"`
-	Date           ledger.Time         `bun:"date,type:timestamptz"`
+	Date           time.Time           `bun:"date,type:timestamptz"`
 	Data           []byte              `bun:"data,type:jsonb"`
 	IdempotencyKey string              `bun:"idempotency_key,type:varchar(256),unique"`
 }

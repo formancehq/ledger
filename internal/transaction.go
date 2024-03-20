@@ -3,6 +3,8 @@ package ledger
 import (
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/pkg/errors"
@@ -21,7 +23,7 @@ type Transactions struct {
 type TransactionData struct {
 	Postings  Postings          `json:"postings"`
 	Metadata  metadata.Metadata `json:"metadata"`
-	Timestamp Time              `json:"timestamp"`
+	Timestamp time.Time         `json:"timestamp"`
 	Reference string            `json:"reference,omitempty"`
 }
 
@@ -46,7 +48,7 @@ func (t *TransactionData) Reverse() TransactionData {
 	}
 }
 
-func (d TransactionData) WithDate(now Time) TransactionData {
+func (d TransactionData) WithDate(now time.Time) TransactionData {
 	d.Timestamp = now
 
 	return d
@@ -68,7 +70,7 @@ func (t *Transaction) WithReference(ref string) *Transaction {
 	return t
 }
 
-func (t *Transaction) WithDate(ts Time) *Transaction {
+func (t *Transaction) WithDate(ts time.Time) *Transaction {
 	t.Timestamp = ts
 	return t
 }
@@ -92,7 +94,7 @@ func NewTransaction() *Transaction {
 	return &Transaction{
 		ID: big.NewInt(0),
 		TransactionData: NewTransactionData().
-			WithDate(Now()),
+			WithDate(time.Now()),
 	}
 }
 
@@ -126,7 +128,7 @@ func ExpandTransaction(tx *Transaction, preCommitVolumes AccountsAssetsVolumes) 
 type TransactionRequest struct {
 	Postings  Postings          `json:"postings"`
 	Script    ScriptV1          `json:"script"`
-	Timestamp Time              `json:"timestamp"`
+	Timestamp time.Time         `json:"timestamp"`
 	Reference string            `json:"reference"`
 	Metadata  metadata.Metadata `json:"metadata" swaggertype:"object"`
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -23,7 +25,7 @@ type LogV1 struct {
 	ID   uint64          `bun:"id,unique,type:bigint"`
 	Type string          `bun:"type,type:varchar"`
 	Hash string          `bun:"hash,type:varchar"`
-	Date ledger.Time     `bun:"date,type:timestamptz"`
+	Date time.Time       `bun:"date,type:timestamptz"`
 	Data json.RawMessage `bun:"data,type:jsonb"`
 }
 

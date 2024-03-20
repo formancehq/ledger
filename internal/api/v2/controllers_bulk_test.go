@@ -8,7 +8,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
@@ -26,7 +27,7 @@ import (
 func TestBulk(t *testing.T) {
 	t.Parallel()
 
-	now := ledger.Now()
+	now := time.Now()
 
 	type bulkTestCase struct {
 		name          string

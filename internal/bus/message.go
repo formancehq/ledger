@@ -5,6 +5,7 @@ import (
 	"github.com/formancehq/ledger/pkg/events"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/formancehq/stack/libs/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/time"
 )
 
 type CommittedTransactions struct {
@@ -15,7 +16,7 @@ type CommittedTransactions struct {
 
 func newEventCommittedTransactions(txs CommittedTransactions) publish.EventMessage {
 	return publish.EventMessage{
-		Date:    ledger.Now().Time,
+		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeCommittedTransactions,
@@ -32,7 +33,7 @@ type SavedMetadata struct {
 
 func newEventSavedMetadata(metadata SavedMetadata) publish.EventMessage {
 	return publish.EventMessage{
-		Date:    ledger.Now().Time,
+		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeSavedMetadata,
@@ -48,7 +49,7 @@ type RevertedTransaction struct {
 
 func newEventRevertedTransaction(tx RevertedTransaction) publish.EventMessage {
 	return publish.EventMessage{
-		Date:    ledger.Now().Time,
+		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeRevertedTransaction,
@@ -65,7 +66,7 @@ type DeletedMetadata struct {
 
 func newEventDeletedMetadata(tx DeletedMetadata) publish.EventMessage {
 	return publish.EventMessage{
-		Date:    ledger.Now().Time,
+		Date:    time.Now().Time,
 		App:     events.EventApp,
 		Version: events.EventVersion,
 		Type:    events.EventTypeDeletedMetadata,

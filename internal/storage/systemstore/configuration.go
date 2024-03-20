@@ -3,18 +3,19 @@ package systemstore
 import (
 	"context"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 )
 
 type configuration struct {
 	bun.BaseModel `bun:"_system.configuration,alias:configuration"`
 
-	Key     string      `bun:"key,type:varchar(255),pk"` // Primary key
-	Value   string      `bun:"value,type:text"`
-	AddedAt ledger.Time `bun:"addedAt,type:timestamp"`
+	Key     string    `bun:"key,type:varchar(255),pk"` // Primary key
+	Value   string    `bun:"value,type:text"`
+	AddedAt time.Time `bun:"addedAt,type:timestamp"`
 }
 
 func (s *Store) GetConfiguration(ctx context.Context, key string) (string, error) {
@@ -41,7 +42,7 @@ func (s *Store) InsertConfiguration(ctx context.Context, key, value string) erro
 	config := &configuration{
 		Key:     key,
 		Value:   value,
-		AddedAt: ledger.Now(),
+		AddedAt: time.Now(),
 	}
 
 	_, err := s.db.NewInsert().

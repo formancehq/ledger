@@ -7,11 +7,12 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
@@ -161,7 +162,7 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 	}
 }
 
-func filterPIT(pit *ledger.Time, column string) func(query *bun.SelectQuery) *bun.SelectQuery {
+func filterPIT(pit *time.Time, column string) func(query *bun.SelectQuery) *bun.SelectQuery {
 	return func(query *bun.SelectQuery) *bun.SelectQuery {
 		if pit == nil || pit.IsZero() {
 			return query
@@ -223,7 +224,7 @@ func NewPaginatedQueryOptions[T any](options T) PaginatedQueryOptions[T] {
 }
 
 type PITFilter struct {
-	PIT *ledger.Time `json:"pit"`
+	PIT *time.Time `json:"pit"`
 }
 
 type PITFilterWithVolumes struct {

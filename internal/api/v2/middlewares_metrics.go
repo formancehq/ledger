@@ -2,9 +2,9 @@ package v2
 
 import (
 	"net/http"
-	"time"
 
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/attribute"
@@ -38,7 +38,7 @@ func MetricsMiddleware(globalMetricsRegistry metrics.GlobalRegistry) func(h http
 
 			recorder := newStatusRecorder(w)
 
-			start := ledger.Now()
+			start := time.Now()
 			h.ServeHTTP(recorder, r)
 			latency := time.Since(start.Time)
 

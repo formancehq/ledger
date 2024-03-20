@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
@@ -351,7 +353,7 @@ func TestGetTransactions(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
-	now := ledger.Now()
+	now := time.Now()
 
 	testCases := []testCase{
 		{
@@ -369,18 +371,18 @@ func TestGetTransactions(t *testing.T) {
 		{
 			name: "using startTime",
 			queryParams: url.Values{
-				"start_time": []string{now.Format(ledger.DateFormat)},
+				"start_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using endTime",
 			queryParams: url.Values{
-				"end_time": []string{now.Format(ledger.DateFormat)},
+				"end_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Lt("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using account",
@@ -503,7 +505,7 @@ func TestCountTransactions(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
-	now := ledger.Now()
+	now := time.Now()
 
 	testCases := []testCase{
 		{
@@ -521,18 +523,18 @@ func TestCountTransactions(t *testing.T) {
 		{
 			name: "using startTime",
 			queryParams: url.Values{
-				"start_time": []string{now.Format(ledger.DateFormat)},
+				"start_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using endTime",
 			queryParams: url.Values{
-				"end_time": []string{now.Format(ledger.DateFormat)},
+				"end_time": []string{now.Format(time.DateFormat)},
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}).
-				WithQueryBuilder(query.Lt("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using account",

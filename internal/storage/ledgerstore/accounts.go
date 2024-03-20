@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
@@ -211,7 +213,7 @@ type GetAccountQuery struct {
 	Addr string
 }
 
-func (q GetAccountQuery) WithPIT(pit ledger.Time) GetAccountQuery {
+func (q GetAccountQuery) WithPIT(pit time.Time) GetAccountQuery {
 	q.PIT = &pit
 
 	return q

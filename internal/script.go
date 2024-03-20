@@ -3,12 +3,14 @@ package ledger
 import (
 	"fmt"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type RunScript struct {
 	Script
-	Timestamp Time              `json:"timestamp"`
+	Timestamp time.Time         `json:"timestamp"`
 	Metadata  metadata.Metadata `json:"metadata"`
 	Reference string            `json:"reference"`
 }

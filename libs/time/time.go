@@ -1,4 +1,4 @@
-package ledger
+package time
 
 import (
 	"database/sql/driver"
@@ -11,6 +11,16 @@ import (
 const (
 	DatePrecision = time.Microsecond
 	DateFormat    = time.RFC3339Nano
+)
+
+var (
+	RFC3339Nano = time.RFC3339Nano
+	Nanosecond  = time.Nanosecond
+	Millisecond = time.Millisecond
+	Microsecond = time.Microsecond
+	Second      = time.Second
+	Minute      = time.Minute
+	Hour        = time.Hour
 )
 
 type Time struct {
@@ -114,4 +124,10 @@ func ParseTime(v string) (Time, error) {
 	return Time{
 		Time: t.Round(DatePrecision).UTC(),
 	}, nil
+}
+
+type Duration = time.Duration
+
+func Since(t time.Time) Duration {
+	return time.Since(t)
 }

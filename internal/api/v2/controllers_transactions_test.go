@@ -8,7 +8,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -529,7 +530,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 func TestGetTransaction(t *testing.T) {
 	t.Parallel()
 
-	now := ledger.Now()
+	now := time.Now()
 
 	tx := ledger.ExpandTransaction(
 		ledger.NewTransaction().WithPostings(
@@ -569,7 +570,7 @@ func TestGetTransactions(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
-	now := ledger.Now()
+	now := time.Now()
 
 	testCases := []testCase{
 		{
@@ -592,23 +593,23 @@ func TestGetTransactions(t *testing.T) {
 		},
 		{
 			name: "using startTime",
-			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(ledger.DateFormat)),
+			body: fmt.Sprintf(`{"$gte": {"start_time": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &now,
 				},
 			}).
-				WithQueryBuilder(query.Gte("start_time", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Gte("start_time", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using endTime",
-			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(ledger.DateFormat)),
+			body: fmt.Sprintf(`{"$lte": {"end_time": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &now,
 				},
 			}).
-				WithQueryBuilder(query.Lte("end_time", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Lte("end_time", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using account",
@@ -750,7 +751,7 @@ func TestGetTransactions(t *testing.T) {
 func TestCountTransactions(t *testing.T) {
 	t.Parallel()
 
-	before := ledger.Now()
+	before := time.Now()
 
 	type testCase struct {
 		name              string
@@ -760,7 +761,7 @@ func TestCountTransactions(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 	}
-	now := ledger.Now()
+	now := time.Now()
 
 	testCases := []testCase{
 		{
@@ -783,23 +784,23 @@ func TestCountTransactions(t *testing.T) {
 		},
 		{
 			name: "using startTime",
-			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
+			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &before,
 				},
 			}).
-				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using endTime",
-			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
+			body: fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &before,
 				},
 			}).
-				WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using account",

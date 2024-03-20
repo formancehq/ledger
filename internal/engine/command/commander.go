@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -76,7 +78,7 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 	}
 
 	if script.Timestamp.IsZero() {
-		script.Timestamp = ledger.Now()
+		script.Timestamp = time.Now()
 	}
 
 	execContext := newExecutionContext(commander, parameters)
@@ -170,7 +172,7 @@ func (commander *Commander) SaveMeta(ctx context.Context, parameters Parameters,
 	_, err := execContext.run(ctx, func(executionContext *executionContext) (*ledger.ChainedLog, error) {
 		var (
 			log *ledger.Log
-			at  = ledger.Now()
+			at  = time.Now()
 		)
 		switch targetType {
 		case ledger.MetaTargetTypeTransaction:
@@ -271,7 +273,7 @@ func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Param
 	_, err := execContext.run(ctx, func(executionContext *executionContext) (*ledger.ChainedLog, error) {
 		var (
 			log *ledger.Log
-			at  = ledger.Now()
+			at  = time.Now()
 		)
 		switch targetType {
 		case ledger.MetaTargetTypeTransaction:

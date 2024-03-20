@@ -9,12 +9,12 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
@@ -130,7 +130,7 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 
 	_, err = systemstore.RegisterLedger(ctx, tx, &systemstore.Ledger{
 		Name:    name,
-		AddedAt: ledger.Now(),
+		AddedAt: time.Now(),
 		Bucket:  bucketName,
 	})
 	if err != nil {

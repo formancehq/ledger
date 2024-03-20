@@ -8,7 +8,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -109,7 +110,7 @@ func TestGetLogs(t *testing.T) {
 		expectedErrorCode string
 	}
 
-	now := ledger.Now()
+	now := time.Now()
 	testCases := []testCase{
 		{
 			name:        "nominal",
@@ -117,14 +118,14 @@ func TestGetLogs(t *testing.T) {
 		},
 		{
 			name:        "using start time",
-			body:        fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
-			expectQuery: ledgerstore.NewPaginatedQueryOptions[any](nil).WithQueryBuilder(query.Gte("date", now.Format(ledger.DateFormat))),
+			body:        fmt.Sprintf(`{"$gte": {"date": "%s"}}`, now.Format(time.DateFormat)),
+			expectQuery: ledgerstore.NewPaginatedQueryOptions[any](nil).WithQueryBuilder(query.Gte("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using end time",
-			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(ledger.DateFormat)),
+			body: fmt.Sprintf(`{"$lt": {"date": "%s"}}`, now.Format(time.DateFormat)),
 			expectQuery: ledgerstore.NewPaginatedQueryOptions[any](nil).
-				WithQueryBuilder(query.Lt("date", now.Format(ledger.DateFormat))),
+				WithQueryBuilder(query.Lt("date", now.Format(time.DateFormat))),
 		},
 		{
 			name: "using empty cursor",

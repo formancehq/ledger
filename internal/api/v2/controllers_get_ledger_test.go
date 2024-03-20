@@ -5,7 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/formancehq/stack/libs/go-libs/auth"
@@ -24,7 +25,7 @@ func TestGetLedger(t *testing.T) {
 	router := v2.NewRouter(b, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
 
 	name := uuid.NewString()
-	now := ledger.Now()
+	now := time.Now()
 	ledger := systemstore.Ledger{
 		Name:    name,
 		AddedAt: now,

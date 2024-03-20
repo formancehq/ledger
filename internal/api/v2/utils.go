@@ -4,9 +4,10 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/time"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
@@ -17,10 +18,10 @@ func getPITFilter(r *http.Request) (*ledgerstore.PITFilter, error) {
 	pitString := r.URL.Query().Get("pit")
 	if pitString == "" {
 		return &ledgerstore.PITFilter{
-			PIT: pointer.For(ledger.Now()),
+			PIT: pointer.For(time.Now()),
 		}, nil
 	}
-	pit, err := ledger.ParseTime(pitString)
+	pit, err := time.ParseTime(pitString)
 	if err != nil {
 		return nil, err
 	}

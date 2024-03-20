@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 
@@ -22,7 +22,7 @@ import (
 func TestGetLastLog(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	lastLog, err := store.GetLastLog(context.Background())
 	require.True(t, sqlutils.IsNotFoundError(err))
@@ -109,7 +109,7 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 func TestGetLogs(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 
 	tx1 := ledger.ExpandedTransaction{
 		Transaction: ledger.Transaction{

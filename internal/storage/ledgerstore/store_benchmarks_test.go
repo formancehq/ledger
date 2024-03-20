@@ -9,7 +9,8 @@ import (
 	"os"
 	"testing"
 	"text/tabwriter"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunexplain"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
@@ -69,7 +70,7 @@ type scenario struct {
 	setup func(ctx context.Context, b *testing.B, store *Store) *scenarioInfo
 }
 
-var now = ledger.Now()
+var now = time.Now()
 
 var scenarios = []scenario{
 	{
@@ -331,7 +332,7 @@ func BenchmarkList(b *testing.B) {
 			_, err := store.GetDB().Exec("VACUUM FULL ANALYZE")
 			require.NoError(b, err)
 
-			runAllWithPIT := func(b *testing.B, pit *ledger.Time) {
+			runAllWithPIT := func(b *testing.B, pit *time.Time) {
 				b.Run("transactions", func(b *testing.B) {
 					benchmarksReadTransactions(b, ctx, store, info, pit)
 				})
@@ -352,7 +353,7 @@ func BenchmarkList(b *testing.B) {
 	}
 }
 
-func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store, info *scenarioInfo, pit *ledger.Time) {
+func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store, info *scenarioInfo, pit *time.Time) {
 	type testCase struct {
 		name                   string
 		query                  query.Builder
@@ -432,7 +433,7 @@ func benchmarksReadTransactions(b *testing.B, ctx context.Context, store *Store,
 	}
 }
 
-func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store, pit *ledger.Time) {
+func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store, pit *time.Time) {
 	type testCase struct {
 		name                                  string
 		query                                 query.Builder
@@ -498,7 +499,7 @@ func benchmarksReadAccounts(b *testing.B, ctx context.Context, store *Store, pit
 	}
 }
 
-func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *Store, pit *ledger.Time) {
+func benchmarksGetAggregatedBalances(b *testing.B, ctx context.Context, store *Store, pit *time.Time) {
 	type testCase struct {
 		name               string
 		query              query.Builder

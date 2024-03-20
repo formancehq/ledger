@@ -3,7 +3,8 @@ package ledgerstore
 import (
 	"math/big"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
@@ -18,7 +19,7 @@ import (
 func TestGetBalancesAggregated(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	bigInt, _ := big.NewInt(0).SetString("999999999999999999999999999999999999999999999999999999999999999999999999999999999", 10)

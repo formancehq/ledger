@@ -4,7 +4,8 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
+
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
 
@@ -17,7 +18,7 @@ import (
 func TestGetAccounts(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	require.NoError(t, store.InsertLogs(ctx,
@@ -32,11 +33,11 @@ func TestGetAccounts(t *testing.T) {
 					},
 				},
 			).WithDate(now),
-			ledger.NewSetMetadataOnAccountLog(ledger.Now(), "account:1", metadata.Metadata{"category": "1"}).WithDate(now.Add(time.Minute)),
-			ledger.NewSetMetadataOnAccountLog(ledger.Now(), "account:2", metadata.Metadata{"category": "2"}).WithDate(now.Add(2*time.Minute)),
-			ledger.NewSetMetadataOnAccountLog(ledger.Now(), "account:3", metadata.Metadata{"category": "3"}).WithDate(now.Add(3*time.Minute)),
-			ledger.NewSetMetadataOnAccountLog(ledger.Now(), "orders:1", metadata.Metadata{"foo": "bar"}).WithDate(now.Add(3*time.Minute)),
-			ledger.NewSetMetadataOnAccountLog(ledger.Now(), "orders:2", metadata.Metadata{"foo": "bar"}).WithDate(now.Add(3*time.Minute)),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:1", metadata.Metadata{"category": "1"}).WithDate(now.Add(time.Minute)),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:2", metadata.Metadata{"category": "2"}).WithDate(now.Add(2*time.Minute)),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:3", metadata.Metadata{"category": "3"}).WithDate(now.Add(3*time.Minute)),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "orders:1", metadata.Metadata{"foo": "bar"}).WithDate(now.Add(3*time.Minute)),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "orders:2", metadata.Metadata{"foo": "bar"}).WithDate(now.Add(3*time.Minute)),
 			ledger.NewTransactionLog(
 				ledger.NewTransaction().
 					WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
@@ -191,7 +192,7 @@ func TestUpdateAccountsMetadata(t *testing.T) {
 	}
 
 	require.NoError(t, store.InsertLogs(context.Background(),
-		ledger.NewSetMetadataOnAccountLog(ledger.Now(), "bank", metadata).ChainLog(nil),
+		ledger.NewSetMetadataOnAccountLog(time.Now(), "bank", metadata).ChainLog(nil),
 	), "account insertion should not fail")
 
 	account, err := store.GetAccountWithVolumes(context.Background(), NewGetAccountQuery("bank"))
@@ -204,7 +205,7 @@ func TestUpdateAccountsMetadata(t *testing.T) {
 func TestGetAccount(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
-	now := ledger.Now()
+	now := time.Now()
 	ctx := logging.TestingContext()
 
 	require.NoError(t, store.InsertLogs(ctx,
@@ -258,7 +259,7 @@ func TestGetAccount(t *testing.T) {
 			},
 		}, *account)
 
-		account, err = store.GetAccountWithVolumes(ctx, NewGetAccountQuery("world").WithPIT(ledger.Now()))
+		account, err = store.GetAccountWithVolumes(ctx, NewGetAccountQuery("world").WithPIT(time.Now()))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{
 			Account: ledger.Account{
@@ -358,7 +359,7 @@ func TestUpdateAccountMetadata(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	require.NoError(t, store.InsertLogs(ctx,
-		ledger.NewSetMetadataOnAccountLog(ledger.Now(), "central_bank", metadata.Metadata{
+		ledger.NewSetMetadataOnAccountLog(time.Now(), "central_bank", metadata.Metadata{
 			"foo": "bar",
 		}).ChainLog(nil),
 	))
