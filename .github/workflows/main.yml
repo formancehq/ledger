@@ -53,7 +53,6 @@ jobs:
     uses: ./.github/workflows/template_goreleaser-build.yaml
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
 
   GoReleaserRelease:
     needs:
@@ -65,7 +64,6 @@ jobs:
     uses: ./.github/workflows/template_goreleaser-release.yaml
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
       FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
 
   SdkGenerate:
@@ -97,7 +95,6 @@ jobs:
       RELEASE: ${{ github.event.action }}
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
 
   DockerBranch:
     needs:
@@ -112,4 +109,3 @@ jobs:
       RELEASE: ${{ github.event.action }}
     secrets:
       NUMARY_GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      SEGMENT_WRITE_KEY_OSS: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}

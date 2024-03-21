@@ -49,10 +49,9 @@ const (
 )
 
 var (
-	Version                = "develop"
-	BuildDate              = "-"
-	Commit                 = "-"
-	DefaultSegmentWriteKey = ""
+	Version   = "develop"
+	BuildDate = "-"
+	Commit    = "-"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -152,7 +151,6 @@ func NewRootCommand() *cobra.Command {
 
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	internal.InitHTTPBasicFlags(root)
-	internal.InitAnalyticsFlags(root, DefaultSegmentWriteKey)
 	publish.InitCLIFlags(root)
 
 	if err = viper.BindPFlags(root.PersistentFlags()); err != nil {
