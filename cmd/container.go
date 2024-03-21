@@ -92,8 +92,6 @@ func resolveOptions(v *viper.Viper, userOptions ...fx.Option) []fx.Option {
 		RedisLockStrategy: redisLockStrategy,
 	}))
 
-	options = append(options, internal.NewAnalyticsModule(v, Version))
-
 	options = append(options, fx.Provide(
 		fx.Annotate(func() []ledger.LedgerOption {
 			ledgerOptions := []ledger.LedgerOption{}

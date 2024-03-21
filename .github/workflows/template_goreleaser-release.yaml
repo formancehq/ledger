@@ -5,9 +5,6 @@ on:
       NUMARY_GITHUB_TOKEN:
         required: true
         description: GitHub token with access to the repo
-      SEGMENT_WRITE_KEY_OSS:
-        required: true
-        description: Segment write key for the OSS repo
       FURY_TOKEN:
         required: true
         description: Fury token for the OSS repo
@@ -41,7 +38,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
         uses: goreleaser/goreleaser-action@v4
         with:
           version: latest
@@ -51,7 +47,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
         uses: goreleaser/goreleaser-action@v4
         with:
           version: latest

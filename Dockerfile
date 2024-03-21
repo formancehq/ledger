@@ -8,7 +8,6 @@ RUN CGO_ENABLED=1 GOOS=linux go install -v -installsuffix cgo -a std
 ARG TARGETARCH
 ARG APP_SHA
 ARG VERSION
-ARG SEGMENT_WRITE_KEY
 WORKDIR /go/src/github.com/numary/ledger
 # get deps first so it's cached
 COPY . .
@@ -20,7 +19,6 @@ RUN --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
     -ldflags="-X github.com/numary/ledger/cmd.Version=${VERSION} \
     -X github.com/numary/ledger/cmd.BuildDate=$(date +%s) \
     -X github.com/numary/ledger/cmd.Commit=${APP_SHA} \
-    -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
 
 FROM ubuntu:jammy as app
 RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
