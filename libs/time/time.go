@@ -131,3 +131,11 @@ type Duration = time.Duration
 func Since(t time.Time) Duration {
 	return time.Since(t)
 }
+
+func ParseDuration(v string) (time.Duration, error) {
+	return time.ParseDuration(v)
+}
+
+func Until(v Time) Duration {
+	return time.Until(v.Time)
+}
