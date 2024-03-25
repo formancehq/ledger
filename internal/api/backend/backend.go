@@ -43,13 +43,23 @@ type Backend interface {
 	GetLedger(ctx context.Context, name string) (*systemstore.Ledger, error)
 	ListLedgers(ctx context.Context, query systemstore.ListLedgersQuery) (*bunpaginate.Cursor[systemstore.Ledger], error)
 	CreateLedger(ctx context.Context, name string, configuration driver.LedgerConfiguration) error
+	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	GetVersion() string
+	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 }
 
 type DefaultBackend struct {
 	storageDriver *driver.Driver
 	resolver      *engine.Resolver
 	version       string
+}
+
+func (d DefaultBackend) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	return d.storageDriver.GetSystemStore().DeleteLedgerMetadata(ctx, name, key)
+}
+
+func (d DefaultBackend) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
+	return d.storageDriver.GetSystemStore().UpdateLedgerMetadata(ctx, name, m)
 }
 
 func (d DefaultBackend) GetLedger(ctx context.Context, name string) (*systemstore.Ledger, error) {

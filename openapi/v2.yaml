@@ -90,7 +90,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V2Ledger'
+                $ref: '#/components/schemas/V2GetLedgerResponse'
         default:
           description: Error
           content:
@@ -109,6 +109,86 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/V2CreateLedgerRequest'
+      responses:
+        "204":
+          description: OK
+
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+  /v2/{ledger}/metadata:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+
+    put:
+      summary: Update ledger metadata
+      operationId: v2UpdateLedgerMetadata
+      tags:
+        - Ledger
+      x-speakeasy-group: ledger
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/V2UpdateLedgerMetadataRequest'
+      responses:
+        "204":
+          description: OK
+
+        "400":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+
+  /v2/{ledger}/metadata/{key}:
+    parameters:
+      - name: ledger
+        in: path
+        description: Name of the ledger.
+        required: true
+        schema:
+          type: string
+          example: ledger001
+      - name: key
+        in: path
+        description: Key to remove.
+        required: true
+        schema:
+          type: string
+          example: foo
+
+    delete:
+      summary: Delete ledger metadata by key
+      operationId: v2DeleteLedgerMetadata
+      tags:
+        - Ledger
+      x-speakeasy-group: ledger
       responses:
         "204":
           description: OK
@@ -1729,6 +1809,8 @@ components:
       properties:
         bucket:
           type: string
+        metadata:
+          $ref: '#/components/schemas/V2Metadata'
 
     V2Ledger:
       type: object
@@ -1740,6 +1822,8 @@ components:
           format: date-time
         bucket:
           type: string
+        metadata:
+          $ref: '#/components/schemas/V2Metadata'
       required:
         - name
         - addedAt
@@ -1776,3 +1860,14 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/V2Ledger'
+
+    V2UpdateLedgerMetadataRequest:
+      $ref: '#/components/schemas/V2Metadata'
+
+    V2GetLedgerResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/V2Ledger'

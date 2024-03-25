@@ -43,6 +43,8 @@ func NewRouter(
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Post("/", createLedger(b))
 			router.Get("/", getLedger(b))
+			router.Put("/metadata", updateLedgerMetadata(b))
+			router.Delete("/metadata/{key}", deleteLedgerMetadata(b))
 
 			router.With(backend.LedgerMiddleware(b, []string{"/_info"})).Group(func(router chi.Router) {
 				router.Post("/_bulk", bulkHandler)

@@ -5,12 +5,12 @@
 //
 //	mockgen -source backend.go -destination backend_generated.go -package backend . Ledger
 //
+
 // Package backend is a generated GoMock package.
 package backend
 
 import (
 	context "context"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	big "math/big"
 	reflect "reflect"
 
@@ -20,6 +20,7 @@ import (
 	driver "github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledgerstore"
 	systemstore "github.com/formancehq/ledger/internal/storage/systemstore"
+	bunpaginate "github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	metadata "github.com/formancehq/stack/libs/go-libs/metadata"
 	migrations "github.com/formancehq/stack/libs/go-libs/migrations"
 	gomock "go.uber.org/mock/gomock"
@@ -308,6 +309,20 @@ func (mr *MockBackendMockRecorder) CreateLedger(ctx, name, configuration any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLedger", reflect.TypeOf((*MockBackend)(nil).CreateLedger), ctx, name, configuration)
 }
 
+// DeleteLedgerMetadata mocks base method.
+func (m *MockBackend) DeleteLedgerMetadata(ctx context.Context, param, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLedgerMetadata", ctx, param, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLedgerMetadata indicates an expected call of DeleteLedgerMetadata.
+func (mr *MockBackendMockRecorder) DeleteLedgerMetadata(ctx, param, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedgerMetadata", reflect.TypeOf((*MockBackend)(nil).DeleteLedgerMetadata), ctx, param, key)
+}
+
 // GetLedger mocks base method.
 func (m *MockBackend) GetLedger(ctx context.Context, name string) (*systemstore.Ledger, error) {
 	m.ctrl.T.Helper()
@@ -365,4 +380,18 @@ func (m *MockBackend) ListLedgers(ctx context.Context, query systemstore.ListLed
 func (mr *MockBackendMockRecorder) ListLedgers(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLedgers", reflect.TypeOf((*MockBackend)(nil).ListLedgers), ctx, query)
+}
+
+// UpdateLedgerMetadata mocks base method.
+func (m_2 *MockBackend) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "UpdateLedgerMetadata", ctx, name, m)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLedgerMetadata indicates an expected call of UpdateLedgerMetadata.
+func (mr *MockBackendMockRecorder) UpdateLedgerMetadata(ctx, name, m any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLedgerMetadata", reflect.TypeOf((*MockBackend)(nil).UpdateLedgerMetadata), ctx, name, m)
 }
