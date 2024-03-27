@@ -81,6 +81,7 @@ func (store *Store) GetAggregatedBalances(ctx context.Context, q GetAggregatedBa
 			} else {
 				moves = moves.Order("moves.effective_date desc")
 			}
+			moves = moves.Order("seq desc")
 
 			if needMetadata {
 				if q.PIT != nil {

@@ -180,12 +180,11 @@ func (p *parseVisitor) VisitLit(c parser.ILiteralContext, push bool) (machine.Ty
 		}
 		return machine.TypeNumber, addr, nil
 	case *parser.LitStringContext:
-		fmt.Println("got", c.GetText())
 		unquoted, err := strconv.Unquote(c.GetText())
 		if err != nil {
 			return 0, nil, LogicError(c, err)
 		}
-		fmt.Println("unquoted", unquoted)
+
 		addr, err := p.AllocateResource(program.Constant{
 			Inner: machine.String(unquoted),
 		})

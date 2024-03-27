@@ -719,8 +719,10 @@ func TestDeleteTransactionsMetadata(t *testing.T) {
 
 func TestInsertTransactionInPast(t *testing.T) {
 	t.Parallel()
+
 	store := newLedgerStore(t)
 	now := time.Now()
+	ctx := logging.TestingContext()
 
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
@@ -735,18 +737,24 @@ func TestInsertTransactionInPast(t *testing.T) {
 		ledger.NewPosting("bank", "user2", "USD/2", big.NewInt(50)),
 	).WithDate(now.Add(30 * time.Minute)).WithIDUint64(2)
 
-	require.NoError(t, store.InsertLogs(context.Background(),
+	// Insert before the oldest tx must update first_usage of involved accounts
+	tx4 := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+	).WithDate(now.Add(-time.Minute)).WithIDUint64(3)
+
+	require.NoError(t, store.InsertLogs(ctx,
 		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}).ChainLog(nil).WithID(1),
 		ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}).ChainLog(nil).WithID(2),
 		ledger.NewTransactionLog(tx3, map[string]metadata.Metadata{}).ChainLog(nil).WithID(3),
+		ledger.NewTransactionLog(tx4, map[string]metadata.Metadata{}).ChainLog(nil).WithID(4),
 	))
 
-	tx2FromDatabase, err := store.GetTransactionWithVolumes(context.Background(), NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx2FromDatabase, err := store.GetTransactionWithVolumes(ctx, NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err)
 
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
 		"bank": {
-			"USD/2": ledger.NewVolumesInt64(100, 50),
+			"USD/2": ledger.NewVolumesInt64(200, 50),
 		},
 		"user1": {
 			"USD/2": ledger.NewVolumesInt64(0, 0),
@@ -754,12 +762,16 @@ func TestInsertTransactionInPast(t *testing.T) {
 	}, tx2FromDatabase.PreCommitEffectiveVolumes)
 	internaltesting.RequireEqual(t, ledger.AccountsAssetsVolumes{
 		"bank": {
-			"USD/2": ledger.NewVolumesInt64(100, 100),
+			"USD/2": ledger.NewVolumesInt64(200, 100),
 		},
 		"user1": {
 			"USD/2": ledger.NewVolumesInt64(50, 0),
 		},
 	}, tx2FromDatabase.PostCommitEffectiveVolumes)
+
+	account, err := store.GetAccount(ctx, "bank")
+	require.NoError(t, err)
+	require.Equal(t, tx4.Timestamp, account.FirstUsage)
 }
 
 func TestInsertTransactionInPastInOneBatch(t *testing.T) {

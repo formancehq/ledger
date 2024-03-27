@@ -21,17 +21,24 @@ import (
 func (store *Store) buildAccountQuery(q PITFilterWithVolumes, query *bun.SelectQuery) *bun.SelectQuery {
 
 	query = query.
-		Column("accounts.address").
+		Column("accounts.address", "accounts.first_usage").
 		Where("accounts.ledger = ?", store.name).
-		Apply(filterPIT(q.PIT, "insertion_date")).
+		Apply(filterPIT(q.PIT, "first_usage")).
 		Order("accounts.address")
 
 	if q.PIT != nil && !q.PIT.IsZero() {
 		query = query.
 			Column("accounts.address").
-			ColumnExpr("accounts_metadata.metadata").
-			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq and accounts_metadata.date < ?", q.PIT).
-			Order("revision desc")
+			ColumnExpr(`coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata`).
+			Join(`
+				left join lateral (
+					select metadata, accounts_seq
+					from accounts_metadata
+					where accounts_metadata.accounts_seq = accounts.seq and accounts_metadata.date < ?
+					order by revision desc 
+					limit 1
+				) accounts_metadata on true
+			`, q.PIT)
 	} else {
 		query = query.Column("metadata")
 	}
@@ -153,10 +160,11 @@ func (store *Store) GetAccountsWithVolumes(ctx context.Context, q GetAccountsQue
 }
 
 func (store *Store) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
-	account, err := fetch[*ledger.Account](store, true, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
+	account, err := fetch[*ledger.Account](store, false, ctx, func(query *bun.SelectQuery) *bun.SelectQuery {
 		return query.
 			ColumnExpr("accounts.address").
 			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata").
+			ColumnExpr("accounts.first_usage").
 			Table("accounts").
 			Join("left join accounts_metadata on accounts_metadata.accounts_seq = accounts.seq").
 			Where("accounts.address = ?", address).

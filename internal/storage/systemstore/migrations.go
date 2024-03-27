@@ -91,6 +91,20 @@ func Migrate(ctx context.Context, db bun.IDB) error {
 				return nil
 			},
 		},
+		migrations.Migration{
+			Name: "Fix empty ledger metadata",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					update ledgers
+					set metadata = '{}'::jsonb
+					where metadata is null;
+				`)
+				if err != nil {
+					return err
+				}
+				return nil
+			},
+		},
 	)
 	return migrator.Up(ctx, db)
 }

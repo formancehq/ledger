@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/stack/libs/go-libs/time"
 	"github.com/uptrace/bun"
 )
 
@@ -12,8 +13,9 @@ const (
 type Account struct {
 	bun.BaseModel `bun:"table:accounts,alias:accounts"`
 
-	Address  string            `json:"address"`
-	Metadata metadata.Metadata `json:"metadata"`
+	Address    string            `json:"address"`
+	Metadata   metadata.Metadata `json:"metadata"`
+	FirstUsage time.Time         `json:"-" bun:"first_usage,type:timestamp without timezone"`
 }
 
 func (a Account) copy() Account {
