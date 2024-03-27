@@ -184,6 +184,20 @@ func (store *Store) transactionQueryContext(qb query.Builder, q GetTransactionsQ
 		switch {
 		case key == "reference" || key == "timestamp":
 			return fmt.Sprintf("%s %s ?", key, query.DefaultComparisonOperatorsMapping[operator]), []any{value}, nil
+		case key == "reverted":
+			if operator != "$match" {
+				return "", nil, newErrInvalidQuery("'reverted' column can only be used with $match")
+			}
+			switch value := value.(type) {
+			case bool:
+				ret := "reverted_at is"
+				if value {
+					ret += " not"
+				}
+				return ret + " null", nil, nil
+			default:
+				return "", nil, newErrInvalidQuery("'reverted' can only be used with bool value")
+			}
 		case key == "account":
 			// TODO: Should allow comparison operator only if segments not used
 			if operator != "$match" {

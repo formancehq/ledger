@@ -1030,6 +1030,16 @@ func TestGetTransactions(t *testing.T) {
 				WithQueryBuilder(query.Match("invalid", "2")),
 			expectError: &errInvalidQuery{},
 		},
+		{
+			name: "reverted transactions",
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Match("reverted", true)),
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     expandLogs(logs...)[2:3],
+			},
+		},
 	}
 
 	for _, tc := range testCases {
