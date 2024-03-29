@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/ledger/cmd/internal"
+	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
@@ -62,7 +63,9 @@ func NewRootCommand() *cobra.Command {
 	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
 	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
 	auth.InitAuthFlags(root.PersistentFlags())
-	publish.InitCLIFlags(root)
+	publish.InitCLIFlags(root, func(cd *publish.ConfigDefault) {
+		cd.PublisherCircuitBreakerSchema = systemstore.Schema
+	})
 	bunconnect.InitFlags(root.PersistentFlags())
 	iam.InitFlags(root.PersistentFlags())
 

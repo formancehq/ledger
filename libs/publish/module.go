@@ -8,6 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
+	topicmapper "github.com/formancehq/stack/libs/go-libs/publish/topic_mapper"
 	"go.uber.org/fx"
 )
 
@@ -65,38 +66,11 @@ func Module(topics map[string]string) fx.Option {
 			})
 			return nil
 		}),
-		fx.Decorate(func(publisher message.Publisher) message.Publisher {
-			return NewTopicMapperPublisherDecorator(publisher, topics)
+		fx.Provide(func(publisher message.Publisher) *topicmapper.TopicMapperPublisherDecorator {
+			return topicmapper.NewPublisherDecorator(publisher, topics)
 		}),
 	)
 	return options
-}
-
-type topicMapperPublisherDecorator struct {
-	message.Publisher
-	topics map[string]string
-}
-
-func (p topicMapperPublisherDecorator) Publish(topic string, messages ...*message.Message) error {
-	mappedTopic, ok := p.topics[topic]
-	if ok {
-		return p.Publisher.Publish(mappedTopic, messages...)
-	}
-	mappedTopic, ok = p.topics["*"]
-	if ok {
-		return p.Publisher.Publish(mappedTopic, messages...)
-	}
-
-	return p.Publisher.Publish(topic, messages...)
-}
-
-var _ message.Publisher = &topicMapperPublisherDecorator{}
-
-func NewTopicMapperPublisherDecorator(publisher message.Publisher, topics map[string]string) *topicMapperPublisherDecorator {
-	return &topicMapperPublisherDecorator{
-		Publisher: publisher,
-		topics:    topics,
-	}
 }
 
 type noOpPublisher struct {

@@ -23,8 +23,6 @@ var (
 )
 
 type Info struct {
-	bun.BaseModel `bun:"goose_db_version"`
-
 	Version string    `json:"version" bun:"version_id"`
 	Name    string    `json:"name" bun:"-"`
 	State   string    `json:"state,omitempty" bun:"-"`
@@ -35,6 +33,7 @@ type Migrator struct {
 	migrations   []Migration
 	schema       string
 	createSchema bool
+	tableName    string
 }
 
 type option func(m *Migrator)
@@ -43,6 +42,12 @@ func WithSchema(schema string, create bool) option {
 	return func(m *Migrator) {
 		m.schema = schema
 		m.createSchema = create
+	}
+}
+
+func WithTableName(name string) option {
+	return func(m *Migrator) {
+		m.tableName = name
 	}
 }
 
@@ -57,7 +62,7 @@ func (m *Migrator) createVersionTable(ctx context.Context, tx bun.Tx) error {
 		version_id bigint not null,
 		is_applied boolean not null,
 		tstamp timestamp default now()
-	);`, migrationTable))
+	);`, m.tableName))
 	if err != nil {
 		return err
 	}
@@ -79,7 +84,7 @@ func (m *Migrator) createVersionTable(ctx context.Context, tx bun.Tx) error {
 func (m *Migrator) getLastVersion(ctx context.Context, querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }) (int64, error) {
-	row := querier.QueryRowContext(ctx, fmt.Sprintf(`select max(version_id) from "%s";`, migrationTable))
+	row := querier.QueryRowContext(ctx, fmt.Sprintf(`select max(version_id) from "%s";`, m.tableName))
 	if err := row.Err(); err != nil {
 		switch {
 		case err == sql.ErrNoRows:
@@ -110,7 +115,7 @@ func (m *Migrator) getLastVersion(ctx context.Context, querier interface {
 
 func (m *Migrator) insertVersion(ctx context.Context, tx bun.Tx, version int) error {
 	_, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`INSERT INTO "%s" (version_id, is_applied, tstamp) VALUES (?, ?, ?)`, migrationTable),
+		fmt.Sprintf(`INSERT INTO "%s" (version_id, is_applied, tstamp) VALUES (?, ?, ?)`, m.tableName),
 		version, true, time.Now())
 	return err
 }
@@ -182,10 +187,9 @@ func (m *Migrator) Up(ctx context.Context, db bun.IDB) error {
 }
 
 func (m *Migrator) GetMigrations(ctx context.Context, db bun.IDB) ([]Info, error) {
-
 	ret := make([]Info, 0)
 	if err := m.runInTX(ctx, db, func(ctx context.Context, tx bun.Tx) error {
-		migrationTableName := migrationTable
+		migrationTableName := m.tableName
 		if m.schema != "" {
 			migrationTableName = fmt.Sprintf(`"%s".%s`, m.schema, migrationTableName)
 		}
@@ -238,7 +242,9 @@ func (m *Migrator) IsUpToDate(ctx context.Context, db *bun.DB) (bool, error) {
 }
 
 func NewMigrator(opts ...option) *Migrator {
-	ret := &Migrator{}
+	ret := &Migrator{
+		tableName: migrationTable,
+	}
 	for _, opt := range opts {
 		opt(ret)
 	}

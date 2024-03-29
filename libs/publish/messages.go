@@ -14,6 +14,9 @@ import (
 )
 
 const (
+	// NOTE: this const is also copid inside the circuit breaker package
+	// (to prevent a circular dependency). If you change it here, change it
+	// there as well.
 	otelContextKey = "otel-context"
 )
 

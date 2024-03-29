@@ -21,7 +21,6 @@ func NewBucketUpgrade() *cobra.Command {
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd.Context())
 			if err != nil {
 				return err

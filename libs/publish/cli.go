@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/stack/libs/go-libs/aws/iam"
+	circuitbreaker "github.com/formancehq/stack/libs/go-libs/publish/circuit_breaker"
+	topicmapper "github.com/formancehq/stack/libs/go-libs/publish/topic_mapper"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -17,6 +20,11 @@ import (
 const (
 	// General configuration
 	PublisherTopicMappingFlag = "publisher-topic-mapping"
+	// Circuit Breaker configuration
+	PublisherCircuitBreakerEnabledFlag              = "publisher-circuit-breaker-enabled"
+	PublisherCircuitBreakerOpenIntervalDurationFlag = "publisher-circuit-breaker-open-interval-duration"
+	PublisherCircuitBreakerSchemaFlag               = "publisher-circuit-breaker-schema"
+	PublisherCircuitBreakerListStorageLimitFlag     = "publisher-circuit-breaker-list-storage-limit"
 	// Kafka configuration
 	PublisherKafkaEnabledFlag            = "publisher-kafka-enabled"
 	PublisherKafkaBrokerFlag             = "publisher-kafka-broker"
@@ -40,6 +48,11 @@ const (
 
 type ConfigDefault struct {
 	PublisherTopicMapping []string
+	// Circuit Breaker configuration
+	PublisherCircuitBreakerEnabled              bool
+	PublisherCircuitBreakerOpenIntervalDuration time.Duration
+	PublisherCircuitBreakerSchema               string
+	PublisherCircuitBreakerListStorageLimit     int
 	// Kafka configuration
 	PublisherKafkaEnabled            bool
 	PublisherKafkaBroker             []string
@@ -63,23 +76,27 @@ type ConfigDefault struct {
 
 var (
 	defaultConfigValues = ConfigDefault{
-		PublisherTopicMapping:            []string{},
-		PublisherKafkaEnabled:            false,
-		PublisherKafkaBroker:             []string{"localhost:9092"},
-		PublisherKafkaSASLEnabled:        false,
-		PublisherKafkaSASLIAMEnabled:     false,
-		PublisherKafkaSASLIAMSessionName: "",
-		PublisherKafkaSASLUsername:       "",
-		PublisherKafkaSASLPassword:       "",
-		PublisherKafkaSASLMechanism:      "",
-		PublisherKafkaSASLScramSHASize:   512,
-		PublisherKafkaTLSEnabled:         false,
-		PublisherHttpEnabled:             false,
-		PublisherNatsEnabled:             false,
-		PublisherNatsClientID:            "",
-		PublisherNatsURL:                 "",
-		PublisherNatsMaxReconnect:        30,
-		PublisherNatsReconnectWait:       2 * time.Second,
+		PublisherTopicMapping:                       []string{},
+		PublisherCircuitBreakerEnabled:              false,
+		PublisherCircuitBreakerOpenIntervalDuration: 5 * time.Second,
+		PublisherCircuitBreakerSchema:               "public",
+		PublisherCircuitBreakerListStorageLimit:     100,
+		PublisherKafkaEnabled:                       false,
+		PublisherKafkaBroker:                        []string{"localhost:9092"},
+		PublisherKafkaSASLEnabled:                   false,
+		PublisherKafkaSASLIAMEnabled:                false,
+		PublisherKafkaSASLIAMSessionName:            "",
+		PublisherKafkaSASLUsername:                  "",
+		PublisherKafkaSASLPassword:                  "",
+		PublisherKafkaSASLMechanism:                 "",
+		PublisherKafkaSASLScramSHASize:              512,
+		PublisherKafkaTLSEnabled:                    false,
+		PublisherHttpEnabled:                        false,
+		PublisherNatsEnabled:                        false,
+		PublisherNatsClientID:                       "",
+		PublisherNatsURL:                            "",
+		PublisherNatsMaxReconnect:                   -1, // We want to reconnect forever
+		PublisherNatsReconnectWait:                  2 * time.Second,
 	}
 )
 
@@ -88,6 +105,12 @@ func InitCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	for _, option := range options {
 		option(&values)
 	}
+
+	// Circuit Breaker
+	cmd.PersistentFlags().Bool(PublisherCircuitBreakerEnabledFlag, values.PublisherCircuitBreakerEnabled, "Enable circuit breaker for publisher")
+	cmd.PersistentFlags().Duration(PublisherCircuitBreakerOpenIntervalDurationFlag, values.PublisherCircuitBreakerOpenIntervalDuration, "Circuit breaker open interval duration")
+	cmd.PersistentFlags().String(PublisherCircuitBreakerSchemaFlag, values.PublisherCircuitBreakerSchema, "Circuit breaker schema")
+	cmd.PersistentFlags().Int(PublisherCircuitBreakerListStorageLimitFlag, values.PublisherCircuitBreakerListStorageLimit, "Circuit breaker list storage limit")
 
 	// HTTP
 	cmd.PersistentFlags().Bool(PublisherHttpEnabledFlag, values.PublisherHttpEnabled, "Sent write event to http endpoint")
@@ -123,7 +146,9 @@ func InitNatsCLIFlags(cmd *cobra.Command, options ...func(*ConfigDefault)) {
 	cmd.PersistentFlags().String(PublisherNatsURLFlag, values.PublisherNatsURL, "Nats url")
 }
 
-func CLIPublisherModule(serviceName string) fx.Option {
+func CLIPublisherModule(
+	serviceName string,
+) fx.Option {
 	options := make([]fx.Option, 0)
 
 	topics := viper.GetStringSlice(PublisherTopicMappingFlag)
@@ -137,6 +162,26 @@ func CLIPublisherModule(serviceName string) fx.Option {
 	}
 
 	options = append(options, Module(mapping))
+
+	if viper.GetBool(PublisherCircuitBreakerEnabledFlag) {
+		options = append(options,
+			circuitbreaker.Module(
+				viper.GetString(PublisherCircuitBreakerSchemaFlag),
+				viper.GetDuration(PublisherCircuitBreakerOpenIntervalDurationFlag),
+				viper.GetInt(PublisherCircuitBreakerListStorageLimitFlag),
+			),
+			fx.Decorate(func(cb *circuitbreaker.CircuitBreaker) message.Publisher {
+				return cb
+			}),
+		)
+	} else {
+		options = append(options,
+			fx.Decorate(func(topicMapper *topicmapper.TopicMapperPublisherDecorator) message.Publisher {
+				return topicMapper
+			}),
+		)
+	}
+
 	switch {
 	case viper.GetBool(PublisherHttpEnabledFlag):
 		// Currently don't expose http listener, so pass addr == ""
