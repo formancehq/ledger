@@ -9,4 +9,5 @@ const (
 	ErrNoPostings        = "NO_POSTINGS"
 	ErrCompilationFailed = "COMPILATION_FAILED"
 	ErrMetadataOverride  = "METADATA_OVERRIDE"
+	ErrNoScript          = "NO_SCRIPT"
 )

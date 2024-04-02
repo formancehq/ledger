@@ -112,6 +112,9 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 			case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeNoPostings):
 				sharedapi.BadRequest(w, ErrNoPostings, err)
 				return
+			case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeNoScript):
+				sharedapi.BadRequest(w, ErrNoScript, err)
+				return
 			case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeCompilationFailed):
 				sharedapi.BadRequestWithDetails(w, ErrCompilationFailed, err, backend.EncodeLink(errors.Cause(err).Error()))
 				return
