@@ -952,6 +952,12 @@ func TestGetTransactions(t *testing.T) {
 			ledger.NewPosting("users:marley", "world", "USD", big.NewInt(100)),
 		).
 		WithDate(now)
+	tx5 := ledger.NewTransaction().
+		WithIDUint64(4).
+		WithPostings(
+			ledger.NewPosting("users:marley", "sellers:amazon", "USD", big.NewInt(100)),
+		).
+		WithDate(now)
 
 	logs := []*ledger.Log{
 		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}),
@@ -961,6 +967,7 @@ func TestGetTransactions(t *testing.T) {
 		ledger.NewSetMetadataOnTransactionLog(time.Now(), tx3.ID, metadata.Metadata{
 			"additional_metadata": "true",
 		}),
+		ledger.NewTransactionLog(tx5, map[string]metadata.Metadata{}),
 	}
 
 	require.NoError(t, store.InsertLogs(ctx, ledger.ChainLogs(logs...)...))
@@ -989,6 +996,16 @@ func TestGetTransactions(t *testing.T) {
 				PageSize: 15,
 				HasMore:  false,
 				Data:     expandLogs(logs...)[1:2],
+			},
+		},
+		{
+			name: "address filter using segments matching two addresses by individual segments",
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Match("account", "users:amazon")),
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     []ledger.ExpandedTransaction{},
 			},
 		},
 		{
