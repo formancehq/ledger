@@ -523,3 +523,28 @@ func testTransactionsQueryAddress(t *testing.T, store *sqlstorage.Store) {
 		assert.Equal(t, cursor.Data[0].ID, tx5.ID)
 	})
 }
+
+func testGetTransactionsByAccount(t *testing.T, store *sqlstorage.Store) {
+	now := time.Now()
+	err := store.Commit(context.Background(), core.ExpandedTransaction{
+		Transaction: core.Transaction{
+			TransactionData: core.TransactionData{
+				Postings: core.Postings{
+					{
+						Source:      "a:b:c",
+						Destination: "d:e:f",
+						Amount:      core.NewMonetaryInt(10),
+						Asset:       "USD",
+					},
+				},
+				Timestamp: now,
+			},
+			ID: 0,
+		},
+	})
+	require.NoError(t, err)
+
+	txs, err := store.GetTransactions(context.Background(), *ledger.NewTransactionsQuery().WithAccountFilter("a:e:c"))
+	require.NoError(t, err)
+	require.Empty(t, txs.Data)
+}
