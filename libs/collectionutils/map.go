@@ -41,6 +41,6 @@ func ToPointer[V any](v V) *V {
 	return &v
 }
 
-func ToFmtString[V any](v any) string {
+func ToFmtString(v any) string {
 	return fmt.Sprint(v)
 }

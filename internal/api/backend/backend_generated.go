@@ -229,18 +229,18 @@ func (mr *MockLedgerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call {
 }
 
 // RevertTransaction mocks base method.
-func (m *MockLedger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
+func (m *MockLedger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force, atEffectiveDate bool) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters, id, force)
+	ret := m.ctrl.Call(m, "RevertTransaction", ctx, parameters, id, force, atEffectiveDate)
 	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RevertTransaction indicates an expected call of RevertTransaction.
-func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, parameters, id, force any) *gomock.Call {
+func (mr *MockLedgerMockRecorder) RevertTransaction(ctx, parameters, id, force, atEffectiveDate any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, parameters, id, force)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertTransaction", reflect.TypeOf((*MockLedger)(nil).RevertTransaction), ctx, parameters, id, force, atEffectiveDate)
 }
 
 // SaveMeta mocks base method.

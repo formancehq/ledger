@@ -148,7 +148,7 @@ func TestBulk(t *testing.T) {
 			}]`,
 			expectations: func(mockLedger *backend.MockLedger) {
 				mockLedger.EXPECT().
-					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1), false).
+					RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(1), false, false).
 					Return(&ledger.Transaction{}, nil)
 			},
 			expectResults: []v2.Result{{

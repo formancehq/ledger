@@ -215,7 +215,7 @@ func TestRevert(t *testing.T) {
 	go commander.Run(ctx)
 	defer commander.Close()
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, txID, false)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, txID, false, false)
 	require.NoError(t, err)
 }
 
@@ -235,7 +235,7 @@ func TestRevertWithAlreadyReverted(t *testing.T) {
 	go commander.Run(ctx)
 	defer commander.Close()
 
-	_, err = commander.RevertTransaction(context.Background(), Parameters{}, tx.ID, false)
+	_, err = commander.RevertTransaction(context.Background(), Parameters{}, tx.ID, false, false)
 	require.True(t, IsRevertError(err, ErrRevertTransactionCodeAlreadyReverted))
 }
 
@@ -258,7 +258,7 @@ func TestRevertWithRevertOccurring(t *testing.T) {
 
 	referencer.take(referenceReverts, big.NewInt(0))
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, tx.ID, false)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx.ID, false, false)
 	require.True(t, IsRevertError(err, ErrRevertTransactionCodeOccurring))
 }
 
@@ -283,7 +283,7 @@ func TestForceRevert(t *testing.T) {
 	go commander.Run(ctx)
 	defer commander.Close()
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false, false)
 	require.NotNil(t, err)
 	require.True(t, errors.Is(err, &machine.ErrInsufficientFund{}))
 
@@ -291,7 +291,7 @@ func TestForceRevert(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), balance.Uint64())
 
-	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, true)
+	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, true, false)
 	require.Nil(t, err)
 
 	balance, err = store.GetBalance(ctx, "bank", "USD")
@@ -301,6 +301,41 @@ func TestForceRevert(t *testing.T) {
 	balance, err = store.GetBalance(ctx, "world", "USD")
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), balance.Uint64())
+}
+
+func TestRevertAtEffectiveDate(t *testing.T) {
+
+	store := storageerrors.NewInMemoryStore()
+	ctx := logging.TestingContext()
+	now := time.Now()
+
+	tx1 := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+	).WithDate(now)
+	tx2 := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "foo", "USD", big.NewInt(100)),
+	).WithDate(now.Add(time.Second))
+	err := store.InsertLogs(ctx, ledger.ChainLogs(
+		ledger.NewTransactionLog(tx1, map[string]metadata.Metadata{}),
+		ledger.NewTransactionLog(tx2, map[string]metadata.Metadata{}),
+	)...)
+	require.NoError(t, err)
+
+	commander := New(store, NoOpLocker, NewCompiler(1024), NewReferencer(), bus.NewNoOpMonitor())
+	go commander.Run(ctx)
+	defer commander.Close()
+
+	revertTx, err := commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false, true)
+	require.Nil(t, err)
+	require.Equal(t, tx1.Timestamp, revertTx.Timestamp)
+
+	balance, err := store.GetBalance(ctx, "bank", "USD")
+	require.NoError(t, err)
+	internaltesting.RequireEqual(t, big.NewInt(0), balance)
+
+	balance, err = store.GetBalance(ctx, "world", "USD")
+	require.NoError(t, err)
+	internaltesting.RequireEqual(t, big.NewInt(-100), balance)
 }
 
 func TestParallelTransactions(t *testing.T) {

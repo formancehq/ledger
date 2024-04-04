@@ -205,6 +205,21 @@ func parseKeyValue(operator string, m any) (keyValue, error) {
 	}
 }
 
+func parseNot(m any) (not, error) {
+	switch m := m.(type) {
+	case map[string]any:
+		expression, err := mapMapToExpression(m)
+		if err != nil {
+			return not{}, err
+		}
+		return not{
+			expression: expression,
+		}, nil
+	default:
+		return not{}, fmt.Errorf("unexpected type %T", m)
+	}
+}
+
 func mapMapToExpression(m map[string]any) (Builder, error) {
 	operator, value, err := singleKey(m)
 	if err != nil {
@@ -219,6 +234,12 @@ func mapMapToExpression(m map[string]any) (Builder, error) {
 		return and, nil
 	case "$match", "$gte", "$lte", "$gt", "$lt":
 		match, err := parseKeyValue(operator, value)
+		if err != nil {
+			return nil, errors.Wrapf(err, "parsing %s", operator)
+		}
+		return match, nil
+	case "$not":
+		match, err := parseNot(value)
 		if err != nil {
 			return nil, errors.Wrapf(err, "parsing %s", operator)
 		}

@@ -31,7 +31,7 @@ type Ledger interface {
 	GetTransactionWithVolumes(ctx context.Context, query ledgerstore.GetTransactionQuery) (*ledger.ExpandedTransaction, error)
 
 	CreateTransaction(ctx context.Context, parameters command.Parameters, data ledger.RunScript) (*ledger.Transaction, error)
-	RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force bool) (*ledger.Transaction, error)
+	RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force, atEffectiveDate bool) (*ledger.Transaction, error)
 	SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error
 	DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error
 

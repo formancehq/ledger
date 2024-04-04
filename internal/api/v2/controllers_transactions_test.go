@@ -949,7 +949,7 @@ func TestRevert(t *testing.T) {
 			backend, mockLedger := newTestingBackend(t, true)
 			mockLedger.
 				EXPECT().
-				RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), tc.expectForce).
+				RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), tc.expectForce, false).
 				Return(tc.returnTx, tc.returnErr)
 
 			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())

@@ -2090,6 +2090,12 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: atEffectiveDate
+          in: query
+          description: Revert transaction at effective date of the original tx
+          required: false
+          schema:
+            type: boolean
       responses:
         "201":
           description: OK
@@ -3389,6 +3395,8 @@ components:
                   type: integer
                   format: bigint
                 force:
+                  type: boolean
+                atEffectiveDate:
                   type: boolean
               required:
                 - id

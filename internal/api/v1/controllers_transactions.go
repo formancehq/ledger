@@ -325,7 +325,8 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID, sharedapi.QueryParamBool(r, "disableChecks"))
+	tx, err := l.RevertTransaction(r.Context(), getCommandParameters(r), transactionID,
+		sharedapi.QueryParamBool(r, "disableChecks"), false)
 	if err != nil {
 		switch {
 		case engine.IsCommandError(err):

@@ -102,8 +102,8 @@ func (l *Ledger) CreateTransaction(ctx context.Context, parameters command.Param
 	return ret, nil
 }
 
-func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force bool) (*ledger.Transaction, error) {
-	ret, err := l.commander.RevertTransaction(ctx, parameters, id, force)
+func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force, atEffectiveDate bool) (*ledger.Transaction, error) {
+	ret, err := l.commander.RevertTransaction(ctx, parameters, id, force, atEffectiveDate)
 	if err != nil {
 		return nil, NewCommandError(err)
 	}

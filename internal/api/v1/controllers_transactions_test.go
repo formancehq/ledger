@@ -613,7 +613,7 @@ func TestRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t, true)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), false).
+		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), false, false).
 		Return(expectedTx, nil)
 
 	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
@@ -638,7 +638,7 @@ func TestForceRevertTransaction(t *testing.T) {
 	backend, mockLedger := newTestingBackend(t, true)
 	mockLedger.
 		EXPECT().
-		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), true).
+		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), true, false).
 		Return(expectedTx, nil)
 
 	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
