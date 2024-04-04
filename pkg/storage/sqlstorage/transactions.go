@@ -109,7 +109,7 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 					}
 
 					arg := sb.Args.Add(segment)
-					sb.Where(fmt.Sprintf("postings.%s @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", column, i, arg))
+					forColumn = append(forColumn, fmt.Sprintf("postings.%s @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", column, i, arg))
 				}
 				ands = append(ands, sb.And(forColumn...))
 			}
