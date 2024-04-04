@@ -99,16 +99,22 @@ func (s *Store) buildTransactionsQuery(flavor Flavor, p ledger.TransactionsQuery
 			sb.Where(s.schema.Table("use_account") + "(postings, " + arg + ")")
 		} else {
 			// new wildcard handling
-			dst := strings.Split(account, ":")
-			sb.Where(fmt.Sprintf("(jsonb_array_length(postings.destination) = %d OR jsonb_array_length(postings.source) = %d)", len(dst), len(dst)))
-			for i, segment := range dst {
-				if segment == ".*" || segment == "*" || segment == "" {
-					continue
-				}
+			ands := make([]string, 0)
+			for _, column := range []string{"source", "destination"} {
+				forColumn := make([]string, 0)
+				forColumn = append(forColumn, fmt.Sprintf("(jsonb_array_length(postings.%s) = %d)", column, len(strings.Split(account, ":"))))
+				for i, segment := range strings.Split(account, ":") {
+					if segment == ".*" || segment == "*" || segment == "" {
+						continue
+					}
 
-				arg := sb.Args.Add(segment)
-				sb.Where(fmt.Sprintf("(postings.source @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath OR postings.destination @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath)", i, arg, i, arg))
+					arg := sb.Args.Add(segment)
+					sb.Where(fmt.Sprintf("postings.%s @@ ('$[%d] == \"' || %s::text || '\"')::jsonpath", column, i, arg))
+				}
+				ands = append(ands, sb.And(forColumn...))
 			}
+
+			sb.Where(sb.Or(ands...))
 		}
 		t.AccountFilter = account
 	}
