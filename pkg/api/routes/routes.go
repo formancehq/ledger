@@ -38,33 +38,8 @@ func ProvidePerLedgerMiddleware(provider interface{}, additionalAnnotations ...f
 	)
 }
 
-type UseScopes bool
-
-const (
-	ScopeTransactionsRead  = "transactions:read"
-	ScopeTransactionsWrite = "transactions:write"
-	ScopeAccountsRead      = "accounts:read"
-	ScopeAccountsWrite     = "accounts:write"
-	ScopeMappingRead       = "mapping:read"
-	ScopeMappingWrite      = "mapping:write"
-	ScopesInfoRead         = "info"
-	ScopesStatsRead        = "stats"
-	ScopesLogsRead         = "logs"
-)
-
-var AllScopes = []string{
-	ScopeTransactionsRead,
-	ScopeAccountsWrite,
-	ScopeTransactionsWrite,
-	ScopeAccountsRead,
-	ScopeMappingRead,
-	ScopeMappingWrite,
-	ScopesInfoRead,
-	ScopesStatsRead,
-	ScopesLogsRead,
-}
-
 type Routes struct {
+	a                     auth.Auth
 	resolver              *ledger.Resolver
 	ledgerMiddleware      middlewares.LedgerMiddleware
 	healthController      *health.HealthController
@@ -77,12 +52,12 @@ type Routes struct {
 	mappingController     controllers.MappingController
 	globalMiddlewares     []gin.HandlerFunc
 	perLedgerMiddlewares  []gin.HandlerFunc
-	useScopes             UseScopes
 	idempotencyStore      storage.Driver[idempotency.Store]
 	locker                middlewares.Locker
 }
 
 func NewRoutes(
+	a auth.Auth,
 	globalMiddlewares []gin.HandlerFunc,
 	perLedgerMiddlewares []gin.HandlerFunc,
 	resolver *ledger.Resolver,
@@ -95,11 +70,11 @@ func NewRoutes(
 	transactionController controllers.TransactionController,
 	mappingController controllers.MappingController,
 	healthController *health.HealthController,
-	useScopes UseScopes,
 	idempotencyStore storage.Driver[idempotency.Store],
 	locker middlewares.Locker,
 ) *Routes {
 	return &Routes{
+		a:                     a,
 		globalMiddlewares:     globalMiddlewares,
 		perLedgerMiddlewares:  perLedgerMiddlewares,
 		resolver:              resolver,
@@ -112,26 +87,8 @@ func NewRoutes(
 		transactionController: transactionController,
 		mappingController:     mappingController,
 		healthController:      healthController,
-		useScopes:             useScopes,
 		idempotencyStore:      idempotencyStore,
 		locker:                locker,
-	}
-}
-
-func (r *Routes) wrapWithScopes(handler gin.HandlerFunc, scopes ...string) gin.HandlerFunc {
-	if !r.useScopes {
-		return handler
-	}
-	return func(context *gin.Context) {
-		ok := false
-		auth.NeedOneOfScopes(scopes...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			context.Request = r
-			ok = true
-			handler(context)
-		})).ServeHTTP(context.Writer, context.Request)
-		if !ok {
-			context.AbortWithStatus(http.StatusForbidden)
-		}
 	}
 }
 
@@ -155,56 +112,66 @@ func (r *Routes) Engine() *gin.Engine {
 	engineWithOtel.GET("/_info", r.configController.GetInfo)
 
 	dedicatedLedgerRouter := engineWithOtel.Group("/:ledger")
+	dedicatedLedgerRouter.Use(func(c *gin.Context) {
+		handled := false
+		auth.Middleware(r.a)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handled = true
+			c.Next()
+		})).ServeHTTP(c.Writer, c.Request)
+		if !handled {
+			c.Abort()
+		}
+	})
 	dedicatedLedgerRouter.Use(append(r.perLedgerMiddlewares, r.ledgerMiddleware.LedgerMiddleware())...)
 
 	// LedgerController
-	dedicatedLedgerRouter.GET("/_info", r.wrapWithScopes(r.ledgerController.GetInfo, ScopesInfoRead))
-	dedicatedLedgerRouter.GET("/stats", r.wrapWithScopes(r.ledgerController.GetStats, ScopesStatsRead))
-	dedicatedLedgerRouter.GET("/logs", r.wrapWithScopes(r.ledgerController.GetLogs, ScopesLogsRead))
+	dedicatedLedgerRouter.GET("/_info", r.ledgerController.GetInfo)
+	dedicatedLedgerRouter.GET("/stats", r.ledgerController.GetStats)
+	dedicatedLedgerRouter.GET("/logs", r.ledgerController.GetLogs)
 
 	// AccountController
-	dedicatedLedgerRouter.GET("/accounts", r.wrapWithScopes(r.accountController.GetAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-	dedicatedLedgerRouter.HEAD("/accounts", r.wrapWithScopes(r.accountController.CountAccounts, ScopeAccountsRead, ScopeAccountsWrite))
-	dedicatedLedgerRouter.GET("/accounts/:address", r.wrapWithScopes(r.accountController.GetAccount, ScopeAccountsRead, ScopeAccountsWrite))
+	dedicatedLedgerRouter.GET("/accounts", r.accountController.GetAccounts)
+	dedicatedLedgerRouter.HEAD("/accounts", r.accountController.CountAccounts)
+	dedicatedLedgerRouter.GET("/accounts/:address", r.accountController.GetAccount)
 	dedicatedLedgerRouter.POST("/accounts/:address/metadata",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.accountController.PostAccountMetadata, ScopeAccountsWrite))
+		r.accountController.PostAccountMetadata)
 
 	// TransactionController
-	dedicatedLedgerRouter.GET("/transactions", r.wrapWithScopes(r.transactionController.GetTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
-	dedicatedLedgerRouter.HEAD("/transactions", r.wrapWithScopes(r.transactionController.CountTransactions, ScopeTransactionsRead, ScopeTransactionsWrite))
+	dedicatedLedgerRouter.GET("/transactions", r.transactionController.GetTransactions)
+	dedicatedLedgerRouter.HEAD("/transactions", r.transactionController.CountTransactions)
 	dedicatedLedgerRouter.POST("/transactions",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.transactionController.PostTransaction, ScopeTransactionsWrite)).Use()
+		r.transactionController.PostTransaction).Use()
 	dedicatedLedgerRouter.POST("/transactions/batch",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.transactionController.PostTransactionsBatch, ScopeTransactionsWrite))
-	dedicatedLedgerRouter.GET("/transactions/:txid", r.wrapWithScopes(r.transactionController.GetTransaction, ScopeTransactionsRead, ScopeTransactionsWrite))
+		r.transactionController.PostTransactionsBatch)
+	dedicatedLedgerRouter.GET("/transactions/:txid", r.transactionController.GetTransaction)
 	dedicatedLedgerRouter.POST("/transactions/:txid/revert",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.transactionController.RevertTransaction, ScopeTransactionsWrite))
+		r.transactionController.RevertTransaction)
 	dedicatedLedgerRouter.POST("/transactions/:txid/metadata",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.transactionController.PostTransactionMetadata, ScopeTransactionsWrite))
+		r.transactionController.PostTransactionMetadata)
 
 	// BalanceController
-	dedicatedLedgerRouter.GET("/balances", r.wrapWithScopes(r.balanceController.GetBalances, ScopeAccountsRead))
-	dedicatedLedgerRouter.GET("/aggregate/balances", r.wrapWithScopes(r.balanceController.GetBalancesAggregated, ScopeAccountsRead))
+	dedicatedLedgerRouter.GET("/balances", r.balanceController.GetBalances)
+	dedicatedLedgerRouter.GET("/aggregate/balances", r.balanceController.GetBalancesAggregated)
 
 	// MappingController
-	dedicatedLedgerRouter.GET("/mapping", r.wrapWithScopes(r.mappingController.GetMapping, ScopeMappingRead, ScopeMappingWrite))
-	dedicatedLedgerRouter.PUT("/mapping", r.wrapWithScopes(r.mappingController.PutMapping, ScopeMappingWrite))
+	dedicatedLedgerRouter.GET("/mapping", r.mappingController.GetMapping)
+	dedicatedLedgerRouter.PUT("/mapping", r.mappingController.PutMapping)
 
 	// ScriptController
 	dedicatedLedgerRouter.POST("/script",
 		middlewares.Transaction(r.locker),
 		idempotency.Middleware(r.idempotencyStore),
-		r.wrapWithScopes(r.scriptController.PostScript, ScopeTransactionsWrite))
+		r.scriptController.PostScript)
 
 	return engine
 }

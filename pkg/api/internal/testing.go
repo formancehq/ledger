@@ -9,11 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"github.com/numary/ledger/pkg/api"
@@ -66,9 +64,7 @@ func NewRequest(method, path string, body io.Reader) (*http.Request, *httptest.R
 	req := httptest.NewRequest(method, path, body)
 	req.Header.Set("Content-Type", "application/json")
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"scope": strings.Join(routes.AllScopes, " "),
-	})
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{})
 	signed, err := token.SignedString([]byte("0000000000000000"))
 	if err != nil {
 		panic(err)
@@ -243,7 +239,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 	ch := make(chan struct{})
 
 	options = append([]fx.Option{
-		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest", UseScopes: true}),
+		api.Module(api.Config{StorageDriver: "sqlite", Version: "latest"}),
 		// 100 000 000 bytes is 100 MB
 		ledger.ResolveModule(100000000, 100),
 		ledgertesting.ProvideLedgerStorageDriver(),
@@ -278,9 +274,7 @@ func RunTest(t *testing.T, options ...fx.Option) {
 		return []gin.HandlerFunc{
 			func(c *gin.Context) {
 				handled := false
-				auth.Middleware(auth.NewHttpBearerMethod(
-					auth.NoOpValidator,
-				))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					handled = true
 					// The middleware replace the context of the request to include the agent
 					// We have to forward it to gin
