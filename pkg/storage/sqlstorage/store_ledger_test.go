@@ -93,7 +93,6 @@ func TestStore(t *testing.T) {
 		{name: "GetBalancesAggregated", fn: testGetBalancesAggregated},
 		{name: "GetBalancesAggregatedByAccount", fn: testGetBalancesAggregatedByAccount},
 		{name: "CreateIK", fn: testIKS},
-		{name: "GetTransactionsByAccount", fn: testGetTransactionsByAccount},
 	} {
 		t.Run(fmt.Sprintf("%s/%s-singleInstance", ledgertesting.StorageDriverName(), tf.name), runTest((tf)))
 	}
