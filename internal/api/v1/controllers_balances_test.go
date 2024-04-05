@@ -62,8 +62,8 @@ func TestGetBalancesAggregated(t *testing.T) {
 		{
 			name: "using pit + insertion date",
 			queryParams: url.Values{
-				"pit":                []string{now.Format(time.RFC3339Nano)},
-				"use_insertion_date": []string{"true"},
+				"pit":              []string{now.Format(time.RFC3339Nano)},
+				"useInsertionDate": []string{"true"},
 			},
 			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
 				PITFilter: ledgerstore.PITFilter{

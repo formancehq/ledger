@@ -24,7 +24,7 @@ func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
 	balances, err := backend.LedgerFromContext(r.Context()).
 		GetAggregatedBalances(r.Context(), ledgerstore.NewGetAggregatedBalancesQuery(
-			*pitFilter, queryBuilder, sharedapi.QueryParamBool(r, "use_insertion_date")))
+			*pitFilter, queryBuilder, sharedapi.QueryParamBool(r, "use_insertion_date") || sharedapi.QueryParamBool(r, "useInsertionDate")))
 	if err != nil {
 		switch {
 		case ledgerstore.IsErrInvalidQuery(err):
