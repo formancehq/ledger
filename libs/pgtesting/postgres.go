@@ -10,11 +10,13 @@ import (
 	"testing"
 	"time"
 
+	sharedlogging "github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/ory/dockertest/v3"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -57,7 +59,7 @@ func (s *pgServer) GetPort() int {
 }
 
 func (s *pgServer) GetHost() string {
-	return "localhost"
+	return "127.0.0.1"
 }
 
 func (s *pgServer) GetUsername() string {
@@ -73,8 +75,8 @@ func (s *pgServer) GetDSN() string {
 }
 
 func (s *pgServer) GetDatabaseDSN(databaseName string) string {
-	return fmt.Sprintf("postgresql://%s:%s@localhost:%s/%s?sslmode=disable", s.config.initialUsername,
-		s.config.initialUserPassword, s.port, databaseName)
+	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", s.config.initialUsername,
+		s.config.initialUserPassword, s.GetHost(), s.port, databaseName)
 }
 
 func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
@@ -82,7 +84,7 @@ func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 	defer s.lock.Unlock()
 
 	databaseName := uuid.NewString()
-	_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`CREATE DATABASE "%s"`, databaseName))
+	_, err := s.db.ExecContext(sharedlogging.TestingContext(), fmt.Sprintf(`CREATE DATABASE "%s"`, databaseName))
 	require.NoError(t, err)
 
 	if os.Getenv("NO_CLEANUP") != "true" {
@@ -90,7 +92,7 @@ func (s *pgServer) NewDatabase(t TestingT) *pgDatabase {
 			s.lock.Lock()
 			defer s.lock.Unlock()
 
-			_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
+			_, err := s.db.ExecContext(sharedlogging.TestingContext(), fmt.Sprintf(`DROP DATABASE "%s"`, databaseName))
 			if err != nil {
 				panic(err)
 			}
@@ -228,7 +230,6 @@ func CreatePostgresServer(opts ...option) error {
 			fmt.Sprintf("POSTGRES_PASSWORD=%s", cfg.initialUserPassword),
 			fmt.Sprintf("POSTGRES_DB=%s", cfg.initialDatabaseName),
 		},
-		Entrypoint: nil,
 		Cmd: []string{
 			"-c", "superuser-reserved-connections=0",
 			"-c", "enable_partition_pruning=on",
