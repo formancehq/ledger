@@ -13,7 +13,6 @@ builds:
       - -X github.com/numary/ledger/cmd.BuildDate={{ .Date }}
       - -X github.com/numary/ledger/cmd.Version={{ .Version }}
       - -X github.com/numary/ledger/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey={{ .Env.SEGMENT_WRITE_KEY }}
       - -s
     env:
       - CGO_ENABLED=1
