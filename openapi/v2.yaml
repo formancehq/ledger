@@ -113,13 +113,6 @@ paths:
         "204":
           description: OK
 
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
         default:
           description: Error
           content:
@@ -151,13 +144,6 @@ paths:
       responses:
         "204":
           description: OK
-
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
 
         default:
           description: Error
@@ -192,13 +178,6 @@ paths:
       responses:
         "204":
           description: OK
-
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
 
         default:
           description: Error
@@ -238,10 +217,6 @@ paths:
 
   /v2/{ledger}/_bulk:
     post:
-      x-speakeasy-errors:
-        override: true
-        statusCodes: # Defines status codes to handle as errors for all operations
-          - 5XX
       summary: Bulk request
       operationId: v2CreateBulk
       tags:
@@ -267,12 +242,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2BulkResponse'
+
         "400":
-          description: Failure
+          description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2BulkResponse'
+
         default:
           description: Error
           content:
@@ -384,13 +361,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2AccountsCursorResponse'
 
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
         default:
           description: Error
           content:
@@ -498,20 +468,6 @@ paths:
         "204":
           description: No Content
           content: {}
-
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
-        "404":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
 
         default:
           description: Error
@@ -689,20 +645,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2TransactionsCursorResponse'
 
-        "404":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
         default:
           description: Error
           content:
@@ -752,12 +694,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2CreateTransactionResponse'
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
+
         default:
           description: Error
           content:
@@ -808,13 +745,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2GetTransactionResponse'
-
-        "404":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
 
         default:
           description: Error
@@ -869,20 +799,6 @@ paths:
           description: No Content
           content: {}
 
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
-        "404":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
         default:
           description: Error
           content:
@@ -926,13 +842,6 @@ paths:
         2XX:
           description: Key deleted
           content: { }
-
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
 
         default:
           description: Error
@@ -985,19 +894,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2RevertTransactionResponse'
 
-        "400":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/V2ErrorResponse'
-
         default:
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+
   /v2/{ledger}/aggregate/balances:
     get:
       tags:
