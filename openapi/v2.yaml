@@ -1019,7 +1019,7 @@ paths:
           schema:
             type: string
             format: date-time
-        - name: use_insertion_date
+        - name: useInsertionDate
           in: query
           description: Use insertion date instead of effective date
           required: false
