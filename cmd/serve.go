@@ -22,6 +22,7 @@ import (
 const (
 	ballastSizeInBytesFlag     = "ballast-size"
 	numscriptCacheMaxCountFlag = "numscript-cache-max-count"
+	ledgerBatchSizeFlag        = "ledger-batch-size"
 	readOnlyFlag               = "read-only"
 	autoUpgradeFlag            = "auto-upgrade"
 )
@@ -63,6 +64,7 @@ func NewServe() *cobra.Command {
 	}
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
 	cmd.Flags().Int(numscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
+	cmd.Flags().Int(ledgerBatchSizeFlag, 50, "ledger batch size")
 	cmd.Flags().Bool(readOnlyFlag, false, "Read only mode")
 	cmd.Flags().Bool(autoUpgradeFlag, false, "Automatically upgrade all schemas")
 	return cmd

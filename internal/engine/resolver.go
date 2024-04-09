@@ -42,6 +42,12 @@ func WithLogger(logger logging.Logger) option {
 	}
 }
 
+func WithLedgerConfig(config LedgerConfig) option {
+	return func(r *Resolver) {
+		r.ledgerConfig = config
+	}
+}
+
 var defaultOptions = []option{
 	WithMetricsRegistry(metrics.NewNoOpRegistry()),
 	WithCompiler(command.NewCompiler(1024)),
@@ -53,16 +59,18 @@ type Resolver struct {
 	lock            sync.RWMutex
 	metricsRegistry metrics.GlobalRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
-	ledgers   map[string]*Ledger
-	compiler  *command.Compiler
-	logger    logging.Logger
-	publisher message.Publisher
+	ledgers      map[string]*Ledger
+	ledgerConfig LedgerConfig
+	compiler     *command.Compiler
+	logger       logging.Logger
+	publisher    message.Publisher
 }
 
 func NewResolver(storageDriver *driver.Driver, options ...option) *Resolver {
 	r := &Resolver{
 		storageDriver: storageDriver,
 		ledgers:       map[string]*Ledger{},
+		ledgerConfig:  defaultLedgerConfig,
 	}
 	for _, opt := range append(defaultOptions, options...) {
 		opt(r)
@@ -72,7 +80,7 @@ func NewResolver(storageDriver *driver.Driver, options ...option) *Resolver {
 }
 
 func (r *Resolver) startLedgerUsingStore(ctx context.Context, name string, store *ledgerstore.Store) *Ledger {
-	ledger := New(store, r.publisher, r.compiler)
+	ledger := New(store, r.publisher, r.compiler, r.ledgerConfig)
 	ledger.Start(logging.ContextWithLogger(context.Background(), r.logger))
 	r.ledgers[name] = ledger
 	r.metricsRegistry.ActiveLedgers().Add(ctx, +1)

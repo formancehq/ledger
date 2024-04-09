@@ -21,10 +21,21 @@ type Ledger struct {
 	isSchemaUpToDate bool
 }
 
+type LedgerConfig struct {
+	batchSize int
+}
+
+var (
+	defaultLedgerConfig = LedgerConfig{
+		batchSize: 50,
+	}
+)
+
 func New(
 	store *ledgerstore.Store,
 	publisher message.Publisher,
 	compiler *command.Compiler,
+	ledgerConfig LedgerConfig,
 ) *Ledger {
 	var monitor bus.Monitor = bus.NewNoOpMonitor()
 	if publisher != nil {
@@ -37,6 +48,7 @@ func New(
 			compiler,
 			command.NewReferencer(),
 			monitor,
+			ledgerConfig.batchSize,
 		),
 		store: store,
 	}

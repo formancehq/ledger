@@ -28,6 +28,7 @@ func resolveOptions(cmd *cobra.Command, userOptions ...fx.Option) []fx.Option {
 			NumscriptCache: engine.NumscriptCacheConfiguration{
 				MaxCount: viper.GetInt(numscriptCacheMaxCountFlag),
 			},
+			LedgerBatchSize: viper.GetInt(ledgerBatchSizeFlag),
 		}),
 	)
 

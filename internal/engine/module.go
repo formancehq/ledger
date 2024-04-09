@@ -17,7 +17,8 @@ type NumscriptCacheConfiguration struct {
 }
 
 type Configuration struct {
-	NumscriptCache NumscriptCacheConfiguration
+	NumscriptCache  NumscriptCacheConfiguration
+	LedgerBatchSize int
 }
 
 func Module(configuration Configuration) fx.Option {
@@ -35,6 +36,11 @@ func Module(configuration Configuration) fx.Option {
 			}
 			if configuration.NumscriptCache.MaxCount != 0 {
 				options = append(options, WithCompiler(command.NewCompiler(configuration.NumscriptCache.MaxCount)))
+			}
+			if configuration.LedgerBatchSize != 0 {
+				options = append(options, WithLedgerConfig(LedgerConfig{
+					batchSize: configuration.LedgerBatchSize,
+				}))
 			}
 			return NewResolver(storageDriver, options...)
 		}),

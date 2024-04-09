@@ -38,14 +38,14 @@ type Commander struct {
 	monitor bus.Monitor
 }
 
-func New(store Store, locker Locker, compiler *Compiler, referencer *Referencer, monitor bus.Monitor) *Commander {
+func New(store Store, locker Locker, compiler *Compiler, referencer *Referencer, monitor bus.Monitor, batchSize int) *Commander {
 	return &Commander{
 		store:      store,
 		locker:     locker,
 		compiler:   compiler,
 		lastTXID:   big.NewInt(-1),
 		referencer: referencer,
-		Batcher:    batching.NewBatcher(store.InsertLogs, 1, 4096),
+		Batcher:    batching.NewBatcher(store.InsertLogs, 1, batchSize),
 		monitor:    monitor,
 	}
 }
