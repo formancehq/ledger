@@ -59,13 +59,12 @@ func upgradeAll(cmd *cobra.Command, args []string) error {
 	}
 
 	driver := driver.New(*connectionOptions)
-	defer func() {
-		_ = driver.Close()
-	}()
-
 	if err := driver.Initialize(ctx); err != nil {
 		return err
 	}
+	defer func() {
+		_ = driver.Close()
+	}()
 
 	return driver.UpgradeAllBuckets(ctx)
 }
