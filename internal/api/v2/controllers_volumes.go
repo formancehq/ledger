@@ -17,7 +17,7 @@ func getVolumesWithBalances(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
 	query, err := bunpaginate.Extract[ledgerstore.GetVolumesWithBalancesQuery](r, func() (*ledgerstore.GetVolumesWithBalancesQuery, error) {
-		options, err := getPaginatedQueryOptionsOfPITOOTFilterForVolumes(r)
+		options, err := getPaginatedQueryOptionsOfFiltersForVolumes(r)
 		if err != nil {
 			return nil, err
 		}

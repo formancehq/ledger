@@ -3,10 +3,10 @@ package v2
 import (
 	"io"
 	"net/http"
-
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"strconv"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
@@ -74,17 +74,29 @@ func getPITFilterWithVolumes(r *http.Request) (*ledgerstore.PITFilterWithVolumes
 	}, nil
 }
 
-func getPITOOTFilterForVolumes(r *http.Request) (*ledgerstore.PITFilterForVolumes, error) {
+func getFiltersForVolumes(r *http.Request) (*ledgerstore.FiltersForVolumes, error) {
 	pit, err := getPITOOTFilter(r)
 	if err != nil {
 		return nil, err
 	}
 
 	useInsertionDate := sharedapi.QueryParamBool(r, "insertionDate")
+	groupLvl := 0
 
-	return &ledgerstore.PITFilterForVolumes{
+	groupLvlStr := r.URL.Query().Get("groupBy")
+	if groupLvlStr != "" {
+		groupLvlInt, err := strconv.Atoi(groupLvlStr)
+		if err != nil {
+			return nil, err
+		}
+		if groupLvlInt > 0 {
+			groupLvl = groupLvlInt
+		}
+	}
+	return &ledgerstore.FiltersForVolumes{
 		PITFilter:        *pit,
 		UseInsertionDate: useInsertionDate,
+		GroupLvl:         uint(groupLvl),
 	}, nil
 }
 
@@ -121,13 +133,13 @@ func getPaginatedQueryOptionsOfPITFilterWithVolumes(r *http.Request) (*ledgersto
 		WithPageSize(pageSize)), nil
 }
 
-func getPaginatedQueryOptionsOfPITOOTFilterForVolumes(r *http.Request) (*ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilterForVolumes], error) {
+func getPaginatedQueryOptionsOfFiltersForVolumes(r *http.Request) (*ledgerstore.PaginatedQueryOptions[ledgerstore.FiltersForVolumes], error) {
 	qb, err := getQueryBuilder(r)
 	if err != nil {
 		return nil, err
 	}
 
-	pitFilter, err := getPITOOTFilterForVolumes(r)
+	filtersForVolumes, err := getFiltersForVolumes(r)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +149,7 @@ func getPaginatedQueryOptionsOfPITOOTFilterForVolumes(r *http.Request) (*ledgers
 		return nil, err
 	}
 
-	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*pitFilter).
+	return pointer.For(ledgerstore.NewPaginatedQueryOptions(*filtersForVolumes).
 		WithPageSize(pageSize).
 		WithQueryBuilder(qb)), nil
 }

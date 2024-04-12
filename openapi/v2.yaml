@@ -1001,6 +1001,15 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: groupBy
+          in: query
+          description: Group volumes and balance by the level of the segment of the address
+          example: 3
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 1000
       requestBody:
         content:
           application/json:

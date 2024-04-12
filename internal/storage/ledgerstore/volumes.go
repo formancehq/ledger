@@ -2,6 +2,7 @@ package ledgerstore
 
 import (
 	"context"
+	"fmt"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -57,20 +58,25 @@ func (store *Store) volumesQueryContext(qb lquery.Builder, q GetVolumesWithBalan
 
 func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetVolumesWithBalancesQuery, where string, args []any) *bun.SelectQuery {
 
-	pitFilter := q.Options.Options
+	filtersForVolumes := q.Options.Options
 	dateFilterColumn := "effective_date"
 
-	if pitFilter.UseInsertionDate {
+	if filtersForVolumes.UseInsertionDate {
 		dateFilterColumn = "insertion_date"
 	}
 
 	query = query.
-		ColumnExpr("account_address as account").
 		Column("asset").
 		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 		Table("moves")
+
+	if filtersForVolumes.GroupLvl > 0 {
+		query = query.ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(account_address, ':'))[1:LEAST(array_length(string_to_array(account_address, ':'),1),%d)],':')) as account`, filtersForVolumes.GroupLvl))
+	} else {
+		query = query.ColumnExpr("account_address as account")
+	}
 
 	if where != "" {
 		query = query.
@@ -84,9 +90,9 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 
 	query = query.
 		Where("ledger = ?", store.name).
-		Apply(filterPIT(pitFilter.PIT, dateFilterColumn)).
-		Apply(filterOOT(pitFilter.OOT, dateFilterColumn)).
-		GroupExpr("account_address, asset")
+		Apply(filterPIT(filtersForVolumes.PIT, dateFilterColumn)).
+		Apply(filterOOT(filtersForVolumes.OOT, dateFilterColumn)).
+		GroupExpr("account, asset")
 
 	return query
 }
@@ -104,17 +110,17 @@ func (store *Store) GetVolumesWithBalances(ctx context.Context, q GetVolumesWith
 		}
 	}
 
-	return paginateWithOffsetWithoutModel[PaginatedQueryOptions[PITFilterForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
-		store, ctx, (*bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterForVolumes]])(&q),
+	return paginateWithOffsetWithoutModel[PaginatedQueryOptions[FiltersForVolumes], ledger.VolumesWithBalanceByAssetByAccount](
+		store, ctx, (*bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[FiltersForVolumes]])(&q),
 		func(query *bun.SelectQuery) *bun.SelectQuery {
 			return store.buildVolumesWithBalancesQuery(query, q, where, args)
 		},
 	)
 }
 
-type GetVolumesWithBalancesQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[PITFilterForVolumes]]
+type GetVolumesWithBalancesQuery bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions[FiltersForVolumes]]
 
-func NewGetVolumesWithBalancesQuery(opts PaginatedQueryOptions[PITFilterForVolumes]) GetVolumesWithBalancesQuery {
+func NewGetVolumesWithBalancesQuery(opts PaginatedQueryOptions[FiltersForVolumes]) GetVolumesWithBalancesQuery {
 	return GetVolumesWithBalancesQuery{
 		PageSize: opts.PageSize,
 		Order:    bunpaginate.OrderAsc,

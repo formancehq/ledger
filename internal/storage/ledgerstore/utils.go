@@ -249,7 +249,8 @@ type PITFilterWithVolumes struct {
 	ExpandEffectiveVolumes bool `json:"effectiveVolumes"`
 }
 
-type PITFilterForVolumes struct {
+type FiltersForVolumes struct {
 	PITFilter
 	UseInsertionDate bool
+	GroupLvl         uint
 }

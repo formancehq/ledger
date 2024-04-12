@@ -30,7 +30,7 @@ func TestGetVolumes(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgerstore.PaginatedQueryOptions[ledgerstore.PITFilterForVolumes]
+		expectQuery       ledgerstore.PaginatedQueryOptions[ledgerstore.FiltersForVolumes]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -40,7 +40,7 @@ func TestGetVolumes(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "basic",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterForVolumes{
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &before,
 					OOT: &zero,
@@ -53,7 +53,7 @@ func TestGetVolumes(t *testing.T) {
 		{
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterForVolumes{
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &before,
 					OOT: &zero,
@@ -65,7 +65,7 @@ func TestGetVolumes(t *testing.T) {
 		{
 			name: "using account",
 			body: `{"$match": { "account": "foo" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterForVolumes{
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
 				PITFilter: ledgerstore.PITFilter{
 					PIT: &before,
 					OOT: &zero,
@@ -79,6 +79,20 @@ func TestGetVolumes(t *testing.T) {
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: v2.ErrValidation,
+		},
+		{
+			name: "using pit",
+			queryParams: url.Values{
+				"pit":     []string{before.Format(time.RFC3339Nano)},
+				"groupBy": []string{"3"},
+			},
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+					OOT: &zero,
+				},
+				GroupLvl: 3,
+			}).WithPageSize(v2.DefaultPageSize),
 		},
 	}
 
