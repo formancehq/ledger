@@ -159,6 +159,7 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 func (commander *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script ledger.RunScript) (*ledger.Transaction, error) {
 	log, err := commander.exec(ctx, parameters, script, ledger.NewTransactionLog)
 	if err != nil {
+
 		return nil, err
 	}
 

@@ -286,7 +286,6 @@ func TestForceRevert(t *testing.T) {
 	_, err = commander.RevertTransaction(ctx, Parameters{}, tx1.ID, false, false)
 	require.NotNil(t, err)
 	require.True(t, errors.Is(err, &machine.ErrInsufficientFund{}))
-
 	balance, err := store.GetBalance(ctx, "bank", "USD")
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), balance.Uint64())

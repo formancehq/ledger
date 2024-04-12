@@ -3,6 +3,9 @@ package machine
 import (
 	"errors"
 	"fmt"
+	"strings"
+
+	collec "github.com/formancehq/stack/libs/go-libs/collectionutils"
 )
 
 type FundingPart struct {
@@ -89,7 +92,12 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 		i++
 	}
 	if !remainingToWithdraw.Eq(Zero) {
-		return Funding{}, Funding{}, NewErrInsufficientFund("no more fund to withdraw")
+
+		lstAccounts := collec.Map[FundingPart, string](f.Parts, func(fp FundingPart) string {
+			return fp.Account.String()
+		})
+
+		return Funding{}, Funding{}, NewErrInsufficientFund(fmt.Sprintf("account(s) %s had/have insufficient funds", strings.Join(lstAccounts, "|")))
 	}
 	return result, remainder, nil
 }

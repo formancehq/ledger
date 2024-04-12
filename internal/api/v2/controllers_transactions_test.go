@@ -464,6 +464,7 @@ func TestPostTransactions(t *testing.T) {
 				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 				require.EqualValues(t, testCase.expectedErrorDetails, err.Details)
+
 			}
 		})
 	}
@@ -743,6 +744,7 @@ func TestGetTransactions(t *testing.T) {
 				err := sharedapi.ErrorResponse{}
 				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+
 			}
 		})
 	}
@@ -875,6 +877,7 @@ func TestCountTransactions(t *testing.T) {
 				err := sharedapi.ErrorResponse{}
 				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
+
 			}
 		})
 	}
@@ -972,6 +975,7 @@ func TestRevert(t *testing.T) {
 				err := sharedapi.ErrorResponse{}
 				sharedapi.Decode(t, rec.Body, &err)
 				require.EqualValues(t, tc.expectErrorCode, err.ErrorCode)
+
 			}
 		})
 	}
