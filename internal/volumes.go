@@ -64,11 +64,19 @@ func NewVolumesInt64(input, output int64) *Volumes {
 	}
 }
 
-type VolumesWithBalance struct {
-	Input   *big.Int `json:"input"`
-	Output  *big.Int `json:"output"`
-	Balance *big.Int `json:"balance"`
+type VolumesWithBalanceByAssetByAccount struct {
+	Account string `json:"account" bun:"account"`
+	Asset   string `json:"asset" bun:"asset"`
+	VolumesWithBalance
 }
+
+type VolumesWithBalance struct {
+	Input   *big.Int `json:"input" bun:"input"`
+	Output  *big.Int `json:"output" bun:"output"`
+	Balance *big.Int `json:"balance" bun:"balance"`
+}
+
+type VolumesWithBalanceByAssets map[string]*VolumesWithBalance
 
 func (v Volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(VolumesWithBalance{

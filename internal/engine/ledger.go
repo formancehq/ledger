@@ -139,3 +139,8 @@ func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 
 	return l.isSchemaUpToDate, err
 }
+
+func (l *Ledger) GetVolumesWithBalances(ctx context.Context, q ledgerstore.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+	volumes, err := l.store.GetVolumesWithBalances(ctx, q)
+	return volumes, newStorageError(err, "getting Volumes with balances")
+}

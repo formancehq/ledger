@@ -36,6 +36,8 @@ type Ledger interface {
 	DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error
 
 	IsDatabaseUpToDate(ctx context.Context) (bool, error)
+
+	GetVolumesWithBalances(ctx context.Context, q ledgerstore.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 }
 
 type Backend interface {

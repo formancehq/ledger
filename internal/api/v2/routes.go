@@ -73,6 +73,8 @@ func NewRouter(
 				router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
 
 				router.Get("/aggregate/balances", getBalancesAggregated)
+
+				router.Get("/volumes", getVolumesWithBalances)
 			})
 		})
 	})

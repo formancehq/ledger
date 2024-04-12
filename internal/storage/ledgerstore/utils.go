@@ -42,16 +42,22 @@ func fetch[T any](s *Store, addModel bool, ctx context.Context, builders ...func
 func paginateWithOffset[FILTERS any, RETURN any](s *Store, ctx context.Context,
 	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
 
-	//var ret RETURN
 	query := s.bucket.db.NewSelect()
 	for _, builder := range builders {
 		query = query.Apply(builder)
 	}
-	//if query.GetModel() == nil && query.GetTableName() == "" {
-	//	query = query.Model(ret)
-	//}
-
 	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
+}
+
+func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](s *Store, ctx context.Context,
+	q *bunpaginate.OffsetPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
+
+	query := s.bucket.db.NewSelect()
+	for _, builder := range builders {
+		query = query.Apply(builder)
+	}
+
+	return bunpaginate.UsingOffsetWithoutModel[FILTERS, RETURN](ctx, query, *q)
 }
 
 func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {
@@ -171,6 +177,15 @@ func filterPIT(pit *time.Time, column string) func(query *bun.SelectQuery) *bun.
 	}
 }
 
+func filterOOT(oot *time.Time, column string) func(query *bun.SelectQuery) *bun.SelectQuery {
+	return func(query *bun.SelectQuery) *bun.SelectQuery {
+		if oot == nil || oot.IsZero() {
+			return query
+		}
+		return query.Where(fmt.Sprintf("%s >= ?", column), oot)
+	}
+}
+
 type PaginatedQueryOptions[T any] struct {
 	QueryBuilder query.Builder `json:"qb"`
 	PageSize     uint64        `json:"pageSize"`
@@ -225,10 +240,16 @@ func NewPaginatedQueryOptions[T any](options T) PaginatedQueryOptions[T] {
 
 type PITFilter struct {
 	PIT *time.Time `json:"pit"`
+	OOT *time.Time `json:"oot"`
 }
 
 type PITFilterWithVolumes struct {
 	PITFilter
 	ExpandVolumes          bool `json:"volumes"`
 	ExpandEffectiveVolumes bool `json:"effectiveVolumes"`
+}
+
+type PITFilterForVolumes struct {
+	PITFilter
+	UseInsertionDate bool
 }

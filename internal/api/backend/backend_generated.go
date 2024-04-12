@@ -213,6 +213,21 @@ func (mr *MockLedgerMockRecorder) GetTransactions(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactions", reflect.TypeOf((*MockLedger)(nil).GetTransactions), ctx, query)
 }
 
+// GetVolumesWithBalances mocks base method.
+func (m *MockLedger) GetVolumesWithBalances(ctx context.Context, q ledgerstore.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVolumesWithBalances indicates an expected call of GetVolumesWithBalances.
+func (mr *MockLedgerMockRecorder) GetVolumesWithBalances(ctx, q any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumesWithBalances", reflect.TypeOf((*MockLedger)(nil).GetVolumesWithBalances), ctx, q)
+}
+
 // IsDatabaseUpToDate mocks base method.
 func (m *MockLedger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	m.ctrl.T.Helper()

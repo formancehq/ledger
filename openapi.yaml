@@ -2055,6 +2055,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+  /v2/{ledger}/volumes:
+    get:
+      tags:
+        - Ledger
+      x-speakeasy-group: ledger
+      summary: Get list of volumes with balances for (account/asset)
+      operationId: v2GetVolumesWithBalances
+      parameters:
+        - name: pageSize
+          in: query
+          description: |
+            The maximum number of results to return per page.
+          example: 100
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 1000
+        - name: cursor
+          in: query
+          description: |
+            Parameter used in pagination requests. Maximum page size is set to 15.
+            Set to the value of next for the next page of results.
+            Set to the value of previous for the previous page of results.
+            No other parameters can be set when this parameter is set.
+          schema:
+            type: string
+            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+        - name: endTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: startTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: insertionDate
+          in: query
+          description: Use insertion date instead of effective date
+          required: false
+          schema:
+            type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2VolumesWithBalanceCursorResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
   /v2/{ledger}/logs:
     get:
       tags:
@@ -2852,6 +2924,59 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/V2AssetsBalances'
+    V2VolumesWithBalanceCursorResponse:
+      type: object
+      required:
+        - cursor
+      properties:
+        cursor:
+          type: object
+          required:
+            - pageSize
+            - hasMore
+            - data
+          properties:
+            pageSize:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1000
+              example: 15
+            hasMore:
+              type: boolean
+              example: false
+            previous:
+              type: string
+              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
+            next:
+              type: string
+              example: ""
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/V2VolumesWithBalance'
+    V2VolumesWithBalance:
+      type: object
+      properties:
+        account:
+          type: string
+        asset:
+          type: string
+        input:
+          type: integer
+          format: bigint
+        output:
+          type: integer
+          format: bigint
+        balance:
+          type: integer
+          format: bigint
+      required:
+        - account
+        - asset
+        - input
+        - output
+        - balance
     V2Metadata:
       type: object
       additionalProperties:
