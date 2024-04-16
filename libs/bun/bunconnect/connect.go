@@ -49,9 +49,7 @@ func OpenSQLDB(ctx context.Context, options ConnectionOptions, hooks ...bun.Quer
 		}
 		sqldb = sql.OpenDB(connector)
 	}
-	if options.MaxIdleConns != 0 {
-		sqldb.SetMaxIdleConns(options.MaxIdleConns)
-	}
+	sqldb.SetMaxIdleConns(options.MaxIdleConns)
 	if options.ConnMaxIdleTime != 0 {
 		sqldb.SetConnMaxIdleTime(options.ConnMaxIdleTime)
 	}
