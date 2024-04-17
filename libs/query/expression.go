@@ -46,6 +46,11 @@ func (set set) Build(ctx Context) (string, []any, error) {
 		if err != nil {
 			return "", nil, err
 		}
+
+		if clause == "" {
+			continue
+		}
+
 		clauses = append(clauses, clause)
 		args = append(args, clauseArgs...)
 	}
