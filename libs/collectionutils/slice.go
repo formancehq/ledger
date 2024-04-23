@@ -30,6 +30,14 @@ func Filter[TYPE any](input []TYPE, filter func(TYPE) bool) []TYPE {
 	return ret
 }
 
+func Reduce[TYPE any, ACC any](input []TYPE, reducer func(ACC, TYPE) ACC, initial ACC) ACC {
+	ret := initial
+	for _, i := range input {
+		ret = reducer(ret, i)
+	}
+	return ret
+}
+
 func Flatten[TYPE any](input [][]TYPE) []TYPE {
 	ret := make([]TYPE, 0)
 	for _, types := range input {
