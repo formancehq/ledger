@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/accounts"
-
+	"github.com/formancehq/stack/libs/core/accounts"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"

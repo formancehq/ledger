@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/assets"
+	"github.com/formancehq/stack/libs/core/assets"
 )
 
 type Asset string

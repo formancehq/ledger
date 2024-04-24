@@ -10,7 +10,8 @@ FROM core+base-image
 
 sources:
     WORKDIR src
-    COPY (stack+sources/out --LOCATION=libs/go-libs) /src/components/ledger/libs
+    COPY (stack+sources/out --LOCATION=libs/go-libs) /src/libs/go-libs
+    COPY (stack+sources/out --LOCATION=libs/core) /src/libs/core
     WORKDIR /src/components/ledger
     COPY go.mod go.sum .
     COPY --dir internal pkg cmd .
@@ -35,11 +36,6 @@ compile:
     ARG VERSION=latest
     DO --pass-args core+GO_COMPILE --VERSION=$VERSION
     SAVE ARTIFACT libs AS LOCAL ./libs
-
-copy-libs:
-  LOCALLY
-  RUN rm -rf ./libs
-  RUN cp -R ./../../libs/go-libs ./libs
 
 build-image:
     FROM core+final-image
@@ -87,7 +83,6 @@ pre-commit:
       BUILD --pass-args +tidy
     END
     BUILD --pass-args +lint
-    BUILD --pass-args +copy-libs
     BUILD +openapi
 
 bench:

@@ -1,14 +1,15 @@
 module github.com/formancehq/ledger
 
-go 1.21
+go 1.21.0
 
-toolchain go1.21.5
+toolchain go1.22.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.3.5
 	github.com/alitto/pond v1.8.3
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
+	github.com/formancehq/stack/libs/core v0.0.0-00010101000000-000000000000
 	github.com/formancehq/stack/libs/go-libs v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-chi/cors v1.2.1
@@ -190,4 +191,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/formancehq/stack/libs/go-libs => ./libs
+replace github.com/formancehq/stack/libs/go-libs => ../../libs/go-libs
+
+replace github.com/formancehq/stack/libs/core => ../../libs/core
