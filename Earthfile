@@ -35,7 +35,6 @@ compile:
     WORKDIR /src/components/ledger
     ARG VERSION=latest
     DO --pass-args core+GO_COMPILE --VERSION=$VERSION
-    SAVE ARTIFACT libs AS LOCAL ./libs
 
 build-image:
     FROM core+final-image
