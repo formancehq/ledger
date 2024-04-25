@@ -69,7 +69,7 @@ func NewRootCommand() *cobra.Command {
 	bunconnect.InitFlags(root.PersistentFlags())
 	iam.InitFlags(root.PersistentFlags())
 
-	if err := viper.BindPFlags(root.PersistentFlags()); err != nil {
+	if err := bindFlagsToViper(root); err != nil {
 		panic(err)
 	}
 

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"math/big"
+	"sync"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
@@ -19,6 +20,7 @@ type Ledger struct {
 	commander        *command.Commander
 	store            *ledgerstore.Store
 	isSchemaUpToDate bool
+	mu               sync.Mutex
 }
 
 type LedgerConfig struct {
@@ -134,6 +136,13 @@ func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
 	if l.isSchemaUpToDate {
 		return true, nil
 	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.isSchemaUpToDate {
+		return true, nil
+	}
+
 	var err error
 	l.isSchemaUpToDate, err = l.store.IsUpToDate(ctx)
 
