@@ -94,6 +94,16 @@ func TestGetVolumes(t *testing.T) {
 				GroupLvl: 3,
 			}).WithPageSize(v2.DefaultPageSize),
 		},
+		{
+			name: "using Exists metadata filter",
+			body: `{"$exists": { "metadata": "foo" }}`,
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+					OOT: &zero,
+				},
+			}).WithPageSize(v2.DefaultPageSize).WithQueryBuilder(query.Exists("metadata", "foo")),
+		},
 	}
 
 	for _, testCase := range testCases {

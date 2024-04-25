@@ -1057,6 +1057,26 @@ func TestGetTransactions(t *testing.T) {
 				Data:     expandLogs(logs...)[2:3],
 			},
 		},
+		{
+			name: "filter using exists metadata",
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Exists("metadata", "category")),
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     Reverse(expandLogs(logs...)[0:3]...),
+			},
+		},
+		{
+			name: "filter using exists metadata2",
+			query: NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+				WithQueryBuilder(query.Not(query.Exists("metadata", "category"))),
+			expected: &bunpaginate.Cursor[ledger.ExpandedTransaction]{
+				PageSize: 15,
+				HasMore:  false,
+				Data:     Reverse(expandLogs(logs...)[3:5]...),
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1076,6 +1096,7 @@ func TestGetTransactions(t *testing.T) {
 
 				count, err := store.CountTransactions(ctx, NewGetTransactionsQuery(tc.query))
 				require.NoError(t, err)
+
 				require.EqualValues(t, len(tc.expected.Data), count)
 			}
 		})

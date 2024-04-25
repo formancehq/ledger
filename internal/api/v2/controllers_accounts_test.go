@@ -116,6 +116,17 @@ func TestGetAccounts(t *testing.T) {
 				WithPageSize(v2.DefaultPageSize),
 		},
 		{
+			name: "using exists filter",
+			body: `{"$exists": { "metadata": "foo" }}`,
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &before,
+				},
+			}).
+				WithQueryBuilder(query.Exists("metadata", "foo")).
+				WithPageSize(v2.DefaultPageSize),
+		},
+		{
 			name:              "using invalid query payload",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,

@@ -58,6 +58,9 @@ func TestGetBalancesAggregated(t *testing.T) {
 			TargetID:   "users:2",
 			Key:        "category",
 		}),
+		ledger.NewSetMetadataOnAccountLog(time.Now(), "users:1", metadata.Metadata{"category": "premium"}).WithDate(now.Add(time.Minute)),
+		ledger.NewSetMetadataOnAccountLog(time.Now(), "users:2", metadata.Metadata{"category": "2"}).WithDate(now.Add(time.Minute)),
+		ledger.NewSetMetadataOnAccountLog(time.Now(), "world", metadata.Metadata{"foo": "bar"}).WithDate(now.Add(time.Minute)),
 	}
 
 	require.NoError(t, store.InsertLogs(ctx, ledger.ChainLogs(logs...)...))
@@ -118,7 +121,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 		require.Equal(t, ledger.BalancesByAssets{
 			"USD": big.NewInt(0).Add(
 				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
-				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+				big.NewInt(0),
 			),
 		}, ret)
 	})
@@ -137,5 +140,17 @@ func TestGetBalancesAggregated(t *testing.T) {
 			query.Match("metadata[category]", "guest"), false))
 		require.NoError(t, err)
 		require.Equal(t, ledger.BalancesByAssets{}, ret)
+	})
+
+	t.Run("using a filter exist on metadata", func(t *testing.T) {
+		t.Parallel()
+		ret, err := store.GetAggregatedBalances(ctx, NewGetAggregatedBalancesQuery(PITFilter{}, query.Exists("metadata", "category"), false))
+		require.NoError(t, err)
+		require.Equal(t, ledger.BalancesByAssets{
+			"USD": big.NewInt(0).Add(
+				big.NewInt(0).Mul(bigInt, big.NewInt(2)),
+				big.NewInt(0).Mul(smallInt, big.NewInt(2)),
+			),
+		}, ret)
 	})
 }

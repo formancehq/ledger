@@ -28,7 +28,9 @@ func TestGetVolumesWithBalances(t *testing.T) {
 
 	require.NoError(t, store.InsertLogs(ctx,
 		ledger.ChainLogs(
-
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:1", metadata.Metadata{"category": "1"}).WithDate(now),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "account:2", metadata.Metadata{"category": "2"}).WithDate(now),
+			ledger.NewSetMetadataOnAccountLog(time.Now(), "world", metadata.Metadata{"foo": "bar"}).WithDate(now),
 			ledger.NewTransactionLog(
 				ledger.NewTransaction().
 					WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
@@ -351,6 +353,34 @@ func TestGetVolumesWithBalances(t *testing.T) {
 				Balance: big.NewInt(-50),
 			},
 		}, volumes.Data[0])
+
+	})
+
+	t.Run("Using exists metadata filter", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.GetVolumesWithBalances(ctx,
+			NewGetVolumesWithBalancesQuery(
+				NewPaginatedQueryOptions(
+					FiltersForVolumes{}).WithQueryBuilder(query.Exists("metadata", "category"))),
+		)
+
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 2)
+
+	})
+
+	t.Run("Using exists metadata filter", func(t *testing.T) {
+		t.Parallel()
+
+		volumes, err := store.GetVolumesWithBalances(ctx,
+			NewGetVolumesWithBalancesQuery(
+				NewPaginatedQueryOptions(
+					FiltersForVolumes{}).WithQueryBuilder(query.Exists("metadata", "foo"))),
+		)
+
+		require.NoError(t, err)
+		require.Len(t, volumes.Data, 1)
 
 	})
 

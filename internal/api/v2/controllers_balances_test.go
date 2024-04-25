@@ -53,6 +53,16 @@ func TestGetBalancesAggregated(t *testing.T) {
 			},
 		},
 		{
+			name: "using exists metadata filter",
+			body: `{"$exists": {"metadata": "foo"}}`,
+			expectQuery: ledgerstore.GetAggregatedBalanceQuery{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+				QueryBuilder: query.Exists("metadata", "foo"),
+			},
+		},
+		{
 			name: "using pit",
 			queryParams: url.Values{
 				"pit": []string{now.Format(time.RFC3339Nano)},
