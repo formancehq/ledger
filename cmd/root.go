@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunmigrate"
 	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/stack/libs/go-libs/aws/iam"
@@ -17,7 +18,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
-	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -57,6 +57,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(NewDocCommand())
 
 	root.PersistentFlags().Bool(service.DebugFlag, false, "Debug mode")
+
 	root.PersistentFlags().Bool(logging.JsonFormattingLoggerFlag, true, "Json formatting mode for logger")
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
 
