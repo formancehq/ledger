@@ -125,14 +125,14 @@ benchstat:
     RUN --no-cache benchstat /tmp/main.txt /tmp/branch.txt
 
 openapi:
-  FROM node:20-alpine
-  RUN apk update && apk add yq
-  RUN npm install -g openapi-merge-cli
-  WORKDIR /src/components/ledger
-  COPY --dir openapi openapi
-  RUN openapi-merge-cli --config ./openapi/openapi-merge.json
-  RUN yq -oy ./openapi.json > openapi.yaml
-  SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
+    FROM node:20-alpine
+    RUN apk update && apk add yq
+    RUN npm install -g openapi-merge-cli
+    WORKDIR /src/components/ledger
+    COPY --dir openapi openapi
+    RUN openapi-merge-cli --config ./openapi/openapi-merge.json
+    RUN yq -oy ./openapi.json > openapi.yaml
+    SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
 
 tidy:
     FROM core+builder-image
