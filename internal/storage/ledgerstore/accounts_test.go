@@ -182,6 +182,22 @@ func TestGetAccounts(t *testing.T) {
 		require.Equal(t, "account:1", accounts.Data[0].Account.Address)
 		require.Equal(t, "bank", accounts.Data[1].Account.Address)
 	})
+
+	t.Run("list using filter on exists metadata", func(t *testing.T) {
+		t.Parallel()
+		accounts, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+			WithQueryBuilder(query.Exists("metadata", "foo")),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 2)
+
+		accounts, err = store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).
+			WithQueryBuilder(query.Exists("metadata", "category")),
+		))
+		require.NoError(t, err)
+		require.Len(t, accounts.Data, 3)
+	})
+
 	t.Run("list using filter invalid field", func(t *testing.T) {
 		t.Parallel()
 		_, err := store.GetAccountsWithVolumes(ctx, NewGetAccountsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{}).

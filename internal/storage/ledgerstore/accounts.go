@@ -122,6 +122,16 @@ func (store *Store) accountQueryContext(qb query.Builder, q GetAccountsQuery) (s
 				order by seq desc
 				limit 1
 			) %s ?`, convertOperatorToSQL()), []any{store.name, value}, nil
+
+		case key == "metadata":
+			if operator != "$exists" {
+				return "", nil, newErrInvalidQuery("'metadata' key filter can only be used with $exists")
+			}
+			if q.Options.Options.PIT != nil && !q.Options.Options.PIT.IsZero() {
+				key = "accounts_metadata.metadata"
+			}
+
+			return fmt.Sprintf("%s -> ? IS NOT NULL", key), []any{value}, nil
 		default:
 			return "", nil, newErrInvalidQuery("unknown key '%s' when building query", key)
 		}

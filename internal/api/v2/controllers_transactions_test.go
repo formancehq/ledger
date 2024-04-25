@@ -696,6 +696,16 @@ func TestGetTransactions(t *testing.T) {
 			},
 			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{}),
 		},
+		{
+			name: "using $exists metadata filter",
+			body: `{"$exists": {"metadata": "foo"}}`,
+			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.PITFilterWithVolumes{
+				PITFilter: ledgerstore.PITFilter{
+					PIT: &now,
+				},
+			}).
+				WithQueryBuilder(query.Exists("metadata", "foo")),
+		},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
