@@ -101,13 +101,17 @@ func getFiltersForVolumes(r *http.Request) (*ledgerstore.FiltersForVolumes, erro
 }
 
 func getQueryBuilder(r *http.Request) (query.Builder, error) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
+	q := r.URL.Query().Get("query")
+	if q == "" {
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		q = string(data)
 	}
 
-	if len(data) > 0 {
-		return query.ParseJSON(string(data))
+	if len(q) > 0 {
+		return query.ParseJSON(q)
 	}
 	return nil, nil
 }
