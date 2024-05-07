@@ -1,23 +1,13 @@
 # Formance Ledger [![test](https://github.com/formancehq/ledger/actions/workflows/main.yml/badge.svg)](https://github.com/formancehq/ledger/actions/workflows/main.yml) [![goreportcard](https://goreportcard.com/badge/github.com/formancehq/ledger)](https://goreportcard.com/report/github.com/formancehq/ledger) [![slack](https://img.shields.io/badge/slack-formance-brightgreen.svg?logo=slack)](https://bit.ly/formance-slack) [![codecov](https://codecov.io/gh/formancehq/ledger/branch/main/graph/badge.svg?token=3PUKLWIKX3)](https://codecov.io/gh/formancehq/ledger)
-
-<p align="center">
-  <h3 align="center">Formance Ledger is now part of the Formance Stack!</h3>
-  <p align="center">Checkout the Stack <a href="https://github.com/formancehq/stack">repository</a></p>
-</p>
-
 ---
 
-Formance Ledger (fka numary) is a programmable financial ledger that provides a foundation for money-moving applications. The ledger provides atomic multi-postings transactions and is programmable in [Numscript](doc:machine-instructions), a built-in language dedicated to money movements. It can be used either as a standalone micro-service or as part of the greater Formance Stack, and will shine for apps that require a lot of custom, money-moving code, e.g:
+Formance Ledger is a programmable financial ledger, developed as part of the [Formance Stack](https://github.com/formancehq/stack). It comes with atomic, multi-postings transactions and is programmable in [Numscript](doc:machine-instructions), a built-in DSL dedicated to modelling money movements. It will shine in apps that require complex, money-moving code, e.g:
 
 * E-commerce with complex payments flows, payments splitting, such as marketplaces
 * Company-issued currencies systems, e.g. Twitch Bits
 * In-game currencies, inventories and trading systems, e.g. Fortnite V-Bucks
 * Payment gateways using non-standard assets, e.g. learning credits
 * Local currencies and complementary finance
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/1770991/167574970-45d1ab7e-6c57-45a5-9b46-0e849c62f98c.svg" width="400px"/>
-</p>
 
 # Getting started
 
@@ -64,12 +54,6 @@ You can find the complete Numary documentation at [docs.formance.com](https://do
 # Community
 
 If you need help, want to show us what you built or just hang out and chat about ledgers you are more than welcome on our [Slack](https://bit.ly/formance-slack) - looking forward to see you there!
-
-# Quick deploy
-
-Want to give a shot to the latest version? You can easily deploy a test instance with Heroku and the button below:
-
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/formancehq/ledger)
 
 # How to contribute
 
