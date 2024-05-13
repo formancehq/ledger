@@ -138,3 +138,6 @@ tidy:
     COPY --pass-args (+sources/src) /src
     WORKDIR /src/components/ledger
     DO --pass-args stack+GO_TIDY
+
+release:
+    BUILD --pass-args stack+goreleaser --path=components/ledger
