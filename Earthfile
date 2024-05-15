@@ -1,4 +1,4 @@
-VERSION --pass-args --arg-scope-and-set 0.7
+VERSION 0.8
 
 ARG core=github.com/formancehq/earthly
 
