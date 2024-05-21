@@ -4,7 +4,7 @@ builds:
     id: ledger
     ldflags:
       - -X github.com/formancehq/ledger/cmd.BuildDate={{ .Date }}
-      - -X github.com/formancehq/ledger/cmd.Version={{ .Version }}
+      - -X github.com/formancehq/ledger/cmd.Version=v{{ .Version }}
       - -X github.com/formancehq/ledger/cmd.Commit={{ .ShortCommit }}
       - -extldflags "-static"
     env:
