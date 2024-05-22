@@ -25,7 +25,6 @@ func newSystemStore(t *testing.T) *Store {
 
 	store, err := Connect(ctx, bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),
-		Debug:              testing.Verbose(),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

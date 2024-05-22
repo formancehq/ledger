@@ -348,7 +348,6 @@ func TestParallelTransactions(t *testing.T) {
 
 	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDB.ConnString(),
-		Debug:              testing.Verbose(),
 	}
 
 	sqlDB, err := bunconnect.OpenSQLDB(ctx, connectionOptions)

@@ -3,6 +3,8 @@ package v1
 import (
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/service"
+
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/stack/libs/go-libs/auth"
@@ -10,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/riandyrn/otelchi"
 )
 
 func NewRouter(
@@ -37,7 +38,7 @@ func NewRouter(
 
 	router.Group(func(router chi.Router) {
 		router.Use(auth.Middleware(a))
-		router.Use(otelchi.Middleware("ledger"))
+		router.Use(service.OTLPMiddleware("ledger"))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {

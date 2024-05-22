@@ -2,7 +2,6 @@ package storagetesting
 
 import (
 	"context"
-	"testing"
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
@@ -17,7 +16,6 @@ func StorageDriver(t pgtesting.TestingT) *driver.Driver {
 
 	d := driver.New(bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),
-		Debug:              testing.Verbose(),
 		MaxIdleConns:       40,
 		MaxOpenConns:       40,
 		ConnMaxIdleTime:    time.Minute,
