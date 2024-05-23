@@ -729,6 +729,38 @@ func TestWrongTypeSourceMax(t *testing.T) {
 	})
 }
 
+func TestOverflowingSources(t *testing.T) {
+	t.Run(">100%", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `send [COIN 100] (
+				source = {
+					1/2 from @alice
+					3/4 from @bob
+				}
+				destination = @dest
+			)`,
+			Expected: CaseResult{
+				Error: "greater than 100%",
+			},
+		})
+	})
+
+	t.Run("<100%", func(t *testing.T) {
+		test(t, TestCase{
+			Case: `send [COIN 100] (
+				source = {
+					1/2 from @world
+				}
+				destination = @dest
+			)`,
+			Expected: CaseResult{
+				Error: "less than 100%",
+			},
+		})
+	})
+
+}
+
 func TestOverflowingAllocation(t *testing.T) {
 	t.Run(">100%", func(t *testing.T) {
 		test(t, TestCase{

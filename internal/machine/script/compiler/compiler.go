@@ -315,7 +315,11 @@ func (p *parseVisitor) VisitMonetary(c *parser.SendContext, mon parser.IExpressi
 		if _, _, err := p.VisitExpr(mon, true); err != nil {
 			return err
 		}
-		p.VisitAllotment(c.SourceAllotment(), c.SourceAllotment().GetPortions())
+		err := p.VisitAllotment(c.SourceAllotment(), c.SourceAllotment().GetPortions())
+		if err != nil {
+			return err
+		}
+
 		p.AppendInstruction(program.OP_ALLOC)
 
 		sources := c.SourceAllotment().GetSources()
