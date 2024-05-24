@@ -11,7 +11,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func (store *Store) volumesQueryContext(qb lquery.Builder, q GetVolumesWithBalancesQuery) (string, []any, bool, error) {
+func (store *Store) volumesQueryContext(q GetVolumesWithBalancesQuery) (string, []any, bool, error) {
 
 	metadataRegex := regexp.MustCompile("metadata\\[(.+)\\]")
 	balanceRegex := regexp.MustCompile("balance\\[(.*)\\]")
@@ -21,7 +21,7 @@ func (store *Store) volumesQueryContext(qb lquery.Builder, q GetVolumesWithBalan
 		err      error
 	)
 
-	var useMetadata bool = false
+	var useMetadata = false
 
 	if q.Options.QueryBuilder != nil {
 		subQuery, args, err = q.Options.QueryBuilder.Build(lquery.ContextFn(func(key, operator string, value any) (string, []any, error) {
@@ -43,10 +43,10 @@ func (store *Store) volumesQueryContext(qb lquery.Builder, q GetVolumesWithBalan
 			}
 
 			switch {
-			case key == "account":
+			case key == "account" || key == "address":
 				// TODO: Should allow comparison operator only if segments not used
 				if operator != "$match" {
-					return "", nil, newErrInvalidQuery("'address' column can only be used with $match")
+					return "", nil, newErrInvalidQuery(fmt.Sprintf("'%s' column can only be used with $match", key))
 				}
 
 				switch address := value.(type) {
@@ -159,7 +159,7 @@ func (store *Store) GetVolumesWithBalances(ctx context.Context, q GetVolumesWith
 		useMetadata bool
 	)
 	if q.Options.QueryBuilder != nil {
-		where, args, useMetadata, err = store.volumesQueryContext(q.Options.QueryBuilder, q)
+		where, args, useMetadata, err = store.volumesQueryContext(q)
 		if err != nil {
 			return nil, err
 		}
