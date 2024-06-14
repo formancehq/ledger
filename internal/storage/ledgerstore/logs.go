@@ -66,8 +66,8 @@ func (j RawMessage) Value() (driver.Value, error) {
 
 func (store *Store) logsQueryBuilder(q PaginatedQueryOptions[any]) func(*bun.SelectQuery) *bun.SelectQuery {
 	return func(selectQuery *bun.SelectQuery) *bun.SelectQuery {
-		selectQuery = selectQuery
 
+		selectQuery = selectQuery.Where("ledger = ?", store.name)
 		if q.QueryBuilder != nil {
 			subQuery, args, err := q.QueryBuilder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 				switch {
