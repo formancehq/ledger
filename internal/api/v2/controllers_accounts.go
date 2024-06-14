@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/stack/libs/core/accounts"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
@@ -92,7 +94,12 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 
 	acc, err := l.GetAccountWithVolumes(r.Context(), query)
 	if err != nil {
-		sharedapi.InternalServerError(w, r, err)
+		switch {
+		case storageerrors.IsNotFoundError(err):
+			sharedapi.NotFound(w, err)
+		default:
+			sharedapi.InternalServerError(w, r, err)
+		}
 		return
 	}
 

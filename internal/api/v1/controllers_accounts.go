@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+
 	"github.com/formancehq/stack/libs/core/accounts"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
@@ -137,8 +139,20 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 
 	acc, err := l.GetAccountWithVolumes(r.Context(), query)
 	if err != nil {
-		sharedapi.InternalServerError(w, r, err)
-		return
+		switch {
+		case storageerrors.IsNotFoundError(err):
+			acc = &ledger.ExpandedAccount{
+				Account: ledger.Account{
+					Address:  chi.URLParam(r, "address"),
+					Metadata: map[string]string{},
+				},
+				Volumes:          map[string]*ledger.Volumes{},
+				EffectiveVolumes: map[string]*ledger.Volumes{},
+			}
+		default:
+			sharedapi.InternalServerError(w, r, err)
+			return
+		}
 	}
 
 	sharedapi.Ok(w, accountWithVolumesAndBalances(*acc))

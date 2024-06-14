@@ -200,9 +200,6 @@ func (store *Store) GetAccountWithVolumes(ctx context.Context, q GetAccountQuery
 		return query
 	})
 	if err != nil {
-		if storageerrors.IsNotFoundError(err) {
-			return pointer.For(ledger.NewExpandedAccount(q.Addr)), nil
-		}
 		return nil, err
 	}
 	return account, nil

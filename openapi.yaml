@@ -229,6 +229,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountsCursorResponse'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         default:
           description: Error
           content:

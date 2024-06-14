@@ -342,9 +342,8 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("not existent account", func(t *testing.T) {
 		t.Parallel()
-		account, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("account_not_existing"))
-		require.NoError(t, err)
-		require.NotNil(t, account)
+		_, err := store.GetAccountWithVolumes(ctx, NewGetAccountQuery("account_not_existing"))
+		require.Error(t, err)
 	})
 
 }
