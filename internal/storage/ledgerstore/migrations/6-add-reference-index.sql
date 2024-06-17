@@ -1,0 +1,1 @@
+create index transactions_reference on transactions (reference);

@@ -35,6 +35,9 @@ var addAccountFirstUsage string
 //go:embed migrations/5-add-idempotency-key-index.sql
 var addIndexOnIdempotencyKey string
 
+//go:embed migrations/6-add-reference-index.sql
+var addIndexOnReference string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -177,6 +180,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Add index on `idempotency_key`",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, addIndexOnIdempotencyKey)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Add index on `reference`",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, addIndexOnReference)
 				return err
 			},
 		},
