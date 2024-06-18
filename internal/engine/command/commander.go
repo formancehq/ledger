@@ -140,11 +140,16 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			return nil, NewErrNoPostings()
 		}
 
+		txID := commander.predictNextTxID()
+		if !parameters.DryRun {
+			txID = commander.allocateNewTxID()
+		}
+
 		tx := ledger.NewTransaction().
 			WithPostings(result.Postings...).
 			WithMetadata(result.Metadata).
 			WithDate(script.Timestamp).
-			WithID(commander.nextTXID()).
+			WithID(txID).
 			WithReference(script.Reference)
 
 		log := logComputer(tx, result.AccountMetadata)
@@ -263,14 +268,17 @@ func (commander *Commander) chainLog(log *ledger.Log) *ledger.ChainedLog {
 	return commander.lastLog
 }
 
-func (commander *Commander) nextTXID() *big.Int {
+func (commander *Commander) allocateNewTxID() *big.Int {
 	commander.mu.Lock()
 	defer commander.mu.Unlock()
 
-	ret := big.NewInt(0).Add(commander.lastTXID, big.NewInt(1))
-	commander.lastTXID = ret
+	commander.lastTXID = commander.predictNextTxID()
 
-	return ret
+	return commander.lastTXID
+}
+
+func (commander *Commander) predictNextTxID() *big.Int {
+	return big.NewInt(0).Add(commander.lastTXID, big.NewInt(1))
 }
 
 func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Parameters, targetType string, targetID any, key string) error {
