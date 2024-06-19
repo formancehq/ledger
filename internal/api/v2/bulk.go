@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
+
 	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 
 	"github.com/formancehq/ledger/internal/engine"
@@ -41,6 +43,10 @@ type Result struct {
 }
 
 func ProcessBulk(ctx context.Context, l backend.Ledger, bulk Bulk, continueOnFailure bool) ([]Result, bool, error) {
+
+	ctx, span := tracer.Start(ctx, "Bulk")
+	defer span.End()
+
 	ret := make([]Result, 0, len(bulk))
 
 	errorsInBulk := false

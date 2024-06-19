@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"math/big"
@@ -71,11 +72,15 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type ChainedLogWithContext struct {
+	ChainedLog
+	Context context.Context
+}
+
 type ChainedLog struct {
 	Log
-	ID        *big.Int `json:"id"`
-	Projected bool     `json:"-"`
-	Hash      []byte   `json:"hash"`
+	ID   *big.Int `json:"id"`
+	Hash []byte   `json:"hash"`
 }
 
 func (l *ChainedLog) WithID(id uint64) *ChainedLog {

@@ -6,6 +6,9 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
+
 	"github.com/formancehq/stack/libs/go-libs/time"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
@@ -89,29 +92,54 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			}
 			defer commander.referencer.release(referenceTxReference, script.Reference)
 
-			_, err := commander.store.GetTransactionByReference(ctx, script.Reference)
-			if err == nil {
-				return nil, NewErrConflict()
-			}
-			if err != nil && !storageerrors.IsNotFoundError(err) {
+			err := func() error {
+				ctx, span := tracer.Start(ctx, "CheckReference")
+				defer span.End()
+
+				_, err := commander.store.GetTransactionByReference(ctx, script.Reference)
+				if err == nil {
+					return NewErrConflict()
+				}
+				if err != nil && !storageerrors.IsNotFoundError(err) {
+					return err
+				}
+				return nil
+			}()
+			if err != nil {
 				return nil, err
 			}
 		}
 
-		program, err := commander.compiler.Compile(script.Plain)
+		program, err := func() (*program.Program, error) {
+			_, span := tracer.Start(ctx, "CompileNumscript")
+			defer span.End()
+
+			program, err := commander.compiler.Compile(script.Plain)
+			if err != nil {
+				return nil, NewErrCompilationFailed(err)
+			}
+
+			return program, nil
+		}()
 		if err != nil {
-			return nil, NewErrCompilationFailed(err)
+			return nil, err
 		}
 
 		m := vm.NewMachine(*program)
-
 		if err := m.SetVarsFromJSON(script.Vars); err != nil {
 			return nil, NewErrCompilationFailed(err)
 		}
 
-		involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
+		involvedAccounts, involvedSources, err := func() ([]string, []string, error) {
+			involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
+			if err != nil {
+				return nil, nil, NewErrCompilationFailed(err)
+			}
+
+			return involvedAccounts, involvedSources, nil
+		}()
 		if err != nil {
-			return nil, NewErrCompilationFailed(err)
+			return nil, err
 		}
 
 		worldFilter := collectionutils.FilterNot(collectionutils.FilterEq("world"))
@@ -120,20 +148,43 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			Write: collectionutils.Filter(involvedSources, worldFilter),
 		}
 
-		unlock, err := commander.locker.Lock(ctx, lockAccounts)
-		if err != nil {
-			return nil, errors.Wrap(err, "locking accounts for tx processing")
-		}
+		unlock, err := func() (Unlock, error) {
+			_, span := tracer.Start(ctx, "Lock")
+			defer span.End()
+
+			unlock, err := commander.locker.Lock(ctx, lockAccounts)
+			if err != nil {
+				return nil, errors.Wrap(err, "locking accounts for tx processing")
+			}
+
+			return unlock, nil
+		}()
 		defer unlock(ctx)
 
-		err = m.ResolveBalances(ctx, commander.store)
-		if err != nil {
-			return nil, errors.Wrap(err, "could not resolve balances")
-		}
+		err = func() error {
+			ctx, span := tracer.Start(ctx, "ResolveBalances")
+			defer span.End()
 
-		result, err := vm.Run(m, script)
+			err = m.ResolveBalances(ctx, commander.store)
+			if err != nil {
+				return errors.Wrap(err, "could not resolve balances")
+			}
+
+			return nil
+		}()
 		if err != nil {
-			return nil, NewErrMachine(err)
+			return nil, err
+		}
+		result, err := func() (*vm.Result, error) {
+			result, err := vm.Run(m, script)
+			if err != nil {
+				return nil, NewErrMachine(err)
+			}
+
+			return result, nil
+		}()
+		if err != nil {
+			return nil, err
 		}
 
 		if len(result.Postings) == 0 {
@@ -162,6 +213,10 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 }
 
 func (commander *Commander) CreateTransaction(ctx context.Context, parameters Parameters, script ledger.RunScript) (*ledger.Transaction, error) {
+
+	ctx, span := tracer.Start(ctx, "CreateTransaction")
+	defer span.End()
+
 	log, err := commander.exec(ctx, parameters, script, ledger.NewTransactionLog)
 	if err != nil {
 

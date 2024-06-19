@@ -3,6 +3,9 @@ package v2
 import (
 	"net/http"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/formancehq/stack/libs/go-libs/service"
 
 	"github.com/formancehq/ledger/internal/api/backend"
@@ -42,6 +45,14 @@ func NewRouter(
 
 		router.Get("/", listLedgers(b))
 		router.Route("/{ledger}", func(router chi.Router) {
+			router.Use(func(handler http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					trace.
+						SpanFromContext(r.Context()).
+						SetAttributes(attribute.String("ledger", chi.URLParam(r, "ledger")))
+					handler.ServeHTTP(w, r)
+				})
+			})
 			router.Post("/", createLedger(b))
 			router.Get("/", getLedger(b))
 			router.Put("/metadata", updateLedgerMetadata(b))
