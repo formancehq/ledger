@@ -176,6 +176,9 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			return nil, err
 		}
 		result, err := func() (*vm.Result, error) {
+			_, span := tracer.Start(ctx, "RunNumscript")
+			defer span.End()
+
 			result, err := vm.Run(m, script)
 			if err != nil {
 				return nil, NewErrMachine(err)
