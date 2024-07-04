@@ -111,11 +111,13 @@ func (l *ChainedLog) UnmarshalJSON(data []byte) error {
 func (l *ChainedLog) ComputeHash(previous *ChainedLog) {
 	digest := sha256.New()
 	enc := json.NewEncoder(digest)
+
 	if previous != nil {
 		if err := enc.Encode(previous.Hash); err != nil {
 			panic(err)
 		}
 	}
+
 	if err := enc.Encode(l); err != nil {
 		panic(err)
 	}

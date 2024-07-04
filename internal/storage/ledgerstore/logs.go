@@ -167,6 +167,11 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 
 type GetLogsQuery bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[any]]
 
+func (q GetLogsQuery) WithOrder(order bunpaginate.Order) GetLogsQuery {
+	q.Order = order
+	return q
+}
+
 func NewGetLogsQuery(options PaginatedQueryOptions[any]) GetLogsQuery {
 	return GetLogsQuery{
 		PageSize: options.PageSize,

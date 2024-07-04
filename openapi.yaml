@@ -2203,6 +2203,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+  /v2/{ledger}/logs/import:
+    post:
+      summary: Import logs
+      tags:
+        - Ledger
+      x-speakeasy-group: ledger
+      operationId: v2ImportLogs
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: Import OK
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+  /v2/{ledger}/logs/export:
+    post:
+      summary: Export logs
+      tags:
+        - Ledger
+      operationId: v2ExportLogs
+      x-speakeasy-group: ledger
+      parameters:
+        - name: ledger
+          in: path
+          description: Name of the ledger.
+          required: true
+          schema:
+            type: string
+            example: ledger001
+      responses:
+        "200":
+          description: Import OK
+        default:
+          description: Error
+          content:
+            application/octet-stream:
+              schema:
+                title: bytes
+                type: string
+                format: binary
 components:
   schemas:
     AccountsCursorResponse:
@@ -3315,6 +3370,7 @@ components:
         - ALREADY_REVERT
         - NO_POSTINGS
         - LEDGER_NOT_FOUND
+        - IMPORT
       example: VALIDATION
     V2LedgerInfoResponse:
       properties:

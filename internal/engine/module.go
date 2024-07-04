@@ -38,7 +38,7 @@ func Module(configuration Configuration) fx.Option {
 				options = append(options, WithCompiler(command.NewCompiler(configuration.NumscriptCache.MaxCount)))
 			}
 			if configuration.LedgerBatchSize != 0 {
-				options = append(options, WithLedgerConfig(LedgerConfig{
+				options = append(options, WithLedgerConfig(GlobalLedgerConfig{
 					batchSize: configuration.LedgerBatchSize,
 				}))
 			}

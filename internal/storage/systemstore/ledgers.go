@@ -13,6 +13,11 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const (
+	StateInitializing = "initializing"
+	StateInUse        = "in-use"
+)
+
 type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
@@ -20,6 +25,7 @@ type Ledger struct {
 	AddedAt  time.Time         `bun:"addedat,type:timestamp" json:"addedAt"`
 	Bucket   string            `bun:"bucket,type:varchar(255)" json:"bucket"`
 	Metadata map[string]string `bun:"metadata,type:jsonb" json:"metadata"`
+	State    string            `bun:"state,type:varchar(255)" json:"-"`
 }
 
 type PaginatedQueryOptions struct {
@@ -41,7 +47,7 @@ func NewListLedgersQuery(pageSize uint64) ListLedgersQuery {
 
 func (s *Store) ListLedgers(ctx context.Context, q ListLedgersQuery) (*bunpaginate.Cursor[Ledger], error) {
 	query := s.db.NewSelect().
-		Column("ledger", "bucket", "addedat", "metadata").
+		Column("ledger", "bucket", "addedat", "metadata", "state").
 		Order("addedat asc")
 
 	return bunpaginate.UsingOffset[PaginatedQueryOptions, Ledger](ctx, query, bunpaginate.OffsetPaginatedQuery[PaginatedQueryOptions](q))
@@ -64,7 +70,7 @@ func (s *Store) GetLedger(ctx context.Context, name string) (*Ledger, error) {
 	ret := &Ledger{}
 	if err := s.db.NewSelect().
 		Model(ret).
-		Column("ledger", "bucket", "addedat", "metadata").
+		Column("ledger", "bucket", "addedat", "metadata", "state").
 		Where("ledger = ?", name).
 		Scan(ctx); err != nil {
 		return nil, sqlutils.PostgresError(err)
@@ -77,6 +83,15 @@ func (s *Store) UpdateLedgerMetadata(ctx context.Context, name string, m metadat
 	_, err := s.db.NewUpdate().
 		Model(&Ledger{}).
 		Set("metadata = metadata || ?", m).
+		Where("ledger = ?", name).
+		Exec(ctx)
+	return err
+}
+
+func (s *Store) UpdateLedgerState(ctx context.Context, name string, state string) error {
+	_, err := s.db.NewUpdate().
+		Model(&Ledger{}).
+		Set("state = ?", state).
 		Where("ledger = ?", name).
 		Exec(ctx)
 	return err

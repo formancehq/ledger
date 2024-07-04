@@ -34,6 +34,8 @@ type Ledger interface {
 	RevertTransaction(ctx context.Context, parameters command.Parameters, id *big.Int, force, atEffectiveDate bool) (*ledger.Transaction, error)
 	SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error
 	DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error
+	Import(ctx context.Context, stream chan *ledger.ChainedLog) error
+	Export(ctx context.Context, w engine.ExportWriter) error
 
 	IsDatabaseUpToDate(ctx context.Context) (bool, error)
 

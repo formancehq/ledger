@@ -15,7 +15,7 @@ import (
 
 func getLedger(b backend.Backend) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		configuration := driver.LedgerConfiguration{}
+		configuration := driver.LedgerState{}
 
 		data, err := io.ReadAll(r.Body)
 		if err != nil && !errors.Is(err, io.EOF) {

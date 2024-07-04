@@ -5,6 +5,9 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/formancehq/ledger/internal/engine/chain"
+	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -17,23 +20,32 @@ import (
 )
 
 type Ledger struct {
-	commander        *command.Commander
-	store            *ledgerstore.Store
-	isSchemaUpToDate bool
-	mu               sync.Mutex
+	commander   *command.Commander
+	systemStore *systemstore.Store
+	store       *ledgerstore.Store
+	mu          sync.Mutex
+	config      LedgerConfig
+	chain       *chain.Chain
 }
 
-type LedgerConfig struct {
+type GlobalLedgerConfig struct {
 	batchSize int
 }
 
+type LedgerConfig struct {
+	GlobalLedgerConfig
+	driver.LedgerState
+	isSchemaUpToDate bool
+}
+
 var (
-	defaultLedgerConfig = LedgerConfig{
+	defaultLedgerConfig = GlobalLedgerConfig{
 		batchSize: 50,
 	}
 )
 
 func New(
+	systemStore *systemstore.Store,
 	store *ledgerstore.Store,
 	publisher message.Publisher,
 	compiler *command.Compiler,
@@ -43,21 +55,27 @@ func New(
 	if publisher != nil {
 		monitor = bus.NewLedgerMonitor(publisher, store.Name())
 	}
-	return &Ledger{
+	chain := chain.New(store)
+	ret := &Ledger{
 		commander: command.New(
 			store,
 			command.NewDefaultLocker(),
 			compiler,
 			command.NewReferencer(),
 			monitor,
+			chain,
 			ledgerConfig.batchSize,
 		),
-		store: store,
+		store:       store,
+		config:      ledgerConfig,
+		systemStore: systemStore,
+		chain:       chain,
 	}
+	return ret
 }
 
 func (l *Ledger) Start(ctx context.Context) {
-	if err := l.commander.Init(ctx); err != nil {
+	if err := l.chain.Init(ctx); err != nil {
 		panic(err)
 	}
 	go l.commander.Run(logging.ContextWithField(ctx, "component", "commander"))
@@ -108,11 +126,22 @@ func (l *Ledger) GetLogs(ctx context.Context, q ledgerstore.GetLogsQuery) (*bunp
 	return logs, newStorageError(err, "getting logs")
 }
 
+func (l *Ledger) markInUseIfNeeded(ctx context.Context) {
+	if l.config.LedgerState.State == systemstore.StateInitializing {
+		if err := l.systemStore.UpdateLedgerState(ctx, l.store.Name(), systemstore.StateInUse); err != nil {
+			logging.FromContext(ctx).Error("Unable to declare ledger as in use")
+			return
+		}
+		l.config.LedgerState.State = systemstore.StateInUse
+	}
+}
+
 func (l *Ledger) CreateTransaction(ctx context.Context, parameters command.Parameters, data ledger.RunScript) (*ledger.Transaction, error) {
 	ret, err := l.commander.CreateTransaction(ctx, parameters, data)
 	if err != nil {
 		return nil, NewCommandError(err)
 	}
+	l.markInUseIfNeeded(ctx)
 	return ret, nil
 }
 
@@ -121,32 +150,43 @@ func (l *Ledger) RevertTransaction(ctx context.Context, parameters command.Param
 	if err != nil {
 		return nil, NewCommandError(err)
 	}
+	l.markInUseIfNeeded(ctx)
 	return ret, nil
 }
 
 func (l *Ledger) SaveMeta(ctx context.Context, parameters command.Parameters, targetType string, targetID any, m metadata.Metadata) error {
-	return NewCommandError(l.commander.SaveMeta(ctx, parameters, targetType, targetID, m))
+	if err := l.commander.SaveMeta(ctx, parameters, targetType, targetID, m); err != nil {
+		return NewCommandError(err)
+	}
+
+	l.markInUseIfNeeded(ctx)
+	return nil
 }
 
 func (l *Ledger) DeleteMetadata(ctx context.Context, parameters command.Parameters, targetType string, targetID any, key string) error {
-	return NewCommandError(l.commander.DeleteMetadata(ctx, parameters, targetType, targetID, key))
+	if err := l.commander.DeleteMetadata(ctx, parameters, targetType, targetID, key); err != nil {
+		return NewCommandError(err)
+	}
+
+	l.markInUseIfNeeded(ctx)
+	return nil
 }
 
 func (l *Ledger) IsDatabaseUpToDate(ctx context.Context) (bool, error) {
-	if l.isSchemaUpToDate {
+	if l.config.isSchemaUpToDate {
 		return true, nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.isSchemaUpToDate {
+	if l.config.isSchemaUpToDate {
 		return true, nil
 	}
 
 	var err error
-	l.isSchemaUpToDate, err = l.store.IsUpToDate(ctx)
+	l.config.isSchemaUpToDate, err = l.store.IsUpToDate(ctx)
 
-	return l.isSchemaUpToDate, err
+	return l.config.isSchemaUpToDate, err
 }
 
 func (l *Ledger) GetVolumesWithBalances(ctx context.Context, q ledgerstore.GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {

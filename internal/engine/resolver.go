@@ -4,9 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/pkg/errors"
-
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/internal/storage/systemstore"
+
+	"github.com/pkg/errors"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/ledger/internal/engine/command"
@@ -42,7 +43,7 @@ func WithLogger(logger logging.Logger) option {
 	}
 }
 
-func WithLedgerConfig(config LedgerConfig) option {
+func WithLedgerConfig(config GlobalLedgerConfig) option {
 	return func(r *Resolver) {
 		r.ledgerConfig = config
 	}
@@ -60,7 +61,7 @@ type Resolver struct {
 	metricsRegistry metrics.GlobalRegistry
 	//TODO(gfyrag): add a routine to clean old ledger
 	ledgers      map[string]*Ledger
-	ledgerConfig LedgerConfig
+	ledgerConfig GlobalLedgerConfig
 	compiler     *command.Compiler
 	logger       logging.Logger
 	publisher    message.Publisher
@@ -79,13 +80,17 @@ func NewResolver(storageDriver *driver.Driver, options ...option) *Resolver {
 	return r
 }
 
-func (r *Resolver) startLedgerUsingStore(ctx context.Context, name string, store *ledgerstore.Store) *Ledger {
-	ledger := New(store, r.publisher, r.compiler, r.ledgerConfig)
+func (r *Resolver) startLedger(ctx context.Context, name string, store *ledgerstore.Store, state driver.LedgerState) (*Ledger, error) {
+
+	ledger := New(r.storageDriver.GetSystemStore(), store, r.publisher, r.compiler, LedgerConfig{
+		GlobalLedgerConfig: r.ledgerConfig,
+		LedgerState:        state,
+	})
 	ledger.Start(logging.ContextWithLogger(context.Background(), r.logger))
 	r.ledgers[name] = ledger
 	r.metricsRegistry.ActiveLedgers().Add(ctx, +1)
 
-	return ledger
+	return ledger, nil
 }
 
 func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) {
@@ -105,12 +110,28 @@ func (r *Resolver) GetLedger(ctx context.Context, name string) (*Ledger, error) 
 			return ledger, nil
 		}
 
-		store, err := r.storageDriver.GetLedgerStore(ctx, name)
+		ledgerConfiguration, err := r.storageDriver.GetSystemStore().GetLedger(ctx, name)
 		if err != nil {
 			return nil, err
 		}
 
-		ledger = r.startLedgerUsingStore(ctx, name, store)
+		store, err := r.storageDriver.GetLedgerStore(ctx, name, driver.LedgerState{
+			LedgerConfiguration: driver.LedgerConfiguration{
+				Bucket:   ledgerConfiguration.Bucket,
+				Metadata: ledgerConfiguration.Metadata,
+			},
+			State: ledgerConfiguration.State,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return r.startLedger(ctx, name, store, driver.LedgerState{
+			LedgerConfiguration: driver.LedgerConfiguration{
+				Bucket:   ledgerConfiguration.Bucket,
+				Metadata: ledgerConfiguration.Metadata,
+			},
+		})
 	}
 
 	return ledger, nil
@@ -129,7 +150,10 @@ func (r *Resolver) CreateLedger(ctx context.Context, name string, configuration 
 		return nil, err
 	}
 
-	return r.startLedgerUsingStore(ctx, name, store), nil
+	return r.startLedger(ctx, name, store, driver.LedgerState{
+		LedgerConfiguration: configuration,
+		State:               systemstore.StateInitializing,
+	})
 }
 
 func (r *Resolver) CloseLedgers(ctx context.Context) error {

@@ -27,46 +27,42 @@ type Parameters struct {
 	IdempotencyKey string
 }
 
+type Chainer interface {
+	ChainLog(log *ledger.Log) *ledger.ChainedLog
+	AllocateNewTxID() *big.Int
+	PredictNextTxID() *big.Int
+}
+
 type Commander struct {
 	*batching.Batcher[*ledger.ChainedLog]
 	store      Store
 	locker     Locker
 	compiler   *Compiler
 	running    sync.WaitGroup
-	lastTXID   *big.Int
 	referencer *Referencer
-	mu         sync.Mutex
 
-	lastLog *ledger.ChainedLog
 	monitor bus.Monitor
+	chain   Chainer
 }
 
-func New(store Store, locker Locker, compiler *Compiler, referencer *Referencer, monitor bus.Monitor, batchSize int) *Commander {
+func New(
+	store Store,
+	locker Locker,
+	compiler *Compiler,
+	referencer *Referencer,
+	monitor bus.Monitor,
+	chain Chainer,
+	batchSize int,
+) *Commander {
 	return &Commander{
 		store:      store,
 		locker:     locker,
 		compiler:   compiler,
-		lastTXID:   big.NewInt(-1),
+		chain:      chain,
 		referencer: referencer,
 		Batcher:    batching.NewBatcher(store.InsertLogs, 1, batchSize),
 		monitor:    monitor,
 	}
-}
-
-func (commander *Commander) Init(ctx context.Context) error {
-	lastTx, err := commander.store.GetLastTransaction(ctx)
-	if err != nil && !storageerrors.IsNotFoundError(err) {
-		return err
-	}
-	if lastTx != nil {
-		commander.lastTXID = lastTx.ID
-	}
-
-	commander.lastLog, err = commander.store.GetLastLog(ctx)
-	if err != nil && !storageerrors.IsNotFoundError(err) {
-		return err
-	}
-	return nil
 }
 
 func (commander *Commander) GetLedgerStore() Store {
@@ -194,9 +190,9 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			return nil, NewErrNoPostings()
 		}
 
-		txID := commander.predictNextTxID()
+		txID := commander.chain.PredictNextTxID()
 		if !parameters.DryRun {
-			txID = commander.allocateNewTxID()
+			txID = commander.chain.AllocateNewTxID()
 		}
 
 		tx := ledger.NewTransaction().
@@ -316,27 +312,6 @@ func (commander *Commander) RevertTransaction(ctx context.Context, parameters Pa
 func (commander *Commander) Close() {
 	commander.Batcher.Close()
 	commander.running.Wait()
-}
-
-func (commander *Commander) chainLog(log *ledger.Log) *ledger.ChainedLog {
-	commander.mu.Lock()
-	defer commander.mu.Unlock()
-
-	commander.lastLog = log.ChainLog(commander.lastLog)
-	return commander.lastLog
-}
-
-func (commander *Commander) allocateNewTxID() *big.Int {
-	commander.mu.Lock()
-	defer commander.mu.Unlock()
-
-	commander.lastTXID = commander.predictNextTxID()
-
-	return commander.lastTXID
-}
-
-func (commander *Commander) predictNextTxID() *big.Int {
-	return big.NewInt(0).Add(commander.lastTXID, big.NewInt(1))
 }
 
 func (commander *Commander) DeleteMetadata(ctx context.Context, parameters Parameters, targetType string, targetID any, key string) error {

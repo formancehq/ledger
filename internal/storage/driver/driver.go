@@ -36,6 +36,11 @@ type LedgerConfiguration struct {
 	Metadata metadata.Metadata `json:"metadata"`
 }
 
+type LedgerState struct {
+	LedgerConfiguration
+	State string `json:"state"`
+}
+
 type Driver struct {
 	systemStore       *systemstore.Store
 	lock              sync.Mutex
@@ -64,16 +69,11 @@ func (d *Driver) OpenBucket(ctx context.Context, name string) (*ledgerstore.Buck
 	return b, nil
 }
 
-func (d *Driver) GetLedgerStore(ctx context.Context, name string) (*ledgerstore.Store, error) {
+func (d *Driver) GetLedgerStore(ctx context.Context, name string, configuration LedgerState) (*ledgerstore.Store, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	ledgerConfiguration, err := d.systemStore.GetLedger(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-
-	bucket, err := d.OpenBucket(ctx, ledgerConfiguration.Bucket)
+	bucket, err := d.OpenBucket(ctx, configuration.Bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +136,7 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 		AddedAt:  time.Now(),
 		Bucket:   bucketName,
 		Metadata: configuration.Metadata,
+		State:    systemstore.StateInitializing,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "registring ledger on system store")

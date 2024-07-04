@@ -27,7 +27,7 @@ func (e *executionContext) AppendLog(ctx context.Context, log *ledger.Log) (*led
 		_, span := tracer.Start(ctx, "ChainLog")
 		defer span.End()
 
-		return e.commander.chainLog(log)
+		return e.commander.chain.ChainLog(log)
 	}()
 
 	done := make(chan struct{})

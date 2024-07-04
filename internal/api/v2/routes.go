@@ -65,6 +65,8 @@ func NewRouter(
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", getStats)
 				router.Get("/logs", getLogs)
+				router.Post("/logs/import", importLogs)
+				router.Post("/logs/export", exportLogs)
 
 				// AccountController
 				router.Get("/accounts", getAccounts)

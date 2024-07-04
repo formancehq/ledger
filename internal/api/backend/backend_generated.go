@@ -108,6 +108,20 @@ func (mr *MockLedgerMockRecorder) DeleteMetadata(ctx, parameters, targetType, ta
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMetadata", reflect.TypeOf((*MockLedger)(nil).DeleteMetadata), ctx, parameters, targetType, targetID, key)
 }
 
+// Export mocks base method.
+func (m *MockLedger) Export(ctx context.Context, w engine.ExportWriter) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Export", ctx, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Export indicates an expected call of Export.
+func (mr *MockLedgerMockRecorder) Export(ctx, w any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Export", reflect.TypeOf((*MockLedger)(nil).Export), ctx, w)
+}
+
 // GetAccountWithVolumes mocks base method.
 func (m *MockLedger) GetAccountWithVolumes(ctx context.Context, query ledgerstore.GetAccountQuery) (*ledger.ExpandedAccount, error) {
 	m.ctrl.T.Helper()
@@ -226,6 +240,20 @@ func (m *MockLedger) GetVolumesWithBalances(ctx context.Context, q ledgerstore.G
 func (mr *MockLedgerMockRecorder) GetVolumesWithBalances(ctx, q any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumesWithBalances", reflect.TypeOf((*MockLedger)(nil).GetVolumesWithBalances), ctx, q)
+}
+
+// Import mocks base method.
+func (m *MockLedger) Import(ctx context.Context, stream chan *ledger.ChainedLog) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Import", ctx, stream)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Import indicates an expected call of Import.
+func (mr *MockLedgerMockRecorder) Import(ctx, stream any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Import", reflect.TypeOf((*MockLedger)(nil).Import), ctx, stream)
 }
 
 // IsDatabaseUpToDate mocks base method.
