@@ -44,12 +44,19 @@ func (chain *Chain) AllocateNewTxID() *big.Int {
 	chain.mu.Lock()
 	defer chain.mu.Unlock()
 
-	chain.lastTXID = chain.PredictNextTxID()
+	chain.lastTXID = chain.predictNextTxID()
 
 	return chain.lastTXID
 }
 
 func (chain *Chain) PredictNextTxID() *big.Int {
+	chain.mu.Lock()
+	defer chain.mu.Unlock()
+
+	return chain.predictNextTxID()
+}
+
+func (chain *Chain) predictNextTxID() *big.Int {
 	return big.NewInt(0).Add(chain.lastTXID, big.NewInt(1))
 }
 
