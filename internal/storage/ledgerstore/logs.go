@@ -20,10 +20,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-const (
-	LogTableName = "logs"
-)
-
 type Logs struct {
 	bun.BaseModel `bun:"logs,alias:logs"`
 
@@ -33,7 +29,7 @@ type Logs struct {
 	Hash           []byte              `bun:"hash,type:bytea"`
 	Date           time.Time           `bun:"date,type:timestamptz"`
 	Data           RawMessage          `bun:"data,type:jsonb"`
-	IdempotencyKey string              `bun:"idempotency_key,type:varchar(256),unique"`
+	IdempotencyKey *string             `bun:"idempotency_key,type:varchar(256),unique"`
 }
 
 func (log *Logs) ToCore() *ledger.ChainedLog {
@@ -45,10 +41,15 @@ func (log *Logs) ToCore() *ledger.ChainedLog {
 
 	return &ledger.ChainedLog{
 		Log: ledger.Log{
-			Type:           ledger.LogTypeFromString(log.Type),
-			Data:           payload,
-			Date:           log.Date.UTC(),
-			IdempotencyKey: log.IdempotencyKey,
+			Type: ledger.LogTypeFromString(log.Type),
+			Data: payload,
+			Date: log.Date.UTC(),
+			IdempotencyKey: func() string {
+				if log.IdempotencyKey != nil {
+					return *log.IdempotencyKey
+				}
+				return ""
+			}(),
 		},
 		ID:   (*big.Int)(log.ID),
 		Hash: log.Hash,
@@ -88,16 +89,6 @@ func (store *Store) logsQueryBuilder(q PaginatedQueryOptions[any]) func(*bun.Sel
 }
 
 func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.ChainedLog) error {
-	//links := make([]trace.Link, 0)
-	//for _, log := range activeLogs {
-	//	links = append(links, trace.LinkFromContext(log.Context))
-	//}
-	//
-	//ctx, span := tracer.Start(context.Background(), "InsertLogBatch", trace.WithLinks(links...))
-	//defer span.End()
-	//
-	//span.SetAttributes(attribute.Int("count", len(activeLogs)))
-
 	_, err := store.bucket.db.
 		NewInsert().
 		Model(pointer.For(collectionutils.Map(activeLogs, func(from *ledger.ChainedLog) Logs {
@@ -107,13 +98,18 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 			}
 
 			return Logs{
-				Ledger:         store.name,
-				ID:             (*bunpaginate.BigInt)(from.ID),
-				Type:           from.Type.String(),
-				Hash:           from.Hash,
-				Date:           from.Date,
-				Data:           data,
-				IdempotencyKey: from.IdempotencyKey,
+				Ledger: store.name,
+				ID:     (*bunpaginate.BigInt)(from.ID),
+				Type:   from.Type.String(),
+				Hash:   from.Hash,
+				Date:   from.Date,
+				Data:   data,
+				IdempotencyKey: func() *string {
+					if from.IdempotencyKey != "" {
+						return &from.IdempotencyKey
+					}
+					return nil
+				}(),
 			}
 		}))).
 		Exec(ctx)
