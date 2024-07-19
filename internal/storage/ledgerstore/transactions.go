@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/formancehq/stack/libs/go-libs/pointer"
+
 	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -161,7 +163,7 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 	if p.PIT != nil && !p.PIT.IsZero() {
 		query = query.
 			Where("timestamp <= ?", p.PIT).
-			ColumnExpr("distinct on(transactions.id) transactions.*").
+			ColumnExpr("transactions.*").
 			Column("transactions_metadata.metadata").
 			Join(fmt.Sprintf(`left join lateral (%s) as transactions_metadata on true`, selectMetadata.String())).
 			ColumnExpr(fmt.Sprintf("case when reverted_at is not null and reverted_at > '%s' then null else reverted_at end", p.PIT.Format(time.DateFormat)))
@@ -399,6 +401,13 @@ func (q GetTransactionsQuery) WithExpandEffectiveVolumes() GetTransactionsQuery 
 	q.Options.Options.ExpandEffectiveVolumes = true
 
 	return q
+}
+
+func (q GetTransactionsQuery) WithColumn(column string) GetTransactionsQuery {
+	ret := pointer.For((bunpaginate.ColumnPaginatedQuery[PaginatedQueryOptions[PITFilterWithVolumes]])(q))
+	ret = ret.WithColumn(column)
+
+	return GetTransactionsQuery(*ret)
 }
 
 func NewGetTransactionsQuery(options PaginatedQueryOptions[PITFilterWithVolumes]) GetTransactionsQuery {

@@ -1757,6 +1757,18 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - effective
+        - name: reverse
+          in: query
+          required: false
+          schema:
+            type: boolean
       requestBody:
         content:
           application/json:

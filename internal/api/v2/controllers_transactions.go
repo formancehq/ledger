@@ -57,7 +57,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		return pointer.For(ledgerstore.NewGetTransactionsQuery(*options)), nil
+		q := ledgerstore.NewGetTransactionsQuery(*options)
+
+		if r.URL.Query().Get("order") == "effective" {
+			q.Column = "timestamp"
+		}
+		if r.URL.Query().Get("reverse") == "true" {
+			q.Order = bunpaginate.OrderAsc
+		}
+
+		return pointer.For(q), nil
 	})
 	if err != nil {
 		sharedapi.BadRequest(w, ErrValidation, err)
