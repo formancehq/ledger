@@ -242,6 +242,7 @@ func TestVariables(t *testing.T) {
 		},
 		Error: nil,
 	}
+	test(t, tc)
 }
 
 func TestVariablesJSON(t *testing.T) {
