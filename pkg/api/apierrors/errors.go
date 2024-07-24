@@ -19,6 +19,7 @@ import (
 const (
 	ErrInternal                = "INTERNAL"
 	ErrConflict                = "CONFLICT"
+	ErrTXID                    = "TXID_CONFLICT"
 	ErrInsufficientFund        = "INSUFFICIENT_FUND"
 	ErrValidation              = "VALIDATION"
 	ErrContextCancelled        = "CONTEXT_CANCELLED"
@@ -64,6 +65,8 @@ func coreErrorToErrorCode(c *gin.Context, err error) (int, string, string) {
 		ledger.IsScriptErrorWithCode(err, ErrScriptMetadataOverride):
 		scriptErr := err.(*ledger.ScriptError)
 		return http.StatusBadRequest, scriptErr.Code, EncodeLink(scriptErr.Message)
+	case ledger.IsTXIDError(err):
+		return http.StatusConflict, ErrTXID, ""
 	case errors.Is(err, context.Canceled):
 		return http.StatusInternalServerError, ErrContextCancelled, ""
 	case storage.IsError(err):

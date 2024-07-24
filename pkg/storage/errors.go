@@ -13,6 +13,7 @@ type Code string
 
 const (
 	ConstraintFailed Code = "CONSTRAINT_FAILED"
+	ConstraintTXID   Code = "CONSTRAINT_TXID"
 	TooManyClient    Code = "TOO_MANY_CLIENT"
 )
 

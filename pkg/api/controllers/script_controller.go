@@ -48,6 +48,9 @@ func (ctl *ScriptController) PostScript(c *gin.Context) {
 		case *ledger.ConflictError:
 			code = apierrors.ErrConflict
 			message = e.Error()
+		case *ledger.TXIDError:
+			code = apierrors.ErrTXID
+			message = e.Error()
 		default:
 			logging.FromContext(c.Request.Context()).Errorf(
 				"internal errors executing script: %s", err)
