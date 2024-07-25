@@ -359,7 +359,7 @@ func testCommit(t *testing.T, store *sqlstorage.Store) {
 
 	err = store.Commit(context.Background(), tx)
 	require.Error(t, err)
-	require.True(t, storage.IsErrorCode(err, storage.ConstraintFailed))
+	require.True(t, storage.IsErrorCode(err, storage.ConstraintTXID))
 
 	cursor, err := store.GetLogs(context.Background(), ledger.NewLogsQuery())
 	require.NoError(t, err)
