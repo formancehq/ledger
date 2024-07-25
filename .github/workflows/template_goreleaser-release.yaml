@@ -44,7 +44,7 @@ jobs:
           SEGMENT_WRITE_KEY: ${{ secrets.SEGMENT_WRITE_KEY_OSS }}
         uses: goreleaser/goreleaser-action@v4
         with:
-          version: latest
+          version: v1.26.2
           args: release --rm-dist
       - name: Run GoReleaser for MacOS
         if: ${{ matrix.os == 'macos-latest' }}
