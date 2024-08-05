@@ -85,6 +85,29 @@ func TestGetLastLog(t *testing.T) {
 	require.Equal(t, tx1.Timestamp, lastLog.Data.(ledger.NewTransactionLogPayload).Transaction.Timestamp)
 }
 
+func TestInsertLogSameIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+
+	logTx := ledger.NewTransactionLog(
+		ledger.NewTransaction().
+			WithPostings(
+				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+			),
+		map[string]metadata.Metadata{},
+	)
+	log := logTx.WithIdempotencyKey("test")
+
+	appendLog(t, store, log.ChainLog(nil), log.ChainLog(nil))
+
+	logs, err := store.GetLogs(context.Background(), NewGetLogsQuery(PaginatedQueryOptions[any]{
+		PageSize: 10,
+	}))
+	require.NoError(t, err)
+	require.Len(t, logs.Data, 1)
+	require.Equal(t, logs.Data[0].Log, *logTx)
+}
+
 func TestReadLogWithIdempotencyKey(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
@@ -103,7 +126,8 @@ func TestReadLogWithIdempotencyKey(t *testing.T) {
 	lastLog, err := store.ReadLogWithIdempotencyKey(context.Background(), "test")
 	require.NoError(t, err)
 	require.NotNil(t, lastLog)
-	require.Equal(t, *ret, *lastLog)
+	require.Len(t, ret, 1)
+	require.Equal(t, *ret[0], *lastLog)
 }
 
 func TestGetLogs(t *testing.T) {
