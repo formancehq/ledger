@@ -112,7 +112,6 @@ func (store *Store) InsertLogs(ctx context.Context, activeLogs ...*ledger.Chaine
 				}(),
 			}
 		}))).
-		On("CONFLICT (idempotency_key) DO NOTHING").
 		Exec(ctx)
 	return err
 }

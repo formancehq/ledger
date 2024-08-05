@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/formancehq/stack/libs/go-libs/contextutil"
 	"github.com/formancehq/stack/libs/go-libs/pointer"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
@@ -101,7 +102,9 @@ func postTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), *payload.ToRunScript())
+	ctx, _ := contextutil.Detached(r.Context())
+
+	res, err := l.CreateTransaction(ctx, getCommandParameters(r), *payload.ToRunScript())
 	if err != nil {
 		switch {
 		case engine.IsCommandError(err):

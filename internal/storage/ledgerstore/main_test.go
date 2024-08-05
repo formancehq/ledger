@@ -98,8 +98,8 @@ func newLedgerStore(t T, hooks ...bun.QueryHook) *Store {
 	return store
 }
 
-func appendLog(t *testing.T, store *Store, logs ...*ledger.ChainedLog) []*ledger.ChainedLog {
-	err := store.InsertLogs(context.Background(), logs...)
+func appendLog(t *testing.T, store *Store, log *ledger.ChainedLog) *ledger.ChainedLog {
+	err := store.InsertLogs(context.Background(), log)
 	require.NoError(t, err)
-	return logs
+	return log
 }
