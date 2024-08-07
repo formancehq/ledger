@@ -41,6 +41,9 @@ var addIndexOnReference string
 //go:embed migrations/7-add-ik-unique-index.sql
 var addIKUniqueIndex string
 
+//go:embed migrations/8-ik-ledger-unique-index.sql
+var updateIKUniqueIndex string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -197,6 +200,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Add unique index on IK",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, addIKUniqueIndex)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Update unique index on IK",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, updateIKUniqueIndex)
 				return err
 			},
 		},
