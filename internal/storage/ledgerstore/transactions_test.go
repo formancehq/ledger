@@ -353,6 +353,12 @@ func TestInsertTransactions(t *testing.T) {
 							Amount:      big.NewInt(100),
 							Asset:       "USD",
 						},
+						{
+							Source:      "world",
+							Destination: "bob",
+							Amount:      big.NewInt(10),
+							Asset:       "USD",
+						},
 					},
 					Timestamp: now.Add(-3 * time.Hour),
 					Metadata:  metadata.Metadata{},
@@ -365,18 +371,24 @@ func TestInsertTransactions(t *testing.T) {
 				"alice": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes(),
 				},
+				"bob": map[string]*ledger.Volumes{
+					"USD": ledger.NewEmptyVolumes(),
+				},
 			},
 			PostCommitVolumes: map[string]ledger.VolumesByAssets{
 				"world": map[string]*ledger.Volumes{
-					"USD": ledger.NewEmptyVolumes().WithOutputInt64(100),
+					"USD": ledger.NewEmptyVolumes().WithOutputInt64(110),
 				},
 				"alice": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes().WithInputInt64(100),
 				},
+				"bob": map[string]*ledger.Volumes{
+					"USD": ledger.NewEmptyVolumes().WithInputInt64(10),
+				},
 			},
 		}
 
-		err := insertTransactions(context.Background(), store, tx1.Transaction)
+		err := insertTransactions(ctx, store, tx1.Transaction)
 		require.NoError(t, err, "inserting transaction should not fail")
 
 		tx, err := store.GetTransactionWithVolumes(ctx, NewGetTransactionQuery(big.NewInt(0)).
@@ -405,7 +417,7 @@ func TestInsertTransactions(t *testing.T) {
 			},
 			PreCommitVolumes: map[string]ledger.VolumesByAssets{
 				"world": map[string]*ledger.Volumes{
-					"USD": ledger.NewEmptyVolumes().WithOutputInt64(100),
+					"USD": ledger.NewEmptyVolumes().WithOutputInt64(110),
 				},
 				"polo": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes(),
@@ -413,7 +425,7 @@ func TestInsertTransactions(t *testing.T) {
 			},
 			PostCommitVolumes: map[string]ledger.VolumesByAssets{
 				"world": map[string]*ledger.Volumes{
-					"USD": ledger.NewEmptyVolumes().WithOutputInt64(300),
+					"USD": ledger.NewEmptyVolumes().WithOutputInt64(310),
 				},
 				"polo": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes().WithInputInt64(200),
@@ -439,7 +451,7 @@ func TestInsertTransactions(t *testing.T) {
 			},
 			PreCommitVolumes: map[string]ledger.VolumesByAssets{
 				"world": map[string]*ledger.Volumes{
-					"USD": ledger.NewEmptyVolumes().WithOutputInt64(300),
+					"USD": ledger.NewEmptyVolumes().WithOutputInt64(310),
 				},
 				"gfyrag": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes(),
@@ -447,7 +459,7 @@ func TestInsertTransactions(t *testing.T) {
 			},
 			PostCommitVolumes: map[string]ledger.VolumesByAssets{
 				"world": map[string]*ledger.Volumes{
-					"USD": ledger.NewEmptyVolumes().WithOutputInt64(450),
+					"USD": ledger.NewEmptyVolumes().WithOutputInt64(460),
 				},
 				"gfyrag": map[string]*ledger.Volumes{
 					"USD": ledger.NewEmptyVolumes().WithInputInt64(150),

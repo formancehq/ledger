@@ -44,6 +44,9 @@ var addIKUniqueIndex string
 //go:embed migrations/8-ik-ledger-unique-index.sql
 var updateIKUniqueIndex string
 
+//go:embed migrations/9-fix-incorrect-volumes-aggregation.sql
+var fixIncorrectVolumes string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -207,6 +210,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Update unique index on IK",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, updateIKUniqueIndex)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Fix incorrect volumes",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, fixIncorrectVolumes)
 				return err
 			},
 		},
