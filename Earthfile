@@ -1,6 +1,6 @@
 VERSION 0.8
 
-IMPORT github.com/formancehq/earthly:tags/v0.12.0 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.14.0 AS core
 IMPORT ../.. AS stack
 IMPORT .. AS components
 
