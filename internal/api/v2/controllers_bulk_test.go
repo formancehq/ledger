@@ -309,7 +309,7 @@ func TestBulk(t *testing.T) {
 			backend, mock := newTestingBackend(t, true)
 			testCase.expectations(mock)
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/_bulk", bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

@@ -19,6 +19,7 @@ import (
 type Config struct {
 	Version  string
 	ReadOnly bool
+	Debug    bool
 }
 
 func Module(cfg Config) fx.Option {
@@ -27,9 +28,9 @@ func Module(cfg Config) fx.Option {
 			backend backend.Backend,
 			healthController *health.HealthController,
 			globalMetricsRegistry metrics.GlobalRegistry,
-			a auth.Auth,
+			a auth.Authenticator,
 		) chi.Router {
-			return NewRouter(backend, healthController, globalMetricsRegistry, a, cfg.ReadOnly)
+			return NewRouter(backend, healthController, globalMetricsRegistry, a, cfg.ReadOnly, cfg.Debug)
 		}),
 		fx.Provide(func(storageDriver *driver.Driver, resolver *engine.Resolver) backend.Backend {
 			return backend.NewDefaultBackend(storageDriver, cfg.Version, resolver)

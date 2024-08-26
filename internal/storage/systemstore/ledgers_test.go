@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +20,7 @@ func newSystemStore(t *testing.T) *Store {
 	t.Helper()
 	ctx := logging.TestingContext()
 
-	pgServer := pgtesting.NewPostgresDatabase(t)
+	pgServer := srv.NewDatabase()
 
 	store, err := Connect(ctx, bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),

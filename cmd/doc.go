@@ -7,9 +7,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"github.com/spf13/pflag"
 )
 
 func NewDocCommand() *cobra.Command {
@@ -32,7 +31,10 @@ func NewDocFlagCommand() *cobra.Command {
 				}
 			}(w)
 
-			allKeys := viper.GetViper().AllKeys()
+			allKeys := make([]string, 0)
+			cmd.Flags().VisitAll(func(f *pflag.Flag) {
+				allKeys = append(allKeys, f.Name)
+			})
 			sort.Strings(allKeys)
 
 			if _, err := fmt.Fprintf(w,
@@ -44,7 +46,7 @@ func NewDocFlagCommand() *cobra.Command {
 				panic(err)
 			}
 			for _, key := range allKeys {
-				asEnvVar := strings.ToUpper(internal.EnvVarReplacer.Replace(key))
+				asEnvVar := strings.ToUpper(strings.Replace(key, "-", "_", -1))
 				flag := cmd.Parent().Parent().PersistentFlags().Lookup(key)
 				if flag == nil {
 					continue

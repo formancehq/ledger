@@ -22,7 +22,7 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, _ := newTestingBackend(t, false)
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	backend.
 		EXPECT().

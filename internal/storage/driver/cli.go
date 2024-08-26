@@ -14,11 +14,11 @@ type PostgresConfig struct {
 	ConnString string
 }
 
-func CLIModule(cmd *cobra.Command) fx.Option {
+func FXModuleFromFlags(cmd *cobra.Command) fx.Option {
 
 	options := make([]fx.Option, 0)
 	options = append(options, fx.Provide(func() (*bunconnect.ConnectionOptions, error) {
-		return bunconnect.ConnectionOptionsFromFlags(cmd.Context())
+		return bunconnect.ConnectionOptionsFromFlags(cmd)
 	}))
 	options = append(options, fx.Provide(func(connectionOptions *bunconnect.ConnectionOptions) (*Driver, error) {
 		return New(*connectionOptions), nil

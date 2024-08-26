@@ -159,7 +159,7 @@ func TestGetAccounts(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts?pit="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
@@ -204,7 +204,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccountWithVolumes(gomock.Any(), query).
 		Return(&account, nil)
 
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo?pit="+now.Format(time.RFC3339Nano), nil)
 	rec := httptest.NewRecorder()
@@ -273,7 +273,7 @@ func TestPostAccountMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

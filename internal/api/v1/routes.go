@@ -18,7 +18,8 @@ func NewRouter(
 	b backend.Backend,
 	healthController *health.HealthController,
 	globalMetricsRegistry metrics.GlobalRegistry,
-	a auth.Auth,
+	authenticator auth.Authenticator,
+	debug bool,
 ) chi.Router {
 	router := chi.NewMux()
 
@@ -37,8 +38,8 @@ func NewRouter(
 	router.Get("/_info", getInfo(b))
 
 	router.Group(func(router chi.Router) {
-		router.Use(auth.Middleware(a))
-		router.Use(service.OTLPMiddleware("ledger"))
+		router.Use(auth.Middleware(authenticator))
+		router.Use(service.OTLPMiddleware("ledger", debug))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {

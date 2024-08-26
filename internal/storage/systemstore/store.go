@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
-
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/uptrace/bun"
 )
@@ -17,9 +16,9 @@ type Store struct {
 	db *bun.DB
 }
 
-func Connect(ctx context.Context, connectionOptions bunconnect.ConnectionOptions) (*Store, error) {
+func Connect(ctx context.Context, connectionOptions bunconnect.ConnectionOptions, hooks ...bun.QueryHook) (*Store, error) {
 
-	db, err := bunconnect.OpenDBWithSchema(ctx, connectionOptions, Schema)
+	db, err := bunconnect.OpenDBWithSchema(ctx, connectionOptions, Schema, hooks...)
 	if err != nil {
 		return nil, sqlutils.PostgresError(err)
 	}

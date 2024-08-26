@@ -12,10 +12,9 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/ballast"
 	"github.com/formancehq/stack/libs/go-libs/httpserver"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	app "github.com/formancehq/stack/libs/go-libs/service"
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -30,23 +29,22 @@ const (
 func NewServe() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "serve",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := bindFlagsToViper(cmd); err != nil {
-				return err
-			}
-
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.New(cmd.OutOrStdout(), resolveOptions(
+			readOnly, _ := cmd.Flags().GetBool(readOnlyFlag)
+			autoUpgrade, _ := cmd.Flags().GetBool(autoUpgradeFlag)
+			ballastSize, _ := cmd.Flags().GetUint(ballastSizeInBytesFlag)
+			bind, _ := cmd.Flags().GetString(bindFlag)
+
+			return service.New(cmd.OutOrStdout(), resolveOptions(
 				cmd,
-				ballast.Module(viper.GetUint(ballastSizeInBytesFlag)),
+				ballast.Module(ballastSize),
 				api.Module(api.Config{
 					Version:  Version,
-					ReadOnly: viper.GetBool(readOnlyFlag),
+					ReadOnly: readOnly,
+					Debug:    service.IsDebug(cmd),
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
-					if viper.GetBool(autoUpgradeFlag) {
+					if autoUpgrade {
 						lc.Append(fx.Hook{
 							OnStart: driver.UpgradeAllBuckets,
 						})
@@ -64,9 +62,9 @@ func NewServe() *cobra.Command {
 					wrappedRouter.Use(Log())
 					wrappedRouter.Mount("/", h)
 
-					lc.Append(httpserver.NewHook(wrappedRouter, httpserver.WithAddress(viper.GetString(bindFlag))))
+					lc.Append(httpserver.NewHook(wrappedRouter, httpserver.WithAddress(bind)))
 				}),
-			)...).Run(cmd.Context())
+			)...).Run(cmd)
 		},
 	}
 	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")

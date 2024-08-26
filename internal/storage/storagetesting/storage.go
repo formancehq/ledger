@@ -4,15 +4,19 @@ import (
 	"context"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 
-func StorageDriver(t pgtesting.TestingT) *driver.Driver {
-	pgDatabase := pgtesting.NewPostgresDatabase(t)
+func StorageDriver(t docker.T) *driver.Driver {
+	pgServer := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
+	pgDatabase := pgServer.NewDatabase()
 
 	d := driver.New(bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),

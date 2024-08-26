@@ -51,7 +51,7 @@ func TestConfigureLedger(t *testing.T) {
 			t.Parallel()
 
 			b, _ := newTestingBackend(t, false)
-			router := v2.NewRouter(b, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v2.NewRouter(b, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			name := uuid.NewString()
 			b.

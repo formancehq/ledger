@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func NewBucket() *cobra.Command {
@@ -22,7 +21,7 @@ func NewBucketUpgrade() *cobra.Command {
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd.Context())
+			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 			if err != nil {
 				return err
 			}
@@ -42,7 +41,7 @@ func NewBucketUpgrade() *cobra.Command {
 				return err
 			}
 
-			logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag))
+			logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
 
 			return bucket.Migrate(logging.ContextWithLogger(cmd.Context(), logger))
 		},
@@ -50,11 +49,11 @@ func NewBucketUpgrade() *cobra.Command {
 	return cmd
 }
 
-func upgradeAll(cmd *cobra.Command, args []string) error {
-	logger := service.GetDefaultLogger(cmd.OutOrStdout(), viper.GetBool(service.DebugFlag))
+func upgradeAll(cmd *cobra.Command, _ []string) error {
+	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false)
 	ctx := logging.ContextWithLogger(cmd.Context(), logger)
 
-	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd.Context())
+	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 	if err != nil {
 		return err
 	}

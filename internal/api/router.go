@@ -16,8 +16,9 @@ func NewRouter(
 	backend backend.Backend,
 	healthController *health.HealthController,
 	globalMetricsRegistry metrics.GlobalRegistry,
-	a auth.Auth,
+	a auth.Authenticator,
 	readOnly bool,
+	debug bool,
 ) chi.Router {
 	mux := chi.NewRouter()
 	mux.Use(func(handler http.Handler) http.Handler {
@@ -29,12 +30,12 @@ func NewRouter(
 	if readOnly {
 		mux.Use(ReadOnly)
 	}
-	v2Router := v2.NewRouter(backend, healthController, globalMetricsRegistry, a)
+	v2Router := v2.NewRouter(backend, healthController, globalMetricsRegistry, a, debug)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
 		v2Router.ServeHTTP(w, r)
 	})))
-	mux.Handle("/*", v1.NewRouter(backend, healthController, globalMetricsRegistry, a))
+	mux.Handle("/*", v1.NewRouter(backend, healthController, globalMetricsRegistry, a, debug))
 
 	return mux
 }

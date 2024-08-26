@@ -147,7 +147,7 @@ func TestGetVolumes(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/volumes?endTime="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

@@ -236,7 +236,7 @@ func TestPostTransactions(t *testing.T) {
 					Return(expectedTx, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions", sharedapi.Buffer(t, testCase.payload))
 			rec := httptest.NewRecorder()
@@ -298,7 +298,7 @@ func TestPostTransactionMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()
@@ -331,7 +331,7 @@ func TestGetTransaction(t *testing.T) {
 		GetTransactionWithVolumes(gomock.Any(), ledgerstore.NewGetTransactionQuery(big.NewInt(0))).
 		Return(&tx, nil)
 
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0", nil)
 	rec := httptest.NewRecorder()
@@ -474,7 +474,7 @@ func TestGetTransactions(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/transactions", nil)
 			rec := httptest.NewRecorder()
@@ -584,7 +584,7 @@ func TestCountTransactions(t *testing.T) {
 					Return(10, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodHead, "/xxx/transactions", nil)
 			rec := httptest.NewRecorder()
@@ -616,7 +616,7 @@ func TestRevertTransaction(t *testing.T) {
 		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), false, false).
 		Return(expectedTx, nil)
 
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert", nil)
 	rec := httptest.NewRecorder()
@@ -641,7 +641,7 @@ func TestForceRevertTransaction(t *testing.T) {
 		RevertTransaction(gomock.Any(), command.Parameters{}, big.NewInt(0), true, false).
 		Return(expectedTx, nil)
 
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodPost, "/xxx/transactions/0/revert?disableChecks=true", nil)
 	rec := httptest.NewRecorder()

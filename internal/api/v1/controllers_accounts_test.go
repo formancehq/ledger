@@ -124,7 +124,7 @@ func TestGetAccounts(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()
@@ -160,7 +160,7 @@ func TestGetAccount(t *testing.T) {
 		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo").WithExpandVolumes()).
 		Return(&account, nil)
 
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo", nil)
 	rec := httptest.NewRecorder()
@@ -236,7 +236,7 @@ func TestPostAccountMetadata(t *testing.T) {
 					Return(nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/accounts/"+testCase.account+"/metadata", sharedapi.Buffer(t, testCase.body))
 			rec := httptest.NewRecorder()

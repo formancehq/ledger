@@ -6,22 +6,22 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMigrateLedgerV1(t *testing.T) {
-	require.NoError(t, pgtesting.CreatePostgresServer())
-	t.Cleanup(func() {
-		require.NoError(t, pgtesting.DestroyPostgresServer())
-	})
+	dockerPool := docker.NewPool(t, logging.Testing())
+	srv := pgtesting.CreatePostgresServer(t, dockerPool)
 
-	db, err := sql.Open("postgres", pgtesting.Server().GetDSN())
+	db, err := sql.Open("postgres", srv.GetDSN())
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join("testdata", "v1-dump.sql"))
@@ -33,7 +33,7 @@ func TestMigrateLedgerV1(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	d := driver.New(bunconnect.ConnectionOptions{
-		DatabaseSourceName: pgtesting.Server().GetDSN(),
+		DatabaseSourceName: srv.GetDSN(),
 	})
 	require.NoError(t, d.Initialize(ctx))
 

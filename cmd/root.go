@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/formancehq/stack/libs/go-libs/bun/bunmigrate"
 	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/uptrace/bun"
@@ -11,14 +8,12 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/aws/iam"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
-	"github.com/formancehq/ledger/cmd/internal"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
 	"github.com/formancehq/stack/libs/go-libs/auth"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -32,12 +27,11 @@ var (
 )
 
 func NewRootCommand() *cobra.Command {
-	viper.SetDefault("version", Version)
-
 	root := &cobra.Command{
 		Use:               "ledger",
 		Short:             "ledger",
 		DisableAutoGenTag: true,
+		Version:           Version,
 	}
 
 	serve := NewServe()
@@ -57,30 +51,19 @@ func NewRootCommand() *cobra.Command {
 
 	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
 
-	service.BindFlags(root)
-	otlpmetrics.InitOTLPMetricsFlags(root.PersistentFlags())
-	otlptraces.InitOTLPTracesFlags(root.PersistentFlags())
-	auth.InitAuthFlags(root.PersistentFlags())
-	publish.InitCLIFlags(root, func(cd *publish.ConfigDefault) {
+	service.AddFlags(root.PersistentFlags())
+	otlpmetrics.AddFlags(root.PersistentFlags())
+	otlptraces.AddFlags(root.PersistentFlags())
+	auth.AddFlags(root.PersistentFlags())
+	publish.AddFlags(ServiceName, root.PersistentFlags(), func(cd *publish.ConfigDefault) {
 		cd.PublisherCircuitBreakerSchema = systemstore.Schema
 	})
-	bunconnect.InitFlags(root.PersistentFlags())
-	iam.InitFlags(root.PersistentFlags())
-
-	if err := bindFlagsToViper(root); err != nil {
-		panic(err)
-	}
-
-	internal.BindEnv(viper.GetViper())
+	bunconnect.AddFlags(root.PersistentFlags())
+	iam.AddFlags(root.PersistentFlags())
 
 	return root
 }
 
 func Execute() {
-	if err := NewRootCommand().Execute(); err != nil {
-		if _, err := fmt.Fprintln(os.Stderr, err); err != nil {
-			panic(err)
-		}
-		os.Exit(1)
-	}
+	service.Execute(NewRootCommand())
 }

@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+	"github.com/formancehq/stack/libs/go-libs/testing/utils"
+
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -16,34 +19,30 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 var (
+	srv   *pgtesting.PostgresServer
 	bunDB *bun.DB
 )
 
 func TestMain(m *testing.M) {
-	if err := pgtesting.CreatePostgresServer(); err != nil {
-		logging.Error(err)
-		os.Exit(1)
-	}
+	utils.WithTestMain(func(t *utils.TestingTForMain) int {
+		srv = pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
 
-	db, err := sql.Open("postgres", pgtesting.Server().GetDSN())
-	if err != nil {
-		logging.Error(err)
-		os.Exit(1)
-	}
+		db, err := sql.Open("postgres", srv.GetDSN())
+		if err != nil {
+			logging.Error(err)
+			os.Exit(1)
+		}
 
-	bunDB = bun.NewDB(db, pgdialect.New())
+		bunDB = bun.NewDB(db, pgdialect.New())
 
-	code := m.Run()
-	if err := pgtesting.DestroyPostgresServer(); err != nil {
-		logging.Error(err)
-	}
-	os.Exit(code)
+		return m.Run()
+	})
 }
 
 type T interface {
@@ -56,7 +55,7 @@ func newBucket(t T, hooks ...bun.QueryHook) *Bucket {
 	name := uuid.NewString()
 	ctx := logging.TestingContext()
 
-	pgDatabase := pgtesting.NewPostgresDatabase(t)
+	pgDatabase := srv.NewDatabase()
 
 	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),

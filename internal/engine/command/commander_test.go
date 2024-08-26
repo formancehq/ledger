@@ -6,13 +6,18 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+
+	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
+	"github.com/uptrace/bun"
+
 	"github.com/formancehq/ledger/internal/engine/chain"
 
 	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/google/uuid"
 
 	"github.com/formancehq/ledger/internal/machine"
@@ -340,19 +345,22 @@ func TestRevertAtEffectiveDate(t *testing.T) {
 }
 
 func TestParallelTransactions(t *testing.T) {
-	require.NoError(t, pgtesting.CreatePostgresServer())
-	t.Cleanup(func() {
-		require.NoError(t, pgtesting.DestroyPostgresServer())
-	})
+	dockerPool := docker.NewPool(t, logging.Testing())
+	srv := pgtesting.CreatePostgresServer(t, dockerPool)
 	ctx := logging.TestingContext()
 
-	pgDB := pgtesting.NewPostgresDatabase(t)
+	pgDB := srv.NewDatabase()
 
 	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDB.ConnString(),
 	}
 
-	sqlDB, err := bunconnect.OpenSQLDB(ctx, connectionOptions)
+	hooks := make([]bun.QueryHook, 0)
+	if testing.Verbose() {
+		hooks = append(hooks, bundebug.NewQueryHook())
+	}
+
+	sqlDB, err := bunconnect.OpenSQLDB(ctx, connectionOptions, hooks...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, sqlDB.Close())

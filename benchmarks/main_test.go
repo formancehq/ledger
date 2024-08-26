@@ -1,26 +1,25 @@
 package benchmarks
 
 import (
-	"os"
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+	"github.com/formancehq/stack/libs/go-libs/testing/utils"
+	dockerlib "github.com/ory/dockertest/v3/docker"
 	"testing"
 
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
-	"github.com/ory/dockertest/v3/docker"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 )
 
 func TestMain(m *testing.M) {
+	utils.WithTestMain(func(t *utils.TestingTForMain) int {
+		pgtesting.CreatePostgresServer(
+			t,
+			docker.NewPool(t, logging.Testing()),
+			pgtesting.WithDockerHostConfigOption(func(hostConfig *dockerlib.HostConfig) {
+				hostConfig.CPUCount = 2
+			}),
+		)
 
-	if err := pgtesting.CreatePostgresServer(pgtesting.WithDockerHostConfigOption(func(hostConfig *docker.HostConfig) {
-		hostConfig.CPUCount = 2
-	})); err != nil {
-		logging.Error(err)
-		os.Exit(1)
-	}
-
-	code := m.Run()
-	if err := pgtesting.DestroyPostgresServer(); err != nil {
-		logging.Error(err)
-	}
-	os.Exit(code)
+		return m.Run()
+	})
 }

@@ -27,7 +27,7 @@ func TestUpdateLedgerMetadata(t *testing.T) {
 		UpdateLedgerMetadata(gomock.Any(), name, metadata).
 		Return(nil)
 
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodPut, "/"+name+"/metadata", sharedapi.Buffer(t, metadata))
 	req = req.WithContext(ctx)
@@ -47,7 +47,7 @@ func TestDeleteLedgerMetadata(t *testing.T) {
 		DeleteLedgerMetadata(gomock.Any(), name, "foo").
 		Return(nil)
 
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodDelete, "/"+name+"/metadata/foo", nil)
 	req = req.WithContext(ctx)

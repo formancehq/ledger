@@ -85,7 +85,7 @@ func TestGetBalancesAggregated(t *testing.T) {
 				GetAggregatedBalances(gomock.Any(), testCase.expectQuery).
 				Return(expectedBalances, nil)
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/aggregate/balances", nil)
 			rec := httptest.NewRecorder()

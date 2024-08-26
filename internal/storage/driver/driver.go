@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-
+	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
 	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/stack/libs/go-libs/metadata"
 
 	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
@@ -47,6 +47,7 @@ type Driver struct {
 	connectionOptions bunconnect.ConnectionOptions
 	buckets           map[string]*ledgerstore.Bucket
 	db                *bun.DB
+	debug             bool
 }
 
 func (d *Driver) GetSystemStore() *systemstore.Store {
@@ -60,7 +61,12 @@ func (d *Driver) OpenBucket(ctx context.Context, name string) (*ledgerstore.Buck
 		return bucket, nil
 	}
 
-	b, err := ledgerstore.ConnectToBucket(ctx, d.connectionOptions, name)
+	hooks := make([]bun.QueryHook, 0)
+	if d.debug {
+		hooks = append(hooks, bundebug.NewQueryHook())
+	}
+
+	b, err := ledgerstore.ConnectToBucket(ctx, d.connectionOptions, name, hooks...)
 	if err != nil {
 		return nil, err
 	}
@@ -148,8 +154,13 @@ func (f *Driver) CreateLedgerStore(ctx context.Context, name string, configurati
 func (d *Driver) Initialize(ctx context.Context) error {
 	logging.FromContext(ctx).Debugf("Initialize driver")
 
+	hooks := make([]bun.QueryHook, 0)
+	if d.debug {
+		hooks = append(hooks, bundebug.NewQueryHook())
+	}
+
 	var err error
-	d.db, err = bunconnect.OpenSQLDB(ctx, d.connectionOptions)
+	d.db, err = bunconnect.OpenSQLDB(ctx, d.connectionOptions, hooks...)
 	if err != nil {
 		return errors.Wrap(err, "connecting to database")
 	}
@@ -158,7 +169,7 @@ func (d *Driver) Initialize(ctx context.Context) error {
 		return errors.Wrap(err, "migrating data")
 	}
 
-	d.systemStore, err = systemstore.Connect(ctx, d.connectionOptions)
+	d.systemStore, err = systemstore.Connect(ctx, d.connectionOptions, hooks...)
 	if err != nil {
 		return errors.Wrap(err, "connecting to system store")
 	}

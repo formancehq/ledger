@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func BenchmarkParallelWrites(b *testing.B) {
@@ -41,7 +41,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	ledgerName := uuid.NewString()
 
 	backend := backend.NewDefaultBackend(driver, "latest", resolver)
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := logging.ContextWithLogger(r.Context(), logging.FromContext(ctx))
 		router.ServeHTTP(w, r.WithContext(ctx))
@@ -52,7 +52,7 @@ func BenchmarkParallelWrites(b *testing.B) {
 	runtime.GC()
 	b.ResetTimer()
 	startOfBench := time.Now()
-	counter := atomic.NewInt64(0)
+	counter := atomic.Int64{}
 	longestTxLock := sync.Mutex{}
 	longestTransactionID := big.NewInt(0)
 	longestTransactionDuration := time.Duration(0)

@@ -7,8 +7,8 @@ import (
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
 	"github.com/formancehq/stack/libs/go-libs/publish"
+	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -18,17 +18,20 @@ func resolveOptions(cmd *cobra.Command, userOptions ...fx.Option) []fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options, fx.NopLogger)
 
+	numscriptCacheMaxCountFlag, _ := cmd.Flags().GetInt(numscriptCacheMaxCountFlag)
+	ledgerBatchSizeFlag, _ := cmd.Flags().GetInt(ledgerBatchSizeFlag)
+
 	options = append(options,
-		publish.CLIPublisherModule(ServiceName),
-		otlptraces.CLITracesModule(),
-		otlpmetrics.CLIMetricsModule(),
-		auth.CLIAuthModule(),
-		driver.CLIModule(cmd),
+		publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
+		otlptraces.FXModuleFromFlags(cmd),
+		otlpmetrics.FXModuleFromFlags(cmd),
+		auth.FXModuleFromFlags(cmd),
+		driver.FXModuleFromFlags(cmd),
 		engine.Module(engine.Configuration{
 			NumscriptCache: engine.NumscriptCacheConfiguration{
-				MaxCount: viper.GetInt(numscriptCacheMaxCountFlag),
+				MaxCount: numscriptCacheMaxCountFlag,
 			},
-			LedgerBatchSize: viper.GetInt(ledgerBatchSizeFlag),
+			LedgerBatchSize: ledgerBatchSizeFlag,
 		}),
 	)
 

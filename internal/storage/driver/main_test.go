@@ -1,21 +1,19 @@
 package driver
 
 import (
-	"os"
 	"testing"
 
+	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+	"github.com/formancehq/stack/libs/go-libs/testing/utils"
+
 	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pgtesting"
+	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 )
 
-func TestMain(t *testing.M) {
-	if err := pgtesting.CreatePostgresServer(); err != nil {
-		logging.Error(err)
-		os.Exit(1)
-	}
-	code := t.Run()
-	if err := pgtesting.DestroyPostgresServer(); err != nil {
-		logging.Error(err)
-	}
-	os.Exit(code)
+func TestMain(m *testing.M) {
+	utils.WithTestMain(func(t *utils.TestingTForMain) int {
+		pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
+
+		return m.Run()
+	})
 }

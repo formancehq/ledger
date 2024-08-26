@@ -29,7 +29,7 @@ func TestGetLedgerInfo(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t, false)
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	migrationInfo := []migrations.Info{
 		{
@@ -72,7 +72,7 @@ func TestGetStats(t *testing.T) {
 	t.Parallel()
 
 	backend, mock := newTestingBackend(t, true)
-	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 	expectedStats := engine.Stats{
 		Transactions: 10,
@@ -166,7 +166,7 @@ func TestGetLogs(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth())
+			router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/logs", nil)
 			rec := httptest.NewRecorder()
