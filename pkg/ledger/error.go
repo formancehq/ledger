@@ -100,6 +100,25 @@ func IsConflictError(err error) bool {
 	return errors.Is(err, &ConflictError{})
 }
 
+type TXIDError struct{}
+
+func (e TXIDError) Error() string {
+	return "conflict error on transaction id"
+}
+
+func (e TXIDError) Is(err error) bool {
+	_, ok := err.(*TXIDError)
+	return ok
+}
+
+func NewTXIDError() *TXIDError {
+	return &TXIDError{}
+}
+
+func IsTXIDError(err error) bool {
+	return errors.Is(err, &TXIDError{})
+}
+
 const (
 	ScriptErrorInsufficientFund  = "INSUFFICIENT_FUND"
 	ScriptErrorCompilationFailed = "COMPILATION_FAILED"

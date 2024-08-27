@@ -33,7 +33,7 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         uses: goreleaser/goreleaser-action@v4
         with:
-          version: latest
+          version: v1.26.2
           args: build --parallelism 4 --rm-dist --skip-validate --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
         if: ${{ matrix.os == 'macos-latest' }}
         uses: goreleaser/goreleaser-action@v4
         with:
-          version: latest
+          version: v1.26.2
           args: build -f .goreleaser-darwin.yml --parallelism 4 --rm-dist --skip-validate --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

@@ -56,6 +56,9 @@ func init() {
 		if errors.As(err, &pgConnError) {
 			switch pgConnError.Code {
 			case "23505":
+				if pgConnError.ConstraintName == "transactions_id_key" {
+					return storage.NewError(storage.ConstraintTXID, err)
+				}
 				return storage.NewError(storage.ConstraintFailed, err)
 			case "53300":
 				return storage.NewError(storage.TooManyClient, err)

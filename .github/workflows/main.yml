@@ -9,10 +9,6 @@ on:
 
 name: Main
 jobs:
-  Pr:
-    if: github.event_name == 'pull_request'
-    uses: formancehq/gh-workflows/.github/workflows/pr-style.yml@main
-
   Test_postgres:
     name: 'Test with PostgreSQL'
     runs-on: ubuntu-latest

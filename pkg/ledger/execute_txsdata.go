@@ -162,6 +162,8 @@ func (l *Ledger) ExecuteTxsData(ctx context.Context, preview, checkBalances bool
 		switch {
 		case storage.IsErrorCode(err, storage.ConstraintFailed):
 			return []core.ExpandedTransaction{}, NewConflictError()
+		case storage.IsErrorCode(err, storage.ConstraintTXID):
+			return []core.ExpandedTransaction{}, NewTXIDError()
 		default:
 			return []core.ExpandedTransaction{}, errors.Wrap(err,
 				"committing transactions")
