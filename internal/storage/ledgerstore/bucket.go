@@ -47,6 +47,9 @@ var updateIKUniqueIndex string
 //go:embed migrations/9-fix-incorrect-volumes-aggregation.sql
 var fixIncorrectVolumes string
 
+//go:embed migrations/10-fillfactor-on-moves.sql
+var fillFactorOnMoves string
+
 type Bucket struct {
 	name string
 	db   *bun.DB
@@ -217,6 +220,13 @@ func registerMigrations(migrator *migrations.Migrator, name string) {
 			Name: "Fix incorrect volumes",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, fixIncorrectVolumes)
+				return err
+			},
+		},
+		migrations.Migration{
+			Name: "Add fill factor on moves",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, fillFactorOnMoves)
 				return err
 			},
 		},

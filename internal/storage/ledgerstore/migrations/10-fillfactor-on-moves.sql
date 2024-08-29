@@ -1,0 +1,1 @@
+alter table moves set (fillfactor = 80);
