@@ -8,10 +8,10 @@ paths:
   /v2/_info:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Show server information
       operationId: v2GetInfo
+      x-speakeasy-name-override: GetInfo
       responses:
         "200":
           description: OK
@@ -30,6 +30,9 @@ paths:
     get:
       summary: List ledgers
       operationId: v2ListLedgers
+      x-speakeasy-name-override: ListLedgers
+      tags:
+        - ledger.v2
       parameters:
         - name: pageSize
           in: query
@@ -51,9 +54,6 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-      tags:
-        - Ledger
-      x-speakeasy-group: ledger
       responses:
         "200":
           description: OK
@@ -81,9 +81,9 @@ paths:
     get:
       summary: Get a ledger
       operationId: v2GetLedger
+      x-speakeasy-name-override: GetLedger
       tags:
-      - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       responses:
         "200":
           description: OK
@@ -101,9 +101,9 @@ paths:
     post:
       summary: Create a ledger
       operationId: v2CreateLedger
+      x-speakeasy-name-override: CreateLedger
       tags:
-      - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       requestBody:
         content:
           application/json:
@@ -133,9 +133,9 @@ paths:
     put:
       summary: Update ledger metadata
       operationId: v2UpdateLedgerMetadata
+      x-speakeasy-name-override: UpdateLedgerMetadata
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       requestBody:
         content:
           application/json:
@@ -172,9 +172,9 @@ paths:
     delete:
       summary: Delete ledger metadata by key
       operationId: v2DeleteLedgerMetadata
+      x-speakeasy-name-override: DeleteLedgerMetadata
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       responses:
         "204":
           description: OK
@@ -190,9 +190,9 @@ paths:
     get:
       summary: Get information about a ledger
       operationId: v2GetLedgerInfo
+      x-speakeasy-name-override: GetLedgerInfo
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -219,9 +219,9 @@ paths:
     post:
       summary: Bulk request
       operationId: v2CreateBulk
+      x-speakeasy-name-override: CreateBulk
       tags:
-      - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
       - name: ledger
         in: path
@@ -261,9 +261,9 @@ paths:
     head:
       summary: Count the accounts from a ledger
       operationId: v2CountAccounts
+      x-speakeasy-name-override: CountAccounts
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -304,9 +304,9 @@ paths:
       summary: List accounts from a ledger
       description: List accounts from a ledger, sorted by address in descending order.
       operationId: v2ListAccounts
+      x-speakeasy-name-override: ListAccounts
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -372,9 +372,9 @@ paths:
     get:
       summary: Get account by its address
       operationId: v2GetAccount
+      x-speakeasy-name-override: GetAccount
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -424,9 +424,9 @@ paths:
     post:
       summary: Add metadata to an account
       operationId: v2AddMetadataToAccount
+      x-speakeasy-name-override: AddMetadataToAccount
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -480,9 +480,9 @@ paths:
     delete:
       description: Delete metadata by key
       operationId: v2DeleteAccountMetadata
+      x-speakeasy-name-override: DeleteAccountMetadata
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Delete metadata by key
       parameters:
         - name: ledger
@@ -513,9 +513,9 @@ paths:
   /v2/{ledger}/stats:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       operationId: v2ReadStats
+      x-speakeasy-name-override: ReadStats
       summary: Get statistics from a ledger
       description: |
         Get statistics from a ledger. (aggregate metrics on accounts and transactions)
@@ -544,10 +544,10 @@ paths:
   /v2/{ledger}/transactions:
     head:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Count the transactions from a ledger
       operationId: v2CountTransactions
+      x-speakeasy-name-override: CountTransactions
       parameters:
         - name: ledger
           in: path
@@ -586,11 +586,11 @@ paths:
 
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: List transactions from a ledger
       description: List transactions from a ledger, sorted by id in descending order.
       operationId: v2ListTransactions
+      x-speakeasy-name-override: ListTransactions
       parameters:
         - name: ledger
           in: path
@@ -666,10 +666,10 @@ paths:
 
     post:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Create a new transaction to a ledger
       operationId: v2CreateTransaction
+      x-speakeasy-name-override: CreateTransaction
       parameters:
         - name: ledger
           in: path
@@ -717,10 +717,10 @@ paths:
   /v2/{ledger}/transactions/{id}:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Get transaction from a ledger by its ID
       operationId: v2GetTransaction
+      x-speakeasy-name-override: GetTransaction
       parameters:
         - name: ledger
           in: path
@@ -768,10 +768,10 @@ paths:
   /v2/{ledger}/transactions/{id}/metadata:
     post:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Set the metadata of a transaction by its ID
       operationId: v2AddMetadataOnTransaction
+      x-speakeasy-name-override: AddMetadataOnTransaction
       parameters:
         - name: ledger
           in: path
@@ -822,10 +822,10 @@ paths:
     delete:
       description: Delete metadata by key
       operationId: v2DeleteTransactionMetadata
+      x-speakeasy-name-override: DeleteTransactionMetadata
       summary: Delete metadata by key
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
@@ -865,9 +865,9 @@ paths:
   /v2/{ledger}/transactions/{id}/revert:
     post:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       operationId: v2RevertTransaction
+      x-speakeasy-name-override: RevertTransaction
       summary: Revert a ledger transaction by its ID
       parameters:
         - name: ledger
@@ -916,10 +916,10 @@ paths:
   /v2/{ledger}/aggregate/balances:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Get the aggregated balances from selected accounts
       operationId: v2GetBalancesAggregated
+      x-speakeasy-name-override: GetBalancesAggregated
       parameters:
         - name: ledger
           in: path
@@ -959,14 +959,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
-  
+
   /v2/{ledger}/volumes:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: Get list of volumes with balances for (account/asset)
       operationId: v2GetVolumesWithBalances
+      x-speakeasy-name-override: GetVolumesWithBalances
       parameters:
         - name: pageSize
           in: query
@@ -1045,11 +1045,11 @@ paths:
   /v2/{ledger}/logs:
     get:
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       summary: List the logs from a ledger
       description: List the logs from a ledger, sorted by ID in descending order.
       operationId: v2ListLogs
+      x-speakeasy-name-override: ListLogs
       parameters:
         - name: ledger
           in: path
@@ -1105,11 +1105,10 @@ paths:
                 $ref: '#/components/schemas/V2ErrorResponse'
   /v2/{ledger}/logs/import:
     post:
-      summary: Import logs
       tags:
-        - Ledger
-      x-speakeasy-group: ledger
+        - ledger.v2
       operationId: v2ImportLogs
+      x-speakeasy-name-override: ImportLogs
       parameters:
         - name: ledger
           in: path
@@ -1135,10 +1134,10 @@ paths:
   /v2/{ledger}/logs/export:
     post:
       summary: Export logs
-      tags:
-        - Ledger
       operationId: v2ExportLogs
-      x-speakeasy-group: ledger
+      x-speakeasy-name-override: ExportLogs
+      tags:
+        - ledger.v2
       parameters:
         - name: ledger
           in: path
