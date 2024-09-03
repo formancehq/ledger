@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -134,7 +135,13 @@ func getAccounts(w http.ResponseWriter, r *http.Request) {
 func getAccount(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
 
-	query := ledgerstore.NewGetAccountQuery(chi.URLParam(r, "address"))
+	param, err := url.PathUnescape(chi.URLParam(r, "address"))
+	if err != nil {
+		sharedapi.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		return
+	}
+
+	query := ledgerstore.NewGetAccountQuery(param)
 	query = query.WithExpandVolumes()
 
 	acc, err := l.GetAccountWithVolumes(r.Context(), query)
@@ -143,7 +150,7 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		case storageerrors.IsNotFoundError(err):
 			acc = &ledger.ExpandedAccount{
 				Account: ledger.Account{
-					Address:  chi.URLParam(r, "address"),
+					Address:  param,
 					Metadata: map[string]string{},
 				},
 				Volumes:          map[string]*ledger.Volumes{},
@@ -160,8 +167,13 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 
 func postAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	l := backend.LedgerFromContext(r.Context())
+	param, err := url.PathUnescape(chi.URLParam(r, "address"))
+	if err != nil {
+		sharedapi.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		return
+	}
 
-	if !accounts.ValidateAddress(chi.URLParam(r, "address")) {
+	if !accounts.ValidateAddress(param) {
 		sharedapi.BadRequest(w, ErrValidation, errors.New("invalid account address format"))
 		return
 	}
@@ -172,7 +184,7 @@ func postAccountMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := l.SaveMeta(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeAccount, chi.URLParam(r, "address"), m)
+	err = l.SaveMeta(r.Context(), getCommandParameters(r), ledger.MetaTargetTypeAccount, param, m)
 	if err != nil {
 		sharedapi.InternalServerError(w, r, err)
 		return
@@ -182,12 +194,18 @@ func postAccountMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
+	param, err := url.PathUnescape(chi.URLParam(r, "address"))
+	if err != nil {
+		sharedapi.BadRequestWithDetails(w, ErrValidation, err, err.Error())
+		return
+	}
+
 	if err := backend.LedgerFromContext(r.Context()).
 		DeleteMetadata(
 			r.Context(),
 			getCommandParameters(r),
 			ledger.MetaTargetTypeAccount,
-			chi.URLParam(r, "address"),
+			param,
 			chi.URLParam(r, "key"),
 		); err != nil {
 		sharedapi.InternalServerError(w, r, err)

@@ -172,6 +172,33 @@ func TestGetAccount(t *testing.T) {
 	require.Equal(t, account, response)
 }
 
+func TestGetAccountWithEncoded(t *testing.T) {
+	t.Parallel()
+
+	account := ledger.ExpandedAccount{
+		Account: ledger.Account{
+			Address:  "foo:bar",
+			Metadata: metadata.Metadata{},
+		},
+	}
+
+	backend, mock := newTestingBackend(t, true)
+	mock.EXPECT().
+		GetAccountWithVolumes(gomock.Any(), ledgerstore.NewGetAccountQuery("foo:bar").WithExpandVolumes()).
+		Return(&account, nil)
+
+	router := v1.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
+
+	req := httptest.NewRequest(http.MethodGet, "/xxx/accounts/foo%3Abar", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	response, _ := sharedapi.DecodeSingleResponse[ledger.ExpandedAccount](t, rec.Body)
+	require.Equal(t, account, response)
+}
+
 func TestPostAccountMetadata(t *testing.T) {
 	t.Parallel()
 
