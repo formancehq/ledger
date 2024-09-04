@@ -55,7 +55,7 @@ func newBucket(t T, hooks ...bun.QueryHook) *Bucket {
 	name := uuid.NewString()
 	ctx := logging.TestingContext()
 
-	pgDatabase := srv.NewDatabase()
+	pgDatabase := srv.NewDatabase(t)
 
 	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),

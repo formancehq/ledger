@@ -20,7 +20,7 @@ func newSystemStore(t *testing.T) *Store {
 	t.Helper()
 	ctx := logging.TestingContext()
 
-	pgServer := srv.NewDatabase()
+	pgServer := srv.NewDatabase(t)
 
 	store, err := Connect(ctx, bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgServer.ConnString(),

@@ -349,7 +349,7 @@ func TestParallelTransactions(t *testing.T) {
 	srv := pgtesting.CreatePostgresServer(t, dockerPool)
 	ctx := logging.TestingContext()
 
-	pgDB := srv.NewDatabase()
+	pgDB := srv.NewDatabase(t)
 
 	connectionOptions := bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDB.ConnString(),

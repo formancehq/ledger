@@ -16,7 +16,7 @@ import (
 
 func StorageDriver(t docker.T) *driver.Driver {
 	pgServer := pgtesting.CreatePostgresServer(t, docker.NewPool(t, logging.Testing()))
-	pgDatabase := pgServer.NewDatabase()
+	pgDatabase := pgServer.NewDatabase(t)
 
 	d := driver.New(bunconnect.ConnectionOptions{
 		DatabaseSourceName: pgDatabase.ConnString(),
