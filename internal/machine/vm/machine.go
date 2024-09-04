@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/formancehq/ledger/internal/machine"
 
@@ -139,16 +140,16 @@ func (m *Machine) withdrawAlways(account machine.AccountAddress, mon machine.Mon
 	if accBalance, ok := m.Balances[account]; ok {
 		if balance, ok := accBalance[mon.Asset]; ok {
 			accBalance[mon.Asset] = balance.Sub(mon.Amount)
-			return &machine.Funding{
-				Asset: mon.Asset,
-				Parts: []machine.FundingPart{{
-					Account: account,
-					Amount:  mon.Amount,
-				}},
-			}, nil
 		}
 	}
-	return nil, fmt.Errorf("missing %v balance from %v", mon.Asset, account)
+
+	return &machine.Funding{
+		Asset: mon.Asset,
+		Parts: []machine.FundingPart{{
+			Account: account,
+			Amount:  mon.Amount,
+		}},
+	}, nil
 }
 
 func (m *Machine) credit(account machine.AccountAddress, funding machine.Funding) {
@@ -170,8 +171,16 @@ func (m *Machine) repay(funding machine.Funding) {
 		if part.Account == "world" {
 			continue
 		}
-		balance := m.Balances[part.Account][funding.Asset]
-		m.Balances[part.Account][funding.Asset] = balance.Add(part.Amount)
+		accountBalance, ok := m.Balances[part.Account]
+		if !ok {
+			// no asset: the source has to be an unbounded source
+			// which NEVER appears as bounded
+			// this means we don't need to track it's balance
+			continue
+		}
+
+		balance := accountBalance[funding.Asset]
+		accountBalance[funding.Asset] = balance.Add(part.Amount)
 	}
 }
 
@@ -574,6 +583,9 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			if err != nil {
 				return nil, nil, err
 			}
+			if val.GetType() == machine.TypeAccount {
+				involvedAccountsMap[machine.Address(idx)] = string(val.(machine.AccountAddress))
+			}
 		case program.VariableAccountBalance:
 			acc, _ := m.getResource(res.Account)
 			address := string((*acc).(machine.AccountAddress))
@@ -607,16 +619,19 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 		m.Resources = append(m.Resources, val)
 	}
 
-	involvedAccounts := make([]string, 0)
-	involvedSources := make([]string, 0)
-	for _, accountAddress := range involvedAccountsMap {
-		involvedAccounts = append(involvedAccounts, accountAddress)
-	}
-	for _, machineAddress := range m.Program.Sources {
-		involvedSources = append(involvedSources, involvedAccountsMap[machineAddress])
+	readLockAccounts := make([]string, 0)
+	for _, accountAddress := range m.Program.ReadLockAccounts {
+		readLockAccounts = append(readLockAccounts, involvedAccountsMap[accountAddress])
 	}
 
-	return involvedAccounts, involvedSources, nil
+	writeLockAccounts := make([]string, 0)
+	for _, machineAddress := range m.Program.WriteLockAccounts {
+		writeLockAccounts = append(writeLockAccounts, involvedAccountsMap[machineAddress])
+	}
+
+	slices.Sort(readLockAccounts)
+	slices.Sort(writeLockAccounts)
+	return readLockAccounts, writeLockAccounts, nil
 }
 
 func (m *Machine) SetVarsFromJSON(vars map[string]string) error {

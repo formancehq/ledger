@@ -17,7 +17,6 @@ import (
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/internal/engine/utils/batching"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
@@ -126,22 +125,13 @@ func (commander *Commander) exec(ctx context.Context, parameters Parameters, scr
 			return nil, NewErrCompilationFailed(err)
 		}
 
-		involvedAccounts, involvedSources, err := func() ([]string, []string, error) {
-			involvedAccounts, involvedSources, err := m.ResolveResources(ctx, commander.store)
-			if err != nil {
-				return nil, nil, NewErrCompilationFailed(err)
-			}
-
-			return involvedAccounts, involvedSources, nil
-		}()
+		readLockAccounts, writeLockAccounts, err := m.ResolveResources(ctx, commander.store)
 		if err != nil {
-			return nil, err
+			return nil, NewErrCompilationFailed(err)
 		}
-
-		worldFilter := collectionutils.FilterNot(collectionutils.FilterEq("world"))
 		lockAccounts := Accounts{
-			Read:  collectionutils.Filter(involvedAccounts, worldFilter),
-			Write: collectionutils.Filter(involvedSources, worldFilter),
+			Read:  readLockAccounts,
+			Write: writeLockAccounts,
 		}
 
 		unlock, err := func() (Unlock, error) {

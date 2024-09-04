@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"testing"
 
@@ -528,6 +529,59 @@ func TestWorldSource(t *testing.T) {
 	test(t, tc)
 }
 
+func TestUnboundedSourceSimple(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `send [GEM 15] (
+		source = @unbounded allowing unbounded overdraft
+		destination = @b
+	)`)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+
+			{
+				Asset:       "GEM",
+				Amount:      machine.NewMonetaryInt(15),
+				Source:      "unbounded",
+				Destination: "b",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
+func TestUnboundedSourceInorder(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `send [GEM 15] (
+		source = {
+			@a
+			@unbounded allowing unbounded overdraft
+		}
+		destination = @b
+	)`)
+	tc.setBalance("a", "GEM", 1)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "GEM",
+				Amount:      machine.NewMonetaryInt(1),
+				Source:      "a",
+				Destination: "b",
+			},
+			{
+				Asset:       "GEM",
+				Amount:      machine.NewMonetaryInt(14),
+				Source:      "unbounded",
+				Destination: "b",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
 func TestNoEmptyPostings(t *testing.T) {
 	tc := NewTestCase()
 	tc.compile(t, `send [GEM 2] (
@@ -924,11 +978,23 @@ func TestNeededBalances(t *testing.T) {
 	}
 	send [GEM 15] (
 		source = {
+			// normal accounts are tracked
 			$a
 			@b
-			@world
+
+			// we don't want to track world, as it is an unbounded account
+			max [GEM 1] from @world
+
+			// we want to lock bounded overdrafts account
+			@bounded allowing overdraft up to [GEM 1]
+
+			// we don't want to lock unbounded overdrafts account
+			@unb allowing unbounded overdraft
 		}
-		destination = @c
+		destination = {
+			max [GEM 1] to @c
+			remaining to @world
+		}
 	)`)
 
 	if err != nil {
@@ -943,11 +1009,102 @@ func TestNeededBalances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
 	}
-	_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+	readLockAccounts, writeLockAccounts, err := m.ResolveResources(context.Background(), EmptyStore)
+	require.NoError(t, err)
+	require.Equalf(t, []string{"c"}, readLockAccounts, "readlock")
+	require.Equalf(t, []string{"a", "b", "bounded"}, writeLockAccounts, "writelock")
+
+	store := mockStore{}
+	err = m.ResolveBalances(context.Background(), &store)
 	require.NoError(t, err)
 
-	err = m.ResolveBalances(context.Background(), EmptyStore)
+	require.Equal(t, []string{"a", "b", "bounded"}, store.GetRequestedAccounts())
+}
+
+func TestNeededBalances2(t *testing.T) {
+	p, err := compiler.Compile(`
+	send [GEM 15] (
+		source = {		
+			// we want to track a balance even if it appears later on
+			// as an unbounded overdraft
+			max [GEM 1] from @a
+			@a allowing unbounded overdraft
+		}
+		destination = @c
+	)`)
+
+	if err != nil {
+		t.Fatalf("did not expect error on Compile, got: %v", err)
+	}
+
+	m := NewMachine(*p)
+	_, involvedSources, err := m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
+	require.Equal(t, []string{"a"}, involvedSources)
+
+}
+
+func TestNeededBalancesBalanceFn(t *testing.T) {
+	p, err := compiler.Compile(`vars {
+	monetary $balance = balance(@acc, COIN)
+}
+
+send $balance (
+	source = @a
+	destination = @b
+)`)
+
+	if err != nil {
+		t.Fatalf("did not expect error on Compile, got: %v", err)
+	}
+
+	m := NewMachine(*p)
+	rlAccounts, wlAccounts, err := m.ResolveResources(context.Background(), EmptyStore)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a"}, wlAccounts)
+	require.Equal(t, []string{"acc", "b"}, rlAccounts)
+
+	store := mockStore{}
+	err = m.ResolveBalances(context.Background(), &store)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "acc"}, store.GetRequestedAccounts())
+}
+
+func TestNeededBalancesBalanceOfMeta(t *testing.T) {
+	p, err := compiler.Compile(`vars {
+	account $src = meta(@x, "k")
+}
+
+send [COIN 1] (
+	source = $src
+	destination = @dest
+)`)
+
+	if err != nil {
+		t.Fatalf("did not expect error on Compile, got: %v", err)
+	}
+	m := NewMachine(*p)
+
+	staticStore := StaticStore{
+		"x": &AccountWithBalances{
+			Account: ledger.Account{
+				Address: "x",
+				Metadata: metadata.Metadata{
+					"k": "src",
+				},
+			},
+			Balances: map[string]*big.Int{},
+		},
+	}
+	rlAccounts, wlAccounts, err := m.ResolveResources(context.Background(), staticStore)
+	require.NoError(t, err)
+	require.Equal(t, []string{"src"}, wlAccounts)
+	require.Equal(t, []string{"dest"}, rlAccounts)
+
+	store := mockStore{}
+	err = m.ResolveBalances(context.Background(), &store)
+	require.NoError(t, err)
+	require.Equal(t, []string{"src"}, store.GetRequestedAccounts())
 }
 
 func TestSetTxMeta(t *testing.T) {
@@ -2180,4 +2337,81 @@ send [COIN 100] (
 		}},
 	}
 	test(t, tc)
+}
+
+func TestRepayUnboundedMinimal(t *testing.T) {
+	tc := NewTestCase()
+
+	tc.compile(t, `
+send [COIN 100](
+    source = @src allowing unbounded overdraft
+    destination = {
+		max [COIN 1] to @d1
+		remaining to @d2
+    }
+ )
+`)
+
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{"src", "d1", machine.NewMonetaryInt(1), "COIN"},
+			{"src", "d2", machine.NewMonetaryInt(99), "COIN"},
+		},
+	}
+	test(t, tc)
+}
+
+func TestRepayUnboundedComplex(t *testing.T) {
+	tc := NewTestCase()
+
+	tc.compile(t, `
+send [EGP 86640](
+    source = {
+    	max [EGP 86640] from @asset:current_assets allowing unbounded overdraft
+    }
+    destination = {
+		max [EGP 86466] to @liability:client_balances
+		max [EGP 9] to @liability:current_liabilities:1
+		max [EGP 9] to @liability:current_liabilities:2
+		max [EGP 100] to @liability:current_liabilities:3
+		max [EGP 4] to @liability:current_liabilities:4
+		max [EGP 43] to @liability:current_liabilities:checks:5
+		remaining to @liability:current_liabilities:6
+    }
+ )
+
+`)
+
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{"asset:current_assets", "liability:client_balances", machine.NewMonetaryInt(86466), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:1", machine.NewMonetaryInt(9), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:2", machine.NewMonetaryInt(9), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:3", machine.NewMonetaryInt(100), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:4", machine.NewMonetaryInt(4), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:checks:5", machine.NewMonetaryInt(43), "EGP"},
+			{"asset:current_assets", "liability:current_liabilities:6", machine.NewMonetaryInt(9), "EGP"},
+		},
+	}
+	test(t, tc)
+}
+
+type mockStore struct {
+	requestedAccounts []string
+}
+
+func (s *mockStore) GetRequestedAccounts() []string {
+	slices.Sort(s.requestedAccounts)
+	return s.requestedAccounts
+}
+
+func (s *mockStore) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
+	s.requestedAccounts = append(s.requestedAccounts, address)
+	return big.NewInt(0), nil
+}
+
+func (s *mockStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
+	panic("not implemented")
 }

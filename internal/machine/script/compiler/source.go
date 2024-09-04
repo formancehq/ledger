@@ -99,6 +99,25 @@ func (p *parseVisitor) TakeFromSource(fallback *FallbackAccount) error {
 	return nil
 }
 
+func (p parseVisitor) isOverdraftUnbounded(overdraftCtx parser.ISourceAccountOverdraftContext) bool {
+	if overdraftCtx == nil {
+		return false
+	}
+
+	switch overdraftCtx.(type) {
+	case *parser.SrcAccountOverdraftUnboundedContext:
+		return true
+	case *parser.SrcAccountOverdraftSpecificContext:
+		return false
+
+	default:
+		// even though this branch should be unreachable,
+		// we default to `false` instead of panicking
+		// in order to have a more conservative behaviour
+		return false
+	}
+}
+
 // VisitSource returns the resource addresses of all the accounts,
 // the addresses of accounts already emptied,
 // and possibly a fallback account if the source has an unbounded overdraft allowance or contains @world
@@ -129,7 +148,11 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 				return nil, nil, nil, LogicError(c, err)
 			}
 			p.AppendInstruction(program.OP_MONETARY_NEW)
-			p.AppendInstruction(program.OP_TAKE_ALL)
+			if p.isWorld(*accAddr) {
+				p.AppendInstruction(program.OP_TAKE_ALWAYS)
+			} else {
+				p.AppendInstruction(program.OP_TAKE_ALL)
+			}
 		} else {
 			if p.isWorld(*accAddr) {
 				return nil, nil, nil, LogicError(c, errors.New("@world is already set to an unbounded overdraft"))
@@ -151,12 +174,18 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 					return nil, nil, nil, LogicError(c, err)
 				}
 				p.AppendInstruction(program.OP_MONETARY_NEW)
-				p.AppendInstruction(program.OP_TAKE_ALL)
+				p.AppendInstruction(program.OP_TAKE_ALWAYS)
 				f := FallbackAccount(*accAddr)
 				fallback = &f
 			}
 		}
-		neededAccounts[*accAddr] = struct{}{}
+
+		isUnboundedOverdraft := p.isWorld(*accAddr) || p.isOverdraftUnbounded(overdraft)
+		if !isUnboundedOverdraft {
+			p.writeLockAccounts[*accAddr] = struct{}{}
+			neededAccounts[*accAddr] = struct{}{}
+		}
+
 		emptiedAccounts[*accAddr] = struct{}{}
 
 		if fallback != nil && isAll {
