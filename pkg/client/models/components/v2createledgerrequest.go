@@ -5,6 +5,7 @@ package components
 type V2CreateLedgerRequest struct {
 	Bucket   *string           `json:"bucket,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+	Features map[string]string `json:"features,omitempty"`
 }
 
 func (o *V2CreateLedgerRequest) GetBucket() *string {
@@ -19,4 +20,11 @@ func (o *V2CreateLedgerRequest) GetMetadata() map[string]string {
 		return nil
 	}
 	return o.Metadata
+}
+
+func (o *V2CreateLedgerRequest) GetFeatures() map[string]string {
+	if o == nil {
+		return nil
+	}
+	return o.Features
 }

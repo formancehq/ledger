@@ -182,7 +182,6 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 
 		isUnboundedOverdraft := p.isWorld(*accAddr) || p.isOverdraftUnbounded(overdraft)
 		if !isUnboundedOverdraft {
-			p.writeLockAccounts[*accAddr] = struct{}{}
 			neededAccounts[*accAddr] = struct{}{}
 		}
 

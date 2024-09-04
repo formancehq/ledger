@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +20,7 @@ type TestCase struct {
 
 type CaseResult struct {
 	Instructions []byte
-	Resources    []program2.Resource
+	Resources    []program.Resource
 	Variables    []string
 	Error        string
 }
@@ -62,27 +62,27 @@ func test(t *testing.T, c TestCase) {
 	}
 }
 
-func checkResourcesEqual(actual, expected program2.Resource) bool {
+func checkResourcesEqual(actual, expected program.Resource) bool {
 	if reflect.TypeOf(actual) != reflect.TypeOf(expected) {
 		return false
 	}
 	switch res := actual.(type) {
-	case program2.Constant:
-		return machine.ValueEquals(res.Inner, expected.(program2.Constant).Inner)
-	case program2.Variable:
-		e := expected.(program2.Variable)
+	case program.Constant:
+		return machine.ValueEquals(res.Inner, expected.(program.Constant).Inner)
+	case program.Variable:
+		e := expected.(program.Variable)
 		return res.Typ == e.Typ && res.Name == e.Name
-	case program2.VariableAccountMetadata:
-		e := expected.(program2.VariableAccountMetadata)
+	case program.VariableAccountMetadata:
+		e := expected.(program.VariableAccountMetadata)
 		return res.Account == e.Account &&
 			res.Key == e.Key &&
 			res.Typ == e.Typ
-	case program2.VariableAccountBalance:
-		e := expected.(program2.VariableAccountBalance)
+	case program.VariableAccountBalance:
+		e := expected.(program.VariableAccountBalance)
 		return res.Account == e.Account &&
 			res.Asset == e.Asset
-	case program2.Monetary:
-		e := expected.(program2.Monetary)
+	case program.Monetary:
+		e := expected.(program.Monetary)
 		return res.Amount.Equal(e.Amount) && res.Asset == e.Asset
 	default:
 		panic(fmt.Errorf("invalid resource of type '%T'", res))
@@ -94,11 +94,11 @@ func TestSimplePrint(t *testing.T) {
 		Case: "print 1",
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
 			},
 		},
 	})
@@ -109,17 +109,17 @@ func TestCompositeExpr(t *testing.T) {
 		Case: "print 29 + 15 - 2",
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_IADD,
-				program2.OP_APUSH, 02, 00,
-				program2.OP_ISUB,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 01, 00,
+				program.OP_IADD,
+				program.OP_APUSH, 02, 00,
+				program.OP_ISUB,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.NewMonetaryInt(29)},
-				program2.Constant{Inner: machine.NewMonetaryInt(15)},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.NewMonetaryInt(29)},
+				program.Constant{Inner: machine.NewMonetaryInt(15)},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
 			},
 		},
 	})
@@ -129,8 +129,8 @@ func TestFail(t *testing.T) {
 	test(t, TestCase{
 		Case: "fail",
 		Expected: CaseResult{
-			Instructions: []byte{program2.OP_FAIL},
-			Resources:    []program2.Resource{},
+			Instructions: []byte{program.OP_FAIL},
+			Resources:    []program.Resource{},
 		},
 	})
 }
@@ -140,14 +140,14 @@ func TestCRLF(t *testing.T) {
 		Case: "print @a\r\nprint @b",
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_PRINT,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_PRINT,
+				program.OP_APUSH, 01, 00,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.AccountAddress("a")},
-				program2.Constant{Inner: machine.AccountAddress("b")},
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.AccountAddress("a")},
+				program.Constant{Inner: machine.AccountAddress("b")},
 			},
 		},
 	})
@@ -159,10 +159,10 @@ func TestConstant(t *testing.T) {
 		Case: "print @user:U001",
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{program2.Constant{Inner: user}},
+			Resources: []program.Resource{program.Constant{Inner: user}},
 		},
 	})
 }
@@ -179,42 +179,42 @@ func TestSetTxMeta(t *testing.T) {
 		`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_TX_META,
-				program2.OP_APUSH, 02, 00,
-				program2.OP_APUSH, 03, 00,
-				program2.OP_TX_META,
-				program2.OP_APUSH, 04, 00,
-				program2.OP_APUSH, 05, 00,
-				program2.OP_TX_META,
-				program2.OP_APUSH, 06, 00,
-				program2.OP_APUSH, 07, 00,
-				program2.OP_TX_META,
-				program2.OP_APUSH, 9, 00,
-				program2.OP_APUSH, 10, 00,
-				program2.OP_TX_META,
-				program2.OP_APUSH, 11, 00,
-				program2.OP_APUSH, 12, 00,
-				program2.OP_TX_META,
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 01, 00,
+				program.OP_TX_META,
+				program.OP_APUSH, 02, 00,
+				program.OP_APUSH, 03, 00,
+				program.OP_TX_META,
+				program.OP_APUSH, 04, 00,
+				program.OP_APUSH, 05, 00,
+				program.OP_TX_META,
+				program.OP_APUSH, 06, 00,
+				program.OP_APUSH, 07, 00,
+				program.OP_TX_META,
+				program.OP_APUSH, 9, 00,
+				program.OP_APUSH, 10, 00,
+				program.OP_TX_META,
+				program.OP_APUSH, 11, 00,
+				program.OP_APUSH, 12, 00,
+				program.OP_TX_META,
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.AccountAddress("platform")},
-				program2.Constant{Inner: machine.String("aaa")},
-				program2.Constant{Inner: machine.Asset("GEM")},
-				program2.Constant{Inner: machine.String("bbb")},
-				program2.Constant{Inner: machine.NewNumber(42)},
-				program2.Constant{Inner: machine.String("ccc")},
-				program2.Constant{Inner: machine.String("test")},
-				program2.Constant{Inner: machine.String("ddd")},
-				program2.Constant{Inner: machine.Asset("COIN")},
-				program2.Monetary{Asset: 8, Amount: machine.NewMonetaryInt(30)},
-				program2.Constant{Inner: machine.String("eee")},
-				program2.Constant{Inner: machine.Portion{
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.AccountAddress("platform")},
+				program.Constant{Inner: machine.String("aaa")},
+				program.Constant{Inner: machine.Asset("GEM")},
+				program.Constant{Inner: machine.String("bbb")},
+				program.Constant{Inner: machine.NewNumber(42)},
+				program.Constant{Inner: machine.String("ccc")},
+				program.Constant{Inner: machine.String("test")},
+				program.Constant{Inner: machine.String("ddd")},
+				program.Constant{Inner: machine.Asset("COIN")},
+				program.Monetary{Asset: 8, Amount: machine.NewMonetaryInt(30)},
+				program.Constant{Inner: machine.String("eee")},
+				program.Constant{Inner: machine.Portion{
 					Remaining: false,
 					Specific:  big.NewRat(15, 100),
 				}},
-				program2.Constant{Inner: machine.String("fff")},
+				program.Constant{Inner: machine.String("fff")},
 			},
 		},
 	})
@@ -230,13 +230,13 @@ func TestSetTxMetaVars(t *testing.T) {
 		`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_TX_META,
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 01, 00,
+				program.OP_TX_META,
 			},
-			Resources: []program2.Resource{
-				program2.Variable{Typ: machine.TypePortion, Name: "commission"},
-				program2.Constant{Inner: machine.String("fee")},
+			Resources: []program.Resource{
+				program.Variable{Typ: machine.TypePortion, Name: "commission"},
+				program.Constant{Inner: machine.String("fee")},
 			},
 		},
 	})
@@ -255,11 +255,11 @@ func TestComments(t *testing.T) {
 		`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{
-				program2.Variable{Typ: machine.TypeAccount, Name: "a"},
+			Resources: []program.Resource{
+				program.Variable{Typ: machine.TypeAccount, Name: "a"},
 			},
 		},
 	})
@@ -317,63 +317,63 @@ func TestDestinationAllotment(t *testing.T) {
 		)`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 02, 00, // @foo
-				program2.OP_APUSH, 01, 00, // @foo, [EUR/2 43]
-				program2.OP_ASSET,         // @foo, EUR/2
-				program2.OP_APUSH, 03, 00, // @foo, EUR/2, 0
-				program2.OP_MONETARY_NEW,  // @foo, [EUR/2 0]
-				program2.OP_TAKE_ALL,      // [EUR/2 @foo <?>]
-				program2.OP_APUSH, 01, 00, // [EUR/2 @foo <?>], [EUR/2 43]
-				program2.OP_TAKE,          // [EUR/2 @foo <?>], [EUR/2 @foo 43]
-				program2.OP_APUSH, 04, 00, // [EUR/2 @foo <?>], [EUR/2 @foo 43] 1
-				program2.OP_BUMP,          // [EUR/2 @foo 43], [EUR/2 @foo <?>]
-				program2.OP_REPAY,         // [EUR/2 @foo 43]
-				program2.OP_FUNDING_SUM,   // [EUR/2 @foo 43], [EUR/2 43]
-				program2.OP_APUSH, 05, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8
-				program2.OP_APUSH, 06, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8, 1/8
-				program2.OP_APUSH, 07, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8, 1/8, 2
-				program2.OP_MAKE_ALLOTMENT, // [EUR/2 @foo 43], [EUR/2 43], {1/8 : 7/8}
-				program2.OP_ALLOC,          // [EUR/2 @foo 43], [EUR/2 37], [EUR/2 6]
-				program2.OP_APUSH, 07, 00,  // [EUR/2 @foo 43], [EUR/2 37] [EUR/2 6], 2
-				program2.OP_BUMP,          // [EUR/2 37], [EUR/2 6], [EUR/2 @foo 43]
-				program2.OP_APUSH, 04, 00, // [EUR/2 37], [EUR/2 6], [EUR/2 @foo 43] 1
-				program2.OP_BUMP,         // [EUR/2 37], [EUR/2 @foo 43], [EUR/2 6]
-				program2.OP_TAKE,         // [EUR/2 37], [EUR/2 @foo 37], [EUR/2 @foo 6]
-				program2.OP_FUNDING_SUM,  // [EUR/2 37], [EUR/2 @foo 37], [EUR/2 @foo 6] [EUR/2 6]
-				program2.OP_TAKE,         // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] [EUR/2 @foo 6]
-				program2.OP_APUSH, 8, 00, // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] [EUR/2 @foo 6], @bar
-				program2.OP_SEND,          // [EUR/2 37], [EUR/2 @foo 37], [EUR/2]
-				program2.OP_APUSH, 04, 00, // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] 1
-				program2.OP_BUMP,          // [EUR/2 37], [EUR/2], [EUR/2 @foo 37]
-				program2.OP_APUSH, 07, 00, // [EUR/2 37], [EUR/2], [EUR/2 @foo 37] 2
-				program2.OP_FUNDING_ASSEMBLE, // [EUR/2 37], [EUR/2 @foo 37]
-				program2.OP_APUSH, 04, 00,    // [EUR/2 37], [EUR/2 @foo 37], 1
-				program2.OP_BUMP,         // [EUR/2 @foo 37], [EUR/2 37]
-				program2.OP_TAKE,         // [EUR/2], [EUR/2 @foo 37]
-				program2.OP_FUNDING_SUM,  // [EUR/2], [EUR/2 @foo 37], [EUR/2 37]
-				program2.OP_TAKE,         // [EUR/2], [EUR/2], [EUR/2 @foo 37]
-				program2.OP_APUSH, 9, 00, // [EUR/2], [EUR/2], [EUR/2 @foo 37], @baz
-				program2.OP_SEND,          // [EUR/2], [EUR/2]
-				program2.OP_APUSH, 04, 00, // [EUR/2], [EUR/2], 1
-				program2.OP_BUMP,          // [EUR/2], [EUR/2]
-				program2.OP_APUSH, 07, 00, // [EUR/2], [EUR/2], 2
-				program2.OP_FUNDING_ASSEMBLE, // [EUR/2]
-				program2.OP_REPAY,            //
+				program.OP_APUSH, 02, 00, // @foo
+				program.OP_APUSH, 01, 00, // @foo, [EUR/2 43]
+				program.OP_ASSET,         // @foo, EUR/2
+				program.OP_APUSH, 03, 00, // @foo, EUR/2, 0
+				program.OP_MONETARY_NEW,  // @foo, [EUR/2 0]
+				program.OP_TAKE_ALL,      // [EUR/2 @foo <?>]
+				program.OP_APUSH, 01, 00, // [EUR/2 @foo <?>], [EUR/2 43]
+				program.OP_TAKE,          // [EUR/2 @foo <?>], [EUR/2 @foo 43]
+				program.OP_APUSH, 04, 00, // [EUR/2 @foo <?>], [EUR/2 @foo 43] 1
+				program.OP_BUMP,          // [EUR/2 @foo 43], [EUR/2 @foo <?>]
+				program.OP_REPAY,         // [EUR/2 @foo 43]
+				program.OP_FUNDING_SUM,   // [EUR/2 @foo 43], [EUR/2 43]
+				program.OP_APUSH, 05, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8
+				program.OP_APUSH, 06, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8, 1/8
+				program.OP_APUSH, 07, 00, // [EUR/2 @foo 43], [EUR/2 43], 7/8, 1/8, 2
+				program.OP_MAKE_ALLOTMENT, // [EUR/2 @foo 43], [EUR/2 43], {1/8 : 7/8}
+				program.OP_ALLOC,          // [EUR/2 @foo 43], [EUR/2 37], [EUR/2 6]
+				program.OP_APUSH, 07, 00,  // [EUR/2 @foo 43], [EUR/2 37] [EUR/2 6], 2
+				program.OP_BUMP,          // [EUR/2 37], [EUR/2 6], [EUR/2 @foo 43]
+				program.OP_APUSH, 04, 00, // [EUR/2 37], [EUR/2 6], [EUR/2 @foo 43] 1
+				program.OP_BUMP,         // [EUR/2 37], [EUR/2 @foo 43], [EUR/2 6]
+				program.OP_TAKE,         // [EUR/2 37], [EUR/2 @foo 37], [EUR/2 @foo 6]
+				program.OP_FUNDING_SUM,  // [EUR/2 37], [EUR/2 @foo 37], [EUR/2 @foo 6] [EUR/2 6]
+				program.OP_TAKE,         // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] [EUR/2 @foo 6]
+				program.OP_APUSH, 8, 00, // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] [EUR/2 @foo 6], @bar
+				program.OP_SEND,          // [EUR/2 37], [EUR/2 @foo 37], [EUR/2]
+				program.OP_APUSH, 04, 00, // [EUR/2 37], [EUR/2 @foo 37], [EUR/2] 1
+				program.OP_BUMP,          // [EUR/2 37], [EUR/2], [EUR/2 @foo 37]
+				program.OP_APUSH, 07, 00, // [EUR/2 37], [EUR/2], [EUR/2 @foo 37] 2
+				program.OP_FUNDING_ASSEMBLE, // [EUR/2 37], [EUR/2 @foo 37]
+				program.OP_APUSH, 04, 00,    // [EUR/2 37], [EUR/2 @foo 37], 1
+				program.OP_BUMP,         // [EUR/2 @foo 37], [EUR/2 37]
+				program.OP_TAKE,         // [EUR/2], [EUR/2 @foo 37]
+				program.OP_FUNDING_SUM,  // [EUR/2], [EUR/2 @foo 37], [EUR/2 37]
+				program.OP_TAKE,         // [EUR/2], [EUR/2], [EUR/2 @foo 37]
+				program.OP_APUSH, 9, 00, // [EUR/2], [EUR/2], [EUR/2 @foo 37], @baz
+				program.OP_SEND,          // [EUR/2], [EUR/2]
+				program.OP_APUSH, 04, 00, // [EUR/2], [EUR/2], 1
+				program.OP_BUMP,          // [EUR/2], [EUR/2]
+				program.OP_APUSH, 07, 00, // [EUR/2], [EUR/2], 2
+				program.OP_FUNDING_ASSEMBLE, // [EUR/2]
+				program.OP_REPAY,            //
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.Asset("EUR/2")},
-				program2.Monetary{
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.Asset("EUR/2")},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(43),
 				},
-				program2.Constant{Inner: machine.AccountAddress("foo")},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(7, 8)}},
-				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
-				program2.Constant{Inner: machine.AccountAddress("bar")},
-				program2.Constant{Inner: machine.AccountAddress("baz")},
+				program.Constant{Inner: machine.AccountAddress("foo")},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: machine.Portion{Specific: big.NewRat(7, 8)}},
+				program.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
+				program.Constant{Inner: machine.AccountAddress("bar")},
+				program.Constant{Inner: machine.AccountAddress("baz")},
 			},
 		},
 	})
@@ -390,77 +390,77 @@ func TestDestinationInOrder(t *testing.T) {
 		)`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 02, 00, // @a
-				program2.OP_APUSH, 01, 00, // @a, [COIN 50]
-				program2.OP_ASSET,         // @a, COIN
-				program2.OP_APUSH, 03, 00, // @a, COIN, 0
-				program2.OP_MONETARY_NEW,  // @a, [COIN 0]
-				program2.OP_TAKE_ALL,      // [COIN @a <?>]
-				program2.OP_APUSH, 01, 00, // [COIN @a <?>], [COIN 50]
-				program2.OP_TAKE,          // [COIN @a <?>], [COIN @a 50]
-				program2.OP_APUSH, 04, 00, // [COIN @a <?>], [COIN @a 50], 1
-				program2.OP_BUMP,          // [COIN @a 50], [COIN @a <?>]
-				program2.OP_REPAY,         // [COIN @a 50]
-				program2.OP_FUNDING_SUM,   // [COIN @a 50], [COIN 50] <- start of DestinationInOrder
-				program2.OP_ASSET,         // [COIN @a 50], COIN
-				program2.OP_APUSH, 03, 00, // [COIN @a 50], COIN, 0
-				program2.OP_MONETARY_NEW,  // [COIN @a 50], [COIN 0]
-				program2.OP_APUSH, 04, 00, // [COIN @a 50], [COIN 0], 1
-				program2.OP_BUMP,          // [COIN 0], [COIN @a 50]
-				program2.OP_APUSH, 05, 00, // [COIN 0], [COIN @a 50], [COIN 10] <- start processing max subdestinations
-				program2.OP_TAKE_MAX,      // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10]
-				program2.OP_APUSH, 06, 00, // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10], 2
-				program2.OP_BUMP,          // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 0]
-				program2.OP_DELETE,        // [COIN 0], [COIN @a 40], [COIN @a 10]
-				program2.OP_FUNDING_SUM,   // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 10]
-				program2.OP_TAKE,          // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10]
-				program2.OP_APUSH, 07, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10], @b
-				program2.OP_SEND,         // [COIN 0], [COIN @a 40], [COIN]
-				program2.OP_FUNDING_SUM,  // [COIN 0], [COIN @a 40], [COIN], [COIN 0]
-				program2.OP_APUSH, 8, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN 0], 3
-				program2.OP_BUMP,          // [COIN @a 40], [COIN], [COIN 0], [COIN 0]
-				program2.OP_MONETARY_ADD,  // [COIN @a 40], [COIN], [COIN 0]
-				program2.OP_APUSH, 04, 00, // [COIN @a 40], [COIN], [COIN 0], 1
-				program2.OP_BUMP,          // [COIN @a 40], [COIN 0], [COIN]
-				program2.OP_APUSH, 06, 00, // [COIN @a 40], [COIN 0], [COIN] 2
-				program2.OP_BUMP,          // [COIN 0], [COIN], [COIN @a 40]
-				program2.OP_APUSH, 06, 00, // [COIN 0], [COIN], [COIN @a 40], 2
-				program2.OP_FUNDING_ASSEMBLE, // [COIN 0], [COIN @a 40]
-				program2.OP_FUNDING_REVERSE,  // [COIN 0], [COIN @a 40] <- start processing remaining subdestination
-				program2.OP_APUSH, 04, 00,    // [COIN 0], [COIN @a 40], 1
-				program2.OP_BUMP,            // [COIN @a 40], [COIN 0]
-				program2.OP_TAKE,            // [COIN @a 40], [COIN]
-				program2.OP_FUNDING_REVERSE, // [COIN @a 40], [COIN]
-				program2.OP_APUSH, 04, 00,   // [COIN @a 40], [COIN], 1
-				program2.OP_BUMP,            // [COIN], [COIN @a 40]
-				program2.OP_FUNDING_REVERSE, // [COIN], [COIN @a 40]
-				program2.OP_FUNDING_SUM,     // [COIN], [COIN @a 40], [COIN 40]
-				program2.OP_TAKE,            // [COIN], [COIN], [COIN @a 40]
-				program2.OP_APUSH, 9, 00,    // [COIN], [COIN], [COIN @a 40], @c
-				program2.OP_SEND,          // [COIN], [COIN]
-				program2.OP_APUSH, 04, 00, // [COIN], [COIN], 1
-				program2.OP_BUMP,          // [COIN], [COIN]
-				program2.OP_APUSH, 06, 00, // [COIN], [COIN], 2
-				program2.OP_FUNDING_ASSEMBLE, // [COIN]
-				program2.OP_REPAY,            //
+				program.OP_APUSH, 02, 00, // @a
+				program.OP_APUSH, 01, 00, // @a, [COIN 50]
+				program.OP_ASSET,         // @a, COIN
+				program.OP_APUSH, 03, 00, // @a, COIN, 0
+				program.OP_MONETARY_NEW,  // @a, [COIN 0]
+				program.OP_TAKE_ALL,      // [COIN @a <?>]
+				program.OP_APUSH, 01, 00, // [COIN @a <?>], [COIN 50]
+				program.OP_TAKE,          // [COIN @a <?>], [COIN @a 50]
+				program.OP_APUSH, 04, 00, // [COIN @a <?>], [COIN @a 50], 1
+				program.OP_BUMP,          // [COIN @a 50], [COIN @a <?>]
+				program.OP_REPAY,         // [COIN @a 50]
+				program.OP_FUNDING_SUM,   // [COIN @a 50], [COIN 50] <- start of DestinationInOrder
+				program.OP_ASSET,         // [COIN @a 50], COIN
+				program.OP_APUSH, 03, 00, // [COIN @a 50], COIN, 0
+				program.OP_MONETARY_NEW,  // [COIN @a 50], [COIN 0]
+				program.OP_APUSH, 04, 00, // [COIN @a 50], [COIN 0], 1
+				program.OP_BUMP,          // [COIN 0], [COIN @a 50]
+				program.OP_APUSH, 05, 00, // [COIN 0], [COIN @a 50], [COIN 10] <- start processing max subdestinations
+				program.OP_TAKE_MAX,      // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10]
+				program.OP_APUSH, 06, 00, // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10], 2
+				program.OP_BUMP,          // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 0]
+				program.OP_DELETE,        // [COIN 0], [COIN @a 40], [COIN @a 10]
+				program.OP_FUNDING_SUM,   // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 10]
+				program.OP_TAKE,          // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10]
+				program.OP_APUSH, 07, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10], @b
+				program.OP_SEND,         // [COIN 0], [COIN @a 40], [COIN]
+				program.OP_FUNDING_SUM,  // [COIN 0], [COIN @a 40], [COIN], [COIN 0]
+				program.OP_APUSH, 8, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN 0], 3
+				program.OP_BUMP,          // [COIN @a 40], [COIN], [COIN 0], [COIN 0]
+				program.OP_MONETARY_ADD,  // [COIN @a 40], [COIN], [COIN 0]
+				program.OP_APUSH, 04, 00, // [COIN @a 40], [COIN], [COIN 0], 1
+				program.OP_BUMP,          // [COIN @a 40], [COIN 0], [COIN]
+				program.OP_APUSH, 06, 00, // [COIN @a 40], [COIN 0], [COIN] 2
+				program.OP_BUMP,          // [COIN 0], [COIN], [COIN @a 40]
+				program.OP_APUSH, 06, 00, // [COIN 0], [COIN], [COIN @a 40], 2
+				program.OP_FUNDING_ASSEMBLE, // [COIN 0], [COIN @a 40]
+				program.OP_FUNDING_REVERSE,  // [COIN 0], [COIN @a 40] <- start processing remaining subdestination
+				program.OP_APUSH, 04, 00,    // [COIN 0], [COIN @a 40], 1
+				program.OP_BUMP,            // [COIN @a 40], [COIN 0]
+				program.OP_TAKE,            // [COIN @a 40], [COIN]
+				program.OP_FUNDING_REVERSE, // [COIN @a 40], [COIN]
+				program.OP_APUSH, 04, 00,   // [COIN @a 40], [COIN], 1
+				program.OP_BUMP,            // [COIN], [COIN @a 40]
+				program.OP_FUNDING_REVERSE, // [COIN], [COIN @a 40]
+				program.OP_FUNDING_SUM,     // [COIN], [COIN @a 40], [COIN 40]
+				program.OP_TAKE,            // [COIN], [COIN], [COIN @a 40]
+				program.OP_APUSH, 9, 00,    // [COIN], [COIN], [COIN @a 40], @c
+				program.OP_SEND,          // [COIN], [COIN]
+				program.OP_APUSH, 04, 00, // [COIN], [COIN], 1
+				program.OP_BUMP,          // [COIN], [COIN]
+				program.OP_APUSH, 06, 00, // [COIN], [COIN], 2
+				program.OP_FUNDING_ASSEMBLE, // [COIN]
+				program.OP_REPAY,            //
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.Asset("COIN")},
-				program2.Monetary{
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.Asset("COIN")},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(50),
 				},
-				program2.Constant{Inner: machine.AccountAddress("a")},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Monetary{
+				program.Constant{Inner: machine.AccountAddress("a")},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(10),
 				},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
-				program2.Constant{Inner: machine.AccountAddress("b")},
-				program2.Constant{Inner: machine.NewMonetaryInt(3)},
-				program2.Constant{Inner: machine.AccountAddress("c")},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
+				program.Constant{Inner: machine.AccountAddress("b")},
+				program.Constant{Inner: machine.NewMonetaryInt(3)},
+				program.Constant{Inner: machine.AccountAddress("c")},
 			},
 		},
 	})
@@ -477,23 +477,23 @@ func TestAllocationPercentages(t *testing.T) {
 			}
 		)`,
 		Expected: CaseResult{
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.Asset("EUR/2")},
-				program2.Monetary{
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.Asset("EUR/2")},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(43),
 				},
-				program2.Constant{Inner: machine.AccountAddress("foo")},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 2)}},
-				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(3, 8)}},
-				program2.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
-				program2.Constant{Inner: machine.NewMonetaryInt(3)},
-				program2.Constant{Inner: machine.AccountAddress("bar")},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
-				program2.Constant{Inner: machine.AccountAddress("baz")},
-				program2.Constant{Inner: machine.AccountAddress("qux")},
+				program.Constant{Inner: machine.AccountAddress("foo")},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 2)}},
+				program.Constant{Inner: machine.Portion{Specific: big.NewRat(3, 8)}},
+				program.Constant{Inner: machine.Portion{Specific: big.NewRat(1, 8)}},
+				program.Constant{Inner: machine.NewMonetaryInt(3)},
+				program.Constant{Inner: machine.AccountAddress("bar")},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
+				program.Constant{Inner: machine.AccountAddress("baz")},
+				program.Constant{Inner: machine.AccountAddress("qux")},
 			},
 		},
 	})
@@ -511,32 +511,32 @@ func TestSend(t *testing.T) {
 		Case: script,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 02, 00, // @alice
-				program2.OP_APUSH, 01, 00, // @alice, [EUR/2 99]
-				program2.OP_ASSET,         // @alice, EUR/2
-				program2.OP_APUSH, 03, 00, // @alice, EUR/2, 0
-				program2.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
-				program2.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
-				program2.OP_APUSH, 01, 00, // [EUR/2 @alice <?>], [EUR/2 99]
-				program2.OP_TAKE,          // [EUR/2 @alice <?>], [EUR/2 @alice 99]
-				program2.OP_APUSH, 04, 00, // [EUR/2 @alice <?>], [EUR/2 @alice 99], 1
-				program2.OP_BUMP,          // [EUR/2 @alice 99], [EUR/2 @alice <?>]
-				program2.OP_REPAY,         // [EUR/2 @alice 99]
-				program2.OP_FUNDING_SUM,   // [EUR/2 @alice 99], [EUR/2 99]
-				program2.OP_TAKE,          // [EUR/2], [EUR/2 @alice 99]
-				program2.OP_APUSH, 05, 00, // [EUR/2], [EUR/2 @alice 99], @bob
-				program2.OP_SEND,  // [EUR/2]
-				program2.OP_REPAY, //
-			}, Resources: []program2.Resource{
-				program2.Constant{Inner: machine.Asset("EUR/2")},
-				program2.Monetary{
+				program.OP_APUSH, 02, 00, // @alice
+				program.OP_APUSH, 01, 00, // @alice, [EUR/2 99]
+				program.OP_ASSET,         // @alice, EUR/2
+				program.OP_APUSH, 03, 00, // @alice, EUR/2, 0
+				program.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
+				program.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
+				program.OP_APUSH, 01, 00, // [EUR/2 @alice <?>], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2 @alice <?>], [EUR/2 @alice 99]
+				program.OP_APUSH, 04, 00, // [EUR/2 @alice <?>], [EUR/2 @alice 99], 1
+				program.OP_BUMP,          // [EUR/2 @alice 99], [EUR/2 @alice <?>]
+				program.OP_REPAY,         // [EUR/2 @alice 99]
+				program.OP_FUNDING_SUM,   // [EUR/2 @alice 99], [EUR/2 99]
+				program.OP_TAKE,          // [EUR/2], [EUR/2 @alice 99]
+				program.OP_APUSH, 05, 00, // [EUR/2], [EUR/2 @alice 99], @bob
+				program.OP_SEND,  // [EUR/2]
+				program.OP_REPAY, //
+			}, Resources: []program.Resource{
+				program.Constant{Inner: machine.Asset("EUR/2")},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(99),
 				},
-				program2.Constant{Inner: alice},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Constant{Inner: bob}},
+				program.Constant{Inner: alice},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: bob}},
 		},
 	})
 }
@@ -549,21 +549,21 @@ func TestSendAll(t *testing.T) {
 		)`,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 01, 00, // @alice
-				program2.OP_APUSH, 00, 00, // @alice, EUR/2
-				program2.OP_APUSH, 02, 00, // @alice, EUR/2, 0
-				program2.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
-				program2.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
-				program2.OP_FUNDING_SUM,   // [EUR/2 @alice <?>], [EUR/2 <?>]
-				program2.OP_TAKE,          // [EUR/2], [EUR/2 @alice <?>]
-				program2.OP_APUSH, 03, 00, // [EUR/2], [EUR/2 @alice <?>], @b
-				program2.OP_SEND,  // [EUR/2]
-				program2.OP_REPAY, //
-			}, Resources: []program2.Resource{
-				program2.Constant{Inner: machine.Asset("EUR/2")},
-				program2.Constant{Inner: machine.AccountAddress("alice")},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.AccountAddress("bob")}},
+				program.OP_APUSH, 01, 00, // @alice
+				program.OP_APUSH, 00, 00, // @alice, EUR/2
+				program.OP_APUSH, 02, 00, // @alice, EUR/2, 0
+				program.OP_MONETARY_NEW,  // @alice, [EUR/2 0]
+				program.OP_TAKE_ALL,      // [EUR/2 @alice <?>]
+				program.OP_FUNDING_SUM,   // [EUR/2 @alice <?>], [EUR/2 <?>]
+				program.OP_TAKE,          // [EUR/2], [EUR/2 @alice <?>]
+				program.OP_APUSH, 03, 00, // [EUR/2], [EUR/2 @alice <?>], @b
+				program.OP_SEND,  // [EUR/2]
+				program.OP_REPAY, //
+			}, Resources: []program.Resource{
+				program.Constant{Inner: machine.Asset("EUR/2")},
+				program.Constant{Inner: machine.AccountAddress("alice")},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.AccountAddress("bob")}},
 		},
 	})
 }
@@ -584,28 +584,28 @@ func TestMetadata(t *testing.T) {
 			}
 		)`,
 		Expected: CaseResult{
-			Resources: []program2.Resource{
-				program2.Variable{Typ: machine.TypeAccount, Name: "sale"},
-				program2.VariableAccountMetadata{
+			Resources: []program.Resource{
+				program.Variable{Typ: machine.TypeAccount, Name: "sale"},
+				program.VariableAccountMetadata{
 					Typ:     machine.TypeAccount,
 					Account: machine.NewAddress(0),
 					Key:     "seller",
 				},
-				program2.VariableAccountMetadata{
+				program.VariableAccountMetadata{
 					Typ:     machine.TypePortion,
 					Account: machine.NewAddress(1),
 					Key:     "commission",
 				},
-				program2.Constant{Inner: machine.Asset("EUR/2")},
-				program2.Monetary{
+				program.Constant{Inner: machine.Asset("EUR/2")},
+				program.Monetary{
 					Asset:  3,
 					Amount: machine.NewMonetaryInt(53),
 				},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Constant{Inner: machine.NewPortionRemaining()},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
-				program2.Constant{Inner: machine.AccountAddress("platform")},
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: machine.NewPortionRemaining()},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
+				program.Constant{Inner: machine.AccountAddress("platform")},
 			},
 		},
 	})
@@ -977,52 +977,52 @@ func TestSetAccountMeta(t *testing.T) {
 			`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 00, 00,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
-					program2.OP_APUSH, 7, 00,
-					program2.OP_APUSH, 8, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
-					program2.OP_APUSH, 10, 00,
-					program2.OP_APUSH, 11, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
-					program2.OP_APUSH, 12, 00,
-					program2.OP_APUSH, 13, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ACCOUNT_META,
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 04, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
+					program.OP_APUSH, 05, 00,
+					program.OP_APUSH, 06, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
+					program.OP_APUSH, 7, 00,
+					program.OP_APUSH, 8, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
+					program.OP_APUSH, 10, 00,
+					program.OP_APUSH, 11, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
+					program.OP_APUSH, 12, 00,
+					program.OP_APUSH, 13, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ACCOUNT_META,
 				},
-				Resources: []program2.Resource{
-					program2.Constant{Inner: machine.AccountAddress("platform")},
-					program2.Constant{Inner: machine.String("aaa")},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Constant{Inner: machine.Asset("GEM")},
-					program2.Constant{Inner: machine.String("bbb")},
-					program2.Constant{Inner: machine.NewNumber(42)},
-					program2.Constant{Inner: machine.String("ccc")},
-					program2.Constant{Inner: machine.String("test")},
-					program2.Constant{Inner: machine.String("ddd")},
-					program2.Constant{Inner: machine.Asset("COIN")},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Constant{Inner: machine.AccountAddress("platform")},
+					program.Constant{Inner: machine.String("aaa")},
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Constant{Inner: machine.Asset("GEM")},
+					program.Constant{Inner: machine.String("bbb")},
+					program.Constant{Inner: machine.NewNumber(42)},
+					program.Constant{Inner: machine.String("ccc")},
+					program.Constant{Inner: machine.String("test")},
+					program.Constant{Inner: machine.String("ddd")},
+					program.Constant{Inner: machine.Asset("COIN")},
+					program.Monetary{
 						Asset:  9,
 						Amount: machine.NewMonetaryInt(30),
 					},
-					program2.Constant{Inner: machine.String("eee")},
-					program2.Constant{Inner: machine.Portion{
+					program.Constant{Inner: machine.String("eee")},
+					program.Constant{Inner: machine.Portion{
 						Remaining: false,
 						Specific:  big.NewRat(15, 100),
 					}},
-					program2.Constant{Inner: machine.String("fff")},
+					program.Constant{Inner: machine.String("fff")},
 				},
 			},
 		})
@@ -1040,49 +1040,49 @@ func TestSetAccountMeta(t *testing.T) {
 			set_account_meta($acc, "fees", 1%)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALWAYS,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_TAKE_MAX,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_BUMP,
-					program2.OP_TAKE_ALWAYS,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_FUNDING_ASSEMBLE,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 00, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
-					program2.OP_APUSH, 07, 00,
-					program2.OP_APUSH, 8, 00,
-					program2.OP_APUSH, 00, 00,
-					program2.OP_ACCOUNT_META,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALWAYS,
+					program.OP_APUSH, 02, 00,
+					program.OP_TAKE_MAX,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 06, 00,
+					program.OP_BUMP,
+					program.OP_TAKE_ALWAYS,
+					program.OP_APUSH, 06, 00,
+					program.OP_FUNDING_ASSEMBLE,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 00, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
+					program.OP_APUSH, 07, 00,
+					program.OP_APUSH, 8, 00,
+					program.OP_APUSH, 00, 00,
+					program.OP_ACCOUNT_META,
 				},
-				Resources: []program2.Resource{
-					program2.Variable{Typ: machine.TypeAccount, Name: "acc"},
-					program2.Constant{Inner: machine.Asset("EUR/2")},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Variable{Typ: machine.TypeAccount, Name: "acc"},
+					program.Constant{Inner: machine.Asset("EUR/2")},
+					program.Monetary{
 						Asset:  1,
 						Amount: machine.NewMonetaryInt(100),
 					},
-					program2.Constant{Inner: machine.AccountAddress("world")},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.NewMonetaryInt(2)},
-					program2.Constant{Inner: machine.Portion{
+					program.Constant{Inner: machine.AccountAddress("world")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.NewMonetaryInt(2)},
+					program.Constant{Inner: machine.Portion{
 						Remaining: false,
 						Specific:  big.NewRat(1, 100),
 					}},
-					program2.Constant{Inner: machine.String("fees")},
+					program.Constant{Inner: machine.String("fees")},
 				},
 			},
 		})
@@ -1131,30 +1131,30 @@ func TestVariableBalance(t *testing.T) {
 			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 00, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 03, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 02, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 04, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Constant{Inner: machine.Asset("COIN")},
-					program2.VariableAccountBalance{Account: 0, Asset: 1},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("bob")},
+				Resources: []program.Resource{
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Constant{Inner: machine.Asset("COIN")},
+					program.VariableAccountBalance{Account: 0, Asset: 1},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1172,38 +1172,38 @@ func TestVariableBalance(t *testing.T) {
 			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALWAYS,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_TAKE_MAX,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_BUMP,
-					program2.OP_TAKE_ALWAYS,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_FUNDING_ASSEMBLE,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 07, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALWAYS,
+					program.OP_APUSH, 02, 00,
+					program.OP_TAKE_MAX,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 06, 00,
+					program.OP_BUMP,
+					program.OP_TAKE_ALWAYS,
+					program.OP_APUSH, 06, 00,
+					program.OP_FUNDING_ASSEMBLE,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 07, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Variable{Typ: machine.TypeAccount, Name: "acc"},
-					program2.Constant{Inner: machine.Asset("COIN")},
-					program2.VariableAccountBalance{Account: 0, Asset: 1},
-					program2.Constant{Inner: machine.AccountAddress("world")},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.NewMonetaryInt(2)},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
+				Resources: []program.Resource{
+					program.Variable{Typ: machine.TypeAccount, Name: "acc"},
+					program.Constant{Inner: machine.Asset("COIN")},
+					program.VariableAccountBalance{Account: 0, Asset: 1},
+					program.Constant{Inner: machine.AccountAddress("world")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.NewMonetaryInt(2)},
+					program.Constant{Inner: machine.AccountAddress("alice")},
 				},
 			},
 		})
@@ -1322,64 +1322,64 @@ func TestVariableAsset(t *testing.T) {
 		Case: script,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 01, 00,
-				program2.OP_APUSH, 00, 00,
-				program2.OP_APUSH, 03, 00,
-				program2.OP_MONETARY_NEW,
-				program2.OP_TAKE_ALL,
-				program2.OP_FUNDING_SUM,
-				program2.OP_TAKE,
-				program2.OP_APUSH, 04, 00,
-				program2.OP_SEND,
-				program2.OP_REPAY,
-				program2.OP_APUSH, 04, 00,
-				program2.OP_APUSH, 05, 00,
-				program2.OP_ASSET,
-				program2.OP_APUSH, 03, 00,
-				program2.OP_MONETARY_NEW,
-				program2.OP_TAKE_ALL,
-				program2.OP_APUSH, 05, 00,
-				program2.OP_TAKE,
-				program2.OP_APUSH, 06, 00,
-				program2.OP_BUMP,
-				program2.OP_REPAY,
-				program2.OP_FUNDING_SUM,
-				program2.OP_TAKE,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_SEND,
-				program2.OP_REPAY,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_APUSH, 02, 00,
-				program2.OP_ASSET,
-				program2.OP_APUSH, 03, 00,
-				program2.OP_MONETARY_NEW,
-				program2.OP_TAKE_ALL,
-				program2.OP_APUSH, 02, 00,
-				program2.OP_TAKE,
-				program2.OP_APUSH, 06, 00,
-				program2.OP_BUMP,
-				program2.OP_REPAY,
-				program2.OP_FUNDING_SUM,
-				program2.OP_TAKE,
-				program2.OP_APUSH, 04, 00,
-				program2.OP_SEND,
-				program2.OP_REPAY,
+				program.OP_APUSH, 01, 00,
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 03, 00,
+				program.OP_MONETARY_NEW,
+				program.OP_TAKE_ALL,
+				program.OP_FUNDING_SUM,
+				program.OP_TAKE,
+				program.OP_APUSH, 04, 00,
+				program.OP_SEND,
+				program.OP_REPAY,
+				program.OP_APUSH, 04, 00,
+				program.OP_APUSH, 05, 00,
+				program.OP_ASSET,
+				program.OP_APUSH, 03, 00,
+				program.OP_MONETARY_NEW,
+				program.OP_TAKE_ALL,
+				program.OP_APUSH, 05, 00,
+				program.OP_TAKE,
+				program.OP_APUSH, 06, 00,
+				program.OP_BUMP,
+				program.OP_REPAY,
+				program.OP_FUNDING_SUM,
+				program.OP_TAKE,
+				program.OP_APUSH, 01, 00,
+				program.OP_SEND,
+				program.OP_REPAY,
+				program.OP_APUSH, 01, 00,
+				program.OP_APUSH, 02, 00,
+				program.OP_ASSET,
+				program.OP_APUSH, 03, 00,
+				program.OP_MONETARY_NEW,
+				program.OP_TAKE_ALL,
+				program.OP_APUSH, 02, 00,
+				program.OP_TAKE,
+				program.OP_APUSH, 06, 00,
+				program.OP_BUMP,
+				program.OP_REPAY,
+				program.OP_FUNDING_SUM,
+				program.OP_TAKE,
+				program.OP_APUSH, 04, 00,
+				program.OP_SEND,
+				program.OP_REPAY,
 			},
-			Resources: []program2.Resource{
-				program2.Variable{Typ: machine.TypeAsset, Name: "ass"},
-				program2.Constant{Inner: machine.AccountAddress("alice")},
-				program2.VariableAccountBalance{
+			Resources: []program.Resource{
+				program.Variable{Typ: machine.TypeAsset, Name: "ass"},
+				program.Constant{Inner: machine.AccountAddress("alice")},
+				program.VariableAccountBalance{
 					Name:    "bal",
 					Account: 1,
 					Asset:   0,
 				},
-				program2.Constant{Inner: machine.NewMonetaryInt(0)},
-				program2.Constant{Inner: machine.AccountAddress("bob")},
-				program2.Monetary{
+				program.Constant{Inner: machine.NewMonetaryInt(0)},
+				program.Constant{Inner: machine.AccountAddress("bob")},
+				program.Monetary{
 					Asset:  0,
 					Amount: machine.NewMonetaryInt(1),
 				},
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
 			},
 		},
 	})
@@ -1391,17 +1391,17 @@ func TestPrint(t *testing.T) {
 		Case: script,
 		Expected: CaseResult{
 			Instructions: []byte{
-				program2.OP_APUSH, 00, 00,
-				program2.OP_APUSH, 01, 00,
-				program2.OP_IADD,
-				program2.OP_APUSH, 02, 00,
-				program2.OP_IADD,
-				program2.OP_PRINT,
+				program.OP_APUSH, 00, 00,
+				program.OP_APUSH, 01, 00,
+				program.OP_IADD,
+				program.OP_APUSH, 02, 00,
+				program.OP_IADD,
+				program.OP_PRINT,
 			},
-			Resources: []program2.Resource{
-				program2.Constant{Inner: machine.NewMonetaryInt(1)},
-				program2.Constant{Inner: machine.NewMonetaryInt(2)},
-				program2.Constant{Inner: machine.NewMonetaryInt(3)},
+			Resources: []program.Resource{
+				program.Constant{Inner: machine.NewMonetaryInt(1)},
+				program.Constant{Inner: machine.NewMonetaryInt(2)},
+				program.Constant{Inner: machine.NewMonetaryInt(3)},
 			},
 		},
 	})
@@ -1423,55 +1423,55 @@ func TestSendWithArithmetic(t *testing.T) {
 			Case: script,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 06, 00,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 07, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_MONETARY_ADD,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_ADD,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_MONETARY_SUB,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 8, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 9, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 06, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 07, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_MONETARY_ADD,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_ADD,
+					program.OP_APUSH, 05, 00,
+					program.OP_MONETARY_SUB,
+					program.OP_TAKE,
+					program.OP_APUSH, 8, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 9, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Variable{
+				Resources: []program.Resource{
+					program.Variable{
 						Typ:  machine.TypeAsset,
 						Name: "ass",
 					},
-					program2.Variable{
+					program.Variable{
 						Typ:  machine.TypeMonetary,
 						Name: "mon",
 					},
-					program2.Constant{Inner: machine.Asset("EUR")},
-					program2.Monetary{
+					program.Constant{Inner: machine.Asset("EUR")},
+					program.Monetary{
 						Asset:  2,
 						Amount: machine.NewMonetaryInt(1),
 					},
-					program2.Monetary{
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(3),
 					},
-					program2.Monetary{
+					program.Monetary{
 						Asset:  2,
 						Amount: machine.NewMonetaryInt(4),
 					},
-					program2.Constant{Inner: machine.AccountAddress("a")},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("b")},
+					program.Constant{Inner: machine.AccountAddress("a")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("b")},
 				},
 			},
 		})
@@ -1487,7 +1487,7 @@ func TestSendWithArithmetic(t *testing.T) {
 			Case: script,
 			Expected: CaseResult{
 				Instructions: []byte{},
-				Resources:    []program2.Resource{},
+				Resources:    []program.Resource{},
 				Error:        "tried to do an arithmetic operation with incompatible left and right-hand side operand types: monetary and number",
 			},
 		})
@@ -1507,7 +1507,7 @@ func TestSendWithArithmetic(t *testing.T) {
 			Case: script,
 			Expected: CaseResult{
 				Instructions: []byte{},
-				Resources:    []program2.Resource{},
+				Resources:    []program.Resource{},
 				Error:        "tried to do an arithmetic operation with incompatible left and right-hand side operand types: monetary and number",
 			},
 		})
@@ -1526,40 +1526,40 @@ func TestSaveFromAccount(t *testing.T) {
  			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 01, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_SAVE,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 02, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Constant{Inner: machine.Asset("EUR")},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Constant{Inner: machine.Asset("EUR")},
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(10),
 					},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Monetary{
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("bob")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1576,36 +1576,36 @@ func TestSaveFromAccount(t *testing.T) {
  			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 00, 00,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_SAVE,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 03, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 02, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 04, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Constant{Inner: machine.Asset("EUR")},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Constant{Inner: machine.Asset("EUR")},
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("bob")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1626,40 +1626,40 @@ func TestSaveFromAccount(t *testing.T) {
  			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 01, 00,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_SAVE,
-					program2.OP_APUSH, 02, 00,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 02, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 02, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Variable{Typ: machine.TypeAsset, Name: "ass"},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Variable{Typ: machine.TypeAsset, Name: "ass"},
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(10),
 					},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Monetary{
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Monetary{
 						Asset:  0,
 						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("bob")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1680,37 +1680,37 @@ func TestSaveFromAccount(t *testing.T) {
  			)`,
 			Expected: CaseResult{
 				Instructions: []byte{
-					program2.OP_APUSH, 00, 00,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_SAVE,
-					program2.OP_APUSH, 01, 00,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_ASSET,
-					program2.OP_APUSH, 04, 00,
-					program2.OP_MONETARY_NEW,
-					program2.OP_TAKE_ALL,
-					program2.OP_APUSH, 03, 00,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 05, 00,
-					program2.OP_BUMP,
-					program2.OP_REPAY,
-					program2.OP_FUNDING_SUM,
-					program2.OP_TAKE,
-					program2.OP_APUSH, 06, 00,
-					program2.OP_SEND,
-					program2.OP_REPAY,
+					program.OP_APUSH, 00, 00,
+					program.OP_APUSH, 01, 00,
+					program.OP_SAVE,
+					program.OP_APUSH, 01, 00,
+					program.OP_APUSH, 03, 00,
+					program.OP_ASSET,
+					program.OP_APUSH, 04, 00,
+					program.OP_MONETARY_NEW,
+					program.OP_TAKE_ALL,
+					program.OP_APUSH, 03, 00,
+					program.OP_TAKE,
+					program.OP_APUSH, 05, 00,
+					program.OP_BUMP,
+					program.OP_REPAY,
+					program.OP_FUNDING_SUM,
+					program.OP_TAKE,
+					program.OP_APUSH, 06, 00,
+					program.OP_SEND,
+					program.OP_REPAY,
 				},
-				Resources: []program2.Resource{
-					program2.Variable{Typ: machine.TypeMonetary, Name: "mon"},
-					program2.Constant{Inner: machine.AccountAddress("alice")},
-					program2.Constant{Inner: machine.Asset("EUR")},
-					program2.Monetary{
+				Resources: []program.Resource{
+					program.Variable{Typ: machine.TypeMonetary, Name: "mon"},
+					program.Constant{Inner: machine.AccountAddress("alice")},
+					program.Constant{Inner: machine.Asset("EUR")},
+					program.Monetary{
 						Asset:  2,
 						Amount: machine.NewMonetaryInt(20),
 					},
-					program2.Constant{Inner: machine.NewMonetaryInt(0)},
-					program2.Constant{Inner: machine.NewMonetaryInt(1)},
-					program2.Constant{Inner: machine.AccountAddress("bob")},
+					program.Constant{Inner: machine.NewMonetaryInt(0)},
+					program.Constant{Inner: machine.NewMonetaryInt(1)},
+					program.Constant{Inner: machine.AccountAddress("bob")},
 				},
 			},
 		})
@@ -1723,7 +1723,7 @@ func TestSaveFromAccount(t *testing.T) {
 			`,
 			Expected: CaseResult{
 				Instructions: []byte{},
-				Resources:    []program2.Resource{},
+				Resources:    []program.Resource{},
 				Error:        "save monetary from account: the first expression should be of type 'monetary' instead of 'number'",
 			},
 		})
@@ -1736,7 +1736,7 @@ func TestSaveFromAccount(t *testing.T) {
 			`,
 			Expected: CaseResult{
 				Instructions: []byte{},
-				Resources:    []program2.Resource{},
+				Resources:    []program.Resource{},
 				Error:        "save monetary from account: the second expression should be of type 'account' instead of 'asset'",
 			},
 		})

@@ -1,23 +1,21 @@
-package v2_test
+package v2
 
 import (
 	"bytes"
-
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/time"
 
-	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/api"
 	ledger "github.com/formancehq/ledger/internal"
-	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 
 	"github.com/formancehq/go-libs/query"
 	"github.com/stretchr/testify/require"
@@ -31,7 +29,7 @@ func TestGetVolumes(t *testing.T) {
 		name              string
 		queryParams       url.Values
 		body              string
-		expectQuery       ledgerstore.PaginatedQueryOptions[ledgerstore.FiltersForVolumes]
+		expectQuery       ledgercontroller.PaginatedQueryOptions[ledgercontroller.FiltersForVolumes]
 		expectStatusCode  int
 		expectedErrorCode string
 	}
@@ -41,45 +39,45 @@ func TestGetVolumes(t *testing.T) {
 	testCases := []testCase{
 		{
 			name: "basic",
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
 
 				UseInsertionDate: false,
 			}).
-				WithPageSize(v2.DefaultPageSize),
+				WithPageSize(DefaultPageSize),
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
 			}).
 				WithQueryBuilder(query.Match("metadata[roles]", "admin")).
-				WithPageSize(v2.DefaultPageSize),
+				WithPageSize(DefaultPageSize),
 		},
 		{
 			name: "using account",
 			body: `{"$match": { "account": "foo" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
 			}).
 				WithQueryBuilder(query.Match("account", "foo")).
-				WithPageSize(v2.DefaultPageSize),
+				WithPageSize(DefaultPageSize),
 		},
 		{
 			name:              "using invalid query payload",
 			body:              `[]`,
 			expectStatusCode:  http.StatusBadRequest,
-			expectedErrorCode: v2.ErrValidation,
+			expectedErrorCode: ErrValidation,
 		},
 		{
 			name: "using pit",
@@ -87,34 +85,34 @@ func TestGetVolumes(t *testing.T) {
 				"pit":     []string{before.Format(time.RFC3339Nano)},
 				"groupBy": []string{"3"},
 			},
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
 				GroupLvl: 3,
-			}).WithPageSize(v2.DefaultPageSize),
+			}).WithPageSize(DefaultPageSize),
 		},
 		{
 			name: "using Exists metadata filter",
 			body: `{"$exists": { "metadata": "foo" }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
-			}).WithPageSize(v2.DefaultPageSize).WithQueryBuilder(query.Exists("metadata", "foo")),
+			}).WithPageSize(DefaultPageSize).WithQueryBuilder(query.Exists("metadata", "foo")),
 		},
 		{
 			name: "using balance filter",
 			body: `{"$gte": { "balance[EUR]": 50 }}`,
-			expectQuery: ledgerstore.NewPaginatedQueryOptions(ledgerstore.FiltersForVolumes{
-				PITFilter: ledgerstore.PITFilter{
+			expectQuery: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.FiltersForVolumes{
+				PITFilter: ledgercontroller.PITFilter{
 					PIT: &before,
 					OOT: &zero,
 				},
 			}).WithQueryBuilder(query.Gte("balance[EUR]", float64(50))).
-				WithPageSize(v2.DefaultPageSize),
+				WithPageSize(DefaultPageSize),
 		},
 	}
 
@@ -140,14 +138,14 @@ func TestGetVolumes(t *testing.T) {
 				},
 			}
 
-			backend, mockLedger := newTestingBackend(t, true)
+			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				mockLedger.EXPECT().
-					GetVolumesWithBalances(gomock.Any(), ledgerstore.NewGetVolumesWithBalancesQuery(testCase.expectQuery)).
+				ledgerController.EXPECT().
+					GetVolumesWithBalances(gomock.Any(), ledgercontroller.NewGetVolumesWithBalancesQuery(testCase.expectQuery)).
 					Return(&expectedCursor, nil)
 			}
 
-			router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
+			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/volumes?endTime="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()
@@ -163,11 +161,11 @@ func TestGetVolumes(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := sharedapi.DecodeCursorResponse[ledger.VolumesWithBalanceByAssetByAccount](t, rec.Body)
+				cursor := api.DecodeCursorResponse[ledger.VolumesWithBalanceByAssetByAccount](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
-				err := sharedapi.ErrorResponse{}
-				sharedapi.Decode(t, rec.Body, &err)
+				err := api.ErrorResponse{}
+				api.Decode(t, rec.Body, &err)
 				require.EqualValues(t, testCase.expectedErrorCode, err.ErrorCode)
 			}
 		})

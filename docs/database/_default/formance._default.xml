@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?><database name="formance" schema="_default" type="PostgreSQL - 15.8">
+   <sequences>
+      <sequence increment="1" name="accounts_metadata_seq_seq" startValue="1"/>
+      <sequence increment="1" name="accounts_seq_seq" startValue="1"/>
+      <sequence increment="1" name="goose_db_version_id_seq" startValue="1"/>
+      <sequence increment="1" name="logs_seq_seq" startValue="1"/>
+      <sequence increment="1" name="moves_seq_seq" startValue="1"/>
+      <sequence increment="1" name="transactions_metadata_seq_seq" startValue="1"/>
+      <sequence increment="1" name="transactions_seq_seq" startValue="1"/>
+   </sequences>
+   <tables>
+      <table name="accounts" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.accounts_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5">
+            <child column="accounts_seq" foreignKey="accounts_metadata_accounts_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="accounts_metadata"/>
+            <child column="accounts_seq" foreignKey="moves_accounts_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="moves"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="address" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="address_array" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="4" name="insertion_date" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="updated_at" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="'{}'::jsonb" digits="0" id="6" name="metadata" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="7" name="first_usage" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="accounts_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_accounts_ledger" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="address"/>
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="accounts_first_usage" unique="false">
+            <column ascending="true" name="first_usage"/>
+         </index>
+      </table>
+      <table name="accounts_metadata" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.accounts_metadata_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="accounts_seq" nullable="true" remarks="" size="19" type="int8" typeCode="-5">
+            <parent column="seq" foreignKey="accounts_metadata_accounts_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="accounts"/>
+         </column>
+         <column autoUpdated="false" defaultValue="'{}'::jsonb" digits="0" id="3" name="metadata" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="0" digits="0" id="4" name="revision" nullable="true" remarks="" size="0" type="numeric" typeCode="2"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="date" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="accounts_metadata_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_accounts_metadata_ledger" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="accounts_seq"/>
+            <column ascending="true" name="revision"/>
+         </index>
+         <index name="_default_accounts_metadata_metadata" unique="false">
+            <column ascending="true" name="metadata"/>
+         </index>
+         <index name="_default_accounts_metadata_revisions" unique="false">
+            <column ascending="true" name="accounts_seq"/>
+            <column ascending="false" name="revision"/>
+            <column ascending="true" name="metadata"/>
+            <column ascending="true" name="date"/>
+         </index>
+      </table>
+      <table name="balances" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="account" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="asset" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="balance" nullable="true" remarks="" size="0" type="numeric" typeCode="2"/>
+         <primaryKey column="ledger" sequenceNumberInPK="1"/>
+         <primaryKey column="account" sequenceNumberInPK="2"/>
+         <primaryKey column="asset" sequenceNumberInPK="3"/>
+         <index name="balances_pkey" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="account"/>
+            <column ascending="true" name="asset"/>
+         </index>
+      </table>
+      <table name="goose_db_version" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.goose_db_version_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="version_id" nullable="false" remarks="" size="19" type="int8" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="is_applied" nullable="false" remarks="" size="1" type="bool" typeCode="-7"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="3" name="tstamp" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="goose_db_version_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+      </table>
+      <table name="logs" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.logs_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="id" nullable="false" remarks="" size="0" type="numeric" typeCode="2"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="type" nullable="false" remarks="" size="2147483647" type="&quot;_default&quot;.&quot;log_type&quot;" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="4" name="hash" nullable="true" remarks="" size="2147483647" type="bytea" typeCode="-2"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="date" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="6" name="data" nullable="false" remarks="" size="2147483647" type="json" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="idempotency_key" nullable="true" remarks="" size="255" type="varchar" typeCode="12"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="logs_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_logs_idempotency_key" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="idempotency_key"/>
+         </index>
+         <index name="_default_logs_ledger" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="id"/>
+         </index>
+      </table>
+      <table name="moves" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.moves_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="transactions_seq" nullable="false" remarks="" size="19" type="int8" typeCode="-5">
+            <parent column="seq" foreignKey="moves_transactions_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="transactions"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="accounts_seq" nullable="false" remarks="" size="19" type="int8" typeCode="-5">
+            <parent column="seq" foreignKey="moves_accounts_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="accounts"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="4" name="account_address" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="5" name="account_address_array" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="6" name="asset" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="amount" nullable="false" remarks="" size="0" type="numeric" typeCode="2"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="8" name="insertion_date" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="9" name="effective_date" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="post_commit_volumes" nullable="true" remarks="" size="2147483647" type="&quot;_default&quot;.&quot;volumes&quot;" typeCode="2002"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="post_commit_effective_volumes" nullable="true" remarks="" size="2147483647" type="&quot;_default&quot;.&quot;volumes&quot;" typeCode="2002"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="12" name="is_source" nullable="false" remarks="" size="1" type="bool" typeCode="-7"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="moves_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_moves_account_address" unique="false">
+            <column ascending="true" name="account_address"/>
+         </index>
+         <index name="_default_moves_asset" unique="false">
+            <column ascending="true" name="asset"/>
+         </index>
+         <index name="_default_moves_date" unique="false">
+            <column ascending="true" name="effective_date"/>
+         </index>
+         <index name="_default_moves_ledger" unique="false">
+            <column ascending="true" name="ledger"/>
+         </index>
+         <index name="_default_moves_range_dates" unique="false">
+            <column ascending="true" name="account_address"/>
+            <column ascending="true" name="asset"/>
+            <column ascending="true" name="effective_date"/>
+         </index>
+      </table>
+      <table name="transactions" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.transactions_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5">
+            <child column="transactions_seq" foreignKey="moves_transactions_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="moves"/>
+            <child column="transactions_seq" foreignKey="transactions_metadata_transactions_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="transactions_metadata"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="id" nullable="false" remarks="" size="19" type="int8" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="3" name="timestamp" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="4" name="reference" nullable="true" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="reverted_at" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="6" name="updated_at" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="postings" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="8" name="sources" nullable="true" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="destinations" nullable="true" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="sources_arrays" nullable="true" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="destinations_arrays" nullable="true" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="'{}'::jsonb" digits="0" id="12" name="metadata" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="13" name="inserted_at" nullable="true" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="transactions_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_transactions_date" unique="false">
+            <column ascending="true" name="timestamp"/>
+         </index>
+         <index name="_default_transactions_ledger" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="_default_transactions_metadata_index" unique="false">
+            <column ascending="true" name="metadata"/>
+         </index>
+         <index name="_default_transactions_reference" unique="false">
+            <column ascending="true" name="reference"/>
+         </index>
+      </table>
+      <table name="transactions_metadata" remarks="" schema="_default" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('_default.transactions_metadata_seq_seq'::regclass)" digits="0" id="0" name="seq" nullable="false" remarks="" size="19" type="bigserial" typeCode="-5"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="ledger" nullable="false" remarks="" size="2147483647" type="varchar" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="transactions_seq" nullable="true" remarks="" size="19" type="int8" typeCode="-5">
+            <parent column="seq" foreignKey="transactions_metadata_transactions_seq_fkey" implied="false" onDeleteCascade="false" schema="_default" table="transactions"/>
+         </column>
+         <column autoUpdated="false" defaultValue="0" digits="0" id="3" name="revision" nullable="false" remarks="" size="0" type="numeric" typeCode="2"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="4" name="date" nullable="false" remarks="" size="29" type="timestamp" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="'{}'::jsonb" digits="0" id="5" name="metadata" nullable="false" remarks="" size="2147483647" type="jsonb" typeCode="1111"/>
+         <primaryKey column="seq" sequenceNumberInPK="1"/>
+         <index name="transactions_metadata_pkey" unique="true">
+            <column ascending="true" name="seq"/>
+         </index>
+         <index name="_default_transactions_metadata_ledger" unique="true">
+            <column ascending="true" name="ledger"/>
+            <column ascending="true" name="transactions_seq"/>
+            <column ascending="true" name="revision"/>
+         </index>
+         <index name="_default_transactions_metadata_metadata" unique="false">
+            <column ascending="true" name="metadata"/>
+         </index>
+         <index name="_default_transactions_metadata_revisions" unique="false">
+            <column ascending="true" name="transactions_seq"/>
+            <column ascending="false" name="revision"/>
+            <column ascending="true" name="metadata"/>
+            <column ascending="true" name="date"/>
+         </index>
+      </table>
+   </tables>
+   <routines>
+      <routine dataAccess="MODIFIES" deterministic="false" name="insert_account_metadata_history()" returnType="trigger" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[begin
+    insert into "_default".accounts_metadata (ledger, accounts_seq, revision, date, metadata)
+    values (new.ledger, new.seq, 1, new.insertion_date, new.metadata);
+
+    return new;
+end;]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="insert_transaction_metadata_history()" returnType="trigger" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[begin
+    insert into "_default".transactions_metadata (ledger, transactions_seq, revision, date, metadata)
+    values (new.ledger, new.seq, 1, new.timestamp, new.metadata);
+
+    return new;
+end;]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="update_account_metadata_history()" returnType="trigger" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[begin
+    insert into "_default".accounts_metadata (ledger, accounts_seq, revision, date, metadata)
+    values (new.ledger, new.seq, (select revision + 1
+                                  from "_default".accounts_metadata
+                                  where accounts_metadata.accounts_seq = new.seq
+                                  order by revision desc
+                                  limit 1), new.updated_at, new.metadata);
+
+    return new;
+end;]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="update_transaction_metadata_history()" returnType="trigger" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[begin
+    insert into "_default".transactions_metadata (ledger, transactions_seq, revision, date, metadata)
+    values (new.ledger, new.seq, (select revision + 1
+                                  from "_default".transactions_metadata
+                                  where transactions_metadata.transactions_seq = new.seq
+                                  order by revision desc
+                                  limit 1), new.updated_at, new.metadata);
+
+    return new;
+end;]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+   </routines>
+</database>

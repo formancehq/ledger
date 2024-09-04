@@ -142,6 +142,10 @@ func (a *MonetaryInt) UnmarshalText(b []byte) error {
 	return (*big.Int)(a).UnmarshalText(b)
 }
 
+func (a *MonetaryInt) ToBigInt() *big.Int {
+	return (*big.Int)(a)
+}
+
 func NewMonetaryInt(i int64) *MonetaryInt {
 	return (*MonetaryInt)(big.NewInt(i))
 }
