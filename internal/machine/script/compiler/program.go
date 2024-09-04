@@ -2,7 +2,7 @@ package compiler
 
 import (
 	"github.com/formancehq/ledger/internal/machine"
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
 func (p *parseVisitor) AppendInstruction(instruction byte) {
@@ -10,17 +10,17 @@ func (p *parseVisitor) AppendInstruction(instruction byte) {
 }
 
 func (p *parseVisitor) PushAddress(addr machine.Address) {
-	p.instructions = append(p.instructions, program2.OP_APUSH)
+	p.instructions = append(p.instructions, program.OP_APUSH)
 	bytes := addr.ToBytes()
 	p.instructions = append(p.instructions, bytes...)
 }
 
 func (p *parseVisitor) PushInteger(val machine.Number) error {
-	addr, err := p.AllocateResource(program2.Constant{Inner: val})
+	addr, err := p.AllocateResource(program.Constant{Inner: val})
 	if err != nil {
 		return err
 	}
-	p.instructions = append(p.instructions, program2.OP_APUSH)
+	p.instructions = append(p.instructions, program.OP_APUSH)
 	bytes := addr.ToBytes()
 	p.instructions = append(p.instructions, bytes...)
 	return nil
@@ -31,6 +31,6 @@ func (p *parseVisitor) Bump(n int64) error {
 	if err != nil {
 		return err
 	}
-	p.instructions = append(p.instructions, program2.OP_BUMP)
+	p.instructions = append(p.instructions, program.OP_BUMP)
 	return nil
 }

@@ -100,7 +100,7 @@ func test(t *testing.T, testCase TestCase) {
 			}
 		}
 
-		_, _, err := m.ResolveResources(context.Background(), store)
+		err := m.ResolveResources(context.Background(), store)
 		if err != nil {
 			return err
 		}
@@ -1009,10 +1009,8 @@ func TestNeededBalances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not expect error on SetVars, got: %v", err)
 	}
-	readLockAccounts, writeLockAccounts, err := m.ResolveResources(context.Background(), EmptyStore)
+	err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
-	require.Equalf(t, []string{"c"}, readLockAccounts, "readlock")
-	require.Equalf(t, []string{"a", "b", "bounded"}, writeLockAccounts, "writelock")
 
 	store := mockStore{}
 	err = m.ResolveBalances(context.Background(), &store)
@@ -1038,10 +1036,8 @@ func TestNeededBalances2(t *testing.T) {
 	}
 
 	m := NewMachine(*p)
-	_, involvedSources, err := m.ResolveResources(context.Background(), EmptyStore)
+	err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
-	require.Equal(t, []string{"a"}, involvedSources)
-
 }
 
 func TestNeededBalancesBalanceFn(t *testing.T) {
@@ -1059,10 +1055,8 @@ send $balance (
 	}
 
 	m := NewMachine(*p)
-	rlAccounts, wlAccounts, err := m.ResolveResources(context.Background(), EmptyStore)
+	err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
-	require.Equal(t, []string{"a"}, wlAccounts)
-	require.Equal(t, []string{"acc", "b"}, rlAccounts)
 
 	store := mockStore{}
 	err = m.ResolveBalances(context.Background(), &store)
@@ -1096,10 +1090,8 @@ send [COIN 1] (
 			Balances: map[string]*big.Int{},
 		},
 	}
-	rlAccounts, wlAccounts, err := m.ResolveResources(context.Background(), staticStore)
+	err = m.ResolveResources(context.Background(), staticStore)
 	require.NoError(t, err)
-	require.Equal(t, []string{"src"}, wlAccounts)
-	require.Equal(t, []string{"dest"}, rlAccounts)
 
 	store := mockStore{}
 	err = m.ResolveBalances(context.Background(), &store)
@@ -1120,7 +1112,7 @@ func TestSetTxMeta(t *testing.T) {
 
 	m := NewMachine(*p)
 
-	_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+	err = m.ResolveResources(context.Background(), EmptyStore)
 	require.NoError(t, err)
 	err = m.ResolveBalances(context.Background(), EmptyStore)
 	require.NoError(t, err)
@@ -1160,7 +1152,7 @@ func TestSetAccountMeta(t *testing.T) {
 
 		m := NewMachine(*p)
 
-		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1210,7 +1202,7 @@ func TestSetAccountMeta(t *testing.T) {
 			"acc": "test",
 		}))
 
-		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1779,7 +1771,7 @@ func TestResolveResources(t *testing.T) {
 
 			m := NewMachine(*p)
 			require.NoError(t, m.SetVarsFromJSON(tc.vars))
-			_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+			err = m.ResolveResources(context.Background(), EmptyStore)
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.True(t, errors.Is(err, tc.expectedError))
@@ -1832,7 +1824,7 @@ func TestResolveBalances(t *testing.T) {
 
 			m := NewMachine(*p)
 			require.NoError(t, m.SetVarsFromJSON(tc.vars))
-			_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+			err = m.ResolveResources(context.Background(), EmptyStore)
 			require.NoError(t, err)
 
 			store := tc.store
@@ -1871,7 +1863,7 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.ResolveBalances(context.Background(), EmptyStore)
@@ -1895,7 +1887,7 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
 		err = m.Execute()
@@ -1910,17 +1902,17 @@ func TestMachine(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.NoError(t, err)
 
-		_, _, err = m.ResolveResources(context.Background(), EmptyStore)
+		err := m.ResolveResources(context.Background(), EmptyStore)
 		require.ErrorContains(t, err, "tried to call ResolveResources twice")
 	})
 
 	t.Run("err missing var", func(t *testing.T) {
 		m := NewMachine(*p)
 
-		_, _, err := m.ResolveResources(context.Background(), EmptyStore)
+		err = m.ResolveResources(context.Background(), EmptyStore)
 		require.Error(t, err)
 	})
 }
@@ -2407,9 +2399,19 @@ func (s *mockStore) GetRequestedAccounts() []string {
 	return s.requestedAccounts
 }
 
-func (s *mockStore) GetBalance(ctx context.Context, address, asset string) (*big.Int, error) {
-	s.requestedAccounts = append(s.requestedAccounts, address)
-	return big.NewInt(0), nil
+func (s *mockStore) GetBalances(_ context.Context, query BalanceQuery) (Balances, error) {
+	ret := Balances{}
+	for account, assets := range query {
+		for _, asset := range assets {
+			s.requestedAccounts = append(s.requestedAccounts, account)
+			_, ok := ret[account]
+			if !ok {
+				ret[account] = map[string]*big.Int{}
+			}
+			ret[account][asset] = new(big.Int)
+		}
+	}
+	return ret, nil
 }
 
 func (s *mockStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {

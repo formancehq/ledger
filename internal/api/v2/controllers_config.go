@@ -4,8 +4,7 @@ import (
 	_ "embed"
 	"net/http"
 
-	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/go-libs/api"
 )
 
 type ConfigInfo struct {
@@ -13,11 +12,11 @@ type ConfigInfo struct {
 	Version string `json:"version"`
 }
 
-func getInfo(backend backend.Backend) func(w http.ResponseWriter, r *http.Request) {
+func getInfo(version string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sharedapi.RawOk(w, ConfigInfo{
+		api.RawOk(w, ConfigInfo{
 			Server:  "ledger",
-			Version: backend.GetVersion(),
+			Version: version,
 		})
 	}
 }

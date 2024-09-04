@@ -13,6 +13,8 @@ type V2CreateTransactionRequest struct {
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
 	// Use an idempotency key
 	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
+	// Disable balances checks
+	Force *bool `queryParam:"style=form,explode=true,name=force"`
 	// The request body must contain at least one of the following objects:
 	//   - `postings`: suitable for simple transactions
 	//   - `script`: enabling more complex transactions with Numscript
@@ -39,6 +41,13 @@ func (o *V2CreateTransactionRequest) GetIdempotencyKey() *string {
 		return nil
 	}
 	return o.IdempotencyKey
+}
+
+func (o *V2CreateTransactionRequest) GetForce() *bool {
+	if o == nil {
+		return nil
+	}
+	return o.Force
 }
 
 func (o *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {

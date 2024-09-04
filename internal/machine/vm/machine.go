@@ -13,12 +13,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
-	"slices"
-
-	"github.com/formancehq/ledger/internal/machine"
 
 	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine"
+
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/logrusorgru/aurora"
 	"github.com/pkg/errors"
@@ -478,29 +477,20 @@ func (m *Machine) Execute() error {
 	}
 }
 
-type BalanceRequest struct {
-	Account  string
-	Asset    string
-	Response chan *machine.MonetaryInt
-	Error    error
-}
-
 func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 
-	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
+	// map account/asset/resourceIndex
+	assignBalanceAsResource := map[string]map[string]int{}
 
+	balancesQuery := BalanceQuery{}
 	for address, resourceIndex := range m.UnresolvedResourceBalances {
 		monetary := m.Resources[resourceIndex].(machine.Monetary)
-		balance, err := store.GetBalance(ctx, address, string(monetary.Asset))
-		if err != nil {
-			return err
+		balancesQuery[address] = append(balancesQuery[address], string(monetary.Asset))
+
+		if _, ok := assignBalanceAsResource[address]; !ok {
+			assignBalanceAsResource[address] = map[string]int{}
 		}
-		if balance.Cmp(ledger.Zero) < 0 {
-			return machine.NewErrNegativeAmount("tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
-				address, monetary.Asset, balance)
-		}
-		monetary.Amount = machine.NewMonetaryIntFromBigInt(balance)
-		m.Resources[resourceIndex] = monetary
+		assignBalanceAsResource[address][string(monetary.Asset)] = resourceIndex
 	}
 
 	// for every account that we need balances of, check if it's there
@@ -511,10 +501,7 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 		}
 		accountAddress := (*account).(machine.AccountAddress)
 
-		if _, ok := m.Balances[accountAddress]; !ok {
-			m.Balances[accountAddress] = make(map[machine.Asset]*machine.MonetaryInt)
-		}
-		// for every asset, send request
+		// for every asset, register the query
 		for addr := range neededAssets {
 			mon, ok := m.getResource(addr)
 			if !ok {
@@ -527,21 +514,47 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 				continue
 			}
 
-			balance, err := store.GetBalance(ctx, string(accountAddress), string(asset))
-			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("could not get balance for account %q", addr))
-			}
-
-			m.Balances[accountAddress][asset] = machine.NewMonetaryIntFromBigInt(balance)
+			balancesQuery[string(accountAddress)] = append(balancesQuery[string(accountAddress)], string(asset))
 		}
 	}
+
+	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
+	if len(balancesQuery) > 0 {
+		balances, err := store.GetBalances(ctx, balancesQuery)
+		if err != nil {
+			return errors.Wrap(err, "could not get balances")
+		}
+
+		for account, forAssets := range balances {
+			for asset, balance := range forAssets {
+				if assignBalanceAsResource[account] != nil {
+					resourceIndex, ok := assignBalanceAsResource[account][asset]
+					if ok {
+						if balance.Cmp(ledger.Zero) < 0 {
+							return machine.NewErrNegativeAmount("tried to request the balance of account %s for asset %s: received %s: monetary amounts must be non-negative",
+								account, asset, balance)
+						}
+						monetary := m.Resources[resourceIndex].(machine.Monetary)
+						monetary.Amount = machine.NewMonetaryIntFromBigInt(balance)
+						m.Resources[resourceIndex] = monetary
+					}
+				}
+
+				if _, ok := m.Balances[machine.AccountAddress(account)]; !ok {
+					m.Balances[machine.AccountAddress(account)] = make(map[machine.Asset]*machine.MonetaryInt)
+				}
+				m.Balances[machine.AccountAddress(account)][machine.Asset(asset)] = machine.NewMonetaryIntFromBigInt(balance)
+			}
+		}
+	}
+
 	return nil
 }
 
-func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, []string, error) {
+func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 	//TODO(gfyrag): Is that really required? Feel like defensive programming.
 	if m.resolveCalled {
-		return nil, nil, errors.New("tried to call ResolveResources twice")
+		return errors.New("tried to call ResolveResources twice")
 	}
 
 	m.resolveCalled = true
@@ -560,7 +573,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 			var ok bool
 			val, ok = m.Vars[res.Name]
 			if !ok {
-				return nil, nil, fmt.Errorf("missing variable '%s'", res.Name)
+				return fmt.Errorf("missing variable '%s'", res.Name)
 			}
 			if val.GetType() == machine.TypeAccount {
 				involvedAccountsMap[machine.Address(idx)] = string(val.(machine.AccountAddress))
@@ -571,17 +584,17 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 
 			account, err := store.GetAccount(ctx, addr)
 			if err != nil {
-				return nil, nil, err
+				return err
 			}
 
 			metadata, ok := account.Metadata[res.Key]
 			if !ok {
-				return nil, nil, machine.NewErrMissingMetadata("missing key %v in metadata for account %s", res.Key, addr)
+				return machine.NewErrMissingMetadata("missing key %v in metadata for account %s", res.Key, addr)
 			}
 
 			val, err = machine.NewValueFromString(res.Typ, metadata)
 			if err != nil {
-				return nil, nil, err
+				return err
 			}
 			if val.GetType() == machine.TypeAccount {
 				involvedAccountsMap[machine.Address(idx)] = string(val.(machine.AccountAddress))
@@ -594,12 +607,12 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 
 			ass, ok := m.getResource(res.Asset)
 			if !ok {
-				return nil, nil, fmt.Errorf(
+				return fmt.Errorf(
 					"variable '%s': tried to request account balance of an asset which has not yet been solved",
 					res.Name)
 			}
 			if (*ass).GetType() != machine.TypeAsset {
-				return nil, nil, fmt.Errorf(
+				return fmt.Errorf(
 					"variable '%s': tried to request account balance for an asset on wrong entity: %v instead of asset",
 					res.Name, (*ass).GetType())
 			}
@@ -619,19 +632,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) ([]string, 
 		m.Resources = append(m.Resources, val)
 	}
 
-	readLockAccounts := make([]string, 0)
-	for _, accountAddress := range m.Program.ReadLockAccounts {
-		readLockAccounts = append(readLockAccounts, involvedAccountsMap[accountAddress])
-	}
-
-	writeLockAccounts := make([]string, 0)
-	for _, machineAddress := range m.Program.WriteLockAccounts {
-		writeLockAccounts = append(writeLockAccounts, involvedAccountsMap[machineAddress])
-	}
-
-	slices.Sort(readLockAccounts)
-	slices.Sort(writeLockAccounts)
-	return readLockAccounts, writeLockAccounts, nil
+	return nil
 }
 
 func (m *Machine) SetVarsFromJSON(vars map[string]string) error {
