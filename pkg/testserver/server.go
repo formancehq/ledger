@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -21,7 +21,6 @@ import (
 
 type T interface {
 	require.TestingT
-	TempDir() string
 	Cleanup(func())
 	Helper()
 	Logf(format string, args ...any)
@@ -44,12 +43,6 @@ type Server struct {
 
 func (s *Server) Start() {
 	s.t.Helper()
-
-	tmpDir := s.t.TempDir()
-	require.NoError(s.t, os.MkdirAll(tmpDir, 0700))
-	s.t.Cleanup(func() {
-		_ = os.RemoveAll(tmpDir)
-	})
 
 	rootCmd := cmd.NewRootCommand()
 	args := []string{
@@ -114,10 +107,19 @@ func (s *Server) Start() {
 		}
 	}
 
+	var transport http.RoundTripper = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+	}
+	if testing.Verbose() {
+		transport = httpclient.NewDebugHTTPTransport(transport)
+	}
+
 	s.httpClient = ledgerclient.New(
 		ledgerclient.WithServerURL(httpserver.URL(s.ctx)),
 		ledgerclient.WithClient(&http.Client{
-			Transport: httpclient.NewDebugHTTPTransport(http.DefaultTransport),
+			Transport: transport,
 		}),
 	)
 }

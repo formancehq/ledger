@@ -9,7 +9,7 @@ import (
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
 	"github.com/formancehq/ledger/internal/machine/script/parser"
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 )
 
 func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []parser.IAllotmentPortionContext) *CompileError {
@@ -26,7 +26,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 			}
 			rat := *portion.Specific
 			total.Add(&rat, total)
-			addr, err := p.AllocateResource(program2.Constant{Inner: *portion})
+			addr, err := p.AllocateResource(program.Constant{Inner: *portion})
 			if err != nil {
 				return LogicError(c, err)
 			}
@@ -48,7 +48,7 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 					errors.New("two uses of `remaining` in the same allocation"),
 				)
 			}
-			addr, err := p.AllocateResource(program2.Constant{Inner: machine.NewPortionRemaining()})
+			addr, err := p.AllocateResource(program.Constant{Inner: machine.NewPortionRemaining()})
 			if err != nil {
 				return LogicError(c, err)
 			}
@@ -80,6 +80,6 @@ func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []pars
 	if err != nil {
 		return LogicError(c, err)
 	}
-	p.AppendInstruction(program2.OP_MAKE_ALLOTMENT)
+	p.AppendInstruction(program.OP_MAKE_ALLOTMENT)
 	return nil
 }

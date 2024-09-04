@@ -60,16 +60,14 @@ tests:
     LET goFlags="-race"
     IF [ "$coverage" = "true" ]
         SET goFlags="$goFlags -covermode=atomic"
-        SET goFlags="$goFlags -coverpkg=github.com/formancehq/stack/components/ledger/internal/..."
-        SET goFlags="$goFlags,github.com/formancehq/stack/components/ledger/cmd/..."
+        SET goFlags="$goFlags -coverpkg=github.com/formancehq/ledger/internal/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/events/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
         SET goFlags="$goFlags -coverprofile cover.out"
     END
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
-        WITH DOCKER \
-            --pull=postgres:15-alpine \
-            --pull=clickhouse/clickhouse-server:head \
-            --pull=elasticsearch:8.14.3
+        WITH DOCKER --pull=postgres:15-alpine
             RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
                 --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
                 ginkgo -r -p $goFlags
@@ -81,7 +79,8 @@ tests:
     END
     IF [ "$coverage" = "true" ]
         # exclude files suffixed with _generated.go, these are mocks used by tests
-        RUN cat cover.out | grep -v "_generated.go" > cover2.out
+        # toremovelater: also exclude machine code as it will be updated soon
+        RUN cat cover.out | grep -v "_generated.go" | grep -v "/machine/" > cover2.out
         RUN mv cover2.out cover.out
         SAVE ARTIFACT cover.out AS LOCAL cover.out
     END
@@ -192,3 +191,17 @@ generate-client:
     COPY --dir pkg/client client
     RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
     SAVE ARTIFACT client AS LOCAL ./pkg/client
+
+export-database-schema:
+    FROM core+builder-image
+    RUN go install github.com/roerohan/wait-for-it@latest
+    COPY (+sources/*) /src
+    WORKDIR /src/components/ledger
+    COPY --dir scripts scripts
+    WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
+        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
+            --mount type=cache,id=gobuild,target=/root/.cache/go-build \
+            ./scripts/export-database-schema.sh
+    END
+    SAVE ARTIFACT docs/database AS LOCAL docs/database
+

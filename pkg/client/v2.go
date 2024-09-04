@@ -13,10 +13,8 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/formancehq/stack/ledger/client/models/sdkerrors"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 type V2 struct {
@@ -221,17 +219,12 @@ func (s *V2) GetInfo(ctx context.Context, opts ...operations.Option) (*operation
 }
 
 // ListLedgers - List ledgers
-func (s *V2) ListLedgers(ctx context.Context, pageSize *int64, cursor *string, opts ...operations.Option) (*operations.V2ListLedgersResponse, error) {
+func (s *V2) ListLedgers(ctx context.Context, request operations.V2ListLedgersRequest, opts ...operations.Option) (*operations.V2ListLedgersResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2ListLedgers",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2ListLedgersRequest{
-		PageSize: pageSize,
-		Cursor:   cursor,
 	}
 
 	o := operations.Options{}
@@ -409,16 +402,12 @@ func (s *V2) ListLedgers(ctx context.Context, pageSize *int64, cursor *string, o
 }
 
 // GetLedger - Get a ledger
-func (s *V2) GetLedger(ctx context.Context, ledger string, opts ...operations.Option) (*operations.V2GetLedgerResponse, error) {
+func (s *V2) GetLedger(ctx context.Context, request operations.V2GetLedgerRequest, opts ...operations.Option) (*operations.V2GetLedgerResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2GetLedger",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2GetLedgerRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -592,17 +581,12 @@ func (s *V2) GetLedger(ctx context.Context, ledger string, opts ...operations.Op
 }
 
 // CreateLedger - Create a ledger
-func (s *V2) CreateLedger(ctx context.Context, ledger string, v2CreateLedgerRequest *components.V2CreateLedgerRequest, opts ...operations.Option) (*operations.V2CreateLedgerResponse, error) {
+func (s *V2) CreateLedger(ctx context.Context, request operations.V2CreateLedgerRequest, opts ...operations.Option) (*operations.V2CreateLedgerResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2CreateLedger",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2CreateLedgerRequest{
-		Ledger:                ledger,
-		V2CreateLedgerRequest: v2CreateLedgerRequest,
 	}
 
 	o := operations.Options{}
@@ -771,17 +755,12 @@ func (s *V2) CreateLedger(ctx context.Context, ledger string, v2CreateLedgerRequ
 }
 
 // UpdateLedgerMetadata - Update ledger metadata
-func (s *V2) UpdateLedgerMetadata(ctx context.Context, ledger string, requestBody map[string]string, opts ...operations.Option) (*operations.V2UpdateLedgerMetadataResponse, error) {
+func (s *V2) UpdateLedgerMetadata(ctx context.Context, request operations.V2UpdateLedgerMetadataRequest, opts ...operations.Option) (*operations.V2UpdateLedgerMetadataResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2UpdateLedgerMetadata",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2UpdateLedgerMetadataRequest{
-		Ledger:      ledger,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -962,17 +941,12 @@ func (s *V2) UpdateLedgerMetadata(ctx context.Context, ledger string, requestBod
 }
 
 // DeleteLedgerMetadata - Delete ledger metadata by key
-func (s *V2) DeleteLedgerMetadata(ctx context.Context, ledger string, key string, opts ...operations.Option) (*operations.V2DeleteLedgerMetadataResponse, error) {
+func (s *V2) DeleteLedgerMetadata(ctx context.Context, request operations.V2DeleteLedgerMetadataRequest, opts ...operations.Option) (*operations.V2DeleteLedgerMetadataResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2DeleteLedgerMetadata",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2DeleteLedgerMetadataRequest{
-		Ledger: ledger,
-		Key:    key,
 	}
 
 	o := operations.Options{}
@@ -1135,16 +1109,12 @@ func (s *V2) DeleteLedgerMetadata(ctx context.Context, ledger string, key string
 }
 
 // GetLedgerInfo - Get information about a ledger
-func (s *V2) GetLedgerInfo(ctx context.Context, ledger string, opts ...operations.Option) (*operations.V2GetLedgerInfoResponse, error) {
+func (s *V2) GetLedgerInfo(ctx context.Context, request operations.V2GetLedgerInfoRequest, opts ...operations.Option) (*operations.V2GetLedgerInfoResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2GetLedgerInfo",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2GetLedgerInfoRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -1318,17 +1288,12 @@ func (s *V2) GetLedgerInfo(ctx context.Context, ledger string, opts ...operation
 }
 
 // CreateBulk - Bulk request
-func (s *V2) CreateBulk(ctx context.Context, ledger string, requestBody []components.V2BulkElement, opts ...operations.Option) (*operations.V2CreateBulkResponse, error) {
+func (s *V2) CreateBulk(ctx context.Context, request operations.V2CreateBulkRequest, opts ...operations.Option) (*operations.V2CreateBulkResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2CreateBulk",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2CreateBulkRequest{
-		Ledger:      ledger,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -1510,18 +1475,12 @@ func (s *V2) CreateBulk(ctx context.Context, ledger string, requestBody []compon
 }
 
 // CountAccounts - Count the accounts from a ledger
-func (s *V2) CountAccounts(ctx context.Context, ledger string, pit *time.Time, requestBody map[string]any, opts ...operations.Option) (*operations.V2CountAccountsResponse, error) {
+func (s *V2) CountAccounts(ctx context.Context, request operations.V2CountAccountsRequest, opts ...operations.Option) (*operations.V2CountAccountsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2CountAccounts",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2CountAccountsRequest{
-		Ledger:      ledger,
-		Pit:         pit,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -1886,19 +1845,12 @@ func (s *V2) ListAccounts(ctx context.Context, request operations.V2ListAccounts
 }
 
 // GetAccount - Get account by its address
-func (s *V2) GetAccount(ctx context.Context, ledger string, address string, expand *string, pit *time.Time, opts ...operations.Option) (*operations.V2GetAccountResponse, error) {
+func (s *V2) GetAccount(ctx context.Context, request operations.V2GetAccountRequest, opts ...operations.Option) (*operations.V2GetAccountResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2GetAccount",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2GetAccountRequest{
-		Ledger:  ledger,
-		Address: address,
-		Expand:  expand,
-		Pit:     pit,
 	}
 
 	o := operations.Options{}
@@ -2257,18 +2209,12 @@ func (s *V2) AddMetadataToAccount(ctx context.Context, request operations.V2AddM
 
 // DeleteAccountMetadata - Delete metadata by key
 // Delete metadata by key
-func (s *V2) DeleteAccountMetadata(ctx context.Context, ledger string, address string, key string, opts ...operations.Option) (*operations.V2DeleteAccountMetadataResponse, error) {
+func (s *V2) DeleteAccountMetadata(ctx context.Context, request operations.V2DeleteAccountMetadataRequest, opts ...operations.Option) (*operations.V2DeleteAccountMetadataResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2DeleteAccountMetadata",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2DeleteAccountMetadataRequest{
-		Ledger:  ledger,
-		Address: address,
-		Key:     key,
 	}
 
 	o := operations.Options{}
@@ -2432,16 +2378,12 @@ func (s *V2) DeleteAccountMetadata(ctx context.Context, ledger string, address s
 
 // ReadStats - Get statistics from a ledger
 // Get statistics from a ledger. (aggregate metrics on accounts and transactions)
-func (s *V2) ReadStats(ctx context.Context, ledger string, opts ...operations.Option) (*operations.V2ReadStatsResponse, error) {
+func (s *V2) ReadStats(ctx context.Context, request operations.V2ReadStatsRequest, opts ...operations.Option) (*operations.V2ReadStatsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2ReadStats",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2ReadStatsRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}
@@ -2615,18 +2557,12 @@ func (s *V2) ReadStats(ctx context.Context, ledger string, opts ...operations.Op
 }
 
 // CountTransactions - Count the transactions from a ledger
-func (s *V2) CountTransactions(ctx context.Context, ledger string, pit *time.Time, requestBody map[string]any, opts ...operations.Option) (*operations.V2CountTransactionsResponse, error) {
+func (s *V2) CountTransactions(ctx context.Context, request operations.V2CountTransactionsRequest, opts ...operations.Option) (*operations.V2CountTransactionsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2CountTransactions",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2CountTransactionsRequest{
-		Ledger:      ledger,
-		Pit:         pit,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -2991,19 +2927,12 @@ func (s *V2) ListTransactions(ctx context.Context, request operations.V2ListTran
 }
 
 // CreateTransaction - Create a new transaction to a ledger
-func (s *V2) CreateTransaction(ctx context.Context, ledger string, v2PostTransaction components.V2PostTransaction, dryRun *bool, idempotencyKey *string, opts ...operations.Option) (*operations.V2CreateTransactionResponse, error) {
+func (s *V2) CreateTransaction(ctx context.Context, request operations.V2CreateTransactionRequest, opts ...operations.Option) (*operations.V2CreateTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2CreateTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2CreateTransactionRequest{
-		Ledger:            ledger,
-		DryRun:            dryRun,
-		IdempotencyKey:    idempotencyKey,
-		V2PostTransaction: v2PostTransaction,
 	}
 
 	o := operations.Options{}
@@ -3189,19 +3118,12 @@ func (s *V2) CreateTransaction(ctx context.Context, ledger string, v2PostTransac
 }
 
 // GetTransaction - Get transaction from a ledger by its ID
-func (s *V2) GetTransaction(ctx context.Context, ledger string, id *big.Int, expand *string, pit *time.Time, opts ...operations.Option) (*operations.V2GetTransactionResponse, error) {
+func (s *V2) GetTransaction(ctx context.Context, request operations.V2GetTransactionRequest, opts ...operations.Option) (*operations.V2GetTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2GetTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2GetTransactionRequest{
-		Ledger: ledger,
-		ID:     id,
-		Expand: expand,
-		Pit:    pit,
 	}
 
 	o := operations.Options{}
@@ -3560,18 +3482,12 @@ func (s *V2) AddMetadataOnTransaction(ctx context.Context, request operations.V2
 
 // DeleteTransactionMetadata - Delete metadata by key
 // Delete metadata by key
-func (s *V2) DeleteTransactionMetadata(ctx context.Context, ledger string, id *big.Int, key string, opts ...operations.Option) (*operations.V2DeleteTransactionMetadataResponse, error) {
+func (s *V2) DeleteTransactionMetadata(ctx context.Context, request operations.V2DeleteTransactionMetadataRequest, opts ...operations.Option) (*operations.V2DeleteTransactionMetadataResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2DeleteTransactionMetadata",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2DeleteTransactionMetadataRequest{
-		Ledger: ledger,
-		ID:     id,
-		Key:    key,
 	}
 
 	o := operations.Options{}
@@ -3734,19 +3650,12 @@ func (s *V2) DeleteTransactionMetadata(ctx context.Context, ledger string, id *b
 }
 
 // RevertTransaction - Revert a ledger transaction by its ID
-func (s *V2) RevertTransaction(ctx context.Context, ledger string, id *big.Int, force *bool, atEffectiveDate *bool, opts ...operations.Option) (*operations.V2RevertTransactionResponse, error) {
+func (s *V2) RevertTransaction(ctx context.Context, request operations.V2RevertTransactionRequest, opts ...operations.Option) (*operations.V2RevertTransactionResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2RevertTransaction",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2RevertTransactionRequest{
-		Ledger:          ledger,
-		ID:              id,
-		Force:           force,
-		AtEffectiveDate: atEffectiveDate,
 	}
 
 	o := operations.Options{}
@@ -3924,19 +3833,12 @@ func (s *V2) RevertTransaction(ctx context.Context, ledger string, id *big.Int, 
 }
 
 // GetBalancesAggregated - Get the aggregated balances from selected accounts
-func (s *V2) GetBalancesAggregated(ctx context.Context, ledger string, pit *time.Time, useInsertionDate *bool, requestBody map[string]any, opts ...operations.Option) (*operations.V2GetBalancesAggregatedResponse, error) {
+func (s *V2) GetBalancesAggregated(ctx context.Context, request operations.V2GetBalancesAggregatedRequest, opts ...operations.Option) (*operations.V2GetBalancesAggregatedResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2GetBalancesAggregated",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:read"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2GetBalancesAggregatedRequest{
-		Ledger:           ledger,
-		Pit:              pit,
-		UseInsertionDate: useInsertionDate,
-		RequestBody:      requestBody,
 	}
 
 	o := operations.Options{}
@@ -4498,17 +4400,12 @@ func (s *V2) ListLogs(ctx context.Context, request operations.V2ListLogsRequest,
 
 }
 
-func (s *V2) ImportLogs(ctx context.Context, ledger string, requestBody *string, opts ...operations.Option) (*operations.V2ImportLogsResponse, error) {
+func (s *V2) ImportLogs(ctx context.Context, request operations.V2ImportLogsRequest, opts ...operations.Option) (*operations.V2ImportLogsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2ImportLogs",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2ImportLogsRequest{
-		Ledger:      ledger,
-		RequestBody: requestBody,
 	}
 
 	o := operations.Options{}
@@ -4677,16 +4574,12 @@ func (s *V2) ImportLogs(ctx context.Context, ledger string, requestBody *string,
 }
 
 // ExportLogs - Export logs
-func (s *V2) ExportLogs(ctx context.Context, ledger string, opts ...operations.Option) (*operations.V2ExportLogsResponse, error) {
+func (s *V2) ExportLogs(ctx context.Context, request operations.V2ExportLogsRequest, opts ...operations.Option) (*operations.V2ExportLogsResponse, error) {
 	hookCtx := hooks.HookContext{
 		Context:        ctx,
 		OperationID:    "v2ExportLogs",
 		OAuth2Scopes:   []string{"ledger:read", "ledger:write"},
 		SecuritySource: s.sdkConfiguration.Security,
-	}
-
-	request := operations.V2ExportLogsRequest{
-		Ledger: ledger,
 	}
 
 	o := operations.Options{}

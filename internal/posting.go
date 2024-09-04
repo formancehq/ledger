@@ -1,8 +1,6 @@
 package ledger
 
 import (
-	"database/sql/driver"
-	"encoding/json"
 	"math/big"
 
 	"github.com/formancehq/ledger/pkg/core/accounts"
@@ -18,6 +16,14 @@ type Posting struct {
 	Asset       string   `json:"asset"`
 }
 
+func (p Posting) GetSource() string {
+	return p.Source
+}
+
+func (p Posting) GetDestination() string {
+	return p.Destination
+}
+
 func NewPosting(source string, destination string, asset string, amount *big.Int) Posting {
 	return Posting{
 		Source:      source,
@@ -29,35 +35,19 @@ func NewPosting(source string, destination string, asset string, amount *big.Int
 
 type Postings []Posting
 
-func (p Postings) Reverse() {
+func (p Postings) Reverse() Postings {
+	postings := make(Postings, len(p))
+	copy(postings, p)
+
 	for i := range p {
-		p[i].Source, p[i].Destination = p[i].Destination, p[i].Source
+		postings[i].Source, postings[i].Destination = postings[i].Destination, postings[i].Source
 	}
 
 	for i := 0; i < len(p)/2; i++ {
-		p[i], p[len(p)-i-1] = p[len(p)-i-1], p[i]
-	}
-}
-
-// Scan - Implement the database/sql scanner interface
-func (p *Postings) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-	v, err := driver.String.ConvertValue(value)
-	if err != nil {
-		return err
+		postings[i], postings[len(postings)-i-1] = postings[len(postings)-i-1], postings[i]
 	}
 
-	*p = Postings{}
-	switch vv := v.(type) {
-	case []uint8:
-		return json.Unmarshal(vv, p)
-	case string:
-		return json.Unmarshal([]byte(vv), p)
-	default:
-		panic("not supported type")
-	}
+	return postings
 }
 
 func (p Postings) Validate() (int, error) {

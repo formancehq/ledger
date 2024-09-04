@@ -1,94 +1,138 @@
 package cmd
 
 import (
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/ledger/internal/bus"
+	otelpyroscope "github.com/grafana/otel-profiling-go"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/time"
-
-	"github.com/formancehq/ledger/internal/storage/driver"
-
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/aws/iam"
+	"github.com/formancehq/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/otlp/otlptraces"
+	"github.com/formancehq/go-libs/publish"
 	"github.com/formancehq/ledger/internal/api"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/ledger/internal/storage"
+	"github.com/pkg/errors"
 
 	"github.com/formancehq/go-libs/ballast"
-	"github.com/formancehq/go-libs/httpserver"
-	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/service"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
+
+	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
+	//nolint:gosec
+	_ "net/http/pprof"
 )
 
 const (
+	BindFlag                   = "bind"
 	BallastSizeInBytesFlag     = "ballast-size"
 	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
-	ledgerBatchSizeFlag        = "ledger-batch-size"
-	ReadOnlyFlag               = "read-only"
 	AutoUpgradeFlag            = "auto-upgrade"
+	EnablePProfFlag            = "enable-pprof"
 )
 
-func NewServe() *cobra.Command {
+func NewServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			readOnly, _ := cmd.Flags().GetBool(ReadOnlyFlag)
-			autoUpgrade, _ := cmd.Flags().GetBool(AutoUpgradeFlag)
-			ballastSize, _ := cmd.Flags().GetUint(BallastSizeInBytesFlag)
-			bind, _ := cmd.Flags().GetString(BindFlag)
+			serveConfiguration := discoverServeConfiguration(cmd)
 
-			return service.New(cmd.OutOrStdout(), resolveOptions(
-				cmd,
-				ballast.Module(ballastSize),
-				api.Module(api.Config{
-					Version:  Version,
-					ReadOnly: readOnly,
-					Debug:    service.IsDebug(cmd),
-				}),
-				fx.Invoke(func(lc fx.Lifecycle, driver *driver.Driver) {
-					if autoUpgrade {
+			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+
+			enablePProf, _ := cmd.Flags().GetBool(EnablePProfFlag)
+			options := []fx.Option{
+				fx.NopLogger,
+				otlptraces.FXModuleFromFlags(cmd),
+			}
+			// todo: move in dedicated shared package
+			if enablePProf {
+				logging.FromContext(cmd.Context()).Info("Enabling pprof...")
+				options = append(options,
+					fx.Decorate(func(provider trace.TracerProvider) trace.TracerProvider {
+						return otelpyroscope.NewTracerProvider(provider)
+					}),
+					fx.Invoke(func(lc fx.Lifecycle) {
 						lc.Append(fx.Hook{
-							OnStart: driver.UpgradeAllBuckets,
+							OnStart: func(ctx context.Context) error {
+								go func() {
+									if err := http.ListenAndServe(":3000", nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+										panic(err)
+									}
+								}()
+								return nil
+							},
 						})
-					}
-				}),
-				fx.Invoke(func(lc fx.Lifecycle, h chi.Router, logger logging.Logger) {
+					}),
+				)
+			}
 
-					wrappedRouter := chi.NewRouter()
-					wrappedRouter.Use(func(handler http.Handler) http.Handler {
-						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-							r = r.WithContext(logging.ContextWithLogger(r.Context(), logger))
-							handler.ServeHTTP(w, r)
-						})
-					})
-					wrappedRouter.Use(Log())
-					wrappedRouter.Mount("/", h)
-
-					lc.Append(httpserver.NewHook(wrappedRouter, httpserver.WithAddress(bind)))
+			options = append(options,
+				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
+				otlpmetrics.FXModuleFromFlags(cmd),
+				auth.FXModuleFromFlags(cmd),
+				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
+				storage.NewFXModule(serveConfiguration.autoUpgrade),
+				systemcontroller.NewFXModule(systemcontroller.ModuleConfiguration{
+					NSCacheConfiguration: ledgercontroller.CacheConfiguration{
+						MaxCount: serveConfiguration.numscriptCacheMaxCount,
+					},
 				}),
-			)...).Run(cmd)
+				bus.NewFxModule(),
+				ballast.Module(serveConfiguration.ballastSize),
+				api.Module(api.Config{
+					Version: Version,
+					Debug:   service.IsDebug(cmd),
+					Bind:    serveConfiguration.bind,
+				}),
+			)
+
+			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
 	cmd.Flags().Uint(BallastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
-	cmd.Flags().Int(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
-	cmd.Flags().Int(ledgerBatchSizeFlag, 50, "ledger batch size")
-	cmd.Flags().Bool(ReadOnlyFlag, false, "Read only mode")
+	cmd.Flags().Uint(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
+	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
+	cmd.Flags().Bool(EnablePProfFlag, false, "Enable pprof")
+
+	service.AddFlags(cmd.Flags())
+	bunconnect.AddFlags(cmd.Flags())
+	otlpmetrics.AddFlags(cmd.Flags())
+	otlptraces.AddFlags(cmd.Flags())
+	auth.AddFlags(cmd.Flags())
+	publish.AddFlags(ServiceName, cmd.Flags(), func(cd *publish.ConfigDefault) {
+		cd.PublisherCircuitBreakerSchema = systemstore.Schema
+	})
+	iam.AddFlags(cmd.Flags())
+
 	return cmd
 }
 
-func Log() func(h http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			h.ServeHTTP(w, r)
-			latency := time.Since(start)
-			logging.FromContext(r.Context()).WithFields(map[string]interface{}{
-				"method":     r.Method,
-				"path":       r.URL.Path,
-				"latency":    latency,
-				"user_agent": r.UserAgent(),
-				"params":     r.URL.Query().Encode(),
-			}).Debug("Request")
-		})
-	}
+type serveConfiguration struct {
+	ballastSize            uint
+	numscriptCacheMaxCount uint
+	autoUpgrade            bool
+	bind                   string
+}
+
+func discoverServeConfiguration(cmd *cobra.Command) serveConfiguration {
+	ret := serveConfiguration{}
+	ret.ballastSize, _ = cmd.Flags().GetUint(BallastSizeInBytesFlag)
+	ret.numscriptCacheMaxCount, _ = cmd.Flags().GetUint(NumscriptCacheMaxCountFlag)
+	ret.autoUpgrade, _ = cmd.Flags().GetBool(AutoUpgradeFlag)
+	ret.bind, _ = cmd.Flags().GetString(BindFlag)
+
+	return ret
 }

@@ -1,4 +1,4 @@
-package v2_test
+package v2
 
 import (
 	"encoding/json"
@@ -7,21 +7,14 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/auth"
-	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
-	backend, _ := newTestingBackend(t, false)
-	router := v2.NewRouter(backend, nil, metrics.NewNoOpRegistry(), auth.NewNoAuth(), testing.Verbose())
-
-	backend.
-		EXPECT().
-		GetVersion().
-		Return("latest")
+	systemController, _ := newTestingSystemController(t, false)
+	router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
 
 	req := httptest.NewRequest(http.MethodGet, "/_info", nil)
 	rec := httptest.NewRecorder()
@@ -30,11 +23,11 @@ func TestGetInfo(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	info := v2.ConfigInfo{}
+	info := ConfigInfo{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&info))
 
-	require.EqualValues(t, v2.ConfigInfo{
+	require.EqualValues(t, ConfigInfo{
 		Server:  "ledger",
-		Version: "latest",
+		Version: "develop",
 	}, info)
 }

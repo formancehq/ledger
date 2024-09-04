@@ -116,6 +116,10 @@ type ErrMetadataOverride struct {
 	key string
 }
 
+func (e *ErrMetadataOverride) Key() string {
+	return e.key
+}
+
 func (e *ErrMetadataOverride) Error() string {
 	return fmt.Sprintf("cannot override metadata '%s'", e.key)
 }

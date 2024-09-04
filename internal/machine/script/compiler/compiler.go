@@ -2,15 +2,14 @@ package compiler
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/formancehq/ledger/internal/machine"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	parser "github.com/formancehq/ledger/internal/machine/script/parser"
-	program "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/internal/machine/script/parser"
+	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/pkg/errors"
 )
 
@@ -26,15 +25,6 @@ type parseVisitor struct {
 	varIdx map[string]machine.Address
 	// needBalances store for each account, the set of assets needed
 	neededBalances map[machine.Address]map[machine.Address]struct{}
-
-	// The sources accounts that aren't unbounded
-	// that is, @world or sources that appear within a
-	// '.. allowing unboundeed overdraft' clause
-	writeLockAccounts map[machine.Address]struct{}
-
-	// all the accounts that appear in either the destination
-	// or in the balance() function
-	readLockAccounts map[machine.Address]struct{}
 }
 
 // Allocates constants if it hasn't already been,
@@ -589,7 +579,6 @@ func (p *parseVisitor) VisitVars(c *parser.VarListDeclContext) *CompileError {
 				Account: *accAddr,
 				Asset:   *assAddr,
 			})
-			p.readLockAccounts[*accAddr] = struct{}{}
 			if err != nil {
 				return LogicError(c, err)
 			}
@@ -684,14 +673,12 @@ func CompileFull(input string) CompileArtifacts {
 	}
 
 	visitor := parseVisitor{
-		errListener:       errListener,
-		instructions:      make([]byte, 0),
-		resources:         make([]program.Resource, 0),
-		varIdx:            make(map[string]machine.Address),
-		neededBalances:    make(map[machine.Address]map[machine.Address]struct{}),
-		sources:           map[machine.Address]struct{}{},
-		writeLockAccounts: map[machine.Address]struct{}{},
-		readLockAccounts:  map[machine.Address]struct{}{},
+		errListener:    errListener,
+		instructions:   make([]byte, 0),
+		resources:      make([]program.Resource, 0),
+		varIdx:         make(map[string]machine.Address),
+		neededBalances: make(map[machine.Address]map[machine.Address]struct{}),
+		sources:        map[machine.Address]struct{}{},
 	}
 
 	err := visitor.VisitScript(tree)
@@ -700,24 +687,10 @@ func CompileFull(input string) CompileArtifacts {
 		return artifacts
 	}
 
-	readLockAccounts := make(machine.Addresses, 0)
-	for address := range visitor.readLockAccounts {
-		readLockAccounts = append(readLockAccounts, address)
-	}
-	sort.Stable(readLockAccounts)
-
-	writeLockAccounts := make(machine.Addresses, 0)
-	for address := range visitor.writeLockAccounts {
-		writeLockAccounts = append(writeLockAccounts, address)
-	}
-	sort.Stable(writeLockAccounts)
-
 	artifacts.Program = &program.Program{
-		Instructions:      visitor.instructions,
-		Resources:         visitor.resources,
-		NeededBalances:    visitor.neededBalances,
-		ReadLockAccounts:  readLockAccounts,
-		WriteLockAccounts: writeLockAccounts,
+		Instructions:   visitor.instructions,
+		Resources:      visitor.resources,
+		NeededBalances: visitor.neededBalances,
 	}
 
 	return artifacts

@@ -5,7 +5,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 )
 
-func UseNewTestServer(configurationProvider func() Configuration) *Deferred[*Server] {
+func NewTestServer(configurationProvider func() Configuration) *Deferred[*Server] {
 	d := NewDeferred[*Server]()
 	BeforeEach(func() {
 		d.Reset()

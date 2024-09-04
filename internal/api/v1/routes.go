@@ -3,42 +3,30 @@ package v1
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/ledger/internal/controller/system"
+
+	"github.com/formancehq/go-libs/api"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/formancehq/go-libs/service"
 
 	"github.com/formancehq/go-libs/auth"
-	"github.com/formancehq/go-libs/health"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/go-chi/chi/v5"
 )
 
 func NewRouter(
-	b backend.Backend,
-	healthController *health.HealthController,
-	globalMetricsRegistry metrics.GlobalRegistry,
+	systemController system.Controller,
 	authenticator auth.Authenticator,
+	version string,
 	debug bool,
 ) chi.Router {
 	router := chi.NewMux()
 
-	router.Use(
-		cors.New(cors.Options{
-			AllowOriginFunc: func(r *http.Request, origin string) bool {
-				return true
-			},
-			AllowCredentials: true,
-		}).Handler,
-		MetricsMiddleware(globalMetricsRegistry),
-		middleware.Recoverer,
-	)
-
-	router.Get("/_healthcheck", healthController.Check)
-	router.Get("/_info", getInfo(b))
+	router.Get("/_info", getInfo(systemController, version))
 
 	router.Group(func(router chi.Router) {
+		router.Use(middleware.RequestLogger(api.NewLogFormatter()))
 		router.Use(auth.Middleware(authenticator))
 		router.Use(service.OTLPMiddleware("ledger", debug))
 
@@ -48,8 +36,10 @@ func NewRouter(
 					handler.ServeHTTP(w, r)
 				})
 			})
-			router.Use(autoCreateMiddleware(b))
-			router.Use(backend.LedgerMiddleware(b, []string{"/_info"}))
+			router.Use(autoCreateMiddleware(systemController))
+			router.Use(common.LedgerMiddleware(systemController, func(r *http.Request) string {
+				return chi.URLParam(r, "ledger")
+			}, "/_info"))
 
 			// LedgerController
 			router.Get("/_info", getLedgerInfo)
@@ -57,24 +47,24 @@ func NewRouter(
 			router.Get("/logs", getLogs)
 
 			// AccountController
-			router.Get("/accounts", getAccounts)
+			router.Get("/accounts", listAccounts)
 			router.Head("/accounts", countAccounts)
 			router.Get("/accounts/{address}", getAccount)
-			router.Post("/accounts/{address}/metadata", postAccountMetadata)
+			router.Post("/accounts/{address}/metadata", addAccountMetadata)
 			router.Delete("/accounts/{address}/metadata/{key}", deleteAccountMetadata)
 
 			// TransactionController
-			router.Get("/transactions", getTransactions)
+			router.Get("/transactions", listTransactions)
 			router.Head("/transactions", countTransactions)
 
-			router.Post("/transactions", postTransaction)
+			router.Post("/transactions", createTransaction)
 			router.Post("/transactions/batch", func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "not supported", http.StatusBadRequest)
 			})
 
-			router.Get("/transactions/{id}", getTransaction)
+			router.Get("/transactions/{id}", readTransaction)
 			router.Post("/transactions/{id}/revert", revertTransaction)
-			router.Post("/transactions/{id}/metadata", postTransactionMetadata)
+			router.Post("/transactions/{id}/metadata", addTransactionMetadata)
 			router.Delete("/transactions/{id}/metadata/{key}", deleteTransactionMetadata)
 
 			router.Get("/balances", getBalances)
