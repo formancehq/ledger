@@ -78,7 +78,7 @@ func (b *Bucket) IsInitialized(ctx context.Context) (bool, error) {
 }
 
 func registerMigrations(migrator *migrations.Migrator, name string) {
-	ret, err := migrations.CollectMigrationFiles(migrationsDir)
+	ret, err := migrations.CollectMigrationFiles(migrationsDir, "migrations")
 	if err != nil {
 		panic(err)
 	}
