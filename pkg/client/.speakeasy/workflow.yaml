@@ -1,0 +1,11 @@
+workflowVersion: 1.0.0
+sources:
+    Formance-OAS:
+        inputs:
+            - location: ../../openapi/v2.yaml
+        registry:
+            location: registry.speakeasyapi.dev/formance/gfyrag/formance-oas
+targets:
+    formance:
+        target: go
+        source: Formance-OAS

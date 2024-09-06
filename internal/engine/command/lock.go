@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/formancehq/stack/libs/go-libs/collectionutils"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 	"github.com/pkg/errors"
 )
 
@@ -37,7 +36,7 @@ type lockIntent struct {
 	at       time.Time
 }
 
-func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) bool {
+func (intent *lockIntent) tryLock(chain *DefaultLocker) bool {
 
 	for _, account := range intent.accounts.Read {
 		_, ok := chain.writeLocks[account]
@@ -57,8 +56,6 @@ func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) boo
 		}
 	}
 
-	logging.FromContext(ctx).Debugf("Lock acquired")
-
 	for _, account := range intent.accounts.Read {
 		atomicValue, ok := chain.readLocks[account]
 		if !ok {
@@ -74,8 +71,7 @@ func (intent *lockIntent) tryLock(ctx context.Context, chain *DefaultLocker) boo
 	return true
 }
 
-func (intent *lockIntent) unlock(ctx context.Context, chain *DefaultLocker) {
-	logging.FromContext(ctx).Debugf("Unlock accounts")
+func (intent *lockIntent) unlock(chain *DefaultLocker) {
 	for _, account := range intent.accounts.Read {
 		atomicValue := chain.readLocks[account]
 		if atomicValue.Add(-1) == 0 {
@@ -97,13 +93,6 @@ type DefaultLocker struct {
 func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts) (Unlock, error) {
 	defaultLocker.mu.Lock()
 
-	logger := logging.FromContext(ctx).WithFields(map[string]any{
-		"read":  accounts.Read,
-		"write": accounts.Write,
-	})
-	ctx = logging.ContextWithLogger(ctx, logger)
-
-	logger.Debugf("Intent lock")
 	intent := &lockIntent{
 		accounts: accounts,
 		acquired: make(chan struct{}),
@@ -116,7 +105,7 @@ func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts)
 			if node == nil {
 				return
 			}
-			if node.Value().tryLock(ctx, defaultLocker) {
+			if node.Value().tryLock(defaultLocker) {
 				node.Remove()
 				close(node.Value().acquired)
 				return
@@ -129,20 +118,18 @@ func (defaultLocker *DefaultLocker) Lock(ctx context.Context, accounts Accounts)
 		defaultLocker.mu.Lock()
 		defer defaultLocker.mu.Unlock()
 
-		intent.unlock(logging.ContextWithLogger(ctx, logger), defaultLocker)
+		intent.unlock(defaultLocker)
 
 		recheck()
 	}
 
-	acquired := intent.tryLock(ctx, defaultLocker)
+	acquired := intent.tryLock(defaultLocker)
 	if acquired {
-		logger.Debugf("Lock directly acquired")
 		defaultLocker.mu.Unlock()
 
 		return releaseIntent, nil
 	}
 
-	logger.Debugf("Lock not acquired, some accounts are already used, putting in queue")
 	defaultLocker.intents.Append(intent)
 	defaultLocker.mu.Unlock()
 

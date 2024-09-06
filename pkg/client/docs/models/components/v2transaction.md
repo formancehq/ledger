@@ -1,0 +1,13 @@
+# V2Transaction
+
+
+## Fields
+
+| Field                                                          | Type                                                           | Required                                                       | Description                                                    | Example                                                        |
+| -------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- |
+| `Timestamp`                                                    | [time.Time](https://pkg.go.dev/time#Time)                      | :heavy_check_mark:                                             | N/A                                                            |                                                                |
+| `Postings`                                                     | [][components.V2Posting](../../models/components/v2posting.md) | :heavy_check_mark:                                             | N/A                                                            |                                                                |
+| `Reference`                                                    | **string*                                                      | :heavy_minus_sign:                                             | N/A                                                            | ref:001                                                        |
+| `Metadata`                                                     | map[string]*string*                                            | :heavy_check_mark:                                             | N/A                                                            | {<br/>"admin": "true"<br/>}                                    |
+| `ID`                                                           | [*big.Int](https://pkg.go.dev/math/big#Int)                    | :heavy_check_mark:                                             | N/A                                                            |                                                                |
+| `Reverted`                                                     | *bool*                                                         | :heavy_check_mark:                                             | N/A                                                            |                                                                |

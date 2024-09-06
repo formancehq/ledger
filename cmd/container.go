@@ -18,7 +18,7 @@ func resolveOptions(cmd *cobra.Command, userOptions ...fx.Option) []fx.Option {
 	options := make([]fx.Option, 0)
 	options = append(options, fx.NopLogger)
 
-	numscriptCacheMaxCountFlag, _ := cmd.Flags().GetInt(numscriptCacheMaxCountFlag)
+	numscriptCacheMaxCountFlag, _ := cmd.Flags().GetInt(NumscriptCacheMaxCountFlag)
 	ledgerBatchSizeFlag, _ := cmd.Flags().GetInt(ledgerBatchSizeFlag)
 
 	options = append(options,

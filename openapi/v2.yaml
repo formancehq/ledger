@@ -4,7 +4,13 @@ info:
   contact: {}
   version: "LEDGER_VERSION"
 
+servers:
+  - url: http://localhost:8080/
+
 paths:
+  x-speakeasy-errors:
+    statusCodes:
+    - "default"
   /v2/_info:
     get:
       tags:
@@ -19,13 +25,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ConfigInfoResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
-
+        "5XX":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
   /v2:
     get:
       summary: List ledgers
@@ -61,7 +72,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2LedgerListResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -91,7 +102,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2GetLedgerResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -113,7 +124,7 @@ paths:
         "204":
           description: OK
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -145,7 +156,13 @@ paths:
         "204":
           description: OK
 
-        default:
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+        "5XX":
           description: Error
           content:
             application/json:
@@ -179,7 +196,7 @@ paths:
         "204":
           description: OK
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -208,7 +225,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2LedgerInfoResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -250,7 +267,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2BulkResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -293,7 +310,7 @@ paths:
                 type: integer
                 format: bigint
                 minimum: 0
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -361,7 +378,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2AccountsCursorResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -413,7 +430,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2AccountResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -469,7 +486,7 @@ paths:
           description: No Content
           content: {}
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -509,6 +526,12 @@ paths:
         2XX:
           description: Key deleted
           content: {}
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
 
   /v2/{ledger}/stats:
     get:
@@ -534,7 +557,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2StatsResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -577,7 +600,7 @@ paths:
                 type: integer
                 format: int64
                 minimum: 0
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -657,7 +680,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2TransactionsCursorResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -707,7 +730,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2CreateTransactionResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -758,7 +781,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2GetTransactionResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -811,7 +834,7 @@ paths:
           description: No Content
           content: {}
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -855,7 +878,7 @@ paths:
           description: Key deleted
           content: { }
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -906,7 +929,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/V2RevertTransactionResponse'
 
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -953,7 +976,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2AggregateBalancesResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -1035,7 +1058,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2VolumesWithBalanceCursorResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
@@ -1097,12 +1120,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2LogsCursorResponse'
-        default:
+        "default":
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+
   /v2/{ledger}/logs/import:
     post:
       tags:
@@ -1125,12 +1149,13 @@ paths:
       responses:
         204:
           description: Import OK
-        default:
+        "default":
           description: Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+
   /v2/{ledger}/logs/export:
     post:
       summary: Export logs
@@ -1149,7 +1174,7 @@ paths:
       responses:
         200:
           description: Import OK
-        default:
+        "default":
           description: Error
           content:
             application/octet-stream:
@@ -1695,6 +1720,7 @@ components:
       example: VALIDATION
 
     V2LedgerInfoResponse:
+      type: object
       properties:
         data:
           $ref: '#/components/schemas/V2LedgerInfo'
@@ -1813,6 +1839,7 @@ components:
       - type: object
         properties:
           data:
+            type: object
             properties:
               id:
                 type: integer
@@ -1831,6 +1858,7 @@ components:
         - type: object
           properties:
             data:
+              type: object
               properties:
                 targetId:
                   $ref: '#/components/schemas/V2TargetId'

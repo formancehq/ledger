@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	bindFlag = "bind"
+	BindFlag = "bind"
 )
 
 var (
@@ -49,7 +49,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(NewDocCommand())
 
-	root.PersistentFlags().String(bindFlag, "0.0.0.0:3068", "API bind address")
+	root.PersistentFlags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 
 	service.AddFlags(root.PersistentFlags())
 	otlpmetrics.AddFlags(root.PersistentFlags())

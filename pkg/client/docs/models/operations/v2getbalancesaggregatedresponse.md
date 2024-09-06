@@ -1,0 +1,9 @@
+# V2GetBalancesAggregatedResponse
+
+
+## Fields
+
+| Field                                                                                             | Type                                                                                              | Required                                                                                          | Description                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                        | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                | :heavy_check_mark:                                                                                | N/A                                                                                               |
+| `V2AggregateBalancesResponse`                                                                     | [*components.V2AggregateBalancesResponse](../../models/components/v2aggregatebalancesresponse.md) | :heavy_minus_sign:                                                                                | OK                                                                                                |

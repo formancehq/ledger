@@ -1,3 +1,5 @@
+//go:build it
+
 package driver
 
 import (

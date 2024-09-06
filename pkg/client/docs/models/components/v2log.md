@@ -1,0 +1,12 @@
+# V2Log
+
+
+## Fields
+
+| Field                                                            | Type                                                             | Required                                                         | Description                                                      | Example                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `ID`                                                             | [*big.Int](https://pkg.go.dev/math/big#Int)                      | :heavy_check_mark:                                               | N/A                                                              | 1234                                                             |
+| `Type`                                                           | [components.Type](../../models/components/type.md)               | :heavy_check_mark:                                               | N/A                                                              |                                                                  |
+| `Data`                                                           | map[string]*any*                                                 | :heavy_check_mark:                                               | N/A                                                              |                                                                  |
+| `Hash`                                                           | *string*                                                         | :heavy_check_mark:                                               | N/A                                                              | 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e |
+| `Date`                                                           | [time.Time](https://pkg.go.dev/time#Time)                        | :heavy_check_mark:                                               | N/A                                                              |                                                                  |

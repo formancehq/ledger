@@ -1,6 +1,6 @@
 VERSION 0.8
 
-IMPORT github.com/formancehq/earthly:tags/v0.14.0 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.15.0 AS core
 IMPORT ../.. AS stack
 IMPORT .. AS components
 
@@ -45,11 +45,47 @@ build-image:
 
 tests:
     FROM core+builder-image
+    RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
     COPY (+sources/*) /src
     WORKDIR /src/components/ledger
     COPY --dir --pass-args (+generate/*) .
-    WITH DOCKER --pull=postgres:15-alpine
-        DO --pass-args core+GO_TESTS
+
+    ARG includeIntegrationTests="true"
+    ARG coverage=""
+    ARG debug=false
+
+    ENV DEBUG=$debug
+    ENV CGO_ENABLED=1 # required for -race
+    RUN apk add gcc musl-dev
+
+    LET goFlags="-race"
+    IF [ "$coverage" = "true" ]
+        SET goFlags="$goFlags -covermode=atomic"
+        SET goFlags="$goFlags -coverpkg=github.com/formancehq/stack/components/ledger/internal/..."
+        SET goFlags="$goFlags,github.com/formancehq/stack/components/ledger/cmd/..."
+        SET goFlags="$goFlags -coverprofile cover.out"
+    END
+    IF [ "$includeIntegrationTests" = "true" ]
+        SET goFlags="$goFlags -tags it"
+        WITH DOCKER \
+            --pull=postgres:15-alpine \
+            --pull=clickhouse/clickhouse-server:head \
+            --pull=elasticsearch:8.14.3
+            RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
+                --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
+                ginkgo -r -p $goFlags
+        END
+    ELSE
+        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
+            --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
+            ginkgo -r -p $goFlags
+    END
+    IF [ "$coverage" = "true" ]
+        # exclude files suffixed with _generated.go, these are mocks used by tests
+        RUN cat cover.out | grep -v "_generated.go" > cover2.out
+        RUN mv cover2.out cover.out
+        SAVE ARTIFACT cover.out AS LOCAL cover.out
     END
 
 deploy:
@@ -69,7 +105,7 @@ lint:
     COPY (+sources/*) /src
     COPY --pass-args +tidy/go.* .
     WORKDIR /src/components/ledger
-    DO --pass-args stack+GO_LINT
+    DO --pass-args stack+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -139,3 +175,15 @@ tidy:
 
 release:
     BUILD --pass-args stack+goreleaser --path=components/ledger
+
+generate-sdk:
+    FROM node:20-alpine
+    RUN apk update && apk add yq git
+    WORKDIR /src
+    COPY (stack+speakeasy/speakeasy) /bin/speakeasy
+    ARG version=v0.0.0
+    COPY openapi/v2.yaml openapi.yaml
+    COPY --dir pkg/client client
+    RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./openapi.yaml -o ./client -l go
+
+    SAVE ARTIFACT client AS LOCAL ./pkg/client

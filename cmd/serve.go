@@ -19,21 +19,21 @@ import (
 )
 
 const (
-	ballastSizeInBytesFlag     = "ballast-size"
-	numscriptCacheMaxCountFlag = "numscript-cache-max-count"
+	BallastSizeInBytesFlag     = "ballast-size"
+	NumscriptCacheMaxCountFlag = "numscript-cache-max-count"
 	ledgerBatchSizeFlag        = "ledger-batch-size"
-	readOnlyFlag               = "read-only"
-	autoUpgradeFlag            = "auto-upgrade"
+	ReadOnlyFlag               = "read-only"
+	AutoUpgradeFlag            = "auto-upgrade"
 )
 
 func NewServe() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "serve",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			readOnly, _ := cmd.Flags().GetBool(readOnlyFlag)
-			autoUpgrade, _ := cmd.Flags().GetBool(autoUpgradeFlag)
-			ballastSize, _ := cmd.Flags().GetUint(ballastSizeInBytesFlag)
-			bind, _ := cmd.Flags().GetString(bindFlag)
+			readOnly, _ := cmd.Flags().GetBool(ReadOnlyFlag)
+			autoUpgrade, _ := cmd.Flags().GetBool(AutoUpgradeFlag)
+			ballastSize, _ := cmd.Flags().GetUint(BallastSizeInBytesFlag)
+			bind, _ := cmd.Flags().GetString(BindFlag)
 
 			return service.New(cmd.OutOrStdout(), resolveOptions(
 				cmd,
@@ -67,11 +67,11 @@ func NewServe() *cobra.Command {
 			)...).Run(cmd)
 		},
 	}
-	cmd.Flags().Uint(ballastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
-	cmd.Flags().Int(numscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
+	cmd.Flags().Uint(BallastSizeInBytesFlag, 0, "Ballast size in bytes, default to 0")
+	cmd.Flags().Int(NumscriptCacheMaxCountFlag, 1024, "Numscript cache max count")
 	cmd.Flags().Int(ledgerBatchSizeFlag, 50, "ledger batch size")
-	cmd.Flags().Bool(readOnlyFlag, false, "Read only mode")
-	cmd.Flags().Bool(autoUpgradeFlag, false, "Automatically upgrade all schemas")
+	cmd.Flags().Bool(ReadOnlyFlag, false, "Read only mode")
+	cmd.Flags().Bool(AutoUpgradeFlag, false, "Automatically upgrade all schemas")
 	return cmd
 }
 

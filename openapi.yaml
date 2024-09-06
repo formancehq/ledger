@@ -3,6 +3,8 @@ info:
   title: Ledger API
   contact: {}
   version: LEDGER_VERSION
+servers:
+  - url: http://localhost:8080/
 paths:
   /_info:
     get:
@@ -1137,6 +1139,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+        5XX:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
   /v2:
     get:
       summary: List ledgers
@@ -1250,6 +1258,12 @@ paths:
         "204":
           description: OK
         default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
+        5XX:
           description: Error
           content:
             application/json:
@@ -1599,6 +1613,12 @@ paths:
         2XX:
           description: Key deleted
           content: {}
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V2ErrorResponse'
   /v2/{ledger}/stats:
     get:
       tags:
@@ -3345,6 +3365,7 @@ components:
         - IMPORT
       example: VALIDATION
     V2LedgerInfoResponse:
+      type: object
       properties:
         data:
           $ref: '#/components/schemas/V2LedgerInfo'
@@ -3453,6 +3474,7 @@ components:
         - type: object
           properties:
             data:
+              type: object
               properties:
                 id:
                   type: integer
@@ -3470,6 +3492,7 @@ components:
         - type: object
           properties:
             data:
+              type: object
               properties:
                 targetId:
                   $ref: '#/components/schemas/V2TargetId'

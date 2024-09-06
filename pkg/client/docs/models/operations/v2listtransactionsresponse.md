@@ -1,0 +1,9 @@
+# V2ListTransactionsResponse
+
+
+## Fields
+
+| Field                                                                                               | Type                                                                                                | Required                                                                                            | Description                                                                                         |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                          | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                  | :heavy_check_mark:                                                                                  | N/A                                                                                                 |
+| `V2TransactionsCursorResponse`                                                                      | [*components.V2TransactionsCursorResponse](../../models/components/v2transactionscursorresponse.md) | :heavy_minus_sign:                                                                                  | OK                                                                                                  |

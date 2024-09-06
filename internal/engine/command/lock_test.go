@@ -26,10 +26,12 @@ func TestLock(t *testing.T) {
 	wg.Add(nbLoop)
 
 	for i := 0; i < nbLoop; i++ {
+		read := accounts[r.Int31n(10)]
+		write := accounts[r.Int31n(10)]
 		go func() {
 			unlock, err := locker.Lock(ctx, Accounts{
-				Read:  []string{accounts[r.Int31n(10)]},
-				Write: []string{accounts[r.Int31n(10)]},
+				Read:  []string{read},
+				Write: []string{write},
 			})
 			require.NoError(t, err)
 			defer unlock(ctx)
