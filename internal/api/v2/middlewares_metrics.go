@@ -40,7 +40,7 @@ func MetricsMiddleware(globalMetricsRegistry metrics.GlobalRegistry) func(h http
 
 			start := time.Now()
 			h.ServeHTTP(recorder, r)
-			latency := time.Since(start.Time)
+			latency := time.Since(start)
 
 			attrs = append(attrs,
 				attribute.String("route", chi.RouteContext(r.Context()).RoutePattern()))

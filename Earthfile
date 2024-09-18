@@ -50,6 +50,7 @@ tests:
     COPY (+sources/*) /src
     WORKDIR /src/components/ledger
     COPY --dir --pass-args (+generate/*) .
+    COPY --dir test .
 
     ARG includeIntegrationTests="true"
     ARG coverage=""
@@ -103,12 +104,14 @@ deploy-staging:
 lint:
     FROM core+builder-image
     COPY (+sources/*) /src
-    COPY --pass-args +tidy/go.* .
     WORKDIR /src/components/ledger
+    COPY --pass-args +tidy/go.* .
+    COPY --dir test .
     DO --pass-args stack+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
+    SAVE ARTIFACT test AS LOCAL test
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
@@ -122,9 +125,10 @@ bench:
     FROM core+builder-image
     DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger/internal/storage/ledgerstore
-    ARG numberOfTransactions=10000
-    ARG ledgers=10
+    WORKDIR /src/components/ledger
+    COPY --dir test .
+    WORKDIR /src/components/ledger/test/performance
+
     ARG benchTime=1s
     ARG count=1
     ARG GOPROXY
@@ -140,11 +144,8 @@ bench:
     WITH DOCKER --pull postgres:15-alpine
         RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
             --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            go test -timeout $testTimeout -bench=$bench -run ^$ $additionalArgs \
-            -benchtime=$benchTime \
-            -count=$count \
-            -ledgers=$ledgers \
-            -transactions=$numberOfTransactions | tee -a /results.txt
+            go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
+            -benchtime=$benchTime | tee -a /results.txt
     END
     RUN benchstat /results.txt
     SAVE ARTIFACT /results.txt

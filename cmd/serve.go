@@ -80,7 +80,7 @@ func Log() func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			h.ServeHTTP(w, r)
-			latency := time.Since(start.Time)
+			latency := time.Since(start)
 			logging.FromContext(r.Context()).WithFields(map[string]interface{}{
 				"method":     r.Method,
 				"path":       r.URL.Path,
