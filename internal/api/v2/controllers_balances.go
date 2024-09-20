@@ -3,9 +3,9 @@ package v2
 import (
 	"net/http"
 
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
 
 func getBalancesAggregated(w http.ResponseWriter, r *http.Request) {

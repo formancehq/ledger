@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
+	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 )
 
 func getLogs(w http.ResponseWriter, r *http.Request) {

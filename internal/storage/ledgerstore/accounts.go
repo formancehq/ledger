@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
+	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/pointer"
-	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
 

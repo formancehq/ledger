@@ -1,13 +1,13 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/otlp/otlptraces"
+	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/go-libs/service"
 	"github.com/formancehq/ledger/internal/engine"
 	driver "github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/stack/libs/go-libs/auth"
-	"github.com/formancehq/stack/libs/go-libs/otlp/otlpmetrics"
-	"github.com/formancehq/stack/libs/go-libs/otlp/otlptraces"
-	"github.com/formancehq/stack/libs/go-libs/publish"
-	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )

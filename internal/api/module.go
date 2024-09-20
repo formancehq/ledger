@@ -5,12 +5,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/health"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/stack/libs/go-libs/auth"
-	"github.com/formancehq/stack/libs/go-libs/health"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/fx"

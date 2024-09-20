@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/formancehq/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/httpclient"
+	"github.com/formancehq/go-libs/httpserver"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/service"
 	"github.com/formancehq/ledger/cmd"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
-	"github.com/formancehq/stack/libs/go-libs/httpclient"
-	"github.com/formancehq/stack/libs/go-libs/httpserver"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/stretchr/testify/require"
 )
 

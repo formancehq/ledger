@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/formancehq/stack/libs/go-libs/contextutil"
+	"github.com/formancehq/go-libs/contextutil"
 
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
 
 func bulkHandler(w http.ResponseWriter, r *http.Request) {

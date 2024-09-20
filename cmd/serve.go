@@ -3,17 +3,18 @@ package cmd
 import (
 	"net/http"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 
 	"github.com/formancehq/ledger/internal/api"
 
-	"github.com/formancehq/stack/libs/go-libs/ballast"
-	"github.com/formancehq/stack/libs/go-libs/httpserver"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/service"
-	"github.com/go-chi/chi/v5"
+	"github.com/formancehq/go-libs/ballast"
+	"github.com/formancehq/go-libs/httpserver"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )

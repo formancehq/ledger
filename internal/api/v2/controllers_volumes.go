@@ -3,13 +3,13 @@ package v2
 import (
 	"net/http"
 
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 
-	"github.com/formancehq/stack/libs/go-libs/pointer"
+	"github.com/formancehq/go-libs/pointer"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 )
 
 func getVolumesWithBalances(w http.ResponseWriter, r *http.Request) {

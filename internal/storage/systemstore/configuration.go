@@ -3,7 +3,7 @@ package systemstore
 import (
 	"context"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 

@@ -3,7 +3,7 @@ package ledgerstore
 import (
 	"context"
 
-	"github.com/formancehq/stack/libs/go-libs/migrations"
+	"github.com/formancehq/go-libs/migrations"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"

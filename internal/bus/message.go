@@ -1,11 +1,11 @@
 package bus
 
 import (
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/publish"
+	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/events"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/formancehq/stack/libs/go-libs/publish"
-	"github.com/formancehq/stack/libs/go-libs/time"
 )
 
 type CommittedTransactions struct {

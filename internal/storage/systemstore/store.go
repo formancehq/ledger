@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
 
 	"github.com/uptrace/bun"
 )

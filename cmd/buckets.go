@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"github.com/formancehq/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/service"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/service"
 	"github.com/spf13/cobra"
 )
 

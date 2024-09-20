@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/ledger/internal/api/backend"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/migrations"
 )
 
 type Info struct {

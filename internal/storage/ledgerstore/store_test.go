@@ -5,9 +5,9 @@ package ledgerstore
 import (
 	"context"
 
+	"github.com/formancehq/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 // TODO: remove that

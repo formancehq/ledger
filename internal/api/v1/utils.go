@@ -4,15 +4,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
+	"github.com/formancehq/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/pointer"
+	"github.com/formancehq/go-libs/query"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
-	"github.com/formancehq/stack/libs/go-libs/pointer"
-	"github.com/formancehq/stack/libs/go-libs/query"
 )
 
 func getPITFilter(r *http.Request) (*ledgerstore.PITFilter, error) {

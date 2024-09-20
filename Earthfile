@@ -8,7 +8,6 @@ FROM core+base-image
 
 sources:
     WORKDIR src
-    COPY (stack+sources/out --LOCATION=libs/go-libs) /src/libs/go-libs
     COPY (stack+sources/out --LOCATION=libs/core) /src/libs/core
     WORKDIR /src/components/ledger
     COPY go.mod go.sum .

@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/google/uuid"
 
 	"github.com/formancehq/ledger/internal/storage/storagetesting"

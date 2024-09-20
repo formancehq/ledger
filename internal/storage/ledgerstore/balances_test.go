@@ -6,15 +6,15 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/pointer"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/pointer"
 
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
 	internaltesting "github.com/formancehq/ledger/internal/testing"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
 )
 

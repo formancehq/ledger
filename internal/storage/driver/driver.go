@@ -5,23 +5,23 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bundebug"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/go-libs/bun/bundebug"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/metadata"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/bun/bunconnect"
 
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
+	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/go-libs/time"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/stack/libs/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
+	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 )
 
 const defaultBucket = "_default"

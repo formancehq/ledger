@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/formancehq/stack/libs/go-libs/api"
+	"github.com/formancehq/go-libs/api"
 	"github.com/pkg/errors"
 )
 

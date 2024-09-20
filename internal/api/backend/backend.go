@@ -4,16 +4,16 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/formancehq/stack/libs/go-libs/migrations"
 )
 
 //go:generate mockgen -source backend.go -destination backend_generated.go -package backend . Ledger

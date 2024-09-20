@@ -8,8 +8,8 @@ import (
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
+	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/uptrace/bun"
 )
 

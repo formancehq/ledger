@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/formancehq/go-libs/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
-	"github.com/formancehq/stack/libs/go-libs/api"
 )
 
 func exportLogs(w http.ResponseWriter, r *http.Request) {

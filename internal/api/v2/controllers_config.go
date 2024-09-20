@@ -4,8 +4,8 @@ import (
 	_ "embed"
 	"net/http"
 
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
 )
 
 type ConfigInfo struct {

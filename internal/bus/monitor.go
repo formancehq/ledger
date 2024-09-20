@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/publish"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/events"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/formancehq/stack/libs/go-libs/publish"
 )
 
 type Monitor interface {

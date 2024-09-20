@@ -6,9 +6,9 @@ import (
 	"embed"
 	"fmt"
 
-	"github.com/formancehq/stack/libs/go-libs/migrations"
+	"github.com/formancehq/go-libs/migrations"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 	"github.com/pkg/errors"

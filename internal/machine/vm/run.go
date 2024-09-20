@@ -5,8 +5,8 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 

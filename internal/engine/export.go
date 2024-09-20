@@ -3,9 +3,9 @@ package engine
 import (
 	"context"
 
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 )
 
 type ExportWriter interface {

@@ -3,9 +3,9 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/go-libs/metadata"
 )
 
 type RunScript struct {

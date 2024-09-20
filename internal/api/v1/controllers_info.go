@@ -3,17 +3,17 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/pkg/errors"
 
+	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/migrations"
+	"github.com/formancehq/go-libs/query"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/migrations"
-	"github.com/formancehq/stack/libs/go-libs/query"
 )
 
 type Info struct {

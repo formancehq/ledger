@@ -3,13 +3,14 @@ package api
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/health"
 	"github.com/formancehq/ledger/internal/api/backend"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/formancehq/stack/libs/go-libs/auth"
-	"github.com/formancehq/stack/libs/go-libs/health"
-	"github.com/go-chi/chi/v5"
 )
 
 func NewRouter(

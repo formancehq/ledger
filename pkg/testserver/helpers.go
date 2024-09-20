@@ -1,7 +1,7 @@
 package testserver
 
 import (
-	. "github.com/formancehq/stack/libs/go-libs/testing/utils"
+	. "github.com/formancehq/go-libs/testing/utils"
 	. "github.com/onsi/ginkgo/v2"
 )
 

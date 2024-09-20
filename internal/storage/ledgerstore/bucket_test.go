@@ -6,9 +6,9 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

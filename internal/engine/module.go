@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/stack/libs/go-libs/logging"
 	"go.uber.org/fx"
 )
 

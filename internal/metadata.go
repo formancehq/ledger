@@ -3,7 +3,7 @@ package ledger
 import (
 	"math/big"
 
-	"github.com/formancehq/stack/libs/go-libs/metadata"
+	"github.com/formancehq/go-libs/metadata"
 )
 
 const (

@@ -5,11 +5,12 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
+	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
 )
 

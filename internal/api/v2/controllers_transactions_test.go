@@ -9,10 +9,10 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/auth"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/auth"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/pkg/errors"
@@ -21,14 +21,14 @@ import (
 
 	"github.com/formancehq/ledger/internal/machine"
 
+	sharedapi "github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/query"
 	ledger "github.com/formancehq/ledger/internal"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
-	"github.com/formancehq/stack/libs/go-libs/query"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

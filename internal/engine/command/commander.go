@@ -9,15 +9,15 @@ import (
 	"github.com/formancehq/ledger/internal/machine/vm/program"
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/bus"
 	"github.com/formancehq/ledger/internal/engine/utils/batching"
 	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 	"github.com/pkg/errors"
 )
 

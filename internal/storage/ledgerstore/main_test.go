@@ -10,18 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/stack/libs/go-libs/testing/docker"
-	"github.com/formancehq/stack/libs/go-libs/testing/utils"
+	"github.com/formancehq/go-libs/testing/docker"
+	"github.com/formancehq/go-libs/testing/utils"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/bun/bunconnect"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

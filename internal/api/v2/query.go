@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/stack/libs/go-libs/api"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/api"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/engine/command"
 	"github.com/pkg/errors"

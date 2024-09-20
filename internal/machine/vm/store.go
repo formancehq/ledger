@@ -4,8 +4,8 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 type Store interface {

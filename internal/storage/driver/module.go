@@ -3,10 +3,10 @@ package driver
 import (
 	"context"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/go-libs/logging"
 	"go.uber.org/fx"
 )
 

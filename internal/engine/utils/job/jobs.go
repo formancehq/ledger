@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/alitto/pond"
-	"github.com/formancehq/stack/libs/go-libs/logging"
+	"github.com/formancehq/go-libs/logging"
 	"github.com/pkg/errors"
 )
 

@@ -3,10 +3,11 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )

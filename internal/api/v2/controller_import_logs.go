@@ -7,9 +7,9 @@ import (
 
 	"github.com/formancehq/ledger/internal/engine"
 
+	"github.com/formancehq/go-libs/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/stack/libs/go-libs/api"
 	"github.com/pkg/errors"
 )
 

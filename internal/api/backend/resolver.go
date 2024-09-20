@@ -7,15 +7,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	sharedapi "github.com/formancehq/go-libs/api"
 
 	"github.com/pkg/errors"
 
+	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/go-chi/chi/v5"
 )
 
 var (

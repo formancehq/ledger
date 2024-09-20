@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/formancehq/stack/libs/go-libs/testing/docker"
+	"github.com/formancehq/go-libs/testing/docker"
 
+	"github.com/formancehq/go-libs/bun/bunconnect"
+	"github.com/formancehq/go-libs/logging"
+	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledgerstore"
 	"github.com/formancehq/ledger/internal/storage/systemstore"
-	"github.com/formancehq/stack/libs/go-libs/bun/bunconnect"
-	"github.com/formancehq/stack/libs/go-libs/logging"
-	"github.com/formancehq/stack/libs/go-libs/testing/platform/pgtesting"
 	"github.com/stretchr/testify/require"
 )
 

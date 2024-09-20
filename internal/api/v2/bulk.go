@@ -8,15 +8,15 @@ import (
 
 	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
 
-	sharedapi "github.com/formancehq/stack/libs/go-libs/api"
+	sharedapi "github.com/formancehq/go-libs/api"
 
 	"github.com/formancehq/ledger/internal/engine"
 	"github.com/formancehq/ledger/internal/machine"
 
+	"github.com/formancehq/go-libs/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/backend"
 	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/stack/libs/go-libs/metadata"
 )
 
 const (

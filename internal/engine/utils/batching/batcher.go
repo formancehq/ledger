@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/ledger/internal/engine/utils/job"
-	"github.com/formancehq/stack/libs/go-libs/collectionutils"
 )
 
 type OnBatchProcessed[T any] func(...T)

@@ -7,13 +7,13 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/formancehq/stack/libs/go-libs/time"
+	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/stack/libs/go-libs/bun/bunpaginate"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/ledger/internal/storage/sqlutils"
 
-	"github.com/formancehq/stack/libs/go-libs/query"
+	"github.com/formancehq/go-libs/query"
 	"github.com/uptrace/bun"
 )
 
