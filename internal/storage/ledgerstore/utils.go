@@ -57,7 +57,7 @@ func paginateWithOffsetWithoutModel[FILTERS any, RETURN any](s *Store, ctx conte
 		query = query.Apply(builder)
 	}
 
-	return bunpaginate.UsingOffsetWithoutModel[FILTERS, RETURN](ctx, query, *q)
+	return bunpaginate.UsingOffset[FILTERS, RETURN](ctx, query, *q)
 }
 
 func paginateWithColumn[FILTERS any, RETURN any](s *Store, ctx context.Context, q *bunpaginate.ColumnPaginatedQuery[FILTERS], builders ...func(query *bun.SelectQuery) *bun.SelectQuery) (*bunpaginate.Cursor[RETURN], error) {

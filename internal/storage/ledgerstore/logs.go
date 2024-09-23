@@ -21,7 +21,7 @@ import (
 )
 
 type Logs struct {
-	bun.BaseModel `bun:"logs,alias:logs"`
+	bun.BaseModel `bun:"table:logs,alias:logs"`
 
 	Ledger         string              `bun:"ledger,type:varchar"`
 	ID             *bunpaginate.BigInt `bun:"id,unique,type:numeric"`

@@ -171,6 +171,7 @@ tidy:
     FROM core+builder-image
     COPY --pass-args (+sources/src) /src
     WORKDIR /src/components/ledger
+    COPY --dir test .
     DO --pass-args stack+GO_TIDY
 
 release:

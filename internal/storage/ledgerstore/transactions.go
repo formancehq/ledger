@@ -158,6 +158,7 @@ func (store *Store) buildTransactionQuery(p PITFilterWithVolumes, query *bun.Sel
 	}
 
 	query = query.
+		ModelTableExpr("transactions").
 		Where("transactions.ledger = ?", store.name)
 
 	if p.PIT != nil && !p.PIT.IsZero() {

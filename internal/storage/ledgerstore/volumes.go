@@ -106,7 +106,7 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-		Table("moves")
+		ModelTableExpr("moves")
 
 	if useMetadata {
 		query = query.ColumnExpr("accounts.metadata as metadata").
@@ -126,12 +126,12 @@ func (store *Store) buildVolumesWithBalancesQuery(query *bun.SelectQuery, q GetV
 	globalQuery := query.NewSelect()
 	globalQuery = globalQuery.
 		With("query", query).
-		TableExpr("query")
+		ModelTableExpr("query")
 
 	if filtersForVolumes.GroupLvl > 0 {
 		globalQuery = globalQuery.
 			ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(account_address, ':'))[1:LEAST(array_length(string_to_array(account_address, ':'),1),%d)],':')) as account`, filtersForVolumes.GroupLvl)).
-			Column("asset").
+			ColumnExpr("asset").
 			ColumnExpr("sum(input) as input").
 			ColumnExpr("sum(output) as output").
 			ColumnExpr("sum(balance) as balance").

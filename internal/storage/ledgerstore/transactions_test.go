@@ -1104,7 +1104,7 @@ func TestGetTransactions(t *testing.T) {
 			if tc.expectError != nil {
 				require.True(t, errors.Is(err, tc.expectError))
 			} else {
-				require.NoError(t, err)
+ 				require.NoError(t, err)
 				require.Len(t, cursor.Data, len(tc.expected.Data))
 				internaltesting.RequireEqual(t, *tc.expected, *cursor)
 
