@@ -25,6 +25,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/_info:
     get:
       summary: Get information about a ledger
@@ -52,6 +55,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/accounts:
     head:
       summary: Count the accounts from a ledger
@@ -96,6 +102,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     get:
       summary: List accounts from a ledger
       description: List accounts from a ledger, sorted by address in descending order.
@@ -236,6 +245,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/accounts/{address}:
     get:
       summary: Get account by its address
@@ -274,6 +286,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/accounts/{address}/metadata:
     post:
       summary: Add metadata to an account
@@ -316,6 +331,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/mapping:
     get:
       tags:
@@ -343,6 +361,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     put:
       tags:
         - ledger.v1
@@ -375,6 +396,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/script:
     post:
       deprecated: true
@@ -417,6 +441,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScriptResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/stats:
     get:
       tags:
@@ -446,6 +473,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/transactions:
     head:
       tags:
@@ -546,6 +576,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     get:
       tags:
         - ledger.v1
@@ -697,6 +730,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     post:
       tags:
         - ledger.v1
@@ -739,6 +775,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/transactions/{txid}:
     get:
       tags:
@@ -775,6 +814,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/transactions/{txid}/metadata:
     post:
       tags:
@@ -814,6 +856,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/transactions/{txid}/revert:
     post:
       tags:
@@ -856,6 +901,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/transactions/batch:
     post:
       tags:
@@ -889,6 +937,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /{ledger}/balances:
     get:
       tags:
@@ -960,6 +1011,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/aggregate/balances:
     get:
       tags:
@@ -999,6 +1053,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /{ledger}/logs:
     get:
       tags:
@@ -1119,6 +1176,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/_info:
     get:
       tags:
@@ -1145,6 +1205,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2:
     get:
       summary: List ledgers
@@ -1186,6 +1249,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}:
     parameters:
       - name: ledger
@@ -1214,6 +1280,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     post:
       summary: Create a ledger
       operationId: v2CreateLedger
@@ -1234,6 +1303,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/metadata:
     parameters:
       - name: ledger
@@ -1269,6 +1341,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/metadata/{key}:
     parameters:
       - name: ledger
@@ -1300,6 +1375,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/_info:
     get:
       summary: Get information about a ledger
@@ -1328,6 +1406,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/_bulk:
     post:
       summary: Bulk request
@@ -1367,6 +1448,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/accounts:
     head:
       summary: Count the accounts from a ledger
@@ -1409,6 +1493,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     get:
       summary: List accounts from a ledger
       description: List accounts from a ledger, sorted by address in descending order.
@@ -1475,6 +1562,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/accounts/{address}:
     get:
       summary: Get account by its address
@@ -1526,6 +1616,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/accounts/{address}/metadata:
     post:
       summary: Add metadata to an account
@@ -1580,6 +1673,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/accounts/{address}/metadata/{key}:
     delete:
       description: Delete metadata by key
@@ -1619,6 +1715,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/stats:
     get:
       tags:
@@ -1649,6 +1748,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/transactions:
     head:
       tags:
@@ -1691,6 +1793,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     get:
       tags:
         - ledger.v2
@@ -1769,6 +1874,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
     post:
       tags:
         - ledger.v2
@@ -1817,6 +1925,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/transactions/{id}:
     get:
       tags:
@@ -1866,6 +1977,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/transactions/{id}/metadata:
     post:
       tags:
@@ -1917,6 +2031,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/transactions/{id}/metadata/{key}:
     delete:
       description: Delete metadata by key
@@ -1959,6 +2076,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/transactions/{id}/revert:
     post:
       tags:
@@ -2008,6 +2128,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/aggregate/balances:
     get:
       tags:
@@ -2054,6 +2177,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/volumes:
     get:
       tags:
@@ -2135,6 +2261,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/logs:
     get:
       tags:
@@ -2196,6 +2325,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:read
   /v2/{ledger}/logs/import:
     post:
       tags:
@@ -2224,6 +2356,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/V2ErrorResponse'
+      security:
+        - Authorization:
+            - ledger:write
   /v2/{ledger}/logs/export:
     post:
       summary: Export logs
@@ -2250,6 +2385,9 @@ paths:
                 title: bytes
                 type: string
                 format: binary
+      security:
+        - Authorization:
+            - ledger:write
 components:
   schemas:
     AccountsCursorResponse:
@@ -2879,37 +3017,6 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/V2Account'
-    V2BalancesCursorResponse:
-      type: object
-      required:
-        - cursor
-      properties:
-        cursor:
-          type: object
-          required:
-            - pageSize
-            - hasMore
-            - data
-          properties:
-            pageSize:
-              type: integer
-              format: int64
-              minimum: 1
-              maximum: 1000
-              example: 15
-            hasMore:
-              type: boolean
-              example: false
-            previous:
-              type: string
-              example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
-            next:
-              type: string
-              example: ""
-            data:
-              type: array
-              items:
-                $ref: '#/components/schemas/V2AccountsBalances'
     V2TransactionsCursorResponse:
       type: object
       required:
@@ -3076,17 +3183,6 @@ components:
           $ref: '#/components/schemas/V2Volumes'
         effectiveVolumes:
           $ref: '#/components/schemas/V2Volumes'
-    V2AccountsBalances:
-      type: object
-      additionalProperties:
-        $ref: '#/components/schemas/V2AssetsBalances'
-      example:
-        account1:
-          USD: 100
-          EUR: 23
-        account2:
-          CAD: 20
-          JPY: 21
     V2AssetsBalances:
       type: object
       additionalProperties:
@@ -3117,33 +3213,6 @@ components:
         - asset
         - destination
         - source
-    V2Script:
-      type: object
-      properties:
-        plain:
-          type: string
-          example: |
-            vars {
-            account $user
-            }
-            send [COIN 10] (
-            	source = @world
-            	destination = $user
-            )
-        vars:
-          type: object
-          properties: {}
-          additionalProperties: true
-          example:
-            user: users:042
-        reference:
-          type: string
-          example: order_1234
-          description: Reference to attach to the generated transaction
-        metadata:
-          $ref: '#/components/schemas/V2Metadata'
-      required:
-        - plain
     V2Transaction:
       type: object
       properties:
