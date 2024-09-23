@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/formancehq/ledger/pkg/core/accounts"
+
 	"github.com/go-chi/chi/v5"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/stack/libs/core/accounts"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/bun/bunpaginate"

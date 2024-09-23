@@ -7,8 +7,6 @@ IMPORT .. AS components
 FROM core+base-image
 
 sources:
-    WORKDIR src
-    COPY (stack+sources/out --LOCATION=libs/core) /src/libs/core
     WORKDIR /src/components/ledger
     COPY go.mod go.sum .
     COPY --dir internal pkg cmd .

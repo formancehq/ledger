@@ -9,12 +9,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/formancehq/ledger/pkg/core/accounts"
+
 	"github.com/go-chi/chi/v5"
 
 	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/pointer"
-	"github.com/formancehq/stack/libs/core/accounts"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/api/backend"

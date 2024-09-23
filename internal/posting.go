@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"math/big"
 
-	"github.com/formancehq/stack/libs/core/accounts"
-	"github.com/formancehq/stack/libs/core/assets"
+	"github.com/formancehq/ledger/pkg/core/accounts"
+	"github.com/formancehq/ledger/pkg/core/assets"
 
 	"github.com/pkg/errors"
 )
