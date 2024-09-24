@@ -1729,7 +1729,6 @@ func TestSetVarsFromJSON(t *testing.T) {
 			err = m.SetVarsFromJSON(tc.vars)
 			if tc.expectedError != nil {
 				require.Error(t, err)
-				//TODO(gfyrag): refine error handling of SetVars/ResolveResources/ResolveBalances
 				require.Equal(t, tc.expectedError.Error(), err.Error())
 			} else {
 				require.Nil(t, err)
