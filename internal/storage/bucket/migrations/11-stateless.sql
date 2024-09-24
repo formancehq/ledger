@@ -105,6 +105,7 @@ create function "{{.Bucket}}".set_volumes()
 as
 $$
 begin
+	--todo: use balances table directly...
     new.post_commit_volumes = coalesce((
         select (
             (post_commit_volumes).inputs + case when new.is_source then 0 else new.amount end,

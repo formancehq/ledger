@@ -355,8 +355,8 @@ func TestGetAccount(t *testing.T) {
 	//			Metadata:   metadata.Metadata{},
 	//			FirstUsage: now.Add(-time.Minute),
 	//		},
-	//		Volumes:          map[string]ledger.Volumes{},
-	//		EffectiveVolumes: map[string]ledger.Volumes{},
+	//		AggregatedAccountVolumes:          map[string]ledger.AggregatedAccountVolumes{},
+	//		EffectiveVolumes: map[string]ledger.AggregatedAccountVolumes{},
 	//	}, *account)
 	//})
 
@@ -450,7 +450,7 @@ func TestUpsertAccount(t *testing.T) {
 	upserted, err := store.upsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.True(t, upserted)
-	require.NotZero(t, account.Sequence)
+	require.NotZero(t, account.Seq)
 
 	// reset the account model
 	account = Account{
@@ -469,5 +469,5 @@ func TestUpsertAccount(t *testing.T) {
 	upserted, err = store.upsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.False(t, upserted)
-	require.NotZero(t, account.Sequence)
+	require.NotZero(t, account.Seq)
 }
