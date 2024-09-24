@@ -11,7 +11,7 @@ type Stats struct {
 	Accounts     int `json:"accounts"`
 }
 
-func (ctrl *DefaultController) Stats(ctx context.Context) (Stats, error) {
+func (ctrl *DefaultController) GetStats(ctx context.Context) (Stats, error) {
 	var stats Stats
 
 	transactions, err := ctrl.store.CountTransactions(ctx, NewListTransactionsQuery(NewPaginatedQueryOptions(PITFilterWithVolumes{})))

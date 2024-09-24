@@ -552,7 +552,6 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 }
 
 func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
-	//TODO(gfyrag): Is that really required? Feel like defensive programming.
 	if m.resolveCalled {
 		return errors.New("tried to call ResolveResources twice")
 	}

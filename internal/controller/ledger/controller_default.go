@@ -315,7 +315,6 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 				finalMetadata[k] = v
 			}
 
-			// todo: define timestamp if not already defined
 			transaction := ledger.NewTransaction().
 				WithPostings(result.Postings...).
 				WithMetadata(finalMetadata).
@@ -391,6 +390,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 					for asset, finalBalance := range forAccount {
 						if finalBalance.Cmp(new(big.Int)) < 0 {
 							// todo: break dependency on machine package
+							// notes(gfyrag): wait for the new interpreter
 							return nil, machine.NewErrInsufficientFund("insufficient fund for %s/%s", account, asset)
 						}
 					}

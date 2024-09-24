@@ -39,6 +39,8 @@ func (s *Store) WithDB(db bun.IDB) *Store {
 	}
 }
 
+// todo: merge with bucket migration info
+// todo: add test
 func (s *Store) GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error) {
 	return getMigrator(s.ledger).GetMigrations(ctx, s.db)
 }

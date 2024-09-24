@@ -30,7 +30,7 @@ func TestStats(t *testing.T) {
 		NewMockListener(ctrl),
 		machineFactory,
 	)
-	stats, err := ledgerController.Stats(ctx)
+	stats, err := ledgerController.GetStats(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 10, stats.Transactions)
 	require.Equal(t, 10, stats.Accounts)

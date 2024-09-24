@@ -24,7 +24,7 @@ func TestStats(t *testing.T) {
 	}
 
 	ledgerController.EXPECT().
-		Stats(gomock.Any()).
+		GetStats(gomock.Any()).
 		Return(expectedStats, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/stats", nil)
