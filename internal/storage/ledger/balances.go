@@ -133,7 +133,7 @@ func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool,
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
 	type AggregatedVolumes struct {
-		Aggregated Volumes `bun:"aggregated,type:jsonb"`
+		Aggregated AggregatedAccountVolumes `bun:"aggregated,type:jsonb"`
 	}
 	aggregatedVolumes := AggregatedVolumes{}
 	if err := s.SelectAggregatedBalances(q.PIT, q.UseInsertionDate, q.QueryBuilder).

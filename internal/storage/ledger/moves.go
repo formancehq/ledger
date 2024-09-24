@@ -57,12 +57,12 @@ func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQ
 	return ret
 }
 
-func (s *Store) insertMoves(ctx context.Context, moves ...Move) error {
-
+func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
 	_, err := tracing.TraceWithLatency(ctx, "InsertMoves", tracing.NoResult(func(ctx context.Context) error {
 		_, err := s.db.NewInsert().
 			Model(&moves).
 			ModelTableExpr(s.GetPrefixedRelationName("moves")).
+			Returning("to_json(post_commit_volumes) as post_commit_volumes, to_json(post_commit_effective_volumes) as post_commit_effective_volumes").
 			Exec(ctx)
 
 		return postgres.ResolveError(err)
@@ -74,19 +74,21 @@ func (s *Store) insertMoves(ctx context.Context, moves ...Move) error {
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	Ledger              string              `bun:"ledger,type:varchar"`
-	IsSource            bool                `bun:"is_source,type:bool"`
-	Account             string              `bun:"account_address,type:varchar"`
-	AccountAddressArray []string            `bun:"account_address_array,type:jsonb"`
-	Amount              *bunpaginate.BigInt `bun:"amount,type:numeric"`
-	Asset               string              `bun:"asset,type:varchar"`
-	TransactionSeq      int                 `bun:"transactions_seq,type:int"`
-	AccountSeq          int                 `bun:"accounts_seq,type:int"`
-	InsertionDate       time.Time           `bun:"insertion_date,type:timestamp"`
-	EffectiveDate       time.Time           `bun:"effective_date,type:timestamp"`
+	Ledger                     string              `bun:"ledger,type:varchar"`
+	IsSource                   bool                `bun:"is_source,type:bool"`
+	Account                    string              `bun:"account_address,type:varchar"`
+	AccountAddressArray        []string            `bun:"account_address_array,type:jsonb"`
+	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
+	Asset                      string              `bun:"asset,type:varchar"`
+	TransactionSeq             int                 `bun:"transactions_seq,type:int"`
+	AccountSeq                 int                 `bun:"accounts_seq,type:int"`
+	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
+	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
+	PostCommitVolumes          Volumes             `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	PostCommitEffectiveVolumes Volumes             `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
-type Moves []Move
+type Moves []*Move
 
 func (m Moves) BalanceUpdates() map[string]map[string]*big.Int {
 	ret := make(map[string]map[string]*big.Int)

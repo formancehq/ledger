@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/alitto/pond"
+	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
@@ -17,99 +19,7 @@ import (
 	"testing"
 )
 
-//func TestMoves(t *testing.T) {
-//	t.Parallel()
-//
-//	store := newLedgerStore(t)
-//	ctx := logging.TestingContext()
-//
-//	now := time.Now()
-//	_, err := store.upsertAccount(ctx, ledger.Account{
-//		BaseModel:     bun.BaseModel{},
-//		Address:       "world",
-//		Metadata:      metadata.Metadata{},
-//		FirstUsage:    now,
-//		InsertionDate: now,
-//		UpdatedAt:     now,
-//	})
-//	require.NoError(t, err)
-//
-//	_, err = store.upsertAccount(ctx, ledger.Account{
-//		BaseModel:     bun.BaseModel{},
-//		Address:       "bank",
-//		Metadata:      metadata.Metadata{},
-//		FirstUsage:    now,
-//		InsertionDate: now,
-//		UpdatedAt:     now,
-//	})
-//	require.NoError(t, err)
-//
-//	_, err = store.upsertAccount(ctx, ledger.Account{
-//		BaseModel:     bun.BaseModel{},
-//		Address:       "bank2",
-//		Metadata:      metadata.Metadata{},
-//		FirstUsage:    now,
-//		InsertionDate: now,
-//		UpdatedAt:     now,
-//	})
-//	require.NoError(t, err)
-//
-//	// Insert first tx
-//	tx1, err := store.CommitTransaction(ctx, ledger.NewTransactionData().WithPostings(
-//		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-//	).WithTimestamp(now))
-//	require.NoError(t, err)
-//
-//	for _, move := range tx1.GetMoves() {
-//		require.NoError(t, store.insertMoves(ctx, move))
-//	}
-//
-//	balance, err := store.GetBalance(ctx, "world", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(-100), balance)
-//
-//	balance, err = store.GetBalance(ctx, "bank", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(100), balance)
-//
-//	// Insert second tx
-//	tx2, err := store.CommitTransaction(ctx, ledger.NewTransactionData().WithPostings(
-//		ledger.NewPosting("world", "bank2", "USD/2", big.NewInt(100)),
-//	).WithTimestamp(now.Add(time.Minute)))
-//	require.NoError(t, err)
-//
-//	for _, move := range tx2.GetMoves() {
-//		require.NoError(t, store.insertMoves(ctx, move))
-//	}
-//
-//	balance, err = store.GetBalance(ctx, "world", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(-200), balance)
-//
-//	balance, err = store.GetBalance(ctx, "bank2", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(100), balance)
-//
-//	// Insert backdated tx
-//	tx3, err := store.CommitTransaction(ctx, ledger.NewTransactionData().WithPostings(
-//		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
-//	).WithTimestamp(now.Add(30*time.Second)))
-//	require.NoError(t, err)
-//
-//	for _, move := range tx3.GetMoves() {
-//		require.NoError(t, store.insertMoves(ctx, move))
-//	}
-//
-//	balance, err = store.GetBalance(ctx, "world", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(-300), balance)
-//
-//	balance, err = store.GetBalance(ctx, "bank", "USD/2")
-//	require.NoError(t, err)
-//	require.Equal(t, big.NewInt(200), balance)
-//}
-
-func TestPostCommitVolumesComputation(t *testing.T) {
+func TestMovesPostCommitVolumesComputation(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -147,4 +57,144 @@ func TestPostCommitVolumesComputation(t *testing.T) {
 	RequireEqual(t, ledger.BalancesByAssets{
 		"USD": big.NewInt(0),
 	}, aggregatedBalances)
+}
+
+func TestMovesInsert(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
+
+	tx := Transaction{}
+	require.NoError(t, store.insertTransaction(ctx, &tx))
+
+	account := &Account{}
+	_, err := store.upsertAccount(ctx, account)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// we will insert 5 tx at five different timestamps
+	// t0 ---------> t1 ---------> t2 ---------> t3 ----------> t4
+	// m1 ---------> m3 ---------> m4 ---------> m2 ----------> m5
+	t0 := now
+	t1 := t0.Add(time.Hour)
+	t2 := t1.Add(time.Hour)
+	t3 := t2.Add(time.Hour)
+	t4 := t3.Add(time.Hour)
+
+	// insert a first tx at t0
+	m1 := Move{
+		Ledger:              store.ledger.Name,
+		IsSource:            true,
+		Account:             "world",
+		AccountAddressArray: []string{"world"},
+		Amount:              (*bunpaginate.BigInt)(big.NewInt(100)),
+		Asset:               "USD",
+		TransactionSeq:      tx.Seq,
+		AccountSeq:          account.Seq,
+		InsertionDate:       t0,
+		EffectiveDate:       t0,
+	}
+	require.NoError(t, store.insertMoves(ctx, &m1))
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(0),
+		Outputs: big.NewInt(100),
+	}, m1.PostCommitVolumes)
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(0),
+		Outputs: big.NewInt(100),
+	}, m1.PostCommitEffectiveVolumes)
+
+	// add a second move at t3
+	m2 := Move{
+		Ledger:              store.ledger.Name,
+		IsSource:            false,
+		Account:             "world",
+		AccountAddressArray: []string{"world"},
+		Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
+		Asset:               "USD",
+		TransactionSeq:      tx.Seq,
+		AccountSeq:          account.Seq,
+		InsertionDate:       t3,
+		EffectiveDate:       t3,
+	}
+	require.NoError(t, store.insertMoves(ctx, &m2))
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(50),
+		Outputs: big.NewInt(100),
+	}, m2.PostCommitVolumes)
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(50),
+		Outputs: big.NewInt(100),
+	}, m2.PostCommitEffectiveVolumes)
+
+	// add a third move at t1
+	m3 := Move{
+		Ledger:              store.ledger.Name,
+		IsSource:            true,
+		Account:             "world",
+		AccountAddressArray: []string{"world"},
+		Amount:              (*bunpaginate.BigInt)(big.NewInt(200)),
+		Asset:               "USD",
+		TransactionSeq:      tx.Seq,
+		AccountSeq:          account.Seq,
+		InsertionDate:       t1,
+		EffectiveDate:       t1,
+	}
+	require.NoError(t, store.insertMoves(ctx, &m3))
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(50),
+		Outputs: big.NewInt(300),
+	}, m3.PostCommitVolumes)
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(0),
+		Outputs: big.NewInt(300),
+	}, m3.PostCommitEffectiveVolumes)
+
+	// add a fourth move at t2
+	m4 := Move{
+		Ledger:              store.ledger.Name,
+		IsSource:            false,
+		Account:             "world",
+		AccountAddressArray: []string{"world"},
+		Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
+		Asset:               "USD",
+		TransactionSeq:      tx.Seq,
+		AccountSeq:          account.Seq,
+		InsertionDate:       t2,
+		EffectiveDate:       t2,
+	}
+	require.NoError(t, store.insertMoves(ctx, &m4))
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(100),
+		Outputs: big.NewInt(300),
+	}, m4.PostCommitVolumes)
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(50),
+		Outputs: big.NewInt(300),
+	}, m4.PostCommitEffectiveVolumes)
+
+	// add a fifth move at t4
+	m5 := Move{
+		Ledger:              store.ledger.Name,
+		IsSource:            false,
+		Account:             "world",
+		AccountAddressArray: []string{"world"},
+		Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
+		Asset:               "USD",
+		TransactionSeq:      tx.Seq,
+		AccountSeq:          account.Seq,
+		InsertionDate:       t4,
+		EffectiveDate:       t4,
+	}
+	require.NoError(t, store.insertMoves(ctx, &m5))
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(150),
+		Outputs: big.NewInt(300),
+	}, m5.PostCommitVolumes)
+	require.Equal(t, Volumes{
+		Inputs:  big.NewInt(150),
+		Outputs: big.NewInt(300),
+	}, m5.PostCommitEffectiveVolumes)
 }

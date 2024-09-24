@@ -27,15 +27,19 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type Volume struct {
-	Asset   string
-	Inputs  *big.Int
-	Outputs *big.Int
+type Volumes struct {
+	Inputs  *big.Int `bun:"inputs" json:"inputs"`
+	Outputs *big.Int `bun:"outputs" json:"outputs"`
 }
 
-type Volumes []Volume
+type AggregatedAccountVolume struct {
+	Volumes
+	Asset   string `bun:"asset"`
+}
 
-func (volumes Volumes) toCore() ledger.VolumesByAssets {
+type AggregatedAccountVolumes []AggregatedAccountVolume
+
+func (volumes AggregatedAccountVolumes) toCore() ledger.VolumesByAssets {
 	if volumes == nil {
 		return ledger.VolumesByAssets{}
 	}
@@ -69,9 +73,9 @@ type Account struct {
 	UpdatedAt     time.Time         `bun:"updated_at"`
 	FirstUsage    time.Time         `bun:"first_usage"`
 
-	PostCommitVolumes          Volumes `bun:"pcv,scanonly"`
-	PostCommitEffectiveVolumes Volumes `bun:"pcev,scanonly"`
-	Sequence                   int     `bun:"seq,scanonly"`
+	PostCommitVolumes          AggregatedAccountVolumes `bun:"pcv,scanonly"`
+	PostCommitEffectiveVolumes AggregatedAccountVolumes `bun:"pcev,scanonly"`
+	Seq                        int                      `bun:"seq,scanonly"`
 }
 
 func (account Account) toCore() ledger.ExpandedAccount {
@@ -434,7 +438,7 @@ func (s *Store) upsertAccount(ctx context.Context, account *Account) (bool, erro
 				return err
 			}
 
-			account.Sequence = upserted.Sequence
+			account.Seq = upserted.Seq
 			account.FirstUsage = upserted.FirstUsage
 			account.InsertionDate = upserted.InsertionDate
 			account.UpdatedAt = upserted.UpdatedAt
