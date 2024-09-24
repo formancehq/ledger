@@ -175,6 +175,21 @@ func (mr *MockControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*MockController)(nil).GetMigrationsInfo), ctx)
 }
 
+// GetStats mocks base method.
+func (m *MockController) GetStats(ctx context.Context) (Stats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStats", ctx)
+	ret0, _ := ret[0].(Stats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStats indicates an expected call of GetStats.
+func (mr *MockControllerMockRecorder) GetStats(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStats", reflect.TypeOf((*MockController)(nil).GetStats), ctx)
+}
+
 // GetTransaction mocks base method.
 func (m *MockController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
 	m.ctrl.T.Helper()
@@ -320,19 +335,4 @@ func (m_2 *MockController) SaveTransactionMetadata(ctx context.Context, paramete
 func (mr *MockControllerMockRecorder) SaveTransactionMetadata(ctx, parameters, id, m any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveTransactionMetadata", reflect.TypeOf((*MockController)(nil).SaveTransactionMetadata), ctx, parameters, id, m)
-}
-
-// Stats mocks base method.
-func (m *MockController) Stats(ctx context.Context) (Stats, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stats", ctx)
-	ret0, _ := ret[0].(Stats)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Stats indicates an expected call of Stats.
-func (mr *MockControllerMockRecorder) Stats(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockController)(nil).Stats), ctx)
 }

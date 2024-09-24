@@ -10,7 +10,7 @@ import (
 func getStats(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
-	stats, err := l.Stats(r.Context())
+	stats, err := l.GetStats(r.Context())
 	if err != nil {
 		api.InternalServerError(w, r, err)
 		return
