@@ -64,14 +64,14 @@ func (t Transaction) toCore() ledger.Transaction {
 	}
 }
 
-type PostCommitVolume struct {
-	Volume
+type TransactionPostCommitVolume struct {
+	AggregatedAccountVolume
 	Account string `bun:"account"`
 }
 
-type PostCommitVolumes []PostCommitVolume
+type TransactionsPostCommitVolumes []TransactionPostCommitVolume
 
-func (p PostCommitVolumes) toCore() ledger.PostCommitVolumes {
+func (p TransactionsPostCommitVolumes) toCore() ledger.PostCommitVolumes {
 	ret := ledger.PostCommitVolumes{}
 	for _, volumes := range p {
 		if _, ok := ret[volumes.Account]; !ok {
@@ -96,8 +96,8 @@ func (p PostCommitVolumes) toCore() ledger.PostCommitVolumes {
 type ExpandedTransaction struct {
 	Transaction `bun:",extend"`
 
-	PostCommitEffectiveVolumes PostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-	PostCommitVolumes          PostCommitVolumes `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	PostCommitEffectiveVolumes TransactionsPostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          TransactionsPostCommitVolumes `bun:"post_commit_volumes,type:jsonb,scanonly"`
 }
 
 func (t ExpandedTransaction) toCore() ledger.ExpandedTransaction {
@@ -373,7 +373,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	// maybe it could be handled by the storage
 	moves := Moves{}
 	for _, p := range tx.Postings {
-		moves = append(moves, []Move{
+		moves = append(moves, []*Move{
 			{
 				Ledger:              s.ledger.Name,
 				IsSource:            true,
@@ -384,7 +384,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				InsertionDate:       *mappedTx.InsertedAt,
 				EffectiveDate:       *mappedTx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
-				AccountSeq:          accounts[p.Source].Sequence,
+				AccountSeq:          accounts[p.Source].Seq,
 			},
 			{
 				Ledger:              s.ledger.Name,
@@ -395,7 +395,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				InsertionDate:       *mappedTx.InsertedAt,
 				EffectiveDate:       *mappedTx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
-				AccountSeq:          accounts[p.Destination].Sequence,
+				AccountSeq:          accounts[p.Destination].Seq,
 			},
 		}...)
 	}
