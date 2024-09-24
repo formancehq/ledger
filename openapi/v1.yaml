@@ -1295,6 +1295,15 @@ paths:
         - Authorization:
             - ledger:read
 components:
+  securitySchemes:
+    Authorization:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: '/api/auth/oauth/token'
+          refreshUrl: '/api/auth/oauth/token'
+          scopes: { }
+
   schemas:
     AccountsCursorResponse:
       type: object

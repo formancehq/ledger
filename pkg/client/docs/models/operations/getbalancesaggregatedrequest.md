@@ -1,0 +1,10 @@
+# GetBalancesAggregatedRequest
+
+
+## Fields
+
+| Field                                                                     | Type                                                                      | Required                                                                  | Description                                                               | Example                                                                   |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `Ledger`                                                                  | *string*                                                                  | :heavy_check_mark:                                                        | Name of the ledger.                                                       | ledger001                                                                 |
+| `Address`                                                                 | **string*                                                                 | :heavy_minus_sign:                                                        | Filter balances involving given account, either as source or destination. | users:001                                                                 |
+| `UseInsertionDate`                                                        | **bool*                                                                   | :heavy_minus_sign:                                                        | Use insertion date instead of effective date                              |                                                                           |

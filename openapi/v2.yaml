@@ -6,9 +6,6 @@ info:
 servers:
   - url: http://localhost:8080/
 paths:
-  x-speakeasy-errors:
-    statusCodes:
-      - default
   /v2/_info:
     get:
       tags:
@@ -1254,6 +1251,15 @@ paths:
         - Authorization:
             - ledger:write
 components:
+  securitySchemes:
+    Authorization:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: '/api/auth/oauth/token'
+          refreshUrl: '/api/auth/oauth/token'
+          scopes: { }
+
   schemas:
     V2AccountsCursorResponse:
       type: object

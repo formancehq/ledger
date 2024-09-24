@@ -40,13 +40,19 @@ Show server information
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
 
     ctx := context.Background()
     res, err := s.Ledger.V2.GetInfo(ctx)
@@ -85,13 +91,19 @@ List ledgers
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var pageSize *int64 = client.Int64(100)
 
     var cursor *string = client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==")
@@ -134,13 +146,19 @@ Get a ledger
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
     ctx := context.Background()
     res, err := s.Ledger.V2.GetLedger(ctx, ledger)
@@ -180,14 +198,19 @@ Create a ledger
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var v2CreateLedgerRequest *components.V2CreateLedgerRequest = &components.V2CreateLedgerRequest{
@@ -234,13 +257,19 @@ Update ledger metadata
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var requestBody map[string]string = map[string]string{
@@ -285,13 +314,19 @@ Delete ledger metadata by key
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var key string = "foo"
@@ -334,13 +369,19 @@ Get information about a ledger
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
     ctx := context.Background()
     res, err := s.Ledger.V2.GetLedgerInfo(ctx, ledger)
@@ -380,15 +421,20 @@ Bulk request
 package main
 
 import(
-	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/stack/ledger/client"
 	"math/big"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var requestBody []components.V2BulkElement = []components.V2BulkElement{
@@ -404,7 +450,7 @@ func main() {
                             Source: "users:001",
                         },
                     },
-                    Script: &components.Script{
+                    Script: &components.V2PostTransactionScript{
                         Plain: "vars {
                     account $user
                     }
@@ -464,24 +510,23 @@ Count the accounts from a ledger
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"time"
-	"github.com/formancehq/stack/ledger/client/types"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
-
-    var pit *time.Time = types.MustNewTimeFromString("2022-10-10T12:32:37.132Z")
-
-    var requestBody map[string]any = map[string]any{
-        "key": "<value>",
-    }
     ctx := context.Background()
-    res, err := s.Ledger.V2.CountAccounts(ctx, ledger, pit, requestBody)
+    res, err := s.Ledger.V2.CountAccounts(ctx, ledger, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -520,6 +565,7 @@ List accounts from a ledger, sorted by address in descending order.
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"context"
@@ -527,7 +573,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2ListAccountsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
@@ -571,24 +622,25 @@ Get account by its address
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"time"
-	"github.com/formancehq/stack/ledger/client/types"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var address string = "users:001"
-
-    var expand *string = client.String("<value>")
-
-    var pit *time.Time = types.MustNewTimeFromString("2022-06-03T07:35:25.275Z")
     ctx := context.Background()
-    res, err := s.Ledger.V2.GetAccount(ctx, ledger, address, expand, pit)
+    res, err := s.Ledger.V2.GetAccount(ctx, ledger, address, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -628,6 +680,7 @@ Add metadata to an account
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"context"
@@ -635,7 +688,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2AddMetadataToAccountRequest{
         Ledger: "ledger001",
         Address: "users:001",
@@ -682,13 +740,19 @@ Delete metadata by key
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var address string = "<value>"
@@ -735,13 +799,19 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
     ctx := context.Background()
     res, err := s.Ledger.V2.ReadStats(ctx, ledger)
@@ -781,24 +851,23 @@ Count the transactions from a ledger
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"time"
-	"github.com/formancehq/stack/ledger/client/types"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
-
-    var pit *time.Time = types.MustNewTimeFromString("2023-09-24T09:44:43.830Z")
-
-    var requestBody map[string]any = map[string]any{
-        "key": "<value>",
-    }
     ctx := context.Background()
-    res, err := s.Ledger.V2.CountTransactions(ctx, ledger, pit, requestBody)
+    res, err := s.Ledger.V2.CountTransactions(ctx, ledger, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -837,6 +906,7 @@ List transactions from a ledger, sorted by id in descending order.
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"context"
@@ -844,7 +914,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2ListTransactionsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
@@ -888,15 +963,20 @@ Create a new transaction to a ledger
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"math/big"
-	"github.com/formancehq/stack/ledger/client/models/components"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     v2PostTransaction := components.V2PostTransaction{
@@ -908,7 +988,7 @@ func main() {
                 Source: "users:001",
             },
         },
-        Script: &components.Script{
+        Script: &components.V2PostTransactionScript{
             Plain: "vars {
         account $user
         }
@@ -928,10 +1008,8 @@ func main() {
     }
 
     var dryRun *bool = client.Bool(true)
-
-    var idempotencyKey *string = client.String("<value>")
     ctx := context.Background()
-    res, err := s.Ledger.V2.CreateTransaction(ctx, ledger, v2PostTransaction, dryRun, idempotencyKey)
+    res, err := s.Ledger.V2.CreateTransaction(ctx, ledger, v2PostTransaction, dryRun, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -971,25 +1049,26 @@ Get transaction from a ledger by its ID
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"math/big"
 	"time"
-	"github.com/formancehq/stack/ledger/client/types"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var id *big.Int = big.NewInt(1234)
-
-    var expand *string = client.String("<value>")
-
-    var pit *time.Time = types.MustNewTimeFromString("2023-08-22T15:58:06.441Z")
     ctx := context.Background()
-    res, err := s.Ledger.V2.GetTransaction(ctx, ledger, id, expand, pit)
+    res, err := s.Ledger.V2.GetTransaction(ctx, ledger, id, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -1029,15 +1108,21 @@ Set the metadata of a transaction by its ID
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
-	"math/big"
 	"github.com/formancehq/stack/ledger/client/models/operations"
+	"math/big"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2AddMetadataOnTransactionRequest{
         Ledger: "ledger001",
         ID: big.NewInt(1234),
@@ -1084,6 +1169,7 @@ Delete metadata by key
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"math/big"
 	"context"
@@ -1091,7 +1177,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var id *big.Int = big.NewInt(1234)
@@ -1137,6 +1228,7 @@ Revert a ledger transaction by its ID
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"math/big"
 	"context"
@@ -1144,16 +1236,17 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
 
     var id *big.Int = big.NewInt(1234)
-
-    var force *bool = client.Bool(false)
-
-    var atEffectiveDate *bool = client.Bool(false)
     ctx := context.Background()
-    res, err := s.Ledger.V2.RevertTransaction(ctx, ledger, id, force, atEffectiveDate)
+    res, err := s.Ledger.V2.RevertTransaction(ctx, ledger, id, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -1193,26 +1286,23 @@ Get the aggregated balances from selected accounts
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"time"
-	"github.com/formancehq/stack/ledger/client/types"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
-
-    var pit *time.Time = types.MustNewTimeFromString("2023-02-24T06:23:10.823Z")
-
-    var useInsertionDate *bool = client.Bool(false)
-
-    var requestBody map[string]any = map[string]any{
-        "key": "<value>",
-    }
     ctx := context.Background()
-    res, err := s.Ledger.V2.GetBalancesAggregated(ctx, ledger, pit, useInsertionDate, requestBody)
+    res, err := s.Ledger.V2.GetBalancesAggregated(ctx, ledger, nil, nil, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -1252,6 +1342,7 @@ Get list of volumes with balances for (account/asset)
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"context"
@@ -1259,7 +1350,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2GetVolumesWithBalancesRequest{
         PageSize: client.Int64(100),
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
@@ -1304,6 +1400,7 @@ List the logs from a ledger, sorted by ID in descending order.
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"context"
@@ -1311,7 +1408,12 @@ import(
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     request := operations.V2ListLogsRequest{
         Ledger: "ledger001",
         PageSize: client.Int64(100),
@@ -1353,18 +1455,22 @@ func main() {
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
-
-    var requestBody *string = client.String("<value>")
     ctx := context.Background()
-    res, err := s.Ledger.V2.ImportLogs(ctx, ledger, requestBody)
+    res, err := s.Ledger.V2.ImportLogs(ctx, ledger, nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -1402,13 +1508,19 @@ Export logs
 package main
 
 import(
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client"
 	"context"
 	"log"
 )
 
 func main() {
-    s := client.New()
+    s := client.New(
+        client.WithSecurity(components.Security{
+            ClientID: "",
+            ClientSecret: "",
+        }),
+    )
     var ledger string = "ledger001"
     ctx := context.Background()
     res, err := s.Ledger.V2.ExportLogs(ctx, ledger)

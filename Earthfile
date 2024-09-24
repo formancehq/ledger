@@ -1,6 +1,7 @@
 VERSION 0.8
 
-IMPORT github.com/formancehq/earthly:tags/v0.15.0 AS core
+IMPORT github.com/formancehq/earthly:tags/v0.16.0 AS core
+IMPORT ../../releases AS releases
 IMPORT ../.. AS stack
 IMPORT .. AS components
 
@@ -116,7 +117,10 @@ pre-commit:
       BUILD --pass-args +tidy
     END
     BUILD --pass-args +lint
-    BUILD +openapi
+    WAIT
+        BUILD +openapi
+    END
+    BUILD +generate-client
 
 bench:
     FROM core+builder-image
@@ -175,14 +179,15 @@ tidy:
 release:
     BUILD --pass-args stack+goreleaser --path=components/ledger
 
-generate-sdk:
+generate-client:
     FROM node:20-alpine
-    RUN apk update && apk add yq git
+    RUN apk update && apk add yq jq
     WORKDIR /src
-    COPY (stack+speakeasy/speakeasy) /bin/speakeasy
-    ARG version=v0.0.0
-    COPY openapi/v2.yaml openapi.yaml
+    COPY (core+sources-speakeasy/speakeasy) /bin/speakeasy
+    COPY (+openapi/openapi.yaml) openapi.yaml
+    RUN cat ./openapi.yaml |  yq e -o json > openapi.json
+    COPY (releases+sources/src/openapi-overlay.json) openapi-overlay.json
+    RUN jq -s '.[0] * .[1]' openapi.json openapi-overlay.json > final.json
     COPY --dir pkg/client client
-    RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./openapi.yaml -o ./client -l go
-
+    RUN --secret SPEAKEASY_API_KEY speakeasy generate sdk -s ./final.json -o ./client -l go
     SAVE ARTIFACT client AS LOCAL ./pkg/client

@@ -56,18 +56,24 @@ package main
 import (
 	"context"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"log"
 )
 
 func main() {
-	s := client.New()
+	s := client.New(
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
+	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx)
+	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.V2ConfigInfoResponse != nil {
+	if res.ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -77,6 +83,29 @@ func main() {
 
 <!-- Start Available Resources and Operations [operations] -->
 ## Available Resources and Operations
+
+### [Ledger.V1](docs/sdks/v1/README.md)
+
+* [GetInfo](docs/sdks/v1/README.md#getinfo) - Show server information
+* [GetLedgerInfo](docs/sdks/v1/README.md#getledgerinfo) - Get information about a ledger
+* [CountAccounts](docs/sdks/v1/README.md#countaccounts) - Count the accounts from a ledger
+* [ListAccounts](docs/sdks/v1/README.md#listaccounts) - List accounts from a ledger
+* [GetAccount](docs/sdks/v1/README.md#getaccount) - Get account by its address
+* [AddMetadataToAccount](docs/sdks/v1/README.md#addmetadatatoaccount) - Add metadata to an account
+* [GetMapping](docs/sdks/v1/README.md#getmapping) - Get the mapping of a ledger
+* [UpdateMapping](docs/sdks/v1/README.md#updatemapping) - Update the mapping of a ledger
+* [~~RunScript~~](docs/sdks/v1/README.md#runscript) - Execute a Numscript :warning: **Deprecated**
+* [ReadStats](docs/sdks/v1/README.md#readstats) - Get statistics from a ledger
+* [CountTransactions](docs/sdks/v1/README.md#counttransactions) - Count the transactions from a ledger
+* [ListTransactions](docs/sdks/v1/README.md#listtransactions) - List transactions from a ledger
+* [CreateTransaction](docs/sdks/v1/README.md#createtransaction) - Create a new transaction to a ledger
+* [GetTransaction](docs/sdks/v1/README.md#gettransaction) - Get transaction from a ledger by its ID
+* [AddMetadataOnTransaction](docs/sdks/v1/README.md#addmetadataontransaction) - Set the metadata of a transaction by its ID
+* [RevertTransaction](docs/sdks/v1/README.md#reverttransaction) - Revert a ledger transaction by its ID
+* [CreateTransactions](docs/sdks/v1/README.md#createtransactions) - Create a new batch of transactions to a ledger
+* [GetBalances](docs/sdks/v1/README.md#getbalances) - Get the balances from a ledger's account
+* [GetBalancesAggregated](docs/sdks/v1/README.md#getbalancesaggregated) - Get the aggregated balances from selected accounts
+* [ListLogs](docs/sdks/v1/README.md#listlogs) - List the logs from a ledger
 
 ### [Ledger.V2](docs/sdks/v2/README.md)
 
@@ -120,16 +149,22 @@ package main
 import (
 	"context"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/retry"
 	"log"
 	"models/operations"
 )
 
 func main() {
-	s := client.New()
+	s := client.New(
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
+	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx, operations.WithRetries(
+	res, err := s.Ledger.V1.GetInfo(ctx, operations.WithRetries(
 		retry.Config{
 			Strategy: "backoff",
 			Backoff: &retry.BackoffStrategy{
@@ -143,7 +178,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.V2ConfigInfoResponse != nil {
+	if res.ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -157,6 +192,7 @@ package main
 import (
 	"context"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/retry"
 	"log"
 )
@@ -174,14 +210,18 @@ func main() {
 				},
 				RetryConnectionErrors: false,
 			}),
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx)
+	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.V2ConfigInfoResponse != nil {
+	if res.ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -194,10 +234,10 @@ func main() {
 
 Handling errors in this SDK should largely match your expectations.  All operations return a response object or an error, they will never return both.  When specified by the OpenAPI spec document, the SDK will return the appropriate subclass.
 
-| Error Object              | Status Code               | Content Type              |
-| ------------------------- | ------------------------- | ------------------------- |
-| sdkerrors.V2ErrorResponse | default                   | application/json          |
-| sdkerrors.SDKError        | 4xx-5xx                   | */*                       |
+| Error Object            | Status Code             | Content Type            |
+| ----------------------- | ----------------------- | ----------------------- |
+| sdkerrors.ErrorResponse | default                 | application/json        |
+| sdkerrors.SDKError      | 4xx-5xx                 | */*                     |
 
 ### Example
 
@@ -208,18 +248,24 @@ import (
 	"context"
 	"errors"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/sdkerrors"
 	"log"
 )
 
 func main() {
-	s := client.New()
+	s := client.New(
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
+	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx)
+	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 
-		var e *sdkerrors.V2ErrorResponse
+		var e *sdkerrors.ErrorResponse
 		if errors.As(err, &e) {
 			// handle error
 			log.Fatal(e.Error())
@@ -255,20 +301,25 @@ package main
 import (
 	"context"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"log"
 )
 
 func main() {
 	s := client.New(
 		client.WithServerIndex(0),
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx)
+	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.V2ConfigInfoResponse != nil {
+	if res.ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -285,20 +336,25 @@ package main
 import (
 	"context"
 	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
 	"log"
 )
 
 func main() {
 	s := client.New(
 		client.WithServerURL("http://localhost:8080/"),
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
 	)
 
 	ctx := context.Background()
-	res, err := s.Ledger.V2.GetInfo(ctx)
+	res, err := s.Ledger.V1.GetInfo(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if res.V2ConfigInfoResponse != nil {
+	if res.ConfigInfoResponse != nil {
 		// handle response
 	}
 }
@@ -340,6 +396,50 @@ This can be a convenient way to configure timeouts, cookies, proxies, custom hea
 
 
 <!-- End Special Types [types] -->
+
+<!-- Start Authentication [security] -->
+## Authentication
+
+### Per-Client Security Schemes
+
+This SDK supports the following security schemes globally:
+
+| Name           | Type           | Scheme         |
+| -------------- | -------------- | -------------- |
+| `ClientID`     | oauth2         | OAuth2 token   |
+| `ClientSecret` | oauth2         | OAuth2 token   |
+
+You can set the security parameters through the `WithSecurity` option when initializing the SDK client instance. The selected scheme will be used by default to authenticate with the API for all operations that support it. For example:
+```go
+package main
+
+import (
+	"context"
+	"github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
+	"log"
+)
+
+func main() {
+	s := client.New(
+		client.WithSecurity(components.Security{
+			ClientID:     "",
+			ClientSecret: "",
+		}),
+	)
+
+	ctx := context.Background()
+	res, err := s.Ledger.V1.GetInfo(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if res.ConfigInfoResponse != nil {
+		// handle response
+	}
+}
+
+```
+<!-- End Authentication [security] -->
 
 <!-- Placeholder for Future Speakeasy SDK Sections -->
 

@@ -73,7 +73,7 @@ func BenchmarkWorstCase(b *testing.B) {
 			transactionResponse, err := testServer.Client().Ledger.V2.CreateTransaction(ctx, ledgerName, components.V2PostTransaction{
 				Timestamp: nil,
 				Postings:  nil,
-				Script: &components.Script{
+				Script: &components.V2PostTransactionScript{
 					Plain: `vars {
 	account $account
 }

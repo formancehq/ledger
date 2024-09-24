@@ -3706,3 +3706,11 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/V2Ledger'
+  securitySchemes:
+    Authorization:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /api/auth/oauth/token
+          refreshUrl: /api/auth/oauth/token
+          scopes: {}
