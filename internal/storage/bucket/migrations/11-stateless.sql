@@ -15,6 +15,12 @@ alter table "{{.Bucket}}".transactions
 alter column id
 type bigint;
 
+alter type "{{.Bucket}}".volumes
+rename attribute inputs to input;
+
+alter type "{{.Bucket}}".volumes
+rename attribute outputs to output;
+
 alter table "{{.Bucket}}".moves
 alter column post_commit_volumes
 drop not null,
@@ -35,24 +41,24 @@ create table "{{.Bucket}}".accounts_volumes (
 	accounts_seq int not null,
     account varchar not null,
     asset varchar not null,
-	inputs numeric not null,
-	outputs numeric not null,
+	input numeric not null,
+	output numeric not null,
 
     primary key (ledger, account, asset)
 );
 
 create view "{{.Bucket}}".balances as
-select ledger, accounts_seq, account, asset, inputs - outputs as balance
+select ledger, accounts_seq, account, asset, input - output as balance
 from "{{.Bucket}}".accounts_volumes;
 
-insert into "{{.Bucket}}".accounts_volumes (ledger, accounts_seq, account, asset, inputs, outputs)
+insert into "{{.Bucket}}".accounts_volumes (ledger, accounts_seq, account, asset, input, output)
 select distinct on (ledger, accounts_seq, account_address, asset)
 	ledger,
 	accounts_seq,
 	account_address as account,
 	asset,
-	(moves.post_commit_volumes).inputs as inputs,
-	(moves.post_commit_volumes).outputs as outputs
+	(moves.post_commit_volumes).input as input,
+	(moves.post_commit_volumes).output as output
 from (
 	select *
 	from "{{.Bucket}}".moves
@@ -116,8 +122,8 @@ begin
 	--todo: use balances table directly...
     new.post_commit_volumes = coalesce((
         select (
-            (post_commit_volumes).inputs + case when new.is_source then 0 else new.amount end,
-            (post_commit_volumes).outputs + case when new.is_source then new.amount else 0 end
+            (post_commit_volumes).input + case when new.is_source then 0 else new.amount end,
+            (post_commit_volumes).output + case when new.is_source then new.amount else 0 end
         )
         from "{{.Bucket}}".moves
         where accounts_seq = new.accounts_seq
@@ -143,8 +149,8 @@ $$
 begin
     new.post_commit_effective_volumes = coalesce((
         select (
-            (post_commit_effective_volumes).inputs + case when new.is_source then 0 else new.amount end,
-            (post_commit_effective_volumes).outputs + case when new.is_source then new.amount else 0 end
+            (post_commit_effective_volumes).input + case when new.is_source then 0 else new.amount end,
+            (post_commit_effective_volumes).output + case when new.is_source then new.amount else 0 end
         )
         from "{{.Bucket}}".moves
         where accounts_seq = new.accounts_seq
@@ -172,8 +178,8 @@ begin
     update "{{.Bucket}}".moves
     set post_commit_effective_volumes =
             (
-             (post_commit_effective_volumes).inputs + case when new.is_source then 0 else new.amount end,
-             (post_commit_effective_volumes).outputs + case when new.is_source then new.amount else 0 end
+             (post_commit_effective_volumes).input + case when new.is_source then 0 else new.amount end,
+             (post_commit_effective_volumes).output + case when new.is_source then new.amount else 0 end
                 )
     where accounts_seq = new.accounts_seq
         and asset = new.asset

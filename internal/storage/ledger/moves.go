@@ -85,8 +85,8 @@ type Move struct {
 	AccountSeq                 int                 `bun:"accounts_seq,type:int"`
 	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
 	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
-	PostCommitVolumes          *Volumes            `bun:"post_commit_volumes,type:jsonb,scanonly"`
-	PostCommitEffectiveVolumes *Volumes            `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          *ledger.Volumes     `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	PostCommitEffectiveVolumes *ledger.Volumes     `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
 type Moves []*Move
@@ -107,17 +107,17 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 			volumes := ledger.NewEmptyVolumes()
 			for _, move := range moves {
 				if move.IsSource {
-					volumes.Outputs.Add(volumes.Outputs, (*big.Int)(move.Amount))
+					volumes.Output.Add(volumes.Output, (*big.Int)(move.Amount))
 				} else {
-					volumes.Inputs.Add(volumes.Inputs, (*big.Int)(move.Amount))
+					volumes.Input.Add(volumes.Input, (*big.Int)(move.Amount))
 				}
 			}
 			ret = append(ret, AccountsVolumes{
 				Ledger:      moves[0].Ledger,
 				Account:     account,
 				Asset:       asset,
-				Inputs:      volumes.Inputs,
-				Outputs:     volumes.Outputs,
+				Input:       volumes.Input,
+				Output:      volumes.Output,
 				AccountsSeq: moves[0].AccountSeq,
 			})
 		}

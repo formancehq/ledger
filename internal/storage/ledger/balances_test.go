@@ -39,8 +39,8 @@ func TestBalancesGet(t *testing.T) {
 		Ledger:      store.ledger.Name,
 		Account:     "world",
 		Asset:       "USD",
-		Inputs:      new(big.Int),
-		Outputs:     big.NewInt(100),
+		Input:       new(big.Int),
+		Output:      big.NewInt(100),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
@@ -276,8 +276,8 @@ func TestUpdateBalances(t *testing.T) {
 		Ledger:      store.ledger.Name,
 		Account:     "world",
 		Asset:       "USD/2",
-		Inputs:      big.NewInt(0),
-		Outputs:     big.NewInt(100),
+		Input:       big.NewInt(0),
+		Output:      big.NewInt(100),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
@@ -291,8 +291,8 @@ func TestUpdateBalances(t *testing.T) {
 		Ledger:  store.ledger.Name,
 		Account: "world",
 		Asset:   "USD/2",
-		Inputs:  big.NewInt(50),
-		Outputs: big.NewInt(0),
+		Input:   big.NewInt(50),
+		Output:  big.NewInt(0),
 	})
 	require.NoError(t, err)
 	require.Equal(t, map[string]map[string]ledger.Volumes{
@@ -305,8 +305,8 @@ func TestUpdateBalances(t *testing.T) {
 		Ledger:      store.ledger.Name,
 		Account:     "world",
 		Asset:       "USD/2",
-		Inputs:      big.NewInt(50),
-		Outputs:     big.NewInt(50),
+		Input:       big.NewInt(50),
+		Output:      big.NewInt(50),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)

@@ -90,7 +90,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_seq").
 			ColumnExpr("account as account_address").
-			ColumnExpr("(inputs, outputs)::"+s.GetPrefixedRelationName("volumes")+" as volumes").
+			ColumnExpr("(input, output)::"+s.GetPrefixedRelationName("volumes")+" as volumes").
 			Where("ledger = ?", s.ledger.Name)
 	}
 
@@ -168,7 +168,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 	return s.db.NewSelect().
 		ModelTableExpr("(?) accounts", s.selectAccountWithVolumes(date, useInsertionDate, builder)).
-		ColumnExpr(`to_json(array_agg(json_build_object('asset', accounts.asset, 'inputs', (accounts.volumes).inputs, 'outputs', (accounts.volumes).outputs))) as aggregated`)
+		ColumnExpr(`to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes).input, 'output', (accounts.volumes).output))) as aggregated`)
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {
@@ -201,7 +201,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			Model(&balances).
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			ColumnExpr("account, asset").
-			ColumnExpr("inputs - outputs as balance").
+			ColumnExpr("input - output as balance").
 			Where("("+strings.Join(conditions, ") OR (")+")", args...).
 			For("update").
 			// notes(gfyrag): keep order, it ensures consistent locking order and limit deadlocks
