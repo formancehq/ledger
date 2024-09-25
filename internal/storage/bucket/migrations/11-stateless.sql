@@ -7,13 +7,13 @@ alter table "{{.Bucket}}".transactions
 add column inserted_at timestamp without time zone
 default (now() at time zone 'utc');
 
+-- todo: check if still required
 alter table "{{.Bucket}}".transactions
 alter column timestamp
 set default (now() at time zone 'utc');
 
 alter table "{{.Bucket}}".transactions
-alter column id
-type bigint;
+add column post_commit_volumes jsonb not null;
 
 alter table "{{.Bucket}}".moves
 add column post_commit_volumes_jsonb jsonb;
@@ -21,18 +21,11 @@ add column post_commit_volumes_jsonb jsonb;
 alter table "{{.Bucket}}".moves
 add column post_commit_effective_volumes_jsonb jsonb;
 
--- todo: add migration
--- update "{{.Bucket}}".moves
--- set post_commit_volumes_jsonb = json_build_object(
--- 	'input', ((moves.post_commit_volumes).inputs),
--- 	'output', ((moves.post_commit_volumes).outputs)
--- );
---
--- update "{{.Bucket}}".moves
--- set post_commit_effective_volumes_jsonb = json_build_object(
--- 	'input', ((moves.post_commit_effective_volumes).inputs),
--- 	'output', ((moves.post_commit_effective_volumes).outputs)
--- );
+alter table "{{.Bucket}}".moves
+drop column transactions_seq;
+
+alter table "{{.Bucket}}".moves
+add column transactions_id bigint not null ;
 
 alter table "{{.Bucket}}".moves
 drop column post_commit_volumes;
@@ -46,23 +39,53 @@ rename post_commit_volumes_jsonb to post_commit_volumes;
 alter table "{{.Bucket}}".moves
 rename post_commit_effective_volumes_jsonb to post_commit_effective_volumes;
 
-alter table "{{.Bucket}}".transactions
-add column post_commit_volumes jsonb not null;
-
 alter table "{{.Bucket}}".moves
 alter column post_commit_volumes
 drop not null,
 alter column post_commit_effective_volumes
 drop not null;
 
+alter table "{{.Bucket}}".transactions_metadata
+drop column transactions_seq;
+
+alter table "{{.Bucket}}".transactions_metadata
+add column transactions_id bigint;
+
+alter table "{{.Bucket}}".transactions
+alter column id
+type bigint;
+
+alter table "{{.Bucket}}".transactions
+drop column seq;
+
 alter table "{{.Bucket}}".logs
 alter column hash
 drop not null;
 
 -- Change from jsonb to json to keep keys order and ensure consistent hashing
+-- todo: check if still required
 alter table "{{.Bucket}}".logs
 alter column data
 type json;
+
+--drop index transactions_metadata_ledger;
+--drop index transactions_metadata_revisions;
+
+create unique index transactions_metadata_ledger on "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision);
+create index transactions_metadata_revisions on "{{.Bucket}}".transactions_metadata(transactions_id asc, revision desc) include (metadata, date);
+
+-- todo: add migration
+-- update "{{.Bucket}}".moves
+-- set post_commit_volumes_jsonb = json_build_object(
+-- 	'input', ((moves.post_commit_volumes).inputs),
+-- 	'output', ((moves.post_commit_volumes).outputs)
+-- );
+--
+-- update "{{.Bucket}}".moves
+-- set post_commit_effective_volumes_jsonb = json_build_object(
+-- 	'input', ((moves.post_commit_effective_volumes).inputs),
+-- 	'output', ((moves.post_commit_effective_volumes).outputs)
+-- );
 
 create table "{{.Bucket}}".accounts_volumes (
     ledger varchar not null,
@@ -227,6 +250,39 @@ begin
 			end || E'\n', 'sha256'::text
         )
     );
+
+	return new;
+end;
+$$;
+
+
+create or replace function "{{.Bucket}}".update_transaction_metadata_history() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision, date, metadata)
+	values (new.ledger, new.id, (
+		select revision + 1
+		from "{{.Bucket}}".transactions_metadata
+		where transactions_metadata.transactions_id = new.id and transactions_metadata.ledger = new.ledger
+		order by revision desc
+		limit 1
+	), new.updated_at, new.metadata);
+
+	return new;
+end;
+$$;
+
+create or replace function "{{.Bucket}}".insert_transaction_metadata_history() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision, date, metadata)
+	values (new.ledger, new.id, 1, new.timestamp, new.metadata);
 
 	return new;
 end;

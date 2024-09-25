@@ -6,9 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/shomali11/xsql"
 	"math/big"
 	"testing"
 
@@ -145,6 +145,18 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	_, _, err = store.UpdateTransactionMetadata(ctx, tx2.ID, metadata.Metadata{"foo2": "bar2"})
 	require.NoError(t, err)
 
+	rows, err := store.GetDB().NewSelect().ModelTableExpr(store.GetPrefixedRelationName("transactions")).Rows(ctx)
+	require.NoError(t, err)
+
+	data, _ := xsql.Pretty(rows)
+	fmt.Println(data)
+
+	rows, err = store.GetDB().NewSelect().ModelTableExpr(store.GetPrefixedRelationName("moves")).Rows(ctx)
+	require.NoError(t, err)
+
+	data, _ = xsql.Pretty(rows)
+	fmt.Println(data)
+
 	// check that the database returns metadata
 	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
@@ -280,7 +292,6 @@ func TestTransactionsCommit(t *testing.T) {
 				},
 			},
 		}, tx3.PostCommitVolumes)
-		spew.Dump(tx3)
 		require.Equal(t, tx3.PostCommitVolumes, tx3.PostCommitEffectiveVolumes)
 	})
 
@@ -527,7 +538,6 @@ func TestTransactionsInsert(t *testing.T) {
 	err := store.insertTransaction(ctx, &tx1)
 	require.NoError(t, err)
 	require.NotZero(t, tx1.ID)
-	require.NotZero(t, tx1.Seq)
 
 	// create another tx with the same reference
 	tx2 := Transaction{
