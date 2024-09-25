@@ -4,11 +4,11 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 )
 
 type InMemoryStore struct {

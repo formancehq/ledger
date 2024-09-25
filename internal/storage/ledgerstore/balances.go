@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/query"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 	"github.com/uptrace/bun"
 )
 

@@ -13,9 +13,9 @@ import (
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 	"github.com/stretchr/testify/require"
 )
 

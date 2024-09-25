@@ -7,9 +7,9 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
 
-	"github.com/formancehq/ledger/internal/api"
+	"github.com/formancehq/ledger/v2/internal/api"
 
 	"github.com/formancehq/go-libs/ballast"
 	"github.com/formancehq/go-libs/httpserver"

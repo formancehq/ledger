@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/auth"
-	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	v2 "github.com/formancehq/ledger/v2/internal/api/v2"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/metrics"
 	"github.com/stretchr/testify/require"
 )
 

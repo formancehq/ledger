@@ -4,16 +4,16 @@ import (
 	"context"
 	"sync"
 
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 
 	"github.com/pkg/errors"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/metrics"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
 	"github.com/sirupsen/logrus"
 )
 

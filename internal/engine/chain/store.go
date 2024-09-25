@@ -3,7 +3,7 @@ package chain
 import (
 	"context"
 
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 )
 
 type Store interface {

@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/formancehq/go-libs/api"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/engine"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/engine"
 )
 
 func exportLogs(w http.ResponseWriter, r *http.Request) {

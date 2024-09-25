@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/tracer"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 
-	"github.com/formancehq/ledger/internal/engine"
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/engine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/engine/command"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
 )
 
 const (

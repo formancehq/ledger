@@ -6,17 +6,17 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/engine/chain"
-	"github.com/formancehq/ledger/internal/storage/driver"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/engine/chain"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
-	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/bus"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 type Ledger struct {

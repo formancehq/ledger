@@ -9,11 +9,11 @@ import (
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"
-	v1 "github.com/formancehq/ledger/internal/api/v1"
+	v1 "github.com/formancehq/ledger/v2/internal/api/v1"
 
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/metrics"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )

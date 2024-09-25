@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	parser "github.com/formancehq/ledger/internal/machine/script/parser"
-	program "github.com/formancehq/ledger/internal/machine/vm/program"
+	parser "github.com/formancehq/ledger/v2/internal/machine/script/parser"
+	program "github.com/formancehq/ledger/v2/internal/machine/vm/program"
 	"github.com/pkg/errors"
 )
 

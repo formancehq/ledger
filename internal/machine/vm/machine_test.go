@@ -9,12 +9,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	"github.com/formancehq/ledger/internal/machine/vm/program"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/machine/script/compiler"
+	"github.com/formancehq/ledger/v2/internal/machine/vm/program"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

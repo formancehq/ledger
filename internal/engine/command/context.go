@@ -3,11 +3,11 @@ package command
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/tracer"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 )
 
 type executionContext struct {

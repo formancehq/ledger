@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 )
 
 func newTestingBackend(t *testing.T, expectedSchemaCheck bool) (*backend.MockBackend, *backend.MockLedger) {

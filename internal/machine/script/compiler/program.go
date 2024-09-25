@@ -1,8 +1,8 @@
 package compiler
 
 import (
-	"github.com/formancehq/ledger/internal/machine"
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/v2/internal/machine"
+	program2 "github.com/formancehq/ledger/v2/internal/machine/vm/program"
 )
 
 func (p *parseVisitor) AppendInstruction(instruction byte) {

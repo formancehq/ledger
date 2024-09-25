@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/testing/utils"
 	"github.com/formancehq/go-libs/time"
-	"github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/v2/pkg/testserver"
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

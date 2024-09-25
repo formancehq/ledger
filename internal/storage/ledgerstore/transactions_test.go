@@ -18,8 +18,8 @@ import (
 
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
-	ledger "github.com/formancehq/ledger/internal"
-	internaltesting "github.com/formancehq/ledger/internal/testing"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	internaltesting "github.com/formancehq/ledger/v2/internal/testing"
 	"github.com/stretchr/testify/require"
 )
 

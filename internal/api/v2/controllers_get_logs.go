@@ -6,8 +6,8 @@ import (
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 func getLogs(w http.ResponseWriter, r *http.Request) {

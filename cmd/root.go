@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/formancehq/go-libs/publish"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 	"github.com/spf13/cobra"
 )
 

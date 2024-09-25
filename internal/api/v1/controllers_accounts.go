@@ -9,23 +9,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger/pkg/core/accounts"
+	"github.com/formancehq/ledger/v2/pkg/core/accounts"
 
 	"github.com/go-chi/chi/v5"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/pointer"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 	"github.com/pkg/errors"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/query"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 type accountWithVolumesAndBalances ledger.ExpandedAccount

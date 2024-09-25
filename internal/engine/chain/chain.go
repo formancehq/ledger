@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"sync"
 
-	ledger "github.com/formancehq/ledger/internal"
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 )
 
 type Chain struct {

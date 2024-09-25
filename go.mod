@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger
+module github.com/formancehq/ledger/v2
 
 go 1.22.0
 

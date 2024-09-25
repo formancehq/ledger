@@ -21,7 +21,7 @@ import (
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )

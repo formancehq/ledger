@@ -10,8 +10,8 @@ import (
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/query"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 func buildAggregatedBalancesQuery(r *http.Request) (query.Builder, error) {

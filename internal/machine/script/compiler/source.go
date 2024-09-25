@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
-	"github.com/formancehq/ledger/internal/machine/script/parser"
-	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/v2/internal/machine/script/parser"
+	"github.com/formancehq/ledger/v2/internal/machine/vm/program"
 )
 
 type FallbackAccount machine.Address

@@ -3,7 +3,7 @@ package program_test
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
+	"github.com/formancehq/ledger/v2/internal/machine/script/compiler"
 	"github.com/stretchr/testify/require"
 )
 

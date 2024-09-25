@@ -12,18 +12,18 @@ import (
 	"github.com/formancehq/go-libs/pointer"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/engine"
-	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/machine"
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/engine"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
+	"github.com/formancehq/ledger/v2/internal/machine"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 	"github.com/pkg/errors"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 func countTransactions(w http.ResponseWriter, r *http.Request) {

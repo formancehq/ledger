@@ -4,7 +4,7 @@ import (
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/service"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
 	"github.com/spf13/cobra"
 )
 

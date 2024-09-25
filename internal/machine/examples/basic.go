@@ -6,9 +6,9 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	vm2 "github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/machine/script/compiler"
+	vm2 "github.com/formancehq/ledger/v2/internal/machine/vm"
 )
 
 func main() {

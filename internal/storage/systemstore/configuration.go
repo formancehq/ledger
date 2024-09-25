@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/uptrace/bun"
 )

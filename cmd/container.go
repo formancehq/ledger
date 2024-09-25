@@ -6,8 +6,8 @@ import (
 	"github.com/formancehq/go-libs/otlp/otlptraces"
 	"github.com/formancehq/go-libs/publish"
 	"github.com/formancehq/go-libs/service"
-	"github.com/formancehq/ledger/internal/engine"
-	driver "github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/engine"
+	driver "github.com/formancehq/ledger/v2/internal/storage/driver"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )

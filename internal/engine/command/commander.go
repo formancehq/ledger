@@ -6,18 +6,18 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/formancehq/ledger/internal/machine/vm/program"
-	"github.com/formancehq/ledger/internal/opentelemetry/tracer"
+	"github.com/formancehq/ledger/v2/internal/machine/vm/program"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/tracer"
 
 	"github.com/formancehq/go-libs/time"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
-	"github.com/formancehq/ledger/internal/engine/utils/batching"
-	"github.com/formancehq/ledger/internal/machine/vm"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/bus"
+	"github.com/formancehq/ledger/v2/internal/engine/utils/batching"
+	"github.com/formancehq/ledger/v2/internal/machine/vm"
 	"github.com/pkg/errors"
 )
 

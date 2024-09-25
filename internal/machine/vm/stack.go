@@ -3,7 +3,7 @@ package vm
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 )
 
 func (m *Machine) popValue() machine.Value {

@@ -10,11 +10,11 @@ import (
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 
-	storageerrors "github.com/formancehq/ledger/internal/storage/sqlutils"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 	"github.com/uptrace/bun"
 )
 

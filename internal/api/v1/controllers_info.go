@@ -6,14 +6,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/engine"
 	"github.com/pkg/errors"
 
 	sharedapi "github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/formancehq/go-libs/query"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 type Info struct {

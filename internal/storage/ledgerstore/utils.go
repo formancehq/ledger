@@ -11,7 +11,7 @@ import (
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/query"
 	"github.com/uptrace/bun"

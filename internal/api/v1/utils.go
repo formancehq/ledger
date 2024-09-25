@@ -11,8 +11,8 @@ import (
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/query"
-	"github.com/formancehq/ledger/internal/engine/command"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 func getPITFilter(r *http.Request) (*ledgerstore.PITFilter, error) {

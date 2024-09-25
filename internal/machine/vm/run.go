@@ -3,10 +3,10 @@ package vm
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 	"github.com/pkg/errors"
 )
 

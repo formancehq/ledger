@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"github.com/formancehq/ledger/internal/machine/script/parser"
-	program2 "github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/v2/internal/machine/script/parser"
+	program2 "github.com/formancehq/ledger/v2/internal/machine/vm/program"
 )
 
 func (p *parseVisitor) VisitAllotment(c antlr.ParserRuleContext, portions []parser.IAllotmentPortionContext) *CompileError {

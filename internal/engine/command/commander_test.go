@@ -11,23 +11,23 @@ import (
 	"github.com/formancehq/go-libs/bun/bundebug"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/ledger/internal/engine/chain"
+	"github.com/formancehq/ledger/v2/internal/engine/chain"
 
 	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/bus"
-	storageerrors "github.com/formancehq/ledger/internal/storage"
-	internaltesting "github.com/formancehq/ledger/internal/testing"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/bus"
+	storageerrors "github.com/formancehq/ledger/v2/internal/storage"
+	internaltesting "github.com/formancehq/ledger/v2/internal/testing"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )

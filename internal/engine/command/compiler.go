@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 
 	"github.com/bluele/gcache"
-	"github.com/formancehq/ledger/internal/machine/script/compiler"
-	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/formancehq/ledger/v2/internal/machine/script/compiler"
+	"github.com/formancehq/ledger/v2/internal/machine/vm/program"
 )
 
 type Compiler struct {

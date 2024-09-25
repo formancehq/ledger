@@ -5,11 +5,11 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger/internal/engine"
+	"github.com/formancehq/ledger/v2/internal/engine"
 
 	"github.com/formancehq/go-libs/api"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/backend"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 	"github.com/pkg/errors"
 )
 

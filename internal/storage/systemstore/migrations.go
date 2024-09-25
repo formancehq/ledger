@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/go-libs/logging"
 	"github.com/pkg/errors"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/migrations"
 	"github.com/uptrace/bun"

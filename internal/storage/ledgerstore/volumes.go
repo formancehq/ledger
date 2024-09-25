@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	lquery "github.com/formancehq/go-libs/query"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 	"github.com/uptrace/bun"
 )
 

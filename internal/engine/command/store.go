@@ -4,8 +4,8 @@ import (
 	"context"
 	"math/big"
 
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/vm"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/machine/vm"
 )
 
 type Store interface {

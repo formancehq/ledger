@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/time"
 
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )

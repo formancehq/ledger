@@ -3,7 +3,7 @@ package vm
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/internal/machine"
+	"github.com/formancehq/ledger/v2/internal/machine"
 )
 
 func TestOverdraftNotEnough(t *testing.T) {

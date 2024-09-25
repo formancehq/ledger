@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 	"github.com/pkg/errors"
 )
 

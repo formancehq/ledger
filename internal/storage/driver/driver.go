@@ -16,12 +16,12 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/time"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/formancehq/go-libs/logging"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 )
 
 const defaultBucket = "_default"

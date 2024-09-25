@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/contextutil"
 
 	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 )
 
 func bulkHandler(w http.ResponseWriter, r *http.Request) {

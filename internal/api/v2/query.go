@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 
-	"github.com/formancehq/ledger/internal/engine/command"
+	"github.com/formancehq/ledger/v2/internal/engine/command"
 	"github.com/pkg/errors"
 )
 

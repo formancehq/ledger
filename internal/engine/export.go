@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/ledgerstore"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/internal/storage/ledgerstore"
 )
 
 type ExportWriter interface {

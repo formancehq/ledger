@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/go-libs/bun/bunconnect"
 
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
-	"github.com/formancehq/ledger/internal/storage/driver"
+	"github.com/formancehq/ledger/v2/internal/storage/driver"
 	"github.com/stretchr/testify/require"
 )
 

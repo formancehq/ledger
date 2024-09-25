@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/pkg/core/accounts"
+	"github.com/formancehq/ledger/v2/pkg/core/accounts"
 )
 
 type AccountAddress string

@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/go-libs/httpserver"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/service"
-	"github.com/formancehq/ledger/cmd"
+	"github.com/formancehq/ledger/v2/cmd"
 	ledgerclient "github.com/formancehq/stack/ledger/client"
 	"github.com/stretchr/testify/require"
 )

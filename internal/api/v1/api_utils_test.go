@@ -3,9 +3,9 @@ package v1_test
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 	"go.uber.org/mock/gomock"
 )
 

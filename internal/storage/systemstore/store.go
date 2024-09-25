@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
-	"github.com/formancehq/ledger/internal/storage/sqlutils"
+	"github.com/formancehq/ledger/v2/internal/storage/sqlutils"
 
 	"github.com/uptrace/bun"
 )

@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	"github.com/formancehq/go-libs/metadata"
-	ledger "github.com/formancehq/ledger/internal"
+	ledger "github.com/formancehq/ledger/v2/internal"
 )
 
 type Store interface {

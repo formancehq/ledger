@@ -9,8 +9,8 @@ import (
 
 	"github.com/formancehq/go-libs/auth"
 	"github.com/formancehq/go-libs/health"
-	"github.com/formancehq/ledger/internal/api/backend"
-	"github.com/formancehq/ledger/internal/opentelemetry/metrics"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/opentelemetry/metrics"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )

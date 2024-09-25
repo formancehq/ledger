@@ -7,8 +7,8 @@ import (
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/publish"
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/events"
+	ledger "github.com/formancehq/ledger/v2/internal"
+	"github.com/formancehq/ledger/v2/pkg/events"
 )
 
 type Monitor interface {

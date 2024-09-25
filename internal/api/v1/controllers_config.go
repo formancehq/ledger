@@ -8,10 +8,10 @@ import (
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 
 	"github.com/formancehq/go-libs/collectionutils"
-	"github.com/formancehq/ledger/internal/storage/systemstore"
+	"github.com/formancehq/ledger/v2/internal/storage/systemstore"
 
 	sharedapi "github.com/formancehq/go-libs/api"
-	"github.com/formancehq/ledger/internal/api/backend"
+	"github.com/formancehq/ledger/v2/internal/api/backend"
 )
 
 type ConfigInfo struct {
