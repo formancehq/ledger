@@ -6,7 +6,6 @@ includes:
   - from_url:
       url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default.yaml
 
-
 builds:
   - binary: ledger
     id: ledger
@@ -33,12 +32,12 @@ release:
 archives:
   - id: "{{.ProjectName}}"
     builds:
-      - gateway
+      - ledger
     format: tar.gz
     name_template: "{{.ProjectName}}_{{.Os}}-{{.Arch}}"
 
 nfpms:
-  - id: packages
+  - id: ledger
     package_name: ledger
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
@@ -52,18 +51,26 @@ nfpms:
 publishers:
   - name: fury.io
     ids:
-      - packages
+      - ledger
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
 
 brews:
-  - repository:
+  - name: ledger
+    alternative_names:
+      - ledger@{{ .Major }}
+    repository:
       owner: formancehq
       name: homebrew-tap
-    name: ledger
+      pull_request:
+        enabled: true
+        base:
+          owner: formancehq
+          name: homebrew-tap
+          branch: main
     directory: Formula
     homepage: https://formance.com
-    skip_upload: auto
+    skip_upload: 'false'
     test: |
       system "#{bin}/ledger version"
     install: |
