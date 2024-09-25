@@ -60,14 +60,14 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 	RequireEqual(t, ledger.PostCommitVolumes{
 		"world": {
 			"USD": {
-				Inputs:  big.NewInt(0),
-				Outputs: big.NewInt(100),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(100),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Inputs:  big.NewInt(100),
-				Outputs: big.NewInt(0),
+				Input:  big.NewInt(100),
+				Output: big.NewInt(0),
 			},
 		},
 	}, tx.PostCommitVolumes)
@@ -82,14 +82,14 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 	RequireEqual(t, ledger.PostCommitVolumes{
 		"world": {
 			"USD": {
-				Inputs:  big.NewInt(0),
-				Outputs: big.NewInt(200),
+				Input:  big.NewInt(0),
+				Output: big.NewInt(200),
 			},
 		},
 		"central_bank": {
 			"USD": {
-				Inputs:  big.NewInt(200),
-				Outputs: big.NewInt(0),
+				Input:  big.NewInt(200),
+				Output: big.NewInt(0),
 			},
 		},
 	}, tx.PostCommitVolumes)
@@ -228,14 +228,14 @@ func TestTransactionsCommit(t *testing.T) {
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
-					Inputs:  big.NewInt(0),
-					Outputs: big.NewInt(100),
+					Input:  big.NewInt(0),
+					Output: big.NewInt(100),
 				},
 			},
 			"account:2": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
-					Inputs:  big.NewInt(100),
-					Outputs: big.NewInt(0),
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
 				},
 			},
 		}, tx.PostCommitVolumes)
@@ -264,8 +264,8 @@ func TestTransactionsCommit(t *testing.T) {
 			Ledger:      store.ledger.Name,
 			Account:     "account:1",
 			Asset:       "USD",
-			Inputs:      big.NewInt(100),
-			Outputs:     big.NewInt(0),
+			Input:       big.NewInt(100),
+			Output:      big.NewInt(0),
 			AccountsSeq: account1.Seq,
 		})
 		require.NoError(t, err)
@@ -274,8 +274,8 @@ func TestTransactionsCommit(t *testing.T) {
 			Ledger:      store.ledger.Name,
 			Account:     "account:2",
 			Asset:       "USD",
-			Inputs:      big.NewInt(100),
-			Outputs:     big.NewInt(0),
+			Input:       big.NewInt(100),
+			Output:      big.NewInt(0),
 			AccountsSeq: account2.Seq,
 		})
 		require.NoError(t, err)

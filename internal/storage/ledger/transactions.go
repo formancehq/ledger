@@ -83,12 +83,12 @@ func (p TransactionsPostCommitVolumes) toCore() ledger.PostCommitVolumes {
 		}
 		if v, ok := ret[volumes.Account][volumes.Asset]; !ok {
 			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-				Inputs:  volumes.Inputs,
-				Outputs: volumes.Outputs,
+				Input:  volumes.Input,
+				Output: volumes.Output,
 			}
 		} else {
-			v.Inputs = v.Inputs.Add(v.Inputs, volumes.Inputs)
-			v.Outputs = v.Outputs.Add(v.Outputs, volumes.Outputs)
+			v.Input = v.Input.Add(v.Input, volumes.Input)
+			v.Output = v.Output.Add(v.Output, volumes.Output)
 
 			ret[volumes.Account][volumes.Asset] = v
 		}
@@ -201,7 +201,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 				s.db.NewSelect().
 					TableExpr(s.GetPrefixedRelationName("moves")).
 					Column("transactions_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'inputs', (moves.post_commit_volumes).inputs, 'outputs', (moves.post_commit_volumes).outputs))) as post_commit_volumes`).
+					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'input', (moves.post_commit_volumes).input, 'output', (moves.post_commit_volumes).output))) as post_commit_volumes`).
 					Group("transactions_seq"),
 			).
 			ColumnExpr("pcv.*")
@@ -215,7 +215,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 				s.db.NewSelect().
 					TableExpr(s.GetPrefixedRelationName("moves")).
 					Column("transactions_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'inputs', (moves.post_commit_effective_volumes).inputs, 'outputs', (moves.post_commit_effective_volumes).outputs))) as post_commit_effective_volumes`).
+					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'input', (moves.post_commit_effective_volumes).input, 'output', (moves.post_commit_effective_volumes).output))) as post_commit_effective_volumes`).
 					Group("transactions_seq"),
 			).
 			ColumnExpr("pcev.*")

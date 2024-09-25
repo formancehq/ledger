@@ -61,14 +61,14 @@ func TestMovesInsert(t *testing.T) {
 		}
 		require.NoError(t, store.insertMoves(ctx, &m1))
 		require.NotNil(t, m1.PostCommitVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(0),
-			Outputs: big.NewInt(100),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(0),
+			Output: big.NewInt(100),
 		}, *m1.PostCommitVolumes)
 		require.NotNil(t, m1.PostCommitEffectiveVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(0),
-			Outputs: big.NewInt(100),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(0),
+			Output: big.NewInt(100),
 		}, *m1.PostCommitEffectiveVolumes)
 
 		// add a second move at t3
@@ -86,14 +86,14 @@ func TestMovesInsert(t *testing.T) {
 		}
 		require.NoError(t, store.insertMoves(ctx, &m2))
 		require.NotNil(t, m2.PostCommitVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(50),
-			Outputs: big.NewInt(100),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(50),
+			Output: big.NewInt(100),
 		}, *m2.PostCommitVolumes)
 		require.NotNil(t, m2.PostCommitEffectiveVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(50),
-			Outputs: big.NewInt(100),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(50),
+			Output: big.NewInt(100),
 		}, *m2.PostCommitEffectiveVolumes)
 
 		// add a third move at t1
@@ -111,14 +111,14 @@ func TestMovesInsert(t *testing.T) {
 		}
 		require.NoError(t, store.insertMoves(ctx, &m3))
 		require.NotNil(t, m3.PostCommitVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(50),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(50),
+			Output: big.NewInt(300),
 		}, *m3.PostCommitVolumes)
 		require.NotNil(t, m3.PostCommitEffectiveVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(0),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(0),
+			Output: big.NewInt(300),
 		}, *m3.PostCommitEffectiveVolumes)
 
 		// add a fourth move at t2
@@ -136,14 +136,14 @@ func TestMovesInsert(t *testing.T) {
 		}
 		require.NoError(t, store.insertMoves(ctx, &m4))
 		require.NotNil(t, m4.PostCommitVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(100),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(100),
+			Output: big.NewInt(300),
 		}, *m4.PostCommitVolumes)
 		require.NotNil(t, m4.PostCommitEffectiveVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(50),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(50),
+			Output: big.NewInt(300),
 		}, *m4.PostCommitEffectiveVolumes)
 
 		// add a fifth move at t4
@@ -161,14 +161,14 @@ func TestMovesInsert(t *testing.T) {
 		}
 		require.NoError(t, store.insertMoves(ctx, &m5))
 		require.NotNil(t, m5.PostCommitVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(150),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(150),
+			Output: big.NewInt(300),
 		}, *m5.PostCommitVolumes)
 		require.NotNil(t, m5.PostCommitEffectiveVolumes)
-		require.Equal(t, Volumes{
-			Inputs:  big.NewInt(150),
-			Outputs: big.NewInt(300),
+		require.Equal(t, ledger.Volumes{
+			Input:  big.NewInt(150),
+			Output: big.NewInt(300),
 		}, *m5.PostCommitEffectiveVolumes)
 	})
 
