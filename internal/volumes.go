@@ -6,8 +6,8 @@ import (
 )
 
 type Volumes struct {
-	Inputs  *big.Int `json:"input"`
-	Outputs *big.Int `json:"output"`
+	Inputs  *big.Int `bun:"inputs" json:"input"`
+	Outputs *big.Int `bun:"outputs" json:"output"`
 }
 
 func (v Volumes) CopyWithZerosIfNeeded() Volumes {

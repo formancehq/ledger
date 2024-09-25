@@ -3,6 +3,8 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/platform/postgres"
+	"math/big"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -13,6 +15,47 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/uptrace/bun"
 )
+
+type AccountsVolumes struct {
+	bun.BaseModel `bun:"accounts_volumes"`
+
+	Ledger  string   `bun:"ledger,type:varchar"`
+	Account string   `bun:"account,type:varchar"`
+	Asset   string   `bun:"asset,type:varchar"`
+	Inputs  *big.Int `bun:"inputs,type:numeric"`
+	Outputs *big.Int `bun:"outputs,type:numeric"`
+	AccountsSeq int `bun:"accounts_seq,type:int"`
+}
+
+func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVolumes) (map[string]map[string]ledger.Volumes, error) {
+	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (map[string]map[string]ledger.Volumes, error) {
+
+		_, err := s.db.NewInsert().
+			Model(&accountVolumes).
+			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+			On("conflict (ledger, account, asset) do update").
+			Set("inputs = accounts_volumes.inputs + excluded.inputs").
+			Set("outputs = accounts_volumes.outputs + excluded.outputs").
+			Returning("inputs, outputs").
+			Exec(ctx)
+		if err != nil {
+			return nil, postgres.ResolveError(err)
+		}
+
+		ret := make(map[string]map[string]ledger.Volumes)
+		for _, volumes := range accountVolumes {
+			if _, ok := ret[volumes.Account]; !ok {
+				ret[volumes.Account] = map[string]ledger.Volumes{}
+			}
+			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
+				Inputs: volumes.Inputs,
+				Outputs: volumes.Outputs,
+			}
+		}
+
+		return ret, err
+	})
+}
 
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
 

@@ -24,10 +24,24 @@ func TestGetBalances(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	_, err := store.updateBalances(ctx, map[string]map[string]*big.Int{
-		"world": {
-			"USD": big.NewInt(100),
-		},
+	world := &Account{
+		Ledger:                     store.ledger.Name,
+		Address:                    "world",
+		AddressArray:               []string{"world"},
+		InsertionDate:              time.Now(),
+		UpdatedAt:                  time.Now(),
+		FirstUsage:                 time.Now(),
+	}
+	_, err := store.upsertAccount(ctx, world)
+	require.NoError(t, err)
+
+	_, err = store.updateVolumes(ctx, AccountsVolumes{
+		Ledger:    store.ledger.Name,
+		Account:   "world",
+		Asset:     "USD",
+		Inputs:  new(big.Int),
+		Outputs: big.NewInt(100),
+		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
 
@@ -91,7 +105,7 @@ func TestGetBalances(t *testing.T) {
 		require.NotNil(t, balances["world"])
 		require.NotNil(t, balances["not-existing"])
 
-		require.Equal(t, big.NewInt(100), balances["world"]["USD"])
+		require.Equal(t, big.NewInt(-100), balances["world"]["USD"])
 		require.Equal(t, big.NewInt(0), balances["not-existing"]["USD"])
 	})
 }
@@ -247,27 +261,58 @@ func TestUpdateBalances(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	balances, err := store.updateBalances(ctx, map[string]map[string]*big.Int{
-		"world": {
-			"USD/2": big.NewInt(-100),
-		},
-	})
+	world := &Account{
+		Ledger:                     store.ledger.Name,
+		Address:                    "world",
+		AddressArray:               []string{"world"},
+		InsertionDate:              time.Now(),
+		UpdatedAt:                  time.Now(),
+		FirstUsage:                 time.Now(),
+	}
+	_, err := store.upsertAccount(ctx, world)
 	require.NoError(t, err)
-	require.Equal(t, map[string]map[string]*big.Int{
-		"world": {
-			"USD/2": big.NewInt(-100),
-		},
-	}, balances)
 
-	balances, err = store.updateBalances(ctx, map[string]map[string]*big.Int{
-		"world": {
-			"USD/2": big.NewInt(50),
-		},
+	volumes, err := store.updateVolumes(ctx, AccountsVolumes{
+		Ledger:    store.ledger.Name,
+		Account:   "world",
+		Asset:     "USD/2",
+		Inputs:    big.NewInt(0),
+		Outputs:   big.NewInt(100),
+		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[string]map[string]*big.Int{
+	require.Equal(t, map[string]map[string]ledger.Volumes{
 		"world": {
-			"USD/2": big.NewInt(-50),
+			"USD/2": ledger.NewVolumesInt64(0, 100),
 		},
-	}, balances)
+	}, volumes)
+
+	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
+		Ledger:    store.ledger.Name,
+		Account:   "world",
+		Asset:     "USD/2",
+		Inputs:    big.NewInt(50),
+		Outputs:   big.NewInt(0),
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[string]map[string]ledger.Volumes{
+		"world": {
+			"USD/2": ledger.NewVolumesInt64(50, 100),
+		},
+	}, volumes)
+
+	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
+		Ledger:    store.ledger.Name,
+		Account:   "world",
+		Asset:     "USD/2",
+		Inputs:    big.NewInt(50),
+		Outputs:   big.NewInt(50),
+		AccountsSeq: world.Seq,
+	})
+	require.NoError(t, err)
+	require.Equal(t, map[string]map[string]ledger.Volumes{
+		"world": {
+			"USD/2": ledger.NewVolumesInt64(100, 150),
+		},
+	}, volumes)
 }

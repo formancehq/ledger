@@ -8,7 +8,6 @@ import (
 
 	"github.com/formancehq/ledger/internal/tracing"
 
-	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/formancehq/go-libs/time"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
@@ -19,7 +18,7 @@ import (
 )
 
 type Balances struct {
-	bun.BaseModel `bun:"balances"`
+	bun.BaseModel `bun:"accounts_volumes"`
 
 	Ledger  string   `bun:"ledger,type:varchar"`
 	Account string   `bun:"account,type:varchar"`
@@ -190,43 +189,5 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		}
 
 		return ret, nil
-	})
-}
-
-func (s *Store) updateBalances(ctx context.Context, diff map[string]map[string]*big.Int) (map[string]map[string]*big.Int, error) {
-	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (map[string]map[string]*big.Int, error) {
-
-		balances := make([]Balances, 0)
-		for account, forAccount := range diff {
-			for asset, amount := range forAccount {
-				balances = append(balances, Balances{
-					Ledger:  s.ledger.Name,
-					Account: account,
-					Asset:   asset,
-					Balance: amount,
-				})
-			}
-		}
-
-		_, err := s.db.NewInsert().
-			Model(&balances).
-			ModelTableExpr(s.GetPrefixedRelationName("balances")).
-			On("conflict (ledger, account, asset) do update").
-			Set("balance = balances.balance + excluded.balance").
-			Returning("balance").
-			Exec(ctx)
-		if err != nil {
-			return nil, postgres.ResolveError(err)
-		}
-
-		ret := make(map[string]map[string]*big.Int)
-		for _, balance := range balances {
-			if _, ok := ret[balance.Account]; !ok {
-				ret[balance.Account] = map[string]*big.Int{}
-			}
-			ret[balance.Account][balance.Asset] = balance.Balance
-		}
-
-		return ret, err
 	})
 }

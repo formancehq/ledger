@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	ledger "github.com/formancehq/ledger/internal"
 	"math/big"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
@@ -90,20 +91,38 @@ type Move struct {
 
 type Moves []*Move
 
-func (m Moves) BalanceUpdates() map[string]map[string]*big.Int {
-	ret := make(map[string]map[string]*big.Int)
+func (m Moves) volumeUpdates() []AccountsVolumes {
+
+	aggregatedVolumes := make(map[string]map[string][]*Move)
 	for _, move := range m {
-		if _, ok := ret[move.Account]; !ok {
-			ret[move.Account] = make(map[string]*big.Int)
+		if _, ok := aggregatedVolumes[move.Account]; !ok {
+			aggregatedVolumes[move.Account] = make(map[string][]*Move)
 		}
-		if _, ok := ret[move.Account][move.Asset]; !ok {
-			ret[move.Account][move.Asset] = big.NewInt(0)
+		if _, ok := aggregatedVolumes[move.Account][move.Asset]; !ok {
+			aggregatedVolumes[move.Account][move.Asset] = append(aggregatedVolumes[move.Account][move.Asset], move)
 		}
-		amount := big.NewInt(0).Set((*big.Int)(move.Amount))
-		if move.IsSource {
-			amount = big.NewInt(0).Neg(amount)
+	}
+
+	ret := make([]AccountsVolumes, 0)
+	for account, movesByAsset := range aggregatedVolumes {
+		for asset, moves := range movesByAsset {
+			volumes := ledger.NewEmptyVolumes()
+			for _, move := range moves {
+				if move.IsSource {
+					volumes.Outputs.Add(volumes.Outputs, (*big.Int)(move.Amount))
+				} else {
+					volumes.Inputs.Add(volumes.Inputs, (*big.Int)(move.Amount))
+				}
+			}
+			ret = append(ret, AccountsVolumes{
+				Ledger:  moves[0].Ledger,
+				Account: account,
+				Asset:   asset,
+				Inputs:  volumes.Inputs,
+				Outputs: volumes.Outputs,
+				AccountsSeq: moves[0].AccountSeq,
+			})
 		}
-		ret[move.Account][move.Asset] = ret[move.Account][move.Asset].Add(ret[move.Account][move.Asset], amount)
 	}
 
 	return ret
