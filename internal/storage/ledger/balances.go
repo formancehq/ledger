@@ -91,7 +91,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_seq").
 			ColumnExpr("account as account_address").
-			ColumnExpr("(input, output)::"+s.GetPrefixedRelationName("volumes")+" as volumes").
+			ColumnExpr("json_build_object('input', input, 'output', output) as volumes").
 			Where("ledger = ?", s.ledger.Name)
 	}
 
@@ -169,7 +169,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 	return s.db.NewSelect().
 		ModelTableExpr("(?) accounts", s.selectAccountWithVolumes(date, useInsertionDate, builder)).
-		ColumnExpr(`to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes).input, 'output', (accounts.volumes).output))) as aggregated`)
+		ColumnExpr(`to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes->>'input')::numeric, 'output', (accounts.volumes->>'output')::numeric))) as aggregated`)
 }
 
 func (s *Store) GetAggregatedBalances(ctx context.Context, q ledgercontroller.GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error) {

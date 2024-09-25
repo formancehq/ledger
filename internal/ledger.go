@@ -113,6 +113,7 @@ type Ledger struct {
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
+	// todo: to avoid development error we could check if the value is possible
 	return l.Features[feature] == value
 }
 

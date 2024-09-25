@@ -15,14 +15,39 @@ alter table "{{.Bucket}}".transactions
 alter column id
 type bigint;
 
-alter type "{{.Bucket}}".volumes
-rename attribute inputs to input;
+alter table "{{.Bucket}}".moves
+add column post_commit_volumes_jsonb jsonb;
 
-alter type "{{.Bucket}}".volumes
-rename attribute outputs to output;
+alter table "{{.Bucket}}".moves
+add column post_commit_effective_volumes_jsonb jsonb;
+
+-- todo: add migration
+-- update "{{.Bucket}}".moves
+-- set post_commit_volumes_jsonb = json_build_object(
+-- 	'input', ((moves.post_commit_volumes).inputs),
+-- 	'output', ((moves.post_commit_volumes).outputs)
+-- );
+--
+-- update "{{.Bucket}}".moves
+-- set post_commit_effective_volumes_jsonb = json_build_object(
+-- 	'input', ((moves.post_commit_effective_volumes).inputs),
+-- 	'output', ((moves.post_commit_effective_volumes).outputs)
+-- );
+
+alter table "{{.Bucket}}".moves
+drop column post_commit_volumes;
+
+alter table "{{.Bucket}}".moves
+drop column post_commit_effective_volumes;
+
+alter table "{{.Bucket}}".moves
+rename post_commit_volumes_jsonb to post_commit_volumes;
+
+alter table "{{.Bucket}}".moves
+rename post_commit_effective_volumes_jsonb to post_commit_effective_volumes;
 
 alter table "{{.Bucket}}".transactions
-add column post_commit_volumes jsonb not null ;
+add column post_commit_volumes jsonb not null;
 
 alter table "{{.Bucket}}".moves
 alter column post_commit_volumes
@@ -60,8 +85,8 @@ select distinct on (ledger, accounts_seq, account_address, asset)
 	accounts_seq,
 	account_address as account,
 	asset,
-	(moves.post_commit_volumes).input as input,
-	(moves.post_commit_volumes).output as output
+	(moves.post_commit_volumes->>'input')::numeric as input,
+	(moves.post_commit_volumes->>'output')::numeric as output
 from (
 	select *
 	from "{{.Bucket}}".moves
@@ -115,6 +140,9 @@ drop function "{{.Bucket}}".get_transaction(_ledger character varying, _id numer
 drop function "{{.Bucket}}".explode_address(_address character varying);
 drop function "{{.Bucket}}".revert_transaction(_ledger character varying, _id numeric, _date timestamp without time zone);
 
+drop type "{{.Bucket}}".volumes_with_asset;
+drop type "{{.Bucket}}".volumes;
+
 create function "{{.Bucket}}".set_volumes()
     returns trigger
     security definer
@@ -123,9 +151,9 @@ as
 $$
 begin
     new.post_commit_volumes = coalesce((
-        select (
-            (post_commit_volumes).input + case when new.is_source then 0 else new.amount end,
-            (post_commit_volumes).output + case when new.is_source then new.amount else 0 end
+        select json_build_object(
+            'input', (post_commit_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
+            'output', (post_commit_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
         )
         from "{{.Bucket}}".moves
         where accounts_seq = new.accounts_seq
@@ -133,9 +161,9 @@ begin
             and ledger = new.ledger
         order by seq desc
         limit 1
-    ), (
-        case when new.is_source then 0 else new.amount end,
-        case when new.is_source then new.amount else 0 end
+    ), json_build_object(
+        'input', case when new.is_source then 0 else new.amount end,
+        'output', case when new.is_source then new.amount else 0 end
     ));
 
     return new;
@@ -150,9 +178,9 @@ as
 $$
 begin
     new.post_commit_effective_volumes = coalesce((
-        select (
-            (post_commit_effective_volumes).input + case when new.is_source then 0 else new.amount end,
-            (post_commit_effective_volumes).output + case when new.is_source then new.amount else 0 end
+        select json_build_object(
+            'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
+            'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
         )
         from "{{.Bucket}}".moves
         where accounts_seq = new.accounts_seq
@@ -161,9 +189,9 @@ begin
             and (effective_date < new.effective_date or (effective_date = new.effective_date and seq < new.seq))
         order by effective_date desc, seq desc
         limit 1
-    ), (
-        case when new.is_source then 0 else new.amount end,
-        case when new.is_source then new.amount else 0 end
+    ), json_build_object(
+        'input', case when new.is_source then 0 else new.amount end,
+        'output', case when new.is_source then new.amount else 0 end
     ));
 
     return new;
@@ -178,11 +206,10 @@ as
 $$
 begin
     update "{{.Bucket}}".moves
-    set post_commit_effective_volumes =
-            (
-             (post_commit_effective_volumes).input + case when new.is_source then 0 else new.amount end,
-             (post_commit_effective_volumes).output + case when new.is_source then new.amount else 0 end
-                )
+    set post_commit_effective_volumes = json_build_object(
+		'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
+		'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
+    )
     where accounts_seq = new.accounts_seq
         and asset = new.asset
         and effective_date > new.effective_date
