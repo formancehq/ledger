@@ -9,13 +9,17 @@ import (
 )
 
 const (
-	FeaturePostCommitVolumes            = "POST_COMMIT_VOLUMES"
-	FeaturePostCommitEffectiveVolumes   = "POST_COMMIT_EFFECTIVE_VOLUMES"
-	FeatureHashLogs                     = "HASH_LOGS"
-	FeatureAccountMetadataHistories     = "ACCOUNT_METADATA_HISTORIES"
-	FeatureTransactionMetadataHistories = "TRANSACTION_METADATA_HISTORIES"
-	FeatureIndexAddressSegments         = "INDEX_ADDRESS_SEGMENTS"
-	FeatureIndexTransactionAccounts     = "INDEX_TRANSACTION_ACCOUNTS"
+	FeatureMovesHistory = "MOVES_HISTORY"
+	// todo: depends on FeatureMovesHistory
+	// todo: it should not be required as we have the information when updating volumes
+	FeatureMovesHistoryPostCommitVolumes = "MOVES_HISTORY_POST_COMMIT_VOLUMES"
+	// todo: depends on FeatureMovesHistory
+	FeatureMovesHistoryPostCommitEffectiveVolumes = "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES"
+	FeatureHashLogs                               = "HASH_LOGS"
+	FeatureAccountMetadataHistory                 = "ACCOUNT_METADATA_HISTORY"
+	FeatureTransactionMetadataHistory             = "TRANSACTION_METADATA_HISTORY"
+	FeatureIndexAddressSegments                   = "INDEX_ADDRESS_SEGMENTS"
+	FeatureIndexTransactionAccounts               = "INDEX_TRANSACTION_ACCOUNTS"
 
 	StateInitializing = "initializing"
 	StateInUse        = "in-use"
@@ -25,31 +29,34 @@ const (
 
 var (
 	DefaultFeatures = FeatureSet{
-		FeaturePostCommitVolumes:            "SYNC",
-		FeaturePostCommitEffectiveVolumes:   "SYNC",
-		FeatureHashLogs:                     "SYNC",
-		FeatureAccountMetadataHistories:     "SYNC",
-		FeatureTransactionMetadataHistories: "SYNC",
-		FeatureIndexAddressSegments:         "ON",
-		FeatureIndexTransactionAccounts:     "ON",
+		FeatureMovesHistory:                           "ON",
+		FeatureMovesHistoryPostCommitVolumes:          "SYNC",
+		FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
+		FeatureHashLogs:                               "SYNC",
+		FeatureAccountMetadataHistory:                 "SYNC",
+		FeatureTransactionMetadataHistory:             "SYNC",
+		FeatureIndexAddressSegments:                   "ON",
+		FeatureIndexTransactionAccounts:               "ON",
 	}
 	MinimalFeatureSet = FeatureSet{
-		FeaturePostCommitVolumes:            "DISABLED",
-		FeaturePostCommitEffectiveVolumes:   "DISABLED",
-		FeatureHashLogs:                     "DISABLED",
-		FeatureAccountMetadataHistories:     "DISABLED",
-		FeatureTransactionMetadataHistories: "DISABLED",
-		FeatureIndexAddressSegments:         "OFF",
-		FeatureIndexTransactionAccounts:     "OFF",
+		FeatureMovesHistory:                           "OFF",
+		FeatureMovesHistoryPostCommitVolumes:          "DISABLED",
+		FeatureMovesHistoryPostCommitEffectiveVolumes: "DISABLED",
+		FeatureHashLogs:                               "DISABLED",
+		FeatureAccountMetadataHistory:                 "DISABLED",
+		FeatureTransactionMetadataHistory:             "DISABLED",
+		FeatureIndexAddressSegments:                   "OFF",
+		FeatureIndexTransactionAccounts:               "OFF",
 	}
 	FeatureConfigurations = map[string][]string{
-		FeaturePostCommitVolumes:            {"SYNC", "DISABLED"},
-		FeaturePostCommitEffectiveVolumes:   {"SYNC", "DISABLED"},
-		FeatureHashLogs:                     {"SYNC", "DISABLED"},
-		FeatureAccountMetadataHistories:     {"SYNC", "DISABLED"},
-		FeatureTransactionMetadataHistories: {"SYNC", "DISABLED"},
-		FeatureIndexAddressSegments:         {"ON", "OFF"},
-		FeatureIndexTransactionAccounts:     {"ON", "OFF"},
+		FeatureMovesHistory:                           {"ON", "OFF"},
+		FeatureMovesHistoryPostCommitVolumes:          {"SYNC", "DISABLED"},
+		FeatureMovesHistoryPostCommitEffectiveVolumes: {"SYNC", "DISABLED"},
+		FeatureHashLogs:                               {"SYNC", "DISABLED"},
+		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
+		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
+		FeatureIndexAddressSegments:                   {"ON", "OFF"},
+		FeatureIndexTransactionAccounts:               {"ON", "OFF"},
 	}
 
 	ledgerNameFormat = regexp.MustCompile("^[0-9a-zA-Z_-]{1,63}$")

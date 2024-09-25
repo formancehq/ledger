@@ -86,12 +86,13 @@ func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun
 func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffectiveVolumes bool, q query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
-	if expandVolumes && !s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitVolumes))
+	// todo: no need this feature to grab pcv since those are included in transaction table
+	if expandVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
 	}
 
-	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitEffectiveVolumes))
+	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes))
 	}
 
 	if q != nil {
@@ -156,7 +157,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		ret = ret.Where("timestamp <= ?", date)
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistories, "SYNC") && date != nil && !date.IsZero() {
+	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
 				`left join (?) transactions_metadata on transactions_metadata.transactions_seq = transactions.seq`,
@@ -167,23 +168,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		ret = ret.ColumnExpr("metadata")
 	}
 
-	/**
-	select transactions_seq, jsonb_merge_agg(pcev::jsonb) as post_commit_effective_volumes
-	from (
-	    SELECT
-	        distinct on (transactions_seq, account_address, asset)
-	        "transactions_seq",
-	        json_build_object(
-	            moves.account_address,
-	            json_build_object(
-	                moves.asset,
-	                first_value(moves.post_commit_effective_volumes) over (partition by (transactions_seq, account_address, asset) order by seq desc))) as pcev
-	    FROM moves
-	) data
-	group by transactions_seq;
-	*/
-
-	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
 				`join (?) pcev on pcev.transactions_seq = transactions.seq`,
@@ -196,7 +181,8 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 							DistinctOn("transactions_seq, account_address, asset").
 							ModelTableExpr(s.GetPrefixedRelationName("moves")).
 							Column("transactions_seq").
-							ColumnExpr(`
+							// use strings.Replace for logs
+							ColumnExpr(strings.Replace(`
 								json_build_object(
 									moves.account_address,
 									json_build_object(
@@ -204,7 +190,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_seq, account_address, asset) order by seq desc)
 									)
 								) as pcev
-							`),
+							`, "\n", "", -1)),
 					).
 					Group("transactions_seq"),
 			).
@@ -343,47 +329,49 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return errors.Wrap(err, "failed to insert transaction")
 	}
 
-	moves := Moves{}
-	for _, p := range tx.Postings {
-		moves = append(moves, []*Move{
-			{
-				Ledger:              s.ledger.Name,
-				IsSource:            true,
-				Account:             p.Source,
-				AccountAddressArray: strings.Split(p.Source, ":"),
-				Amount:              (*bunpaginate.BigInt)(p.Amount),
-				Asset:               p.Asset,
-				InsertionDate:       tx.InsertedAt,
-				EffectiveDate:       tx.Timestamp,
-				TransactionSeq:      mappedTx.Seq,
-				AccountSeq:          accounts[p.Source].Seq,
-			},
-			{
-				Ledger:              s.ledger.Name,
-				Account:             p.Destination,
-				AccountAddressArray: strings.Split(p.Destination, ":"),
-				Amount:              (*bunpaginate.BigInt)(p.Amount),
-				Asset:               p.Asset,
-				InsertionDate:       tx.InsertedAt,
-				EffectiveDate:       tx.Timestamp,
-				TransactionSeq:      mappedTx.Seq,
-				AccountSeq:          accounts[p.Destination].Seq,
-			},
-		}...)
-	}
+	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
+		moves := Moves{}
+		for _, p := range tx.Postings {
+			moves = append(moves, []*Move{
+				{
+					Ledger:              s.ledger.Name,
+					IsSource:            true,
+					Account:             p.Source,
+					AccountAddressArray: strings.Split(p.Source, ":"),
+					Amount:              (*bunpaginate.BigInt)(p.Amount),
+					Asset:               p.Asset,
+					InsertionDate:       tx.InsertedAt,
+					EffectiveDate:       tx.Timestamp,
+					TransactionSeq:      mappedTx.Seq,
+					AccountSeq:          accounts[p.Source].Seq,
+				},
+				{
+					Ledger:              s.ledger.Name,
+					Account:             p.Destination,
+					AccountAddressArray: strings.Split(p.Destination, ":"),
+					Amount:              (*bunpaginate.BigInt)(p.Amount),
+					Asset:               p.Asset,
+					InsertionDate:       tx.InsertedAt,
+					EffectiveDate:       tx.Timestamp,
+					TransactionSeq:      mappedTx.Seq,
+					AccountSeq:          accounts[p.Destination].Seq,
+				},
+			}...)
+		}
 
-	if err := s.insertMoves(ctx, moves...); err != nil {
-		return errors.Wrap(err, "failed to insert moves")
+		if err := s.insertMoves(ctx, moves...); err != nil {
+			return errors.Wrap(err, "failed to insert moves")
+		}
+
+		if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
+		}
 	}
 
 	tx.ID = mappedTx.ID
 	tx.PostCommitVolumes = updatedVolumes
 	tx.Timestamp = mappedTx.Timestamp
 	tx.InsertedAt = mappedTx.InsertedAt
-
-	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
-		tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
-	}
 
 	return nil
 }
