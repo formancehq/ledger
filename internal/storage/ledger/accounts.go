@@ -109,7 +109,7 @@ func convertOperatorToSQL(operator string) string {
 
 func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 	return s.SortMovesBySeq(date).
-		ColumnExpr("(post_commit_volumes).input - (post_commit_volumes).output as balance").
+		ColumnExpr("(post_commit_volumes->>'input')::numeric - (post_commit_volumes->>'output')::numeric as balance").
 		Limit(1)
 }
 
@@ -195,7 +195,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesBySeq(date)).
 					Column("accounts_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_volumes).input, 'output', (v.post_commit_volumes).output))) as pcv`).
+					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_volumes->>'input')::numeric, 'output', (v.post_commit_volumes->>'output')::numeric))) as pcv`).
 					Group("accounts_seq"),
 			).
 			ColumnExpr("pcv.*")
@@ -208,7 +208,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesByEffectiveDate(date)).
 					Column("accounts_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_effective_volumes).input, 'output', (v.post_commit_effective_volumes).output))) as pcev`).
+					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_effective_volumes->>'input')::numeric, 'output', (v.post_commit_effective_volumes->>'output')::numeric))) as pcev`).
 					Group("accounts_seq"),
 			).
 			ColumnExpr("pcev.*")
