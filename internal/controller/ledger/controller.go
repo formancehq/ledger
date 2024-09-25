@@ -23,8 +23,8 @@ type Controller interface {
 	CountAccounts(ctx context.Context, query ListAccountsQuery) (int, error)
 	ListLogs(ctx context.Context, query GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	CountTransactions(ctx context.Context, query ListTransactionsQuery) (int, error)
-	ListTransactions(ctx context.Context, query ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error)
-	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error)
+	ListTransactions(ctx context.Context, query ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error)
+	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error)
 	GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
 

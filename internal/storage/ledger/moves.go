@@ -84,8 +84,8 @@ type Move struct {
 	AccountSeq                 int                 `bun:"accounts_seq,type:int"`
 	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
 	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
-	PostCommitVolumes          Volumes             `bun:"post_commit_volumes,type:jsonb,scanonly"`
-	PostCommitEffectiveVolumes Volumes             `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          *Volumes             `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	PostCommitEffectiveVolumes *Volumes             `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
 type Moves []*Move
@@ -106,5 +106,33 @@ func (m Moves) BalanceUpdates() map[string]map[string]*big.Int {
 		ret[move.Account][move.Asset] = ret[move.Account][move.Asset].Add(ret[move.Account][move.Asset], amount)
 	}
 
+	return ret
+}
+
+func (m Moves) ComputePostCommitVolumes() TransactionsPostCommitVolumes {
+	ret := TransactionsPostCommitVolumes{}
+	for _, move := range m {
+		ret = append(ret, TransactionPostCommitVolume{
+			AggregatedAccountVolume: AggregatedAccountVolume{
+				Volumes: *move.PostCommitVolumes,
+				Asset:   move.Asset,
+			},
+			Account:                 move.Account,
+		})
+	}
+	return ret
+}
+
+func (m Moves) ComputePostCommitEffectiveVolumes() TransactionsPostCommitVolumes {
+	ret := TransactionsPostCommitVolumes{}
+	for _, move := range m {
+		ret = append(ret, TransactionPostCommitVolume{
+			AggregatedAccountVolume: AggregatedAccountVolume{
+				Volumes: *move.PostCommitEffectiveVolumes,
+				Asset:   move.Asset,
+			},
+			Account:                 move.Account,
+		})
+	}
 	return ret
 }

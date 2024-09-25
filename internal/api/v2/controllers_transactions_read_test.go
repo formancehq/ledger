@@ -20,19 +20,9 @@ func TestTransactionsRead(t *testing.T) {
 
 	now := time.Now()
 
-	tx := ledger.ExpandedTransaction{
-		Transaction: ledger.NewTransaction().WithPostings(
-			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-		),
-		PostCommitVolumes: map[string]ledger.VolumesByAssets{
-			"world": {
-				"USD": ledger.NewEmptyVolumes().WithOutput(big.NewInt(100)),
-			},
-			"bank": {
-				"USD": ledger.NewEmptyVolumes().WithInput(big.NewInt(100)),
-			},
-		},
-	}
+	tx := ledger.NewTransaction().WithPostings(
+		ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+	)
 
 	query := ledgercontroller.NewGetTransactionQuery(0)
 	query.PIT = &now
@@ -50,6 +40,6 @@ func TestTransactionsRead(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	response, _ := api.DecodeSingleResponse[ledger.ExpandedTransaction](t, rec.Body)
+	response, _ := api.DecodeSingleResponse[ledger.Transaction](t, rec.Body)
 	require.Equal(t, tx, response)
 }

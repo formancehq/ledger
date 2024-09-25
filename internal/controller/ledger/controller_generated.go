@@ -191,10 +191,10 @@ func (mr *MockControllerMockRecorder) GetStats(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
-	ret0, _ := ret[0].(*ledger.ExpandedTransaction)
+	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -280,10 +280,10 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, query ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, query ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedTransaction])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

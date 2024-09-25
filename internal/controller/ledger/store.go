@@ -52,9 +52,9 @@ type Store interface {
 	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)
 
-	ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error)
+	ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error)
 	CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error)
-	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error)
+	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error)
 	CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error)
 	ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error)
 	GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.ExpandedAccount, error)

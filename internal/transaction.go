@@ -38,8 +38,10 @@ func NewTransactionData() TransactionData {
 
 type Transaction struct {
 	TransactionData
-	ID       int  `json:"id"`
-	Reverted bool `json:"reverted"`
+	ID                         int               `json:"id"`
+	Reverted                   bool              `json:"reverted"`
+	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty"`
+	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
 }
 
 func (tx Transaction) Reverse(atEffectiveDate bool) Transaction {
@@ -103,24 +105,8 @@ func (tx Transaction) InvolvedAccounts() []string {
 	return slices.Compact(ret)
 }
 
-func NewTransaction() Transaction {
-	return Transaction{
-		TransactionData: NewTransactionData(),
-	}
-}
-
-type ExpandedTransaction struct {
-	Transaction
-	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty"`
-	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
-}
-
-func (t ExpandedTransaction) Base() Transaction {
-	return t.Transaction
-}
-
-func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
-	type Aux ExpandedTransaction
+func (tx Transaction) MarshalJSON() ([]byte, error) {
+	type Aux Transaction
 	type Ret struct {
 		Aux
 
@@ -132,19 +118,19 @@ func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
 		preCommitVolumes          PostCommitVolumes
 		preCommitEffectiveVolumes PostCommitVolumes
 	)
-	if len(t.PostCommitVolumes) > 0 {
-		if t.PostCommitVolumes != nil {
-			preCommitVolumes = t.PostCommitVolumes.Copy()
-			for _, posting := range t.Postings {
+	if len(tx.PostCommitVolumes) > 0 {
+		if tx.PostCommitVolumes != nil {
+			preCommitVolumes = tx.PostCommitVolumes.Copy()
+			for _, posting := range tx.Postings {
 				preCommitVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 				preCommitVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 			}
 		}
 	}
-	if len(t.PostCommitEffectiveVolumes) > 0 {
-		if t.PostCommitEffectiveVolumes != nil {
-			preCommitEffectiveVolumes = t.PostCommitEffectiveVolumes.Copy()
-			for _, posting := range t.Postings {
+	if len(tx.PostCommitEffectiveVolumes) > 0 {
+		if tx.PostCommitEffectiveVolumes != nil {
+			preCommitEffectiveVolumes = tx.PostCommitEffectiveVolumes.Copy()
+			for _, posting := range tx.Postings {
 				preCommitEffectiveVolumes.AddOutput(posting.Source, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 				preCommitEffectiveVolumes.AddInput(posting.Destination, posting.Asset, big.NewInt(0).Neg(posting.Amount))
 			}
@@ -152,10 +138,16 @@ func (t ExpandedTransaction) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(&Ret{
-		Aux:                       Aux(t),
+		Aux:                       Aux(tx),
 		PreCommitVolumes:          preCommitVolumes,
 		PreCommitEffectiveVolumes: preCommitEffectiveVolumes,
 	})
+}
+
+func NewTransaction() Transaction {
+	return Transaction{
+		TransactionData: NewTransactionData(),
+	}
 }
 
 type TransactionRequest struct {

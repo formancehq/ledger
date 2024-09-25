@@ -124,8 +124,8 @@ func (ctrl *DefaultController) forgeLog(ctx context.Context, parameters Paramete
 	}
 }
 
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
-	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
+	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
 		txs, err := ctrl.store.ListTransactions(ctx, q)
 		return txs, err
 	})
@@ -138,8 +138,8 @@ func (ctrl *DefaultController) CountTransactions(ctx context.Context, q ListTran
 	})
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
-	return tracing.Trace(ctx, "GetTransaction", func(ctx context.Context) (*ledger.ExpandedTransaction, error) {
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
+	return tracing.Trace(ctx, "GetTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
 		tx, err := ctrl.store.GetTransaction(ctx, query)
 		return tx, err
 	})
