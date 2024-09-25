@@ -125,32 +125,17 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}):
 			api.BadRequest(w, ErrInsufficientFund, err)
-			return
+		case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) ||
+			errors.Is(err, ledgercontroller.ErrCompilationFailed{}) ||
+			errors.Is(err, &ledgercontroller.ErrMetadataOverride{}) ||
+			errors.Is(err, ledgercontroller.ErrNoPostings):
+			api.BadRequest(w, ErrValidation, err)
+		case errors.Is(err, ledgercontroller.ErrReferenceConflict{}):
+			api.WriteErrorResponse(w, http.StatusConflict, ErrConflict, err)
 		default:
 			api.InternalServerError(w, r, err)
-			return
 		}
-		//switch {
-		//case ledgercontroller.IsCommandError(err):
-		//	//switch {
-		//	//case command.IsErrMachine(err):
-		//	//	switch {
-		//	//	case machine.IsInsufficientFundError(err):
-		//	//		api.BadRequest(w, ErrInsufficientFund, err)
-		//	//		return
-		//	//	}
-		//	//case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeConflict):
-		//	//	api.BadRequest(w, ErrConflict, err)
-		//	//	return
-		//	//case command.IsInvalidTransactionError(err, command.ErrInvalidTransactionCodeCompilationFailed):
-		//	//	api.BadRequestWithDetails(w, ErrScriptCompilationFailed, err, backend.EncodeLink(err.Error()))
-		//	//	return
-		//	//}
-		//	api.BadRequest(w, ErrValidation, err)
-		//	return
-		//}
-		//api.InternalServerError(w, r, err)
-		//return
+		return
 	}
 
 	api.Ok(w, []any{mapTransactionToV1(*res)})
