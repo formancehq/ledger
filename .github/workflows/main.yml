@@ -138,8 +138,12 @@ jobs:
       - name: "Deploy in staging"
         env:
           TAG: ${{ github.sha }}
+          COMPONENT: ledger
+          ARGOCD_REGION_AUTH_TOKEN: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
         run: >
           earthly  
           --no-output 
+          --secret AUTH_TOKEN=$ARGOCD_REGION_AUTH_TOKEN
           +deploy-staging
           --TAG=$TAG
+          --COMPONENT=$COMPONENT
