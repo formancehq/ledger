@@ -315,10 +315,17 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 				finalMetadata[k] = v
 			}
 
+			now := time.Now()
+			ts := runScript.Timestamp
+			if ts.IsZero() {
+				ts = now
+			}
+
 			transaction := ledger.NewTransaction().
 				WithPostings(result.Postings...).
 				WithMetadata(finalMetadata).
-				WithTimestamp(runScript.Timestamp). // If empty will be filled by the database
+				WithTimestamp(ts).
+				WithInsertedAt(now).
 				WithReference(runScript.Reference)
 			err = sqlTX.CommitTransaction(ctx, &transaction)
 			if err != nil {
