@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
