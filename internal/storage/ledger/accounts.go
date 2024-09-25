@@ -160,10 +160,6 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	if needPCV && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
-	}
-
 	// build the query
 	ret = ret.
 		ModelTableExpr(s.GetPrefixedRelationName("accounts")).
@@ -188,7 +184,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 	// todo: should join on histories only if pit is specified
 	// otherwise the accounts_volumes table is enough
-	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") && needPCV {
+	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needPCV {
 		ret = ret.
 			Join(
 				`left join (?) pcv on pcv.accounts_seq = accounts.seq`,
