@@ -5,6 +5,12 @@ package benchmarks
 import (
 	"bytes"
 	"fmt"
+	"math/big"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/testing/docker"
@@ -15,11 +21,6 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"math/big"
-	"runtime"
-	"sync"
-	"sync/atomic"
-	"testing"
 )
 
 var (
