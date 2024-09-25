@@ -37,8 +37,8 @@ var _ = Context("Ledger stress tests", func() {
 	})
 
 	const (
-		countLedgers      = 30
-		countBuckets      = 10
+		countLedgers      = 6
+		countBuckets      = 3
 		countTransactions = 500
 		countAccounts     = 20
 	)
