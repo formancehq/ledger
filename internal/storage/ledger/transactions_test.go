@@ -247,9 +247,10 @@ func TestTransactionsCommit(t *testing.T) {
 
 		store := newLedgerStore(t)
 
-		_, err := store.upsertAccount(ctx, &Account{
+		account1 := &Account{
 			Address: "account:1",
-		})
+		}
+		_, err := store.upsertAccount(ctx, account1)
 		require.NoError(t, err)
 
 		account2 := &Account{
@@ -258,9 +259,20 @@ func TestTransactionsCommit(t *testing.T) {
 		_, err = store.upsertAccount(ctx, account2)
 		require.NoError(t, err)
 
+		// todo: we should not need to update volumes to have a lock
 		_, err = store.updateVolumes(ctx, AccountsVolumes{
 			Ledger:      store.ledger.Name,
 			Account:     "account:1",
+			Asset:       "USD",
+			Inputs:      big.NewInt(100),
+			Outputs:     big.NewInt(0),
+			AccountsSeq: account1.Seq,
+		})
+		require.NoError(t, err)
+
+		_, err = store.updateVolumes(ctx, AccountsVolumes{
+			Ledger:      store.ledger.Name,
+			Account:     "account:2",
 			Asset:       "USD",
 			Inputs:      big.NewInt(100),
 			Outputs:     big.NewInt(0),

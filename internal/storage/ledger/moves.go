@@ -98,9 +98,7 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 		if _, ok := aggregatedVolumes[move.Account]; !ok {
 			aggregatedVolumes[move.Account] = make(map[string][]*Move)
 		}
-		if _, ok := aggregatedVolumes[move.Account][move.Asset]; !ok {
-			aggregatedVolumes[move.Account][move.Asset] = append(aggregatedVolumes[move.Account][move.Asset], move)
-		}
+		aggregatedVolumes[move.Account][move.Asset] = append(aggregatedVolumes[move.Account][move.Asset], move)
 	}
 
 	ret := make([]AccountsVolumes, 0)
@@ -115,11 +113,11 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 				}
 			}
 			ret = append(ret, AccountsVolumes{
-				Ledger:  moves[0].Ledger,
-				Account: account,
-				Asset:   asset,
-				Inputs:  volumes.Inputs,
-				Outputs: volumes.Outputs,
+				Ledger:      moves[0].Ledger,
+				Account:     account,
+				Asset:       asset,
+				Inputs:      volumes.Inputs,
+				Outputs:     volumes.Outputs,
 				AccountsSeq: moves[0].AccountSeq,
 			})
 		}

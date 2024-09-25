@@ -19,28 +19,28 @@ import (
 	libtime "time"
 )
 
-func TestGetBalances(t *testing.T) {
+func TestBalancesGet(t *testing.T) {
 	t.Parallel()
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
 	world := &Account{
-		Ledger:                     store.ledger.Name,
-		Address:                    "world",
-		AddressArray:               []string{"world"},
-		InsertionDate:              time.Now(),
-		UpdatedAt:                  time.Now(),
-		FirstUsage:                 time.Now(),
+		Ledger:        store.ledger.Name,
+		Address:       "world",
+		AddressArray:  []string{"world"},
+		InsertionDate: time.Now(),
+		UpdatedAt:     time.Now(),
+		FirstUsage:    time.Now(),
 	}
 	_, err := store.upsertAccount(ctx, world)
 	require.NoError(t, err)
 
 	_, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:    store.ledger.Name,
-		Account:   "world",
-		Asset:     "USD",
-		Inputs:  new(big.Int),
-		Outputs: big.NewInt(100),
+		Ledger:      store.ledger.Name,
+		Account:     "world",
+		Asset:       "USD",
+		Inputs:      new(big.Int),
+		Outputs:     big.NewInt(100),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestGetBalances(t *testing.T) {
 	})
 }
 
-func TestGetBalancesAggregated(t *testing.T) {
+func TestBalancesAggregates(t *testing.T) {
 	t.Parallel()
 
 	store := newLedgerStore(t)
@@ -262,22 +262,22 @@ func TestUpdateBalances(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	world := &Account{
-		Ledger:                     store.ledger.Name,
-		Address:                    "world",
-		AddressArray:               []string{"world"},
-		InsertionDate:              time.Now(),
-		UpdatedAt:                  time.Now(),
-		FirstUsage:                 time.Now(),
+		Ledger:        store.ledger.Name,
+		Address:       "world",
+		AddressArray:  []string{"world"},
+		InsertionDate: time.Now(),
+		UpdatedAt:     time.Now(),
+		FirstUsage:    time.Now(),
 	}
 	_, err := store.upsertAccount(ctx, world)
 	require.NoError(t, err)
 
 	volumes, err := store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:    store.ledger.Name,
-		Account:   "world",
-		Asset:     "USD/2",
-		Inputs:    big.NewInt(0),
-		Outputs:   big.NewInt(100),
+		Ledger:      store.ledger.Name,
+		Account:     "world",
+		Asset:       "USD/2",
+		Inputs:      big.NewInt(0),
+		Outputs:     big.NewInt(100),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
@@ -288,11 +288,11 @@ func TestUpdateBalances(t *testing.T) {
 	}, volumes)
 
 	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:    store.ledger.Name,
-		Account:   "world",
-		Asset:     "USD/2",
-		Inputs:    big.NewInt(50),
-		Outputs:   big.NewInt(0),
+		Ledger:  store.ledger.Name,
+		Account: "world",
+		Asset:   "USD/2",
+		Inputs:  big.NewInt(50),
+		Outputs: big.NewInt(0),
 	})
 	require.NoError(t, err)
 	require.Equal(t, map[string]map[string]ledger.Volumes{
@@ -302,11 +302,11 @@ func TestUpdateBalances(t *testing.T) {
 	}, volumes)
 
 	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:    store.ledger.Name,
-		Account:   "world",
-		Asset:     "USD/2",
-		Inputs:    big.NewInt(50),
-		Outputs:   big.NewInt(50),
+		Ledger:      store.ledger.Name,
+		Account:     "world",
+		Asset:       "USD/2",
+		Inputs:      big.NewInt(50),
+		Outputs:     big.NewInt(50),
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)

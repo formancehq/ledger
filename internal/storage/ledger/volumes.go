@@ -19,12 +19,12 @@ import (
 type AccountsVolumes struct {
 	bun.BaseModel `bun:"accounts_volumes"`
 
-	Ledger  string   `bun:"ledger,type:varchar"`
-	Account string   `bun:"account,type:varchar"`
-	Asset   string   `bun:"asset,type:varchar"`
-	Inputs  *big.Int `bun:"inputs,type:numeric"`
-	Outputs *big.Int `bun:"outputs,type:numeric"`
-	AccountsSeq int `bun:"accounts_seq,type:int"`
+	Ledger      string   `bun:"ledger,type:varchar"`
+	Account     string   `bun:"account,type:varchar"`
+	Asset       string   `bun:"asset,type:varchar"`
+	Inputs      *big.Int `bun:"inputs,type:numeric"`
+	Outputs     *big.Int `bun:"outputs,type:numeric"`
+	AccountsSeq int      `bun:"accounts_seq,type:int"`
 }
 
 func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVolumes) (map[string]map[string]ledger.Volumes, error) {
@@ -48,7 +48,7 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 				ret[volumes.Account] = map[string]ledger.Volumes{}
 			}
 			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-				Inputs: volumes.Inputs,
+				Inputs:  volumes.Inputs,
 				Outputs: volumes.Outputs,
 			}
 		}
@@ -58,18 +58,9 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 }
 
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
-
-	ret := s.db.NewSelect().
-		Column("account_address_array").
-		Column("account_address").
-		Column("asset").
-		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
-		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
-		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-		ModelTableExpr(s.GetPrefixedRelationName("moves"))
+	ret := s.db.NewSelect()
 
 	var useMetadata bool
-
 	if q != nil {
 		err := q.Walk(func(operator, key string, value any) error {
 			switch {
@@ -95,6 +86,15 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 			return ret.Err(err)
 		}
 	}
+
+	ret = ret.
+		Column("account_address_array").
+		Column("account_address").
+		Column("asset").
+		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
+		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
+		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
+		ModelTableExpr(s.GetPrefixedRelationName("moves"))
 
 	// todo: handle with pit by using accounts_metadata
 	if useMetadata {
