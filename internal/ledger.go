@@ -2,18 +2,15 @@ package ledger
 
 import (
 	"fmt"
-	"regexp"
-
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
+	"regexp"
+	"slices"
 )
 
 const (
 	FeatureMovesHistory = "MOVES_HISTORY"
-	// todo: depends on FeatureMovesHistory
-	// todo: it should not be required as we have the information when updating volumes
-	FeatureMovesHistoryPostCommitVolumes = "MOVES_HISTORY_POST_COMMIT_VOLUMES"
-	// todo: depends on FeatureMovesHistory
+	// todo: depends on FeatureMovesHistory (dependency should be checked)
 	FeatureMovesHistoryPostCommitEffectiveVolumes = "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES"
 	FeatureHashLogs                               = "HASH_LOGS"
 	FeatureAccountMetadataHistory                 = "ACCOUNT_METADATA_HISTORY"
@@ -30,7 +27,6 @@ const (
 var (
 	DefaultFeatures = FeatureSet{
 		FeatureMovesHistory:                           "ON",
-		FeatureMovesHistoryPostCommitVolumes:          "SYNC",
 		FeatureMovesHistoryPostCommitEffectiveVolumes: "SYNC",
 		FeatureHashLogs:                               "SYNC",
 		FeatureAccountMetadataHistory:                 "SYNC",
@@ -40,7 +36,6 @@ var (
 	}
 	MinimalFeatureSet = FeatureSet{
 		FeatureMovesHistory:                           "OFF",
-		FeatureMovesHistoryPostCommitVolumes:          "DISABLED",
 		FeatureMovesHistoryPostCommitEffectiveVolumes: "DISABLED",
 		FeatureHashLogs:                               "DISABLED",
 		FeatureAccountMetadataHistory:                 "DISABLED",
@@ -50,7 +45,6 @@ var (
 	}
 	FeatureConfigurations = map[string][]string{
 		FeatureMovesHistory:                           {"ON", "OFF"},
-		FeatureMovesHistoryPostCommitVolumes:          {"SYNC", "DISABLED"},
 		FeatureMovesHistoryPostCommitEffectiveVolumes: {"SYNC", "DISABLED"},
 		FeatureHashLogs:                               {"SYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
@@ -113,7 +107,13 @@ type Ledger struct {
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
-	// todo: to avoid development error we could check if the value is possible
+	possibleConfigurations, ok := FeatureConfigurations[feature]
+	if !ok {
+		panic(fmt.Sprintf("feature %q not exists", feature))
+	}
+	if !slices.Contains(possibleConfigurations, value) {
+		panic(fmt.Sprintf("configuration %s it not possible for feature %s", value, feature))
+	}
 	return l.Features[feature] == value
 }
 

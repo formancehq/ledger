@@ -54,8 +54,7 @@ var _ = Context("Ledger stress tests", func() {
 						Bucket: &bucketName,
 						Features: ledger.MinimalFeatureSet.
 							// todo: as we are interested only by aggregated volumes at current date, these features should not be required
-							With(ledger.FeatureMovesHistory, "ON").
-							With(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC"),
+							With(ledger.FeatureMovesHistory, "ON"),
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())

@@ -89,8 +89,8 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 
 	ret := s.db.NewSelect()
 	// todo: no need this feature to grab pcv since those are included in transaction table
-	if expandVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
+	if expandVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
 	}
 
 	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
