@@ -325,7 +325,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	}
 
 	sqlQueries := Map(tx.InvolvedAccounts(), func(from string) string {
-		return fmt.Sprintf("select pg_advisory_xact_lock(hashtext('%s'))", fmt.Sprintf("%s%s", s.ledger.Name, from))
+		return fmt.Sprintf("select pg_advisory_xact_lock(hashtext('%s'))", fmt.Sprintf("%s_%s", s.ledger.Name, from))
 	})
 
 	_, err := s.db.NewRaw(strings.Join(sqlQueries, ";")).Exec(ctx)
