@@ -21,7 +21,7 @@ func getPITOOTFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
 	pitString := r.URL.Query().Get("endTime")
 	ootString := r.URL.Query().Get("startTime")
 
-	pit := time.Now()
+	pit := time.Time{}
 	oot := time.Time{}
 
 	if pitString != "" {
@@ -49,8 +49,7 @@ func getPITOOTFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
 func getPITFilter(r *http.Request) (*ledgercontroller.PITFilter, error) {
 	pitString := r.URL.Query().Get("pit")
 
-	pit := time.Now()
-
+	pit := time.Time{}
 	if pitString != "" {
 		var err error
 		pit, err = time.ParseTime(pitString)
