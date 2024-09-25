@@ -57,6 +57,18 @@ var (
 	bucketNameFormat = regexp.MustCompile("^[0-9a-zA-Z_-]{1,63}$")
 )
 
+func validateFeatureWithValue(feature, value string) error {
+	possibleConfigurations, ok := FeatureConfigurations[feature]
+	if !ok {
+		return fmt.Errorf("feature %q not exists", feature)
+	}
+	if !slices.Contains(possibleConfigurations, value) {
+		return fmt.Errorf("configuration %s it not possible for feature %s", value, feature)
+	}
+
+	return nil
+}
+
 type FeatureSet map[string]string
 
 func (f FeatureSet) With(feature, value string) FeatureSet {
@@ -90,6 +102,16 @@ func (c *Configuration) SetDefaults() {
 	}
 }
 
+func (c *Configuration) Validate() error {
+	for feature, value := range c.Features {
+		if err := validateFeatureWithValue(feature, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func NewDefaultConfiguration() Configuration {
 	return Configuration{
 		Bucket:   DefaultBucket,
@@ -107,17 +129,18 @@ type Ledger struct {
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
-	possibleConfigurations, ok := FeatureConfigurations[feature]
-	if !ok {
-		panic(fmt.Sprintf("feature %q not exists", feature))
+	if err := validateFeatureWithValue(feature, value); err != nil {
+		panic(err)
 	}
-	if !slices.Contains(possibleConfigurations, value) {
-		panic(fmt.Sprintf("configuration %s it not possible for feature %s", value, feature))
-	}
+
 	return l.Features[feature] == value
 }
 
 func New(name string, configuration Configuration) (*Ledger, error) {
+
+	if err := configuration.Validate(); err != nil {
+		return nil, err
+	}
 
 	if !ledgerNameFormat.MatchString(name) {
 		return nil, newErrInvalidLedgerName(name, fmt.Errorf("name must match format '%s'", ledgerNameFormat.String()))
