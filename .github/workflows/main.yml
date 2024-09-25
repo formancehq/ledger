@@ -113,3 +113,33 @@ jobs:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+
+  Deploy:
+    runs-on: "ubuntu-latest"
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    needs:
+      - GoReleaser
+      - Tests
+    steps:
+      - uses: earthly/actions-setup@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: "latest"
+      - uses: 'actions/checkout@v4'
+        with:
+          fetch-depth: 0
+      - name: Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: "Deploy in staging"
+        env:
+          TAG: ${{ github.sha }}
+        run: >
+          earthly  
+          --no-output 
+          +deploy-staging
+          --TAG=$TAG
