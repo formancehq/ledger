@@ -393,7 +393,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return errors.Wrap(err, "failed to insert moves")
 	}
 
-	_, err = s.updateBalances(ctx, moves.BalanceUpdates())
+	_, err = s.updateVolumes(ctx, moves.volumeUpdates()...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
