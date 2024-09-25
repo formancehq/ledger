@@ -4,12 +4,12 @@ package performance_test
 
 import (
 	"context"
-	formance "github.com/formancehq/formance-sdk-go/v2"
-	"github.com/formancehq/formance-sdk-go/v2/pkg/models/operations"
-	"github.com/formancehq/formance-sdk-go/v2/pkg/models/shared"
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerclient "github.com/formancehq/stack/ledger/client"
+	"github.com/formancehq/stack/ledger/client/models/components"
+	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"net/http"
@@ -23,13 +23,13 @@ type RemoteStackEnvFactory struct {
 
 func (r *RemoteStackEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
 
-	client := formance.New(
-		formance.WithClient(r.httpClient),
-		formance.WithServerURL(r.stackURL),
+	client := ledgerclient.New(
+		ledgerclient.WithClient(r.httpClient),
+		ledgerclient.WithServerURL(r.stackURL + "/api/ledger"),
 	)
 
 	_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
-		V2CreateLedgerRequest: &shared.V2CreateLedgerRequest{
+		V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
 			Bucket:   &ledger.Bucket,
 			Metadata: ledger.Metadata,
 			Features: ledger.Features,
@@ -52,7 +52,7 @@ func NewRemoteStackEnvFactory(httpClient *http.Client, stackURL string) *RemoteS
 
 type RemoteStackEnv struct {
 	ledger ledger.Ledger
-	client *formance.Formance
+	client *ledgerclient.Formance
 }
 
 func (r *RemoteStackEnv) Executor() TransactionExecutor {
@@ -62,8 +62,8 @@ func (r *RemoteStackEnv) Executor() TransactionExecutor {
 			varsAsMapAny[k] = v
 		}
 		response, err := r.client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
-			V2PostTransaction: shared.V2PostTransaction{
-				Script: &shared.V2PostTransactionScript{
+			V2PostTransaction: components.V2PostTransaction{
+				Script: &components.V2PostTransactionScript{
 					Plain: script,
 					Vars:  varsAsMapAny,
 				},
@@ -76,7 +76,7 @@ func (r *RemoteStackEnv) Executor() TransactionExecutor {
 
 		return &ledger.Transaction{
 			TransactionData: ledger.TransactionData{
-				Postings: collectionutils.Map(response.V2CreateTransactionResponse.Data.Postings, func(from shared.V2Posting) ledger.Posting {
+				Postings: collectionutils.Map(response.V2CreateTransactionResponse.Data.Postings, func(from components.V2Posting) ledger.Posting {
 					return ledger.Posting{
 						Source:      from.Source,
 						Destination: from.Destination,
@@ -105,7 +105,7 @@ func (r *RemoteStackEnv) Stop() error {
 	return nil
 }
 
-func NewRemoveStackEnv(client *formance.Formance, ledger ledger.Ledger) *RemoteStackEnv {
+func NewRemoveStackEnv(client *ledgerclient.Formance, ledger ledger.Ledger) *RemoteStackEnv {
 	return &RemoteStackEnv{
 		client: client,
 		ledger: ledger,
