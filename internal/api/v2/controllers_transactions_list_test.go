@@ -185,21 +185,11 @@ func TestTransactionsList(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := bunpaginate.Cursor[ledger.ExpandedTransaction]{
-				Data: []ledger.ExpandedTransaction{
-					{
-						Transaction: ledger.NewTransaction().WithPostings(
-							ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-						),
-						PostCommitVolumes: map[string]ledger.VolumesByAssets{
-							"world": {
-								"USD": ledger.NewEmptyVolumes().WithOutput(big.NewInt(100)),
-							},
-							"bank": {
-								"USD": ledger.NewEmptyVolumes().WithInput(big.NewInt(100)),
-							},
-						},
-					},
+			expectedCursor := bunpaginate.Cursor[ledger.Transaction]{
+				Data: []ledger.Transaction{
+					ledger.NewTransaction().WithPostings(
+						ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+					),
 				},
 			}
 
@@ -225,7 +215,7 @@ func TestTransactionsList(t *testing.T) {
 
 			require.Equal(t, testCase.expectStatusCode, rec.Code)
 			if testCase.expectStatusCode < 300 && testCase.expectStatusCode >= 200 {
-				cursor := api.DecodeCursorResponse[ledger.ExpandedTransaction](t, rec.Body)
+				cursor := api.DecodeCursorResponse[ledger.Transaction](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
 				err := api.ErrorResponse{}

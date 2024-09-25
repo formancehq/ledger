@@ -192,7 +192,7 @@ func TestListTransactions(t *testing.T) {
 	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	cursor := &bunpaginate.Cursor[ledger.ExpandedTransaction]{}
+	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
 	query := NewListTransactionsQuery(NewPaginatedQueryOptions[PITFilterWithVolumes](PITFilterWithVolumes{}))
 	store.EXPECT().
 		ListTransactions(gomock.Any(), query).
@@ -229,7 +229,7 @@ func TestGetTransaction(t *testing.T) {
 	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	tx := ledger.ExpandedTransaction{}
+	tx := ledger.Transaction{}
 	query := NewGetTransactionQuery(0)
 	store.EXPECT().
 		GetTransaction(gomock.Any(), query).

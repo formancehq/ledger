@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"math/big"
@@ -226,6 +225,21 @@ func TestTransactionsCommit(t *testing.T) {
 		require.NotZero(t, tx.Timestamp)
 		require.NotZero(t, tx.InsertedAt)
 		require.Equal(t, 1, tx.ID)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"account:1": ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Inputs:  big.NewInt(0),
+					Outputs: big.NewInt(100),
+				},
+			},
+			"account:2": ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Inputs:  big.NewInt(100),
+					Outputs: big.NewInt(0),
+				},
+			},
+		}, tx.PostCommitVolumes)
+		require.Equal(t, tx.PostCommitVolumes, tx.PostCommitEffectiveVolumes)
 	})
 
 	t.Run("triggering a deadlock should return appropriate postgres error", func(t *testing.T) {
@@ -426,6 +440,8 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NotNil(t, revertedTx)
 	require.True(t, revertedTx.Reverted)
 	revertedTx.Reverted = false
+	tx1.PostCommitEffectiveVolumes = ledger.PostCommitVolumes{}
+	tx1.PostCommitVolumes = ledger.PostCommitVolumes{}
 	require.Equal(t, tx1, *revertedTx)
 
 	// try to revert again
@@ -504,26 +520,36 @@ func TestTransactionsList(t *testing.T) {
 	err = store.CommitTransaction(ctx, &tx2)
 	require.NoError(t, err)
 
-	tx3 := ledger.NewTransaction().
+	tx3BeforeRevert := ledger.NewTransaction().
 		WithPostings(
 			ledger.NewPosting("world", "users:marley", "USD", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "3"}).
 		WithTimestamp(now.Add(-time.Hour))
-	err = store.CommitTransaction(ctx, &tx3)
+	err = store.CommitTransaction(ctx, &tx3BeforeRevert)
 	require.NoError(t, err)
 
-	tx3AfterRevert, hasBeenReverted, err := store.RevertTransaction(ctx, tx3.ID)
+	_, hasBeenReverted, err := store.RevertTransaction(ctx, tx3BeforeRevert.ID)
 	require.NoError(t, err)
 	require.True(t, hasBeenReverted)
 
-	tx4 := tx3.Reverse(false).WithTimestamp(now)
+	tx4 := tx3BeforeRevert.Reverse(false).WithTimestamp(now)
 	err = store.CommitTransaction(ctx, &tx4)
 	require.NoError(t, err)
 
-	tx3AfterRevert, _, err = store.UpdateTransactionMetadata(ctx, tx3AfterRevert.ID, metadata.Metadata{
+	_, _, err = store.UpdateTransactionMetadata(ctx, tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	})
+
+	// refresh tx3
+	// we can't take the result of the call on RevertTransaction nor UpdateTransactionMetadata as the result does not contains pc(e)v
+	tx3 := func() ledger.Transaction {
+		tx3, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx3BeforeRevert.ID).
+			WithExpandVolumes().
+			WithExpandEffectiveVolumes())
+		require.NoError(t, err)
+		return *tx3
+	}()
 
 	tx5 := ledger.NewTransaction().
 		WithPostings(
@@ -543,7 +569,7 @@ func TestTransactionsList(t *testing.T) {
 		{
 			name:     "nominal",
 			query:    ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}),
-			expected: []ledger.Transaction{tx5, tx4, *tx3AfterRevert, tx2, tx1},
+			expected: []ledger.Transaction{tx5, tx4, tx3, tx2, tx1},
 		},
 		{
 			name: "address filter",
@@ -561,7 +587,7 @@ func TestTransactionsList(t *testing.T) {
 			name: "address filter using segment",
 			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("account", "users:")),
-			expected: []ledger.Transaction{tx5, tx4, *tx3AfterRevert},
+			expected: []ledger.Transaction{tx5, tx4, tx3},
 		},
 		{
 			name: "filter using metadata",
@@ -576,7 +602,7 @@ func TestTransactionsList(t *testing.T) {
 					PIT: pointer.For(now.Add(-time.Hour)),
 				},
 			}),
-			expected: []ledger.Transaction{tx3, tx2, tx1},
+			expected: []ledger.Transaction{tx3BeforeRevert, tx2, tx1},
 		},
 		{
 			name: "filter using invalid key",
@@ -588,13 +614,13 @@ func TestTransactionsList(t *testing.T) {
 			name: "reverted transactions",
 			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Match("reverted", true)),
-			expected: []ledger.Transaction{*tx3AfterRevert},
+			expected: []ledger.Transaction{tx3},
 		},
 		{
 			name: "filter using exists metadata",
 			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{}).
 				WithQueryBuilder(query.Exists("metadata", "category")),
-			expected: []ledger.Transaction{*tx3AfterRevert, tx2, tx1},
+			expected: []ledger.Transaction{tx3, tx2, tx1},
 		},
 		{
 			name: "filter using exists metadata and pit",
@@ -620,14 +646,15 @@ func TestTransactionsList(t *testing.T) {
 			t.Parallel()
 
 			tc.query.Options.ExpandVolumes = true
-			tc.query.Options.ExpandEffectiveVolumes = false
+			tc.query.Options.ExpandEffectiveVolumes = true
+
 			cursor, err := store.ListTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
 			if tc.expectError != nil {
 				require.True(t, errors.Is(err, tc.expectError))
 			} else {
 				require.NoError(t, err)
 				require.Len(t, cursor.Data, len(tc.expected))
-				RequireEqual(t, tc.expected, collectionutils.Map(cursor.Data, ledger.ExpandedTransaction.Base))
+				RequireEqual(t, tc.expected, cursor.Data)
 
 				count, err := store.CountTransactions(ctx, ledgercontroller.NewListTransactionsQuery(tc.query))
 				require.NoError(t, err)

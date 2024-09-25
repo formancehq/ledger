@@ -23,6 +23,7 @@ type RemoteLedgerEnvFactory struct {
 
 func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
 
+	// todo: use standalone sdk only
 	client := ledgerclient.New(
 		ledgerclient.WithClient(r.httpClient),
 		ledgerclient.WithServerURL(r.ledgerURL),

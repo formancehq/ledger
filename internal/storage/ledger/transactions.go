@@ -35,19 +35,21 @@ var (
 type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
-	Ledger            string            `bun:"ledger,type:varchar"`
-	ID                int               `bun:"id,type:numeric"`
-	Seq               int               `bun:"seq,scanonly"`
-	Timestamp         *time.Time        `bun:"timestamp,type:timestamp without time zone"`
-	Reference         string            `bun:"reference,type:varchar,unique,nullzero"`
-	Postings          []ledger.Posting  `bun:"postings,type:jsonb"`
-	Metadata          metadata.Metadata `bun:"metadata,type:jsonb,default:'{}'"`
-	RevertedAt        *time.Time        `bun:"reverted_at"`
-	InsertedAt        *time.Time        `bun:"inserted_at"`
-	Sources           []string          `bun:"sources,type:jsonb"`
-	Destinations      []string          `bun:"destinations,type:jsonb"`
-	SourcesArray      []map[string]any  `bun:"sources_arrays,type:jsonb"`
-	DestinationsArray []map[string]any  `bun:"destinations_arrays,type:jsonb"`
+	Ledger                     string                        `bun:"ledger,type:varchar"`
+	ID                         int                           `bun:"id,type:numeric"`
+	Seq                        int                           `bun:"seq,scanonly"`
+	Timestamp                  *time.Time                    `bun:"timestamp,type:timestamp without time zone"`
+	Reference                  string                        `bun:"reference,type:varchar,unique,nullzero"`
+	Postings                   []ledger.Posting              `bun:"postings,type:jsonb"`
+	Metadata                   metadata.Metadata             `bun:"metadata,type:jsonb,default:'{}'"`
+	RevertedAt                 *time.Time                    `bun:"reverted_at"`
+	InsertedAt                 *time.Time                    `bun:"inserted_at"`
+	Sources                    []string                      `bun:"sources,type:jsonb"`
+	Destinations               []string                      `bun:"destinations,type:jsonb"`
+	SourcesArray               []map[string]any              `bun:"sources_arrays,type:jsonb"`
+	DestinationsArray          []map[string]any              `bun:"destinations_arrays,type:jsonb"`
+	PostCommitEffectiveVolumes TransactionsPostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          TransactionsPostCommitVolumes `bun:"post_commit_volumes,type:jsonb,scanonly"`
 }
 
 func (t Transaction) toCore() ledger.Transaction {
@@ -59,8 +61,10 @@ func (t Transaction) toCore() ledger.Transaction {
 			Postings:   t.Postings,
 			InsertedAt: *t.InsertedAt,
 		},
-		ID:       t.ID,
-		Reverted: t.RevertedAt != nil && !t.RevertedAt.IsZero(),
+		ID:                         t.ID,
+		Reverted:                   t.RevertedAt != nil && !t.RevertedAt.IsZero(),
+		PostCommitEffectiveVolumes: t.PostCommitEffectiveVolumes.toCore(),
+		PostCommitVolumes:          t.PostCommitVolumes.toCore(),
 	}
 }
 
@@ -91,21 +95,6 @@ func (p TransactionsPostCommitVolumes) toCore() ledger.PostCommitVolumes {
 
 	}
 	return ret
-}
-
-type ExpandedTransaction struct {
-	Transaction `bun:",extend"`
-
-	PostCommitEffectiveVolumes TransactionsPostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-	PostCommitVolumes          TransactionsPostCommitVolumes `bun:"post_commit_volumes,type:jsonb,scanonly"`
-}
-
-func (t ExpandedTransaction) toCore() ledger.ExpandedTransaction {
-	return ledger.ExpandedTransaction{
-		Transaction:                t.Transaction.toCore(),
-		PostCommitEffectiveVolumes: t.PostCommitEffectiveVolumes.toCore(),
-		PostCommitVolumes:          t.PostCommitVolumes.toCore(),
-	}
 }
 
 func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun.SelectQuery {
@@ -412,13 +401,19 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	tx.ID = mappedTx.ID
 	tx.InsertedAt = *mappedTx.InsertedAt
 	tx.Timestamp = *mappedTx.Timestamp
+	if s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
+		tx.PostCommitVolumes = moves.ComputePostCommitVolumes().toCore()
+	}
+	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
+		tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes().toCore()
+	}
 
 	return nil
 }
 
-func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
-	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
-		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ExpandedTransaction](
+func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
+	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
+		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], Transaction](
 			ctx,
 			s.selectTransactions(
 				q.Options.Options.PIT,
@@ -432,7 +427,7 @@ func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTra
 			return nil, err
 		}
 
-		return bunpaginate.MapCursor(cursor, ExpandedTransaction.toCore), nil
+		return bunpaginate.MapCursor(cursor, Transaction.toCore), nil
 	})
 }
 
@@ -449,9 +444,9 @@ func (s *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTr
 	})
 }
 
-func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
-	return tracing.TraceWithLatency(ctx, "GetTransaction", func(ctx context.Context) (*ledger.ExpandedTransaction, error) {
-		ret := &ExpandedTransaction{}
+func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
+	return tracing.TraceWithLatency(ctx, "GetTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
+		ret := &Transaction{}
 		if err := s.selectTransactions(
 			filter.PIT,
 			filter.ExpandVolumes,
