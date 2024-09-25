@@ -55,6 +55,7 @@ func (c *DefaultController) GetLedgerController(ctx context.Context, name string
 func (c *DefaultController) CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error {
 	return tracing.SkipResult(tracing.Trace(ctx, "CreateLedger", tracing.NoResult(func(ctx context.Context) error {
 		configuration.SetDefaults()
+		// todo: validate queried features
 		l, err := ledger.New(name, configuration)
 		if err != nil {
 			return err

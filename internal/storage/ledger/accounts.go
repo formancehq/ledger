@@ -160,8 +160,8 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		}
 	}
 
-	if needPCV && !s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitVolumes))
+	if needPCV && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
 	}
 
 	// build the query
@@ -175,7 +175,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.Where("accounts.first_usage <= ?", date)
 	}
 
-	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistories, "SYNC") && date != nil && !date.IsZero() {
+	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
 				`left join (?) accounts_metadata on accounts_metadata.accounts_seq = accounts.seq`,
@@ -186,7 +186,9 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 		ret = ret.ColumnExpr("accounts.metadata")
 	}
 
-	if s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") && needPCV {
+	// todo: should join on histories only if pit is specified
+	// otherwise the accounts_volumes table is enough
+	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") && needPCV {
 		ret = ret.
 			Join(
 				`left join (?) pcv on pcv.accounts_seq = accounts.seq`,
@@ -199,7 +201,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 			ColumnExpr("pcv.*")
 	}
 
-	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
+	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
 				`left join (?) pcev on pcev.accounts_seq = accounts.seq`,
@@ -223,6 +225,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				match := balanceRegex.FindAllStringSubmatch(key, 2)
 				asset := match[0][1]
 
+				// todo: use moves only if feature is enabled
 				return s.db.NewSelect().
 					TableExpr(
 						"(?) balance",
@@ -243,7 +246,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 					String(), nil, nil
 
 			case key == "metadata":
-				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistories, "SYNC") && date != nil && !date.IsZero() {
+				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 					key = "accounts_metadata.metadata"
 				}
 
@@ -251,7 +254,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 
 			case metadataRegex.Match([]byte(key)):
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
-				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistories, "SYNC") && date != nil && !date.IsZero() {
+				if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 					key = "accounts_metadata.metadata"
 				} else {
 					key = "metadata"

@@ -653,7 +653,7 @@ func TestTransactionsList(t *testing.T) {
 			expected: []ledger.Transaction{tx3, tx2, tx1},
 		},
 		{
-			name: "filter using exists metadata and pit",
+			name: "filter using metadata and pit",
 			query: ledgercontroller.NewPaginatedQueryOptions(ledgercontroller.PITFilterWithVolumes{
 				PITFilter: ledgercontroller.PITFilter{
 					PIT: pointer.For(tx3.Timestamp),
