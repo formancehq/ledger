@@ -161,7 +161,7 @@ func NewWithDefaults(name string) (*Ledger, error) {
 	return New(name, NewDefaultConfiguration())
 }
 
-// todo: move in shared libs
+// todo(libs): move in shared libs
 func Must[V any](v *V, err error) V {
 	if err != nil {
 		panic(err)

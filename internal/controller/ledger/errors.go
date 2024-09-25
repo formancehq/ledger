@@ -81,7 +81,7 @@ func newErrInvalidHash(logID int, got, expected []byte) ErrImport {
 	})
 }
 
-// todo: need a more precise underlying error
+// todo(waiting): need a more precise underlying error
 // notes(gfyrag): Waiting new interpreter
 type ErrInsufficientFunds = machine.ErrInsufficientFund
 

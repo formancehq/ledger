@@ -396,7 +396,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 				for account, forAccount := range balances {
 					for asset, finalBalance := range forAccount {
 						if finalBalance.Cmp(new(big.Int)) < 0 {
-							// todo: break dependency on machine package
+							// todo(waiting): break dependency on machine package
 							// notes(gfyrag): wait for the new interpreter
 							return nil, machine.NewErrInsufficientFund("insufficient fund for %s/%s", account, asset)
 						}
