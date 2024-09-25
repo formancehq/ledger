@@ -39,7 +39,6 @@ type Transaction struct {
 
 	Ledger                     string                   `bun:"ledger,type:varchar"`
 	ID                         int                      `bun:"id,type:numeric"`
-	Seq                        int                      `bun:"seq,scanonly"`
 	Timestamp                  time.Time                `bun:"timestamp,type:timestamp without time zone,nullzero"`
 	Reference                  string                   `bun:"reference,type:varchar,unique,nullzero"`
 	Postings                   []ledger.Posting         `bun:"postings,type:jsonb"`
@@ -72,11 +71,11 @@ func (t Transaction) toCore() ledger.Transaction {
 
 func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun.SelectQuery {
 	ret := s.db.NewSelect().
-		DistinctOn("transactions_seq").
+		DistinctOn("transactions_id").
 		ModelTableExpr(s.GetPrefixedRelationName("transactions_metadata")).
 		Where("ledger = ?", s.ledger.Name).
-		Column("transactions_seq", "metadata").
-		Order("transactions_seq", "revision desc")
+		Column("transactions_id", "metadata").
+		Order("transactions_id", "revision desc")
 
 	if date != nil && !date.IsZero() {
 		ret = ret.Where("date <= ?", date)
@@ -133,7 +132,6 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 	ret = ret.
 		ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 		Column(
-			"seq",
 			"ledger",
 			"id",
 			"timestamp",
@@ -157,7 +155,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
-				`left join (?) transactions_metadata on transactions_metadata.transactions_seq = transactions.seq`,
+				`left join (?) transactions_metadata on transactions_metadata.transactions_id = transactions.id`,
 				s.selectDistinctTransactionMetadataHistories(date),
 			).
 			ColumnExpr("coalesce(transactions_metadata.metadata, '{}'::jsonb) as metadata")
@@ -168,28 +166,28 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
-				`join (?) pcev on pcev.transactions_seq = transactions.seq`,
+				`join (?) pcev on pcev.transactions_id = transactions.id`,
 				s.db.NewSelect().
-					Column("transactions_seq").
+					Column("transactions_id").
 					ColumnExpr("jsonb_merge_agg(pcev::jsonb) as post_commit_effective_volumes").
 					TableExpr(
 						"(?) data",
 						s.db.NewSelect().
-							DistinctOn("transactions_seq, account_address, asset").
+							DistinctOn("transactions_id, account_address, asset").
 							ModelTableExpr(s.GetPrefixedRelationName("moves")).
-							Column("transactions_seq").
+							Column("transactions_id").
 							// use strings.Replace for logs
 							ColumnExpr(strings.Replace(`
 								json_build_object(
 									moves.account_address,
 									json_build_object(
 										moves.asset,
-										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_seq, account_address, asset) order by seq desc)
+										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, account_address, asset) order by seq desc)
 									)
 								) as pcev
 							`, "\n", "", -1)),
 					).
-					Group("transactions_seq"),
+					Group("transactions_id"),
 			).
 			ColumnExpr("pcev.*")
 	}
@@ -198,7 +196,6 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 	ret = s.db.NewSelect().
 		ModelTableExpr("(?) transactions", ret).
 		Column(
-			"seq",
 			"ledger",
 			"id",
 			"timestamp",
@@ -350,9 +347,9 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				Asset:               posting.Asset,
 				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
-				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[posting.Destination].Seq,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
+				TransactionID:       tx.ID,
 			})
 			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
 
@@ -365,9 +362,9 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				Asset:               posting.Asset,
 				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
-				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[posting.Source].Seq,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
+				TransactionID:       tx.ID,
 			})
 			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
 		}
@@ -445,7 +442,7 @@ func (s *Store) insertTransaction(ctx context.Context, tx *Transaction) error {
 			Model(tx).
 			ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
-			Returning("id, seq, timestamp, inserted_at").
+			Returning("id, timestamp, inserted_at").
 			Exec(ctx)
 		if err != nil {
 			err = postgres.ResolveError(err)
