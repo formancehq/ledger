@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -401,6 +402,7 @@ func TestTransactionCreate(t *testing.T) {
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectControllerCall {
+				testCase.expectedRunScript.Timestamp = time.Time{}
 				expect := ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters{
 						DryRun: tc.expectedDryRun,

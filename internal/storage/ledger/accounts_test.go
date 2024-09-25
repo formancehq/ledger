@@ -290,6 +290,7 @@ func TestGetAccount(t *testing.T) {
 
 	t.Run("find account in past", func(t *testing.T) {
 		t.Parallel()
+
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now.Add(-30*time.Second)))
 		require.NoError(t, err)
 		require.Equal(t, ledger.ExpandedAccount{

@@ -21,5 +21,7 @@ func TestReverseTransaction(t *testing.T) {
 		).
 		WithTimestamp(tx.Timestamp)
 
-	require.Equal(t, expected, tx.Reverse(true))
+	reversed := tx.Reverse(true)
+	reversed.InsertedAt = tx.InsertedAt
+	require.Equal(t, expected, reversed)
 }

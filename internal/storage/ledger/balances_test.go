@@ -281,7 +281,7 @@ func TestUpdateBalances(t *testing.T) {
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[string]map[string]ledger.Volumes{
+	require.Equal(t, ledger.PostCommitVolumes{
 		"world": {
 			"USD/2": ledger.NewVolumesInt64(0, 100),
 		},
@@ -295,7 +295,7 @@ func TestUpdateBalances(t *testing.T) {
 		Output:  big.NewInt(0),
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[string]map[string]ledger.Volumes{
+	require.Equal(t, ledger.PostCommitVolumes{
 		"world": {
 			"USD/2": ledger.NewVolumesInt64(50, 100),
 		},
@@ -310,7 +310,7 @@ func TestUpdateBalances(t *testing.T) {
 		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[string]map[string]ledger.Volumes{
+	require.Equal(t, ledger.PostCommitVolumes{
 		"world": {
 			"USD/2": ledger.NewVolumesInt64(100, 150),
 		},
