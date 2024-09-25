@@ -60,11 +60,6 @@ func TestMovesInsert(t *testing.T) {
 			EffectiveDate:       t0,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m1))
-		require.NotNil(t, m1.PostCommitVolumes)
-		require.Equal(t, ledger.Volumes{
-			Input:  big.NewInt(0),
-			Output: big.NewInt(100),
-		}, *m1.PostCommitVolumes)
 		require.NotNil(t, m1.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(0),
@@ -85,11 +80,6 @@ func TestMovesInsert(t *testing.T) {
 			EffectiveDate:       t3,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m2))
-		require.NotNil(t, m2.PostCommitVolumes)
-		require.Equal(t, ledger.Volumes{
-			Input:  big.NewInt(50),
-			Output: big.NewInt(100),
-		}, *m2.PostCommitVolumes)
 		require.NotNil(t, m2.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(50),
@@ -110,11 +100,6 @@ func TestMovesInsert(t *testing.T) {
 			EffectiveDate:       t1,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m3))
-		require.NotNil(t, m3.PostCommitVolumes)
-		require.Equal(t, ledger.Volumes{
-			Input:  big.NewInt(50),
-			Output: big.NewInt(300),
-		}, *m3.PostCommitVolumes)
 		require.NotNil(t, m3.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(0),
@@ -135,11 +120,6 @@ func TestMovesInsert(t *testing.T) {
 			EffectiveDate:       t2,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m4))
-		require.NotNil(t, m4.PostCommitVolumes)
-		require.Equal(t, ledger.Volumes{
-			Input:  big.NewInt(100),
-			Output: big.NewInt(300),
-		}, *m4.PostCommitVolumes)
 		require.NotNil(t, m4.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(50),
@@ -160,11 +140,6 @@ func TestMovesInsert(t *testing.T) {
 			EffectiveDate:       t4,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m5))
-		require.NotNil(t, m5.PostCommitVolumes)
-		require.Equal(t, ledger.Volumes{
-			Input:  big.NewInt(150),
-			Output: big.NewInt(300),
-		}, *m5.PostCommitVolumes)
 		require.NotNil(t, m5.PostCommitEffectiveVolumes)
 		require.Equal(t, ledger.Volumes{
 			Input:  big.NewInt(150),

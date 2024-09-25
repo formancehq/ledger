@@ -17,21 +17,6 @@ select setval('"{{.Bucket}}"."log_id_{{.ID}}"', coalesce((
     where ledger = '{{ .Name }}'
 ), 1)::bigint, false);
 
-
--- enable post commit volumes synchronously
-{{ if .HasFeature "MOVES_HISTORY_POST_COMMIT_VOLUMES" "SYNC" }}
-create index "pcv_{{.ID}}" on "{{.Bucket}}".moves (accounts_seq, asset, seq) where ledger = '{{.Name}}';
-
-create trigger "set_volumes_{{.ID}}"
-before insert
-on "{{.Bucket}}"."moves"
-for each row
-when (
-    new.ledger = '{{.Name}}'
-)
-execute procedure "{{.Bucket}}".set_volumes();
-{{ end }}
-
 -- enable post commit effective volumes synchronously
 
 {{ if .HasFeature "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES" "SYNC" }}

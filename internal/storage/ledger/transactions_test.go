@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"math/big"
@@ -260,6 +261,27 @@ func TestTransactionsCommit(t *testing.T) {
 			},
 		}, tx2.PostCommitVolumes)
 		require.Equal(t, tx2.PostCommitVolumes, tx2.PostCommitEffectiveVolumes)
+	})
+
+	t.Run("auto send", func(t *testing.T) {
+		store := newLedgerStore(t)
+
+		tx3 := ledger.NewTransaction().WithPostings(
+			ledger.NewPosting("account:x", "account:x", "USD", big.NewInt(100)),
+		)
+		err := store.CommitTransaction(ctx, &tx3)
+		require.NoError(t, err)
+		require.Equal(t, 1, tx3.ID)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"account:x": ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(100),
+					Output: big.NewInt(100),
+				},
+			},
+		}, tx3.PostCommitVolumes)
+		spew.Dump(tx3)
+		require.Equal(t, tx3.PostCommitVolumes, tx3.PostCommitEffectiveVolumes)
 	})
 
 	t.Run("triggering a deadlock should return appropriate postgres error", func(t *testing.T) {
