@@ -6,8 +6,6 @@ toolchain go1.22.7
 
 replace github.com/formancehq/stack/ledger/client => ./pkg/client
 
-replace github.com/formancehq/formance-sdk-go/v2 => ../../releases/sdks/go
-
 replace google.golang.org/genproto v0.0.0-20200423170343-7949de9c1215 => google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1
 
 require (
@@ -15,7 +13,6 @@ require (
 	github.com/alitto/pond v1.9.2
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10
 	github.com/bluele/gcache v0.0.2
-	github.com/formancehq/formance-sdk-go/v2 v2.3.1
 	github.com/formancehq/go-libs v1.7.2-0.20240924160248-25cc3741eba3
 	github.com/formancehq/stack/ledger/client v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.1.0
@@ -30,7 +27,6 @@ require (
 	github.com/onsi/gomega v1.34.2
 	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
-	github.com/shomali11/xsql v0.0.0-20190608141458-bf76292144df
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
@@ -138,7 +134,6 @@ require (
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.24.8 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/shomali11/util v0.0.0-20180607005212-e0f70fd665ff // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.8.0 // indirect

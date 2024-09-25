@@ -34,7 +34,7 @@ type Volumes struct {
 
 type AggregatedAccountVolume struct {
 	Volumes
-	Asset   string `bun:"asset"`
+	Asset string `bun:"asset"`
 }
 
 type AggregatedAccountVolumes []AggregatedAccountVolume
