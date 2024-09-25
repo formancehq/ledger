@@ -30,24 +30,32 @@ alter table "{{.Bucket}}".logs
 alter column data
 type json;
 
-create table "{{.Bucket}}".balances (
-    ledger varchar,
-    account varchar,
-    asset varchar,
-    balance numeric,
+create table "{{.Bucket}}".accounts_volumes (
+    ledger varchar not null,
+	accounts_seq int not null,
+    account varchar not null,
+    asset varchar not null,
+	inputs numeric not null,
+	outputs numeric not null,
 
     primary key (ledger, account, asset)
 );
 
-insert into "{{.Bucket}}".balances
-select distinct on (ledger, account_address, asset)
+create view "{{.Bucket}}".balances as
+select ledger, accounts_seq, account, asset, inputs - outputs as balance
+from "{{.Bucket}}".accounts_volumes;
+
+insert into "{{.Bucket}}".accounts_volumes (ledger, accounts_seq, account, asset, inputs, outputs)
+select distinct on (ledger, accounts_seq, account_address, asset)
 	ledger,
+	accounts_seq,
 	account_address as account,
 	asset,
-	(moves.post_commit_volumes).inputs - (moves.post_commit_volumes).outputs as balance
+	(moves.post_commit_volumes).inputs as inputs,
+	(moves.post_commit_volumes).outputs as outputs
 from (
 	select *
-	from moves
+	from "{{.Bucket}}".moves
 	order by seq desc
 ) moves;
 

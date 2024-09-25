@@ -252,18 +252,19 @@ func TestTransactionsCommit(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = store.upsertAccount(ctx, &Account{
+		account2 := &Account{
 			Address: "account:2",
-		})
+		}
+		_, err = store.upsertAccount(ctx, account2)
 		require.NoError(t, err)
 
-		_, err = store.updateBalances(ctx, map[string]map[string]*big.Int{
-			"account:1": {
-				"USD": big.NewInt(100),
-			},
-			"account:2": {
-				"USD": big.NewInt(100),
-			},
+		_, err = store.updateVolumes(ctx, AccountsVolumes{
+			Ledger:      store.ledger.Name,
+			Account:     "account:1",
+			Asset:       "USD",
+			Inputs:      big.NewInt(100),
+			Outputs:     big.NewInt(0),
+			AccountsSeq: account2.Seq,
 		})
 		require.NoError(t, err)
 
