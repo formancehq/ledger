@@ -60,6 +60,10 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupLevel int, q lquery.Builder) *bun.SelectQuery {
 	ret := s.db.NewSelect()
 
+	if !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
+		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
+	}
+
 	var useMetadata bool
 	if q != nil {
 		err := q.Walk(func(operator, key string, value any) error {

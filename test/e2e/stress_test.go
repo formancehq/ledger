@@ -38,8 +38,8 @@ var _ = Context("Ledger stress tests", func() {
 
 	const (
 		countLedgers      = 30
-		countBuckets      = 3
-		countTransactions = 500
+		countBuckets      = 10
+		countTransactions = 300
 		countAccounts     = 20
 	)
 
@@ -51,8 +51,11 @@ var _ = Context("Ledger stress tests", func() {
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-						Bucket:   &bucketName,
-						Features: ledger.MinimalFeatureSet.With(ledger.FeaturePostCommitVolumes, "SYNC"),
+						Bucket: &bucketName,
+						Features: ledger.MinimalFeatureSet.
+							// todo: as we are interested only by aggregated volumes at current date, these features should not be required
+							With(ledger.FeatureMovesHistory, "ON").
+							With(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC"),
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())

@@ -19,7 +19,7 @@ select setval('"{{.Bucket}}"."log_id_{{.ID}}"', coalesce((
 
 
 -- enable post commit volumes synchronously
-{{ if .HasFeature "POST_COMMIT_VOLUMES" "SYNC" }}
+{{ if .HasFeature "MOVES_HISTORY_POST_COMMIT_VOLUMES" "SYNC" }}
 create index "pcv_{{.ID}}" on "{{.Bucket}}".moves (accounts_seq, asset, seq) where ledger = '{{.Name}}';
 
 create trigger "set_volumes_{{.ID}}"
@@ -34,7 +34,7 @@ execute procedure "{{.Bucket}}".set_volumes();
 
 -- enable post commit effective volumes synchronously
 
-{{ if .HasFeature "POST_COMMIT_EFFECTIVE_VOLUMES" "SYNC" }}
+{{ if .HasFeature "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES" "SYNC" }}
 create index "pcev_{{.ID}}" on "{{.Bucket}}".moves (accounts_seq, asset, effective_date desc) where ledger = '{{.Name}}';
 
 create trigger "set_effective_volumes_{{.ID}}"
@@ -69,7 +69,7 @@ when (
 execute procedure "{{.Bucket}}".set_log_hash();
 {{ end }}
 
-{{ if .HasFeature "ACCOUNT_METADATA_HISTORIES" "SYNC" }}
+{{ if .HasFeature "ACCOUNT_METADATA_HISTORY" "SYNC" }}
 create trigger "update_account_metadata_history_{{.ID}}"
 after update
 on "{{.Bucket}}"."accounts"
@@ -89,7 +89,7 @@ when (
 execute procedure "{{.Bucket}}".insert_account_metadata_history();
 {{ end }}
 
-{{ if .HasFeature "TRANSACTION_METADATA_HISTORIES" "SYNC" }}
+{{ if .HasFeature "TRANSACTION_METADATA_HISTORY" "SYNC" }}
 create trigger "update_transaction_metadata_history_{{.ID}}"
 after update
 on "{{.Bucket}}"."transactions"

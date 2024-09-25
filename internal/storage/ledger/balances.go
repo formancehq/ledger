@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/pkg/errors"
 	"math/big"
 	"strings"
@@ -69,16 +70,16 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 	var selectAccountsWithVolumes *bun.SelectQuery
 	if date != nil && !date.IsZero() {
 		if useInsertionDate {
-			if !s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitVolumes))
+			if !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
+				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesBySeq(date)).
 				Column("asset", "accounts_seq", "account_address", "account_address_array").
 				ColumnExpr("post_commit_volumes as volumes")
 		} else {
-			if !s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitEffectiveVolumes))
+			if !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
+				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes))
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesByEffectiveDate(date)).
@@ -99,7 +100,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 		TableExpr("(?) accounts_volumes", selectAccountsWithVolumes)
 
 	if needMetadata {
-		if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistories, "SYNC") && date != nil && !date.IsZero() {
+		if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 			selectAccountsWithVolumes = selectAccountsWithVolumes.
 				Join(
 					`left join (?) accounts_metadata on accounts_metadata.accounts_seq = accounts_volumes.accounts_seq`,
@@ -208,7 +209,7 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			Order("account", "asset").
 			Scan(ctx)
 		if err != nil {
-			return nil, err
+			return nil, postgres.ResolveError(err)
 		}
 
 		ret := ledgercontroller.Balances{}
@@ -234,36 +235,3 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		return ret, nil
 	})
 }
-
-/**
-
-SELECT *
-FROM (
-	SELECT *, accounts.address_array AS account_address_array
-   	FROM (
-		SELECT
-			"asset",
-            "accounts_seq",
-            "account_address",
-            "account_address_array",
-            post_commit_volumes AS volumes
-      	FROM (
-			SELECT DISTINCT ON (accounts_seq, account_address, asset)
-				"accounts_seq",
-                "account_address",
-                "asset",
-				first_value(account_address_array) OVER (PARTITION BY (accounts_seq, account_address, asset) ORDER BY seq DESC) AS account_address_array,
-				first_value(post_commit_volumes) OVER (PARTITION BY (accounts_seq, account_address, asset) ORDER BY seq DESC) AS post_commit_volumes
-         	FROM (
-				SELECT *
-            	FROM "7c44551f".moves
-            	WHERE (ledger = '7c44551f') AND (insertion_date <= '2024-09-25T12:01:13.895812Z')
-	            ORDER BY "seq" DESC
-			) moves
-         	WHERE (ledger = '7c44551f') AND (insertion_date <= '2024-09-25T12:01:13.895812Z')) moves
-	) accounts_volumes
-   	JOIN "7c44551f".accounts accounts ON accounts.seq = accounts_volumes.accounts_seq
-) accounts
-WHERE (jsonb_array_length(account_address_array) = 2 AND account_address_array @@ ('$[0] == "users"')::jsonpath)
-
-*/

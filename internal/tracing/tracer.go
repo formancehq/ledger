@@ -27,6 +27,7 @@ func TraceWithLatency[RET any](
 		now := time.Now()
 		ret, err := fn(ctx)
 		if err != nil {
+			trace.SpanFromContext(ctx).RecordError(err)
 			var zeroRet RET
 			return zeroRet, err
 		}
