@@ -146,11 +146,11 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// check that the database returns metadata
-	tx, err := store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err := store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx1.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo1": "bar2"}, "metadata should be equal")
 
-	tx, err = store.GetTransaction(context.Background(), ledgercontroller.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
+	tx, err = store.GetTransaction(ctx, ledgercontroller.NewGetTransactionQuery(tx2.ID).WithExpandVolumes().WithExpandEffectiveVolumes())
 	require.NoError(t, err, "getting transaction should not fail")
 	require.Equal(t, tx.Metadata, metadata.Metadata{"foo2": "bar2"}, "metadata should be equal")
 
