@@ -51,10 +51,8 @@ var _ = Context("Ledger stress tests", func() {
 				err := CreateLedger(ctx, testServer.GetValue(), operations.V2CreateLedgerRequest{
 					Ledger: ledgerName,
 					V2CreateLedgerRequest: &components.V2CreateLedgerRequest{
-						Bucket: &bucketName,
-						Features: ledger.MinimalFeatureSet.
-							// todo: as we are interested only by aggregated volumes at current date, these features should not be required
-							With(ledger.FeatureMovesHistory, "ON"),
+						Bucket:   &bucketName,
+						Features: ledger.MinimalFeatureSet,
 					},
 				})
 				Expect(err).ShouldNot(HaveOccurred())
