@@ -286,6 +286,11 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return postgres.ResolveError(err)
 	}
 
+	insertionDate := tx.InsertedAt
+	if insertionDate.IsZero() {
+		insertionDate = time.Now()
+	}
+
 	accounts := map[string]Account{}
 	for _, address := range tx.InvolvedAccounts() {
 		account := Account{
@@ -293,8 +298,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			AddressArray:  strings.Split(address, ":"),
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
-			InsertionDate: tx.InsertedAt,
-			UpdatedAt:     tx.InsertedAt,
+			InsertionDate: insertionDate,
+			UpdatedAt:     insertionDate,
 			Metadata:      make(metadata.Metadata),
 		}
 		_, err := s.upsertAccount(ctx, &account)
@@ -318,7 +323,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		Metadata:          tx.Metadata,
 		Timestamp:         tx.Timestamp,
 		Reference:         tx.Reference,
-		InsertedAt:        tx.InsertedAt,
+		InsertedAt:        insertionDate,
 		Sources:           sources,
 		Destinations:      destinations,
 		SourcesArray:      Map(sources, convertAddrToIndexedJSONB),
@@ -334,7 +339,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	tx.ID = mappedTx.ID
 	tx.PostCommitVolumes = postCommitVolumes.Copy()
 	tx.Timestamp = mappedTx.Timestamp
-	tx.InsertedAt = mappedTx.InsertedAt
+	tx.InsertedAt = insertionDate
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
 		moves := Moves{}
@@ -348,7 +353,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(posting.Destination, ":"),
 				Amount:              (*bunpaginate.BigInt)(posting.Amount),
 				Asset:               posting.Asset,
-				InsertionDate:       tx.InsertedAt,
+				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[posting.Destination].Seq,
@@ -363,7 +368,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(posting.Source, ":"),
 				Amount:              (*bunpaginate.BigInt)(posting.Amount),
 				Asset:               posting.Asset,
-				InsertionDate:       tx.InsertedAt,
+				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[posting.Source].Seq,
