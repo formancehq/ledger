@@ -10,7 +10,7 @@ type Volumes struct {
 	Output *big.Int `json:"output"`
 }
 
-func (v Volumes) CopyWithZerosIfNeeded() Volumes {
+func (v Volumes) Copy() Volumes {
 	return Volumes{
 		Input:  new(big.Int).Set(v.Input),
 		Output: new(big.Int).Set(v.Output),
@@ -107,7 +107,7 @@ func (a PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
 			},
 		}
 	} else {
-		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
+		volumes := assetsVolumes[asset].Copy()
 		volumes.Input.Add(volumes.Input, input)
 		assetsVolumes[asset] = volumes
 	}
@@ -122,7 +122,7 @@ func (a PostCommitVolumes) AddOutput(account, asset string, output *big.Int) {
 			},
 		}
 	} else {
-		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
+		volumes := assetsVolumes[asset].Copy()
 		volumes.Output.Add(volumes.Output, output)
 		assetsVolumes[asset] = volumes
 	}

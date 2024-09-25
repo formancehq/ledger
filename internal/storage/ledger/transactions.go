@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/formancehq/ledger/internal/tracing"
@@ -303,7 +305,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		accounts[address] = account
 	}
 
-	updatedVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx, accounts)...)
+	postCommitVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx, accounts)...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
@@ -321,7 +323,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		Destinations:      destinations,
 		SourcesArray:      Map(sources, convertAddrToIndexedJSONB),
 		DestinationsArray: Map(destinations, convertAddrToIndexedJSONB),
-		PostCommitVolumes: updatedVolumes,
+		PostCommitVolumes: postCommitVolumes,
 	}
 
 	err = s.insertTransaction(ctx, mappedTx)
@@ -329,35 +331,48 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return errors.Wrap(err, "failed to insert transaction")
 	}
 
+	tx.ID = mappedTx.ID
+	tx.PostCommitVolumes = postCommitVolumes.Copy()
+	tx.Timestamp = mappedTx.Timestamp
+	tx.InsertedAt = mappedTx.InsertedAt
+
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
 		moves := Moves{}
-		for _, p := range tx.Postings {
-			moves = append(moves, []*Move{
-				{
-					Ledger:              s.ledger.Name,
-					IsSource:            true,
-					Account:             p.Source,
-					AccountAddressArray: strings.Split(p.Source, ":"),
-					Amount:              (*bunpaginate.BigInt)(p.Amount),
-					Asset:               p.Asset,
-					InsertionDate:       tx.InsertedAt,
-					EffectiveDate:       tx.Timestamp,
-					TransactionSeq:      mappedTx.Seq,
-					AccountSeq:          accounts[p.Source].Seq,
-				},
-				{
-					Ledger:              s.ledger.Name,
-					Account:             p.Destination,
-					AccountAddressArray: strings.Split(p.Destination, ":"),
-					Amount:              (*bunpaginate.BigInt)(p.Amount),
-					Asset:               p.Asset,
-					InsertionDate:       tx.InsertedAt,
-					EffectiveDate:       tx.Timestamp,
-					TransactionSeq:      mappedTx.Seq,
-					AccountSeq:          accounts[p.Destination].Seq,
-				},
-			}...)
+		postings := tx.Postings
+		slices.Reverse(postings)
+
+		for _, posting := range postings {
+			moves = append(moves, &Move{
+				Ledger:              s.ledger.Name,
+				Account:             posting.Destination,
+				AccountAddressArray: strings.Split(posting.Destination, ":"),
+				Amount:              (*bunpaginate.BigInt)(posting.Amount),
+				Asset:               posting.Asset,
+				InsertionDate:       tx.InsertedAt,
+				EffectiveDate:       tx.Timestamp,
+				TransactionSeq:      mappedTx.Seq,
+				AccountSeq:          accounts[posting.Destination].Seq,
+				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
+			})
+			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
+
+			moves = append(moves, &Move{
+				Ledger:              s.ledger.Name,
+				IsSource:            true,
+				Account:             posting.Source,
+				AccountAddressArray: strings.Split(posting.Source, ":"),
+				Amount:              (*bunpaginate.BigInt)(posting.Amount),
+				Asset:               posting.Asset,
+				InsertionDate:       tx.InsertedAt,
+				EffectiveDate:       tx.Timestamp,
+				TransactionSeq:      mappedTx.Seq,
+				AccountSeq:          accounts[posting.Source].Seq,
+				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
+			})
+			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
 		}
+
+		slices.Reverse(moves)
 
 		if err := s.insertMoves(ctx, moves...); err != nil {
 			return errors.Wrap(err, "failed to insert moves")
@@ -367,11 +382,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 		}
 	}
-
-	tx.ID = mappedTx.ID
-	tx.PostCommitVolumes = updatedVolumes
-	tx.Timestamp = mappedTx.Timestamp
-	tx.InsertedAt = mappedTx.InsertedAt
 
 	return nil
 }
@@ -625,6 +635,10 @@ func volumeUpdates(l string, transaction *ledger.Transaction, accounts map[strin
 		}
 		aggregatedVolumes[posting.Source][posting.Asset] = append(aggregatedVolumes[posting.Source][posting.Asset], posting)
 
+		if posting.Source == posting.Destination {
+			continue
+		}
+
 		if _, ok := aggregatedVolumes[posting.Destination]; !ok {
 			aggregatedVolumes[posting.Destination] = make(map[string][]ledger.Posting)
 		}
@@ -638,10 +652,12 @@ func volumeUpdates(l string, transaction *ledger.Transaction, accounts map[strin
 			for _, posting := range postings {
 				if account == posting.Source {
 					volumes.Output.Add(volumes.Output, posting.Amount)
-				} else {
+				}
+				if account == posting.Destination {
 					volumes.Input.Add(volumes.Input, posting.Amount)
 				}
 			}
+
 			ret = append(ret, AccountsVolumes{
 				Ledger:      l,
 				Account:     account,

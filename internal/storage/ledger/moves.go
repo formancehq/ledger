@@ -2,8 +2,10 @@ package ledger
 
 import (
 	"context"
+	. "github.com/formancehq/go-libs/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
 	"math/big"
+	"slices"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/platform/postgres"
@@ -85,7 +87,7 @@ type Move struct {
 	AccountSeq                 int                 `bun:"accounts_seq,type:int"`
 	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
 	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
-	PostCommitVolumes          *ledger.Volumes     `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          *ledger.Volumes     `bun:"post_commit_volumes,type:jsonb"`
 	PostCommitEffectiveVolumes *ledger.Volumes     `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
@@ -127,13 +129,34 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 }
 
 func (m Moves) ComputePostCommitEffectiveVolumes() ledger.PostCommitVolumes {
+	type key struct {
+		Account string
+		Asset   string
+	}
+
+	visited := Set[key]{}
+
+	// we need to find the more recent move for each account/asset
+	slices.Reverse(m)
+
 	ret := ledger.PostCommitVolumes{}
 	for _, move := range m {
+		if visited.Contains(key{
+			Account: move.Account,
+			Asset:   move.Asset,
+		}) {
+			continue
+		}
 		ret = ret.Merge(ledger.PostCommitVolumes{
 			move.Account: ledger.VolumesByAssets{
 				move.Asset: *move.PostCommitEffectiveVolumes,
 			},
 		})
+		visited.Put(key{
+			Account: move.Account,
+			Asset:   move.Asset,
+		})
 	}
+
 	return ret
 }

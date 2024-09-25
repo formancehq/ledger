@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"testing"
 
@@ -22,6 +23,7 @@ func TestReverseTransaction(t *testing.T) {
 		WithTimestamp(tx.Timestamp)
 
 	reversed := tx.Reverse(true)
-	reversed.InsertedAt = tx.InsertedAt
+	reversed.InsertedAt = time.Time{}
+	expected.InsertedAt = time.Time{}
 	require.Equal(t, expected, reversed)
 }

@@ -143,33 +143,6 @@ drop function "{{.Bucket}}".revert_transaction(_ledger character varying, _id nu
 drop type "{{.Bucket}}".volumes_with_asset;
 drop type "{{.Bucket}}".volumes;
 
-create function "{{.Bucket}}".set_volumes()
-    returns trigger
-    security definer
-    language plpgsql
-as
-$$
-begin
-    new.post_commit_volumes = coalesce((
-        select json_build_object(
-            'input', (post_commit_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
-            'output', (post_commit_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
-        )
-        from "{{.Bucket}}".moves
-        where accounts_seq = new.accounts_seq
-            and asset = new.asset
-            and ledger = new.ledger
-        order by seq desc
-        limit 1
-    ), json_build_object(
-        'input', case when new.is_source then 0 else new.amount end,
-        'output', case when new.is_source then new.amount else 0 end
-    ));
-
-    return new;
-end;
-$$;
-
 create function "{{.Bucket}}".set_effective_volumes()
     returns trigger
     security definer
