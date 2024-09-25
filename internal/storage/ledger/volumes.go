@@ -27,8 +27,8 @@ type AccountsVolumes struct {
 	AccountsSeq int      `bun:"accounts_seq,type:int"`
 }
 
-func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVolumes) (map[string]map[string]ledger.Volumes, error) {
-	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (map[string]map[string]ledger.Volumes, error) {
+func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVolumes) (ledger.PostCommitVolumes, error) {
+	return tracing.TraceWithLatency(ctx, "UpdateBalances", func(ctx context.Context) (ledger.PostCommitVolumes, error) {
 
 		_, err := s.db.NewInsert().
 			Model(&accountVolumes).
@@ -42,7 +42,7 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 			return nil, postgres.ResolveError(err)
 		}
 
-		ret := make(map[string]map[string]ledger.Volumes)
+		ret := ledger.PostCommitVolumes{}
 		for _, volumes := range accountVolumes {
 			if _, ok := ret[volumes.Account]; !ok {
 				ret[volumes.Account] = map[string]ledger.Volumes{}

@@ -119,6 +119,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 		Metadata:  payload.Metadata,
 	}
 
+	// todo: handle missing error cases
 	res, err := l.CreateTransaction(r.Context(), getCommandParameters(r), runScript)
 	if err != nil {
 		switch {

@@ -135,3 +135,20 @@ func (a PostCommitVolumes) Copy() PostCommitVolumes {
 	}
 	return ret
 }
+
+func (a PostCommitVolumes) Merge(volumes PostCommitVolumes) PostCommitVolumes {
+	for account, volumesByAssets := range volumes {
+		if _, ok := a[account]; !ok {
+			a[account] = map[string]Volumes{}
+		}
+		for asset, volumes := range volumesByAssets {
+			if _, ok := a[account][asset]; !ok {
+				a[account][asset] = NewEmptyVolumes()
+			}
+			a[account][asset].Input.Add(a[account][asset].Input, volumes.Input)
+			a[account][asset].Output.Add(a[account][asset].Output, volumes.Output)
+		}
+	}
+
+	return a
+}

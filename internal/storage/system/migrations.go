@@ -117,6 +117,13 @@ func getMigrator() *migrations.Migrator {
 				return err
 			},
 		},
+		migrations.Migration{
+			Name: "Add jsonb_merge_agg pg aggregator",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, jsonbMerge)
+				return err
+			},
+		},
 	)
 
 	return migrator
@@ -190,4 +197,20 @@ BEGIN
   END IF;
 END;
 $$ LANGUAGE plpgsql;
+`
+
+const jsonbMerge = `
+create or replace function public.jsonb_concat(a jsonb, b jsonb) returns jsonb
+    as 'select $1 || $2'
+    language sql
+    immutable
+    parallel safe
+;
+
+create or replace aggregate public.jsonb_merge_agg(jsonb)
+(
+    sfunc = public.jsonb_concat,
+    stype = jsonb,
+    initcond = '{}'
+);
 `

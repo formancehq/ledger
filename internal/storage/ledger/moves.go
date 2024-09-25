@@ -126,29 +126,13 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 	return ret
 }
 
-func (m Moves) ComputePostCommitVolumes() TransactionsPostCommitVolumes {
-	ret := TransactionsPostCommitVolumes{}
+func (m Moves) ComputePostCommitEffectiveVolumes() ledger.PostCommitVolumes {
+	ret := ledger.PostCommitVolumes{}
 	for _, move := range m {
-		ret = append(ret, TransactionPostCommitVolume{
-			AggregatedAccountVolume: AggregatedAccountVolume{
-				Volumes: *move.PostCommitVolumes,
-				Asset:   move.Asset,
+		ret = ret.Merge(ledger.PostCommitVolumes{
+			move.Account: ledger.VolumesByAssets{
+				move.Asset: *move.PostCommitEffectiveVolumes,
 			},
-			Account: move.Account,
-		})
-	}
-	return ret
-}
-
-func (m Moves) ComputePostCommitEffectiveVolumes() TransactionsPostCommitVolumes {
-	ret := TransactionsPostCommitVolumes{}
-	for _, move := range m {
-		ret = append(ret, TransactionPostCommitVolume{
-			AggregatedAccountVolume: AggregatedAccountVolume{
-				Volumes: *move.PostCommitEffectiveVolumes,
-				Asset:   move.Asset,
-			},
-			Account: move.Account,
 		})
 	}
 	return ret
