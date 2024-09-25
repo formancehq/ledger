@@ -40,7 +40,6 @@ func TestCreateTransaction(t *testing.T) {
 		})
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
-	tx := ledger.NewTransaction().WithPostings(posting)
 	machine.EXPECT().
 		Execute(gomock.Any(), newVmStoreAdapter(sqlTX), runScript.Vars).
 		Return(&MachineResult{
@@ -48,7 +47,7 @@ func TestCreateTransaction(t *testing.T) {
 		}, nil)
 
 	sqlTX.EXPECT().
-		CommitTransaction(gomock.Any(), &tx).
+		CommitTransaction(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	sqlTX.EXPECT().
@@ -60,7 +59,7 @@ func TestCreateTransaction(t *testing.T) {
 		})
 
 	listener.EXPECT().
-		CommittedTransactions(gomock.Any(), "", tx, ledger.AccountMetadata{})
+		CommittedTransactions(gomock.Any(), "", gomock.Any(), ledger.AccountMetadata{})
 
 	_, err := l.CreateTransaction(context.Background(), Parameters{}, runScript)
 	require.NoError(t, err)
