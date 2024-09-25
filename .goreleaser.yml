@@ -1,11 +1,11 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+version: 2
 project_name: ledger
-monorepo:
-  tag_prefix: v
-  dir: ./
 
 includes:
-  - from_file:
-      path: ./../../.goreleaser.default.yaml
+  - from_url:
+      url: https://raw.githubusercontent.com/formancehq/earthly/refs/heads/main/.goreleaser.default.yaml
+
 
 builds:
   - binary: ledger
@@ -55,3 +55,16 @@ publishers:
       - packages
     dir: "{{ dir .ArtifactPath }}"
     cmd: curl --http1.1 -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/ledger/
+
+brews:
+  - repository:
+      owner: formancehq
+      name: homebrew-tap
+    name: ledger
+    directory: Formula
+    homepage: https://formance.com
+    skip_upload: auto
+    test: |
+      system "#{bin}/ledger version"
+    install: |
+      bin.install "ledger"

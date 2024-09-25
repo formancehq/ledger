@@ -1,14 +1,13 @@
 VERSION 0.8
+PROJECT FormanceHQ/ledger
 
 IMPORT github.com/formancehq/earthly:tags/v0.16.0 AS core
-IMPORT ../../releases AS releases
-IMPORT ../.. AS stack
-IMPORT .. AS components
+IMPORT github.com/formancehq/stack/releases:main AS releases
 
 FROM core+base-image
 
 sources:
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY go.mod go.sum .
     COPY --dir internal pkg cmd .
     COPY main.go .
@@ -19,7 +18,7 @@ generate:
     RUN apk update && apk add openjdk11
     DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     DO --pass-args core+GO_GENERATE
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -28,7 +27,7 @@ generate:
 compile:
     FROM core+builder-image
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     ARG VERSION=latest
     DO --pass-args core+GO_COMPILE --VERSION=$VERSION
 
@@ -46,7 +45,7 @@ tests:
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
 
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY --dir --pass-args (+generate/*) .
     COPY --dir test .
 
@@ -97,15 +96,15 @@ deploy:
     RUN kubectl patch Versions.formance.com default -p "{\"spec\":{\"ledger\": \"${tag}\"}}" --type=merge
 
 deploy-staging:
-    BUILD --pass-args stack+deployer-module --MODULE=ledger
+    BUILD --pass-args core+deployer-module --MODULE=ledger
 
 lint:
     FROM core+builder-image
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY --pass-args +tidy/go.* .
     COPY --dir test .
-    DO --pass-args stack+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
+    DO --pass-args core+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -126,10 +125,9 @@ bench:
     FROM core+builder-image
     DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
     COPY (+sources/*) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY --dir test .
-    WORKDIR /src/components/ledger/test/performance
-
+    WORKDIR /src/test/performance
     ARG benchTime=1s
     ARG count=1
     ARG GOPROXY
@@ -163,7 +161,7 @@ openapi:
     FROM node:20-alpine
     RUN apk update && apk add yq
     RUN npm install -g openapi-merge-cli
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY --dir openapi openapi
     RUN openapi-merge-cli --config ./openapi/openapi-merge.json
     RUN yq -oy ./openapi.json > openapi.yaml
@@ -172,12 +170,15 @@ openapi:
 tidy:
     FROM core+builder-image
     COPY --pass-args (+sources/src) /src
-    WORKDIR /src/components/ledger
+    WORKDIR /src
     COPY --dir test .
-    DO --pass-args stack+GO_TIDY
+    DO --pass-args core+GO_TIDY
 
 release:
-    BUILD --pass-args stack+goreleaser --path=components/ledger
+    FROM core+builder-image
+    ARG mode=local
+    COPY --dir . /src
+    DO core+GORELEASER --mode=$mode
 
 generate-client:
     FROM node:20-alpine

@@ -4,13 +4,14 @@ package test_suite
 
 import (
 	"encoding/json"
+	"os"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/testing/docker"
 	. "github.com/formancehq/go-libs/testing/platform/pgtesting"
 	. "github.com/formancehq/go-libs/testing/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"os"
 )
 
 var (

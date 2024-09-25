@@ -1,9 +1,0 @@
-/api/ @formancehq/dev-backend
-/cmd/ @formancehq/dev-backend
-/config/ @formancehq/dev-backend
-/core/ @formancehq/dev-backend
-/ledger/ @formancehq/dev-backend
-*.go @formancehq/dev-backend
-
-/.devcontainer @flemzord
-/.github @flemzord

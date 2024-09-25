@@ -3,7 +3,7 @@ volumes:
   postgres:
 services:
   postgres:
-    image: "postgres:15-alpine"
+    image: "postgres:16-alpine"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ledger"]
       interval: 10s
