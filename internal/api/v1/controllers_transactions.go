@@ -19,14 +19,14 @@ func mapTransactionToV1(tx ledger.Transaction) any {
 	}
 }
 
-func mapExpandedTransactionToV1(tx ledger.ExpandedTransaction) any {
+func mapExpandedTransactionToV1(tx ledger.Transaction) any {
 	return struct {
-		ledger.ExpandedTransaction
+		ledger.Transaction
 		TxID int `json:"txid"`
 		ID   int `json:"-"`
 	}{
-		ExpandedTransaction: tx,
-		TxID:                tx.ID,
+		Transaction: tx,
+		TxID:        tx.ID,
 	}
 }
 

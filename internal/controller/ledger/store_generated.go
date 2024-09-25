@@ -319,10 +319,10 @@ func (mr *MockStoreMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
 }
 
 // GetTransaction mocks base method.
-func (m *MockStore) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.ExpandedTransaction, error) {
+func (m *MockStore) GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, query)
-	ret0, _ := ret[0].(*ledger.ExpandedTransaction)
+	ret0, _ := ret[0].(*ledger.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -394,10 +394,10 @@ func (mr *MockStoreMockRecorder) ListLogs(ctx, q any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockStore) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.ExpandedTransaction], error) {
+func (m *MockStore) ListTransactions(ctx context.Context, q ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedTransaction])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

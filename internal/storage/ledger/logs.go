@@ -5,7 +5,6 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-
 	"github.com/formancehq/ledger/internal/tracing"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
@@ -73,6 +72,7 @@ func (s *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 	}
 
 	_, err := tracing.TraceWithLatency(ctx, "InsertLog", tracing.NoResult(func(ctx context.Context) error {
+
 		data, err := json.Marshal(log.Data)
 		if err != nil {
 			return errors.Wrap(err, "failed to marshal log data")

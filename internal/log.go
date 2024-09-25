@@ -148,6 +148,32 @@ type NewTransactionLogPayload struct {
 	AccountMetadata AccountMetadata `json:"accountMetadata"`
 }
 
+// MarshalJSON override default json marshalling
+// We don't want to store pc(v)e on the logs
+// because :
+//  1. It can change (effective only)
+//  2. They are not part of the decision-making process
+func (p NewTransactionLogPayload) MarshalJSON() ([]byte, error) {
+	// strip MarshalJSON of Transaction
+	type aux Transaction
+	type tx struct {
+		aux
+		PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty"`
+		PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
+	}
+
+	return json.Marshal(struct {
+		Transaction     tx              `json:"transaction"`
+		AccountMetadata AccountMetadata `json:"accountMetadata"`
+	}{
+		Transaction: tx{
+			aux: aux(p.Transaction),
+		},
+		AccountMetadata: p.AccountMetadata,
+	})
+
+}
+
 func NewTransactionLog(tx Transaction, accountMetadata AccountMetadata) Log {
 	if accountMetadata == nil {
 		accountMetadata = AccountMetadata{}
