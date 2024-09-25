@@ -70,8 +70,8 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 	var selectAccountsWithVolumes *bun.SelectQuery
 	if date != nil && !date.IsZero() {
 		if useInsertionDate {
-			if !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitVolumes, "SYNC") {
-				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitVolumes))
+			if !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
+				return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesBySeq(date)).
