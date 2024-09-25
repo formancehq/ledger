@@ -88,11 +88,6 @@ func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun
 func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffectiveVolumes bool, q query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
-	// todo: no need this feature to grab pcv since those are included in transaction table
-	if expandVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
-		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
-	}
-
 	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes))
 	}

@@ -21,7 +21,7 @@ type Hook struct {
 	After  func(ctx context.Context, t *testing.T, db bun.IDB)
 }
 
-// todo: export in go libs
+// todo(libs): export in go libs
 type MigrationTest struct {
 	migrator *migrations.Migrator
 	hooks    []Hook
