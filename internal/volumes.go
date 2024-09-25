@@ -6,38 +6,38 @@ import (
 )
 
 type Volumes struct {
-	Inputs  *big.Int `bun:"inputs" json:"input"`
-	Outputs *big.Int `bun:"outputs" json:"output"`
+	Input  *big.Int `json:"input"`
+	Output *big.Int `json:"output"`
 }
 
 func (v Volumes) CopyWithZerosIfNeeded() Volumes {
 	return Volumes{
-		Inputs:  new(big.Int).Set(v.Inputs),
-		Outputs: new(big.Int).Set(v.Outputs),
+		Input:  new(big.Int).Set(v.Input),
+		Output: new(big.Int).Set(v.Output),
 	}
 }
 
 func (v Volumes) WithInput(input *big.Int) Volumes {
-	v.Inputs = input
+	v.Input = input
 	return v
 }
 
 func (v Volumes) WithOutput(output *big.Int) Volumes {
-	v.Outputs = output
+	v.Output = output
 	return v
 }
 
 func NewEmptyVolumes() Volumes {
 	return Volumes{
-		Inputs:  new(big.Int),
-		Outputs: new(big.Int),
+		Input:  new(big.Int),
+		Output: new(big.Int),
 	}
 }
 
 func NewVolumesInt64(input, output int64) Volumes {
 	return Volumes{
-		Inputs:  big.NewInt(input),
-		Outputs: big.NewInt(output),
+		Input:  big.NewInt(input),
+		Output: big.NewInt(output),
 	}
 }
 
@@ -57,20 +57,20 @@ type VolumesWithBalanceByAssets map[string]*VolumesWithBalance
 
 func (v Volumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(VolumesWithBalance{
-		Input:   v.Inputs,
-		Output:  v.Outputs,
+		Input:   v.Input,
+		Output:  v.Output,
 		Balance: v.Balance(),
 	})
 }
 
 func (v Volumes) Balance() *big.Int {
-	return new(big.Int).Sub(v.Inputs, v.Outputs)
+	return new(big.Int).Sub(v.Input, v.Output)
 }
 
 func (v Volumes) copy() Volumes {
 	return Volumes{
-		Inputs:  new(big.Int).Set(v.Inputs),
-		Outputs: new(big.Int).Set(v.Outputs),
+		Input:  new(big.Int).Set(v.Input),
+		Output: new(big.Int).Set(v.Output),
 	}
 }
 
@@ -83,7 +83,7 @@ type BalancesByAssetsByAccounts map[string]BalancesByAssets
 func (v VolumesByAssets) Balances() BalancesByAssets {
 	balances := BalancesByAssets{}
 	for asset, vv := range v {
-		balances[asset] = new(big.Int).Sub(vv.Inputs, vv.Outputs)
+		balances[asset] = new(big.Int).Sub(vv.Input, vv.Output)
 	}
 	return balances
 }
@@ -102,13 +102,13 @@ func (a PostCommitVolumes) AddInput(account, asset string, input *big.Int) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
-				Inputs:  input,
-				Outputs: &big.Int{},
+				Input:  input,
+				Output: &big.Int{},
 			},
 		}
 	} else {
 		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
-		volumes.Inputs.Add(volumes.Inputs, input)
+		volumes.Input.Add(volumes.Input, input)
 		assetsVolumes[asset] = volumes
 	}
 }
@@ -117,13 +117,13 @@ func (a PostCommitVolumes) AddOutput(account, asset string, output *big.Int) {
 	if assetsVolumes, ok := a[account]; !ok {
 		a[account] = map[string]Volumes{
 			asset: {
-				Outputs: output,
-				Inputs:  &big.Int{},
+				Output: output,
+				Input:  &big.Int{},
 			},
 		}
 	} else {
 		volumes := assetsVolumes[asset].CopyWithZerosIfNeeded()
-		volumes.Outputs.Add(volumes.Outputs, output)
+		volumes.Output.Add(volumes.Output, output)
 		assetsVolumes[asset] = volumes
 	}
 }

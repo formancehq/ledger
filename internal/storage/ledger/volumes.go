@@ -22,8 +22,8 @@ type AccountsVolumes struct {
 	Ledger      string   `bun:"ledger,type:varchar"`
 	Account     string   `bun:"account,type:varchar"`
 	Asset       string   `bun:"asset,type:varchar"`
-	Inputs      *big.Int `bun:"inputs,type:numeric"`
-	Outputs     *big.Int `bun:"outputs,type:numeric"`
+	Input       *big.Int `bun:"input,type:numeric"`
+	Output      *big.Int `bun:"output,type:numeric"`
 	AccountsSeq int      `bun:"accounts_seq,type:int"`
 }
 
@@ -34,9 +34,9 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 			Model(&accountVolumes).
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
 			On("conflict (ledger, account, asset) do update").
-			Set("inputs = accounts_volumes.inputs + excluded.inputs").
-			Set("outputs = accounts_volumes.outputs + excluded.outputs").
-			Returning("inputs, outputs").
+			Set("input = accounts_volumes.input + excluded.input").
+			Set("output = accounts_volumes.output + excluded.output").
+			Returning("input, output").
 			Exec(ctx)
 		if err != nil {
 			return nil, postgres.ResolveError(err)
@@ -48,8 +48,8 @@ func (s *Store) updateVolumes(ctx context.Context, accountVolumes ...AccountsVol
 				ret[volumes.Account] = map[string]ledger.Volumes{}
 			}
 			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-				Inputs:  volumes.Inputs,
-				Outputs: volumes.Outputs,
+				Input:  volumes.Input,
+				Output: volumes.Output,
 			}
 		}
 

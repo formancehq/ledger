@@ -27,13 +27,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type Volumes struct {
-	Inputs  *big.Int `bun:"inputs" json:"inputs"`
-	Outputs *big.Int `bun:"outputs" json:"outputs"`
-}
-
 type AggregatedAccountVolume struct {
-	Volumes
+	ledger.Volumes
 	Asset string `bun:"asset"`
 }
 
@@ -48,12 +43,12 @@ func (volumes AggregatedAccountVolumes) toCore() ledger.VolumesByAssets {
 	for _, volume := range volumes {
 		if volumesForAsset, ok := ret[volume.Asset]; !ok {
 			ret[volume.Asset] = ledger.Volumes{
-				Inputs:  new(big.Int).Set(volume.Inputs),
-				Outputs: new(big.Int).Set(volume.Outputs),
+				Input:  new(big.Int).Set(volume.Input),
+				Output: new(big.Int).Set(volume.Output),
 			}
 		} else {
-			volumesForAsset.Inputs = volumesForAsset.Inputs.Add(volumesForAsset.Inputs, volume.Inputs)
-			volumesForAsset.Outputs = volumesForAsset.Outputs.Add(volumesForAsset.Outputs, volume.Outputs)
+			volumesForAsset.Input = volumesForAsset.Input.Add(volumesForAsset.Input, volume.Input)
+			volumesForAsset.Output = volumesForAsset.Output.Add(volumesForAsset.Output, volume.Output)
 
 			ret[volume.Asset] = volumesForAsset
 		}
@@ -114,7 +109,7 @@ func convertOperatorToSQL(operator string) string {
 
 func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 	return s.SortMovesBySeq(date).
-		ColumnExpr("(post_commit_volumes).inputs - (post_commit_volumes).outputs as balance").
+		ColumnExpr("(post_commit_volumes).input - (post_commit_volumes).output as balance").
 		Limit(1)
 }
 
@@ -198,7 +193,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesBySeq(date)).
 					Column("accounts_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'inputs', (v.post_commit_volumes).inputs, 'outputs', (v.post_commit_volumes).outputs))) as pcv`).
+					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_volumes).input, 'output', (v.post_commit_volumes).output))) as pcv`).
 					Group("accounts_seq"),
 			).
 			ColumnExpr("pcv.*")
@@ -211,7 +206,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesByEffectiveDate(date)).
 					Column("accounts_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'inputs', (v.post_commit_effective_volumes).inputs, 'outputs', (v.post_commit_effective_volumes).outputs))) as pcev`).
+					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_effective_volumes).input, 'output', (v.post_commit_effective_volumes).output))) as pcev`).
 					Group("accounts_seq"),
 			).
 			ColumnExpr("pcev.*")
