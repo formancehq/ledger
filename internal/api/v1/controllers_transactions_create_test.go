@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -221,6 +222,7 @@ func TestTransactionsCreate(t *testing.T) {
 
 			systemController, ledgerController := newTestingSystemController(t, true)
 			if testCase.expectedStatusCode < 300 && testCase.expectedStatusCode >= 200 {
+				testCase.expectedRunScript.Timestamp = time.Time{}
 				ledgerController.EXPECT().
 					CreateTransaction(gomock.Any(), ledgercontroller.Parameters{
 						DryRun: tc.expectedPreview,

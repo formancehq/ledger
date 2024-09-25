@@ -551,11 +551,13 @@ as
 $$
 begin
     insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_seq, revision, date, metadata)
-    values (new.ledger, new.seq, (select revision + 1
-                                  from "{{.Bucket}}".accounts_metadata
-                                  where accounts_metadata.accounts_seq = new.seq
-                                  order by revision desc
-                                  limit 1), new.updated_at, new.metadata);
+    values (new.ledger, new.seq, (
+        select revision + 1
+		from "{{.Bucket}}".accounts_metadata
+		where accounts_metadata.accounts_seq = new.seq
+		order by revision desc
+		limit 1
+	), new.updated_at, new.metadata);
 
     return new;
 end;

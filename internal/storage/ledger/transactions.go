@@ -35,21 +35,21 @@ var (
 type Transaction struct {
 	bun.BaseModel `bun:"table:transactions,alias:transactions"`
 
-	Ledger                     string                        `bun:"ledger,type:varchar"`
-	ID                         int                           `bun:"id,type:numeric"`
-	Seq                        int                           `bun:"seq,scanonly"`
-	Timestamp                  *time.Time                    `bun:"timestamp,type:timestamp without time zone"`
-	Reference                  string                        `bun:"reference,type:varchar,unique,nullzero"`
-	Postings                   []ledger.Posting              `bun:"postings,type:jsonb"`
-	Metadata                   metadata.Metadata             `bun:"metadata,type:jsonb,default:'{}'"`
-	RevertedAt                 *time.Time                    `bun:"reverted_at"`
-	InsertedAt                 *time.Time                    `bun:"inserted_at"`
-	Sources                    []string                      `bun:"sources,type:jsonb"`
-	Destinations               []string                      `bun:"destinations,type:jsonb"`
-	SourcesArray               []map[string]any              `bun:"sources_arrays,type:jsonb"`
-	DestinationsArray          []map[string]any              `bun:"destinations_arrays,type:jsonb"`
-	PostCommitEffectiveVolumes TransactionsPostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-	PostCommitVolumes          TransactionsPostCommitVolumes `bun:"post_commit_volumes,type:jsonb,scanonly"`
+	Ledger                     string                   `bun:"ledger,type:varchar"`
+	ID                         int                      `bun:"id,type:numeric"`
+	Seq                        int                      `bun:"seq,scanonly"`
+	Timestamp                  time.Time                `bun:"timestamp,type:timestamp without time zone,nullzero"`
+	Reference                  string                   `bun:"reference,type:varchar,unique,nullzero"`
+	Postings                   []ledger.Posting         `bun:"postings,type:jsonb"`
+	Metadata                   metadata.Metadata        `bun:"metadata,type:jsonb,default:'{}'"`
+	RevertedAt                 *time.Time               `bun:"reverted_at,type:timestamp without time zone"`
+	InsertedAt                 time.Time                `bun:"inserted_at,type:timestamp without time zone,nullzero"`
+	Sources                    []string                 `bun:"sources,type:jsonb"`
+	Destinations               []string                 `bun:"destinations,type:jsonb"`
+	SourcesArray               []map[string]any         `bun:"sources_arrays,type:jsonb"`
+	DestinationsArray          []map[string]any         `bun:"destinations_arrays,type:jsonb"`
+	PostCommitEffectiveVolumes ledger.PostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	PostCommitVolumes          ledger.PostCommitVolumes `bun:"post_commit_volumes,type:jsonb"`
 }
 
 func (t Transaction) toCore() ledger.Transaction {
@@ -57,44 +57,15 @@ func (t Transaction) toCore() ledger.Transaction {
 		TransactionData: ledger.TransactionData{
 			Reference:  t.Reference,
 			Metadata:   t.Metadata,
-			Timestamp:  *t.Timestamp,
+			Timestamp:  t.Timestamp,
 			Postings:   t.Postings,
-			InsertedAt: *t.InsertedAt,
+			InsertedAt: t.InsertedAt,
 		},
 		ID:                         t.ID,
 		Reverted:                   t.RevertedAt != nil && !t.RevertedAt.IsZero(),
-		PostCommitEffectiveVolumes: t.PostCommitEffectiveVolumes.toCore(),
-		PostCommitVolumes:          t.PostCommitVolumes.toCore(),
+		PostCommitEffectiveVolumes: t.PostCommitEffectiveVolumes,
+		PostCommitVolumes:          t.PostCommitVolumes,
 	}
-}
-
-type TransactionPostCommitVolume struct {
-	AggregatedAccountVolume
-	Account string `bun:"account"`
-}
-
-type TransactionsPostCommitVolumes []TransactionPostCommitVolume
-
-func (p TransactionsPostCommitVolumes) toCore() ledger.PostCommitVolumes {
-	ret := ledger.PostCommitVolumes{}
-	for _, volumes := range p {
-		if _, ok := ret[volumes.Account]; !ok {
-			ret[volumes.Account] = map[string]ledger.Volumes{}
-		}
-		if v, ok := ret[volumes.Account][volumes.Asset]; !ok {
-			ret[volumes.Account][volumes.Asset] = ledger.Volumes{
-				Input:  volumes.Input,
-				Output: volumes.Output,
-			}
-		} else {
-			v.Input = v.Input.Add(v.Input, volumes.Input)
-			v.Output = v.Output.Add(v.Output, volumes.Output)
-
-			ret[volumes.Account][volumes.Asset] = v
-		}
-
-	}
-	return ret
 }
 
 func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun.SelectQuery {
@@ -118,6 +89,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 	if expandVolumes && !s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
 		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitVolumes))
 	}
+
 	if expandEffectiveVolumes && !s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
 		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeaturePostCommitEffectiveVolumes))
 	}
@@ -176,6 +148,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 			"sources_arrays",
 			"destinations_arrays",
 			"reverted_at",
+			"post_commit_volumes",
 		).
 		Where("ledger = ?", s.ledger.Name)
 
@@ -194,28 +167,45 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 		ret = ret.ColumnExpr("metadata")
 	}
 
-	if s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") && expandVolumes {
-		ret = ret.
-			Join(
-				`join (?) pcv on pcv.transactions_seq = transactions.seq`,
-				s.db.NewSelect().
-					TableExpr(s.GetPrefixedRelationName("moves")).
-					Column("transactions_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'input', (moves.post_commit_volumes).input, 'output', (moves.post_commit_volumes).output))) as post_commit_volumes`).
-					Group("transactions_seq"),
-			).
-			ColumnExpr("pcv.*")
-	}
+	/**
+	select transactions_seq, jsonb_merge_agg(pcev::jsonb) as post_commit_effective_volumes
+	from (
+	    SELECT
+	        distinct on (transactions_seq, account_address, asset)
+	        "transactions_seq",
+	        json_build_object(
+	            moves.account_address,
+	            json_build_object(
+	                moves.asset,
+	                first_value(moves.post_commit_effective_volumes) over (partition by (transactions_seq, account_address, asset) order by seq desc))) as pcev
+	    FROM moves
+	) data
+	group by transactions_seq;
+	*/
 
 	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
 				`join (?) pcev on pcev.transactions_seq = transactions.seq`,
-				// todo: need to take only the last move for each account/asset
 				s.db.NewSelect().
-					TableExpr(s.GetPrefixedRelationName("moves")).
 					Column("transactions_seq").
-					ColumnExpr(`to_json(array_agg(json_build_object('account', moves.account_address,	'asset', moves.asset, 'input', (moves.post_commit_effective_volumes).input, 'output', (moves.post_commit_effective_volumes).output))) as post_commit_effective_volumes`).
+					ColumnExpr("jsonb_merge_agg(pcev::jsonb) as post_commit_effective_volumes").
+					TableExpr(
+						"(?) data",
+						s.db.NewSelect().
+							DistinctOn("transactions_seq, account_address, asset").
+							ModelTableExpr(s.GetPrefixedRelationName("moves")).
+							Column("transactions_seq").
+							ColumnExpr(`
+								json_build_object(
+									moves.account_address,
+									json_build_object(
+										moves.asset,
+										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_seq, account_address, asset) order by seq desc)
+									)
+								) as pcev
+							`),
+					).
 					Group("transactions_seq"),
 			).
 			ColumnExpr("pcev.*")
@@ -299,31 +289,6 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 
 func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
 
-	sources := Map(tx.Postings, ledger.Posting.GetSource)
-	destinations := Map(tx.Postings, ledger.Posting.GetDestination)
-	mappedTx := &Transaction{
-		Ledger:   s.ledger.Name,
-		Postings: tx.Postings,
-		Metadata: tx.Metadata,
-		Timestamp: func() *time.Time {
-			if tx.Timestamp.IsZero() {
-				return nil
-			}
-			return &tx.Timestamp
-		}(),
-		Reference: tx.Reference,
-		InsertedAt: func() *time.Time {
-			if tx.InsertedAt.IsZero() {
-				return nil
-			}
-			return &tx.InsertedAt
-		}(),
-		Sources:           sources,
-		Destinations:      destinations,
-		SourcesArray:      Map(sources, convertAddrToIndexedJSONB),
-		DestinationsArray: Map(destinations, convertAddrToIndexedJSONB),
-	}
-
 	sqlQueries := Map(tx.InvolvedAccounts(), func(from string) string {
 		return fmt.Sprintf("select pg_advisory_xact_lock(hashtext('%s'))", fmt.Sprintf("%s_%s", s.ledger.Name, from))
 	})
@@ -333,20 +298,15 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return postgres.ResolveError(err)
 	}
 
-	err = s.insertTransaction(ctx, mappedTx)
-	if err != nil {
-		return errors.Wrap(err, "failed to insert transaction")
-	}
-
 	accounts := map[string]Account{}
 	for _, address := range tx.InvolvedAccounts() {
 		account := Account{
 			Ledger:        s.ledger.Name,
 			AddressArray:  strings.Split(address, ":"),
 			Address:       address,
-			FirstUsage:    *mappedTx.Timestamp,
-			InsertionDate: *mappedTx.InsertedAt,
-			UpdatedAt:     *mappedTx.InsertedAt,
+			FirstUsage:    tx.Timestamp,
+			InsertionDate: tx.InsertedAt,
+			UpdatedAt:     tx.InsertedAt,
 			Metadata:      make(metadata.Metadata),
 		}
 		_, err := s.upsertAccount(ctx, &account)
@@ -357,9 +317,32 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		accounts[address] = account
 	}
 
-	// notes(gfyrag): keep upserting of accounts separated as some account can be created (and locked),
-	// while some other will not (the underlying SAVEPOINT of the storage is ROLLBACK if no rows are touched)
-	// maybe it could be handled by the storage
+	updatedVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx, accounts)...)
+	if err != nil {
+		return errors.Wrap(err, "failed to update balances")
+	}
+
+	sources := Map(tx.Postings, ledger.Posting.GetSource)
+	destinations := Map(tx.Postings, ledger.Posting.GetDestination)
+	mappedTx := &Transaction{
+		Ledger:            s.ledger.Name,
+		Postings:          tx.Postings,
+		Metadata:          tx.Metadata,
+		Timestamp:         tx.Timestamp,
+		Reference:         tx.Reference,
+		InsertedAt:        tx.InsertedAt,
+		Sources:           sources,
+		Destinations:      destinations,
+		SourcesArray:      Map(sources, convertAddrToIndexedJSONB),
+		DestinationsArray: Map(destinations, convertAddrToIndexedJSONB),
+		PostCommitVolumes: updatedVolumes,
+	}
+
+	err = s.insertTransaction(ctx, mappedTx)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert transaction")
+	}
+
 	moves := Moves{}
 	for _, p := range tx.Postings {
 		moves = append(moves, []*Move{
@@ -370,8 +353,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(p.Source, ":"),
 				Amount:              (*bunpaginate.BigInt)(p.Amount),
 				Asset:               p.Asset,
-				InsertionDate:       *mappedTx.InsertedAt,
-				EffectiveDate:       *mappedTx.Timestamp,
+				InsertionDate:       tx.InsertedAt,
+				EffectiveDate:       tx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[p.Source].Seq,
 			},
@@ -381,8 +364,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(p.Destination, ":"),
 				Amount:              (*bunpaginate.BigInt)(p.Amount),
 				Asset:               p.Asset,
-				InsertionDate:       *mappedTx.InsertedAt,
-				EffectiveDate:       *mappedTx.Timestamp,
+				InsertionDate:       tx.InsertedAt,
+				EffectiveDate:       tx.Timestamp,
 				TransactionSeq:      mappedTx.Seq,
 				AccountSeq:          accounts[p.Destination].Seq,
 			},
@@ -393,19 +376,13 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return errors.Wrap(err, "failed to insert moves")
 	}
 
-	_, err = s.updateVolumes(ctx, moves.volumeUpdates()...)
-	if err != nil {
-		return errors.Wrap(err, "failed to update balances")
-	}
-
 	tx.ID = mappedTx.ID
-	tx.InsertedAt = *mappedTx.InsertedAt
-	tx.Timestamp = *mappedTx.Timestamp
-	if s.ledger.HasFeature(ledger.FeaturePostCommitVolumes, "SYNC") {
-		tx.PostCommitVolumes = moves.ComputePostCommitVolumes().toCore()
-	}
+	tx.PostCommitVolumes = updatedVolumes
+	tx.Timestamp = mappedTx.Timestamp
+	tx.InsertedAt = mappedTx.InsertedAt
+
 	if s.ledger.HasFeature(ledger.FeaturePostCommitEffectiveVolumes, "SYNC") {
-		tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes().toCore()
+		tx.PostCommitEffectiveVolumes = moves.ComputePostCommitEffectiveVolumes()
 	}
 
 	return nil
@@ -470,7 +447,7 @@ func (s *Store) insertTransaction(ctx context.Context, tx *Transaction) error {
 			Model(tx).
 			ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
-			Returning("*").
+			Returning("id, seq, timestamp, inserted_at").
 			Exec(ctx)
 		if err != nil {
 			err = postgres.ResolveError(err)
@@ -650,4 +627,43 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 		}
 		return strings.Join(parts, " or ")
 	}
+}
+
+func volumeUpdates(l string, transaction *ledger.Transaction, accounts map[string]Account) []AccountsVolumes {
+	aggregatedVolumes := make(map[string]map[string][]ledger.Posting)
+	for _, posting := range transaction.Postings {
+		if _, ok := aggregatedVolumes[posting.Source]; !ok {
+			aggregatedVolumes[posting.Source] = make(map[string][]ledger.Posting)
+		}
+		aggregatedVolumes[posting.Source][posting.Asset] = append(aggregatedVolumes[posting.Source][posting.Asset], posting)
+
+		if _, ok := aggregatedVolumes[posting.Destination]; !ok {
+			aggregatedVolumes[posting.Destination] = make(map[string][]ledger.Posting)
+		}
+		aggregatedVolumes[posting.Destination][posting.Asset] = append(aggregatedVolumes[posting.Destination][posting.Asset], posting)
+	}
+
+	ret := make([]AccountsVolumes, 0)
+	for account, movesByAsset := range aggregatedVolumes {
+		for asset, postings := range movesByAsset {
+			volumes := ledger.NewEmptyVolumes()
+			for _, posting := range postings {
+				if account == posting.Source {
+					volumes.Output.Add(volumes.Output, posting.Amount)
+				} else {
+					volumes.Input.Add(volumes.Input, posting.Amount)
+				}
+			}
+			ret = append(ret, AccountsVolumes{
+				Ledger:      l,
+				Account:     account,
+				Asset:       asset,
+				Input:       volumes.Input,
+				Output:      volumes.Output,
+				AccountsSeq: accounts[account].Seq,
+			})
+		}
+	}
+
+	return ret
 }

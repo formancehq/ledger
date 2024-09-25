@@ -31,8 +31,12 @@ func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
 }
 
 func NewTransactionData() TransactionData {
+	now := time.Now()
 	return TransactionData{
-		Metadata: metadata.Metadata{},
+		Metadata:   metadata.Metadata{},
+		// todo: should be defined by the database ?
+		InsertedAt: now,
+		Timestamp:  now,
 	}
 }
 

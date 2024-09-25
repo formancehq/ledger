@@ -21,6 +21,9 @@ rename attribute inputs to input;
 alter type "{{.Bucket}}".volumes
 rename attribute outputs to output;
 
+alter table "{{.Bucket}}".transactions
+add column post_commit_volumes jsonb not null ;
+
 alter table "{{.Bucket}}".moves
 alter column post_commit_volumes
 drop not null,
@@ -119,7 +122,6 @@ create function "{{.Bucket}}".set_volumes()
 as
 $$
 begin
-	--todo: use balances table directly...
     new.post_commit_volumes = coalesce((
         select (
             (post_commit_volumes).input + case when new.is_source then 0 else new.amount end,

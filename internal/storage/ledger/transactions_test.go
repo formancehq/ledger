@@ -212,19 +212,17 @@ func TestTransactionsCommit(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	t.Run("inserting a transaction without timestamp should generate one", func(t *testing.T) {
+	t.Run("inserting some transactions", func(t *testing.T) {
 		t.Parallel()
 
 		store := newLedgerStore(t)
 
-		tx := ledger.NewTransaction().WithPostings(
+		tx1 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 		)
-		err := store.CommitTransaction(ctx, &tx)
+		err := store.CommitTransaction(ctx, &tx1)
 		require.NoError(t, err)
-		require.NotZero(t, tx.Timestamp)
-		require.NotZero(t, tx.InsertedAt)
-		require.Equal(t, 1, tx.ID)
+		require.Equal(t, 1, tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
 			"account:1": ledger.VolumesByAssets{
 				"USD": ledger.Volumes{
@@ -238,8 +236,30 @@ func TestTransactionsCommit(t *testing.T) {
 					Output: big.NewInt(0),
 				},
 			},
-		}, tx.PostCommitVolumes)
-		require.Equal(t, tx.PostCommitVolumes, tx.PostCommitEffectiveVolumes)
+		}, tx1.PostCommitVolumes)
+		require.Equal(t, tx1.PostCommitVolumes, tx1.PostCommitEffectiveVolumes)
+
+		tx2 := ledger.NewTransaction().WithPostings(
+			ledger.NewPosting("account:2", "account:3", "USD", big.NewInt(100)),
+		)
+		err = store.CommitTransaction(ctx, &tx2)
+		require.NoError(t, err)
+		require.Equal(t, 2, tx2.ID)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"account:2": ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(100),
+					Output: big.NewInt(100),
+				},
+			},
+			"account:3": ledger.VolumesByAssets{
+				"USD": ledger.Volumes{
+					Input:  big.NewInt(100),
+					Output: big.NewInt(0),
+				},
+			},
+		}, tx2.PostCommitVolumes)
+		require.Equal(t, tx2.PostCommitVolumes, tx2.PostCommitEffectiveVolumes)
 	})
 
 	t.Run("triggering a deadlock should return appropriate postgres error", func(t *testing.T) {
@@ -453,8 +473,8 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NotNil(t, revertedTx)
 	require.True(t, revertedTx.Reverted)
 	revertedTx.Reverted = false
-	tx1.PostCommitEffectiveVolumes = ledger.PostCommitVolumes{}
-	tx1.PostCommitVolumes = ledger.PostCommitVolumes{}
+	tx1.PostCommitEffectiveVolumes = nil
+	//tx1.PostCommitVolumes = ledger.PostCommitVolumes{}
 	require.Equal(t, tx1, *revertedTx)
 
 	// try to revert again
@@ -479,7 +499,7 @@ func TestTransactionsInsert(t *testing.T) {
 	// create a simple tx
 	tx1 := Transaction{
 		Ledger:    store.ledger.Name,
-		Timestamp: &now,
+		Timestamp: now,
 		Reference: "foo",
 	}
 	err := store.insertTransaction(ctx, &tx1)
@@ -490,7 +510,7 @@ func TestTransactionsInsert(t *testing.T) {
 	// create another tx with the same reference
 	tx2 := Transaction{
 		Ledger:    store.ledger.Name,
-		Timestamp: &now,
+		Timestamp: now,
 		Reference: "foo",
 	}
 	err = store.insertTransaction(ctx, &tx2)
@@ -503,9 +523,6 @@ func TestTransactionsInsert(t *testing.T) {
 	}
 	err = store.insertTransaction(ctx, &tx3)
 	require.NoError(t, err)
-
-	// timestamp should be filled by the database
-	require.NotZero(t, tx3.Timestamp)
 }
 
 func TestTransactionsList(t *testing.T) {
