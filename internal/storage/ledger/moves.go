@@ -32,7 +32,6 @@ func (s *Store) SelectDistinctMovesBySeq(date *time.Time) *bun.SelectQuery {
 		TableExpr("(?) moves", s.SortMovesBySeq(date)).
 		DistinctOn("accounts_address, asset").
 		Column("accounts_address", "asset").
-		ColumnExpr("first_value(accounts_address_array) over (partition by (accounts_address, asset) order by seq desc) as accounts_address_array").
 		ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as post_commit_volumes").
 		Where("ledger = ?", s.ledger.Name)
 
@@ -48,7 +47,6 @@ func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQ
 		TableExpr(s.GetPrefixedRelationName("moves")).
 		DistinctOn("accounts_address, asset").
 		Column("accounts_address", "asset").
-		ColumnExpr("first_value(accounts_address_array) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as accounts_address_array").
 		ColumnExpr("first_value(post_commit_effective_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as post_commit_effective_volumes").
 		Where("ledger = ?", s.ledger.Name)
 
@@ -77,12 +75,10 @@ func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	Ledger        string `bun:"ledger,type:varchar"`
-	TransactionID int    `bun:"transactions_id,type:bigint"`
-	IsSource      bool   `bun:"is_source,type:bool"`
-	Account       string `bun:"accounts_address,type:varchar"`
-	// todo: use accounts table
-	AccountAddressArray        []string            `bun:"accounts_address_array,type:jsonb"`
+	Ledger                     string              `bun:"ledger,type:varchar"`
+	TransactionID              int                 `bun:"transactions_id,type:bigint"`
+	IsSource                   bool                `bun:"is_source,type:bool"`
+	Account                    string              `bun:"accounts_address,type:varchar"`
 	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
 	Asset                      string              `bun:"asset,type:varchar"`
 	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`

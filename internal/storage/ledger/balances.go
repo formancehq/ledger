@@ -67,7 +67,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesBySeq(date)).
-				Column("asset", "accounts_address", "accounts_address_array").
+				Column("asset", "accounts_address").
 				ColumnExpr("post_commit_volumes as volumes")
 		} else {
 			if !s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
@@ -75,7 +75,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 			}
 			selectAccountsWithVolumes = s.db.NewSelect().
 				TableExpr("(?) moves", s.SelectDistinctMovesByEffectiveDate(date)).
-				Column("asset", "accounts_address", "accounts_address_array").
+				Column("asset", "accounts_address").
 				ColumnExpr("moves.post_commit_effective_volumes as volumes")
 		}
 	} else {
@@ -117,16 +117,13 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 		}
 	} else {
 		if needAddressSegment {
-			if date == nil || date.IsZero() { // account_address_array already resolved by moves if pit is specified
-				selectAccountsWithVolumes = s.db.NewSelect().
-					TableExpr(
-						"(?) accounts",
-						selectAccountsWithVolumes.
-							Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address").
-							ColumnExpr("accounts.address_array as accounts_address_array"),
-					).
-					ColumnExpr("*")
-			}
+			selectAccountsWithVolumes = s.db.NewSelect().
+				TableExpr(
+					"(?) accounts",
+					selectAccountsWithVolumes.
+						Join("join "+s.GetPrefixedRelationName("accounts")+" accounts on accounts.address = accounts_volumes.accounts_address"),
+				).
+				ColumnExpr("*")
 		}
 	}
 
@@ -134,7 +131,7 @@ func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool,
 		where, args, err := builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
 			switch {
 			case key == "address":
-				return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+				return filterAccountAddress(value.(string), "accounts.address"), nil, nil
 			case metadataRegex.Match([]byte(key)):
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
 
@@ -246,3 +243,32 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		return ret, nil
 	})
 }
+
+/**
+SELECT to_json(array_agg(json_build_object('asset', accounts.asset, 'input', (accounts.volumes->>'input')::numeric, 'output', (accounts.volumes->>'output')::numeric))) AS aggregated
+FROM (
+	SELECT *
+   	FROM (
+		SELECT *, accounts.address_array
+      	FROM (
+			SELECT "asset", "accounts_address", post_commit_volumes AS volumes
+         	FROM (
+				SELECT DISTINCT ON (accounts_address, asset)
+					"accounts_address",
+                    "asset",
+                    first_value(post_commit_volumes) OVER (PARTITION BY (accounts_address, asset) ORDER BY seq DESC) AS post_commit_volumes
+            	FROM (
+					SELECT *
+               		FROM "87b28082".moves
+               		WHERE (ledger = '87b28082') AND (insertion_date <= '2024-09-26T14:45:10.568382Z')
+	                ORDER BY "seq" DESC
+				) moves
+            	WHERE (ledger = '87b28082') AND (insertion_date <= '2024-09-26T14:45:10.568382Z')
+			) moves
+		) accounts_volumes
+      	JOIN "87b28082".accounts accounts ON accounts.address = accounts_volumes.accounts_address
+	) accounts
+	WHERE (jsonb_array_length(accounts.address_array) = 2
+	AND accounts.address_array @@ ('$[0] == "users"')::jsonpath)
+) accounts
+*/
