@@ -124,6 +124,16 @@ func getMigrator() *migrations.Migrator {
 				return err
 			},
 		},
+		migrations.Migration{
+			Name: "Remove ledger state column",
+			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
+				_, err := tx.ExecContext(ctx, `
+					alter table _system.ledgers
+					drop column state;
+				`)
+				return err
+			},
+		},
 	)
 
 	return migrator

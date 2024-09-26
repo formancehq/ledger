@@ -19,9 +19,6 @@ const (
 	FeatureIndexAddressSegments                   = "INDEX_ADDRESS_SEGMENTS"
 	FeatureIndexTransactionAccounts               = "INDEX_TRANSACTION_ACCOUNTS"
 
-	StateInitializing = "initializing"
-	StateInUse        = "in-use"
-
 	DefaultBucket = "_default"
 )
 
@@ -126,7 +123,6 @@ type Ledger struct {
 	ID      int       `json:"id"`
 	Name    string    `json:"name"`
 	AddedAt time.Time `json:"addedAt"`
-	State   string    `json:"-"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {
@@ -154,7 +150,6 @@ func New(name string, configuration Configuration) (*Ledger, error) {
 		Configuration: configuration,
 		Name:          name,
 		AddedAt:       time.Now(),
-		State:         StateInitializing,
 	}, nil
 }
 

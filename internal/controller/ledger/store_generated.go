@@ -133,6 +133,35 @@ func (mr *MockTXMockRecorder) InsertLog(ctx, log any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLog", reflect.TypeOf((*MockTX)(nil).InsertLog), ctx, log)
 }
 
+// ListLogs mocks base method.
+func (m *MockTX) ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLogs", ctx, q)
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLogs indicates an expected call of ListLogs.
+func (mr *MockTXMockRecorder) ListLogs(ctx, q any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockTX)(nil).ListLogs), ctx, q)
+}
+
+// LockLedger mocks base method.
+func (m *MockTX) LockLedger(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockLedger", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockLedger indicates an expected call of LockLedger.
+func (mr *MockTXMockRecorder) LockLedger(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockLedger", reflect.TypeOf((*MockTX)(nil).LockLedger), ctx)
+}
+
 // RevertTransaction mocks base method.
 func (m *MockTX) RevertTransaction(ctx context.Context, id int) (*ledger.Transaction, bool, error) {
 	m.ctrl.T.Helper()

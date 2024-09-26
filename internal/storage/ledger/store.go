@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/platform/postgres"
 
 	"github.com/formancehq/ledger/internal/tracing"
 
@@ -81,6 +82,11 @@ func (s *Store) validateAddressFilter(operator string, value any) error {
 	}
 
 	return nil
+}
+
+func (s *Store) LockLedger(ctx context.Context) error {
+	_, err := s.db.NewRaw(`lock table ` + s.GetPrefixedRelationName("logs")).Exec(ctx)
+	return postgres.ResolveError(err)
 }
 
 func New(db bun.IDB, ledger ledger.Ledger) *Store {

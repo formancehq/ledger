@@ -24,7 +24,6 @@ type Ledger struct {
 	AddedAt  time.Time         `bun:"addedat,type:timestamp"`
 	Bucket   string            `bun:"bucket,type:varchar(255)"`
 	Metadata map[string]string `bun:"metadata,type:jsonb"`
-	State    string            `bun:"state,type:varchar(255)"`
 	Features map[string]string `bun:"features,type:jsonb"`
 }
 
@@ -37,7 +36,6 @@ func (l Ledger) toCore() ledger.Ledger {
 			Features: l.Features,
 		},
 		AddedAt: l.AddedAt,
-		State:   l.State,
 		ID:      l.ID,
 	}
 }
@@ -71,7 +69,6 @@ func (s *Store) CreateLedger(ctx context.Context, l *ledger.Ledger) (bool, error
 		AddedAt:   l.AddedAt,
 		Bucket:    l.Bucket,
 		Metadata:  l.Metadata,
-		State:     l.State,
 		Features:  l.Features,
 	}
 	ret, err := s.db.NewInsert().
