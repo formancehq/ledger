@@ -72,15 +72,13 @@ type Account struct {
 	PostCommitEffectiveVolumes AggregatedAccountVolumes `bun:"pcev,scanonly"`
 }
 
-func (account Account) toCore() ledger.ExpandedAccount {
-	return ledger.ExpandedAccount{
-		Account: ledger.Account{
-			Address:       account.Address,
-			Metadata:      account.Metadata,
-			FirstUsage:    account.FirstUsage,
-			InsertionDate: account.InsertionDate,
-			UpdatedAt:     account.UpdatedAt,
-		},
+func (account Account) toCore() ledger.Account {
+	return ledger.Account{
+		Address:       account.Address,
+		Metadata:      account.Metadata,
+		FirstUsage:    account.FirstUsage,
+		InsertionDate: account.InsertionDate,
+		UpdatedAt:     account.UpdatedAt,
 		Volumes:          account.PostCommitVolumes.toCore(),
 		EffectiveVolumes: account.PostCommitEffectiveVolumes.toCore(),
 	}
@@ -275,8 +273,8 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	return ret
 }
 
-func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.ExpandedAccount], error) {
-	return tracing.TraceWithLatency(ctx, "ListAccounts", func(ctx context.Context) (*Cursor[ledger.ExpandedAccount], error) {
+func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccountsQuery) (*Cursor[ledger.Account], error) {
+	return tracing.TraceWithLatency(ctx, "ListAccounts", func(ctx context.Context) (*Cursor[ledger.Account], error) {
 		ret, err := UsingOffset[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], Account](
 			ctx,
 			s.selectAccounts(
@@ -296,8 +294,8 @@ func (s *Store) ListAccounts(ctx context.Context, q ledgercontroller.ListAccount
 	})
 }
 
-func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.ExpandedAccount, error) {
-	return tracing.TraceWithLatency(ctx, "GetAccount", func(ctx context.Context) (*ledger.ExpandedAccount, error) {
+func (s *Store) GetAccount(ctx context.Context, q ledgercontroller.GetAccountQuery) (*ledger.Account, error) {
+	return tracing.TraceWithLatency(ctx, "GetAccount", func(ctx context.Context) (*ledger.Account, error) {
 		ret := &Account{}
 		if err := s.selectAccounts(q.PIT, q.ExpandVolumes, q.ExpandEffectiveVolumes, nil).
 			Model(ret).

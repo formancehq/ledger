@@ -10,15 +10,11 @@ const (
 )
 
 type Account struct {
-	Address       string            `json:"address"`
-	Metadata      metadata.Metadata `json:"metadata"`
-	FirstUsage    time.Time         `json:"-"`
-	InsertionDate time.Time         `json:"_"`
-	UpdatedAt     time.Time         `json:"-"`
-}
-
-type ExpandedAccount struct {
-	Account          `bun:",extend"`
-	Volumes          VolumesByAssets `json:"volumes,omitempty"`
-	EffectiveVolumes VolumesByAssets `json:"effectiveVolumes,omitempty"`
+	Address          string            `json:"address"`
+	Metadata         metadata.Metadata `json:"metadata"`
+	FirstUsage       time.Time         `json:"-"`
+	InsertionDate    time.Time         `json:"_"`
+	UpdatedAt        time.Time         `json:"-"`
+	Volumes          VolumesByAssets   `json:"volumes,omitempty"`
+	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty"`
 }

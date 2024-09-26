@@ -131,10 +131,10 @@ func (mr *MockControllerMockRecorder) Export(ctx, w any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.ExpandedAccount, error) {
+func (m *MockController) GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
-	ret0, _ := ret[0].(*ledger.ExpandedAccount)
+	ret0, _ := ret[0].(*ledger.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -250,10 +250,10 @@ func (mr *MockControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call {
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, query ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
+func (m *MockController) ListAccounts(ctx context.Context, query ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedAccount])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

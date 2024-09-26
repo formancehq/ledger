@@ -9,12 +9,13 @@ import (
 )
 
 type V2Transaction struct {
-	Timestamp time.Time         `json:"timestamp"`
-	Postings  []V2Posting       `json:"postings"`
-	Reference *string           `json:"reference,omitempty"`
-	Metadata  map[string]string `json:"metadata"`
-	ID        *big.Int          `json:"id"`
-	Reverted  bool              `json:"reverted"`
+	Timestamp  time.Time         `json:"timestamp"`
+	Postings   []V2Posting       `json:"postings"`
+	Reference  *string           `json:"reference,omitempty"`
+	Metadata   map[string]string `json:"metadata"`
+	ID         *big.Int          `json:"id"`
+	Reverted   bool              `json:"reverted"`
+	RevertedAt *time.Time        `json:"revertedAt,omitempty"`
 }
 
 func (v V2Transaction) MarshalJSON() ([]byte, error) {
@@ -68,4 +69,11 @@ func (o *V2Transaction) GetReverted() bool {
 		return false
 	}
 	return o.Reverted
+}
+
+func (o *V2Transaction) GetRevertedAt() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.RevertedAt
 }

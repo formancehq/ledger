@@ -249,7 +249,7 @@ func TestGetAccount(t *testing.T) {
 	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	account := ledger.ExpandedAccount{}
+	account := ledger.Account{}
 	query := NewGetAccountQuery("world")
 	store.EXPECT().
 		GetAccount(gomock.Any(), query).
@@ -286,7 +286,7 @@ func TestListAccounts(t *testing.T) {
 	listener := NewMockListener(ctrl)
 	ctx := logging.TestingContext()
 
-	cursor := &bunpaginate.Cursor[ledger.ExpandedAccount]{}
+	cursor := &bunpaginate.Cursor[ledger.Account]{}
 	query := NewListAccountsQuery(NewPaginatedQueryOptions[PITFilterWithVolumes](PITFilterWithVolumes{}))
 	store.EXPECT().
 		ListAccounts(gomock.Any(), query).

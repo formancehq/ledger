@@ -187,8 +187,8 @@ func TestGetAccounts(t *testing.T) {
 		))
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 2)
-		require.Equal(t, "account:1", accounts.Data[0].Account.Address)
-		require.Equal(t, "bank", accounts.Data[1].Account.Address)
+		require.Equal(t, "account:1", accounts.Data[0].Address)
+		require.Equal(t, "bank", accounts.Data[1].Address)
 	})
 
 	t.Run("list using filter on exists metadata", func(t *testing.T) {
@@ -264,26 +264,22 @@ func TestGetAccount(t *testing.T) {
 		t.Parallel()
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi"))
 		require.NoError(t, err)
-		require.Equal(t, ledger.ExpandedAccount{
-			Account: ledger.Account{
-				Address: "multi",
-				Metadata: metadata.Metadata{
-					"category": "gold",
-				},
-				FirstUsage: now.Add(-time.Minute),
+		require.Equal(t, ledger.Account{
+			Address: "multi",
+			Metadata: metadata.Metadata{
+				"category": "gold",
 			},
+			FirstUsage:       now.Add(-time.Minute),
 			EffectiveVolumes: map[string]ledger.Volumes{},
 			Volumes:          map[string]ledger.Volumes{},
 		}, *account)
 
 		account, err = store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("world"))
 		require.NoError(t, err)
-		require.Equal(t, ledger.ExpandedAccount{
-			Account: ledger.Account{
-				Address:    "world",
-				Metadata:   metadata.Metadata{},
-				FirstUsage: now.Add(-time.Minute),
-			},
+		require.Equal(t, ledger.Account{
+			Address:          "world",
+			Metadata:         metadata.Metadata{},
+			FirstUsage:       now.Add(-time.Minute),
 			EffectiveVolumes: map[string]ledger.Volumes{},
 			Volumes:          map[string]ledger.Volumes{},
 		}, *account)
@@ -294,12 +290,10 @@ func TestGetAccount(t *testing.T) {
 
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now.Add(-30*time.Second)))
 		require.NoError(t, err)
-		require.Equal(t, ledger.ExpandedAccount{
-			Account: ledger.Account{
-				Address:    "multi",
-				Metadata:   metadata.Metadata{},
-				FirstUsage: now.Add(-time.Minute),
-			},
+		require.Equal(t, ledger.Account{
+			Address:          "multi",
+			Metadata:         metadata.Metadata{},
+			FirstUsage:       now.Add(-time.Minute),
 			Volumes:          map[string]ledger.Volumes{},
 			EffectiveVolumes: map[string]ledger.Volumes{},
 		}, *account)
@@ -310,14 +304,12 @@ func TestGetAccount(t *testing.T) {
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").
 			WithExpandVolumes())
 		require.NoError(t, err)
-		require.Equal(t, ledger.ExpandedAccount{
-			Account: ledger.Account{
-				Address: "multi",
-				Metadata: metadata.Metadata{
-					"category": "gold",
-				},
-				FirstUsage: now.Add(-time.Minute),
+		require.Equal(t, ledger.Account{
+			Address: "multi",
+			Metadata: metadata.Metadata{
+				"category": "gold",
 			},
+			FirstUsage: now.Add(-time.Minute),
 			Volumes: ledger.VolumesByAssets{
 				"USD/2": ledger.NewVolumesInt64(100, 0),
 			},
@@ -330,14 +322,12 @@ func TestGetAccount(t *testing.T) {
 		account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").
 			WithExpandEffectiveVolumes())
 		require.NoError(t, err)
-		require.Equal(t, ledger.ExpandedAccount{
-			Account: ledger.Account{
-				Address: "multi",
-				Metadata: metadata.Metadata{
-					"category": "gold",
-				},
-				FirstUsage: now.Add(-time.Minute),
+		require.Equal(t, ledger.Account{
+			Address: "multi",
+			Metadata: metadata.Metadata{
+				"category": "gold",
 			},
+			FirstUsage: now.Add(-time.Minute),
 			EffectiveVolumes: ledger.VolumesByAssets{
 				"USD/2": ledger.NewVolumesInt64(100, 0),
 			},
@@ -351,7 +341,7 @@ func TestGetAccount(t *testing.T) {
 	//
 	//	account, err := store.GetAccount(ctx, ledgercontroller.NewGetAccountQuery("multi").WithPIT(now))
 	//	require.NoError(t, err)
-	//	require.Equal(t, ledger.ExpandedAccount{
+	//	require.Equal(t, ledger.Account{
 	//		Account: ledger.Account{
 	//			Address:    "multi",
 	//			Metadata:   metadata.Metadata{},
@@ -386,12 +376,10 @@ func TestGetAccountWithVolumes(t *testing.T) {
 	accountWithVolumes, err := store.GetAccount(ctx,
 		ledgercontroller.NewGetAccountQuery("multi").WithExpandVolumes())
 	require.NoError(t, err)
-	require.Equal(t, &ledger.ExpandedAccount{
-		Account: ledger.Account{
-			Address:    "multi",
-			Metadata:   metadata.Metadata{},
-			FirstUsage: now,
-		},
+	require.Equal(t, &ledger.Account{
+		Address:    "multi",
+		Metadata:   metadata.Metadata{},
+		FirstUsage: now,
 		Volumes: map[string]ledger.Volumes{
 			"USD/2": ledger.NewEmptyVolumes().WithInput(bigInt),
 		},

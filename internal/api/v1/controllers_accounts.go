@@ -13,16 +13,16 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 )
 
-type accountWithVolumesAndBalances ledger.ExpandedAccount
+type accountWithVolumesAndBalances ledger.Account
 
 func (a accountWithVolumesAndBalances) MarshalJSON() ([]byte, error) {
 	type aux struct {
-		ledger.ExpandedAccount
+		ledger.Account
 		Balances map[string]*big.Int `json:"balances"`
 	}
 	return json.Marshal(aux{
-		ExpandedAccount: ledger.ExpandedAccount(a),
-		Balances:        a.Volumes.Balances(),
+		Account:  ledger.Account(a),
+		Balances: a.Volumes.Balances(),
 	})
 }
 

@@ -9,4 +9,3 @@
 | `AddedAt`                                 | [time.Time](https://pkg.go.dev/time#Time) | :heavy_check_mark:                        | N/A                                       |                                           |
 | `Bucket`                                  | *string*                                  | :heavy_check_mark:                        | N/A                                       |                                           |
 | `Metadata`                                | map[string]*string*                       | :heavy_minus_sign:                        | N/A                                       | {<br/>"admin": "true"<br/>}               |
-| `Features`                                | map[string]*string*                       | :heavy_check_mark:                        | N/A                                       |                                           |

@@ -185,13 +185,11 @@ func TestAccountsList(t *testing.T) {
 				tc.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := bunpaginate.Cursor[ledger.ExpandedAccount]{
-				Data: []ledger.ExpandedAccount{
+			expectedCursor := bunpaginate.Cursor[ledger.Account]{
+				Data: []ledger.Account{
 					{
-						Account: ledger.Account{
-							Address:  "world",
-							Metadata: metadata.Metadata{},
-						},
+						Address:  "world",
+						Metadata: metadata.Metadata{},
 					},
 				},
 			}
@@ -218,7 +216,7 @@ func TestAccountsList(t *testing.T) {
 
 			require.Equal(t, tc.expectStatusCode, rec.Code)
 			if tc.expectStatusCode < 300 && tc.expectStatusCode >= 200 {
-				cursor := api.DecodeCursorResponse[ledger.ExpandedAccount](t, rec.Body)
+				cursor := api.DecodeCursorResponse[ledger.Account](t, rec.Body)
 				require.Equal(t, expectedCursor, *cursor)
 			} else {
 				err := api.ErrorResponse{}

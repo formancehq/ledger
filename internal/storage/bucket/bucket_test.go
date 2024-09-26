@@ -1,6 +1,7 @@
 package bucket
 
 import (
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"testing"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
@@ -19,6 +20,8 @@ func TestBuckets(t *testing.T) {
 	pgDatabase := srv.GetValue().NewDatabase(t)
 	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
+
+	require.NoError(t, systemstore.Migrate(ctx, db))
 
 	bucket := New(db, name)
 	require.NoError(t, bucket.Migrate(ctx))
