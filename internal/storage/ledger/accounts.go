@@ -4,12 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math/big"
-	"regexp"
-	"strings"
-
 	. "github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/tracing"
+	"math/big"
+	"regexp"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"
@@ -62,7 +60,6 @@ type Account struct {
 
 	Ledger        string            `bun:"ledger"`
 	Address       string            `bun:"address"`
-	AddressArray  []string          `bun:"address_array"`
 	Metadata      metadata.Metadata `bun:"metadata,type:jsonb"`
 	InsertionDate time.Time         `bun:"insertion_date"`
 	UpdatedAt     time.Time         `bun:"updated_at"`
@@ -74,11 +71,11 @@ type Account struct {
 
 func (account Account) toCore() ledger.Account {
 	return ledger.Account{
-		Address:       account.Address,
-		Metadata:      account.Metadata,
-		FirstUsage:    account.FirstUsage,
-		InsertionDate: account.InsertionDate,
-		UpdatedAt:     account.UpdatedAt,
+		Address:          account.Address,
+		Metadata:         account.Metadata,
+		FirstUsage:       account.FirstUsage,
+		InsertionDate:    account.InsertionDate,
+		UpdatedAt:        account.UpdatedAt,
 		Volumes:          account.PostCommitVolumes.toCore(),
 		EffectiveVolumes: account.PostCommitEffectiveVolumes.toCore(),
 	}
@@ -330,7 +327,6 @@ func (s *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]metadat
 			accounts = append(accounts, Account{
 				Ledger:        s.ledger.Name,
 				Address:       account,
-				AddressArray:  strings.Split(account, ":"),
 				Metadata:      accountMetadata,
 				InsertionDate: now,
 				UpdatedAt:     now,
@@ -366,7 +362,6 @@ func (s *Store) DeleteAccountMetadata(ctx context.Context, account, key string) 
 func (s *Store) UpsertAccount(ctx context.Context, account *ledger.Account) error {
 	mappedAccount := &Account{
 		Ledger:        s.ledger.Name,
-		AddressArray:  strings.Split(account.Address, ":"),
 		Address:       account.Address,
 		FirstUsage:    account.FirstUsage,
 		InsertionDate: account.InsertionDate,
@@ -406,6 +401,7 @@ func (s *Store) upsertAccount(ctx context.Context, account *Account) (bool, erro
 						Set("first_usage = case when ? < excluded.first_usage then ? else excluded.first_usage end", account.FirstUsage, account.FirstUsage).
 						Set("metadata = accounts.metadata || excluded.metadata").
 						Set("updated_at = ?", account.UpdatedAt).
+						Value("ledger", "?", s.ledger.Name).
 						Returning("*").
 						Where("(? < accounts.first_usage) or not accounts.metadata @> excluded.metadata", account.FirstUsage),
 				).

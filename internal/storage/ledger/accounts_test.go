@@ -430,7 +430,6 @@ func TestUpsertAccount(t *testing.T) {
 	account := Account{
 		Ledger:        store.Name(),
 		Address:       "foo",
-		AddressArray:  []string{"foo"},
 		FirstUsage:    now,
 		InsertionDate: now,
 		UpdatedAt:     now,
@@ -443,9 +442,8 @@ func TestUpsertAccount(t *testing.T) {
 
 	// reset the account model
 	account = Account{
-		Ledger:       store.Name(),
-		Address:      "foo",
-		AddressArray: []string{"foo"},
+		Ledger:  store.Name(),
+		Address: "foo",
 		// the account will be upserted on the timeline after its initial usage
 		// the upsert should not modify anything
 		// but, it should retrieve and load the account entity

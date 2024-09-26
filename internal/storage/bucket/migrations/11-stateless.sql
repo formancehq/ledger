@@ -78,6 +78,9 @@ type bigint;
 alter table "{{.Bucket}}".transactions
 drop column seq;
 
+alter table "{{.Bucket}}".accounts
+alter column address_array drop not null;
+
 alter table "{{.Bucket}}".logs
 alter column hash
 drop not null;
@@ -391,6 +394,18 @@ begin
 		select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'destination'))) as value
 		from jsonb_array_elements(new.postings::jsonb) v
 	);
+
+	return new;
+end
+$$;
+
+create or replace function "{{.Bucket}}".set_address_array_for_account() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.address_array = to_json(string_to_array(new.address, ':'));
 
 	return new;
 end
