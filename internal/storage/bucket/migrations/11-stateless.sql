@@ -25,7 +25,16 @@ alter table "{{.Bucket}}".moves
 drop column transactions_seq;
 
 alter table "{{.Bucket}}".moves
+drop column accounts_seq;
+
+alter table "{{.Bucket}}".moves
 add column transactions_id bigint not null ;
+
+alter table "{{.Bucket}}".moves
+rename column account_address to accounts_address;
+
+alter table "{{.Bucket}}".moves
+rename column account_address_array to accounts_address_array;
 
 alter table "{{.Bucket}}".moves
 drop column post_commit_volumes;
@@ -45,11 +54,19 @@ drop not null,
 alter column post_commit_effective_volumes
 drop not null;
 
+-- todo: need migrate
 alter table "{{.Bucket}}".transactions_metadata
 drop column transactions_seq;
 
 alter table "{{.Bucket}}".transactions_metadata
-add column transactions_id bigint;
+add column transactions_id bigint not null;
+
+-- todo: need migrate
+alter table "{{.Bucket}}".accounts_metadata
+drop column accounts_seq;
+
+alter table "{{.Bucket}}".accounts_metadata
+add column accounts_address varchar not null;
 
 alter table "{{.Bucket}}".transactions
 alter column id
@@ -71,6 +88,12 @@ type json;
 --drop index transactions_metadata_ledger;
 --drop index transactions_metadata_revisions;
 
+--drop index accounts_metadata_ledger;
+--drop index accounts_metadata_revisions;
+
+create unique index accounts_metadata_ledger on "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision);
+create index accounts_metadata_revisions on "{{.Bucket}}".accounts_metadata(accounts_address asc, revision desc) include (metadata, date);
+
 create unique index transactions_metadata_ledger on "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision);
 create index transactions_metadata_revisions on "{{.Bucket}}".transactions_metadata(transactions_id asc, revision desc) include (metadata, date);
 
@@ -89,24 +112,22 @@ create index transactions_metadata_revisions on "{{.Bucket}}".transactions_metad
 
 create table "{{.Bucket}}".accounts_volumes (
     ledger varchar not null,
-	accounts_seq int not null,
-    account varchar not null,
+    accounts_address varchar not null,
     asset varchar not null,
 	input numeric not null,
 	output numeric not null,
 
-    primary key (ledger, account, asset)
+    primary key (ledger, accounts_address, asset)
 );
 
 create view "{{.Bucket}}".balances as
-select ledger, accounts_seq, account, asset, input - output as balance
+select ledger, accounts_address, asset, input - output as balance
 from "{{.Bucket}}".accounts_volumes;
 
-insert into "{{.Bucket}}".accounts_volumes (ledger, accounts_seq, account, asset, input, output)
-select distinct on (ledger, accounts_seq, account_address, asset)
+insert into "{{.Bucket}}".accounts_volumes (ledger, accounts_address, asset, input, output)
+select distinct on (ledger, accounts_address, asset)
 	ledger,
-	accounts_seq,
-	account_address as account,
+	accounts_address,
 	asset,
 	(moves.post_commit_volumes->>'input')::numeric as input,
 	(moves.post_commit_volumes->>'output')::numeric as output
@@ -116,8 +137,8 @@ from (
 	order by seq desc
 ) moves;
 
-drop index moves_post_commit_volumes;
-drop index moves_effective_post_commit_volumes;
+--drop index moves_post_commit_volumes;
+--drop index moves_effective_post_commit_volumes;
 
 drop trigger "insert_account"  on "{{.Bucket}}".accounts;
 drop trigger "update_account"  on "{{.Bucket}}".accounts;
@@ -179,7 +200,7 @@ begin
             'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
         )
         from "{{.Bucket}}".moves
-        where accounts_seq = new.accounts_seq
+        where accounts_address = new.accounts_address
             and asset = new.asset
             and ledger = new.ledger
             and (effective_date < new.effective_date or (effective_date = new.effective_date and seq < new.seq))
@@ -206,7 +227,7 @@ begin
 		'input', (post_commit_effective_volumes->>'input')::numeric + case when new.is_source then 0 else new.amount end,
 		'output', (post_commit_effective_volumes->>'output')::numeric + case when new.is_source then new.amount else 0 end
     )
-    where accounts_seq = new.accounts_seq
+    where accounts_address = new.accounts_address
         and asset = new.asset
         and effective_date > new.effective_date
         and ledger = new.ledger;
@@ -283,6 +304,38 @@ $$
 begin
 	insert into "{{.Bucket}}".transactions_metadata (ledger, transactions_id, revision, date, metadata)
 	values (new.ledger, new.id, 1, new.timestamp, new.metadata);
+
+	return new;
+end;
+$$;
+
+create or replace function "{{.Bucket}}".update_account_metadata_history() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision, date, metadata)
+	values (new.ledger, new.address, (
+		select revision + 1
+		from "{{.Bucket}}".accounts_metadata
+		where accounts_metadata.accounts_address = new.address
+		order by revision desc
+		limit 1
+	), new.updated_at, new.metadata);
+
+	return new;
+end;
+$$;
+
+create or replace function "{{.Bucket}}".insert_account_metadata_history() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	insert into "{{.Bucket}}".accounts_metadata (ledger, accounts_address, revision, date, metadata)
+	values (new.ledger, new.address, 1, new.insertion_date, new.metadata);
 
 	return new;
 end;

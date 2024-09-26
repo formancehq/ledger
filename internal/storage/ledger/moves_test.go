@@ -54,7 +54,6 @@ func TestMovesInsert(t *testing.T) {
 			AccountAddressArray: []string{"world"},
 			Amount:              (*bunpaginate.BigInt)(big.NewInt(100)),
 			Asset:               "USD",
-			AccountSeq:          account.Seq,
 			InsertionDate:       t0,
 			EffectiveDate:       t0,
 		}
@@ -73,7 +72,6 @@ func TestMovesInsert(t *testing.T) {
 			AccountAddressArray: []string{"world"},
 			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
 			Asset:               "USD",
-			AccountSeq:          account.Seq,
 			InsertionDate:       t3,
 			EffectiveDate:       t3,
 		}
@@ -92,7 +90,6 @@ func TestMovesInsert(t *testing.T) {
 			AccountAddressArray: []string{"world"},
 			Amount:              (*bunpaginate.BigInt)(big.NewInt(200)),
 			Asset:               "USD",
-			AccountSeq:          account.Seq,
 			InsertionDate:       t1,
 			EffectiveDate:       t1,
 		}
@@ -111,7 +108,6 @@ func TestMovesInsert(t *testing.T) {
 			AccountAddressArray: []string{"world"},
 			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
 			Asset:               "USD",
-			AccountSeq:          account.Seq,
 			InsertionDate:       t2,
 			EffectiveDate:       t2,
 		}
@@ -130,7 +126,6 @@ func TestMovesInsert(t *testing.T) {
 			AccountAddressArray: []string{"world"},
 			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
 			Asset:               "USD",
-			AccountSeq:          account.Seq,
 			InsertionDate:       t4,
 			EffectiveDate:       t4,
 		}
