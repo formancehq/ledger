@@ -5,6 +5,11 @@ package test_suite
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/pointer"
@@ -16,10 +21,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"math/big"
-	"math/rand"
-	"sync"
-	"sync/atomic"
 )
 
 var _ = Context("Ledger stress tests", func() {

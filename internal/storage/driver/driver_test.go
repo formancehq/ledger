@@ -4,13 +4,14 @@ package driver_test
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/bun/bundebug"
 	"github.com/formancehq/go-libs/testing/docker"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/uptrace/bun"
-	"testing"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/stretchr/testify/require"

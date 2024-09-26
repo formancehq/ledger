@@ -4,11 +4,12 @@ package ledger
 
 import (
 	"context"
+	"math/big"
+	"testing"
+
 	"github.com/formancehq/go-libs/pointer"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
-	"math/big"
-	"testing"
 
 	"github.com/formancehq/go-libs/time"
 

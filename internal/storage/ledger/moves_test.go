@@ -5,6 +5,10 @@ package ledger
 import (
 	"database/sql"
 	"fmt"
+	"math/big"
+	"math/rand"
+	"testing"
+
 	"github.com/alitto/pond"
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/logging"
@@ -14,9 +18,6 @@ import (
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"math/big"
-	"math/rand"
-	"testing"
 )
 
 func TestMovesInsert(t *testing.T) {

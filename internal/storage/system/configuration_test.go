@@ -3,10 +3,11 @@
 package system
 
 import (
+	"testing"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/platform/postgres"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestConfiguration(t *testing.T) {

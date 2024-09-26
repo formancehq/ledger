@@ -3,10 +3,11 @@
 package performance_test
 
 import (
-	. "github.com/formancehq/go-libs/collectionutils"
-	ledger "github.com/formancehq/ledger/internal"
 	"slices"
 	"strings"
+
+	. "github.com/formancehq/go-libs/collectionutils"
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func buildAllPossibleConfigurations() []FeatureConfiguration {

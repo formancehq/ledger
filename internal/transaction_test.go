@@ -1,9 +1,10 @@
 package ledger
 
 import (
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"testing"
+
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/stretchr/testify/require"
 )

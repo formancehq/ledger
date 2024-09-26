@@ -1,12 +1,13 @@
 package v2
 
 import (
-	"github.com/formancehq/go-libs/time"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+
+	"github.com/formancehq/go-libs/time"
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/auth"

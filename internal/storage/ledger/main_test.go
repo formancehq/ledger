@@ -4,6 +4,9 @@ package ledger
 
 import (
 	"database/sql"
+	"math/big"
+	"testing"
+
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/bun/bundebug"
 	"github.com/formancehq/go-libs/testing/docker"
@@ -12,8 +15,6 @@ import (
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/google/go-cmp/cmp"
-	"math/big"
-	"testing"
 
 	"github.com/uptrace/bun/dialect/pgdialect"
 
