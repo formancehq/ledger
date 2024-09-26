@@ -187,11 +187,11 @@ func (h HaveCoherentStateMatcher) Match(actual interface{}) (success bool, err e
 }
 
 func (h HaveCoherentStateMatcher) FailureMessage(_ interface{}) (message string) {
-	return fmt.Sprintf("server should has coherent state")
+	return "server should has coherent state"
 }
 
 func (h HaveCoherentStateMatcher) NegatedFailureMessage(_ interface{}) (message string) {
-	return fmt.Sprintf("server should not has coherent state but has")
+	return "server should not has coherent state but has"
 }
 
 var _ types.GomegaMatcher = (*HaveCoherentStateMatcher)(nil)

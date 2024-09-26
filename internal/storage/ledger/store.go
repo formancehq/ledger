@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+
 	"github.com/formancehq/go-libs/platform/postgres"
 
 	"github.com/formancehq/ledger/internal/tracing"

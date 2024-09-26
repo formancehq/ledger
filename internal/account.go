@@ -10,8 +10,8 @@ const (
 )
 
 type Account struct {
-	Address       string            `json:"address,type:varchar"`
-	Metadata      metadata.Metadata `json:"metadata,type:jsonb"`
+	Address       string            `json:"address"`
+	Metadata      metadata.Metadata `json:"metadata"`
 	FirstUsage    time.Time         `json:"-"`
 	InsertionDate time.Time         `json:"_"`
 	UpdatedAt     time.Time         `json:"-"`

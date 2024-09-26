@@ -107,10 +107,6 @@ func TestListLedgers(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code)
 				cursor := api.DecodeCursorResponse[ledger.Ledger](t, rec.Body)
 
-				for i, l := range tc.returnData {
-					tc.returnData[i] = l
-				}
-
 				require.Equal(t, tc.returnData, cursor.Data)
 			} else {
 				require.Equal(t, tc.expectedStatusCode, rec.Code)

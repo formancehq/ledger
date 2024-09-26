@@ -20,6 +20,9 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		options.QueryBuilder, err = buildAccountsFilterQuery(r)
+		if err != nil {
+			return nil, err
+		}
 		return pointer.For(ledgercontroller.NewListAccountsQuery(*options)), nil
 	})
 	if err != nil {
