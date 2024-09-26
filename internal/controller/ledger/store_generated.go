@@ -11,6 +11,7 @@ package ledger
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 
 	bunpaginate "github.com/formancehq/go-libs/bun/bunpaginate"
@@ -424,15 +425,15 @@ func (mr *MockStoreMockRecorder) ReadLogWithIdempotencyKey(ctx, ik any) *gomock.
 }
 
 // WithTX mocks base method.
-func (m *MockStore) WithTX(arg0 context.Context, arg1 func(TX) (bool, error)) error {
+func (m *MockStore) WithTX(arg0 context.Context, arg1 *sql.TxOptions, arg2 func(TX) (bool, error)) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithTX", arg0, arg1)
+	ret := m.ctrl.Call(m, "WithTX", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WithTX indicates an expected call of WithTX.
-func (mr *MockStoreMockRecorder) WithTX(arg0, arg1 any) *gomock.Call {
+func (mr *MockStoreMockRecorder) WithTX(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTX", reflect.TypeOf((*MockStore)(nil).WithTX), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTX", reflect.TypeOf((*MockStore)(nil).WithTX), arg0, arg1, arg2)
 }
