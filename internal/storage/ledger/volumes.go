@@ -64,12 +64,20 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 		return ret.Err(ledgercontroller.NewErrMissingFeature(ledger.FeatureMovesHistory))
 	}
 
-	var useMetadata bool
+	var (
+		useMetadata        bool
+		needSegmentAddress bool
+	)
 	if q != nil {
 		err := q.Walk(func(operator, key string, value any) error {
 			switch {
 			case key == "account" || key == "address":
-				return s.validateAddressFilter(operator, value)
+				if err := s.validateAddressFilter(operator, value); err != nil {
+					return err
+				}
+				if !needSegmentAddress {
+					needSegmentAddress = isSegmentedAddress(value.(string)) // safe cast
+				}
 			case metadataRegex.Match([]byte(key)):
 				if operator != "$match" {
 					return ledgercontroller.NewErrInvalidQuery("'metadata' column can only be used with $match")
@@ -92,13 +100,24 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 	}
 
 	ret = ret.
-		Column("accounts_address_array").
-		Column("accounts_address").
+		ColumnExpr("accounts_address as address").
 		Column("asset").
 		ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
 		ColumnExpr("sum(case when is_source then amount else 0 end) as output").
 		ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
 		ModelTableExpr(s.GetPrefixedRelationName("moves"))
+
+	if needSegmentAddress {
+		ret = ret.
+			Join(
+				"join (?) accounts on accounts.address = moves.accounts_address",
+				s.db.NewSelect().
+					ModelTableExpr(s.GetPrefixedRelationName("accounts")).
+					Where("ledger = ?", s.ledger.Name).
+					Column("address_array", "address"),
+			).
+			Column("accounts.address_array")
+	}
 
 	// todo: handle with pit by using accounts_metadata
 	if useMetadata {
@@ -126,7 +145,10 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 		ret = ret.Where(dateFilterColumn+" >= ?", oot)
 	}
 
-	ret = ret.GroupExpr("accounts_address, accounts_address_array, asset")
+	ret = ret.GroupExpr("accounts_address, asset")
+	if needSegmentAddress {
+		ret = ret.GroupExpr("address_array")
+	}
 
 	globalQuery := s.db.NewSelect()
 	globalQuery = globalQuery.
@@ -135,14 +157,14 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 
 	if groupLevel > 0 {
 		globalQuery = globalQuery.
-			ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(accounts_address, ':'))[1:LEAST(array_length(string_to_array(accounts_address, ':'),1),%d)],':')) as account`, groupLevel)).
+			ColumnExpr(fmt.Sprintf(`(array_to_string((string_to_array(address, ':'))[1:LEAST(array_length(string_to_array(address, ':'),1),%d)],':')) as account`, groupLevel)).
 			ColumnExpr("asset").
 			ColumnExpr("sum(input) as input").
 			ColumnExpr("sum(output) as output").
 			ColumnExpr("sum(balance) as balance").
 			GroupExpr("account, asset")
 	} else {
-		globalQuery = globalQuery.ColumnExpr("accounts_address as account, asset, input, output, balance")
+		globalQuery = globalQuery.ColumnExpr("address as account, asset, input, output, balance")
 	}
 
 	if useMetadata {
@@ -154,7 +176,7 @@ func (s *Store) selectVolumes(oot, pit *time.Time, useInsertionDate bool, groupL
 
 			switch {
 			case key == "account" || key == "address":
-				return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+				return filterAccountAddress(value.(string), "address"), nil, nil
 			case metadataRegex.Match([]byte(key)):
 				match := metadataRegex.FindAllStringSubmatch(key, 3)
 				return "metadata @> ?", []any{map[string]any{
