@@ -93,7 +93,6 @@ func TestMigrations(t *testing.T) {
 								"name":    fmt.Sprintf("ledger%d", i),
 								"addedat": time.Now().Format(time.RFC3339Nano),
 								"bucket":  ledger.DefaultBucket,
-								"state":   ledger.StateInUse,
 							}).
 							TableExpr("_system.ledgers").
 							Exec(ctx)
@@ -115,7 +114,6 @@ func TestMigrations(t *testing.T) {
 						"name":    "ledger3",
 						"addedat": time.Now().Format(time.RFC3339Nano),
 						"bucket":  ledger.DefaultBucket,
-						"state":   ledger.StateInUse,
 					}
 					_, err := db.NewInsert().
 						Model(&newLedger).

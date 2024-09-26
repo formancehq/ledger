@@ -34,27 +34,7 @@ func newErrImport(err error) ErrImport {
 	}
 }
 
-type ErrInvalidState struct {
-	expectedState string
-	actualState   string
-}
-
-func (i ErrInvalidState) Error() string {
-	return fmt.Sprintf(
-		"invalid state, expected '%s' got '%s'",
-		i.expectedState,
-		i.actualState,
-	)
-}
-
 var _ error = (*ErrInvalidHash)(nil)
-
-func newErrInvalidState(expected, actual string) ErrImport {
-	return newErrImport(ErrInvalidState{
-		expectedState: expected,
-		actualState:   actual,
-	})
-}
 
 type ErrInvalidHash struct {
 	logID    int

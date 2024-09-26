@@ -45,6 +45,10 @@ type TX interface {
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
 	SwitchLedgerState(ctx context.Context, name string, state string) error
+
+	// todo: clean if needed
+	LockLedger(ctx context.Context) error
+	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 }
 
 type Store interface {

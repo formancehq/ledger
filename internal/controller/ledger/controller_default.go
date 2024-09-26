@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -71,12 +72,6 @@ func (ctrl *DefaultController) runTx(ctx context.Context, parameters Parameters,
 
 		if parameters.DryRun {
 			return false, nil
-		}
-
-		if ctrl.ledger.State == ledger.StateInitializing {
-			if err := tx.SwitchLedgerState(ctx, ctrl.ledger.Name, ledger.StateInUse); err != nil {
-				return false, errors.Wrap(err, "failed to switch ledger state")
-			}
 		}
 
 		return true, nil
@@ -181,69 +176,99 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q GetLogsQuery) (*b
 }
 
 func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Log) error {
-	return tracing.SkipResult(tracing.Trace(ctx, "Import", tracing.NoResult(func(ctx context.Context) error {
-		// todo: need to write to in-use when creating a new transaction
-		// maybe take a lock to avoid a concurrent transaction to change the ledger state?
-		if ctrl.ledger.State != ledger.StateInitializing {
-			return newErrInvalidState(ledger.StateInitializing, ctrl.ledger.State)
-		}
+	err := tracing.SkipResult(tracing.Trace(ctx, "Import", tracing.NoResult(func(ctx context.Context) error {
+		// use serializable isolation level to ensure no concurrent request use the store
+		return ctrl.store.WithTX(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable}, func(sqlTx TX) (bool, error) {
 
-		return ctrl.store.WithTX(ctx, nil, func(sqlTx TX) (bool, error) {
+			// due to the serializable isolation level, and since we explicitly ask for the ledger state in the sql transaction context
+			// if the state change, the sql transaction will be aborted with a serialization error
+			if err := sqlTx.LockLedger(ctx); err != nil {
+				return false, errors.Wrap(err, "failed to lock ledger")
+			}
+
+			logs, err := sqlTx.ListLogs(ctx, NewListLogsQuery(PaginatedQueryOptions[any]{
+				PageSize: 1,
+			}))
+			if err != nil {
+				return false, errors.Wrap(err, "error listing logs")
+			}
+
+			if len(logs.Data) > 0 {
+				return false, newErrImport(fmt.Errorf("ledger must be empty"))
+			}
+
 			for log := range stream {
-				switch payload := log.Data.(type) {
-				case ledger.NewTransactionLogPayload:
-					if err := sqlTx.CommitTransaction(ctx, &payload.Transaction); err != nil {
-						return false, errors.Wrap(err, "failed to commit transaction")
-					}
-					if len(payload.AccountMetadata) > 0 {
-						if err := sqlTx.UpdateAccountsMetadata(ctx, payload.AccountMetadata); err != nil {
-							return false, errors.Wrapf(err, "updating metadata of accounts '%s'", Keys(payload.AccountMetadata))
-						}
-					}
-				case ledger.RevertedTransactionLogPayload:
-					_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransactionID)
-					if err != nil {
-						return false, err
-					}
-				case ledger.SetMetadataLogPayload:
-					switch payload.TargetType {
-					case ledger.MetaTargetTypeTransaction:
-						if _, _, err := sqlTx.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
-							return false, err
-						}
-					case ledger.MetaTargetTypeAccount:
-						if err := sqlTx.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
-							payload.TargetID.(string): payload.Metadata,
-						}); err != nil {
-							return false, err
-						}
-					}
-				case ledger.DeleteMetadataLogPayload:
-					switch payload.TargetType {
-					case ledger.MetaTargetTypeTransaction:
-						if _, _, err := sqlTx.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
-							return false, err
-						}
-					case ledger.MetaTargetTypeAccount:
-						if err := sqlTx.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
-							return false, err
-						}
-					}
-				}
-
-				logCopy := log
-				if err := sqlTx.InsertLog(ctx, &log); err != nil {
-					return false, errors.Wrap(err, "failed to insert log")
-				}
-
-				if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
-					return false, newErrInvalidHash(log.ID, logCopy.Hash, log.Hash)
+				if err := ctrl.importLog(ctx, sqlTx, log); err != nil {
+					return false, errors.Wrapf(err, "importing log %d", log.ID)
 				}
 			}
 
 			return true, nil
 		})
 	})))
+	if err != nil {
+		if errors.Is(err, postgres.ErrSerialization) {
+			return newErrImport(errors.New("concurrent transaction occured, cannot import the ledger"))
+		}
+	}
+
+	return err
+}
+
+func (ctrl *DefaultController) importLog(ctx context.Context, sqlTx TX, log ledger.Log) error {
+	switch payload := log.Data.(type) {
+	case ledger.NewTransactionLogPayload:
+		if err := sqlTx.CommitTransaction(ctx, &payload.Transaction); err != nil {
+			return errors.Wrap(err, "failed to commit transaction")
+		}
+		if len(payload.AccountMetadata) > 0 {
+			if err := sqlTx.UpdateAccountsMetadata(ctx, payload.AccountMetadata); err != nil {
+				return errors.Wrapf(err, "updating metadata of accounts '%s'", Keys(payload.AccountMetadata))
+			}
+		}
+	case ledger.RevertedTransactionLogPayload:
+		_, _, err := sqlTx.RevertTransaction(ctx, payload.RevertedTransactionID)
+		if err != nil {
+			return errors.Wrap(err, "failed to revert transaction")
+		}
+	case ledger.SetMetadataLogPayload:
+		switch payload.TargetType {
+		case ledger.MetaTargetTypeTransaction:
+			if _, _, err := sqlTx.UpdateTransactionMetadata(ctx, payload.TargetID.(int), payload.Metadata); err != nil {
+				return errors.Wrap(err, "failed to update transaction metadata")
+			}
+		case ledger.MetaTargetTypeAccount:
+			if err := sqlTx.UpdateAccountsMetadata(ctx, ledger.AccountMetadata{
+				payload.TargetID.(string): payload.Metadata,
+			}); err != nil {
+				return errors.Wrap(err, "failed to update account metadata")
+			}
+		}
+	case ledger.DeleteMetadataLogPayload:
+		switch payload.TargetType {
+		case ledger.MetaTargetTypeTransaction:
+			if _, _, err := sqlTx.DeleteTransactionMetadata(ctx, payload.TargetID.(int), payload.Key); err != nil {
+				return errors.Wrap(err, "failed to delete transaction metadata")
+			}
+		case ledger.MetaTargetTypeAccount:
+			if err := sqlTx.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
+				return errors.Wrap(err, "failed to delete account metadata")
+			}
+		}
+	}
+
+	logCopy := log
+	if err := sqlTx.InsertLog(ctx, &log); err != nil {
+		return errors.Wrap(err, "failed to insert log")
+	}
+
+	if ctrl.ledger.HasFeature(ledger.FeatureHashLogs, "SYNC") {
+		if !reflect.DeepEqual(log.Hash, logCopy.Hash) {
+			return newErrInvalidHash(log.ID, logCopy.Hash, log.Hash)
+		}
+	}
+
+	return nil
 }
 
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
