@@ -29,7 +29,9 @@ func TestMovesInsert(t *testing.T) {
 		store := newLedgerStore(t)
 		ctx := logging.TestingContext()
 
-		tx := Transaction{}
+		tx := ledger.NewTransaction().WithPostings(
+			ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
+		)
 		require.NoError(t, store.insertTransaction(ctx, &tx))
 
 		account := &Account{}

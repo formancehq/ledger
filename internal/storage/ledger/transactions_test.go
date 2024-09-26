@@ -473,8 +473,8 @@ func TestTransactionsRevert(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, reverted)
 	require.NotNil(t, revertedTx)
-	require.True(t, revertedTx.Reverted)
-	revertedTx.Reverted = false
+	require.True(t, revertedTx.IsReverted())
+	revertedTx.RevertedAt = nil
 	tx1.PostCommitEffectiveVolumes = nil
 	//tx1.PostCommitVolumes = ledger.PostCommitVolumes{}
 	require.Equal(t, tx1, *revertedTx)
@@ -494,20 +494,22 @@ func TestTransactionsRevert(t *testing.T) {
 func TestTransactionsInsert(t *testing.T) {
 	t.Parallel()
 
-	store := newLedgerStore(t)
 	now := time.Now()
 	ctx := logging.TestingContext()
 
 	t.Run("check reference conflict", func(t *testing.T) {
 		t.Parallel()
 
+		store := newLedgerStore(t)
+
 		// create a simple tx
-		tx1 := Transaction{
-			Ledger:    store.ledger.Name,
-			Timestamp: now,
-			Reference: "foo",
-			Postings: []ledger.Posting{
-				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+		tx1 := ledger.Transaction{
+			TransactionData: ledger.TransactionData{
+				Timestamp: now,
+				Reference: "foo",
+				Postings: []ledger.Posting{
+					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+				},
 			},
 		}
 		err := store.insertTransaction(ctx, &tx1)
@@ -515,12 +517,13 @@ func TestTransactionsInsert(t *testing.T) {
 		require.NotZero(t, tx1.ID)
 
 		// create another tx with the same reference
-		tx2 := Transaction{
-			Ledger:    store.ledger.Name,
-			Timestamp: now,
-			Reference: "foo",
-			Postings: []ledger.Posting{
-				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+		tx2 := ledger.Transaction{
+			TransactionData: ledger.TransactionData{
+				Timestamp: now,
+				Reference: "foo",
+				Postings: []ledger.Posting{
+					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+				},
 			},
 		}
 		err = store.insertTransaction(ctx, &tx2)
@@ -530,11 +533,14 @@ func TestTransactionsInsert(t *testing.T) {
 	t.Run("create a tx with no timestamp", func(t *testing.T) {
 		t.Parallel()
 
+		store := newLedgerStore(t)
+
 		// create a tx with no timestamp
-		tx1 := Transaction{
-			Ledger: store.ledger.Name,
-			Postings: []ledger.Posting{
-				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+		tx1 := ledger.Transaction{
+			TransactionData: ledger.TransactionData{
+				Postings: []ledger.Posting{
+					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+				},
 			},
 		}
 		err := store.insertTransaction(ctx, &tx1)
@@ -543,20 +549,23 @@ func TestTransactionsInsert(t *testing.T) {
 	t.Run("check denormalization", func(t *testing.T) {
 		t.Parallel()
 
-		tx1 := Transaction{
-			Ledger:     store.ledger.Name,
-			Timestamp:  now,
-			InsertedAt: now,
-			Postings: []ledger.Posting{
-				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+		store := newLedgerStore(t)
+
+		tx1 := ledger.Transaction{
+			TransactionData: ledger.TransactionData{
+				Timestamp:  now,
+				InsertedAt: now,
+				Postings: []ledger.Posting{
+					ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+				},
+				Metadata: metadata.Metadata{},
 			},
-			Metadata: metadata.Metadata{},
 		}
 		err := store.insertTransaction(ctx, &tx1)
 		require.NoError(t, err)
 
 		type Model struct {
-			Transaction
+			ledger.Transaction
 			Sources            []string         `bun:"sources,type:jsonb"`
 			Destinations       []string         `bun:"destinations,type:jsonb"`
 			SourcesArrays      []map[string]any `bun:"sources_arrays,type:jsonb"`
