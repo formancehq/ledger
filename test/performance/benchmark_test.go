@@ -5,15 +5,15 @@ package performance_test
 import (
 	"context"
 	"fmt"
+	"sort"
+	"sync/atomic"
+	"testing"
+
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"sort"
-	"sync"
-	"sync/atomic"
-	"testing"
 )
 
 type Iterator interface {
@@ -32,23 +32,11 @@ func (c RunConfiguration) String() string {
 }
 
 type Benchmark struct {
-	mu sync.Mutex
-
 	EnvFactories map[string]EnvFactory
 	Scripts      map[string]func(int) (string, map[string]string)
 
 	reports map[string]map[string]*Report
 	b       *testing.B
-}
-
-func (benchmark *Benchmark) addReport(env, script string, report *Report) {
-	benchmark.mu.Lock()
-	defer benchmark.mu.Unlock()
-
-	if benchmark.reports[env] == nil {
-		benchmark.reports[env] = make(map[string]*Report)
-	}
-	benchmark.reports[env][script] = report
 }
 
 func (benchmark *Benchmark) Run(ctx context.Context) error {

@@ -2,10 +2,10 @@ package ledger
 
 import (
 	"context"
+	"slices"
+
 	. "github.com/formancehq/go-libs/collectionutils"
 	ledger "github.com/formancehq/ledger/internal"
-	"math/big"
-	"slices"
 
 	"github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/go-libs/platform/postgres"
@@ -92,40 +92,6 @@ type Move struct {
 }
 
 type Moves []*Move
-
-func (m Moves) volumeUpdates() []AccountsVolumes {
-
-	aggregatedVolumes := make(map[string]map[string][]*Move)
-	for _, move := range m {
-		if _, ok := aggregatedVolumes[move.Account]; !ok {
-			aggregatedVolumes[move.Account] = make(map[string][]*Move)
-		}
-		aggregatedVolumes[move.Account][move.Asset] = append(aggregatedVolumes[move.Account][move.Asset], move)
-	}
-
-	ret := make([]AccountsVolumes, 0)
-	for account, movesByAsset := range aggregatedVolumes {
-		for asset, moves := range movesByAsset {
-			volumes := ledger.NewEmptyVolumes()
-			for _, move := range moves {
-				if move.IsSource {
-					volumes.Output.Add(volumes.Output, (*big.Int)(move.Amount))
-				} else {
-					volumes.Input.Add(volumes.Input, (*big.Int)(move.Amount))
-				}
-			}
-			ret = append(ret, AccountsVolumes{
-				Ledger:  moves[0].Ledger,
-				Account: account,
-				Asset:   asset,
-				Input:   volumes.Input,
-				Output:  volumes.Output,
-			})
-		}
-	}
-
-	return ret
-}
 
 func (m Moves) ComputePostCommitEffectiveVolumes() ledger.PostCommitVolumes {
 	type key struct {

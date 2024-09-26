@@ -4,6 +4,9 @@ package performance_test
 
 import (
 	"context"
+	"net/http"
+	"testing"
+
 	"github.com/formancehq/go-libs/collectionutils"
 	"github.com/formancehq/go-libs/time"
 	ledger "github.com/formancehq/ledger/internal"
@@ -12,8 +15,6 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
 )
 
 type RemoteLedgerEnvFactory struct {

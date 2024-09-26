@@ -5,6 +5,8 @@ package system
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/bun/bundebug"
 	"github.com/formancehq/go-libs/logging"
@@ -13,7 +15,6 @@ import (
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"testing"
 )
 
 type Hook struct {

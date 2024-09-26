@@ -2,10 +2,11 @@ package ledger
 
 import (
 	"fmt"
-	"github.com/formancehq/go-libs/metadata"
-	"github.com/formancehq/go-libs/time"
 	"regexp"
 	"slices"
+
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/time"
 )
 
 const (

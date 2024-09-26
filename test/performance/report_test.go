@@ -3,9 +3,10 @@
 package performance_test
 
 import (
-	"github.com/formancehq/go-libs/time"
 	"sync"
 	"sync/atomic"
+
+	"github.com/formancehq/go-libs/time"
 )
 
 type Report struct {
@@ -16,7 +17,6 @@ type Report struct {
 
 	transactionsCount int
 
-	longestTxLock              sync.Mutex
 	longestTransactionID       int
 	longestTransactionDuration time.Duration
 

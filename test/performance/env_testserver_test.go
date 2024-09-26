@@ -4,6 +4,10 @@ package performance_test
 
 import (
 	"context"
+	"io"
+	"os"
+	"testing"
+
 	"github.com/formancehq/go-libs/pointer"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/formancehq/go-libs/time"
@@ -12,9 +16,6 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/components"
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	"github.com/stretchr/testify/require"
-	"io"
-	"os"
-	"testing"
 )
 
 type TestServerEnv struct {
