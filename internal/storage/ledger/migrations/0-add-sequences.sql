@@ -111,6 +111,15 @@ execute procedure "{{.Bucket}}".set_transaction_addresses();
 create index "accounts_address_array_{{.ID}}" on "{{.Bucket}}".accounts using gin (address_array jsonb_ops) where ledger = '{{.Name}}';
 create index "accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".accounts (jsonb_array_length(address_array)) where ledger = '{{.Name}}';
 
+create trigger "accounts_set_address_array_{{.ID}}"
+	before insert
+	on "{{.Bucket}}"."accounts"
+	for each row
+	when (
+		new.ledger = '{{.Name}}'
+	)
+execute procedure "{{.Bucket}}".set_address_array_for_account();
+
 {{ if .HasFeature "INDEX_TRANSACTION_ACCOUNTS" "ON" }}
 create index "transactions_sources_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources_arrays jsonb_path_ops) where ledger = '{{.Name}}';
 create index "transactions_destinations_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations_arrays jsonb_path_ops) where ledger = '{{.Name}}';
