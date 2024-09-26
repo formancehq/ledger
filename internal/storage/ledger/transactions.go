@@ -45,10 +45,6 @@ type Transaction struct {
 	Metadata                   metadata.Metadata        `bun:"metadata,type:jsonb,default:'{}'"`
 	RevertedAt                 *time.Time               `bun:"reverted_at,type:timestamp without time zone"`
 	InsertedAt                 time.Time                `bun:"inserted_at,type:timestamp without time zone,nullzero"`
-	Sources                    []string                 `bun:"sources,type:jsonb"`
-	Destinations               []string                 `bun:"destinations,type:jsonb"`
-	SourcesArray               []map[string]any         `bun:"sources_arrays,type:jsonb"`
-	DestinationsArray          []map[string]any         `bun:"destinations_arrays,type:jsonb"`
 	PostCommitEffectiveVolumes ledger.PostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 	PostCommitVolumes          ledger.PostCommitVolumes `bun:"post_commit_volumes,type:jsonb"`
 }
@@ -169,7 +165,7 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 				`join (?) pcev on pcev.transactions_id = transactions.id`,
 				s.db.NewSelect().
 					Column("transactions_id").
-					ColumnExpr("jsonb_merge_agg(pcev::jsonb) as post_commit_effective_volumes").
+					ColumnExpr("aggregate_objects(pcev::jsonb) as post_commit_effective_volumes").
 					TableExpr(
 						"(?) data",
 						s.db.NewSelect().
@@ -303,8 +299,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return errors.Wrap(err, "failed to update balances")
 	}
 
-	sources := Map(tx.Postings, ledger.Posting.GetSource)
-	destinations := Map(tx.Postings, ledger.Posting.GetDestination)
 	mappedTx := &Transaction{
 		Ledger:            s.ledger.Name,
 		Postings:          tx.Postings,
@@ -312,10 +306,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		Timestamp:         tx.Timestamp,
 		Reference:         tx.Reference,
 		InsertedAt:        insertionDate,
-		Sources:           sources,
-		Destinations:      destinations,
-		SourcesArray:      Map(sources, convertAddrToIndexedJSONB),
-		DestinationsArray: Map(destinations, convertAddrToIndexedJSONB),
 		PostCommitVolumes: postCommitVolumes,
 	}
 

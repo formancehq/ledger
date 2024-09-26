@@ -94,6 +94,19 @@ when (
 execute procedure "{{.Bucket}}".insert_transaction_metadata_history();
 {{ end }}
 
+{{ if .HasFeature "INDEX_TRANSACTION_ACCOUNTS" "ON" }}
+create index "transactions_sources_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources jsonb_path_ops) where ledger = '{{.Name}}';
+create index "transactions_destinations_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations jsonb_path_ops) where ledger = '{{.Name}}';
+create trigger "transaction_set_addresses_{{.ID}}"
+	before insert
+	on "{{.Bucket}}"."transactions"
+	for each row
+	when (
+		new.ledger = '{{.Name}}'
+	)
+execute procedure "{{.Bucket}}".set_transaction_addresses();
+{{ end }}
+
 {{ if .HasFeature "INDEX_ADDRESS_SEGMENTS" "ON" }}
 create index "moves_accounts_address_array_{{.ID}}" on "{{.Bucket}}".moves using gin (accounts_address_array jsonb_ops) where ledger = '{{.Name}}';
 create index "moves_accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".moves (jsonb_array_length(accounts_address_array)) where ledger = '{{.Name}}';
@@ -104,10 +117,14 @@ create index "accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".accounts (
 {{ if .HasFeature "INDEX_TRANSACTION_ACCOUNTS" "ON" }}
 create index "transactions_sources_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources_arrays jsonb_path_ops) where ledger = '{{.Name}}';
 create index "transactions_destinations_arrays_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations_arrays jsonb_path_ops) where ledger = '{{.Name}}';
-{{ end }}
-{{ end }}
 
-{{ if .HasFeature "INDEX_TRANSACTION_ACCOUNTS" "ON" }}
-create index "transactions_sources_{{.ID}}" on "{{.Bucket}}".transactions using gin (sources jsonb_path_ops) where ledger = '{{.Name}}';
-create index "transactions_destinations_{{.ID}}" on "{{.Bucket}}".transactions using gin (destinations jsonb_path_ops) where ledger = '{{.Name}}';
+create trigger "transaction_set_addresses_segments_{{.ID}}"
+	before insert
+	on "{{.Bucket}}"."transactions"
+	for each row
+	when (
+		new.ledger = '{{.Name}}'
+	)
+execute procedure "{{.Bucket}}".set_transaction_addresses_segments();
+{{ end }}
 {{ end }}
