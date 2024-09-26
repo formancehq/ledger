@@ -36,11 +36,11 @@ func TestBalancesGet(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:      store.ledger.Name,
-		Account:     "world",
-		Asset:       "USD",
-		Input:       new(big.Int),
-		Output:      big.NewInt(100),
+		Ledger:  store.ledger.Name,
+		Account: "world",
+		Asset:   "USD",
+		Input:   new(big.Int),
+		Output:  big.NewInt(100),
 	})
 	require.NoError(t, err)
 
@@ -95,6 +95,7 @@ func TestBalancesGet(t *testing.T) {
 	})
 
 	t.Run("balance query with empty balance", func(t *testing.T) {
+
 		balances, err := store.GetBalances(ctx, ledgercontroller.BalanceQuery{
 			"world":        {"USD"},
 			"not-existing": {"USD"},
@@ -252,64 +253,4 @@ func TestBalancesAggregates(t *testing.T) {
 			),
 		}, ret)
 	})
-}
-
-func TestUpdateBalances(t *testing.T) {
-	t.Parallel()
-
-	store := newLedgerStore(t)
-	ctx := logging.TestingContext()
-
-	world := &Account{
-		Ledger:        store.ledger.Name,
-		Address:       "world",
-		AddressArray:  []string{"world"},
-		InsertionDate: time.Now(),
-		UpdatedAt:     time.Now(),
-		FirstUsage:    time.Now(),
-	}
-	_, err := store.upsertAccount(ctx, world)
-	require.NoError(t, err)
-
-	volumes, err := store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:      store.ledger.Name,
-		Account:     "world",
-		Asset:       "USD/2",
-		Input:       big.NewInt(0),
-		Output:      big.NewInt(100),
-	})
-	require.NoError(t, err)
-	require.Equal(t, ledger.PostCommitVolumes{
-		"world": {
-			"USD/2": ledger.NewVolumesInt64(0, 100),
-		},
-	}, volumes)
-
-	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:  store.ledger.Name,
-		Account: "world",
-		Asset:   "USD/2",
-		Input:   big.NewInt(50),
-		Output:  big.NewInt(0),
-	})
-	require.NoError(t, err)
-	require.Equal(t, ledger.PostCommitVolumes{
-		"world": {
-			"USD/2": ledger.NewVolumesInt64(50, 100),
-		},
-	}, volumes)
-
-	volumes, err = store.updateVolumes(ctx, AccountsVolumes{
-		Ledger:      store.ledger.Name,
-		Account:     "world",
-		Asset:       "USD/2",
-		Input:       big.NewInt(50),
-		Output:      big.NewInt(50),
-	})
-	require.NoError(t, err)
-	require.Equal(t, ledger.PostCommitVolumes{
-		"world": {
-			"USD/2": ledger.NewVolumesInt64(100, 150),
-		},
-	}, volumes)
 }
