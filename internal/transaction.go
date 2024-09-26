@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"github.com/uptrace/bun"
 	"math/big"
 	"slices"
 	"sort"
@@ -18,11 +19,11 @@ type Transactions struct {
 }
 
 type TransactionData struct {
-	Postings   Postings          `json:"postings"`
-	Metadata   metadata.Metadata `json:"metadata"`
-	Timestamp  time.Time         `json:"timestamp"`
-	Reference  string            `json:"reference,omitempty"`
-	InsertedAt time.Time         `json:"insertedAt,omitempty"`
+	Postings   Postings          `json:"postings" bun:"postings,type:jsonb"`
+	Metadata   metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
+	Timestamp  time.Time         `json:"timestamp" bun:"timestamp,type:timestamp without time zone,nullzero"`
+	Reference  string            `json:"reference,omitempty" bun:"reference,type:varchar,unique,nullzero"`
+	InsertedAt time.Time         `json:"insertedAt,omitempty" bun:"inserted_at,type:timestamp without time zone,nullzero"`
 }
 
 func (data TransactionData) WithPostings(postings ...Posting) TransactionData {
@@ -38,11 +39,13 @@ func NewTransactionData() TransactionData {
 }
 
 type Transaction struct {
+	bun.BaseModel `bun:"table:transactions,alias:transactions"`
+
 	TransactionData
-	ID                         int               `json:"id"`
-	Reverted                   bool              `json:"reverted"`
-	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty"`
-	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty"`
+	ID                         int               `json:"id" bun:"id,type:numeric"`
+	RevertedAt                 *time.Time        `json:"-" bun:"reverted_at,type:timestamp without time zone"`
+	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
+	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
 func (tx Transaction) Reverse(atEffectiveDate bool) Transaction {
@@ -111,6 +114,7 @@ func (tx Transaction) MarshalJSON() ([]byte, error) {
 	type Ret struct {
 		Aux
 
+		Reverted                  bool              `json:"reverted"`
 		PreCommitVolumes          PostCommitVolumes `json:"preCommitVolumes,omitempty"`
 		PreCommitEffectiveVolumes PostCommitVolumes `json:"preCommitEffectiveVolumes,omitempty"`
 	}
@@ -140,9 +144,14 @@ func (tx Transaction) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(&Ret{
 		Aux:                       Aux(tx),
+		Reverted:                  tx.RevertedAt != nil && !tx.RevertedAt.IsZero(),
 		PreCommitVolumes:          preCommitVolumes,
 		PreCommitEffectiveVolumes: preCommitEffectiveVolumes,
 	})
+}
+
+func (tx Transaction) IsReverted() bool {
+	return tx.RevertedAt != nil && !tx.RevertedAt.IsZero()
 }
 
 func NewTransaction() Transaction {
