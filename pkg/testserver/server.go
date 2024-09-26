@@ -3,6 +3,7 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"github.com/uptrace/bun"
 	"io"
 	"net/http"
 	"strings"
@@ -158,6 +159,16 @@ func (s *Server) Restart() {
 
 	s.Stop()
 	s.Start()
+}
+
+func (s *Server) Database() *bun.DB {
+	db, err := bunconnect.OpenSQLDB(s.ctx, s.configuration.PostgresConfiguration)
+	require.NoError(s.t, err)
+	s.t.Cleanup(func() {
+		require.NoError(s.t, db.Close())
+	})
+
+	return db
 }
 
 func New(t T, configuration Configuration) *Server {

@@ -107,9 +107,7 @@ func TestListLedgers(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code)
 				cursor := api.DecodeCursorResponse[ledger.Ledger](t, rec.Body)
 
-				// state actually not exposed over http
 				for i, l := range tc.returnData {
-					l.State = ""
 					tc.returnData[i] = l
 				}
 

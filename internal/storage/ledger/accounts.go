@@ -428,7 +428,7 @@ func (s *Store) upsertAccount(ctx context.Context, account *Account) (bool, erro
 				ColumnExpr("*").
 				Limit(1).
 				Scan(ctx); err != nil {
-				return err
+				return postgres.ResolveError(err)
 			}
 
 			account.FirstUsage = upserted.FirstUsage
