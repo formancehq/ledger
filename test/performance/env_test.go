@@ -4,8 +4,9 @@ package performance_test
 
 import (
 	"context"
-	"github.com/formancehq/ledger/internal"
 	"testing"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type TransactionExecutor interface {

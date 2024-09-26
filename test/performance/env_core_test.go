@@ -4,6 +4,8 @@ package performance_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/bun/bundebug"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
@@ -16,7 +18,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"testing"
 )
 
 type CoreEnv struct {

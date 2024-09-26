@@ -2,10 +2,11 @@ package ledger
 
 import (
 	"context"
-	"github.com/formancehq/go-libs/platform/postgres"
-	"github.com/pkg/errors"
 	"math/big"
 	"strings"
+
+	"github.com/formancehq/go-libs/platform/postgres"
+	"github.com/pkg/errors"
 
 	"github.com/formancehq/ledger/internal/tracing"
 

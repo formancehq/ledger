@@ -5,6 +5,9 @@ package test_suite
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/pointer"
 	. "github.com/formancehq/go-libs/testing/api"
@@ -15,8 +18,6 @@ import (
 	"github.com/formancehq/stack/ledger/client/models/operations"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"io"
-	"math/big"
 )
 
 var _ = Context("Ledger integration tests", func() {

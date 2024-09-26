@@ -3,13 +3,14 @@
 package cmd
 
 import (
+	"io"
+	"testing"
+
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/testing/docker"
 	"github.com/formancehq/go-libs/testing/platform/pgtesting"
 	"github.com/stretchr/testify/require"
-	"io"
-	"testing"
 )
 
 func TestBucketsUpgrade(t *testing.T) {

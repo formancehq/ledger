@@ -4,9 +4,10 @@ package performance_test
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 var scripts = map[string]func(int) (string, map[string]string){
