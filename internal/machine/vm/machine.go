@@ -285,7 +285,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		allotment, err := machine.NewAllotment(portions)
 		if err != nil {
-			return true, machine.NewErrInvalidScript(err.Error())
+			return true, machine.NewErrInvalidScript("%s", err)
 		}
 		m.pushValue(*allotment)
 
@@ -294,7 +294,7 @@ func (m *Machine) tick() (bool, error) {
 		account := pop[machine.AccountAddress](m)
 		funding, err := m.withdrawAll(account, overdraft.Asset, overdraft.Amount)
 		if err != nil {
-			return true, machine.NewErrInvalidScript(err.Error())
+			return true, machine.NewErrInvalidScript("%s", err)
 		}
 		m.pushValue(*funding)
 
@@ -303,7 +303,7 @@ func (m *Machine) tick() (bool, error) {
 		account := pop[machine.AccountAddress](m)
 		funding, err := m.withdrawAlways(account, mon)
 		if err != nil {
-			return true, machine.NewErrInvalidScript(err.Error())
+			return true, machine.NewErrInvalidScript("%s", err)
 		}
 		m.pushValue(*funding)
 
@@ -315,7 +315,7 @@ func (m *Machine) tick() (bool, error) {
 		}
 		result, remainder, err := funding.Take(mon.Amount)
 		if err != nil {
-			return true, machine.NewErrInsufficientFund(err.Error())
+			return true, machine.NewErrInsufficientFund("%s", err)
 		}
 		m.pushValue(remainder)
 		m.pushValue(result)
@@ -366,7 +366,7 @@ func (m *Machine) tick() (bool, error) {
 		for i := 0; i < n; i++ {
 			res, err := result.Concat(fundings_rev[n-1-i])
 			if err != nil {
-				return true, machine.NewErrInvalidScript(err.Error())
+				return true, machine.NewErrInvalidScript("%s", err)
 			}
 			result = res
 		}
@@ -637,7 +637,7 @@ func (m *Machine) ResolveResources(ctx context.Context, store Store) error {
 func (m *Machine) SetVarsFromJSON(vars map[string]string) error {
 	v, err := m.Program.ParseVariablesJSON(vars)
 	if err != nil {
-		return machine.NewErrInvalidVars(err.Error())
+		return machine.NewErrInvalidVars("%s", err)
 	}
 	m.Vars = v
 	return nil

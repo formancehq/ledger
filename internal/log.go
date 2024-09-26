@@ -266,7 +266,7 @@ func (s *DeleteMetadataLogPayload) UnmarshalJSON(data []byte) error {
 		id, err = strconv.ParseInt(string(x.TargetID), 10, 64)
 		id = int(id.(int64))
 	default:
-		return fmt.Errorf("unknown type " + x.TargetType)
+		return fmt.Errorf("unknown type '%s'", x.TargetType)
 	}
 	if err != nil {
 		return err
@@ -320,7 +320,7 @@ func HydrateLog(_type LogType, data []byte) (any, error) {
 	case RevertedTransactionLogType:
 		payload = &RevertedTransactionLogPayload{}
 	default:
-		return nil, fmt.Errorf("unknown type " + _type.String())
+		return nil, fmt.Errorf("unknown type '%s'", _type)
 	}
 	err := json.Unmarshal(data, &payload)
 	if err != nil {

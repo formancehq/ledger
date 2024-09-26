@@ -3,12 +3,13 @@ package testserver
 import (
 	"context"
 	"fmt"
-	"github.com/uptrace/bun"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/bun/bunconnect"
 	"github.com/formancehq/go-libs/httpclient"

@@ -97,7 +97,7 @@ func (f Funding) Take(amount *MonetaryInt) (Funding, Funding, error) {
 			return fp.Account.String()
 		})
 
-		return Funding{}, Funding{}, NewErrInsufficientFund(fmt.Sprintf("account(s) %s had/have insufficient funds", strings.Join(lstAccounts, "|")))
+		return Funding{}, Funding{}, NewErrInsufficientFund("account(s) %s had/have insufficient funds", strings.Join(lstAccounts, "|"))
 	}
 	return result, remainder, nil
 }
