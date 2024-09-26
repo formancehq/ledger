@@ -34,7 +34,9 @@ func TestMovesInsert(t *testing.T) {
 		)
 		require.NoError(t, store.insertTransaction(ctx, &tx))
 
-		account := &Account{}
+		account := &Account{
+			Address: "world",
+		}
 		_, err := store.upsertAccount(ctx, account)
 		require.NoError(t, err)
 
@@ -51,13 +53,13 @@ func TestMovesInsert(t *testing.T) {
 
 		// insert a first tx at t0
 		m1 := Move{
-			Ledger:              store.ledger.Name,
-			IsSource:            true,
-			Account:             "world",
-			Amount:              (*bunpaginate.BigInt)(big.NewInt(100)),
-			Asset:               "USD",
-			InsertionDate:       t0,
-			EffectiveDate:       t0,
+			Ledger:        store.ledger.Name,
+			IsSource:      true,
+			Account:       "world",
+			Amount:        (*bunpaginate.BigInt)(big.NewInt(100)),
+			Asset:         "USD",
+			InsertionDate: t0,
+			EffectiveDate: t0,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m1))
 		require.NotNil(t, m1.PostCommitEffectiveVolumes)
@@ -68,13 +70,13 @@ func TestMovesInsert(t *testing.T) {
 
 		// add a second move at t3
 		m2 := Move{
-			Ledger:              store.ledger.Name,
-			IsSource:            false,
-			Account:             "world",
-			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
-			Asset:               "USD",
-			InsertionDate:       t3,
-			EffectiveDate:       t3,
+			Ledger:        store.ledger.Name,
+			IsSource:      false,
+			Account:       "world",
+			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Asset:         "USD",
+			InsertionDate: t3,
+			EffectiveDate: t3,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m2))
 		require.NotNil(t, m2.PostCommitEffectiveVolumes)
@@ -85,13 +87,13 @@ func TestMovesInsert(t *testing.T) {
 
 		// add a third move at t1
 		m3 := Move{
-			Ledger:              store.ledger.Name,
-			IsSource:            true,
-			Account:             "world",
-			Amount:              (*bunpaginate.BigInt)(big.NewInt(200)),
-			Asset:               "USD",
-			InsertionDate:       t1,
-			EffectiveDate:       t1,
+			Ledger:        store.ledger.Name,
+			IsSource:      true,
+			Account:       "world",
+			Amount:        (*bunpaginate.BigInt)(big.NewInt(200)),
+			Asset:         "USD",
+			InsertionDate: t1,
+			EffectiveDate: t1,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m3))
 		require.NotNil(t, m3.PostCommitEffectiveVolumes)
@@ -102,13 +104,13 @@ func TestMovesInsert(t *testing.T) {
 
 		// add a fourth move at t2
 		m4 := Move{
-			Ledger:              store.ledger.Name,
-			IsSource:            false,
-			Account:             "world",
-			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
-			Asset:               "USD",
-			InsertionDate:       t2,
-			EffectiveDate:       t2,
+			Ledger:        store.ledger.Name,
+			IsSource:      false,
+			Account:       "world",
+			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Asset:         "USD",
+			InsertionDate: t2,
+			EffectiveDate: t2,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m4))
 		require.NotNil(t, m4.PostCommitEffectiveVolumes)
@@ -119,13 +121,13 @@ func TestMovesInsert(t *testing.T) {
 
 		// add a fifth move at t4
 		m5 := Move{
-			Ledger:              store.ledger.Name,
-			IsSource:            false,
-			Account:             "world",
-			Amount:              (*bunpaginate.BigInt)(big.NewInt(50)),
-			Asset:               "USD",
-			InsertionDate:       t4,
-			EffectiveDate:       t4,
+			Ledger:        store.ledger.Name,
+			IsSource:      false,
+			Account:       "world",
+			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Asset:         "USD",
+			InsertionDate: t4,
+			EffectiveDate: t4,
 		}
 		require.NoError(t, store.insertMoves(ctx, &m5))
 		require.NotNil(t, m5.PostCommitEffectiveVolumes)

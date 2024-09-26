@@ -29,7 +29,6 @@ func TestBalancesGet(t *testing.T) {
 	world := &Account{
 		Ledger:        store.ledger.Name,
 		Address:       "world",
-		AddressArray:  []string{"world"},
 		InsertionDate: time.Now(),
 		UpdatedAt:     time.Now(),
 		FirstUsage:    time.Now(),
