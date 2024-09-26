@@ -24,7 +24,6 @@ type RemoteLedgerEnvFactory struct {
 
 func (r *RemoteLedgerEnvFactory) Create(ctx context.Context, b *testing.B, ledger ledger.Ledger) Env {
 
-	// todo: use standalone sdk only
 	client := ledgerclient.New(
 		ledgerclient.WithClient(r.httpClient),
 		ledgerclient.WithServerURL(r.ledgerURL),
@@ -97,8 +96,13 @@ func (r *RemoteLedgerEnv) Executor() TransactionExecutor {
 					return *response.V2CreateTransactionResponse.Data.Reference
 				}(),
 			},
-			ID:       int(response.V2CreateTransactionResponse.Data.ID.Int64()),
-			Reverted: response.V2CreateTransactionResponse.Data.Reverted,
+			ID: int(response.V2CreateTransactionResponse.Data.ID.Int64()),
+			RevertedAt: func() *time.Time {
+				if response.V2CreateTransactionResponse.Data.RevertedAt == nil {
+					return nil
+				}
+				return &time.Time{Time: *response.V2CreateTransactionResponse.Data.RevertedAt}
+			}(),
 		}, nil
 	})
 }

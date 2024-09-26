@@ -76,7 +76,7 @@ func TestAccountsRead(t *testing.T) {
 			if tc.expectBackendCall {
 				ledgerController.EXPECT().
 					GetAccount(gomock.Any(), tc.expectQuery).
-					Return(&ledger.ExpandedAccount{}, tc.returnErr)
+					Return(&ledger.Account{}, tc.returnErr)
 			}
 
 			router := NewRouter(systemController, auth.NewNoAuth(), "develop", testing.Verbose())
@@ -95,7 +95,7 @@ func TestAccountsRead(t *testing.T) {
 
 			require.Equal(t, tc.expectStatusCode, rec.Code)
 			if tc.expectStatusCode < 300 && tc.expectStatusCode >= 200 {
-				_, ok := api.DecodeSingleResponse[ledger.ExpandedAccount](t, rec.Body)
+				_, ok := api.DecodeSingleResponse[ledger.Account](t, rec.Body)
 				require.True(t, ok)
 			} else {
 				err := api.ErrorResponse{}

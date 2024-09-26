@@ -17,7 +17,7 @@ type V2RevertTransactionRequest struct {
 	Force *bool `queryParam:"style=form,explode=true,name=force"`
 	// Revert transaction at effective date of the original tx
 	AtEffectiveDate *bool `queryParam:"style=form,explode=true,name=atEffectiveDate"`
-	// Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.
+	// Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
 }
 

@@ -13,7 +13,7 @@ type V2CreateTransactionRequest struct {
 	DryRun *bool `queryParam:"style=form,explode=true,name=dryRun"`
 	// Use an idempotency key
 	IdempotencyKey *string `header:"style=simple,explode=false,name=Idempotency-Key"`
-	// Disable balances checks
+	// Disable balance checks when passing postings
 	Force *bool `queryParam:"style=form,explode=true,name=force"`
 	// The request body must contain at least one of the following objects:
 	//   - `postings`: suitable for simple transactions

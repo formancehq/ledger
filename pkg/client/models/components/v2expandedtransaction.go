@@ -15,6 +15,7 @@ type V2ExpandedTransaction struct {
 	Metadata          map[string]string              `json:"metadata"`
 	ID                *big.Int                       `json:"id"`
 	Reverted          bool                           `json:"reverted"`
+	RevertedAt        *time.Time                     `json:"revertedAt,omitempty"`
 	PreCommitVolumes  map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
 	PostCommitVolumes map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
 }
@@ -70,6 +71,13 @@ func (o *V2ExpandedTransaction) GetReverted() bool {
 		return false
 	}
 	return o.Reverted
+}
+
+func (o *V2ExpandedTransaction) GetRevertedAt() *time.Time {
+	if o == nil {
+		return nil
+	}
+	return o.RevertedAt
 }
 
 func (o *V2ExpandedTransaction) GetPreCommitVolumes() map[string]map[string]V2Volume {

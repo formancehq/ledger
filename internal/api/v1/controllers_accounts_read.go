@@ -29,11 +29,9 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case postgres.IsNotFoundError(err):
-			acc = &ledger.ExpandedAccount{
-				Account: ledger.Account{
-					Address:  address,
-					Metadata: metadata.Metadata{},
-				},
+			acc = &ledger.Account{
+				Address:  address,
+				Metadata: metadata.Metadata{},
 				Volumes:          ledger.VolumesByAssets{},
 				EffectiveVolumes: ledger.VolumesByAssets{},
 			}

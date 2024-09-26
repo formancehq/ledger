@@ -90,10 +90,10 @@ func (mr *MockTXMockRecorder) DeleteTransactionMetadata(ctx, transactionID, key 
 }
 
 // GetAccount mocks base method.
-func (m *MockTX) GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.ExpandedAccount, error) {
+func (m *MockTX) GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, query)
-	ret0, _ := ret[0].(*ledger.ExpandedAccount)
+	ret0, _ := ret[0].(*ledger.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -290,10 +290,10 @@ func (mr *MockStoreMockRecorder) CountTransactions(ctx, q any) *gomock.Call {
 }
 
 // GetAccount mocks base method.
-func (m *MockStore) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.ExpandedAccount, error) {
+func (m *MockStore) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, q)
-	ret0, _ := ret[0].(*ledger.ExpandedAccount)
+	ret0, _ := ret[0].(*ledger.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -394,10 +394,10 @@ func (mr *MockStoreMockRecorder) IsUpToDate(ctx any) *gomock.Call {
 }
 
 // ListAccounts mocks base method.
-func (m *MockStore) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
+func (m *MockStore) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, a)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.ExpandedAccount])
+	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -147,15 +147,15 @@ func (ctrl *DefaultController) CountAccounts(ctx context.Context, a ListAccounts
 	})
 }
 
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
-	return tracing.Trace(ctx, "ListAccounts", func(ctx context.Context) (*bunpaginate.Cursor[ledger.ExpandedAccount], error) {
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error) {
+	return tracing.Trace(ctx, "ListAccounts", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Account], error) {
 		accounts, err := ctrl.store.ListAccounts(ctx, a)
 		return accounts, err
 	})
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.ExpandedAccount, error) {
-	return tracing.Trace(ctx, "GetAccount", func(ctx context.Context) (*ledger.ExpandedAccount, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error) {
+	return tracing.Trace(ctx, "GetAccount", func(ctx context.Context) (*ledger.Account, error) {
 		accounts, err := ctrl.store.GetAccount(ctx, q)
 		return accounts, err
 	})

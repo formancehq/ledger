@@ -18,8 +18,8 @@ type Controller interface {
 	GetMigrationsInfo(ctx context.Context) ([]migrations.Info, error)
 	GetStats(ctx context.Context) (Stats, error)
 
-	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.ExpandedAccount, error)
-	ListAccounts(ctx context.Context, query ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error)
+	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error)
+	ListAccounts(ctx context.Context, query ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error)
 	CountAccounts(ctx context.Context, query ListAccountsQuery) (int, error)
 	ListLogs(ctx context.Context, query GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	CountTransactions(ctx context.Context, query ListTransactionsQuery) (int, error)
