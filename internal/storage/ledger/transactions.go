@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	metadataRegex = regexp.MustCompile(`metadata\\[(.+)\\]`)
+	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
 )
 
 type Transaction struct {

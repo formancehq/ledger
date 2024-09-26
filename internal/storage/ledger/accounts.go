@@ -87,7 +87,7 @@ func (account Account) toCore() ledger.ExpandedAccount {
 }
 
 var (
-	balanceRegex = regexp.MustCompile(`balance\\[(.*)\\]`)
+	balanceRegex = regexp.MustCompile(`balance\[(.*)]`)
 )
 
 func convertOperatorToSQL(operator string) string {
