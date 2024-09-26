@@ -280,29 +280,27 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 		for _, posting := range postings {
 			moves = append(moves, &Move{
-				Ledger:              s.ledger.Name,
-				Account:             posting.Destination,
-				AccountAddressArray: strings.Split(posting.Destination, ":"),
-				Amount:              (*bunpaginate.BigInt)(posting.Amount),
-				Asset:               posting.Asset,
-				InsertionDate:       tx.InsertedAt,
-				EffectiveDate:       tx.Timestamp,
-				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
-				TransactionID:       tx.ID,
+				Ledger:            s.ledger.Name,
+				Account:           posting.Destination,
+				Amount:            (*bunpaginate.BigInt)(posting.Amount),
+				Asset:             posting.Asset,
+				InsertionDate:     tx.InsertedAt,
+				EffectiveDate:     tx.Timestamp,
+				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
+				TransactionID:     tx.ID,
 			})
 			postCommitVolumes.AddInput(posting.Destination, posting.Asset, new(big.Int).Neg(posting.Amount))
 
 			moves = append(moves, &Move{
-				Ledger:              s.ledger.Name,
-				IsSource:            true,
-				Account:             posting.Source,
-				AccountAddressArray: strings.Split(posting.Source, ":"),
-				Amount:              (*bunpaginate.BigInt)(posting.Amount),
-				Asset:               posting.Asset,
-				InsertionDate:       tx.InsertedAt,
-				EffectiveDate:       tx.Timestamp,
-				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
-				TransactionID:       tx.ID,
+				Ledger:            s.ledger.Name,
+				IsSource:          true,
+				Account:           posting.Source,
+				Amount:            (*bunpaginate.BigInt)(posting.Amount),
+				Asset:             posting.Asset,
+				InsertionDate:     tx.InsertedAt,
+				EffectiveDate:     tx.Timestamp,
+				PostCommitVolumes: pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
+				TransactionID:     tx.ID,
 			})
 			postCommitVolumes.AddOutput(posting.Source, posting.Asset, new(big.Int).Neg(posting.Amount))
 		}

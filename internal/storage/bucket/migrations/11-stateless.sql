@@ -43,6 +43,9 @@ alter table "{{.Bucket}}".moves
 drop column post_commit_effective_volumes;
 
 alter table "{{.Bucket}}".moves
+drop column accounts_address_array;
+
+alter table "{{.Bucket}}".moves
 rename post_commit_volumes_jsonb to post_commit_volumes;
 
 alter table "{{.Bucket}}".moves
@@ -145,8 +148,8 @@ drop trigger "update_account"  on "{{.Bucket}}".accounts;
 drop trigger "insert_transaction"  on "{{.Bucket}}".transactions;
 drop trigger "update_transaction"  on "{{.Bucket}}".transactions;
 
-drop index moves_account_address_array;
-drop index moves_account_address_array_length;
+--drop index moves_account_address_array;
+--drop index moves_account_address_array_length;
 drop index transactions_sources_arrays;
 drop index transactions_destinations_arrays;
 drop index accounts_address_array;
