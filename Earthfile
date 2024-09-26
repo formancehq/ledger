@@ -7,17 +7,22 @@ IMPORT github.com/formancehq/stack/releases:main AS releases
 FROM core+base-image
 
 sources:
+    FROM core+builder-image
+    CACHE --persist --sharing=shared /go/pkg
+    WORKDIR /src/pkg/client
+    COPY pkg/client/go.mod pkg/client/go.sum ./
+    RUN go mod download
     WORKDIR /src
-    COPY go.mod go.sum .
+    COPY go.mod go.sum ./
+    RUN go mod download
     COPY --dir internal pkg cmd .
     COPY main.go .
     SAVE ARTIFACT /src
 
 generate:
-    FROM core+builder-image
+    FROM +sources
     RUN apk update && apk add openjdk11
     DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
-    COPY (+sources/*) /src
     WORKDIR /src
     DO --pass-args core+GO_GENERATE
     SAVE ARTIFACT internal AS LOCAL internal
@@ -25,8 +30,7 @@ generate:
     SAVE ARTIFACT cmd AS LOCAL cmd
 
 compile:
-    FROM core+builder-image
-    COPY (+sources/*) /src
+    FROM +sources
     WORKDIR /src
     ARG VERSION=latest
     DO --pass-args core+GO_COMPILE --VERSION=$VERSION
@@ -41,10 +45,8 @@ build-image:
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
 tests:
-    FROM core+builder-image
+    FROM +sources
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-
-    COPY (+sources/*) /src
     WORKDIR /src
     COPY --dir --pass-args (+generate/*) .
     COPY --dir test .
@@ -98,10 +100,8 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 lint:
-    FROM core+builder-image
-    COPY (+sources/*) /src
+    FROM +sources
     WORKDIR /src
-    COPY --pass-args +tidy/go.* .
     COPY --dir test .
     DO --pass-args core+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
     SAVE ARTIFACT cmd AS LOCAL cmd
@@ -121,9 +121,8 @@ pre-commit:
     BUILD +generate-client
 
 bench:
-    FROM core+builder-image
+    FROM +sources
     DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
-    COPY (+sources/*) /src
     WORKDIR /src
     COPY --dir test .
     WORKDIR /src/test/performance
@@ -167,8 +166,7 @@ openapi:
     SAVE ARTIFACT ./openapi.yaml AS LOCAL ./openapi.yaml
 
 tidy:
-    FROM core+builder-image
-    COPY --pass-args (+sources/src) /src
+    FROM +sources
     WORKDIR /src
     COPY --dir test .
     DO --pass-args core+GO_TIDY
@@ -193,9 +191,8 @@ generate-client:
     SAVE ARTIFACT client AS LOCAL ./pkg/client
 
 export-database-schema:
-    FROM core+builder-image
+    FROM +sources
     RUN go install github.com/roerohan/wait-for-it@latest
-    COPY (+sources/*) /src
     WORKDIR /src/components/ledger
     COPY --dir scripts scripts
     WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
