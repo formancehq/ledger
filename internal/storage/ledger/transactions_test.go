@@ -211,12 +211,12 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 	require.Equal(t, metadata.Metadata{"foo2": "bar2"}, tx.Metadata)
 
 	// delete a not existing metadata
-	tx1, modified, err = store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, tx1.ID, "foo1")
 	require.NoError(t, err)
 	require.False(t, modified)
 
 	// delete metadata of a non existing transaction
-	tx1, modified, err = store.DeleteTransactionMetadata(ctx, 10, "foo1")
+	_, modified, err = store.DeleteTransactionMetadata(ctx, 10, "foo1")
 	require.Error(t, err)
 	require.True(t, errors.Is(err, postgres.ErrNotFound))
 	require.False(t, modified)
@@ -480,7 +480,7 @@ func TestTransactionsRevert(t *testing.T) {
 	require.Equal(t, tx1, *revertedTx)
 
 	// try to revert again
-	revertedTx, reverted, err = store.RevertTransaction(ctx, tx1.ID)
+	_, reverted, err = store.RevertTransaction(ctx, tx1.ID)
 	require.NoError(t, err)
 	require.False(t, reverted)
 
@@ -571,6 +571,7 @@ func TestTransactionsList(t *testing.T) {
 	_, _, err = store.UpdateTransactionMetadata(ctx, tx3BeforeRevert.ID, metadata.Metadata{
 		"additional_metadata": "true",
 	})
+	require.NoError(t, err)
 
 	// refresh tx3
 	// we can't take the result of the call on RevertTransaction nor UpdateTransactionMetadata as the result does not contains pc(e)v

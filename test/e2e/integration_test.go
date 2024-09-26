@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
+
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/pointer"
 	. "github.com/formancehq/go-libs/testing/api"
@@ -17,8 +20,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
-	"io"
-	"math/big"
 )
 
 var _ = Context("Ledger integration tests", func() {
