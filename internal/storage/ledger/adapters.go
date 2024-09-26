@@ -23,8 +23,12 @@ type DefaultStoreAdapter struct {
 	*Store
 }
 
-func (d *DefaultStoreAdapter) WithTX(ctx context.Context, f func(ledgercontroller.TX) (bool, error)) error {
-	tx, err := d.GetDB().BeginTx(ctx, &sql.TxOptions{})
+func (d *DefaultStoreAdapter) WithTX(ctx context.Context, opts *sql.TxOptions, f func(ledgercontroller.TX) (bool, error)) error {
+	if opts == nil {
+		opts = &sql.TxOptions{}
+	}
+
+	tx, err := d.GetDB().BeginTx(ctx, opts)
 	if err != nil {
 		return err
 	}

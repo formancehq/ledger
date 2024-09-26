@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"math/big"
 	"testing"
 
@@ -33,8 +34,8 @@ func TestCreateTransaction(t *testing.T) {
 		Return(machine, nil)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, fn func(tx TX) (bool, error)) error {
+		WithTX(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})
@@ -77,8 +78,8 @@ func TestRevertTransaction(t *testing.T) {
 	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, fn func(tx TX) (bool, error)) error {
+		WithTX(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})
@@ -122,8 +123,8 @@ func TestSaveTransactionMetadata(t *testing.T) {
 	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, fn func(tx TX) (bool, error)) error {
+		WithTX(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})
@@ -160,8 +161,8 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 	l := NewDefaultController(ledger.Ledger{}, store, listener, machineFactory)
 
 	store.EXPECT().
-		WithTX(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, fn func(tx TX) (bool, error)) error {
+		WithTX(gomock.Any(), nil, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *sql.TxOptions, fn func(tx TX) (bool, error)) error {
 			_, err := fn(sqlTX)
 			return err
 		})

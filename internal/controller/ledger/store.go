@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"math/big"
 
@@ -47,7 +48,7 @@ type TX interface {
 }
 
 type Store interface {
-	WithTX(context.Context, func(TX) (bool, error)) error
+	WithTX(context.Context, *sql.TxOptions, func(TX) (bool, error)) error
 	GetDB() bun.IDB
 	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 	ReadLogWithIdempotencyKey(ctx context.Context, ik string) (*ledger.Log, error)
