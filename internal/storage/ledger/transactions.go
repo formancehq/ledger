@@ -34,37 +34,6 @@ var (
 	metadataRegex = regexp.MustCompile(`metadata\[(.+)]`)
 )
 
-type Transaction struct {
-	bun.BaseModel `bun:"table:transactions,alias:transactions"`
-
-	Ledger                     string                   `bun:"ledger,type:varchar"`
-	ID                         int                      `bun:"id,type:numeric"`
-	Timestamp                  time.Time                `bun:"timestamp,type:timestamp without time zone,nullzero"`
-	Reference                  string                   `bun:"reference,type:varchar,unique,nullzero"`
-	Postings                   []ledger.Posting         `bun:"postings,type:jsonb"`
-	Metadata                   metadata.Metadata        `bun:"metadata,type:jsonb,default:'{}'"`
-	RevertedAt                 *time.Time               `bun:"reverted_at,type:timestamp without time zone"`
-	InsertedAt                 time.Time                `bun:"inserted_at,type:timestamp without time zone,nullzero"`
-	PostCommitEffectiveVolumes ledger.PostCommitVolumes `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
-	PostCommitVolumes          ledger.PostCommitVolumes `bun:"post_commit_volumes,type:jsonb"`
-}
-
-func (t Transaction) toCore() ledger.Transaction {
-	return ledger.Transaction{
-		TransactionData: ledger.TransactionData{
-			Reference:  t.Reference,
-			Metadata:   t.Metadata,
-			Timestamp:  t.Timestamp,
-			Postings:   t.Postings,
-			InsertedAt: t.InsertedAt,
-		},
-		ID:                         t.ID,
-		Reverted:                   t.RevertedAt != nil && !t.RevertedAt.IsZero(),
-		PostCommitEffectiveVolumes: t.PostCommitEffectiveVolumes,
-		PostCommitVolumes:          t.PostCommitVolumes,
-	}
-}
-
 func (s *Store) selectDistinctTransactionMetadataHistories(date *time.Time) *bun.SelectQuery {
 	ret := s.db.NewSelect().
 		DistinctOn("transactions_id").
@@ -274,9 +243,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		return postgres.ResolveError(err)
 	}
 
-	insertionDate := tx.InsertedAt
-	if insertionDate.IsZero() {
-		insertionDate = time.Now()
+	if tx.InsertedAt.IsZero() {
+		tx.InsertedAt = time.Now()
 	}
 
 	for _, address := range tx.InvolvedAccounts() {
@@ -285,8 +253,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			AddressArray:  strings.Split(address, ":"),
 			Address:       address,
 			FirstUsage:    tx.Timestamp,
-			InsertionDate: insertionDate,
-			UpdatedAt:     insertionDate,
+			InsertionDate: tx.InsertedAt,
+			UpdatedAt:     tx.InsertedAt,
 			Metadata:      make(metadata.Metadata),
 		})
 		if err != nil {
@@ -298,26 +266,12 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
+	tx.PostCommitVolumes = postCommitVolumes.Copy()
 
-	mappedTx := &Transaction{
-		Ledger:            s.ledger.Name,
-		Postings:          tx.Postings,
-		Metadata:          tx.Metadata,
-		Timestamp:         tx.Timestamp,
-		Reference:         tx.Reference,
-		InsertedAt:        insertionDate,
-		PostCommitVolumes: postCommitVolumes,
-	}
-
-	err = s.insertTransaction(ctx, mappedTx)
+	err = s.insertTransaction(ctx, tx)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert transaction")
 	}
-
-	tx.ID = mappedTx.ID
-	tx.PostCommitVolumes = postCommitVolumes.Copy()
-	tx.Timestamp = mappedTx.Timestamp
-	tx.InsertedAt = insertionDate
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") {
 		moves := Moves{}
@@ -331,7 +285,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(posting.Destination, ":"),
 				Amount:              (*bunpaginate.BigInt)(posting.Amount),
 				Asset:               posting.Asset,
-				InsertionDate:       insertionDate,
+				InsertionDate:       tx.InsertedAt,
 				EffectiveDate:       tx.Timestamp,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
 				TransactionID:       tx.ID,
@@ -345,7 +299,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				AccountAddressArray: strings.Split(posting.Source, ":"),
 				Amount:              (*bunpaginate.BigInt)(posting.Amount),
 				Asset:               posting.Asset,
-				InsertionDate:       insertionDate,
+				InsertionDate:       tx.InsertedAt,
 				EffectiveDate:       tx.Timestamp,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
 				TransactionID:       tx.ID,
@@ -369,7 +323,7 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 
 func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTransactionsQuery) (*bunpaginate.Cursor[ledger.Transaction], error) {
 	return tracing.Trace(ctx, "ListTransactions", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
-		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], Transaction](
+		cursor, err := bunpaginate.UsingColumn[ledgercontroller.PaginatedQueryOptions[ledgercontroller.PITFilterWithVolumes], ledger.Transaction](
 			ctx,
 			s.selectTransactions(
 				q.Options.Options.PIT,
@@ -383,7 +337,7 @@ func (s *Store) ListTransactions(ctx context.Context, q ledgercontroller.ListTra
 			return nil, err
 		}
 
-		return bunpaginate.MapCursor(cursor, Transaction.toCore), nil
+		return cursor, nil
 	})
 }
 
@@ -402,7 +356,8 @@ func (s *Store) CountTransactions(ctx context.Context, q ledgercontroller.ListTr
 
 func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetTransactionQuery) (*ledger.Transaction, error) {
 	return tracing.TraceWithLatency(ctx, "GetTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
-		ret := &Transaction{}
+
+		ret := &ledger.Transaction{}
 		if err := s.selectTransactions(
 			filter.PIT,
 			filter.ExpandVolumes,
@@ -416,16 +371,17 @@ func (s *Store) GetTransaction(ctx context.Context, filter ledgercontroller.GetT
 			return nil, postgres.ResolveError(err)
 		}
 
-		return pointer.For(ret.toCore()), nil
+		return ret, nil
 	})
 }
 
-func (s *Store) insertTransaction(ctx context.Context, tx *Transaction) error {
-	_, err := tracing.TraceWithLatency(ctx, "InsertTransaction", func(ctx context.Context) (*Transaction, error) {
+func (s *Store) insertTransaction(ctx context.Context, tx *ledger.Transaction) error {
+	_, err := tracing.TraceWithLatency(ctx, "InsertTransaction", func(ctx context.Context) (*ledger.Transaction, error) {
 		_, err := s.db.NewInsert().
 			Model(tx).
 			ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 			Value("id", "nextval(?)", s.GetPrefixedRelationName(fmt.Sprintf(`"transaction_id_%d"`, s.ledger.ID))).
+			Value("ledger", "?", s.ledger.Name).
 			Returning("id, timestamp, inserted_at").
 			Exec(ctx)
 		if err != nil {
@@ -441,7 +397,7 @@ func (s *Store) insertTransaction(ctx context.Context, tx *Transaction) error {
 		}
 
 		return tx, nil
-	}, func(ctx context.Context, tx *Transaction) {
+	}, func(ctx context.Context, tx *ledger.Transaction) {
 		trace.SpanFromContext(ctx).SetAttributes(
 			attribute.Int("id", tx.ID),
 			attribute.String("timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
@@ -454,8 +410,8 @@ func (s *Store) insertTransaction(ctx context.Context, tx *Transaction) error {
 // updateTxWithRetrieve try to apply to provided query and check (if the update return no rows modified), that the row exists
 func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.UpdateQuery) (*ledger.Transaction, bool, error) {
 	type modifiedEntity struct {
-		Transaction `bun:",extend"`
-		Modified    bool `bun:"modified"`
+		ledger.Transaction `bun:",extend"`
+		Modified           bool `bun:"modified"`
 	}
 	me := &modifiedEntity{}
 
@@ -482,7 +438,7 @@ func (s *Store) updateTxWithRetrieve(ctx context.Context, id int, query *bun.Upd
 		return nil, false, postgres.ResolveError(err)
 	}
 
-	return pointer.For(me.toCore()), me.Modified, nil
+	return &me.Transaction, me.Modified, nil
 }
 
 func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Transaction, modified bool, err error) {
@@ -492,7 +448,7 @@ func (s *Store) RevertTransaction(ctx context.Context, id int) (tx *ledger.Trans
 			ctx,
 			id,
 			s.db.NewUpdate().
-				Model(&Transaction{}).
+				Model(&ledger.Transaction{}).
 				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 				Where("id = ?", id).
 				Where("reverted_at is null").
@@ -515,7 +471,7 @@ func (s *Store) UpdateTransactionMetadata(ctx context.Context, id int, m metadat
 			ctx,
 			id,
 			s.db.NewUpdate().
-				Model(&Transaction{}).
+				Model(&ledger.Transaction{}).
 				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 				Where("id = ?", id).
 				Where("ledger = ?", s.ledger.Name).
@@ -538,7 +494,7 @@ func (s *Store) DeleteTransactionMetadata(ctx context.Context, id int, key strin
 			ctx,
 			id,
 			s.db.NewUpdate().
-				Model(&Transaction{}).
+				Model(&ledger.Transaction{}).
 				ModelTableExpr(s.GetPrefixedRelationName("transactions")).
 				Set("metadata = metadata - ?", key).
 				Set("updated_at = ?", time.Now()).
