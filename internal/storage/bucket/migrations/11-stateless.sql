@@ -181,7 +181,7 @@ drop function "{{.Bucket}}".get_account_balance(_ledger character varying, _acco
 drop function "{{.Bucket}}".get_aggregated_effective_volumes_for_transaction(_ledger character varying, tx numeric);
 drop function "{{.Bucket}}".aggregate_ledger_volumes(_ledger character varying, _before timestamp without time zone, _accounts character varying[], _assets character varying[] );
 drop function "{{.Bucket}}".get_transaction(_ledger character varying, _id numeric, _before timestamp without time zone);
-drop function "{{.Bucket}}".explode_address(_address character varying);
+--drop function "{{.Bucket}}".explode_address(_address character varying);
 drop function "{{.Bucket}}".revert_transaction(_ledger character varying, _id numeric, _date timestamp without time zone);
 
 drop type "{{.Bucket}}".volumes_with_asset;
@@ -339,4 +339,56 @@ begin
 
 	return new;
 end;
+$$;
+
+create or replace function "{{.Bucket}}".explode_address(_address varchar)
+	returns jsonb
+	language sql
+	immutable
+as
+$$
+select public.aggregate_objects(jsonb_build_object(data.number - 1, data.value))
+from (select row_number() over () as number, v.value
+      from (select unnest(string_to_array(_address, ':')) as value
+            union all
+            select null) v) data
+$$;
+
+create or replace function "{{.Bucket}}".set_transaction_addresses() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+
+	new.sources = (
+		select to_jsonb(array_agg(v->>'source')) as value
+		from jsonb_array_elements(new.postings::jsonb) v
+	);
+	new.destinations = (
+		select to_jsonb(array_agg(v->>'destination')) as value
+		from jsonb_array_elements(new.postings::jsonb) v
+	);
+
+	return new;
+end
+$$;
+
+create or replace function "{{.Bucket}}".set_transaction_addresses_segments() returns trigger
+	security definer
+	language plpgsql
+as
+$$
+begin
+	new.sources_arrays = (
+		select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'source'))) as value
+		from jsonb_array_elements(new.postings::jsonb) v
+	);
+	new.destinations_arrays = (
+		select to_jsonb(array_agg("{{.Bucket}}".explode_address(v ->> 'destination'))) as value
+		from jsonb_array_elements(new.postings::jsonb) v
+	);
+
+	return new;
+end
 $$;

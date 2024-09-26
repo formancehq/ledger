@@ -46,14 +46,3 @@ func filterAccountAddress(address, key string) string {
 
 	return strings.Join(parts, " and ")
 }
-
-func convertAddrToIndexedJSONB(addr string) map[string]any {
-	ret := map[string]any{}
-	parts := strings.Split(addr, ":")
-	for i := range parts {
-		ret[fmt.Sprint(i)] = parts[i]
-	}
-	ret[fmt.Sprint(len(parts))] = nil
-
-	return ret
-}
