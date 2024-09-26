@@ -9,9 +9,11 @@ FROM core+base-image
 sources:
     FROM core+builder-image
     CACHE --persist --sharing=shared /go/pkg
+    WORKDIR /src/pkg/client
+    COPY pkg/client/go.mod pkg/client/go.sum ./
+    RUN go mod download
     WORKDIR /src
     COPY go.mod go.sum ./
-    COPY go.mod go.sum /src/pkg/client/
     RUN go mod download
     COPY --dir internal pkg cmd .
     COPY main.go .
