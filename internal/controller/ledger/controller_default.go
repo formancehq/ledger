@@ -54,7 +54,7 @@ func (ctrl *DefaultController) GetMigrationsInfo(ctx context.Context) ([]migrati
 
 func (ctrl *DefaultController) runTx(ctx context.Context, parameters Parameters, fn func(sqlTX TX) (*ledger.Log, error)) (*ledger.Log, error) {
 	var log *ledger.Log
-	err := ctrl.store.WithTX(ctx, func(tx TX) (commit bool, err error) {
+	err := ctrl.store.WithTX(ctx, nil, func(tx TX) (commit bool, err error) {
 		log, err = fn(tx)
 		if err != nil {
 			return false, err
@@ -188,7 +188,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 			return newErrInvalidState(ledger.StateInitializing, ctrl.ledger.State)
 		}
 
-		return ctrl.store.WithTX(ctx, func(sqlTx TX) (bool, error) {
+		return ctrl.store.WithTX(ctx, nil, func(sqlTx TX) (bool, error) {
 			for log := range stream {
 				switch payload := log.Data.(type) {
 				case ledger.NewTransactionLogPayload:
