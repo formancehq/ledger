@@ -43,7 +43,7 @@ type Transaction struct {
 
 	TransactionData
 	ID                         int               `json:"id" bun:"id,type:numeric"`
-	RevertedAt                 *time.Time        `json:"-" bun:"reverted_at,type:timestamp without time zone"`
+	RevertedAt                 *time.Time        `json:"revertedAt" bun:"reverted_at,type:timestamp without time zone"`
 	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
 	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }

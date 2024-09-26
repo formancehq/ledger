@@ -28,7 +28,7 @@ type Balances = vm.Balances
 
 //go:generate mockgen -source store.go -destination store_generated.go -package ledger . TX
 type TX interface {
-	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.ExpandedAccount, error)
+	GetAccount(ctx context.Context, query GetAccountQuery) (*ledger.Account, error)
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query BalanceQuery) (Balances, error)
 	CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error
@@ -61,8 +61,8 @@ type Store interface {
 	CountTransactions(ctx context.Context, q ListTransactionsQuery) (int, error)
 	GetTransaction(ctx context.Context, query GetTransactionQuery) (*ledger.Transaction, error)
 	CountAccounts(ctx context.Context, a ListAccountsQuery) (int, error)
-	ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.ExpandedAccount], error)
-	GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.ExpandedAccount, error)
+	ListAccounts(ctx context.Context, a ListAccountsQuery) (*bunpaginate.Cursor[ledger.Account], error)
+	GetAccount(ctx context.Context, q GetAccountQuery) (*ledger.Account, error)
 	GetAggregatedBalances(ctx context.Context, q GetAggregatedBalanceQuery) (ledger.BalancesByAssets, error)
 	GetVolumesWithBalances(ctx context.Context, q GetVolumesWithBalancesQuery) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	IsUpToDate(ctx context.Context) (bool, error)
@@ -280,7 +280,7 @@ func (v *vmStoreAdapter) GetAccount(ctx context.Context, address string) (*ledge
 	if err != nil {
 		return nil, err
 	}
-	return &account.Account, nil
+	return account, nil
 }
 
 var _ vm.Store = (*vmStoreAdapter)(nil)
