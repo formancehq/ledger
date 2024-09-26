@@ -314,22 +314,20 @@ func TestTransactionsCommit(t *testing.T) {
 
 		// todo: we should not need to update volumes to have a lock
 		_, err = store.updateVolumes(ctx, AccountsVolumes{
-			Ledger:      store.ledger.Name,
-			Account:     "account:1",
-			Asset:       "USD",
-			Input:       big.NewInt(100),
-			Output:      big.NewInt(0),
-			AccountsSeq: account1.Seq,
+			Ledger:  store.ledger.Name,
+			Account: "account:1",
+			Asset:   "USD",
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(0),
 		})
 		require.NoError(t, err)
 
 		_, err = store.updateVolumes(ctx, AccountsVolumes{
-			Ledger:      store.ledger.Name,
-			Account:     "account:2",
-			Asset:       "USD",
-			Input:       big.NewInt(100),
-			Output:      big.NewInt(0),
-			AccountsSeq: account2.Seq,
+			Ledger:  store.ledger.Name,
+			Account: "account:2",
+			Asset:   "USD",
+			Input:   big.NewInt(100),
+			Output:  big.NewInt(0),
 		})
 		require.NoError(t, err)
 

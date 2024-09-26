@@ -70,7 +70,6 @@ type Account struct {
 
 	PostCommitVolumes          AggregatedAccountVolumes `bun:"pcv,scanonly"`
 	PostCommitEffectiveVolumes AggregatedAccountVolumes `bun:"pcev,scanonly"`
-	Seq                        int                      `bun:"seq,scanonly"`
 }
 
 func (account Account) toCore() ledger.ExpandedAccount {
@@ -115,11 +114,11 @@ func (s *Store) selectBalance(date *time.Time) *bun.SelectQuery {
 
 func (s *Store) selectDistinctAccountMetadataHistories(date *time.Time) *bun.SelectQuery {
 	ret := s.db.NewSelect().
-		DistinctOn("accounts_seq").
+		DistinctOn("accounts_address").
 		ModelTableExpr(s.GetPrefixedRelationName("accounts_metadata")).
 		Where("ledger = ?", s.ledger.Name).
-		Column("accounts_seq", "metadata").
-		Order("accounts_seq", "revision desc")
+		Column("accounts_address", "metadata").
+		Order("accounts_address", "revision desc")
 
 	if date != nil && !date.IsZero() {
 		ret = ret.Where("date <= ?", date)
@@ -174,7 +173,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	if s.ledger.HasFeature(ledger.FeatureAccountMetadataHistory, "SYNC") && date != nil && !date.IsZero() {
 		ret = ret.
 			Join(
-				`left join (?) accounts_metadata on accounts_metadata.accounts_seq = accounts.seq`,
+				`left join (?) accounts_metadata on accounts_metadata.accounts_address = accounts.address`,
 				s.selectDistinctAccountMetadataHistories(date),
 			).
 			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata")
@@ -187,12 +186,12 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needPCV {
 		ret = ret.
 			Join(
-				`left join (?) pcv on pcv.accounts_seq = accounts.seq`,
+				`left join (?) pcv on pcv.accounts_address = accounts.address`,
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesBySeq(date)).
-					Column("accounts_seq").
+					Column("accounts_address").
 					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_volumes->>'input')::numeric, 'output', (v.post_commit_volumes->>'output')::numeric))) as pcv`).
-					Group("accounts_seq"),
+					Group("accounts_address"),
 			).
 			ColumnExpr("pcv.*")
 	}
@@ -200,12 +199,12 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
 		ret = ret.
 			Join(
-				`left join (?) pcev on pcev.accounts_seq = accounts.seq`,
+				`left join (?) pcev on pcev.accounts_address = accounts.address`,
 				s.db.NewSelect().
 					TableExpr("(?) v", s.SelectDistinctMovesByEffectiveDate(date)).
-					Column("accounts_seq").
+					Column("accounts_address").
 					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_effective_volumes->>'input')::numeric, 'output', (v.post_commit_effective_volumes->>'output')::numeric))) as pcev`).
-					Group("accounts_seq"),
+					Group("accounts_address"),
 			).
 			ColumnExpr("pcev.*")
 	}
@@ -226,7 +225,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 					TableExpr(
 						"(?) balance",
 						s.selectBalance(date).
-							Where("asset = ? and moves.accounts_seq = accounts.seq", asset),
+							Where("asset = ? and moves.accounts_address = accounts.address", asset),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
 					String(), nil, nil
@@ -236,7 +235,7 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 					TableExpr(
 						"(?) balance",
 						s.selectBalance(date).
-							Where("moves.accounts_seq = accounts.seq"),
+							Where("moves.accounts_address = accounts.address"),
 					).
 					ColumnExpr(fmt.Sprintf("balance %s ?", convertOperatorToSQL(operator)), value).
 					String(), nil, nil
@@ -432,7 +431,6 @@ func (s *Store) upsertAccount(ctx context.Context, account *Account) (bool, erro
 				return err
 			}
 
-			account.Seq = upserted.Seq
 			account.FirstUsage = upserted.FirstUsage
 			account.InsertionDate = upserted.InsertionDate
 			account.UpdatedAt = upserted.UpdatedAt

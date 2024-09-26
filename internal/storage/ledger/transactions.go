@@ -173,16 +173,16 @@ func (s *Store) selectTransactions(date *time.Time, expandVolumes, expandEffecti
 					TableExpr(
 						"(?) data",
 						s.db.NewSelect().
-							DistinctOn("transactions_id, account_address, asset").
+							DistinctOn("transactions_id, accounts_address, asset").
 							ModelTableExpr(s.GetPrefixedRelationName("moves")).
 							Column("transactions_id").
 							// use strings.Replace for logs
 							ColumnExpr(strings.Replace(`
 								json_build_object(
-									moves.account_address,
+									moves.accounts_address,
 									json_build_object(
 										moves.asset,
-										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, account_address, asset) order by seq desc)
+										first_value(moves.post_commit_effective_volumes) over (partition by (transactions_id, accounts_address, asset) order by seq desc)
 									)
 								) as pcev
 							`, "\n", "", -1)),
@@ -283,9 +283,8 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 		insertionDate = time.Now()
 	}
 
-	accounts := map[string]Account{}
 	for _, address := range tx.InvolvedAccounts() {
-		account := Account{
+		_, err := s.upsertAccount(ctx, &Account{
 			Ledger:        s.ledger.Name,
 			AddressArray:  strings.Split(address, ":"),
 			Address:       address,
@@ -293,16 +292,13 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 			InsertionDate: insertionDate,
 			UpdatedAt:     insertionDate,
 			Metadata:      make(metadata.Metadata),
-		}
-		_, err := s.upsertAccount(ctx, &account)
+		})
 		if err != nil {
 			return errors.Wrap(err, "upserting account")
 		}
-
-		accounts[address] = account
 	}
 
-	postCommitVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx, accounts)...)
+	postCommitVolumes, err := s.updateVolumes(ctx, volumeUpdates(s.ledger.Name, tx)...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update balances")
 	}
@@ -347,7 +343,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				Asset:               posting.Asset,
 				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
-				AccountSeq:          accounts[posting.Destination].Seq,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Destination][posting.Asset].Copy()),
 				TransactionID:       tx.ID,
 			})
@@ -362,7 +357,6 @@ func (s *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) e
 				Asset:               posting.Asset,
 				InsertionDate:       insertionDate,
 				EffectiveDate:       tx.Timestamp,
-				AccountSeq:          accounts[posting.Source].Seq,
 				PostCommitVolumes:   pointer.For(postCommitVolumes[posting.Source][posting.Asset].Copy()),
 				TransactionID:       tx.ID,
 			})
@@ -624,7 +618,7 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 	}
 }
 
-func volumeUpdates(l string, transaction *ledger.Transaction, accounts map[string]Account) []AccountsVolumes {
+func volumeUpdates(l string, transaction *ledger.Transaction) []AccountsVolumes {
 	aggregatedVolumes := make(map[string]map[string][]ledger.Posting)
 	for _, posting := range transaction.Postings {
 		if _, ok := aggregatedVolumes[posting.Source]; !ok {
@@ -656,12 +650,11 @@ func volumeUpdates(l string, transaction *ledger.Transaction, accounts map[strin
 			}
 
 			ret = append(ret, AccountsVolumes{
-				Ledger:      l,
-				Account:     account,
-				Asset:       asset,
-				Input:       volumes.Input,
-				Output:      volumes.Output,
-				AccountsSeq: accounts[account].Seq,
+				Ledger:  l,
+				Account: account,
+				Asset:   asset,
+				Input:   volumes.Input,
+				Output:  volumes.Output,
 			})
 		}
 	}
