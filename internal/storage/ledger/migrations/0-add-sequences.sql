@@ -20,7 +20,7 @@ select setval('"{{.Bucket}}"."log_id_{{.ID}}"', coalesce((
 -- enable post commit effective volumes synchronously
 
 {{ if .HasFeature "MOVES_HISTORY_POST_COMMIT_EFFECTIVE_VOLUMES" "SYNC" }}
-create index "pcev_{{.ID}}" on "{{.Bucket}}".moves (accounts_seq, asset, effective_date desc) where ledger = '{{.Name}}';
+create index "pcev_{{.ID}}" on "{{.Bucket}}".moves (accounts_address, asset, effective_date desc) where ledger = '{{.Name}}';
 
 create trigger "set_effective_volumes_{{.ID}}"
 before insert
@@ -95,8 +95,8 @@ execute procedure "{{.Bucket}}".insert_transaction_metadata_history();
 {{ end }}
 
 {{ if .HasFeature "INDEX_ADDRESS_SEGMENTS" "ON" }}
-create index "moves_account_address_array_{{.ID}}" on "{{.Bucket}}".moves using gin (account_address_array jsonb_ops) where ledger = '{{.Name}}';
-create index "moves_account_address_array_length_{{.ID}}" on "{{.Bucket}}".moves (jsonb_array_length(account_address_array)) where ledger = '{{.Name}}';
+create index "moves_accounts_address_array_{{.ID}}" on "{{.Bucket}}".moves using gin (accounts_address_array jsonb_ops) where ledger = '{{.Name}}';
+create index "moves_accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".moves (jsonb_array_length(accounts_address_array)) where ledger = '{{.Name}}';
 
 create index "accounts_address_array_{{.ID}}" on "{{.Bucket}}".accounts using gin (address_array jsonb_ops) where ledger = '{{.Name}}';
 create index "accounts_address_array_length_{{.ID}}" on "{{.Bucket}}".accounts (jsonb_array_length(address_array)) where ledger = '{{.Name}}';

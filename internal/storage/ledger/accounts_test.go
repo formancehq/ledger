@@ -451,7 +451,6 @@ func TestUpsertAccount(t *testing.T) {
 	upserted, err := store.upsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.True(t, upserted)
-	require.NotZero(t, account.Seq)
 
 	// reset the account model
 	account = Account{
@@ -470,5 +469,4 @@ func TestUpsertAccount(t *testing.T) {
 	upserted, err = store.upsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.False(t, upserted)
-	require.NotZero(t, account.Seq)
 }

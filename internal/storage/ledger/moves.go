@@ -30,10 +30,10 @@ func (s *Store) SortMovesBySeq(date *time.Time) *bun.SelectQuery {
 func (s *Store) SelectDistinctMovesBySeq(date *time.Time) *bun.SelectQuery {
 	ret := s.db.NewSelect().
 		TableExpr("(?) moves", s.SortMovesBySeq(date)).
-		DistinctOn("accounts_seq, account_address, asset").
-		Column("accounts_seq", "account_address", "asset").
-		ColumnExpr("first_value(account_address_array) over (partition by (accounts_seq, account_address, asset) order by seq desc) as account_address_array").
-		ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_seq, account_address, asset) order by seq desc) as post_commit_volumes").
+		DistinctOn("accounts_address, asset").
+		Column("accounts_address", "asset").
+		ColumnExpr("first_value(accounts_address_array) over (partition by (accounts_address, asset) order by seq desc) as accounts_address_array").
+		ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as post_commit_volumes").
 		Where("ledger = ?", s.ledger.Name)
 
 	if date != nil && !date.IsZero() {
@@ -46,11 +46,10 @@ func (s *Store) SelectDistinctMovesBySeq(date *time.Time) *bun.SelectQuery {
 func (s *Store) SelectDistinctMovesByEffectiveDate(date *time.Time) *bun.SelectQuery {
 	ret := s.db.NewSelect().
 		TableExpr(s.GetPrefixedRelationName("moves")).
-		DistinctOn("accounts_seq, asset").
-		Column("accounts_seq", "asset").
-		ColumnExpr("first_value(account_address) over (partition by (accounts_seq, account_address, asset) order by effective_date desc, seq desc) as account_address").
-		ColumnExpr("first_value(account_address_array) over (partition by (accounts_seq, account_address, asset) order by effective_date desc, seq desc) as account_address_array").
-		ColumnExpr("first_value(post_commit_effective_volumes) over (partition by (accounts_seq, account_address, asset) order by effective_date desc, seq desc) as post_commit_effective_volumes").
+		DistinctOn("accounts_address, asset").
+		Column("accounts_address", "asset").
+		ColumnExpr("first_value(accounts_address_array) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as accounts_address_array").
+		ColumnExpr("first_value(post_commit_effective_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as post_commit_effective_volumes").
 		Where("ledger = ?", s.ledger.Name)
 
 	if date != nil && !date.IsZero() {
@@ -65,6 +64,7 @@ func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
 		_, err := s.db.NewInsert().
 			Model(&moves).
 			ModelTableExpr(s.GetPrefixedRelationName("moves")).
+			// todo: to_json required?
 			Returning("to_json(post_commit_volumes) as post_commit_volumes, to_json(post_commit_effective_volumes) as post_commit_effective_volumes").
 			Exec(ctx)
 
@@ -77,14 +77,14 @@ func (s *Store) insertMoves(ctx context.Context, moves ...*Move) error {
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	Ledger                     string              `bun:"ledger,type:varchar"`
-	TransactionID int `bun:"transactions_id,type:bigint"`
-	IsSource                   bool                `bun:"is_source,type:bool"`
-	Account                    string              `bun:"account_address,type:varchar"`
-	AccountAddressArray        []string            `bun:"account_address_array,type:jsonb"`
+	Ledger        string `bun:"ledger,type:varchar"`
+	TransactionID int    `bun:"transactions_id,type:bigint"`
+	IsSource      bool   `bun:"is_source,type:bool"`
+	Account       string `bun:"accounts_address,type:varchar"`
+	// todo: use accounts table
+	AccountAddressArray        []string            `bun:"accounts_address_array,type:jsonb"`
 	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
 	Asset                      string              `bun:"asset,type:varchar"`
-	AccountSeq                 int                 `bun:"accounts_seq,type:int"`
 	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp"`
 	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp"`
 	PostCommitVolumes          *ledger.Volumes     `bun:"post_commit_volumes,type:jsonb"`
@@ -115,12 +115,11 @@ func (m Moves) volumeUpdates() []AccountsVolumes {
 				}
 			}
 			ret = append(ret, AccountsVolumes{
-				Ledger:      moves[0].Ledger,
-				Account:     account,
-				Asset:       asset,
-				Input:       volumes.Input,
-				Output:      volumes.Output,
-				AccountsSeq: moves[0].AccountSeq,
+				Ledger:  moves[0].Ledger,
+				Account: account,
+				Asset:   asset,
+				Input:   volumes.Input,
+				Output:  volumes.Output,
 			})
 		}
 	}

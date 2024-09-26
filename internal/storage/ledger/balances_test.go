@@ -41,7 +41,6 @@ func TestBalancesGet(t *testing.T) {
 		Asset:       "USD",
 		Input:       new(big.Int),
 		Output:      big.NewInt(100),
-		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
 
@@ -278,7 +277,6 @@ func TestUpdateBalances(t *testing.T) {
 		Asset:       "USD/2",
 		Input:       big.NewInt(0),
 		Output:      big.NewInt(100),
-		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
 	require.Equal(t, ledger.PostCommitVolumes{
@@ -307,7 +305,6 @@ func TestUpdateBalances(t *testing.T) {
 		Asset:       "USD/2",
 		Input:       big.NewInt(50),
 		Output:      big.NewInt(50),
-		AccountsSeq: world.Seq,
 	})
 	require.NoError(t, err)
 	require.Equal(t, ledger.PostCommitVolumes{
