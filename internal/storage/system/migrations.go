@@ -118,7 +118,7 @@ func getMigrator() *migrations.Migrator {
 			},
 		},
 		migrations.Migration{
-			Name: "Add jsonb_merge_agg pg aggregator",
+			Name: "Add aggregate_objects pg aggregator",
 			UpWithContext: func(ctx context.Context, tx bun.Tx) error {
 				_, err := tx.ExecContext(ctx, jsonbMerge)
 				return err
@@ -217,7 +217,7 @@ create or replace function public.jsonb_concat(a jsonb, b jsonb) returns jsonb
     parallel safe
 ;
 
-create or replace aggregate public.jsonb_merge_agg(jsonb)
+create or replace aggregate public.aggregate_objects(jsonb)
 (
     sfunc = public.jsonb_concat,
     stype = jsonb,

@@ -498,32 +498,91 @@ func TestTransactionsInsert(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	// create a simple tx
-	tx1 := Transaction{
-		Ledger:    store.ledger.Name,
-		Timestamp: now,
-		Reference: "foo",
-	}
-	err := store.insertTransaction(ctx, &tx1)
-	require.NoError(t, err)
-	require.NotZero(t, tx1.ID)
+	t.Run("check reference conflict", func(t *testing.T) {
+		t.Parallel()
 
-	// create another tx with the same reference
-	tx2 := Transaction{
-		Ledger:    store.ledger.Name,
-		Timestamp: now,
-		Reference: "foo",
-	}
-	err = store.insertTransaction(ctx, &tx2)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, ledgercontroller.ErrReferenceConflict{}))
+		// create a simple tx
+		tx1 := Transaction{
+			Ledger:    store.ledger.Name,
+			Timestamp: now,
+			Reference: "foo",
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+			},
+		}
+		err := store.insertTransaction(ctx, &tx1)
+		require.NoError(t, err)
+		require.NotZero(t, tx1.ID)
 
-	// create a tx with no timestamp
-	tx3 := Transaction{
-		Ledger: store.ledger.Name,
-	}
-	err = store.insertTransaction(ctx, &tx3)
-	require.NoError(t, err)
+		// create another tx with the same reference
+		tx2 := Transaction{
+			Ledger:    store.ledger.Name,
+			Timestamp: now,
+			Reference: "foo",
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+			},
+		}
+		err = store.insertTransaction(ctx, &tx2)
+		require.Error(t, err)
+		require.True(t, errors.Is(err, ledgercontroller.ErrReferenceConflict{}))
+	})
+	t.Run("create a tx with no timestamp", func(t *testing.T) {
+		t.Parallel()
+
+		// create a tx with no timestamp
+		tx1 := Transaction{
+			Ledger: store.ledger.Name,
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+			},
+		}
+		err := store.insertTransaction(ctx, &tx1)
+		require.NoError(t, err)
+	})
+	t.Run("check denormalization", func(t *testing.T) {
+		t.Parallel()
+
+		tx1 := Transaction{
+			Ledger:     store.ledger.Name,
+			Timestamp:  now,
+			InsertedAt: now,
+			Postings: []ledger.Posting{
+				ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+			},
+			Metadata: metadata.Metadata{},
+		}
+		err := store.insertTransaction(ctx, &tx1)
+		require.NoError(t, err)
+
+		type Model struct {
+			Transaction
+			Sources            []string         `bun:"sources,type:jsonb"`
+			Destinations       []string         `bun:"destinations,type:jsonb"`
+			SourcesArrays      []map[string]any `bun:"sources_arrays,type:jsonb"`
+			DestinationsArrays []map[string]any `bun:"destinations_arrays,type:jsonb"`
+		}
+
+		m := Model{}
+		err = store.db.NewSelect().
+			Model(&m).
+			ModelTableExpr(store.GetPrefixedRelationName("transactions") + " as model").
+			Scan(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Model{
+			Transaction:  tx1,
+			Sources:      []string{"world"},
+			Destinations: []string{"bank"},
+			SourcesArrays: []map[string]any{{
+				"0": "world",
+				"1": nil,
+			}},
+			DestinationsArrays: []map[string]any{{
+				"0": "bank",
+				"1": nil,
+			}},
+		}, m)
+	})
 }
 
 func TestTransactionsList(t *testing.T) {
