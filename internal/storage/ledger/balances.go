@@ -16,15 +16,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type Balances struct {
-	bun.BaseModel `bun:"accounts_volumes"`
-
-	Ledger  string   `bun:"ledger,type:varchar"`
-	Account string   `bun:"accounts_address,type:varchar"`
-	Asset   string   `bun:"asset,type:varchar"`
-	Balance *big.Int `bun:"balance,type:numeric"`
-}
-
 func (s *Store) selectAccountWithVolumes(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 
 	ret := s.db.NewSelect()
@@ -196,12 +187,32 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 			}
 		}
 
-		balances := make([]Balances, 0)
+		accountsVolumes := make([]AccountsVolumes, 0)
+		for account, assets := range query {
+			for _, asset := range assets {
+				accountsVolumes = append(accountsVolumes, AccountsVolumes{
+					Ledger:  s.ledger.Name,
+					Account: account,
+					Asset:   asset,
+					Input:   new(big.Int),
+					Output:  new(big.Int),
+				})
+			}
+		}
+
 		err := s.db.NewSelect().
-			Model(&balances).
+			With(
+				"ins",
+				// try to insert volumes with 0 values
+				// this way, if the account has a 0 balance at this point, it will be locked also
+				s.db.NewInsert().
+					Model(&accountsVolumes).
+					ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
+					On("conflict do nothing"),
+			).
+			Model(&accountsVolumes).
 			ModelTableExpr(s.GetPrefixedRelationName("accounts_volumes")).
-			ColumnExpr("accounts_address, asset").
-			ColumnExpr("input - output as balance").
+			Column("accounts_address", "asset", "input", "output").
 			Where("("+strings.Join(conditions, ") OR (")+")", args...).
 			For("update").
 			// notes(gfyrag): keep order, it ensures consistent locking order and limit deadlocks
@@ -212,11 +223,11 @@ func (s *Store) GetBalances(ctx context.Context, query ledgercontroller.BalanceQ
 		}
 
 		ret := ledgercontroller.Balances{}
-		for _, balance := range balances {
-			if _, ok := ret[balance.Account]; !ok {
-				ret[balance.Account] = map[string]*big.Int{}
+		for _, volumes := range accountsVolumes {
+			if _, ok := ret[volumes.Account]; !ok {
+				ret[volumes.Account] = map[string]*big.Int{}
 			}
-			ret[balance.Account][balance.Asset] = balance.Balance
+			ret[volumes.Account][volumes.Asset] = new(big.Int).Sub(volumes.Input, volumes.Output)
 		}
 
 		// fill empty balances with 0 value

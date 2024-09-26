@@ -300,37 +300,6 @@ func TestTransactionsCommit(t *testing.T) {
 
 		store := newLedgerStore(t)
 
-		account1 := &Account{
-			Address: "account:1",
-		}
-		_, err := store.upsertAccount(ctx, account1)
-		require.NoError(t, err)
-
-		account2 := &Account{
-			Address: "account:2",
-		}
-		_, err = store.upsertAccount(ctx, account2)
-		require.NoError(t, err)
-
-		// todo: we should not need to update volumes to have a lock
-		_, err = store.updateVolumes(ctx, AccountsVolumes{
-			Ledger:  store.ledger.Name,
-			Account: "account:1",
-			Asset:   "USD",
-			Input:   big.NewInt(100),
-			Output:  big.NewInt(0),
-		})
-		require.NoError(t, err)
-
-		_, err = store.updateVolumes(ctx, AccountsVolumes{
-			Ledger:  store.ledger.Name,
-			Account: "account:2",
-			Asset:   "USD",
-			Input:   big.NewInt(100),
-			Output:  big.NewInt(0),
-		})
-		require.NoError(t, err)
-
 		// Create a new sql transaction to commit a transaction from account:1 to account:2
 		// it will block until storeWithBlockingTx is commited or rollbacked.
 		txWithAccount1AsSource, err := store.db.BeginTx(ctx, &sql.TxOptions{})

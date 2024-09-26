@@ -3,9 +3,13 @@
 package ledger
 
 import (
+	"database/sql"
+	"github.com/formancehq/go-libs/platform/postgres"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/pkg/errors"
 	"math/big"
 	"testing"
+	libtime "time"
 
 	"github.com/formancehq/go-libs/time"
 
@@ -679,5 +683,129 @@ func TestAggGetVolumesWithBalances(t *testing.T) {
 			},
 		})
 	})
+}
 
+func TestUpdateVolumes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("update volumes of same account sequentially", func(t *testing.T) {
+		t.Parallel()
+
+		store := newLedgerStore(t)
+		ctx := logging.TestingContext()
+
+		volumes, err := store.updateVolumes(ctx, AccountsVolumes{
+			Ledger:  store.ledger.Name,
+			Account: "world",
+			Asset:   "USD/2",
+			Input:   big.NewInt(0),
+			Output:  big.NewInt(100),
+		})
+		require.NoError(t, err)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"world": {
+				"USD/2": ledger.NewVolumesInt64(0, 100),
+			},
+		}, volumes)
+
+		volumes, err = store.updateVolumes(ctx, AccountsVolumes{
+			Ledger:  store.ledger.Name,
+			Account: "world",
+			Asset:   "USD/2",
+			Input:   big.NewInt(50),
+			Output:  big.NewInt(0),
+		})
+		require.NoError(t, err)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"world": {
+				"USD/2": ledger.NewVolumesInt64(50, 100),
+			},
+		}, volumes)
+
+		volumes, err = store.updateVolumes(ctx, AccountsVolumes{
+			Ledger:  store.ledger.Name,
+			Account: "world",
+			Asset:   "USD/2",
+			Input:   big.NewInt(50),
+			Output:  big.NewInt(50),
+		})
+		require.NoError(t, err)
+		require.Equal(t, ledger.PostCommitVolumes{
+			"world": {
+				"USD/2": ledger.NewVolumesInt64(100, 150),
+			},
+		}, volumes)
+	})
+
+	t.Run("get balance of not existing account should take a lock", func(t *testing.T) {
+		t.Parallel()
+
+		store := newLedgerStore(t)
+		ctx := logging.TestingContext()
+
+		sqlTx1, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = sqlTx1.Rollback()
+		})
+		storeTx1 := store.WithDB(sqlTx1)
+
+		sqlTx2, err := store.GetDB().BeginTx(ctx, &sql.TxOptions{})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = sqlTx2.Rollback()
+		})
+		storeTx2 := store.WithDB(sqlTx2)
+
+		// at this stage, the accounts_volumes is empty
+		// taking balance of the 'world' account should force a lock
+		volumes, err := storeTx1.GetBalances(ctx, ledgercontroller.BalanceQuery{
+			"world": {"USD"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, ledgercontroller.Balances{
+			"world": {
+				"USD": big.NewInt(0),
+			},
+		}, volumes)
+
+		// take an arbitrary lock on tx2
+		_, err = storeTx2.GetDB().NewRaw(`select pg_advisory_xact_lock(1)`).Exec(ctx)
+		require.NoError(t, err)
+
+		errChan := make(chan error, 2)
+		go func() {
+			// this call should lock since the lock iw owned by tx1
+			_, err := storeTx2.GetBalances(ctx, ledgercontroller.BalanceQuery{
+				"world": {"USD"},
+			})
+			errChan <- err
+		}()
+
+		go func() {
+			// take the same advisory lock for tx1 as tx2
+			// as tx1 hold a lock on the world balance, and tx2 is waiting for that balance
+			// it should trigger a deadlock
+			_, err = storeTx1.GetDB().NewRaw(`select pg_advisory_xact_lock(1)`).Exec(ctx)
+			errChan <- postgres.ResolveError(err)
+		}()
+
+		// either tx1 or tx2 should be cancelled by PG with a deadlock error
+		select {
+		case err := <-errChan:
+			if err == nil {
+				select {
+				case err = <-errChan:
+					if err == nil {
+						require.Fail(t, "should have a deadlock")
+					}
+				case <-libtime.After(2 * time.Second):
+					require.Fail(t, "transaction should have finished")
+				}
+			}
+			require.True(t, errors.Is(err, postgres.ErrDeadlockDetected))
+		case <-libtime.After(2 * time.Second):
+			require.Fail(t, "transaction should have finished")
+		}
+	})
 }
