@@ -27,9 +27,6 @@ jobs:
   Earthly:
     runs-on: "ubuntu-latest"
     steps:
-      - uses: 'actions/checkout@v4'
-        with:
-          fetch-depth: 0
       - name: Setup Env
         uses: ./.github/actions/env
         with:
@@ -39,19 +36,20 @@ jobs:
           --allow-privileged
           --secret SPEAKEASY_API_KEY=$SPEAKEASY_API_KEY
           ${{ contains(github.event.pull_request.labels.*.name, 'no-cache') && '--no-cache' || '' }}
-          +ci
+          github.com/formancehq/earthly+run-ci --project=ledger --commit=$COMMIT
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
-      - name: Get changed files
-        id: changed-files
-        shell: bash
-        run: |
-          hasChanged=$(git status --porcelain) 
-          if (( $(echo ${#hasChanged}) != 0 )); then
-            git status
-            echo "There are changes in the repository"
-            exit 1
-          fi
+          COMMIT: ${{ github.sha }}
+#      - name: Get changed files
+#        id: changed-files
+#        shell: bash
+#        run: |
+#          hasChanged=$(git status --porcelain)
+#          if (( $(echo ${#hasChanged}) != 0 )); then
+#            git status
+#            echo "There are changes in the repository"
+#            exit 1
+#          fi
 
   GoReleaser:
     runs-on: "ubuntu-latest"
