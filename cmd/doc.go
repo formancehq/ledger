@@ -8,6 +8,9 @@ func NewDocCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "doc",
 	}
-	cmd.AddCommand(NewDocFlagsCommand())
+	cmd.AddCommand(
+		NewDocFlagsCommand(),
+		NewDocEventsCommand(),
+	)
 	return cmd
 }

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/formancehq/ledger/internal/bus/deleted-metadata",
+  "$ref": "#/$defs/DeletedMetadata",
+  "$defs": {
+    "DeletedMetadata": {
+      "properties": {
+        "ledger": {
+          "type": "string"
+        },
+        "targetType": {
+          "type": "string"
+        },
+        "targetId": true,
+        "key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ledger",
+        "targetType",
+        "targetId",
+        "key"
+      ]
+    }
+  }
+}

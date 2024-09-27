@@ -23,10 +23,10 @@ sources:
 generate:
     FROM core+builder-image
     RUN apk update && apk add openjdk11
-    DO --pass-args core+GO_INSTALL --package=go.uber.org/mock/mockgen@latest
+    RUN go install go.uber.org/mock/mockgen@latest
     COPY (+sources/*) /src
     WORKDIR /src
-    DO --pass-args core+GO_GENERATE
+    RUN go generate ./...
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
     SAVE ARTIFACT cmd AS LOCAL cmd
@@ -35,7 +35,11 @@ compile:
     FROM +sources
     WORKDIR /src
     ARG VERSION=latest
-    DO --pass-args core+GO_COMPILE --VERSION=$VERSION
+    RUN go build
+    RUN go build -o main -ldflags="-X ${GIT_PATH}/cmd.Version=${VERSION} \
+        -X ${GIT_PATH}/cmd.BuildDate=$(date +%s) \
+        -X ${GIT_PATH}/cmd.Commit=${EARTHLY_BUILD_SHA}"
+    SAVE ARTIFACT main
 
 build-image:
     FROM core+final-image
@@ -47,13 +51,12 @@ build-image:
     DO --pass-args core+SAVE_IMAGE --COMPONENT=ledger --REPOSITORY=${REPOSITORY} --TAG=$tag
 
 tests:
-    FROM +sources
+    FROM +tidy
     RUN go install github.com/onsi/ginkgo/v2/ginkgo@latest
-    WORKDIR /src
     COPY --dir --pass-args (+generate/*) .
-    COPY --dir test .
 
     ARG includeIntegrationTests="true"
+    ARG includeEnd2EndTests="true"
     ARG coverage=""
     ARG debug=false
 
@@ -69,17 +72,14 @@ tests:
         SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
         SET goFlags="$goFlags -coverprofile cover.out"
     END
+
     IF [ "$includeIntegrationTests" = "true" ]
         SET goFlags="$goFlags -tags it"
         WITH DOCKER --pull=postgres:15-alpine
-            RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-                --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
-                ginkgo -r -p $goFlags
+            RUN ginkgo -r -p $goFlags
         END
     ELSE
-        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-            --mount type=cache,id=gobuildcache,target=/root/.cache/go-build \
-            ginkgo -r -p $goFlags
+        RUN ginkgo -r -p $goFlags
     END
     IF [ "$coverage" = "true" ]
         # exclude files suffixed with _generated.go, these are mocks used by tests
@@ -102,10 +102,8 @@ deploy-staging:
     BUILD --pass-args core+deploy-staging
 
 lint:
-    FROM +sources
-    WORKDIR /src
-    COPY --dir test .
-    DO --pass-args core+GO_LINT --ADDITIONAL_ARGUMENTS="--build-tags it"
+    FROM +tidy
+    RUN golangci-lint run --fix --build-tags it
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
@@ -113,20 +111,15 @@ lint:
     SAVE ARTIFACT main.go AS LOCAL main.go
 
 pre-commit:
-    WAIT
-      BUILD --pass-args +tidy
-    END
-    BUILD --pass-args +lint
-    WAIT
-        BUILD +openapi
-    END
+    BUILD +tidy
+    BUILD +lint
+    BUILD +openapi
     BUILD +generate-client
+    BUILD +export-docs-events
 
 bench:
-    FROM +sources
-    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
-    WORKDIR /src
-    COPY --dir test .
+    FROM +tidy
+    RUN go install golang.org/x/perf/cmd/benchstat@latest
     WORKDIR /src/test/performance
     ARG benchTime=1s
     ARG count=1
@@ -141,9 +134,7 @@ bench:
         SET additionalArgs=-v
     END
     WITH DOCKER --pull postgres:15-alpine
-        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-            --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
+        RUN go test -timeout $testTimeout -bench=$bench -run ^$ -tags it $additionalArgs \
             -benchtime=$benchTime | tee -a /results.txt
     END
     RUN benchstat /results.txt
@@ -151,7 +142,7 @@ bench:
 
 benchstat:
     FROM core+builder-image
-    DO --pass-args core+GO_INSTALL --package=golang.org/x/perf/cmd/benchstat@latest
+    RUN go install golang.org/x/perf/cmd/benchstat@latest
     ARG compareAgainstRevision=main
     COPY --pass-args github.com/formancehq/stack/components/ledger:$compareAgainstRevision+bench/results.txt /tmp/main.txt
     COPY --pass-args +bench/results.txt /tmp/branch.txt
@@ -198,9 +189,11 @@ export-database-schema:
     WORKDIR /src/components/ledger
     COPY --dir scripts scripts
     WITH DOCKER --pull postgres:15-alpine --pull schemaspy/schemaspy:6.2.4
-        RUN --mount type=cache,id=gopkgcache,target=${GOPATH}/pkg/mod \
-            --mount type=cache,id=gobuild,target=/root/.cache/go-build \
-            ./scripts/export-database-schema.sh
+        RUN ./scripts/export-database-schema.sh
     END
     SAVE ARTIFACT docs/database AS LOCAL docs/database
 
+export-docs-events:
+    FROM +tidy
+    RUN go run main.go doc events --write-dir docs/events
+    SAVE ARTIFACT docs/events AS LOCAL docs/events
