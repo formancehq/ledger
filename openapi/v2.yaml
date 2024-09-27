@@ -1506,6 +1506,9 @@ components:
     V2Transaction:
       type: object
       properties:
+        insertedAt:
+          type: string
+          format: date-time
         timestamp:
           type: string
           format: date-time
@@ -1527,21 +1530,23 @@ components:
         revertedAt:
           type: string
           format: date-time
+        preCommitVolumes:
+          $ref: '#/components/schemas/V2AggregatedVolumes'
+        postCommitVolumes:
+          $ref: '#/components/schemas/V2AggregatedVolumes'
+        preCommitEffectiveVolumes:
+          $ref: '#/components/schemas/V2AggregatedVolumes'
+        postCommitEffectiveVolumes:
+          $ref: '#/components/schemas/V2AggregatedVolumes'
       required:
         - postings
         - timestamp
         - id
         - metadata
         - reverted
+        - insertedAt
     V2ExpandedTransaction:
-      allOf:
-        - $ref: '#/components/schemas/V2Transaction'
-        - type: object
-          properties:
-            preCommitVolumes:
-              $ref: '#/components/schemas/V2AggregatedVolumes'
-            postCommitVolumes:
-              $ref: '#/components/schemas/V2AggregatedVolumes'
+      $ref: '#/components/schemas/V2Transaction'
     V2PostTransaction:
       type: object
       required:
