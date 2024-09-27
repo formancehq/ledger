@@ -6,7 +6,6 @@ import (
 	"fmt"
 	. "github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/tracing"
-	"math/big"
 	"regexp"
 
 	"github.com/formancehq/go-libs/logging"
@@ -25,36 +24,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type AggregatedAccountVolume struct {
-	ledger.Volumes
-	Asset string `bun:"asset"`
-}
-
-type AggregatedAccountVolumes []AggregatedAccountVolume
-
-func (volumes AggregatedAccountVolumes) toCore() ledger.VolumesByAssets {
-	if volumes == nil {
-		return ledger.VolumesByAssets{}
-	}
-
-	ret := ledger.VolumesByAssets{}
-	for _, volume := range volumes {
-		if volumesForAsset, ok := ret[volume.Asset]; !ok {
-			ret[volume.Asset] = ledger.Volumes{
-				Input:  new(big.Int).Set(volume.Input),
-				Output: new(big.Int).Set(volume.Output),
-			}
-		} else {
-			volumesForAsset.Input = volumesForAsset.Input.Add(volumesForAsset.Input, volume.Input)
-			volumesForAsset.Output = volumesForAsset.Output.Add(volumesForAsset.Output, volume.Output)
-
-			ret[volume.Asset] = volumesForAsset
-		}
-	}
-
-	return ret
-}
-
 type Account struct {
 	bun.BaseModel `bun:"table:accounts"`
 
@@ -65,8 +34,8 @@ type Account struct {
 	UpdatedAt     time.Time         `bun:"updated_at"`
 	FirstUsage    time.Time         `bun:"first_usage"`
 
-	PostCommitVolumes          ledger.VolumesByAssets   `bun:"pcv,scanonly"`
-	PostCommitEffectiveVolumes AggregatedAccountVolumes `bun:"pcev,scanonly"`
+	PostCommitVolumes          ledger.VolumesByAssets `bun:"pcv,scanonly"`
+	PostCommitEffectiveVolumes ledger.VolumesByAssets `bun:"pcev,scanonly"`
 }
 
 func (account Account) toCore() ledger.Account {
@@ -77,7 +46,7 @@ func (account Account) toCore() ledger.Account {
 		InsertionDate:    account.InsertionDate,
 		UpdatedAt:        account.UpdatedAt,
 		Volumes:          account.PostCommitVolumes,
-		EffectiveVolumes: account.PostCommitEffectiveVolumes.toCore(),
+		EffectiveVolumes: account.PostCommitEffectiveVolumes,
 	}
 }
 
@@ -191,16 +160,16 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
-		ret = ret.
-			Join(
-				`left join (?) pcev on pcev.accounts_address = accounts.address`,
-				s.db.NewSelect().
-					TableExpr("(?) v", s.SelectDistinctMovesByEffectiveDate(date)).
-					Column("accounts_address").
-					ColumnExpr(`to_json(array_agg(json_build_object('asset', v.asset, 'input', (v.post_commit_effective_volumes->>'input')::numeric, 'output', (v.post_commit_effective_volumes->>'output')::numeric))) as pcev`).
-					Group("accounts_address"),
-			).
-			ColumnExpr("pcev.*")
+		selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, false, nil)
+		selectAccountWithVolumes := s.db.NewSelect().
+			TableExpr("(?) values", selectAccountWithAssetAndVolumes).
+			Group("accounts_address").
+			Column("accounts_address").
+			ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as pcev")
+		ret = ret.Join(
+			`left join (?) pcev on pcev.accounts_address = accounts.address`,
+			selectAccountWithVolumes,
+		).Column("pcev.*")
 	}
 
 	if qb != nil {
