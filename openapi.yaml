@@ -1902,6 +1902,12 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
+        - name: force
+          in: query
+          description: Disable balance checks when passing postings
+          schema:
+            type: boolean
+            example: true
       requestBody:
         required: true
         description: |
@@ -2115,6 +2121,12 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: dryRun
+          in: query
+          description: Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.
+          schema:
+            type: boolean
+            example: true
       responses:
         "201":
           description: OK
@@ -3234,6 +3246,9 @@ components:
           minimum: 0
         reverted:
           type: boolean
+        revertedAt:
+          type: string
+          format: date-time
       required:
         - postings
         - timestamp
@@ -3650,6 +3665,10 @@ components:
           type: string
         metadata:
           $ref: '#/components/schemas/V2Metadata'
+        features:
+          type: object
+          additionalProperties:
+            type: string
     V2Ledger:
       type: object
       properties:

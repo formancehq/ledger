@@ -2,10 +2,11 @@ package ledger
 
 import (
 	"encoding/json"
-	"github.com/uptrace/bun"
 	"math/big"
 	"slices"
 	"sort"
+
+	"github.com/uptrace/bun"
 
 	"github.com/formancehq/go-libs/time"
 

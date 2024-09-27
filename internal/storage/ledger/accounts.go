@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
+
 	. "github.com/formancehq/go-libs/bun/bunpaginate"
 	"github.com/formancehq/ledger/internal/tracing"
-	"regexp"
 
 	"github.com/formancehq/go-libs/logging"
 	"github.com/formancehq/go-libs/metadata"

@@ -30,8 +30,8 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case postgres.IsNotFoundError(err):
 			acc = &ledger.Account{
-				Address:  address,
-				Metadata: metadata.Metadata{},
+				Address:          address,
+				Metadata:         metadata.Metadata{},
 				Volumes:          ledger.VolumesByAssets{},
 				EffectiveVolumes: ledger.VolumesByAssets{},
 			}
