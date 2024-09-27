@@ -34,10 +34,10 @@ func TestMovesInsert(t *testing.T) {
 		)
 		require.NoError(t, store.insertTransaction(ctx, &tx))
 
-		account := &Account{
+		account := &ledger.Account{
 			Address: "world",
 		}
-		_, err := store.upsertAccount(ctx, account)
+		_, err := store.UpsertAccount(ctx, account)
 		require.NoError(t, err)
 
 		now := time.Now()

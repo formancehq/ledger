@@ -223,11 +223,12 @@ func (mr *MockTXMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m an
 }
 
 // UpsertAccount mocks base method.
-func (m *MockTX) UpsertAccount(ctx context.Context, account *ledger.Account) error {
+func (m *MockTX) UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertAccount", ctx, account)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // UpsertAccount indicates an expected call of UpsertAccount.

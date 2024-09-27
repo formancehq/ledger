@@ -478,7 +478,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 	if err := tracing.SkipResult(tracing.Trace(ctx, "SaveAccountMetadata", tracing.NoResult(func(ctx context.Context) error {
 		now := time.Now()
 		_, err := ctrl.forgeLog(ctx, parameters, func(sqlTX TX) (*ledger.Log, error) {
-			if err := sqlTX.UpsertAccount(ctx, &ledger.Account{
+			if _, err := sqlTX.UpsertAccount(ctx, &ledger.Account{
 				Address:       address,
 				Metadata:      m,
 				FirstUsage:    now,
