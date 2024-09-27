@@ -25,7 +25,7 @@ var (
 
 type ParallelExecutionContext struct {
 	PostgresServer *PostgresServer
-	NatsServer *natstesting.NatsServer
+	NatsServer     *natstesting.NatsServer
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
@@ -34,16 +34,20 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	pgServer.LoadAsync(func() *PostgresServer {
 		By("Initializing postgres server")
-		return CreatePostgresServer(
+		ret := CreatePostgresServer(
 			GinkgoT(),
 			dockerPool.GetValue(),
 			WithPGStatsExtension(),
 			WithPGCrypto(),
 		)
+		By("Postgres address: " + ret.GetDSN())
+		return ret
 	})
 	natsServer.LoadAsync(func() *natstesting.NatsServer {
 		By("Initializing nats server")
-		return natstesting.CreateServer(GinkgoT(), debug, logger)
+		ret := natstesting.CreateServer(GinkgoT(), debug, logger)
+		By("Nats address: " + ret.ClientURL())
+		return ret
 	})
 
 	By("Waiting services alive")
@@ -69,4 +73,5 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).To(BeNil())
 
 	pgServer.SetValue(pec.PostgresServer)
+	natsServer.SetValue(pec.NatsServer)
 })

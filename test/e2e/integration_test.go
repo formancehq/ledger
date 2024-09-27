@@ -34,7 +34,7 @@ var _ = Context("Ledger integration tests", func() {
 			PostgresConfiguration: db.GetValue().ConnectionOptions(),
 			Output:                GinkgoWriter,
 			Debug:                 debug,
-			NatsURL:               natsServer.GetValue().URL,
+			NatsURL:               natsServer.GetValue().ClientURL(),
 		}
 	})
 	When("starting the service", func() {
@@ -127,6 +127,10 @@ var _ = Context("Ledger integration tests", func() {
 					Expect(tx.Reverted).To(BeFalse())
 					Expect(tx.Reference).To(BeNil())
 				}
+				It("should be ok", func() {
+					Expect(err).To(BeNil())
+					checkTx()
+				})
 				It("should be ok", func() {
 					Expect(err).To(BeNil())
 					checkTx()

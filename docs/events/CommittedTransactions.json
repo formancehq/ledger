@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/formancehq/ledger/internal/bus/committed-transactions",
+  "$ref": "#/$defs/CommittedTransactions",
+  "$defs": {
+    "CommittedTransactions": {
+      "properties": {
+        "ledger": {
+          "type": "string"
+        },
+        "transactions": {
+          "items": {
+            "$ref": "#/$defs/Transaction"
+          },
+          "type": "array"
+        },
+        "accountMetadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Metadata"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ledger",
+        "transactions",
+        "accountMetadata"
+      ]
+    },
+    "Int": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "PostCommitVolumes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/VolumesByAssets"
+      },
+      "type": "object"
+    },
+    "Posting": {
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        },
+        "amount": {
+          "$ref": "#/$defs/Int"
+        },
+        "asset": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "source",
+        "destination",
+        "amount",
+        "asset"
+      ]
+    },
+    "Postings": {
+      "items": {
+        "$ref": "#/$defs/Posting"
+      },
+      "type": "array"
+    },
+    "Time": {
+      "properties": {},
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Transaction": {
+      "properties": {
+        "postings": {
+          "$ref": "#/$defs/Postings"
+        },
+        "metadata": {
+          "$ref": "#/$defs/Metadata"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/Time"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "insertedAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "revertedAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "postCommitVolumes": {
+          "$ref": "#/$defs/PostCommitVolumes"
+        },
+        "postCommitEffectiveVolumes": {
+          "$ref": "#/$defs/PostCommitVolumes"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "postings",
+        "metadata",
+        "timestamp",
+        "id",
+        "revertedAt"
+      ]
+    },
+    "Volumes": {
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/Int"
+        },
+        "output": {
+          "$ref": "#/$defs/Int"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "input",
+        "output"
+      ]
+    },
+    "VolumesByAssets": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Volumes"
+      },
+      "type": "object"
+    }
+  }
+}
