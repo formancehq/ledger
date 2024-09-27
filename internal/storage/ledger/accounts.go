@@ -147,28 +147,16 @@ func (s *Store) selectAccounts(date *time.Time, expandVolumes, expandEffectiveVo
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistory, "ON") && needPCV {
-		selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, true, nil)
-		selectAccountWithVolumes := s.db.NewSelect().
-			TableExpr("(?) values", selectAccountWithAssetAndVolumes).
-			Group("accounts_address").
-			Column("accounts_address").
-			ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as pcv")
 		ret = ret.Join(
 			`left join (?) pcv on pcv.accounts_address = accounts.address`,
-			selectAccountWithVolumes,
+			s.selectAccountWithAggregatedVolumes(date, true, "pcv"),
 		).Column("pcv.*")
 	}
 
 	if s.ledger.HasFeature(ledger.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") && expandEffectiveVolumes {
-		selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, false, nil)
-		selectAccountWithVolumes := s.db.NewSelect().
-			TableExpr("(?) values", selectAccountWithAssetAndVolumes).
-			Group("accounts_address").
-			Column("accounts_address").
-			ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as pcev")
 		ret = ret.Join(
 			`left join (?) pcev on pcev.accounts_address = accounts.address`,
-			selectAccountWithVolumes,
+			s.selectAccountWithAggregatedVolumes(date, false, "pcev"),
 		).Column("pcev.*")
 	}
 
