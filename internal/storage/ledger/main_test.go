@@ -80,7 +80,7 @@ func newLedgerStore(t T) *Store {
 
 	require.NoError(t, systemstore.Migrate(ctx, db))
 
-	l := ledger.Must(ledger.NewWithDefaults(ledgerName))
+	l := ledger.MustNewWithDefault(ledgerName)
 	l.Bucket = ledgerName
 
 	b := bucket.New(db, ledgerName)

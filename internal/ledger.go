@@ -157,10 +157,10 @@ func NewWithDefaults(name string) (*Ledger, error) {
 	return New(name, NewDefaultConfiguration())
 }
 
-// todo(libs): move in shared libs
-func Must[V any](v *V, err error) V {
+func MustNewWithDefault(name string) Ledger {
+	ledger, err := New(name, NewDefaultConfiguration())
 	if err != nil {
 		panic(err)
 	}
-	return *v
+	return *ledger
 }
