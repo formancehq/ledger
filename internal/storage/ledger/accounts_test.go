@@ -418,8 +418,7 @@ func TestUpsertAccount(t *testing.T) {
 
 	now := time.Now()
 
-	account := Account{
-		Ledger:        store.Name(),
+	account := ledger.Account{
 		Address:       "foo",
 		FirstUsage:    now,
 		InsertionDate: now,
@@ -427,13 +426,12 @@ func TestUpsertAccount(t *testing.T) {
 	}
 
 	// initial insert
-	upserted, err := store.upsertAccount(ctx, &account)
+	upserted, err := store.UpsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.True(t, upserted)
 
 	// reset the account model
-	account = Account{
-		Ledger:  store.Name(),
+	account = ledger.Account{
 		Address: "foo",
 		// the account will be upserted on the timeline after its initial usage
 		// the upsert should not modify anything
@@ -444,7 +442,7 @@ func TestUpsertAccount(t *testing.T) {
 	}
 
 	// upsert with no modification
-	upserted, err = store.upsertAccount(ctx, &account)
+	upserted, err = store.UpsertAccount(ctx, &account)
 	require.NoError(t, err)
 	require.False(t, upserted)
 }

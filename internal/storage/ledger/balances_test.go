@@ -26,14 +26,13 @@ func TestBalancesGet(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	world := &Account{
-		Ledger:        store.ledger.Name,
+	world := &ledger.Account{
 		Address:       "world",
 		InsertionDate: time.Now(),
 		UpdatedAt:     time.Now(),
 		FirstUsage:    time.Now(),
 	}
-	_, err := store.upsertAccount(ctx, world)
+	_, err := store.UpsertAccount(ctx, world)
 	require.NoError(t, err)
 
 	_, err = store.updateVolumes(ctx, AccountsVolumes{

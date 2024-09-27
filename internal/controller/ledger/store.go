@@ -41,12 +41,12 @@ type TX interface {
 	UpdateTransactionMetadata(ctx context.Context, transactionID int, m metadata.Metadata) (*ledger.Transaction, bool, error)
 	DeleteTransactionMetadata(ctx context.Context, transactionID int, key string) (*ledger.Transaction, bool, error)
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata) error
-	UpsertAccount(ctx context.Context, account *ledger.Account) error
+	// UpsertAccount returns a boolean indicating if the account was upserted
+	UpsertAccount(ctx context.Context, account *ledger.Account) (bool, error)
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
 	SwitchLedgerState(ctx context.Context, name string, state string) error
 
-	// todo: clean if needed
 	LockLedger(ctx context.Context) error
 	ListLogs(ctx context.Context, q GetLogsQuery) (*bunpaginate.Cursor[ledger.Log], error)
 }
