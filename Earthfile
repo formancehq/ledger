@@ -103,7 +103,7 @@ deploy-staging:
 
 lint:
     FROM +tidy
-    RUN golangci-lint run --fix --build-tags it
+    RUN golangci-lint run --fix --build-tags it --timeout 2m
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT internal AS LOCAL internal
     SAVE ARTIFACT pkg AS LOCAL pkg
