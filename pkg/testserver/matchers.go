@@ -88,6 +88,8 @@ func (e *EventMatcher) Match(actual any) (success bool, err error) {
 		return false, fmt.Errorf("unable to unmarshal msg: %s", err)
 	}
 
+	Expect(ev.Type).To(Equal(e.eventName))
+
 	rawSchema := jsonschema.Reflect(e.expected)
 	data, err := json.Marshal(rawSchema)
 	if err != nil {
@@ -155,8 +157,9 @@ func (e *EventMatcher) NegatedFailureMessage(_ any) (message string) {
 
 var _ types.GomegaMatcher = (*EventMatcher)(nil)
 
-func Event(expected any) types.GomegaMatcher {
+func Event(eventName string, expected any) types.GomegaMatcher {
 	return &EventMatcher{
 		expected: expected,
+		eventName: eventName,
 	}
 }
