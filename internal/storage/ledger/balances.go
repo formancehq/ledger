@@ -154,6 +154,15 @@ func (s *Store) selectAccountWithAssetAndVolumes(date *time.Time, useInsertionDa
 	return selectAccountsWithVolumes
 }
 
+func (s *Store) selectAccountWithAggregatedVolumes(date *time.Time, useInsertionDate bool, alias string) *bun.SelectQuery {
+	selectAccountWithAssetAndVolumes := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, nil)
+	return s.db.NewSelect().
+		TableExpr("(?) values", selectAccountWithAssetAndVolumes).
+		Group("accounts_address").
+		Column("accounts_address").
+		ColumnExpr("aggregate_objects(json_build_object(asset, volumes)::jsonb) as " + alias)
+}
+
 func (s *Store) SelectAggregatedBalances(date *time.Time, useInsertionDate bool, builder query.Builder) *bun.SelectQuery {
 
 	selectAccountsWithVolumes := s.selectAccountWithAssetAndVolumes(date, useInsertionDate, builder)
