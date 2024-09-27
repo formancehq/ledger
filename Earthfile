@@ -70,6 +70,8 @@ tests:
         SET goFlags="$goFlags -covermode=atomic"
         SET goFlags="$goFlags -coverpkg=github.com/formancehq/ledger/internal/..."
         SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/events/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/accounts/..."
+        SET goFlags="$goFlags,github.com/formancehq/ledger/pkg/assets/..."
         SET goFlags="$goFlags,github.com/formancehq/ledger/cmd/..."
         SET goFlags="$goFlags -coverprofile cover.out"
     END
