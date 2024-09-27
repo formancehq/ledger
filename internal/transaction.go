@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"github.com/invopop/jsonschema"
 	"math/big"
 	"slices"
 	"sort"
@@ -44,9 +45,21 @@ type Transaction struct {
 
 	TransactionData
 	ID                         int               `json:"id" bun:"id,type:numeric"`
-	RevertedAt                 *time.Time        `json:"revertedAt" bun:"reverted_at,type:timestamp without time zone"`
+	RevertedAt                 *time.Time        `json:"revertedAt,omitempty" bun:"reverted_at,type:timestamp without time zone"`
 	PostCommitVolumes          PostCommitVolumes `json:"postCommitVolumes,omitempty" bun:"post_commit_volumes,type:jsonb"`
 	PostCommitEffectiveVolumes PostCommitVolumes `json:"postCommitEffectiveVolumes,omitempty" bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+}
+
+func (Transaction) JSONSchemaExtend(schema *jsonschema.Schema) {
+	schema.Properties.Set("reverted", &jsonschema.Schema{
+		Type: "boolean",
+	})
+	postCommitVolumesSchema, present := schema.Properties.Get("postCommitVolumes")
+	if !present {
+		panic("missing postCommitVolumes schema")
+	}
+	schema.Properties.Set("preCommitVolumes", postCommitVolumesSchema)
+	schema.Properties.Set("preCommitEffectiveVolumes", postCommitVolumesSchema)
 }
 
 func (tx Transaction) Reverse(atEffectiveDate bool) Transaction {

@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/metadata"
+	"github.com/formancehq/go-libs/time"
+	"github.com/formancehq/ledger/internal/bus"
 	"github.com/nats-io/nats.go"
 	"io"
 	"math/big"
@@ -141,7 +144,37 @@ var _ = Context("Ledger integration tests", func() {
 						msgs = testServer.GetValue().Subscribe()
 					})
 					It("should receive an event", func() {
-						Eventually(msgs).Should(Receive())
+						Eventually(msgs).Should(Receive(Event(bus.CommittedTransactions{
+							Ledger: "foo",
+							Transactions: []ledger.Transaction{{
+								TransactionData: ledger.TransactionData{
+									Postings: []ledger.Posting{
+										ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
+									},
+									Timestamp:  time.New(tx.Timestamp),
+									InsertedAt: time.New(tx.Timestamp),
+									Metadata:   metadata.Metadata{},
+								},
+								ID: 1,
+								PostCommitVolumes: ledger.PostCommitVolumes{
+									"world": {
+										"USD/2": ledger.NewVolumesInt64(0, 100),
+									},
+									"bank": {
+										"USD/2": ledger.NewVolumesInt64(100, 0),
+									},
+								},
+								PostCommitEffectiveVolumes: ledger.PostCommitVolumes{
+									"world": {
+										"USD/2": ledger.NewVolumesInt64(0, 100),
+									},
+									"bank": {
+										"USD/2": ledger.NewVolumesInt64(100, 0),
+									},
+								},
+							}},
+							AccountMetadata: ledger.AccountMetadata{},
+						})))
 					})
 				})
 				It("should be listable on api", func() {

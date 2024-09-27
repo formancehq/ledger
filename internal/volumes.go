@@ -2,12 +2,18 @@ package ledger
 
 import (
 	"encoding/json"
+	"github.com/invopop/jsonschema"
 	"math/big"
 )
 
 type Volumes struct {
 	Input  *big.Int `json:"input"`
 	Output *big.Int `json:"output"`
+}
+
+func (Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
+	inputProperty, _ := schema.Properties.Get("input")
+	schema.Properties.Set("balance", inputProperty)
 }
 
 func (v Volumes) Copy() Volumes {

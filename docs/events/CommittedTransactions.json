@@ -77,9 +77,9 @@
       "type": "array"
     },
     "Time": {
-      "properties": {},
-      "additionalProperties": false,
-      "type": "object"
+      "type": "string",
+      "format": "date-time",
+      "title": "Normalized date"
     },
     "Transaction": {
       "properties": {
@@ -108,6 +108,15 @@
           "$ref": "#/$defs/PostCommitVolumes"
         },
         "postCommitEffectiveVolumes": {
+          "$ref": "#/$defs/PostCommitVolumes"
+        },
+        "reverted": {
+          "type": "boolean"
+        },
+        "preCommitVolumes": {
+          "$ref": "#/$defs/PostCommitVolumes"
+        },
+        "preCommitEffectiveVolumes": {
           "$ref": "#/$defs/PostCommitVolumes"
         }
       },
