@@ -2,10 +2,9 @@ package v1
 
 import (
 	"encoding/json"
+	"github.com/formancehq/ledger/pkg/accounts"
 	"net/http"
 	"net/url"
-
-	"github.com/formancehq/ledger/pkg/core/accounts"
 
 	"github.com/formancehq/go-libs/api"
 	"github.com/formancehq/go-libs/metadata"

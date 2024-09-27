@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/metadata"
 	"github.com/formancehq/go-libs/time"
 	"github.com/formancehq/ledger/internal/bus"
+	"github.com/formancehq/ledger/pkg/events"
 	"github.com/nats-io/nats.go"
 	"io"
 	"math/big"
@@ -144,7 +145,7 @@ var _ = Context("Ledger integration tests", func() {
 						msgs = testServer.GetValue().Subscribe()
 					})
 					It("should receive an event", func() {
-						Eventually(msgs).Should(Receive(Event(bus.CommittedTransactions{
+						Eventually(msgs).Should(Receive(Event(events.EventTypeCommittedTransactions, bus.CommittedTransactions{
 							Ledger: "foo",
 							Transactions: []ledger.Transaction{{
 								TransactionData: ledger.TransactionData{
