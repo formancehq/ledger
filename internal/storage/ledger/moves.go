@@ -58,8 +58,7 @@ func (s *Store) insertMoves(ctx context.Context, moves ...*ledger.Move) error {
 		_, err := s.db.NewInsert().
 			Model(&moves).
 			ModelTableExpr(s.GetPrefixedRelationName("moves")).
-			// todo: to_json required?
-			Returning("to_json(post_commit_volumes) as post_commit_volumes, to_json(post_commit_effective_volumes) as post_commit_effective_volumes").
+			Returning("post_commit_volumes, post_commit_effective_volumes").
 			Exec(ctx)
 
 		return postgres.ResolveError(err)
