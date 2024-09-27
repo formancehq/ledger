@@ -3,6 +3,7 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/publish"
 	"io"
 	"net/http"
 	"strings"
@@ -30,6 +31,7 @@ type T interface {
 
 type Configuration struct {
 	PostgresConfiguration bunconnect.ConnectionOptions
+	NatsURL string
 	Output                io.Writer
 	Debug                 bool
 }
@@ -75,6 +77,14 @@ func (s *Server) Start() {
 			fmt.Sprint(s.configuration.PostgresConfiguration.ConnMaxIdleTime),
 		)
 	}
+	if s.configuration.NatsURL != "" {
+		args = append(
+			args,
+			"--" + publish.PublisherNatsEnabledFlag,
+			"--" + publish.PublisherNatsURLFlag, s.configuration.NatsURL,
+		)
+	}
+
 	if s.configuration.Debug {
 		args = append(args, "--"+service.DebugFlag)
 	}
